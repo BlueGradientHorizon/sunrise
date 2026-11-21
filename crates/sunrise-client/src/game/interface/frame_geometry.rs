@@ -253,7 +253,7 @@ impl Game<'_> {
         // Combat feel Legacy: a sword is held up while use is held, as 1.8.9's block looked.
         // Only the picture changes: the clicks and what they send stay 26.3's.
         let legacy_block = self.pvp_legacy_look()
-            && self.right
+            && self.mapped_key_down("key.use")
             && self.screen == Screen::Playing
             && items[0]
                 .as_ref()

@@ -501,10 +501,11 @@ pub(super) fn register_gui_layers(role: ExecutionRole) {
 /// Collect the native mods' owned debug renderers and their owners on each list refresh.
 pub(super) fn debug_renderers(
     role: ExecutionRole,
+    entries: &dyn mod_api::__private::DebugEntryStates,
 ) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
     let mut renderers = Vec::new();
     if role.is_client() {
-        Game::native_register_debug_renderers(&RegistrationContext::new(), &mut renderers);
+        Game::native_register_debug_renderers(&RegistrationContext::new(), entries, &mut renderers);
     }
     renderers
 }

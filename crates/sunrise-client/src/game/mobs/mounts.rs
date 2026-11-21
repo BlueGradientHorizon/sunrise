@@ -170,7 +170,7 @@ impl Game<'_> {
             // second rider and a horse or nautilus opens its inventory.
             return matches!(m.species(), Species::Pig | Species::Strider).then_some(false);
         }
-        if self.keys.held(Action::Sneak) {
+        if self.held_mapping(Action::Sneak) {
             return None;
         }
         // attemptToShearEquipment takes the body slot before the saddle: horse
@@ -234,7 +234,7 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || self.keys.held(Action::Sneak) {
+        if !m.extra.saddled() || food || self.held_mapping(Action::Sneak) {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -329,8 +329,8 @@ impl Game<'_> {
         if species == Species::SkeletonHorse && !m.extra.tame {
             return false;
         }
-        let sneaking =
-            self.keys.held(Action::Sneak) || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
+        let sneaking = self.held_mapping(Action::Sneak)
+            || self.keys.raw(&winit::keyboard::KeyCode::ShiftRight);
         // Horse / ZombieHorse.mobInteract: food is fed, and anything else in
         // hand makes an untamed one mad instead of seating the player.
         let dandelion = [self.held(), self.offhand.as_ref()]
@@ -631,7 +631,7 @@ impl Game<'_> {
             pitch: self.pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: keys.sprint || self.keys.held(Action::Sprint),
+            sprint: keys.sprint || self.held_mapping(Action::Sprint),
             jumping: keys.jump,
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives

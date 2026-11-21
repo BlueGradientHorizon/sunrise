@@ -496,6 +496,13 @@ impl Game<'_> {
         (framebuffer, gui)
     }
 
+    /// `Gui.setScreen`: `KeyMapping.releaseAll` on a successful screen or overlay
+    /// opening/replacement transition (never on per-frame observation or resize).
+    pub(in crate::game) fn release_mappings_on_screen_open(&mut self) {
+        self.mod_keys.release_all();
+        self.release_screen_mappings();
+    }
+
     /// `Screen.init`/`Screen.resize` for the game's open screen: builds it
     /// when it opens, remakes it when the window or the GUI scale changed it,
     /// and drops it when it closes. A frame that changes neither builds
@@ -503,11 +510,6 @@ impl Game<'_> {
     pub(super) fn build_screen(&mut self) {
         let shown =
             self.screen != Screen::Playing || self.title.is_some() || self.screen_over_playing();
-        // Gui.setScreen: KeyMapping.releaseAll, as the screen or overlay opens.
-        if shown {
-            self.mod_keys.release_all();
-            self.release_screen_mappings();
-        }
         let (framebuffer, gui) = self.gui_frame_now();
         let identity = self
             .title

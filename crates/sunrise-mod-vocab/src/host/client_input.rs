@@ -10,8 +10,8 @@ pub trait ClientInputClientHost {
     fn cursor(&self) -> [f32; 2];
     /// Side: client.
     /// Resolve `owner`'s registered mapping `id` once after registration, usually in `client_setup`.
-    /// Keep the handle for subsequent calls; save the owner and id, not the handle. Other mods'
-    /// mappings can be resolved and read, but only the owner can rebind or reset them.
+    /// Keep the handle for subsequent calls; save the owner and id, not the handle. Any mod can
+    /// resolve, read, rebind or reset any registered mapping.
     /// Returns [`ModKeyRefusal::NotRegistered`] for an unknown owner or id and
     /// [`ModKeyRefusal::Unavailable`] when there is no client backend in this host or phase.
     #[access(ClientSetup)]
@@ -70,9 +70,8 @@ pub trait ClientInputClientBackend {
         mapping: VanillaKeyMappingRef,
     ) -> Result<&str, MappingError>;
     /// Side: client.
-    /// The logical held state (`KeyMapping.isDown`) of movement, attack or use, including
-    /// controller input, toggles and logical overrides. Other vanilla mappings resolve but
-    /// return [`MappingError::NoLogicalState`]; this never substitutes a physical read.
+    /// The logical held state (`KeyMapping.isDown`) of any resolved vanilla mapping, including
+    /// controller input, toggles and logical overrides.
     /// Stale and unavailable handles are refused as for [`VanillaKeyMappingRef::binding`].
     #[access(ClientSetup)]
     fn vanilla_key_mapping_is_down(
@@ -108,8 +107,10 @@ pub trait ClientInputClientBackend {
         mapping: ModKeyMappingRef,
     ) -> Result<(&str, ClientModifiers), ModKeyRefusal>;
     /// Side: client.
-    /// Whether the mapping is held (`KeyMapping.isDown`): its key or mouse button is down,
-    /// no screen or overlay is open, and its context and modifiers are active.
+    /// Whether the mapping is held (`KeyMapping.isDown`): its raw held state is true and its
+    /// conflict context and bound modifiers are active. Opening a screen or overlay clears
+    /// held state via `KeyMapping.releaseAll`; this read does not add an extra screen-open
+    /// suppression beyond the mapping's conflict context.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
     #[access(ClientSetup)]
     fn mod_key_mapping_is_down(&self, mapping: ModKeyMappingRef) -> Result<bool, ModKeyRefusal>;
@@ -130,55 +131,56 @@ pub trait ClientInputClientBackend {
 #[sunrise_mod_api_macros::host_area]
 pub trait ClientInputClientBackendMut {
     /// Side: client.
-    /// Holds this vanilla gameplay mapping down or lets it go (`KeyMapping.setDown`), without
+    /// Holds any resolved vanilla mapping down or lets it go (`KeyMapping.setDown`), without
     /// adding a click. For a hold-style mapping this replaces its logical state until the next
     /// input for that mapping. It does not press or release the physical key or add a separate
     /// hold that can outlast its release. Sneak, sprint, attack and use with their toggle option
     /// on flip only on `true`, as `ToggleKeyMapping.setDown` does.
     ///
-    /// The client tick's key step acts on the mapping with all its checks: a held use repeats
-    /// every four ticks, and a held attack goes on breaking the block. With a screen or overlay
-    /// open a press does nothing, and opening one releases the mappings (`KeyMapping.releaseAll`).
+    /// In a world, the client tick's key step acts on gameplay mappings with all its checks: a
+    /// held use repeats every four ticks, and a held attack goes on breaking the block. With a
+    /// screen or overlay open this still updates the mapping, but the game does not poll
+    /// keybinds. Opening a screen releases the mappings (`KeyMapping.releaseAll`).
     /// `key_mapping_pre` is not asked: it is about physical keys.
     ///
-    /// Accepts movement, gameplay and inventory mappings only ([`MappingError::NotGameplay`]).
-    /// `key.pickItem` is click-only ([`MappingError::ClickOnly`]); use [`VanillaKeyMappingRef::click`].
-    /// An unavailable backend or phase returns [`MappingError::Unavailable`], a handle from
-    /// another client returns [`MappingError::Stale`], and no player returns [`MappingError::NoWorld`].
-    #[access(WorldOnly)]
+    /// An unavailable backend or phase returns [`MappingError::Unavailable`], and a handle from
+    /// another client returns [`MappingError::Stale`].
+    #[access(ClientSetup)]
     fn vanilla_key_mapping_set_down(
         &mut self,
         mapping: VanillaKeyMappingRef,
         down: bool,
     ) -> Result<(), MappingError>;
     /// Side: client.
-    /// Adds one click to this vanilla gameplay mapping (`KeyMapping.click`), without holding it.
-    /// An attack, use or pick click acts on a subsequent client tick, through the checks of
-    /// `startAttack` and `startUseItem` (the miss cooldown, busy hands, the item and the target
-    /// under the crosshair), sending the same packets as the player's own click. Inventory
-    /// mappings select a hotbar slot, drop an item, open the inventory or swap hands as usual.
-    /// With a screen or overlay open the click is dropped. `interaction_key_mapping_triggered`
-    /// fires at the action as for the player's click; `key_mapping_pre` is not asked.
+    /// Adds one click to any resolved vanilla mapping (`KeyMapping.click`), without holding it.
+    /// In a world, an attack, use or pick click acts on a subsequent client tick, through the
+    /// checks of `startAttack` and `startUseItem` (the miss cooldown, busy hands, the item and
+    /// the target under the crosshair), sending the same packets as the player's own click.
+    /// Inventory and screen-opening mappings select a hotbar slot, drop an item, open the
+    /// inventory, swap hands or open chat only when the keybind tick consumes the click.
+    /// With a screen or overlay open the click still counts, but keybinds are not polled.
+    /// `interaction_key_mapping_triggered` fires at the action as for
+    /// the player's click; `key_mapping_pre` is not asked.
     ///
-    /// Queued actions drain oldest first, at most 64 entries per queue per drain, with at most
-    /// 1024 pending. Excess entries wait for later drains (normally later client ticks). Each
-    /// hotbar key has its own click counter, up to 1024 pending clicks per key. A selection drain
-    /// takes one click per key, in order from key 1 to key 9, so the highest key clicked wins.
-    /// Selection can drain more than once per tick. A full queue refuses the new entry and
-    /// returns normally, logging only its first refusal for that queue's lifetime. These bounds
-    /// also apply to physical input queued through the same routes.
+    /// Attack, use, pick, inventory, swap-hands and drop clicks drain completely on the client
+    /// tick (`while (key.consumeClick())`), with no fixed per-tick or queue-length cap. Each
+    /// hotbar key keeps its own click counter and a selection drain consumes one click per key
+    /// in order from key 1 to key 9 (`if (keyHotbarSlots[i].consumeClick())`), so the highest
+    /// key clicked wins and further clicks wait for later drains.
     ///
-    /// Refusals are as for [`VanillaKeyMappingRef::set_down`], except that `key.pickItem` can be clicked.
-    #[access(WorldOnly)]
+    /// Refusals are as for [`VanillaKeyMappingRef::set_down`].
+    #[access(ClientSetup)]
     fn vanilla_key_mapping_click(
         &mut self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<(), MappingError>;
     /// Side: client.
     /// Takes one pending click (`KeyMapping.consumeClick`), returning `false` if none remain.
-    /// A press, each auto-repeat while held, and a mouse press add a click with no screen open
-    /// and the mapping's context and modifiers active. Window and control-socket input count
-    /// alike. Opening a screen or overlay drops all pending clicks.
+    /// Reads and decrements the raw `KeyMapping` click count without clearing or suppressing
+    /// it when a screen is open. Physical presses, auto-repeats and mouse presses add clicks
+    /// when no screen is open and the mapping's context and modifiers are active; window and
+    /// control-socket input count alike, and opening a screen or overlay drops pending clicks
+    /// via `KeyMapping.releaseAll`.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
     #[access(ClientSetup)]
     fn mod_key_mapping_consume_click(
@@ -189,9 +191,8 @@ pub trait ClientInputClientBackendMut {
     /// Binds the mapping to `key` (`key.keyboard.z`, `key.mouse.left`, or `key.keyboard.unknown`
     /// for none) with shift, control and alt modifiers, as Controls does. A modifier bound to
     /// itself is the key, not a modifier held with itself. The new binding answers from the next
-    /// input and is saved to `sunrise-mods.txt`.
-    /// Only the owning mod can change it. In addition to the refusals of
-    /// [`ModKeyMappingRef::binding`], returns [`ModKeyRefusal::NotOwner`],
+    /// input and is saved to `sunrise-mods.txt`. Any mod can rebind any registered mapping.
+    /// In addition to the refusals of [`ModKeyMappingRef::binding`], returns
     /// [`ModKeyRefusal::UnknownKey`] or [`ModKeyRefusal::UnknownModifiers`]. No refusal changes it.
     #[access(ClientSetup)]
     fn mod_key_mapping_set_binding(

@@ -2,8 +2,9 @@
 //! draws them, with native layers inserted and bodies installed once at client startup.
 
 use mod_api::{
-    __private::game::discard_registration, GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar,
-    GuiLayerWrapper, HookId, Identifier, content::crash::current_native_mod,
+    __private::game::{CallbackOwner, discard_registration},
+    GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, HookId, Identifier,
+    content::crash::current_native_mod,
 };
 use std::sync::OnceLock;
 
@@ -86,11 +87,11 @@ enum GuiLayerId {
 pub enum GuiLayerBody {
     Vanilla,
     Native {
-        owner: Option<&'static str>,
+        owner: CallbackOwner,
         draw: Box<GuiLayerDraw>,
     },
     Wrapped {
-        owner: Option<&'static str>,
+        owner: CallbackOwner,
         wrap: Box<GuiLayerWrapper>,
         previous: Box<GuiLayerBody>,
     },
@@ -157,7 +158,7 @@ impl GuiLayerBody {
                 // Slots are already published or rejected; cleanup cannot undo another batch.
                 discard_registration(
                     (HookId::RegisterGuiLayers, "register_gui_layers"),
-                    owner,
+                    Some(owner.id()),
                     (draw, wrap),
                 );
             }
@@ -213,10 +214,8 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         placement: GuiLayerPlacement,
         draw: Box<GuiLayerDraw>,
     ) -> bool {
-        if Identifier::parse_namespaced(&id).is_none_or(|id| id.namespace() == "minecraft") {
-            log::warn!(
-                "HUD layer {id:?} must be <namespace>:<path> outside the minecraft namespace"
-            );
+        if Identifier::parse_namespaced(&id).is_none() {
+            log::warn!("HUD layer {id:?} must be <namespace>:<path>");
             return false;
         }
         if self.position(&id).is_some() {
@@ -241,7 +240,10 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             at,
             StagedLayer {
                 id: StagedLayerId::Native(id),
-                body: GuiLayerBody::Native { owner, draw },
+                body: GuiLayerBody::Native {
+                    owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
+                    draw,
+                },
                 retirement: None,
             },
         );
@@ -258,7 +260,13 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             slot.retirement = Some(self.retired.len());
             self.retired.push(GuiLayerBody::Vanilla);
         }
-        let old = std::mem::replace(&mut slot.body, GuiLayerBody::Native { owner, draw });
+        let old = std::mem::replace(
+            &mut slot.body,
+            GuiLayerBody::Native {
+                owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
+                draw,
+            },
+        );
         if !matches!(old, GuiLayerBody::Vanilla) {
             self.obsolete.push(old);
         }
@@ -278,7 +286,7 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         let body = &mut self.slots[at].body;
         let previous = Box::new(std::mem::replace(body, GuiLayerBody::Vanilla));
         *body = GuiLayerBody::Wrapped {
-            owner,
+            owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
             wrap,
             previous,
         };
@@ -464,7 +472,8 @@ mod tests {
         layers.register_listener(|layers| {
             for (id, placement, accepted) in [
                 ("minecraft:hotbar", AboveAll, false),
-                ("minecraft:mine", AboveAll, false),
+                ("minecraft:mine", AboveAll, true),
+                ("minecraft:mine", BelowAll, false),
                 ("no_namespace", AboveAll, false),
                 ("compass:bad space", AboveAll, false),
                 ("compass:bar", AboveAll, true),
@@ -494,10 +503,18 @@ mod tests {
             .filter(|slot| slot.vanilla_anchor().is_none())
             .map(GuiLayerSlot::id)
             .collect();
-        assert_eq!(mods, ["compass:bar", "compass:early", "compass:late"]);
+        assert_eq!(
+            mods,
+            [
+                "minecraft:mine",
+                "compass:bar",
+                "compass:early",
+                "compass:late"
+            ]
+        );
         assert_eq!(
             order.slots()[VanillaGuiLayer::ALL.len()].id(),
-            "compass:bar"
+            "minecraft:mine"
         );
     }
 
@@ -598,27 +615,22 @@ mod tests {
         );
         assert!(matches!(
             &order.slots()[hotbar].body,
-            GuiLayerBody::Wrapped { owner: Some("first"), previous, .. }
-                if matches!(**previous, GuiLayerBody::Vanilla)
+            GuiLayerBody::Wrapped { owner, previous, .. }
+                if owner.id() == "first" && matches!(**previous, GuiLayerBody::Vanilla)
         ));
         assert!(matches!(
             &order.slots()[hotbar + 1].body,
-            GuiLayerBody::Wrapped { owner: Some("last"), previous, .. }
-                if matches!(**previous, GuiLayerBody::Native { owner: Some("last"), .. })
+            GuiLayerBody::Wrapped { owner, previous, .. }
+                if owner.id() == "last"
+                    && matches!(&**previous, GuiLayerBody::Native { owner, .. } if owner.id() == "last")
         ));
         assert!(matches!(
             &order.slots()[hotbar + 2].body,
-            GuiLayerBody::Native {
-                owner: Some("last"),
-                ..
-            }
+            GuiLayerBody::Native { owner, .. } if owner.id() == "last"
         ));
         assert!(matches!(
             &order.slots()[hotbar + 3].body,
-            GuiLayerBody::Native {
-                owner: Some("first"),
-                ..
-            }
+            GuiLayerBody::Native { owner, .. } if owner.id() == "first"
         ));
     }
 
@@ -735,10 +747,7 @@ mod tests {
                 );
                 assert!(matches!(
                     &native[0].body,
-                    GuiLayerBody::Native {
-                        owner: Some("replacing"),
-                        ..
-                    }
+                    GuiLayerBody::Native { owner, .. } if owner.id() == "replacing"
                 ));
             }
         });
@@ -863,11 +872,8 @@ mod tests {
             let replaced = order.slots().last().unwrap();
             assert_eq!(replaced.id(), "hud:earlier");
             assert!(matches!(
-                replaced.body,
-                GuiLayerBody::Native {
-                    owner: Some("healthy"),
-                    ..
-                }
+                &replaced.body,
+                GuiLayerBody::Native { owner, .. } if owner.id() == "healthy"
             ));
             assert_eq!(*drops.lock().unwrap(), ["failing", "retired"]);
             assert_eq!(

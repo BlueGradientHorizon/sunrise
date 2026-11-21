@@ -19,8 +19,9 @@ are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, 
 `Hooks::gui_layer_pre` lists) or a layer already registered, including in this callback's own
 batch. The game publishes a completed batch in call order before invoking the next listener.
 A panic or phase refusal discards only the failing listener's pending insertions, replacements
-and wrappers. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
-refused at the call. The client calls each installed callback as the mod that registered it.
+and wrappers. Invalid or duplicate IDs (including built-in vanilla layer IDs) and unknown
+relative anchors are logged and refused at the call. The client calls each installed callback
+as the mod that registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
@@ -41,7 +42,7 @@ pass regardless of F1 uses `Hooks::gui_render_post`."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 4,
+        version = 5,
         contract = "listen",
         staged_surface = "layers",
         context = "registration",

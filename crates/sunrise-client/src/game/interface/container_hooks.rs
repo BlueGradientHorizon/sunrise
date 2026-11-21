@@ -97,10 +97,11 @@ fn kind_of(stack: &ItemStack) -> u64 {
     hasher.finish()
 }
 
-/// The role of game slot `slot` in mod menu `menu`, whose slots are game slots 300 and up however
-/// many it has: `None` outside them.
+/// The role of game slot `slot` in mod menu `menu`, whose slots use the disjoint mod-menu
+/// range (`MOD_MENU_SLOT_BASE..`): `None` outside them.
 fn mod_menu_role(menu: &ModMenuType, slot: usize) -> Option<Role> {
-    let index = slot.checked_sub(300).filter(|&i| i < menu.slots)?;
+    let index =
+        crate::game::inventory_slots::container_slot_index(slot).filter(|&i| i < menu.slots)?;
     Some(match menu.crafting {
         Some(c) if c.result == index => Role::Result,
         Some(c) if c.grid_slots().contains(&index) => Role::Input,
@@ -315,14 +316,16 @@ impl<'g> Game<'g> {
             500..=504 | mount_menu::SADDLE | mount_menu::ARMOR => Role::Equipment,
             s if (stations::INPUT..stations::RESULT).contains(&s) => Role::Input,
             s if (mount_menu::CHEST..mount_menu::CHEST + 15).contains(&s) => Role::Storage,
-            300..500 => match self.container_kind() {
-                Some(BlockEntity::Furnace(_)) if slot == 302 => Role::Result,
-                Some(BlockEntity::Crafter(_)) if slot == 309 => Role::Result,
-                Some(
-                    BlockEntity::Furnace(_) | BlockEntity::Brewing(_) | BlockEntity::Crafter(_),
-                ) => Role::Input,
-                _ => Role::Storage,
-            },
+            s if crate::game::inventory_slots::container_slot_index(s).is_some() => {
+                match self.container_kind() {
+                    Some(BlockEntity::Furnace(_)) if slot == 302 => Role::Result,
+                    Some(BlockEntity::Crafter(_)) if slot == 309 => Role::Result,
+                    Some(
+                        BlockEntity::Furnace(_) | BlockEntity::Brewing(_) | BlockEntity::Crafter(_),
+                    ) => Role::Input,
+                    _ => Role::Storage,
+                }
+            }
             _ => Role::Other,
         }
     }

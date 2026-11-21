@@ -28,8 +28,6 @@ pub const DATA_CHANNEL: &str = "sunrise:menu_data";
 pub const LIVE_DATA_REVISION: u8 = 2;
 /// Latest supported menu revision. Revision 1 introduced optional opening positions.
 pub const REVISION: u8 = LIVE_DATA_REVISION;
-/// Bytes a mod may write at most.
-pub const MAX_DATA: usize = 32_768;
 
 const QUERY: u8 = 0;
 const ANSWER: u8 = 1;
@@ -116,11 +114,9 @@ pub struct Message {
     pub data: Vec<u8>,
 }
 
-/// A message's payload; an error for data past [`MAX_DATA`].
+/// A message's payload. Matches NeoForge's `AdvancedOpenScreenPayload` /
+/// `NeoForgeStreamCodecs.UNBOUNDED_BYTE_ARRAY`, bounded only by the packet frame.
 pub fn encode(message: &Message) -> Result<Vec<u8>> {
-    if message.data.len() > MAX_DATA {
-        return Err(Error::new("menu extra: data too big"));
-    }
     let mut w = Writer::new();
     w.varint(message.window);
     w.bool(message.pos.is_some());
@@ -131,15 +127,11 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
 
 /// The legacy layout, for a Sunrise client that answered no revision query:
 /// the window, then the block's position (always there), then the bytes.
-/// An error for data past [`MAX_DATA`] or a menu with no block, which such
-/// a client is never sent.
+/// An error for a menu with no block, which such a client is never sent.
 pub fn encode_legacy(message: &Message) -> Result<Vec<u8>> {
     let Some([x, y, z]) = message.pos else {
         return Err(Error::new("menu extra: legacy payload needs a position"));
     };
-    if message.data.len() > MAX_DATA {
-        return Err(Error::new("menu extra: data too big"));
-    }
     let mut w = Writer::new();
     w.varint(message.window);
     w.i32(x);
@@ -149,8 +141,8 @@ pub fn encode_legacy(message: &Message) -> Result<Vec<u8>> {
     Ok(w.data)
 }
 
-/// A payload's message; an error for one that breaks a cap. The layout a
-/// client that answered the revision query reads.
+/// A payload's message. The layout a client that answered the revision query reads,
+/// bounded only by the remaining bytes in the frame (vanilla's `FriendlyByteBuf.readByteArray()`).
 pub fn decode(data: &[u8]) -> Result<Message> {
     let mut r = Reader::new(data);
     let window = r.varint()?;
@@ -159,7 +151,8 @@ pub fn decode(data: &[u8]) -> Result<Message> {
     } else {
         None
     };
-    let data = r.byte_array(MAX_DATA)?;
+    let limit = r.remaining();
+    let data = r.byte_array(limit)?;
     if r.remaining() > 0 {
         return Err(Error::new("menu extra: trailing bytes"));
     }
@@ -172,7 +165,8 @@ pub fn decode_legacy(data: &[u8]) -> Result<Message> {
     let mut r = Reader::new(data);
     let window = r.varint()?;
     let pos = Some([r.i32()?, r.i32()?, r.i32()?]);
-    let data = r.byte_array(MAX_DATA)?;
+    let limit = r.remaining();
+    let data = r.byte_array(limit)?;
     if r.remaining() > 0 {
         return Err(Error::new("menu extra: trailing bytes"));
     }
@@ -202,7 +196,7 @@ mod tests {
         for (pos, data) in [
             (Some([-30_000_000, -64, 29_999_999]), vec![]),
             (Some([0, 0, 0]), vec![0, 255, 7]),
-            (None, vec![9; MAX_DATA]),
+            (None, vec![9; 40_000]),
             (None, vec![1, 2, 3]),
         ] {
             let m = Message {
@@ -215,19 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn caps_are_enforced_both_ways() {
-        let big = Message {
-            window: 1,
-            pos: Some([0; 3]),
-            data: vec![0; MAX_DATA + 1],
-        };
-        assert!(encode(&big).is_err());
-        // Built by hand, as a server that skipped the check would.
-        let mut w = Writer::new();
-        w.varint(1);
-        w.bool(false);
-        w.byte_array(&vec![0; MAX_DATA + 1]);
-        assert!(decode(&w.data).is_err());
+    fn malformed_frames_are_refused() {
         let mut ok = encode(&Message {
             window: 1,
             pos: Some([0; 3]),
@@ -238,6 +220,12 @@ mod tests {
         assert!(decode(&ok).is_err(), "trailing bytes");
         assert!(decode(&[]).is_err());
         assert!(decode(&[1, 1, 0]).is_err(), "a cut position");
+        // Length prefix claiming more bytes than the frame contains.
+        let mut truncated = Writer::new();
+        truncated.varint(1);
+        truncated.bool(false);
+        truncated.varint(40_000);
+        assert!(decode(&truncated.data).is_err());
     }
 
     #[test]
@@ -265,19 +253,17 @@ mod tests {
             data: vec![1, 2, 3],
         };
         assert_eq!(decode_legacy(&encode_legacy(&m).unwrap()).unwrap(), m);
+        // Payloads larger than 32 KiB also round-trip on the legacy layout.
+        let big = Message {
+            data: vec![5; 40_000],
+            ..m.clone()
+        };
+        assert_eq!(decode_legacy(&encode_legacy(&big).unwrap()).unwrap(), big);
         // A legacy payload is not this revision's layout.
         assert!(decode(&encode_legacy(&m).unwrap()).is_err());
         assert!(decode_legacy(&encode(&m).unwrap()).is_err());
         // A client that reads the legacy layout is never sent a blockless menu.
-        let blockless = Message {
-            pos: None,
-            ..m.clone()
-        };
+        let blockless = Message { pos: None, ..m };
         assert!(encode_legacy(&blockless).is_err());
-        let big = Message {
-            data: vec![0; MAX_DATA + 1],
-            ..m
-        };
-        assert!(encode_legacy(&big).is_err());
     }
 }

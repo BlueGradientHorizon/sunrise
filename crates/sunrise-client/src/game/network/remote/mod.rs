@@ -41,7 +41,6 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::first_person::{Hand, SwingAnimation};
-use sunrise_client::input_queue::InputQueue;
 use sunrise_client::{
     Result,
     blocks::Fluid,
@@ -95,7 +94,6 @@ pub(in crate::game) mod client_level_tick;
 mod entity_section_steps;
 mod item_use;
 mod menu_interactions;
-mod queued_keys;
 mod remote_attributes;
 mod tab_entries;
 mod tables;
@@ -858,11 +856,6 @@ pub(super) struct Remote {
     /// Per-hand swing policy, restored when the current input attempt ends.
     pub(in crate::game) interaction_swing: [bool; 2],
     destroy_delay: u32,
-    pub(super) input: sunrise_client::interaction_input::InteractionInput,
-    /// Keys whose presses send a packet (swap hands, drop, a mount's
-    /// inventory): like the click queue, they wait for the tick's
-    /// `handleKeybinds` phase rather than going out between window events.
-    pub(super) pending_keys: InputQueue<KeyCode>,
     /// Whether the main and off hand still wait for the server's answer to
     /// a SWAP_ITEM_WITH_OFFHAND (`remote_hand_slot_set`).
     swap_answer: [bool; 2],
@@ -1380,8 +1373,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -1634,8 +1625,6 @@ impl Game<'_> {
             is_destroying: false,
             interaction_swing: [true; 2],
             destroy_delay: 0,
-            input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -1729,9 +1718,9 @@ impl Game<'_> {
         // Gui.setScreen -> KeyMapping.releaseAll: the title or disconnect
         // screen releases every held key. Its release goes to that screen,
         // so a key kept here would still be down in the next world (#3246).
-        self.keys.clear();
-        self.left = false;
-        self.right = false;
+        self.clear_device_keys();
+        self.set_mapping_held("key.attack", false);
+        self.set_mapping_held("key.use", false);
         // The shared world is closing: its invite code ends with it.
         self.friends_lan_closed();
         // Single player's server thread saves the world before the title shows.
@@ -2304,10 +2293,7 @@ impl Game<'_> {
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
     pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
-        self.remote.as_ref().map_or(0, |r| {
-            r.input
-                .queued(sunrise_client::interaction_input::Button::Attack)
-        })
+        self.pending_mapping_clicks("key.attack")
     }
 
     /// A headless command oracle has a real connection but no movement tick.
@@ -2650,20 +2636,17 @@ impl Game<'_> {
         }
         self.finish_remote_level();
         if let Some((owner, factory)) = transition_factory {
-            use mod_api::content::crash::{ModCall, enter_native_mod};
+            use mod_api::__private::game::CallbackOwner;
             use sunrise_client_render::dimension_transition::ActiveTransitionScreen;
 
-            let presentation = {
-                let _owner = enter_native_mod(ModCall {
-                    id: owner,
-                    hook: "dimension_transition_factory",
-                    part: None,
-                });
-                factory.create(self, reason.into())
-            };
-            if let Some(r) = self.remote.as_mut() {
+            if let Ok(presentation) = owner.call(
+                "dimension transition factory",
+                "dimension_transition_factory",
+                || factory.create(self, reason.into()),
+            ) && let Some(r) = self.remote.as_mut()
+            {
                 r.level_load.set_transition_screen(ActiveTransitionScreen {
-                    owner,
+                    owner: CallbackOwner::for_mod(owner.id()),
                     presentation,
                 });
             }
@@ -3324,14 +3307,20 @@ impl Game<'_> {
                     _ => None,
                 }
             }
-            // A content mod's menu type: its container, then the inventory.
-            // A workstation: its inputs, its result, then the inventory.
+            // A content mod's menu type: its container (in the disjoint mod-menu slot
+            // range so large menus never alias armor, station, or mount slots), then the
+            // player inventory. A workstation: its inputs, its result, then the inventory.
             m => {
                 if let Some(t) = mod_type() {
-                    return if t.player_inventory {
-                        slots(t.slots)
+                    let n = t.slots;
+                    return if s < n {
+                        Some(crate::game::inventory_slots::MOD_MENU_SLOT_BASE + s)
+                    } else if t.player_inventory && s < n + 27 {
+                        Some(9 + s - n)
+                    } else if t.player_inventory && s < n + 36 {
+                        Some(s - n - 27)
                     } else {
-                        (s < t.slots).then_some(300 + s)
+                        None
                     };
                 }
                 let kind = Self::remote_station_kind(m)?;
@@ -3408,7 +3397,10 @@ impl Game<'_> {
         } else if internal == 504 {
             self.remote_hand_slot_set(super::shield::OFFHAND_SLOT, changed);
         }
-        if internal >= super::stations::INPUT && self.station.is_some() {
+        if internal >= super::stations::INPUT
+            && internal < crate::game::inventory_slots::MOD_MENU_SLOT_BASE
+            && self.station.is_some()
+        {
             self.remote_station_slot_changed(internal);
         }
     }
@@ -9248,39 +9240,20 @@ impl Game<'_> {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
-        let mut input = r.input.take_queued();
         let stop = std::mem::take(&mut r.stop_mining);
-        // Minecraft.tick runs handleKeybinds only while `gui.screen() == null`: a
-        // book, a sign editor, a dialog or a prompt over the world (each a
-        // `Screen` in vanilla) stops the attack and use mappings from acting,
-        // and `KeyMapping.releaseAll` let go of the buttons when it opened
-        // (`track_toggle_screens`), so a dig held into a book ends (#9729).
-        let ready = r.loaded_sent
-            && self.screen == Screen::Playing
-            && self.sleeping.is_none()
-            && !self.screen_over_playing();
+        let ready = r.loaded_sent && self.sleeping.is_none() && !self.mod_mappings_screen_open();
         self.refresh_client_pick(1.0);
         if stop || !ready {
             self.stop_remote_mining();
         }
         if !ready {
-            // A screen's opening released the keys (`KeyMapping.releaseAll`).
-            self.hotbar_presses
-                .iter_mut()
-                .for_each(sunrise_client::input_queue::ClickQueue::clear);
             self.agent_attack_clicks_left(0);
             return;
         }
-        let (attack, use_item) = (self.left, self.right);
-        input.tick(&mut RemoteInputWorld(self), attack, use_item);
-        // An item in use drains the queues without acting on them.
-        self.agent_attack_clicks_left(
-            input.queued(sunrise_client::interaction_input::Button::Attack),
-        );
-        self.remote_count_miss_time();
-        if let Some(r) = self.remote.as_mut() {
-            input.merge_queued(std::mem::take(&mut r.input));
-            r.input = input;
+        sunrise_client::interaction_input::tick(&mut RemoteInputWorld(self));
+        self.agent_attack_clicks_left(self.remote_attack_clicks_queued());
+        if self.clicks.miss_time > 0 {
+            self.clicks.miss_time -= 1;
         }
     }
 
@@ -9383,97 +9356,14 @@ impl Game<'_> {
             .ok()
     }
 
-    /// Keys with a multiplayer meaning; returns true when consumed.
-    pub(super) fn remote_key(&mut self, key: KeyCode) -> Result<bool> {
-        if self.screen != Screen::Playing {
-            if (key == KeyCode::KeyE || key == KeyCode::Escape) && self.screen == Screen::Inventory
-            {
-                self.remote_close_container();
-                self.set_screen(Screen::Playing);
-                self.capture(true);
-                return Ok(true);
-            }
-            return Ok(false);
-        }
-        match key {
-            KeyCode::KeyT | KeyCode::Slash | KeyCode::Enter => {
-                // ChatScreen, over the server's command tree.
-                self.open_chat_method(if key == KeyCode::Slash { "/" } else { "" });
-                // `Minecraft.handleKeybinds` opens it in the call that then
-                // releases an active use (Gui.handleKeybinds runs before the
-                // isUsingItem branch).
-                self.release_use_for_keybind_screen();
-                Ok(true)
-            }
-            KeyCode::KeyQ => {
-                if self.spectator() {
-                    return Ok(true);
-                }
-                if let Some(r) = self.remote.as_mut() {
-                    r.pending_keys.push(key);
-                }
-                Ok(true)
-            }
-            // Open the ridden vehicle's own screen (`HasCustomInventoryScreen`)
-            // instead of the player's inventory: riding a horse, llama or
-            // chest boat, the inventory key sends
-            // ServerboundPlayerCommandPacket OPEN_INVENTORY.
-            KeyCode::KeyE if self.riding_mount_with_menu() || self.riding_chest_boat() => {
-                if self.in_portal_transition() {
-                    return Ok(true);
-                }
-                if let Some(r) = self.remote.as_mut() {
-                    r.pending_keys.push(key);
-                }
-                Ok(true)
-            }
-            KeyCode::KeyE => {
-                if self.in_portal_transition() {
-                    return Ok(true);
-                }
-                // The inventory opens without telling the server.
-                if self.tutorial.open_inventory() {
-                    self.persist_tutorial_step();
-                }
-                self.recipe_ui.reset_screen();
-                if self.creative {
-                    self.set_screen(Screen::Creative);
-                    self.refresh_creative_tabs();
-                    self.creative_screen.reopen();
-                    self.refresh_saved_hotbars();
-                } else {
-                    self.set_screen(Screen::Inventory);
-                }
-                self.craft_size = 2;
-                self.capture(false);
-                // `Minecraft.handleKeybinds` opens the inventory in the same
-                // call that then releases an active use.
-                self.release_use_for_keybind_screen();
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-
-    /// `Minecraft.handleKeybinds`: a key that opens a screen runs
-    /// `Gui.setScreen`, whose `KeyMapping.releaseAll` clears the use key, and
-    /// the same invocation then releases an active use
-    /// (`player.isUsingItem() && !keyUse.isDown()` → `releaseUsingItem`).
-    /// Only the screens opened from those keybinds do this (inventory, chat,
-    /// advancements); the pause menu, server containers, mount inventories and
-    /// dialogs release on the first tick after closing instead, as vanilla
-    /// does.
-    pub(super) fn release_use_for_keybind_screen(&mut self) {
-        // Only a server's client holds a use to release.
-        if self.remote.is_none() {
-            return;
-        }
-        // `KeyMapping.releaseAll` clears key.use; without this the button still
-        // reads held and a use would start again on the first tick back.
-        self.right = false;
-        // Clearing the mapping for a screen is a capture reset, not a use-key release.
-        if !self.end_client_item_use(false) {
-            sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
+    /// The inventory key when the vehicle owns its screen.
+    pub(super) fn remote_request_mount_inventory(&self) {
+        if let Some(r) = &self.remote {
+            self.send(S::PlayerCommand(play::PlayerCommand {
+                id: r.entity_id,
+                action: 5,
+                data: 0,
+            }));
         }
     }
 
@@ -10387,7 +10277,24 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.pick_tick_targets();
     }
     fn handle_keys(&mut self) {
-        self.0.remote_queued_keys();
+        self.0.handle_play_keybinds();
+    }
+    fn pending_clicks(&self, button: sunrise_client::interaction_input::Button) -> u32 {
+        self.0.pending_mapping_clicks(button.mapping())
+    }
+    fn consume_click(&mut self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.consume_mapping_click(button.mapping())
+    }
+    fn is_down(&self, button: sunrise_client::interaction_input::Button) -> bool {
+        self.0.mapped_key_down(button.mapping())
+    }
+    fn can_continue_attack(&self) -> bool {
+        !self.0.mod_mappings_screen_open()
+    }
+    fn spectator_hotbar(&mut self) {
+        while self.0.spectator() && self.0.consume_mapping_click("key.spectatorHotbar") {
+            self.0.spectator_action_key();
+        }
     }
     fn release_hit_result(&mut self) {
         self.0.release_tick_targets();

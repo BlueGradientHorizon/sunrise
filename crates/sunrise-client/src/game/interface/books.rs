@@ -355,8 +355,8 @@ impl Game<'_> {
     pub(super) fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
             game.book = Some(screen);
-            game.keys.clear();
-            game.right = false;
+            game.clear_device_keys();
+            game.set_mapping_held("key.use", false);
             game.capture(false);
         });
     }

@@ -296,7 +296,7 @@ impl Game<'_> {
         open.required = p.required;
         open.prompt = text;
         // Gui.setScreen: KeyMapping.releaseAll, so no walking behind the prompt.
-        self.keys.clear();
+        self.clear_device_keys();
         self.capture(false);
     }
     /// `handleResourcePackPop`: one pack, or all of them.

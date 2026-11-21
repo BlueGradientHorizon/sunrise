@@ -209,10 +209,6 @@ impl Game<'_> {
         if !sunrise_client::containers::menu_reaches(brand, menu) {
             return MenuOpen::Refused;
         }
-        let opener = (self.mod_menu_at(pos) == Some(menu)).then_some(block.as_str());
-        let Some(hidden) = Self::native_hidden_slots(menu, opener, items.len()) else {
-            return MenuOpen::Refused;
-        };
         // The mods may stop the menu; the click is spent.
         match self.guest_may_open(conn, menu, Some([pos.0, pos.1, pos.2])) {
             Some(true) => {}
@@ -240,16 +236,7 @@ impl Game<'_> {
             Slots::Block(k) if self.mod_menu_at(k).is_some() => {
                 let mut data = None;
                 self.native_menu_extra_data(uuid, menu, &block, [k.0, k.1, k.2], &mut data);
-                let mut data = data.unwrap_or_default();
-                if data.len() > sunrise_protocol::menu_extra::MAX_DATA {
-                    log::warn!(
-                        "Sunrise: {block}'s menu extra data ({} bytes) is past {} bytes; sent without it",
-                        data.len(),
-                        sunrise_protocol::menu_extra::MAX_DATA
-                    );
-                    data.clear();
-                }
-                Some(data)
+                Some(data.unwrap_or_default())
             }
             _ => None,
         };
@@ -268,10 +255,6 @@ impl Game<'_> {
         };
         host.hub
             .open_container(conn, menu, title, pos, slots, items, extra);
-        if !hidden.is_empty() {
-            host.hub
-                .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
-        }
         // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
         // starts the lid once, sounding on its first opener. A spectator's
         // `startOpen` does nothing, so its close must have nothing to decrement.

@@ -3,16 +3,17 @@
 pub trait Hooks {
     /// Register F3 debug entries once at client startup (NeoForge's `RegisterDebugEntriesEvent`).
     /// Each mod receives an empty batch. Push `DebugEntry::text` with its line callback or
-    /// `DebugEntry::renderer` for a renderer toggle. Text callbacks run only while their entry
-    /// is visible. Malformed or duplicate IDs, and IDs in the `minecraft` namespace, are
-    /// logged and left out.
+    /// `DebugEntry::renderer` for a renderer toggle. Call [`DebugEntry::with_reduced_debug_info`]
+    /// to opt an entry into showing under reduced debug info (default `false`, matching vanilla's
+    /// `DebugScreenEntry.isAllowed`). Text callbacks run only while their entry is visible.
+    /// Malformed or duplicate IDs (including built-in vanilla entry IDs) are logged and left out.
     #[notes = r#"## Debug screen entries
 
 `Hooks::register_debug_entries` is the client registration-phase counterpart of NeoForge
 26.3's `RegisterDebugEntriesEvent`. It receives a `RegistrationContext` once at client startup
-and gives each mod an empty `event.entries` batch. Use a non-vanilla `<namespace>:<path>`
-for the ID. A malformed or duplicate ID, or one in the `minecraft` namespace, is logged
-and left out.
+and gives each mod an empty `event.entries` batch. Use any valid `<namespace>:<path>`
+identifier (including custom `minecraft:<path>` IDs that do not collide with built-in vanilla
+entries). A malformed or duplicate ID is logged and left out.
 
 Declare text with `DebugEntry::text(id, group, lines)`. The `DebugGroup` chooses which
 vanilla lines it joins: `Position`, `Light`, `Memory`, `LookingAtBlock`, `LookingAtEntity`,
@@ -23,11 +24,15 @@ codes (§) work. If the callback appends nothing, nothing joins the group. The l
 drawn locally, never uploaded or recorded.
 
 Declare a renderer switch with `DebugEntry::renderer(id)` (vanilla's `DebugEntryNoop`). It has
-no text group or callback. Use the same ID as its [renderer](#debug-renderers).
+no text group or callback. Query its live state during
+[`Hooks::register_debug_renderers`](#debug-renderers) with
+`event.is_debug_entry_enabled(id)`.
 
 Each entry appears in the corresponding text or renderer section of the debug options,
 sorted by ID with vanilla's, and starts off. Its status (`alwaysOn`, `inOverlay`, `never`) is
-saved in `debug-profile.json` under the full ID. Reduced debug info hides native entries.
+saved in `debug-profile.json` under the full ID. By default, reduced debug info hides an entry
+(matching vanilla's `DebugScreenEntry.isAllowed`); call `.with_reduced_debug_info(true)` on a
+`DebugEntry::text` or `DebugEntry::renderer` to keep it allowed under reduced debug info.
 Native text is appended after vanilla's entries in registration order."#]
     #[hook(
         receiver = "associated",
@@ -39,7 +44,7 @@ Native text is appended after vanilla's entries in registration order."#]
         answered_by = "mod",
         owned_answer_batch = true,
         neoforge = "RegisterDebugEntriesEvent",
-        version = 2
+        version = 3
     )]
     fn register_debug_entries(entries: &mut Vec<Answered<DebugEntry>>);
 }

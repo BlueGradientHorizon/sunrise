@@ -1,0 +1,24 @@
+ids = [
+    "method:MenusRegistrar::register_menu_screen",
+    "method:MenusRegistrar::menu_slot_exclusions",
+    "method:MenusRegistrar::menu_recipe_book",
+    "type:MenuScreenOpen.excluded_slots",
+    "handle:RecipeBookLayout::validate_exclusions",
+    "type:ScreenSlotRefusal::HiddenAtOpen",
+    "type:MenuScreenLayout.slots",
+    "type:ScreenSlot.no_item_icon",
+    "method:prelude::ScreensClientHost::screen_slot",
+    "method:prelude::ScreensClientHost::set_screen_slot",
+]
+why = """
+Align native menu screen registration, slot visibility, and empty-slot icons with vanilla 26.3 (`MenuScreens.SCREENS`, `Slot.isActive()`, `Slot.getNoItemIcon()`, `AbstractContainerScreen.renderSlot`) and NeoForge (`RegisterMenuScreensEvent`).
+- Menu screen factories are keyed directly by menu type ID (`HashMap<String, MenuScreenRegistration>`), refusing only built-in vanilla menu types that already have screens in `MenuScreens.SCREENS` and duplicate registrations; namespace ownership restrictions and per-mod stock-menu screen multiplexing are removed.
+- Permanent server-side slot exclusion masks (`MenusRegistrar::menu_slot_exclusions`, `MenuScreenOpen::excluded_slots`, `RecipeBookLayout::validate_exclusions`, `ScreenSlotRefusal::HiddenAtOpen`) are removed. `None` entries in `MenuScreenLayout::slots` mark slots that start inactive on the client (`Slot.isActive()`) and can be activated later via `set_screen_slot`.
+- Any mod can inspect, move, activate, or hide slots on the open screen for `menu` via `screen_slot` / `set_screen_slot`.
+- Unknown `ScreenSlot::no_item_icon` sprite identifiers no longer refuse screen opening; they fall back to the GUI atlas missing-texture sprite when drawn, matching vanilla `GuiGraphicsExtractor.blitSprite`.
+"""
+migrate = """
+1. Remove calls to `r.menu_slot_exclusions(...)` and references to `MenuScreenOpen::excluded_slots`, `RecipeBookLayout::validate_exclusions`, and `ScreenSlotRefusal::HiddenAtOpen`.
+2. Replace a stock opener-specific screen (e.g. `minecraft:hopper`) with a distinct mod menu type, e.g. `mymod:hopper_menu` with five backing slots and player inventory enabled. Give the block the same five slots, set `ModContainer.menu` to `Some("mymod:hopper_menu".into())`, and register `r.register_menu_screen("mymod:hopper_menu", factory)`. The factory can lay out the backing and player slots at the same positions as the vanilla HopperMenu; the vanilla type keeps its own screen.
+3. Enforce server-side slot placement/pickup restrictions through `MenuPart::menu_slot_rules` or the menu type's declared slots, and use `None` in `MenuScreenLayout::slots` (plus `set_screen_slot`) for client-side slot visibility.
+"""

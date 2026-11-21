@@ -193,6 +193,7 @@ impl Game<'_> {
         #[derive(Clone, Copy)]
         struct Map {
             container: usize,
+            base: usize,
             table: bool,
             cells: usize,
             plain: bool,
@@ -219,7 +220,9 @@ impl Game<'_> {
                     }
                 } else {
                     match g {
-                        300.. if g < 300 + self.container => Some(g - 300),
+                        g if g >= self.base && g < self.base + self.container => {
+                            Some(g - self.base)
+                        }
                         9..36 => Some(main + g - 9),
                         0..9 => Some(main + 27 + g),
                         _ => None,
@@ -239,7 +242,7 @@ impl Game<'_> {
                         _ => None,
                     }
                 } else if i < self.container {
-                    Some(300 + i)
+                    Some(self.base + i)
                 } else if i < self.container + 27 {
                     Some(9 + i - self.container)
                 } else {
@@ -391,6 +394,11 @@ impl Game<'_> {
                 };
                 let map = Map {
                     container: count,
+                    base: if matches!(kind, Kind::Mod(_)) {
+                        crate::game::inventory_slots::MOD_MENU_SLOT_BASE
+                    } else {
+                        300
+                    },
                     table: false,
                     cells: 0,
                     plain: false,
@@ -400,6 +408,7 @@ impl Game<'_> {
                 let table = self.craft_size == 3;
                 let map = Map {
                     container: 0,
+                    base: 300,
                     table,
                     cells: self.craft_size * self.craft_size,
                     plain: true,

@@ -110,9 +110,10 @@ means none). Runtime selection is not a persistent component. Drawing receives t
 ## Intercept main-hand client input
 
 A [`ClientItemUseBehavior`](../../concepts/parts/item-and-tag-parts.md#intercept-main-hand-client-input)
-receives the original typed `ItemStack` and its hotbar slot on every callback, not the stack
-that may have replaced it. These callbacks intercept local input without starting ordinary
-item use; see the linked example for registration and typed component reads.
+receives the live typed `ItemStack` from its hotbar slot while the same item kind remains there
+(rebound on tick and release like `LivingEntity.useItem`), or the last valid stack of that kind
+if the slot was emptied or replaced. These callbacks intercept local input without starting
+ordinary item use; see the linked example for registration and typed component reads.
 
 ## A stack's name
 

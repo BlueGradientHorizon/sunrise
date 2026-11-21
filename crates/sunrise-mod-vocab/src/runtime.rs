@@ -281,7 +281,8 @@ pub(crate) fn record_hook_panic(
     }
 }
 
-fn log_and_queue_panic(
+/// Report a callback disabled by its own retained owner through the shared error log and toast.
+pub(crate) fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
@@ -328,12 +329,25 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_callback(contained, call, |payload| {
+        record_hook_panic(hook_id, hook, mod_id, payload);
+    })
+}
+
+/// The unwind fence shared by dispatched listeners and retained callbacks. Each supplies
+/// its own disablement key, but neither may unwind into the game or leak a refusal.
+#[inline]
+pub(crate) fn invoke_callback<T>(
+    contained: bool,
+    call: impl FnOnce() -> T,
+    on_panic: impl FnOnce(&(dyn std::any::Any + Send)),
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            on_panic(&*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }

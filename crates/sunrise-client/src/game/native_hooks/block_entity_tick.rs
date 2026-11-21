@@ -175,7 +175,7 @@ impl ResidentBlockEntity for TickData<'_> {
     }
 
     fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
-        let limit = usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS);
+        let limit = usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS);
         if data.len() > limit {
             return Err(BlockEntityDataError::TooManySlots {
                 count: data.len() as u64,

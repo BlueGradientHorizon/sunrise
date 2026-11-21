@@ -49,9 +49,6 @@ impl mod_api::Hooks for BoundBookMod {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         let book = registrar.recipe_book_type("bound:book").unwrap();
         registrar
-            .menu_slot_exclusions("bound:menu", None, &[2])
-            .unwrap();
-        registrar
             .menu_recipe_book(
                 "bound:menu",
                 &book,
@@ -210,10 +207,6 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 );
                 assert_eq!(screen.menu.block, None);
                 assert_eq!(screen.menu.pos, None);
-                assert_eq!(
-                    Game::native_hidden_slots("bound:menu", None, 3),
-                    Some(&[2][..])
-                );
                 assert_eq!(screen.layout().slots.len(), 3);
                 assert!(screen.layout().slots[2].is_none());
             });
@@ -237,7 +230,7 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                 mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
                 seed_native_menu(game, 1, "bound:menu");
                 let key = (i32::MIN, 0, 0);
-                let cases: [(&str, BoundLayoutEdit); 6] = [
+                let cases: [(&str, BoundLayoutEdit); 5] = [
                     ("missing book", |layout| layout.recipe_book = None),
                     ("wrong book", |layout| {
                         layout.recipe_book = Some(KEY.get().unwrap().clone());
@@ -246,10 +239,8 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                     ("nonfinite slot", |layout| {
                         layout.slots[0].as_mut().unwrap().position[0] = f32::NAN;
                     }),
-                    ("missing result", |layout| layout.slots[1] = None),
-                    ("unknown sprite", |layout| {
-                        layout.slots[0].as_mut().unwrap().no_item_icon =
-                            Some("bound:missing_sprite".into());
+                    ("too many slots", |layout| {
+                        layout.slots.resize(4, None);
                     }),
                 ];
                 for (case, adjust) in cases {
@@ -259,6 +250,24 @@ fn a_bound_recipe_book_screen_refuses_bad_layouts_at_open() {
                         "accepted {case}"
                     );
                     assert!(game.mod_screen.is_none(), "staged {case}");
+                }
+                // Initially inactive slots (`None`) and unknown `no_item_icon` sprites open cleanly.
+                for (case, adjust) in [
+                    (
+                        "inactive slot",
+                        (|layout| layout.slots[1] = None) as BoundLayoutEdit,
+                    ),
+                    ("unknown sprite", |layout| {
+                        layout.slots[0].as_mut().unwrap().no_item_icon =
+                            Some("bound:missing_sprite".into());
+                    }),
+                ] {
+                    *edit.lock().unwrap() = Some(adjust);
+                    assert!(
+                        game.open_native_screen(key, None, 3, None),
+                        "refused {case}"
+                    );
+                    assert!(game.mod_screen.is_some(), "did not stage {case}");
                 }
                 *edit.lock().unwrap() = None;
                 assert!(game.open_native_screen(key, None, 3, None));
@@ -573,8 +582,10 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                 crate::game::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
                 builds
             );
-            assert!(!game.set_screen_slot(MENU, 2, Some([1.0, 1.0])).is_ok());
-            assert!(!game.set_screen_slot(MENU, 9, Some([1.0, 1.0])).is_ok());
+            assert_eq!(
+                game.set_screen_slot(MENU, 9, Some([1.0, 1.0])),
+                Err(mod_api::ScreenSlotRefusal::NoSuchSlot)
+            );
             assert_eq!(geometry(game), after);
 
             // Overlaps resolve by menu index: the container slot over the hotbar's
@@ -675,12 +686,21 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
             assert_eq!(game.native_screen_slots(), Some(vec![300, 301]));
             assert_eq!(game.screen_slot(MENU, 1), Some([26.0, 18.0]));
 
+            // A slot declared `None` at open starts inactive and can be activated and deactivated.
+            assert_eq!(game.screen_slot(MENU, 2), None);
+            assert_eq!(game.set_screen_slot(MENU, 2, None), Ok(()));
+            assert_eq!(game.set_screen_slot(MENU, 2, Some([66.0, 18.0])), Ok(()));
+            assert_eq!(game.screen_slot(MENU, 2), Some([66.0, 18.0]));
+            game.build_screen();
+            assert_eq!(game.native_screen_slot(2), Some((66.0, 18.0)));
+            assert_eq!(game.native_screen_slots(), Some(vec![300, 301, 302]));
+            assert_eq!(game.set_screen_slot(MENU, 2, None), Ok(()));
+            game.build_screen();
+            assert_eq!(game.native_screen_slot(2), None);
+            assert_eq!(game.native_screen_slots(), Some(vec![300, 301]));
+
             // Refusals, each by name, and nothing changes.
             let before = geometry(game);
-            assert_eq!(
-                game.set_screen_slot(MENU, 2, Some([1.0, 1.0])),
-                Err(HiddenAtOpen)
-            );
             assert_eq!(game.set_screen_slot(MENU, 3, None), Err(NoSuchSlot));
             assert_eq!(
                 game.set_screen_slot(MENU, 0, Some([f32::NAN, 0.0])),
@@ -688,8 +708,6 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
             );
             assert_eq!(game.set_screen_slot("other:menu", 0, None), Err(NoScreen));
             assert_eq!(game.screen_slot("other:menu", 0), None);
-            // Hiding a slot hidden at open is already so.
-            assert_eq!(game.set_screen_slot(MENU, 2, None), Ok(()));
             game.build_screen();
             assert_eq!(geometry(game), before);
 
@@ -1005,4 +1023,47 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
             },
         );
     });
+}
+
+#[test]
+fn open_native_screen_set_data_accepts_full_signed_and_mod_data_ranges() {
+    let mut stock = OpenNativeScreen {
+        menu: OpenNativeMenu {
+            key: (0, 0, 0),
+            window: 7,
+            generation: 1,
+            name: "minecraft:hopper".into(),
+            block: None,
+            pos: None,
+            mod_type: None,
+            data: Vec::new(),
+        },
+        slot_moves: Default::default(),
+        layout_revision: 0,
+        shown: true,
+        screen: mod_api::__private::OwnedMenuScreen::new(
+            "data-range",
+            0,
+            mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                width: 176.0,
+                height: 166.0,
+                slots: Vec::new(),
+                inventory_y: 84.0,
+                inventory_x: 8.0,
+                title_label: None,
+                inventory_label: None,
+                recipe_book: None,
+                title_color: None,
+                inventory_label_color: None,
+                big_result: false,
+            }),
+        ),
+    };
+    assert!(stock.set_data(7, 0, 11));
+    assert!(stock.set_data(7, 32_767, 22));
+    assert_eq!(stock.menu.data[0], 11);
+    assert_eq!(stock.menu.data[32_767], 22);
+    assert_eq!(stock.menu.data.len(), 32_768);
+    assert!(stock.set_data(7, 32_768, 33));
+    assert_eq!(stock.menu.data.len(), 32_768);
 }

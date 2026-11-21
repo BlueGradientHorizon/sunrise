@@ -120,7 +120,6 @@ impl Game<'_> {
     /// block: the type's container slots show empty and their clicks reach the mods, as
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
     /// `replace` is the provider's choice of the client's close, as for `open_menu`.
-    /// Authoritatively excluded slots cannot be picked up or quick-moved.
     pub(super) fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
@@ -137,9 +136,6 @@ impl Game<'_> {
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
             sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
-        if extra.len() > menu_extra::MAX_DATA {
-            return Err(OpenMenuError::TooLarge);
-        }
         if data.len() != kind.data_slots {
             return Err(OpenMenuError::DataCountMismatch);
         }
@@ -181,10 +177,6 @@ impl Game<'_> {
             return Err(OpenMenuError::PlayerUnavailable);
         }
         let pos = pos.map(|[x, y, z]| (x, y, z));
-        let opener = pos.and_then(|pos| self.menu_opener_block(pos, &id));
-        let Some(hidden) = Self::native_hidden_slots(&id, opener, kind.slots) else {
-            return Ok(None);
-        };
         self.close_for_open(conn, replace);
         let gi = self
             .guest_index(conn)
@@ -203,7 +195,6 @@ impl Game<'_> {
                 )?;
                 lan.hub.guests.update(gi, |g| {
                     let open = g.menu.as_mut().expect("the window was just installed");
-                    open.hidden = hidden.iter().copied().map(usize::from).collect();
                     open.blockless_data = data;
                     g.send_menu_data_snapshot();
                 });
@@ -1375,21 +1366,16 @@ mod tests {
         if super::super::native_entity_refs::tests::run_fresh_cases(
             "game::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
             CASE,
-            &["close_first", "in_place", "bad_mask"],
+            &["close_first", "in_place"],
         ) {
             return;
         }
         // What the mods heard, in order.
         static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-        struct Listen {
-            bad_mask: bool,
-        }
+        struct Listen;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Listen {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                if self.bad_mask {
-                    r.menu_slot_exclusions(MOD_MENU, None, &[9]).unwrap();
-                }
                 r.register_menu_screen(
                     MOD_MENU,
                     Arc::new(
@@ -1424,12 +1410,7 @@ mod tests {
         }
         let heard = || std::mem::take(&mut *HEARD.lock().unwrap());
         let case = std::env::var(CASE).unwrap();
-        let bad_mask = case == "bad_mask";
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "listen",
-            Box::new(Listen { bad_mask }),
-        )]
-        .into();
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("listen", Box::new(Listen))].into();
         mod_platform::__private::install(mods.clone());
         crate::game::api_values::install_parts(&mods).unwrap();
         let replace = if case == "close_first" {
@@ -1463,17 +1444,8 @@ mod tests {
                     None,
                     replace,
                 )
+                .unwrap()
                 .unwrap();
-            if bad_mask {
-                assert_eq!(window, None);
-                assert!(heard().is_empty());
-                assert!(sent(&rx).is_empty());
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
-                assert_eq!(guest.menu.as_ref().map(|menu| menu.window), Some(1));
-                assert_eq!(guest.carried, Some(stone));
-                return;
-            }
-            let window = window.unwrap();
             assert_eq!(window, 2);
             // The old menu's close, heard once before the new one opens, with
             // no layout callback on the server.
@@ -1599,37 +1571,68 @@ mod tests {
                 Some((window, None))
             );
 
-            for (revision, extra, expected) in [
-                (1, vec![0; 33 * 1024], mod_api::OpenMenuError::TooLarge),
-                (0, vec![1], mod_api::OpenMenuError::PlayerUnavailable),
-            ] {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                    g.sender.menu_extra_rev = revision;
-                });
-                game.lan.as_mut().unwrap().hub.native_menu_events.clear();
-                assert_eq!(
-                    game.player_open_mod_menu(
-                        player,
-                        key,
-                        Text::literal("refused"),
-                        extra,
-                        Vec::new(),
-                        None,
-                        MenuReplace::InPlace,
-                    ),
-                    Err(expected)
-                );
-                assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
-                        .menu
-                        .as_ref()
-                        .map(|m| m.window),
-                    Some(window),
-                    "refusal preserves the current menu"
-                );
-                assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
-                assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
-            }
+            // Payloads past 32 KiB succeed and deliver all bytes (no invented 32 KiB cap).
+            let large_extra = vec![7u8; 33 * 1024];
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 1;
+            });
+            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            let large_window = game
+                .player_open_mod_menu(
+                    player,
+                    key,
+                    Text::literal("large"),
+                    large_extra.clone(),
+                    Vec::new(),
+                    None,
+                    MenuReplace::InPlace,
+                )
+                .unwrap()
+                .unwrap();
+            let large_sent: Vec<_> = sent(&rx)
+                .into_iter()
+                .filter_map(|p| match p {
+                    C::CustomPayload(c) if c.channel == sunrise_protocol::menu_extra::CHANNEL => {
+                        Some(sunrise_protocol::menu_extra::decode(&c.data).unwrap())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                large_sent,
+                vec![sunrise_protocol::menu_extra::Message {
+                    window: large_window,
+                    pos: None,
+                    data: large_extra,
+                }]
+            );
+
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 0;
+            });
+            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            assert_eq!(
+                game.player_open_mod_menu(
+                    player,
+                    key,
+                    Text::literal("refused"),
+                    vec![1],
+                    Vec::new(),
+                    None,
+                    MenuReplace::InPlace,
+                ),
+                Err(mod_api::OpenMenuError::PlayerUnavailable)
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .as_ref()
+                    .map(|m| m.window),
+                Some(large_window),
+                "refusal preserves the current menu"
+            );
+            assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
+            assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
         });
     }
 

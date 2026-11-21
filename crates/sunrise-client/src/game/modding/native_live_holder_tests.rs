@@ -200,16 +200,17 @@ fn data_slot_sizing_after_creation_and_load_joins_the_existing_journal() {
             assert_eq!(aborted, Err(()));
             assert_eq!(entity.data_slots(game), Some(vec![0]));
             assert!(game.transactions.is_empty());
-            assert_eq!(entity.set_data_slots(game, vec![0; 256]), Ok(true));
-            assert!(entity.set_data_slot(game, 255, 7).unwrap());
+            assert_eq!(entity.set_data_slots(game, vec![0; 257]), Ok(true));
+            assert!(entity.set_data_slot(game, 256, 7).unwrap());
+            let limit = usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS);
             let before = entity.data_slots(game).unwrap();
             let before_revision = revision(game);
             game.world.modified.clear();
             assert_eq!(
-                entity.set_data_slots(game, vec![0; 257]),
+                entity.set_data_slots(game, vec![0; limit + 1]),
                 Err(BlockEntityDataError::TooManySlots {
-                    count: 257,
-                    limit: 256
+                    count: limit + 1,
+                    limit
                 })
             );
             assert_eq!(entity.data_slots(game), Some(before));

@@ -228,8 +228,6 @@ impl Game<'_> {
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
-            // Excluded slots keep their backing indices. The handle stays live
-            // for the other slots; the slot methods check the authoritative mask.
             (open.window == menu.fields().window).then_some(guest)
         } else {
             let play = host.play.get(&guest.conn);
@@ -247,9 +245,8 @@ impl Game<'_> {
     }
 
     /// A player's current supported menu. Refuses crafting tables, merchants,
-    /// workstations, lecterns and mounts. Permanently excluded slots remain
-    /// indexed but unavailable through slot methods without invalidating the handle.
-    /// Local screen hides do not change server access. Also refuses stale
+    /// workstations, lecterns and mounts. Local screen hides do not change server access.
+    /// Also refuses stale
     /// players and players whose state is swapped out by another active turn.
     /// The acting player's inventory, equipment, cursor and ender reads use Game's state.
     /// On a client, only the local player's supported menu is available.

@@ -26,7 +26,8 @@ vector when preparing a newly created or loaded machine. For a progress display,
 use one element initialized from the progress value in its saved payload.
 Do not reset the vector to its initial values on every tick.
 
-The method accepts at most the game's mod-menu data-slot limit (256).
+Block-backed menus use the signed 16-bit property index of `ClientboundContainerSetDataPacket`.
+The method accepts every index from zero through `i16::MAX`.
 It returns `Ok(true)` when it changes the vector, `Ok(false)` for identical values,
 or `BlockEntityDataError::TooManySlots` with the submitted count and limit. It
 never silently clamps a vector. `BlockEntityDataError::Unavailable` means the
@@ -262,7 +263,7 @@ or changing levels stops every sound. Add particles from the same tick with `hos
 
 `player.open_menu(host, entity)` also returns `Result<bool, BlockEntityError>`:
 `Ok(true)` means opened, `Ok(false)` means a non-provider, cancelled open,
-out-of-range slot exclusion or unconnected/wrong-level player, and
+or unconnected/wrong-level player, and
 `Err(BlockEntityError::Stale)` means the entity
 does not resolve. It never opens a replacement through an old handle.
 
@@ -270,14 +271,15 @@ does not resolve. It never opens a replacement through an old handle.
 
 To open a content mod menu type with no block (from an item, an entity or a command),
 call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoForge's
-`openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
-32 KiB, is one-time context. Decode `open.extra` in the registered client screen factory.
+`openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra` is one-time
+context, bounded only by the network packet frame. Decode `open.extra` in the registered
+client screen factory.
 It is an empty slice when no payload matched this opening. Reusing a window id does not reuse
 its previous context. Keep owned decoded values if the screen needs them later; the bytes are
 borrowed only during construction. `pos` is an optional hint offered to the factory and later
 returned by `screen_pos()`. Neither is live data or block backing.
 The menu's declared container slots, if any, start empty. Opening returns the window id or
-`Ok(None)` when vetoed or a registered slot exclusion is out of range. Invalid type,
+`Ok(None)` when vetoed. Invalid type,
 connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
@@ -308,8 +310,7 @@ the new menu is built, its screen opened and its contents sent, and `player_cont
 tells of it synchronously. Version 2 names the type string `menu_type` (also on
 `player_container_close`) and supplies `menu: Option<MenuRef>`, valid during the open callback,
 as `PlayerRef::container_menu` does. It is `None` for crafting tables, merchants, workstations,
-lecterns and mount inventories. A supported menu's permanently excluded slots are inaccessible
-but keep their backing indices. `replace` is the Java `MenuProvider`'s choice
+lecterns and mount inventories. `replace` is the Java `MenuProvider`'s choice
 (`shouldTriggerClientSideContainerClosingOnOpen`), as for
 [`open_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
 `MenuReplace::CloseFirst`, vanilla's default, first sends the client a close for the old
@@ -324,6 +325,15 @@ Register a constructor in `Hooks::register` with `register_menu_screen`, as with
 slots are known and before the window is shown. It returns a fresh `MenuScreen`. A custom menu
 without a factory closes again. When a selected factory returns `None` or produces an invalid
 layout, the client refuses that opening.
+
+Stock menu types already have a screen. To put your own screen over a hopper-like
+menu, declare a distinct type in `data/mymod/sunrise/menu/hopper_menu.json`
+with `{ "slots": 5, "player_inventory": true }`. Set `ModContainer.menu` on your
+block to `Some("mymod:hopper_menu".into())`, with the same five backing slots, and
+register your factory with `r.register_menu_screen("mymod:hopper_menu", factory)`.
+In the factory, place the five slots at `[44 + 18 * i, 20]` in GUI pixels and the
+player inventory at `[8, 51]` to match the hopper layout. The vanilla hopper
+continues to open its built-in screen.
 
 ```rust,ignore
 use mod_api::{ClientHost, MenuScreen, MenuScreenLayout, MenuScreenOpen, ScreenSlot};
@@ -353,10 +363,11 @@ r.register_menu_screen("mymod:backpack", Arc::new(
 
 `open.menu` names the active type; `open.block` is the verified mod block whose container opened
 it, or `None` without a matching block. This lets one constructor handle different openers
-without retaining the borrowed context. For a stock menu, only the factory registered by the
-actual mod block's owner runs. An ordinary vanilla opener keeps its usual screen. Two mods can
-register for the same stock menu; a second registration by the same mod is refused. A custom
-menu accepts a factory only from its owner.
+without retaining the borrowed context. Factories are keyed directly by menu type, matching
+NeoForge's `RegisterMenuScreensEvent` and vanilla's `MenuScreens.SCREENS`: any mod may register
+a screen for a custom menu type (including another mod's or a non-built-in `minecraft:*` menu
+type), while built-in vanilla menu types that already have screens in `MenuScreens.SCREENS` and
+duplicate registrations for the same menu type are refused.
 
 Add only the callbacks the new screen uses: `with_draw(|host, frame, draw| ...)`,
 `with_click(|host, frame, right| ...)` and `with_tooltip(|host, frame, slot, lines| ...)`.
@@ -364,11 +375,13 @@ The window owns the callbacks until the screen is closed or replaced. Decode `op
 in the factory and move any needed owned values into the callbacks. Live integer updates
 arrive separately in `frame.data`.
 
-### Opening a stock menu from a mod block
+### Custom menu screens and initially inactive slots
 
-Call this from `Hooks::register` for the registered `mymod:machine` block. Using the block
-opens a stock hopper menu over five backing slots. Only this opener excludes the last
-three, so input 0 and output 1 keep their indices. A vanilla hopper still uses its own screen.
+Define a custom menu type for your machine's slots and register its screen factory with
+`r.register_menu_screen(MENU, ...)`. Leave `None` (or omit trailing entries) in
+`MenuScreenLayout::slots` for slots that should start inactive/hidden (`Slot.isActive()`);
+their physical indices stay unchanged, and any mod may activate or hide them later with
+`host.set_screen_slot`.
 
 ```rust,ignore
 use mod_api::{ClientHost, MenuScreen, MenuScreenLayout, MenuScreenOpen, ModContainer, Registrar, ScreenSlot};
@@ -376,7 +389,7 @@ use std::sync::Arc;
 
 fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
     const BLOCK: &str = "mymod:machine";
-    const MENU: &str = "minecraft:hopper";
+    const MENU: &str = "mymod:machine";
     let block = r.block_key(BLOCK);
     r.block_container(&block, ModContainer {
         slots: 5,
@@ -386,7 +399,6 @@ fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
         insert_rules: vec![],
         menu: Some(MENU.into()),
     });
-    r.menu_slot_exclusions(MENU, Some(BLOCK), &[2, 3, 4])?;
     r.register_menu_screen(MENU, Arc::new(
         |_: &dyn ClientHost, open: MenuScreenOpen<'_>| {
             if open.block != Some(BLOCK) {
@@ -408,16 +420,12 @@ fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
 }
 ```
 
-A stock type requires an explicit opener block you own. For a custom menu type you own,
-use `None` for the default and `Some("namespace:block")` to replace it for that exact
-block when its container opens the type. Use `&[]` for an override with no exclusions.
-If an old layout used `None` or omitted trailing slots to exclude them, move those
-original indices into the registration mask. A permanently excluded slot stays indexed
-but takes no server clicks or quick-move. Give every other slot geometry at its original
-index and leave `None` for each exclusion (trailing exclusions may be omitted from the
-layout). An out-of-range mask or a client layout that disagrees with it refuses the opening.
-If a slot should only be hidden on one tab or at one moment, keep its geometry at open and
-hide it locally instead.
+A `None` entry or omitted trailing slot stays indexed in the container backing and starts
+inactive on the client screen, without changing server-side slot validation. To prevent
+players from placing into or taking from a backing slot, attach a `MenuPart` to the menu type
+and set both `event.may_place` and `event.may_pickup` to `false` in `menu_slot_rules` when
+`event.container == MenuContainer::Main` and the backing index is one of those slots.
+If the extra backing indices are not needed, declare only the exposed slots on the menu type.
 
 A click callback returns `None` to leave the press alone or `Some(id)` to consume it and
 send that button to the server. The active menu's server `MenuPart` handles accepted IDs
@@ -429,17 +437,16 @@ callback publishes neither the detached block entity (including one-shot update 
 cursor edits. A panic in the block's [`menu_quick_move`](../../concepts/capabilities/menu-slots.md#writing-slot-storage)
 also refuses the move before publishing any detached slot, remainder or queued update.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
-blockless menus when its recipe slots have native slot backing. The declaring mod supplies the
-screen through its registered factory. Set `MenuScreenLayout::recipe_book` to the bound book;
-a missing or different book, invalid geometry or missing mapped slots refuses that client opening.
-The declaring mod owns its slot controls and presentation callbacks.
+blockless menus when its recipe slots have native slot backing. Register a screen factory
+for the bound menu and set `MenuScreenLayout::recipe_book` to the bound book; a missing or
+different book or invalid geometry refuses that client opening.
 
 ## Laying a screen's slots out again
 
 A screen whose slots move while it is open (Tinkers' tinker station, which lays its input slots out for the
 tool being built) calls `host.set_screen_slot(menu, slot, Some([x, y]))` on the client, or `None` to hide a
 slot ([moving or hiding a mod screen's slots](../client/screens.md#moving-or-hiding-a-mod-screens-slots)). Only
-the screen changes: the server's slot exclusions do not change.
+the screen changes: server-side slot rules do not change.
 
 ## Receiving synchronized data
 

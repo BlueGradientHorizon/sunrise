@@ -33,9 +33,10 @@ pub trait GuiLayerWrapContext {
 /// returns successfully. The registrar is only available during that hook.
 pub trait GuiLayerRegistrar {
     /// Install `draw` at `placement` under a namespaced ID such as `mymod:compass`.
-    /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
-    /// already registered, or relative to a layer that is not registered yet. A rejected
-    /// registration does not reserve the ID; use `replace_layer` or `wrap_layer` to edit one.
+    /// Returns false and logs a warning if the ID is malformed, already registered
+    /// (including built-in vanilla layer IDs), or relative to a layer that is not
+    /// registered yet. A rejected registration does not reserve the ID; use
+    /// `replace_layer` or `wrap_layer` to edit an existing layer.
     fn register(
         &mut self,
         id: String,

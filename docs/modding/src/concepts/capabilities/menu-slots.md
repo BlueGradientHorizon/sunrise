@@ -2,14 +2,19 @@
 
 ## Backing indices and screen slots
 
-A menu's slot indices belong to the menu, not the window. Register permanent exclusions
-with `MenusRegistrar::menu_slot_exclusions` for the menu and, where needed, its verified
-opener. Those slots stay in the backing order but are unavailable to menu clicks and
-quick-move; subsequent slots are not renumbered. The
-[screen factory](../../how-to/world/machine-menu-data.md#the-menus-screen) leaves those
-indices empty in its layout. Recipe book roles cannot use permanently excluded slots.
+A menu's slot indices belong to the menu, not the window. Declare the slots the menu exposes
+in the menu type itself, and enforce server-side placement or pickup restrictions through
+`MenuPart::menu_slot_rules`. In the
+[screen factory](../../how-to/world/machine-menu-data.md#the-menus-screen), each entry in
+`MenuScreenLayout::slots` corresponds to its backing index; `None` (including omitted trailing
+entries) marks a slot that starts inactive/hidden (`Slot.isActive()`).
 
-The screen's owner can move or hide a visible slot through
+For a mod menu backed by `ItemPlace`, pickup and quick move use these same
+rules. A display-only backing slot should refuse both `may_place` and
+`may_pickup`; a direct write to the backing `ItemPlace` still works. Hiding a
+slot in the client layout does not change what the server allows.
+
+Any mod can move, activate, or hide a slot of the open screen for `menu` through
 [`ClientHost::set_screen_slot`](../../how-to/client/screens.md#moving-or-hiding-a-mod-screens-slots)
 while this opening is shown. That change affects only the client; the server can still
 quick-move items into a locally hidden slot, and the slot's acceptance rules still apply.
