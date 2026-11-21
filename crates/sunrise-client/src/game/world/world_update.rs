@@ -301,6 +301,12 @@ impl Game<'_> {
         if let Some(renderer) = self.renderer.as_mut() {
             let g = &self.settings.sunrise;
             let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
+            let mut raw_flight = self.flight.as_mut().filter(|flight| flight.raw);
+            let vertex_bytes = |mesh: &sunrise_client::mesher::SectionMesh| {
+                ((mesh.solid.len() + mesh.translucent.len())
+                    * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
+                    as u64
+            };
             // The meshes, once copied, are freed by a worker (`Streaming::free`).
             if !budgeted && self.pending_uploads.is_empty() && uploads.len() <= AUTO_UPLOADS_AT_ONCE
             {
@@ -308,6 +314,9 @@ impl Game<'_> {
                     for upload in &uploads {
                         if self.streaming.can_publish_mesh(&self.world, upload) {
                             renderer.upload(upload.key, &upload.mesh);
+                            if let Some(flight) = raw_flight.as_deref_mut() {
+                                flight.note_mesh_uploads(1, vertex_bytes(&upload.mesh));
+                            }
                         }
                     }
                 });
@@ -355,9 +364,6 @@ impl Game<'_> {
                 );
                 self.pending_uploads_order = order;
                 drop(order_span);
-                if let Some(flight) = &mut self.flight {
-                    flight.note_upload_queue_work(work);
-                }
                 let (limit, budget) = if budgeted {
                     (
                         g.chunk_updates as usize,
@@ -379,9 +385,7 @@ impl Game<'_> {
                     if auto.is_some_and(|time| count > 0 && started.elapsed() >= time) {
                         break;
                     }
-                    let size = ((mesh.solid.len() + mesh.translucent.len())
-                        * std::mem::size_of::<sunrise_client::mesher::TerrainVertex>())
-                        as u64;
+                    let size = vertex_bytes(mesh);
                     if (limit > 0 && count >= limit)
                         || (budget > 0 && bytes > 0 && bytes + size > budget)
                     {
@@ -394,6 +398,10 @@ impl Game<'_> {
                     bytes += size;
                 }
                 drop(upload_span);
+                if let Some(flight) = raw_flight {
+                    flight.note_upload_queue_work(work);
+                    flight.note_mesh_uploads(count, bytes);
+                }
                 self.streaming.free(spent);
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));

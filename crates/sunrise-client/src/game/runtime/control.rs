@@ -87,6 +87,7 @@ pub struct Flight {
     /// Reply with every frame time too (`fly ... PITCH raw`).
     pub(super) raw: bool,
     upload_queue_work: [usize; 2],
+    mesh_uploads: [u64; 2],
     reply: Sender<String>,
     /// The world's smoothed tick time each frame (the F3 server line): the
     /// server thread's when single player runs on one.
@@ -96,6 +97,11 @@ pub struct Flight {
 impl Flight {
     pub(in crate::game) fn note_upload_queue_work(&mut self, work: [usize; 2]) {
         self.upload_queue_work = work;
+    }
+
+    pub(in crate::game) fn note_mesh_uploads(&mut self, count: usize, vertex_bytes: u64) {
+        self.mesh_uploads[0] += count as u64;
+        self.mesh_uploads[1] += vertex_bytes;
     }
 }
 
@@ -108,9 +114,15 @@ impl Game<'_> {
         if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
             let visited = self.world.block_entities.take_column_unload_entries();
             let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
+            let mesh_uploads = std::mem::take(&mut flight.mesh_uploads);
             if rendered {
-                self.frame_stats
-                    .record_streaming_work(visited, sorted, merged, spans);
+                self.frame_stats.record_streaming_work(
+                    visited,
+                    sorted,
+                    merged,
+                    mesh_uploads,
+                    spans,
+                );
             }
         }
     }
@@ -1304,6 +1316,7 @@ impl Game<'_> {
                     seconds: n(7)?.max(0.1),
                     raw,
                     upload_queue_work: [0; 2],
+                    mesh_uploads: [0; 2],
                     reply: reply.clone(),
                     tick_ms: Vec::new(),
                 });

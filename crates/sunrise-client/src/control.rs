@@ -624,14 +624,16 @@ mod tests {
                 span("unload_block_entities", 0.125, 0.0625),
                 span("order_uploads", 0.5, 0.25),
                 span("upload_queue", 1.0, 0.5),
+                span("upload_queue", 0.125, 0.0625),
             ],
             vec![],
-            vec![span("order_uploads", 0.25, 0.125)],
+            vec![span("upload", 0.25, 0.125)],
         ];
-        for (ms, spans) in [4.0, 5.0, 6.0].into_iter().zip(samples) {
+        let uploads = [[7, 8192], [0, 0], [2, 1024]];
+        for ((ms, spans), uploads) in [4.0, 5.0, 6.0].into_iter().zip(samples).zip(uploads) {
             stats.record(ms);
             stats.record_cpu(ms / 2.0);
-            stats.record_streaming_work(5, 13, 23, &spans);
+            stats.record_streaming_work(5, 13, 23, uploads, &spans);
         }
         let mut summary = stats.summary();
         assert!(summary.get("frame_ms").is_none());
@@ -641,6 +643,7 @@ mod tests {
         assert_eq!(summary["gpu_ms"], serde_json::json!([]));
         assert_eq!(summary["frames"], 3);
         assert!(summary.get("streaming_work").is_none());
+        assert!(summary.get("streaming_uploads").is_none());
         assert!(summary.get("streaming_span_ms").is_none());
 
         stats.add_flight_series(&mut summary);
@@ -649,10 +652,15 @@ mod tests {
             serde_json::json!([[5, 13, 23], [5, 13, 23], [5, 13, 23]])
         );
         assert_eq!(
+            summary["streaming_uploads"],
+            serde_json::json!([[7, 8192], [0, 0], [2, 1024]])
+        );
+        assert_eq!(
             summary["streaming_span_ms"],
             serde_json::json!({
                 "unload_block_entities": [0.375, null, null],
-                "order_uploads": [0.5, null, 0.25],
+                "order_uploads": [0.5, null, null],
+                "upload_queue": [1.125, null, null],
             })
         );
 
@@ -660,6 +668,7 @@ mod tests {
         let mut summary = stats.summary();
         stats.add_flight_series(&mut summary);
         assert!(summary.get("streaming_work").is_none());
+        assert!(summary.get("streaming_uploads").is_none());
         assert!(summary.get("streaming_span_ms").is_none());
     }
 
@@ -761,6 +770,8 @@ pub struct FrameStats {
     /// Per rendered frame during a raw flight: unload entries visited, upload
     /// elements sorted and upload elements merged.
     streaming_work: Vec<[u64; 3]>,
+    /// Meshes submitted to the renderer and their bytes at the upload budget's vertex size.
+    streaming_uploads: Vec<[u64; 2]>,
     /// The same frames' wall milliseconds, by streaming span. None when it did not run.
     streaming_spans: Vec<[Option<f32>; STREAMING_SPANS.len()]>,
     static_snapshot_rebuilds: u64,
@@ -783,7 +794,7 @@ pub struct FrameStats {
 /// building the frame's geometry and HUD, and the renderer's own work.
 pub const PHASES: [&str; 4] = ["update", "tick", "prepare", "render"];
 
-const STREAMING_SPANS: [&str; 2] = ["unload_block_entities", "order_uploads"];
+const STREAMING_SPANS: [&str; 3] = ["unload_block_entities", "order_uploads", "upload_queue"];
 
 fn percentiles(values: &[f32]) -> serde_json::Value {
     let mut sorted = values.to_vec();
@@ -861,11 +872,13 @@ impl FrameStats {
         visited: u64,
         sorted: usize,
         merged: usize,
+        mesh_uploads: [u64; 2],
         spans: &[crate::spans::Span],
     ) {
         if self.streaming_work.len() < Self::LIMIT {
             self.streaming_work
                 .push([visited, sorted as u64, merged as u64]);
+            self.streaming_uploads.push(mesh_uploads);
             let mut times = [None; STREAMING_SPANS.len()];
             for span in spans {
                 if let Some(index) = STREAMING_SPANS.iter().position(|&name| name == span.name) {
@@ -887,6 +900,7 @@ impl FrameStats {
     pub fn add_flight_series(&self, summary: &mut serde_json::Value) {
         if !self.streaming_work.is_empty() {
             summary["streaming_work"] = serde_json::json!(self.streaming_work);
+            summary["streaming_uploads"] = serde_json::json!(self.streaming_uploads);
             summary["streaming_span_ms"] = STREAMING_SPANS
                 .iter()
                 .enumerate()
@@ -970,6 +984,7 @@ impl FrameStats {
         self.gpu.clear();
         self.phases.clear();
         self.streaming_work.clear();
+        self.streaming_uploads.clear();
         self.streaming_spans.clear();
         self.static_snapshot_rebuilds = 0;
         self.static_snapshot_bytes_built = 0;
