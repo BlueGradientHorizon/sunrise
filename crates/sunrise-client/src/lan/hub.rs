@@ -4418,7 +4418,10 @@ impl Hub {
                 }
                 other => events.push(HostEvent::Packet(conn, Box::new(other))),
             }
-            if matches!(events.get(event_start), Some(HostEvent::AcceptedMove(..))) {
+            if events[event_start..]
+                .iter()
+                .any(|event| matches!(event, HostEvent::AcceptedMove(..)))
+            {
                 // Fall and landing can write to the level or move the player again. A
                 // subsequent packet must read those writes, not just the accepted position.
                 events.push(HostEvent::InputCredits(credits));
