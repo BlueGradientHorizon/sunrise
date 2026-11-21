@@ -207,7 +207,7 @@ pub(super) fn check_protection(m: &mut Mob, w: &MobWorld) {
 
 /// `Creaking.aiStep`: countdown and the gaze's freeze/unfreeze transition.
 pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    animate(m);
+    tick_animation_clocks(m);
     if !m.alive() {
         return;
     }
@@ -224,14 +224,18 @@ pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         m.extra.flag2 = !now;
     }
 }
-/// The clocks and keyframe states `Creaking.aiStep`, `setupAnimationStates`
-/// and `checkEyeBlink` run (the server's and a client's).
-pub fn animate(m: &mut Mob) {
+// The countdown in Creaking.aiStep runs on both sides.
+fn tick_animation_clocks(m: &mut Mob) {
     for slot in [INVULNERABLE, ATTACKING] {
         if m.extra.ints[slot] > 0 {
             m.extra.ints[slot] -= 1;
         }
     }
+}
+
+/// The client's `aiStep` timers and `Creaking.tick` visuals.
+pub fn animate(m: &mut Mob) {
+    tick_animation_clocks(m);
     let age = m.age as f32;
     m.anim.states[0].animate_when(m.extra.ints[ATTACKING] > 0, age);
     m.anim.states[1].animate_when(m.extra.ints[INVULNERABLE] > 0, age);
@@ -478,6 +482,23 @@ mod tests {
         } else {
             crate::mobs::world::with_test_world(others, f)
         }
+    }
+
+    #[test]
+    fn server_ai_step_counts_down_without_drawing_for_eye_flicker() {
+        assert!(crate::mobs::world::with_test_world(&[], |w, _| {
+            let mut m = creaking();
+            set_transient(&mut m, [0, 0, 0]);
+            set_tearing_down(&mut m);
+            m.health = 0.0;
+            m.death_time = 8;
+            entity_event(&mut m, 66);
+            let mut before = m.random.clone();
+            update(&mut m, w, &mut Vec::new());
+            assert_eq!(m.extra.ints[INVULNERABLE], INVULNERABILITY_TICKS - 1);
+            assert!(!eyes_glowing(&m));
+            assert_eq!(m.random.next_int(), before.next_int());
+        }));
     }
 
     /// Creaking.activate and deactivate post ENTITY_ACTION, for the sculk sensors and
