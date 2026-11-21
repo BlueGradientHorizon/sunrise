@@ -122,6 +122,7 @@ mod tests {
                 game.world.block_entities.insert((1, 64, 1), holder(11));
                 game.fire_pending_block_entity_loads();
                 assert!(log.lock().unwrap().is_empty());
+                game.world.set(3, 64, 1, block).unwrap();
                 game.world.block_entities.insert((3, 64, 1), holder(0));
                 game.fire_pending_block_entity_loads();
                 game.fire_pending_block_entity_loads();

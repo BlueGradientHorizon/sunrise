@@ -34,11 +34,19 @@ struct BenchMod(&'static str);
 #[mod_api::__subscriptions]
 impl Hooks for BenchMod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        let kind = r.block_entity_type("ticker").blocks(&[]).build();
+        let kind = r
+            .block_entity_type("ticker")
+            .blocks(&["live_bench:ticker"])
+            .build();
         if self.0 != "none" {
             r.block_entity_part(&kind, Ticker(self.0 == "write"))
                 .unwrap();
         }
+    }
+    fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
+        event
+            .register(mod_api::Block::new("live_bench:ticker", "minecraft:stone"))
+            .unwrap();
     }
 }
 
@@ -70,8 +78,15 @@ fn thousand_live_block_entity_ticks() {
                         .insert((x, z), Arc::new(Chunk::empty(x, z)));
                 }
             }
+            let block = game
+                .pack
+                .assets
+                .registry
+                .default_state("live_bench:ticker")
+                .unwrap();
             let positions: Vec<_> = (0..1000).map(|i| (i % 40, 64, i / 40)).collect();
             for &pos in positions.iter().chain(std::iter::once(&(0, 63, 0))) {
+                game.world.set(pos.0, pos.1, pos.2, block).unwrap();
                 let mut entity =
                     ModBlockEntity::new("live_bench:ticker".into(), Default::default());
                 entity.data = vec![0];

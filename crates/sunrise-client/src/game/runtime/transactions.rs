@@ -139,21 +139,6 @@ impl OpenTransactions {
         }
     }
 
-    /// Publish a storage-only save mark, deferring it to the root commit if needed.
-    pub(in crate::game) fn mark_block_entity_saved(
-        &mut self,
-        dim: super::Dim,
-        modified: &mut sunrise_client::world::ModifiedChunks,
-        pos: Pos,
-    ) {
-        let chunk = (pos.0 >> 4, pos.2 >> 4);
-        if let Some(level) = self.last_mut() {
-            level.save_chunks.insert((dim, chunk));
-        } else {
-            modified.insert(chunk);
-        }
-    }
-
     /// The journaled-write epoch.
     pub(in crate::game) fn writes(&self) -> u64 {
         self.writes

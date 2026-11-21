@@ -1,0 +1,2 @@
+# Slotless Items NBT coverage for BlockEntityView::set_nbt (debt fa-v1).
+sunrise-client game::native_hooks::block_entity_tick::tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots lib daily child-process

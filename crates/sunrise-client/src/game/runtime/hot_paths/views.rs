@@ -56,17 +56,18 @@ impl Game<'_> {
         self.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let stone = self
+        let block = self
             .pack
             .assets
             .registry
-            .default_state("minecraft:stone")
+            .default_state(KIND)
+            .or_else(|| self.pack.assets.registry.default_state("minecraft:stone"))
             .unwrap();
         let positions: Vec<_> = (0..MACHINES as i32)
             .map(|i| (i % 16, FLOOR + 1, i / 16))
             .collect();
         for &(x, y, z) in &positions {
-            self.world.set(x, y, z, stone)?;
+            self.world.set(x, y, z, block)?;
             let fields = ModBlockEntityFields {
                 data: vec![INITIAL_PROGRESS, 7200],
                 nbt: [

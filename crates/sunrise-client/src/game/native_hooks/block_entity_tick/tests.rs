@@ -1,5 +1,5 @@
 use super::*;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game, with_game_at};
+use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::{
     BlockEntityPart, BlockEntityTickEvent, BlockPart, Hooks, HostTransaction, ModEntry, Registrar,
 };
@@ -7,12 +7,17 @@ use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::{chunk::Chunk, containers::ModBlockEntityFields};
+use sunrise_client::{
+    chunk::Chunk,
+    containers::{ModBlockEntityFields, ModContainer},
+};
 
 const POS: Pos = (1, 64, 1);
 const CHUNK: (i32, i32) = (0, 0);
 const KIND: &str = "view_tick:subscribed";
 const UNSUBSCRIBED: &str = "view_tick:unsubscribed";
+const MACHINE: &str = "view_tick:machine";
+const UNSUBSCRIBED_MACHINE: &str = "view_tick:unsubscribed_machine";
 
 fn row(kind: &str, value: i32) -> BlockEntity {
     BlockEntity::Mod(Box::new(EngineBlockEntity::new(
@@ -28,13 +33,13 @@ fn place_subject(game: &mut Game<'_>, kind: &str) -> BlockEntityRef {
     game.world
         .chunks
         .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
-    let stone = game
-        .pack
-        .assets
-        .registry
-        .default_state("minecraft:stone")
-        .unwrap();
-    game.world.set(POS.0, POS.1, POS.2, stone).unwrap();
+    let block_id = if kind == UNSUBSCRIBED {
+        UNSUBSCRIBED_MACHINE
+    } else {
+        MACHINE
+    };
+    let block = game.pack.assets.registry.default_state(block_id).unwrap();
+    game.world.set(POS.0, POS.1, POS.2, block).unwrap();
     game.world.block_entities.insert(POS, row(kind, 23));
     game.world.modified.clear();
     let level = game.level(game.dim.id()).unwrap();
@@ -42,32 +47,50 @@ fn place_subject(game: &mut Game<'_>, kind: &str) -> BlockEntityRef {
 }
 
 fn access<'a, 'g>(game: &'a mut Game<'g>, subject: BlockEntityRef) -> TickAccess<'a, 'g> {
-    let state = game.world.block(POS.0, POS.1, POS.2);
-    TickAccess {
-        game,
-        subject,
-        state,
-    }
+    TickAccess { game, subject }
 }
 
 #[test]
 #[ignore = "daily"]
 fn retaking_the_view_checks_the_instance_and_state() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::retaking_the_view_checks_the_instance_and_state";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_RETAKE", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
-        let mut access = access(game, subject);
-        let mut scope = BlockEntityTickScope::new(&mut access);
-        assert_eq!(scope.with_view(|view| view.data_slots()[0]), Some(23));
-        let host = scope.host();
-        let level = subject.level(host).unwrap();
-        let pos = subject.position(host).unwrap();
-        let glass = access
-            .game
+        let unlit = game.world.block(POS.0, POS.1, POS.2);
+        let lit = crate::game::native_hooks::with_property(
+            game.pack.assets.registry,
+            unlit,
+            "lit",
+            "true",
+        )
+        .unwrap();
+        assert_ne!(lit, unlit);
+        let unlit_api = unlit.try_into_api().unwrap();
+        let lit_api = lit.try_into_api().unwrap();
+        let glass = game
             .pack
             .assets
             .registry
             .default_state("minecraft:glass")
             .unwrap();
+        let mut access = access(game, subject);
+        let mut scope = BlockEntityTickScope::new(&mut access);
+        assert_eq!(
+            scope.with_view(|view| (view.data_slots()[0], view.state())),
+            Some((23, unlit_api))
+        );
+        let host = scope.host();
+        let level = subject.level(host).unwrap();
+        let pos = subject.position(host).unwrap();
+        access.game.world.set(pos[0], pos[1], pos[2], lit).unwrap();
+        assert_eq!(
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|view| (view.data_slots()[0], view.state())),
+            Some((23, lit_api))
+        );
         access
             .game
             .world
@@ -78,14 +101,10 @@ fn retaking_the_view_checks_the_instance_and_state() {
             BlockEntityTickScope::new(&mut access).with_view(|_| ()),
             None
         );
-        access
-            .game
-            .world
-            .set(pos[0], pos[1], pos[2], access.state)
-            .unwrap();
+        access.game.world.set(pos[0], pos[1], pos[2], lit).unwrap();
         assert_eq!(
-            BlockEntityTickScope::new(&mut access).with_view(|_| ()),
-            Some(())
+            BlockEntityTickScope::new(&mut access).with_view(|view| view.state()),
+            Some(lit_api)
         );
         access.game.world.block_entities.remove(&POS);
         assert_eq!(
@@ -103,7 +122,11 @@ fn retaking_the_view_checks_the_instance_and_state() {
 #[test]
 #[ignore = "daily"]
 fn read_only_and_noop_loans_do_not_journal_or_dirty() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::read_only_and_noop_loans_do_not_journal_or_dirty";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_NOOP", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
         let result: Result<(), ()> = game.transaction(|game, _| {
             let mut access = access(game, subject);
@@ -126,7 +149,11 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
 #[test]
 #[ignore = "daily"]
 fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::a_scope_transaction_aborts_subject_and_dropped_item_edits_together";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ABORT", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         let subject = place_subject(game, KIND);
         game.spawn_item(
             sunrise_client::items::ItemStack::new("minecraft:stone", 5),
@@ -203,11 +230,22 @@ impl BlockPart for Effects {
 #[mod_api::__subscriptions]
 impl Hooks for Effects {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-        let kind = r.block_entity_type("subscribed").build();
+        let kind = r.block_entity_type("subscribed").blocks(&[MACHINE]).build();
         r.block_entity_part(&kind, Tick).unwrap();
-        r.block_entity_type("unsubscribed").build();
-        let stone = r.block_key("minecraft:stone");
-        r.block_part(stone, Effects(self.0.clone()));
+        r.block_entity_type("unsubscribed")
+            .blocks(&[UNSUBSCRIBED_MACHINE])
+            .build();
+        let machine = r.block_key(MACHINE);
+        r.block_part(machine, Effects(self.0.clone()));
+    }
+
+    fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+        event
+            .register(mod_api::Block::new(MACHINE, "minecraft:furnace").with_item(false))
+            .unwrap();
+        event
+            .register(mod_api::Block::new(UNSUBSCRIBED_MACHINE, "minecraft:stone").with_item(false))
+            .unwrap();
     }
 }
 
@@ -229,26 +267,59 @@ fn with_ticker(test: impl FnOnce(&mut Game<'_>, &AtomicU32)) {
 
 #[test]
 #[ignore = "daily"]
-fn ticker_and_handle_setters_dirty_without_explicit_notices() {
-    const NAME: &str = "game::native_hooks::block_entity_tick::tests::ticker_and_handle_setters_dirty_without_explicit_notices";
+fn ticker_and_handle_setters_require_explicit_set_changed() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::ticker_and_handle_setters_require_explicit_set_changed";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_TICK", &["run"]) {
         return;
     }
     with_ticker(|game, notices| {
         let subject = place_subject(game, KIND);
+        let machine_state = game.world.block(POS.0, POS.1, POS.2);
+        game.world.block_entities.set_mod_containers(
+            [(
+                machine_state.0,
+                Arc::new(ModContainer {
+                    slots: 1,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
         game.world.block_log = Some(Vec::new());
         game.tick_mod_block_entity(POS);
         assert_eq!(subject.data_slots(game).unwrap(), [1]);
-        assert!(game.world.modified.contains(&CHUNK));
+        assert!(!game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
-        game.world.modified.clear();
+
+        let stack = sunrise_client::items::ItemStack::new("minecraft:stone", 2)
+            .try_into_api()
+            .unwrap();
+        {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(view.set_data_slots(&[10, 20]));
+                    assert!(view.set_data_slot(1, 21));
+                    assert!(view.set_nbt("recipe".into(), Some(Tag::Int(7))));
+                    assert_eq!(view.set_item_slot(0, Some(stack)), Ok(true));
+                })
+                .unwrap();
+        }
+        assert!(!game.world.modified.contains(&CHUNK));
+        assert!(game.world.block_log.as_ref().unwrap().is_empty());
+        assert_eq!(notices.load(Ordering::Relaxed), 0);
+
         assert!(subject.set_data_slot(game, 0, 2).unwrap());
-        assert_eq!(subject.data_slots(game).unwrap(), [2]);
-        assert!(game.world.modified.contains(&CHUNK));
+        assert_eq!(subject.set_data_slots(game, vec![3, 4]), Ok(true));
+        assert_eq!(subject.data_slots(game).unwrap(), [3, 4]);
+        assert!(!game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
+
         subject.set_changed(game).unwrap();
+        assert!(game.world.modified.contains(&CHUNK));
         assert_eq!(
             notices.load(Ordering::Relaxed),
             1,
@@ -272,5 +343,119 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
         assert!(game.world.block_entities.is_asleep(&POS));
         assert!(game.world.modified.is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_NBT", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
+        let subject = place_subject(game, KIND);
+        let machine_state = game.world.block(POS.0, POS.1, POS.2);
+
+        // When the block declares item slots (slot_count > 0), "Items" is engine-owned.
+        game.world.block_entities.set_mod_containers(
+            [(
+                machine_state.0,
+                Arc::new(ModContainer {
+                    slots: 1,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(!view.set_nbt("Items".into(), Some(Tag::Int(1))));
+                    assert!(view.nbt().get(&"Items".into()).is_none());
+                })
+                .unwrap();
+        }
+
+        // Without declared item slots (slot_count == 0), "Items" is ordinary NBT.
+        // Seed disk-decoded `entity.items` to verify equality no-op and stale-slot clearing.
+        game.world
+            .block_entities
+            .set_mod_containers(Default::default());
+        let decoded = sunrise_client::items::ItemStack::new("minecraft:stone", 3);
+        if let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get_mut(&POS) {
+            entity.items = vec![Some(decoded)];
+        } else {
+            panic!("mod entity missing");
+        }
+        let expected_decoded = Tag::List(vec![Tag::compound([
+            ("Slot", Tag::Byte(0)),
+            ("id", Tag::String("minecraft:stone".into())),
+            ("count", Tag::Int(3)),
+        ])]);
+
+        // Writing the equal encoded value is a no-op and does not journal.
+        let result: Result<(), ()> = game.transaction(|game, _| {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(!view.set_nbt("Items".into(), Some(expected_decoded.clone())));
+                })
+                .unwrap();
+            assert_eq!(game.journal_kept(), (0, 0));
+            Ok(())
+        });
+        assert_eq!(result, Ok(()));
+
+        // Mutating "Items" clears stale decoded `entity.items` and stores the new NBT.
+        let replacement = Tag::List(vec![Tag::compound([(
+            "custom",
+            Tag::String("payload".into()),
+        )])]);
+        {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(view.set_nbt("Items".into(), Some(replacement.clone())));
+                    assert_eq!(view.nbt().get(&"Items".into()), Some(&replacement));
+                    assert!(!view.set_nbt("Items".into(), Some(replacement.clone())));
+                })
+                .unwrap();
+        }
+        let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&POS) else {
+            panic!("mod entity missing");
+        };
+        assert!(
+            entity.items.is_empty(),
+            "stale decoded item slots must be cleared when slotless Items NBT changes"
+        );
+        let saved = sunrise_client::save::block_entity_encode::encode(
+            POS,
+            game.world.block_entities.get(&POS).unwrap(),
+            MACHINE,
+            game.res.items(),
+        );
+        assert_eq!(saved.get("Items"), Some(&replacement));
+
+        // Clearing "Items" removes it from both NBT and encoded output.
+        {
+            let mut access = access(game, subject);
+            BlockEntityTickScope::new(&mut access)
+                .with_view(|mut view| {
+                    assert!(view.set_nbt("Items".into(), None));
+                    assert!(view.nbt().get(&"Items".into()).is_none());
+                    assert!(!view.set_nbt("Items".into(), None));
+                })
+                .unwrap();
+        }
+        let saved = sunrise_client::save::block_entity_encode::encode(
+            POS,
+            game.world.block_entities.get(&POS).unwrap(),
+            MACHINE,
+            game.res.items(),
+        );
+        assert_eq!(saved.get("Items"), None);
     });
 }

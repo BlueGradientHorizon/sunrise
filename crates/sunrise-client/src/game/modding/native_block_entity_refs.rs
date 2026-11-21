@@ -246,8 +246,6 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data[index] = value);
-        self.transactions
-            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 
@@ -268,8 +266,6 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data = values);
-        self.transactions
-            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 
