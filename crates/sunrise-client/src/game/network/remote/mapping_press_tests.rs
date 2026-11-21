@@ -297,13 +297,15 @@ fn opening_a_screen_releases_mod_holds() {
         use winit::event::MouseButton;
         use winit::keyboard::{KeyCode, ModifiersState};
 
+        let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
+        let sneak_mapping = game.vanilla_key_mapping("key.sneak").unwrap();
         game.mapped_key_event(KeyCode::KeyW, true, false).unwrap();
-        assert!(game.mapping_state("key.forward").unwrap().0);
+        assert!(forward_mapping.is_down(game).unwrap());
         game.set_mapping_down("key.forward", false).unwrap();
-        assert!(!game.mapping_state("key.forward").unwrap().0);
+        assert!(!forward_mapping.is_down(game).unwrap());
         game.set_mapping_down("key.forward", true).unwrap();
         game.mapped_key_event(KeyCode::KeyW, false, false).unwrap();
-        assert!(!game.mapping_state("key.forward").unwrap().0);
+        assert!(!forward_mapping.is_down(game).unwrap());
         game.set_mapping_down("key.forward", true).unwrap();
         game.set_mapping_down("key.attack", true).unwrap();
         game.set_mapping_down("key.use", true).unwrap();
@@ -320,7 +322,7 @@ fn opening_a_screen_releases_mod_holds() {
         game.screen = Screen::Playing;
         game.build_screen();
         assert!(!game.left && !game.right);
-        assert!(!game.mapping_state("key.forward").unwrap().0);
+        assert!(!forward_mapping.is_down(game).unwrap());
 
         // ModifiersChanged can contain an unrelated change, or be the OS's only
         // report of a real release. Only the recovered sneak release takes over.
@@ -332,9 +334,9 @@ fn opening_a_screen_releases_mod_holds() {
         game.set_mapping_down("key.sneak", true).unwrap();
         game.update_modifiers(ModifiersState::SHIFT);
         game.heal_hold_latches();
-        assert!(game.mapping_state("key.sneak").unwrap().0);
+        assert!(sneak_mapping.is_down(game).unwrap());
         game.update_modifiers(ModifiersState::empty());
-        assert!(!game.mapping_state("key.sneak").unwrap().0);
+        assert!(!sneak_mapping.is_down(game).unwrap());
     });
 }
 

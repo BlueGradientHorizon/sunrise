@@ -163,16 +163,21 @@ fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
 #[ignore = "daily"]
 fn readers_of_the_movement_keys_see_the_stick() {
     playing(|game| {
+        let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
+        let left_mapping = game.vanilla_key_mapping("key.left").unwrap();
+        let back_mapping = game.vanilla_key_mapping("key.back").unwrap();
+        let right_mapping = game.vanilla_key_mapping("key.right").unwrap();
+        let jump_mapping = game.vanilla_key_mapping("key.jump").unwrap();
         game.focused = true;
-        assert!(!game.mapping("key.forward").unwrap().unwrap().down);
+        assert!(!forward_mapping.is_down(game).unwrap());
         // Up and to the left, on a diagonal: two keys, as a keyboard would hold.
         game.pad.state.left = [-0.7, 0.7];
-        assert!(game.mapping("key.forward").unwrap().unwrap().down);
-        assert!(game.mapping("key.left").unwrap().unwrap().down);
-        assert!(!game.mapping("key.back").unwrap().unwrap().down);
-        assert!(!game.mapping("key.right").unwrap().unwrap().down);
+        assert!(forward_mapping.is_down(game).unwrap());
+        assert!(left_mapping.is_down(game).unwrap());
+        assert!(!back_mapping.is_down(game).unwrap());
+        assert!(!right_mapping.is_down(game).unwrap());
         assert!(
-            !game.mapping("key.jump").unwrap().unwrap().down,
+            !jump_mapping.is_down(game).unwrap(),
             "the stick holds only the movement keys"
         );
         // Forward is inside the eight-direction sector, left outside it. A direct
@@ -180,15 +185,15 @@ fn readers_of_the_movement_keys_see_the_stick() {
         with_player(game);
         game.pad.state.left = [-0.34, 0.93];
         let before = game.sample_movement_keys(game.pad_move());
-        assert!(game.mapping_state("key.forward").unwrap().0);
-        assert!(!game.mapping_state("key.left").unwrap().0);
+        assert!(forward_mapping.is_down(game).unwrap());
+        assert!(!left_mapping.is_down(game).unwrap());
         assert!(before.forward);
         let [left, forward] = before.direction();
         assert!(left > 0.3 && forward > 0.8);
         game.set_mapping_down("key.forward", false).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
-        assert!(!game.mapping_state("key.forward").unwrap().0);
-        assert!(!game.mapping_state("key.left").unwrap().0);
+        assert!(!forward_mapping.is_down(game).unwrap());
+        assert!(!left_mapping.is_down(game).unwrap());
         assert!(!after.forward);
         assert_eq!(after.left, before.left);
         assert_eq!(after.direction(), [left, 0.0]);
@@ -197,7 +202,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
         let [left, _] = game.pad_move().unwrap();
         game.set_mapping_down("key.forward", true).unwrap();
         let after = game.sample_movement_keys(game.pad_move());
-        assert!(game.mapping_state("key.forward").unwrap().0);
+        assert!(forward_mapping.is_down(game).unwrap());
         assert!(after.forward);
         assert_eq!(after.direction(), [left, 1.0]);
 
@@ -219,7 +224,7 @@ fn readers_of_the_movement_keys_see_the_stick() {
 
         // A screen takes the stick away.
         game.screen = Screen::Paused;
-        assert!(!game.mapping("key.forward").unwrap().unwrap().down);
+        assert!(!forward_mapping.is_down(game).unwrap());
     });
 }
 
@@ -276,14 +281,16 @@ fn a_held_pad_toolbar_action_counts_as_the_toolbar_key() {
 #[ignore = "daily"]
 fn the_pads_attack_and_use_reach_what_the_mouse_tells_mods() {
     playing(|game| {
+        let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
+        let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         assert_eq!(game.native_clicks(), (0, 0));
         pad_press(game, Button::RightTrigger, "key.attack");
-        assert!(game.mapping("key.attack").unwrap().unwrap().down);
+        assert!(attack_mapping.is_down(game).unwrap());
         assert_eq!(game.native_clicks(), (1, 0));
         pad_release(game, Button::RightTrigger);
-        assert!(!game.mapping("key.attack").unwrap().unwrap().down);
+        assert!(!attack_mapping.is_down(game).unwrap());
         pad_press(game, Button::LeftTrigger, "key.use");
-        assert!(game.mapping("key.use").unwrap().unwrap().down);
+        assert!(use_mapping.is_down(game).unwrap());
         assert_eq!(game.native_clicks(), (1, 1));
     });
 }

@@ -37,13 +37,11 @@ fn client_host_reads_playing_and_key_mappings() {
             (forward.down, forward.label),
             (false, mod_api::Text::literal("W"))
         );
+        let forward_mapping =
+            mod_api::prelude::ClientInputClientHost::vanilla_key_mapping(game, "key.forward")
+                .unwrap();
         game.keys.insert(KeyCode::KeyW);
-        assert!(
-            mod_api::prelude::ClientInputClientHost::mapping(game, "key.forward")
-                .unwrap()
-                .unwrap()
-                .down
-        );
+        assert!(forward_mapping.is_down(game).unwrap());
         let attack = mod_api::prelude::ClientInputClientHost::mapping(game, "key.attack")
             .unwrap()
             .unwrap();
