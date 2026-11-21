@@ -2915,7 +2915,7 @@ fn main() {{
     }
 
     #[test]
-    fn an_single_answer_collect_only_allows_its_single_answer_sink() {
+    fn a_single_answer_collect_only_allows_its_single_answer_sink() {
         let emit_hook = |receiver: Receiver, extra: Option<(&str, &str)>, sink: &str| {
             let mut call = Vec::new();
             if let Some((name, ty)) = extra {

@@ -14,6 +14,10 @@ pub enum BlockScreenEffect {
     Water,
 }
 
+impl BlockScreenEffect {
+    pub(crate) const COUNT: usize = Self::Water as usize + 1;
+}
+
 // no wire: the renderer is an in-process callback.
 /// A renderer selected for one block overlay by [`ExtractBlockScreenEffectEvent::set_custom_renderer`].
 /// Reuse a static renderer rather than allocating one at every extraction.
@@ -21,9 +25,11 @@ pub trait BlockScreenEffectRenderer: Sync {
     /// Submit this overlay with read-only access to the client. Return `true` to suppress
     /// its vanilla quads, or `false` to leave them after yours. For block and water,
     /// cancellation at extraction still suppresses vanilla quads. For fire, only this
-    /// return value decides once a renderer was selected. A phase refusal discards every
-    /// quad emitted by that submission and leaves the vanilla drawing decision unchanged.
-    /// Neither borrow outlives the call.
+    /// return value decides once a renderer was selected. A failed submission contributes
+    /// no quads and leaves extraction's vanilla drawing decision unchanged. A panic disables
+    /// this mod's submissions for this overlay kind for the session; its extractor and
+    /// submissions for other overlays still run. A phase refusal is reported on every call
+    /// without disabling anything. Neither borrow outlives the call.
     fn submit(&self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool;
 }
 
@@ -70,12 +76,19 @@ impl ExtractBlockScreenEffectEvent<'_> {
     /// listeners that do not select one leave the previous choice in place. Cancellation
     /// skips subsequent listeners unless they opt into `#[listener(receive_cancelled)]`.
     /// The selected renderer still submits even if the overlay is canceled. In particular,
-    /// it replaces the no-op that would otherwise suppress canceled fire.
+    /// it replaces the no-op that would otherwise suppress canceled fire. A failed listener
+    /// leaves the preceding selection and cancellation in place.
     pub fn set_custom_renderer(&mut self, renderer: &'static dyn BlockScreenEffectRenderer) {
-        *self.renderer = Some(SelectedBlockScreenEffectRenderer {
-            owner: crate::content::crash::current_native_mod(),
-            renderer,
+        // The event can only borrow the selection slot inside a subscribed listener.
+        let owners = crate::runtime::installed().and_then(|installed| {
+            let id = crate::content::crash::current_native_mod()?;
+            installed.overlay_owners.get(id)
         });
+        if let Some(owners) = owners {
+            *self.renderer = Some(SelectedBlockScreenEffectRenderer { owners, renderer });
+        } else {
+            log::error!("extract_block_screen_effect: renderer selection has no listener owner");
+        }
     }
 }
 
@@ -86,7 +99,7 @@ impl ExtractBlockScreenEffectEvent<'_> {
 #[derive(Clone, Copy)]
 // exhaustive: only the extraction event can construct this private-field selection.
 pub struct SelectedBlockScreenEffectRenderer {
-    owner: Option<&'static str>,
+    owners: &'static [crate::callback_owner::CallbackOwner; BlockScreenEffect::COUNT],
     renderer: &'static dyn BlockScreenEffectRenderer,
 }
 
@@ -97,17 +110,17 @@ impl SelectedBlockScreenEffectRenderer {
         host: &dyn ClientHost,
         render: BlockScreenEffectRender<'_>,
     ) -> Option<bool> {
-        let _scope = self
-            .owner
-            .map(|id| crate::mark_mod(id, "block_screen_effect_renderer::submit"));
-        match crate::runtime::refusable(crate::runtime::outside_world(), || {
-            self.renderer.submit(host, render)
-        }) {
-            Ok(replace) => Some(replace),
-            Err(refusal) => {
-                log::warn!("native refusal in block_screen_effect_renderer::submit: {refusal}");
-                None
-            }
+        let owner = &self.owners[render.effect as usize];
+        // A poisoned submission is skipped on later frames, without building a disabled error.
+        if !owner.is_enabled() {
+            return None;
         }
+        owner
+            .call(
+                "block screen effect renderer",
+                "block_screen_effect_renderer::submit",
+                || self.renderer.submit(host, render),
+            )
+            .ok()
     }
 }

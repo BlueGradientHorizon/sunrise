@@ -136,7 +136,8 @@ Block, water and fire overlays draw in camera space, after the level and hand an
 `extract_block_screen_effect`, call `event.set_custom_renderer(&MY_RENDERER)` to choose a static
 `BlockScreenEffectRenderer` for just that overlay. The last eligible listener that sets a renderer wins.
 After cancellation, only `#[listener(receive_cancelled)]` listeners can change the choice; the selected
-renderer still submits even if the overlay remains canceled. To replace an earlier listener's renderer
+renderer still submits even if the overlay remains canceled. A failed listener leaves the previous
+renderer and cancellation in place for later eligible listeners. To replace an earlier listener's renderer
 without adding quads or suppressing vanilla drawing, select a renderer that submits no quads and returns
 `false`.
 
@@ -152,9 +153,11 @@ which keeps advancing while the level is frozen.
 and a `CameraDrawContext`. Return `false` to prepend your quads to the vanilla overlay, or `true` to skip
 just that overlay's vanilla quads. Returning `false` does not restore canceled block or water quads. Fire
 is different: canceling with no renderer suppresses vanilla fire, but with a selected renderer that returns
-`false`, vanilla fire still follows. A phase refusal drops all quads from that submission without
-changing whether the vanilla overlay draws. Each refusal is reported, and the renderer may run again
-on the next frame. Submission runs in block, water, fire order; HUD camera overlays such as the
+`false`, vanilla fire still follows. A failed submission drops its quads without changing the
+vanilla drawing decision. A panic names the mod in the log and client error toast. It disables the
+panicking extraction listener or that mod's submission for that overlay kind, respectively, for the
+rest of the session; unrelated callbacks still run. A phase refusal is reported each time and never
+disables either callback. Submission runs in block, water, fire order; HUD camera overlays such as the
 vignette still draw above them.
 
 ```rust,ignore

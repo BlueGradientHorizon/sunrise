@@ -183,7 +183,12 @@ mod root {
             })) {
                 Ok(Ok(value)) => DispatchOutcome::Ok(value),
                 Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
-                Err(_) => {
+                Err(payload) => {
+                    if let Err(nested) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+                    {
+                        std::mem::forget(nested);
+                    }
                     poison(hook, mod_id);
                     DispatchOutcome::Panicked
                 }
@@ -200,17 +205,17 @@ mod root {
                 .find(|entry| entry.id == namespace)
         }
 
-        pub(super) fn entered_matching<'a>(
+        pub(super) fn entered_with_id_matching<'a>(
             hook_id: super::HookId,
             hook: &'static str,
             mut allow: impl FnMut(&str) -> bool + 'a,
-        ) -> impl Iterator<Item = &'static dyn super::Hooks> + 'a {
+        ) -> impl Iterator<Item = (&'static str, &'static dyn super::Hooks)> + 'a {
             super::listening(hook_id).filter_map(move |(_, entry)| {
                 if !allow(entry.id) {
                     return None;
                 }
                 let ((), hooks) = super::enter_listener(entry, hook);
-                Some(hooks)
+                Some((entry.id, hooks))
             })
         }
 

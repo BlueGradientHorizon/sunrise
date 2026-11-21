@@ -7,7 +7,9 @@ pub trait Hooks {
     /// there, or `Atmospheric` otherwise. The sample comes from death tick 20 once the local
     /// player is removed, until respawn. Setting `Water` enables the overlay; any other value
     /// suppresses it. Set `Atmospheric` to clear submersion or a fluid to force it. Later listeners
-    /// see the earlier ones' value.
+    /// see the last successful value. A panic disables only that mod's listener for the session
+    /// and is reported in the log and the client error toast. A phase refusal is reported each time
+    /// without disabling the listener.
     ///
     /// The fluid field of view, the frame's fog, the sky pass and its dark disc, water and conduit
     /// vision, and a shader pack's `isEyeInWater` also read the result. The hook fires once per

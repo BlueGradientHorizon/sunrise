@@ -67,6 +67,12 @@ pub(crate) struct Installed {
     pub(crate) subscribers: sunrise_mod_runtime::subscribers::Subscribers,
     pub(crate) disabled: Box<[std::sync::atomic::AtomicBool]>,
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
+    /// One retained submission owner for each overlay of a subscribed mod. The owners
+    /// survive the frame-local renderer selection; installing the mods is the only allocation.
+    pub(crate) overlay_owners: std::collections::HashMap<
+        &'static str,
+        [crate::callback_owner::CallbackOwner; BlockScreenEffect::COUNT],
+    >,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
     /// Per-hook sets of mods whose listener panicked and is disabled for that
@@ -104,6 +110,16 @@ impl Installed {
             mods.len(),
             subscriptions,
         );
+        let overlay_owners = subscribers
+            .indices(HookId::ExtractBlockScreenEffect as usize)
+            .map(|index| {
+                let id = mods[index].id;
+                let callbacks = std::array::from_fn(|_| {
+                    crate::callback_owner::CallbackOwner::with_index(id, Some(index))
+                });
+                (id, callbacks)
+            })
+            .collect();
         let disabled = mods
             .iter()
             .map(|_| std::sync::atomic::AtomicBool::new(false))
@@ -123,6 +139,7 @@ impl Installed {
             subscribers,
             disabled,
             mod_id_owners,
+            overlay_owners,
             content_owners: OnceLock::new(),
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),

@@ -83,8 +83,10 @@ The `camera_submersion` hook answers which fluid the camera is in, as vanilla's
 `Camera.getFluidInCamera` does, given as the fog type at the camera: `Atmospheric`, `Water`, `Lava` or
 `PowderSnow`. It comes in as the game's answer, after the `state_at_viewpoint` parts of the blocks it reads,
 with the camera's position. Set it to `Atmospheric` to clear underwater, lava and powder snow submersion,
-or to a fluid to force it; listeners run in the usual hook order, each seeing the previous one's value. A
-free camera that passes through water, for one, keeps the air's fog:
+or to a fluid to force it. A failed listener leaves the last successful value in place for the next
+listener. A panic disables that mod's `camera_submersion` listener for the session and names the mod
+in the log and client error toast. A phase refusal is reported each time and does not disable it.
+A free camera that passes through water, for one, keeps the air's fog:
 
 ```rust,ignore
 fn camera_submersion(&self, _host: &dyn ClientHost, event: &mut CameraSubmersionEvent<'_>) {

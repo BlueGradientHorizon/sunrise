@@ -397,6 +397,162 @@ fn a_refused_renderer_discards_partial_quads_and_runs_again() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_panicking_extractor_preserves_the_previous_selection_and_other_listeners() {
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Panics(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Panics {
+        #[listener(priority = -5)]
+        fn extract_block_screen_effect(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ExtractBlockScreenEffectEvent<'_>,
+        ) -> Flow {
+            if event.effect == Water {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                event.set_custom_renderer(&Choice(RED));
+                event.cancelled = true;
+                panic!("extractor failed after replacing the selection");
+            }
+            Flow::Continue
+        }
+    }
+
+    struct After(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for After {
+        #[listener(priority = -10)]
+        fn extract_block_screen_effect(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ExtractBlockScreenEffectEvent<'_>,
+        ) -> Flow {
+            if event.effect == Water {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+            Flow::Continue
+        }
+    }
+
+    with_client_game(|game| {
+        burning_player(game);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(0, 65, 0, water).unwrap();
+        assert!(sample_eye_in_water(game));
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let later_calls = Arc::new(AtomicUsize::new(0));
+        let mods = vec![
+            ModEntry::new("first", Box::new(ObserveOverlay(Water, Arc::default()))),
+            ModEntry::new("broken-extractor", Box::new(Panics(attempts.clone()))),
+            ModEntry::new("after", Box::new(After(later_calls.clone()))),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            for frame in 1..=2 {
+                assert_eq!(names(&quads(game)), ["mod water", "water", "fire", "fire"]);
+                assert_eq!(attempts.load(Ordering::Relaxed), 1);
+                assert_eq!(later_calls.load(Ordering::Relaxed), frame);
+                let reports = take_hook_panics();
+                if frame == 1 {
+                    assert_eq!(
+                        reports,
+                        [HookPanicReport {
+                            mod_id: "broken-extractor",
+                            hook: "extract_block_screen_effect",
+                        }]
+                    );
+                } else {
+                    assert!(reports.is_empty());
+                }
+            }
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_renderer_discards_its_quads_and_is_skipped_on_later_frames() {
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static SUBMISSIONS: AtomicUsize = AtomicUsize::new(0);
+    struct BrokenFire;
+    impl BlockScreenEffectRenderer for BrokenFire {
+        fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
+            assert!(render.draw.quad(QUAD, marker(Fire)));
+            SUBMISSIONS.fetch_add(1, Ordering::Relaxed);
+            panic!("fire renderer failed after drawing");
+        }
+    }
+
+    struct Select(Arc<AtomicUsize>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Select {
+        fn extract_block_screen_effect(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ExtractBlockScreenEffectEvent<'_>,
+        ) -> Flow {
+            match event.effect {
+                Fire => {
+                    self.0.fetch_add(1, Ordering::Relaxed);
+                    event.set_custom_renderer(&BrokenFire);
+                }
+                Water => event.set_custom_renderer(&Choice(0xFF020000)),
+                Block => {}
+            }
+            Flow::Continue
+        }
+    }
+
+    with_client_game(|game| {
+        burning_player(game);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(0, 65, 0, water).unwrap();
+        assert!(sample_eye_in_water(game));
+        let extractions = Arc::new(AtomicUsize::new(0));
+        let mods = vec![ModEntry::new(
+            "broken-fire",
+            Box::new(Select(extractions.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            for frame in 1..=2 {
+                // Water from the same mod still submits, and vanilla fire remains visible.
+                assert_eq!(names(&quads(game)), ["mod water", "water", "fire", "fire"]);
+                assert_eq!(SUBMISSIONS.load(Ordering::Relaxed), 1);
+                assert_eq!(extractions.load(Ordering::Relaxed), frame);
+                let reports = take_hook_panics();
+                if frame == 1 {
+                    assert_eq!(
+                        reports,
+                        [HookPanicReport {
+                            mod_id: "broken-fire",
+                            hook: "block_screen_effect_renderer::submit",
+                        }]
+                    );
+                } else {
+                    assert!(reports.is_empty());
+                }
+            }
+        });
+    });
+}
+
 struct Choice(u32);
 impl BlockScreenEffectRenderer for Choice {
     fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {

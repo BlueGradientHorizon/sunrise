@@ -75,18 +75,18 @@ pub struct CallbackOwner {
 impl CallbackOwner {
     /// Bind a dispatch-attributed registration to its installed mod slot once, at freeze time.
     pub fn new(id: &'static str) -> Option<Self> {
-        Some(Self {
-            id,
-            index: Some(crate::__private::mod_index(id)?),
-            poisoned: Arc::new(AtomicBool::new(false)),
-        })
+        Some(Self::with_index(id, Some(crate::__private::mod_index(id)?)))
     }
 
     /// Bind a callback owner by mod id, resolving its installed slot when present.
     pub fn for_mod(id: &'static str) -> Self {
+        Self::with_index(id, crate::__private::mod_index(id))
+    }
+
+    pub(crate) fn with_index(id: &'static str, index: Option<usize>) -> Self {
         Self {
             id,
-            index: crate::__private::mod_index(id),
+            index,
             poisoned: Arc::new(AtomicBool::new(false)),
         }
     }

@@ -1,0 +1,23 @@
+ids = [
+    "hook:camera_submersion",
+    "hook:extract_block_screen_effect",
+    "method:ExtractBlockScreenEffectEvent::set_custom_renderer",
+    "method:BlockScreenEffectRenderer::submit",
+]
+why = """
+Vanilla 26.3 samples eye fluid in Entity.baseTick before LocalPlayer.tickDeath removes the player on
+its twentieth death tick. ClientLevel.tickEntities skips the removed player, but LevelExtractor.extractPlayerState
+still reads the last eye-fluid sample until respawn. NeoForge patches that extraction site and
+ScreenEffectRenderer.submit to select and draw custom overlays. Camera.getFluidInCamera anchors the
+camera submersion read; NeoForge has no event counterpart for it. Sunrise keeps failed callbacks from
+changing other listeners' render inputs or publishing partial quads, using the shared mod panic log and toast.
+"""
+migrate = """
+Keep using camera_submersion to override fog and the player's eye sample for water overlays. After death
+tick 20 the sample stops changing until respawn. Keep using extract_block_screen_effect and
+set_custom_renderer to select a renderer and return Flow::Cancel when you want to suppress the default
+as documented. Only a successful listener changes fog, selection or cancellation. Keep returning true
+from submit to suppress vanilla or false to prepend your quads; failed submissions publish no quads.
+A panic disables only the offending extraction or submersion listener, or that mod's submission for the
+affected overlay kind, for the session. Phase refusals are reported on every call without disabling it.
+"""
