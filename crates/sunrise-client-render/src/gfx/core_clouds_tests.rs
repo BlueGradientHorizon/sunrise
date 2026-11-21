@@ -2,6 +2,7 @@ use super::*;
 
 const ALL: CloudsFrame = CloudsFrame {
     pack_shader: true,
+    pack_oit_shader: true,
     clouds: true,
     native_clouds: true,
     improved_transparency: false,
@@ -11,14 +12,26 @@ const ALL: CloudsFrame = CloudsFrame {
 };
 
 /// The pack's clouds draw only with a pack's shader and the clouds on, and only while nothing
-/// else draws them its own way: each condition alone leaves the native mesh.
+/// else draws them its own way: each condition alone leaves the native mesh. Under Improved
+/// Transparency they draw from the shader's `OIT_CLOUDS` programs, outside it from its
+/// `CLOUDS` one; each without the other.
 #[test]
 fn a_packs_clouds_draw_only_where_nothing_else_draws_them() {
     assert!(ALL.pack_draws());
+    let improved = CloudsFrame {
+        improved_transparency: true,
+        pack_shader: false,
+        ..ALL
+    };
+    assert!(improved.pack_draws());
     let each = [
         CloudsFrame {
             pack_shader: false,
             ..ALL
+        },
+        CloudsFrame {
+            pack_oit_shader: false,
+            ..improved
         },
         CloudsFrame {
             clouds: false,
@@ -26,10 +39,6 @@ fn a_packs_clouds_draw_only_where_nothing_else_draws_them() {
         },
         CloudsFrame {
             native_clouds: false,
-            ..ALL
-        },
-        CloudsFrame {
-            improved_transparency: true,
             ..ALL
         },
         CloudsFrame {
@@ -57,6 +66,14 @@ fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
 }
 
 const SIZE: u32 = 8;
+
+/// `program` as the classic clouds' only.
+fn classic(program: crate::core_shader::CoreProgram) -> crate::clouds::pack::Programs {
+    crate::clouds::pack::Programs {
+        classic: Some(program),
+        oit: None,
+    }
+}
 
 /// Draws `core`'s prepared faces into an 8 by 8 target cleared to transparent black, with a
 /// depth buffer cleared to the far plane (0, reversed Z), and reads it back.
@@ -200,7 +217,8 @@ fn probe(device: &wgpu::Device) -> CoreClouds {
         &|b| b == INFO_BLOCK || b == FACES,
     )
     .expect("the probe translates");
-    CoreClouds::new(device, wgpu::TextureFormat::Rgba8Unorm, &program).expect("the pipelines")
+    CoreClouds::new(device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+        .expect("the pipelines")
 }
 
 /// The faces `clouds::pack` builds reach the pack's shader through `CloudFaces`, texel by
@@ -328,8 +346,8 @@ fn vanillas_clouds_shaders_draw_a_cell_above_the_camera() {
     let Some((device, queue)) = device() else {
         return;
     };
-    let mut core =
-        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &program).expect("pipelines");
+    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+        .expect("pipelines");
     let mut filled = vec![false; 16];
     filled[0] = true;
     let texture = (4, 4, filled);
@@ -386,8 +404,8 @@ fn a_clouds_shader_that_reads_no_faces_still_draws_a_quad_a_face() {
     })
     .expect("the shaders translate");
     assert!(program.other.is_empty(), "reads neither block");
-    let mut core =
-        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &program).expect("pipelines");
+    let mut core = CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &classic(program))
+        .expect("pipelines");
     let mut filled = vec![false; 16];
     filled[3] = true;
     let texture = (4, 4, filled);
@@ -404,4 +422,304 @@ fn a_clouds_shader_that_reads_no_faces_still_draws_a_quad_a_face() {
     for texel in draw(&device, &queue, &core, false).chunks(4) {
         assert_eq!(texel, [51, 102, 153, 255]);
     }
+}
+
+/// A device with Improved Transparency (`oit::features`), or none (said on stderr).
+fn oit_device() -> Option<(wgpu::Device, wgpu::Queue)> {
+    let adapter = crate::gfx::test_gpu::adapter()?;
+    let features = super::super::oit::features(&adapter);
+    if !features.contains(wgpu::Features::FLOAT32_BLENDABLE) {
+        eprintln!(
+            "skipped: no Improved Transparency on {:?}",
+            adapter.get_info()
+        );
+        return None;
+    }
+    eprintln!("adapter {:?}", adapter.get_info());
+    pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        required_features: features,
+        ..Default::default()
+    }))
+    .ok()
+}
+
+/// A vertex stage covering the target with each face's quad at device depth 0.5, wound so fancy
+/// clouds keep it, handing `clouds.fsh` a fog distance of 0 and the colour 0.25, 0.5, 0.75, 1.
+const OIT_VSH: &str = "#version 330\n\
+    layout(location = 0) out float vertexDistance;\nlayout(location = 1) out vec4 vertexColor;\n\
+    void main() {\n    int corner = gl_VertexIndex % 4;\n\
+        vec2 xy = vec2(corner == 1 || corner == 2 ? 1.0 : -1.0, corner >= 2 ? 1.0 : -1.0);\n\
+        gl_Position = vec4(xy, 0.5, 1.0);\n    vertexDistance = 0.0;\n\
+        vertexColor = vec4(0.25, 0.5, 0.75, 1.0);\n}\n";
+
+/// `fragment` (with `OIT_VSH`) translated for each stage as the packs' loader does.
+fn oit_programs(
+    fragment: &str,
+    include: &dyn Fn(&str) -> Option<String>,
+) -> crate::clouds::pack::Programs {
+    let stage = |s: &OitStageSource| {
+        crate::core_shader::translate_core_with(
+            OIT_VSH,
+            fragment,
+            s.defines,
+            include,
+            &GLUE,
+            &|b| b == INFO_BLOCK || b == FACES || s.samplers.contains(&b),
+        )
+        .unwrap_or_else(|e| panic!("{}: {e}", s.name))
+    };
+    crate::clouds::pack::Programs {
+        classic: None,
+        oit: Some(Box::new([
+            stage(&OIT_STAGES[0]),
+            stage(&OIT_STAGES[1]),
+            stage(&OIT_STAGES[2]),
+        ])),
+    }
+}
+
+/// An 8 by 8 texture of `format` usable as a target, a sampled input and a copy source.
+fn oit_texture(device: &wgpu::Device, format: wgpu::TextureFormat) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: None,
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC
+            | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+/// The texel at the middle of `texture`, its bytes (the whole texture is copied: a depth one
+/// can't be copied in part).
+fn middle_texel(device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) -> Vec<u8> {
+    let size = texture.format().block_copy_size(None).unwrap() as usize;
+    let readback = device.create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: 256 * u64::from(SIZE),
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(256),
+                rows_per_image: Some(SIZE),
+            },
+        },
+        texture.size(),
+    );
+    queue.submit([encoder.finish()]);
+    readback.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+    device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+    let data = readback.slice(..).get_mapped_range().unwrap();
+    let at = 256 * (SIZE as usize / 2) + size * (SIZE as usize / 2);
+    data[at..at + size].to_vec()
+}
+
+/// `core`'s `stage` drawn as `Oit` draws the clouds' stage: into `targets` cleared to `clears`
+/// over a depth cleared to 0 (the far plane, reversed Z), sampling `samples`. The middle texel of
+/// each target and of the depth.
+fn draw_stage(
+    (device, queue): (&wgpu::Device, &wgpu::Queue),
+    core: &CoreClouds,
+    (stage, fancy): (super::super::oit::Stage, bool),
+    targets: &[(&wgpu::Texture, wgpu::Color)],
+) -> (Vec<Vec<u8>>, Vec<u8>) {
+    let depth = oit_texture(device, wgpu::TextureFormat::Depth32Float);
+    let indices = crate::gfx::Renderer::quad_indices(device, core.quads.max(1));
+    let views: Vec<wgpu::TextureView> = targets
+        .iter()
+        .map(|(t, _)| t.create_view(&Default::default()))
+        .collect();
+    let mut encoder = device.create_command_encoder(&Default::default());
+    {
+        let attachments: Vec<_> = views
+            .iter()
+            .zip(targets)
+            .map(|(view, (_, clear))| {
+                Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(*clear),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })
+            })
+            .collect();
+        let depth_view = depth.create_view(&Default::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &attachments,
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(0.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        core.draw_oit(&mut pass, stage, fancy, &indices);
+    }
+    queue.submit([encoder.finish()]);
+    let texels = targets
+        .iter()
+        .map(|(t, _)| middle_texel(device, queue, t))
+        .collect();
+    (texels, middle_texel(device, queue, &depth))
+}
+
+fn f32s(bytes: &[u8]) -> Vec<f32> {
+    bytemuck::pod_collect_to_vec(bytes)
+}
+
+fn f16s(bytes: &[u8]) -> Vec<f32> {
+    bytes
+        .chunks(2)
+        .map(|b| half::f16::from_le_bytes([b[0], b[1]]).to_f32())
+        .collect()
+}
+
+/// The blocks with `ProjMat[2][2]` 0.5 and `ProjMat[3][2]` 3 (the rest 0): `deviceToLinearDepth`
+/// of device depth 0.5 is 3 / (0.5 + 0.5), 3 blocks.
+fn oit_blocks() -> [u8; 1024] {
+    let mut blocks = [0u8; 1024];
+    let projection = 256;
+    blocks[projection + 10 * 4..][..4].copy_from_slice(&0.5f32.to_le_bytes());
+    blocks[projection + 14 * 4..][..4].copy_from_slice(&3.0f32.to_le_bytes());
+    blocks
+}
+
+const BOUNDS_CLEAR: wgpu::Color = wgpu::Color {
+    r: -(f32::MAX as f64),
+    g: 0.0,
+    b: 0.0,
+    a: 0.0,
+};
+
+/// Vanilla's own `clouds.fsh` (its `oit.glsl` includes and all) as each of `OIT_CLOUDS`'s
+/// stages, for an opaque fragment at device depth 0.5, 3 blocks away:
+/// - depth bounds (`calculateDepthBounds`): -3, 3, 0.5 and, opaque, 0.5, the depth written by
+///   the fancy pipeline only (`OIT_CLOUDS`' DEFAULT depth modifier);
+/// - transmittance (`addTransmittance`), the bounds 2 to 4 blocks: depth 0.5 of the range, so
+///   bin 3 and 0.4375 of the 7/8 scale, absorbance 4 (`toAbsorbance(0)`): coefficient 0 is
+///   4 x 0.5625 = 2.25; the tree from index 11: coefficient 5 = (0.25 - 0.1875) x 2 x 4 = 0.5,
+///   coefficient 2 = (0.5 - 0.4375) x sqrt 2 x 4 = 0.3536 (0.353515625 in half floats),
+///   coefficient 1 = 0.4375 x 4 = 1.75;
+/// - accumulate (`sampleColorForAccumulation`), no coefficients yet: transmittance 1, the colour
+///   premultiplied, 0.25, 0.5, 0.75, 1.
+#[test]
+#[ignore = "daily"]
+fn vanillas_clouds_fragment_shader_draws_each_improved_transparency_stage() {
+    use super::super::oit::Stage;
+    let _gpu = crate::gfx::test_gpu::lock();
+    let root = crate::resource_source::ResourceSource::directory(resources());
+    let Ok(fragment) = root.read_to_string("assets/minecraft/shaders/core/clouds.fsh") else {
+        eprintln!(
+            "skipped: no prepared resources at {}",
+            resources().display()
+        );
+        return;
+    };
+    let include = |id: &str| {
+        let (namespace, path) = id.split_once(':')?;
+        root.read_to_string(&format!("assets/{namespace}/{path}"))
+            .ok()
+    };
+    let programs = oit_programs(&fragment, &include);
+    let Some((device, queue)) = oit_device() else {
+        return;
+    };
+    let mut core =
+        CoreClouds::new(&device, wgpu::TextureFormat::Rgba8Unorm, &programs).expect("pipelines");
+    assert!(core.improved_transparency() && !core.classic());
+    let mut filled = vec![false; 16];
+    filled[3] = true;
+    let texture = (4, 4, filled);
+    assert_eq!(
+        prepare(
+            &device,
+            &queue,
+            &mut core,
+            &oit_blocks(),
+            &flat_input(&texture)
+        ),
+        Ok(1)
+    );
+    let (bounds_format, coefficient_format) = (
+        wgpu::TextureFormat::Rgba32Float,
+        wgpu::TextureFormat::Rgba16Float,
+    );
+    // What the transmittance and accumulate stages sample: bounds 2 to 4 blocks, no coefficients.
+    let bounds_in = oit_texture(&device, bounds_format);
+    let texels: Vec<f32> = [-2.0f32, 4.0, 0.0, 0.0].repeat((SIZE * SIZE) as usize);
+    queue.write_texture(
+        bounds_in.as_image_copy(),
+        bytemuck::cast_slice(&texels),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(SIZE * 16),
+            rows_per_image: Some(SIZE),
+        },
+        bounds_in.size(),
+    );
+    let coefficients_in = [0, 1].map(|_| oit_texture(&device, coefficient_format));
+    let views = [&bounds_in, &coefficients_in[0], &coefficients_in[1]]
+        .map(|t| t.create_view(&Default::default()));
+    core.bind_oit(
+        &device,
+        &super::super::oit::CloudSamples {
+            generation: 1,
+            views: [&views[0], &views[1], &views[2]],
+        },
+    );
+    let gpu = (&device, &queue);
+    let bounds = oit_texture(&device, bounds_format);
+    for (fancy, depth) in [(true, 0.5f32), (false, 0.0)] {
+        let (texels, written) = draw_stage(
+            gpu,
+            &core,
+            (Stage::DepthBounds, fancy),
+            &[(&bounds, BOUNDS_CLEAR)],
+        );
+        assert_eq!(f32s(&texels[0]), [-3.0, 3.0, 0.5, 0.5], "fancy {fancy}");
+        assert_eq!(f32s(&written), [depth], "fancy {fancy}");
+    }
+    let coefficients = [0, 1].map(|_| oit_texture(&device, coefficient_format));
+    let (texels, _) = draw_stage(
+        gpu,
+        &core,
+        (Stage::Transmittance, true),
+        &[
+            (&coefficients[0], wgpu::Color::TRANSPARENT),
+            (&coefficients[1], wgpu::Color::TRANSPARENT),
+        ],
+    );
+    assert_eq!(f16s(&texels[0]), [2.25, 1.75, 362.0 / 1024.0, 0.0]);
+    assert_eq!(f16s(&texels[1]), [0.0, 0.5, 0.0, 0.0]);
+    let accumulated = oit_texture(&device, coefficient_format);
+    let (texels, _) = draw_stage(
+        gpu,
+        &core,
+        (Stage::Accumulate, true),
+        &[(&accumulated, wgpu::Color::TRANSPARENT)],
+    );
+    assert_eq!(f16s(&texels[0]), [0.25, 0.5, 0.75, 1.0]);
 }

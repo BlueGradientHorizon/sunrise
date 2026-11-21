@@ -311,22 +311,60 @@ fn load_with_expressions(
     }
 }
 
-/// The packs' `core/clouds`, when a pack replaces either stage: the pass gives it `CloudInfo`
-/// and the `CloudFaces` texel buffer besides vanilla's blocks.
-fn load_clouds(root: &ResourceSource, defaults: &ResourceSource) -> Option<Arc<CoreProgram>> {
-    load_pair(
-        root,
-        defaults,
-        ("clouds", "clouds"),
-        &[],
-        &crate::gfx::core_clouds::GLUE,
-        &|block| {
-            matches!(
-                block,
-                crate::gfx::core_clouds::INFO_BLOCK | crate::gfx::core_clouds::FACES
-            )
-        },
-    )
+/// The packs' `core/clouds`, when a pack replaces either stage, translated as vanilla compiles
+/// it for each of its pipelines: once for `CLOUDS`, and once for each stage of `OIT_CLOUDS` with
+/// that stage's defines (`core_clouds::OIT_STAGES`). Every pass gives it `CloudInfo` and the
+/// `CloudFaces` texel buffer besides vanilla's blocks, and an Improved Transparency stage its
+/// samplers. A pipeline whose program is refused is said in the log and draws the native clouds;
+/// the Improved Transparency ones go together, as they draw one picture. None when neither
+/// translates.
+fn load_clouds(
+    root: &ResourceSource,
+    defaults: &ResourceSource,
+) -> Option<Arc<crate::clouds::pack::Programs>> {
+    use crate::gfx::core_clouds::{FACES, GLUE, INFO_BLOCK, OIT_STAGES};
+    let translate = |defines: &[&str], samplers: &[&str]| {
+        translate_pair(
+            root,
+            defaults,
+            ("clouds", "clouds"),
+            defines,
+            &GLUE,
+            &|name| matches!(name, INFO_BLOCK | FACES) || samplers.contains(&name),
+        )
+    };
+    // None: no pack replaces either stage.
+    let classic = match translate(&[], &[])? {
+        Ok(program) => {
+            log::info!("the resource pack's clouds shader translated");
+            Some(program)
+        }
+        Err(e) => {
+            log::warn!("the resource pack's clouds shader is not used: {e}");
+            None
+        }
+    };
+    let mut oit = Vec::with_capacity(OIT_STAGES.len());
+    for stage in &OIT_STAGES {
+        match translate(stage.defines, stage.samplers) {
+            Some(Ok(program)) => oit.push(program),
+            Some(Err(e)) => {
+                log::warn!(
+                    "the resource pack's clouds shader is not used under Improved Transparency \
+                     ({}): {e}",
+                    stage.name
+                );
+                break;
+            }
+            None => break,
+        }
+    }
+    let oit = <[CoreProgram; 3]>::try_from(oit).ok().map(Box::new);
+    if oit.is_some() {
+        log::info!("the resource pack's clouds shader translated for Improved Transparency");
+    }
+    (classic.is_some() || oit.is_some())
+        .then(|| Arc::new(crate::clouds::pack::Programs { classic, oit }))
 }
 
 /// The packs' core shaders the atlas carries (text, block outline, sky, stars, lightmap,

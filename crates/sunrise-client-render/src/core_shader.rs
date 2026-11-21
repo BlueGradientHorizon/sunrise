@@ -191,6 +191,12 @@ impl CoreProgram {
         })
     }
 
+    /// The locations the fragment stage writes.
+    #[cfg(test)]
+    pub fn fragment_writes(&self) -> Vec<u32> {
+        locations(&self.fragment, false)
+    }
+
     pub fn reads_binding(&self, binding: u32) -> bool {
         [&self.vertex, &self.fragment].into_iter().any(|module| {
             let bound: HashSet<naga::Handle<naga::GlobalVariable>> = module
