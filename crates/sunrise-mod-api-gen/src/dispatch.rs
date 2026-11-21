@@ -49,8 +49,8 @@ pub(super) fn render(catalog: &Catalog) -> Result<HookSources, String> {
 
 /// Emit trait methods, event types, game adapters, and `dispatch_*` functions for `hooks`.
 ///
-/// Every generated dispatcher invokes callbacks through `runtime::invoke` under the unified
-/// failure rule: panics disable only `(hook, mod)` for the rest of the session and report once,
+/// Unless an engine adapter owns recovery, generated dispatchers invoke callbacks through
+/// `runtime::invoke`: panics disable only `(hook, mod)` for the rest of the session and report once,
 /// while ordinary refusals report every time and are never latched.
 pub(super) fn emit<'a>(
     hooks: impl Iterator<Item = &'a Hook>,
@@ -516,6 +516,23 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            if answered_return {
+                struct MutableBorrow(bool);
+                impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
+                    fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
+                        self.0 |= reference.mutability.is_some();
+                        syn::visit::visit_type_reference(self, reference);
+                    }
+                }
+                let mut mutable = MutableBorrow(false);
+                syn::visit::Visit::visit_type(&mut mutable, ty);
+                if mutable.0 {
+                    return Err(format!(
+                        "{}: an isolated collector cannot also write to {name}",
+                        hook.name
+                    ));
+                }
+            }
             if let Some(entry) = declaration.as_ref().filter(|_| Some(name.as_str()) == out) {
                 dispatch_params.push(format!(
                     "{name}: &mut super::parts::DeclarationStage<'_, {entry}>"
@@ -571,14 +588,13 @@ pub(super) fn emit<'a>(
                     hook.name
                 ));
             }
-            // Owned configuration tasks cannot be snapshotted. The connection's
-            // registration transaction owns the entire staging sink.
+            // The task sink checkpoints its append-only queue and diagnostic;
+            // it cannot clone the listener-owned tasks.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
-            if scalar {
+            if scalar || task_registration {
                 rollback.push((name.clone(), false));
-            } else if !task_registration
-                && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
+            } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
                 {
@@ -1114,6 +1130,11 @@ pub(super) fn emit<'a>(
                 continue;
             }
             let index = snaps.len();
+            if event_type == "RegisterConfigurationTasksEvent" && field == "registration" {
+                snaps.push(format!("{event}.{field}.checkpoint()"));
+                restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
+                continue;
+            }
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));
@@ -1207,8 +1228,14 @@ pub(super) fn emit<'a>(
                 expression
             }
         };
+        // Collision owns one answer for the whole block. Its enclosing adapter
+        // discards that answer and disables the block's Parts, not the mod's hook.
+        let collision_owns_panic = name == "collision_shape";
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, mod_id_expr: &str, on_abort: &str, exit: &str| {
+            if collision_owns_panic {
+                return format!("{callee}.{name}({invoke});");
+            }
             if let Some((field, stage, _)) = &staged {
                 let accepted = run(
                     mod_id_expr,
@@ -1458,8 +1485,13 @@ pub(super) fn emit<'a>(
                         ),
                     )
                 } else {
+                    let part_owner = if collision_owns_panic {
+                        "_"
+                    } else {
+                        &listener_id
+                    };
                     format!(
-                        "for ({listener_id}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
+                        "for ({part_owner}, {part_item}) in super::entered_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
                         call(&part_item, &listener_id, "continue;", "break"),
                     )
                 },
@@ -2953,10 +2985,10 @@ fn main() {{
                 out: Some("answers".into()),
                 answered_by_mod: true,
                 receiver,
-                dispatch: DispatchStyle::Flat,
+                dispatch: DispatchStyle::ApiCarrier,
                 call,
                 ..Hook::sample(
-                    "sunrise_client::game::native_hooks::gather::Game<'_>::native_gather",
+                    "sunrise_client::game::native_hooks::section_visibility::Game<'_>::native_section_visibility",
                     Side::Client,
                 )
             };
@@ -2967,15 +2999,30 @@ fn main() {{
             panic!("a read-only collector with one answer sink must generate: {error}");
         }
         for extra in [("extra", "&mut u32"), ("extra", "Option<&mut u32>")] {
-            assert!(emit_hook(Receiver::Read, Some(extra), sink).is_err());
+            assert_eq!(
+                emit_hook(Receiver::Read, Some(extra), sink)
+                    .err()
+                    .as_deref(),
+                Some("section_visibility: an isolated collector cannot also write to extra")
+            );
         }
         for invalid_sink in [
             "&mut Vec<Answered<u32>>",
             "&mut dyn FnMut(Answered<u32>) -> Result<(), DeclarationError>",
         ] {
-            assert!(emit_hook(Receiver::Read, None, invalid_sink).is_err());
+            assert_eq!(
+                emit_hook(Receiver::Read, None, invalid_sink)
+                    .err()
+                    .as_deref(),
+                Some("section_visibility: output must be &mut dyn FnMut(Answered<T>)")
+            );
         }
-        assert!(emit_hook(Receiver::Write, Some(("input", "&u32")), sink).is_err());
+        assert_eq!(
+            emit_hook(Receiver::Write, Some(("input", "&u32")), sink)
+                .err()
+                .as_deref(),
+            Some("section_visibility: an isolated collector needs a read-only world Host")
+        );
     }
 
     #[test]

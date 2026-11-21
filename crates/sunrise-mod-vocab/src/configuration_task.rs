@@ -4,23 +4,21 @@ use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    sync::{LazyLock, Mutex},
 };
 
 // The number of concrete native task types is fixed by the installed code, not by peers.
-type TaskOwners = HashMap<(&'static str, TypeId), CallbackOwner>;
-static TASK_OWNERS: LazyLock<Mutex<TaskOwners>> = LazyLock::new(Mutex::default);
+pub(crate) type TaskOwners = HashMap<(&'static str, TypeId), CallbackOwner>;
 
 // no wire: tasks are owned objects with server-thread callbacks and local state.
 /// One task instance owned by a configuring connection. Register the instance with
 /// [`RegisterConfigurationTasksEvent::register`]. The server runs it in queue order,
 /// on the server thread without holding the connection's task lock, and keeps the
 /// same instance while it waits. Callbacks run as the registering mod. A disabled
-/// implementation is skipped; a panic during registration, start or tick closes that
-/// peer and disables the task implementation for that mod for the session, without
-/// disabling other mods' tasks. Dropping a task also runs as the registering mod;
-/// a destructor panic is reported and disables the implementation, even if the
-/// task was rejected or skipped.
+/// implementation is skipped. A panic in a task's type, start or tick callback
+/// refuses that peer and disables the task implementation for that mod for the
+/// session, without disabling other mods' tasks. Dropping a task also runs as
+/// the registering mod. A destructor panic is reported and disables its
+/// implementation, even if the task was rejected or skipped.
 pub trait ConfigurationTask: Send + 'static {
     /// The namespaced task type, read once as the registering mod.
     fn task_type(&self) -> &Identifier;
@@ -41,13 +39,16 @@ impl RegisterConfigurationTasksEvent<'_> {
     /// Append a task to this connection's FIFO queue. A failed native callback
     /// refuses this peer's configuration; a disabled implementation is skipped.
     pub fn register(&mut self, task: impl ConfigurationTask) {
-        let Some(mod_id) = crate::content::crash::current_native_mod() else {
+        let Some((mod_id, installed)) =
+            crate::content::crash::current_native_mod().zip(crate::runtime::installed())
+        else {
             self.registration
                 .failure
                 .get_or_insert_with(|| "Configuration task registration has no owning mod".into());
             return;
         };
-        let owner = TASK_OWNERS
+        let owner = installed
+            .configuration_task_owners
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .entry((mod_id, (&task as &dyn Any).type_id()))

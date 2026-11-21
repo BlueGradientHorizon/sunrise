@@ -204,17 +204,9 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
     #[mod_api::__subscriptions]
     impl crate::Hooks for ThirdMod {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
+            r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
             r.menu_part("plain:table", ThirdPart(self.seen.clone()));
             r.menu_part("minecraft:hopper", ThirdPart(self.seen.clone()));
-        }
-    }
-    struct ThirdHijack {
-        seen: Arc<Mutex<Option<&'static str>>>,
-    }
-    #[mod_api::__subscriptions]
-    impl crate::Hooks for ThirdHijack {
-        fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-            r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
         }
     }
 
@@ -259,9 +251,11 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
         ]
     };
 
+    let third = || crate::ModEntry::new("third", Box::new(ThirdMod { seen: seen.clone() }));
+    // Registration order cannot let the unrelated Part claim the hosted menu's buttons.
     let mods: crate::Mods = vec![
+        third(),
         crate::ModEntry::new("horizon_java", Box::new(HostMod { seen: seen.clone() })),
-        crate::ModEntry::new("third", Box::new(ThirdMod { seen: seen.clone() })),
     ]
     .into();
     crate::load_state::with_test_package_inventory(packages(), || {
@@ -287,7 +281,11 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
                 None
             );
             assert_eq!(menu_opener_owner("plain:table", None), None);
-            // Per-frame opener dispatch reads the pre-indexed table without querying the package
+            assert_eq!(
+                menu_opener_owner("minecraft:hopper", Some("third:block")),
+                Some("third")
+            );
+            // Opener dispatch reads the pre-indexed table without querying the package
             // inventory again: clearing the test package inventory leaves the resolved owners
             // intact.
             crate::load_state::with_test_package_inventory(Vec::new(), || {
@@ -313,18 +311,17 @@ fn served_content_menu_buttons_dispatch_to_serving_host_only() {
         });
     });
 
-    let hijack_mods: crate::Mods = vec![crate::ModEntry::new(
-        "third",
-        Box::new(ThirdHijack { seen: seen.clone() }),
-    )]
-    .into();
+    let hijack_mods: crate::Mods = vec![third()].into();
     crate::load_state::with_test_package_inventory(packages(), || {
         crate::testing::with_mods(hijack_mods.clone(), || {
-            let errors = crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap_err();
-            assert!(
-                errors.iter().any(|e| e.contains("runes:altar")),
-                "{errors:?}"
-            );
+            crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap();
+            // A Part attached by a non-owner cannot become the button handler even
+            // when the serving mod itself did not register a Part.
+            *seen.lock().unwrap() = None;
+            let mut accepted = false;
+            crate::dispatch_menu_button_valid(&host, "runes:altar", None, 1, &mut accepted);
+            assert_eq!(*seen.lock().unwrap(), None);
+            assert!(!accepted);
         });
     });
 }

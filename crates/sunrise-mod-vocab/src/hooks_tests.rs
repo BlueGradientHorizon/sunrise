@@ -1165,6 +1165,7 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
                 "Steve",
                 &mut registration,
             );
+            assert_eq!(registration.failure(), None);
             let tasks = registration.into_tasks();
             assert_eq!(tasks.len(), 1);
             assert_eq!(tasks[0].owner.id(), "healthy");

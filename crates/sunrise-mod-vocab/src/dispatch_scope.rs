@@ -173,9 +173,19 @@ pub(crate) struct Scope {
 
 #[inline]
 pub(crate) fn snapshot() -> Scope {
-    let backend = BACKEND.get_or_init(|| None).as_ref();
+    // Standalone vocabulary fixtures need native owner identity without installing
+    // or sealing the process-wide platform backend.
+    #[cfg(any(test, feature = "testing"))]
+    let fixture = crate::runtime::TEST_MODS.get().is_some();
+    #[cfg(not(any(test, feature = "testing")))]
+    let fixture = false;
+    let backend = if fixture {
+        backend()
+    } else {
+        BACKEND.get_or_init(|| None).as_ref()
+    };
     Scope {
-        installed: backend.is_some(),
+        installed: backend.is_some() || fixture,
         timing: backend.and_then(|backend| {
             backend
                 .profiler_enabled

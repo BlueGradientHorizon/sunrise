@@ -147,8 +147,14 @@ mod root {
         ) -> Option<T> {
             match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
                 Ok(value) => Some(value),
-                Err(_) => {
+                Err(payload) => {
                     poison(hook, mod_id);
+                    // The real boundary also contains the destructor of a panic payload.
+                    if let Err(secondary) =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+                    {
+                        std::mem::forget(secondary);
+                    }
                     None
                 }
             }

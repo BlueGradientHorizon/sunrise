@@ -592,6 +592,7 @@ pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::{PartKind, PhaseContext};
     use quote::ToTokens;
     #[test]
     fn hooks_keep_their_versions_targets_and_scopes() {
@@ -616,18 +617,31 @@ mod tests {
             .iter()
             .find(|p| p.name == "pre_remove_side_effects")
             .unwrap();
-        assert!(scoped.scope.is_some());
-        assert_eq!(scoped.version, 2);
-        for (name, version) in [
-            ("add_client_reload_listeners", 2),
-            ("add_server_reload_listeners", 2),
-            ("register_entity_layers", 4),
-            ("register_entity_renderers", 4),
-            ("section_visibility", 2),
-            ("movement_input_update", 1),
+        assert_eq!(scoped.scope.as_ref().unwrap().kind, PartKind::BlockEntity);
+        assert_eq!(scoped.version, 3);
+        for (name, version, context) in [
+            (
+                "add_client_reload_listeners",
+                4,
+                Some(PhaseContext::ClientReloadListener),
+            ),
+            ("add_server_reload_listeners", 4, Some(PhaseContext::Reload)),
+            (
+                "register_entity_layers",
+                4,
+                Some(PhaseContext::Registration),
+            ),
+            (
+                "register_entity_renderers",
+                4,
+                Some(PhaseContext::Registration),
+            ),
+            ("section_visibility", 2, None),
+            ("movement_input_update", 1, None),
         ] {
             let hook = points.iter().find(|hook| hook.name == name).unwrap();
             assert_eq!(hook.version, version, "{name}");
+            assert_eq!(hook.context, context, "{name}");
         }
     }
 
