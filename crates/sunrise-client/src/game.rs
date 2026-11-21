@@ -14008,7 +14008,7 @@ pub(crate) fn run_with(
         vanilla_root,
         started,
         loaded.rest_loader,
-        Some(early_settings),
+        early_settings,
         None,
         std::mem::take(&mut loaded.client_applies),
         loaded.entity_models,

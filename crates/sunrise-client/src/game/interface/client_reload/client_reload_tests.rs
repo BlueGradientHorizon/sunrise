@@ -1010,7 +1010,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             root,
                             Instant::now(),
                             None,
-                            Some(game.settings.clone()),
+                            game.settings.clone(),
                             None,
                             Vec::new(),
                             None,

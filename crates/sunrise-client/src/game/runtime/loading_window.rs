@@ -281,8 +281,8 @@ pub(super) fn loading_frame(hud: &HudBatch) -> Frame<'_> {
 
 /// The post-load setup once the resources are ready: `Game::new` and the
 /// options, packs, mods, control socket, benchmark and world selection the
-/// old `run` did after loading. `None` means a harness or dedicated run
-/// finished here instead.
+/// old `run` did after loading. The launching path hands over its live
+/// settings. `None` means a harness or dedicated run finished here instead.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn start_game<'a>(
     res: &'a Arc<Resources>,
@@ -294,16 +294,12 @@ pub(super) fn start_game<'a>(
     vanilla_root: PathBuf,
     started: Instant,
     rest_loader: Option<WorldRestLoader>,
-    settings: Option<Settings>,
+    mut settings: Settings,
     prepared: Option<GameCpuResources>,
     client_applies: Vec<client_reload::PreparedClientReload>,
     entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
 ) -> Result<Option<Game<'a>>> {
     let handoff = prepared.is_some();
-    let mut settings = match settings {
-        Some(settings) => settings,
-        None => Settings::load(&Game::options_path()),
-    };
     if let Some(d) = options.distance_override {
         settings.render_distance = d;
     }
