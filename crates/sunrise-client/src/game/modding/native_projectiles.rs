@@ -82,7 +82,7 @@ impl Game<'_> {
     }
 
     /// Dispatch a hit for a projectile ticked outside the shared projectile list.
-    /// The caller checks the server opt-in gate and exposes the live projectile
+    /// The caller checks `native_hears_impacts` and exposes the live projectile
     /// before calling; misses never dispatch.
     pub(super) fn native_separate_projectile_impact(
         &mut self,
@@ -135,16 +135,12 @@ impl Game<'_> {
     }
 
     /// Whether this game is a server that flies projectiles for the mods (the
-    /// server thread or a dedicated server, never a client) and a mod asked to hear their impacts
-    /// (`native_hears_projectile_impacts`). Without one, the tick keeps no copy
+    /// server thread or a dedicated server, never a client) and an enabled mod
+    /// subscribes to `projectile_impact`. Without one, the tick keeps no copy
     /// of its projectiles: it costs nothing.
     pub(super) fn native_hears_impacts(&self) -> bool {
-        if self.serving.is_none() && self.options.dedicated.is_none() {
-            return false;
-        }
-        let mut hears = false;
-        self.native_hears_projectile_impacts(&mut hears);
-        hears
+        (self.serving.is_some() || self.options.dedicated.is_some())
+            && mod_api::__private::enabled_listened(mod_api::HookId::ProjectileImpact)
     }
 
     /// The entity id of the one who shot `p`: a mob's, a player's, else 0.

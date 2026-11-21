@@ -16,17 +16,14 @@ impl Game<'_> {
     /// `LivingEntity.collectEquipmentChanges` for the mobs that tick: each
     /// slot that holds another stack than the mods last heard is told
     /// (`native_living_equipment_change`). A mob new to the level counts from
-    /// empty, as vanilla's `lastEquipmentItems` does. Only while a mod
-    /// listens (`native_living_equipment_listened`): a mob's first tick after
-    /// that counts from empty too.
+    /// empty, as vanilla's `lastEquipmentItems` does. Only while an enabled mod
+    /// subscribes to `living_equipment_change`: a mob's first tick after that
+    /// counts from empty too.
     pub(super) fn native_mobs_equipment(&mut self) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return;
-        }
-        // Reading every mob's equipment each tick costs: only when a mod listens.
-        let mut listened = false;
-        self.native_living_equipment_listened(&mut listened);
-        if !listened {
+        if self.remote.is_some()
+            || self.options.execution_role.is_client()
+            || !mod_api::__private::enabled_listened(mod_api::HookId::LivingEquipmentChange)
+        {
             return;
         }
         let ticking = self.entity_ticking_area();
@@ -58,11 +55,12 @@ impl Game<'_> {
     /// `LivingEntity.collectEquipmentChanges` for the server's players (they are living entities
     /// too): each slot whose stack differs from what the mods last heard is told, the previous
     /// stack with it, so a hotbar selection that moves the main hand counts. A player new to the
-    /// level counts from empty, as for mobs, and only while a mod listens.
+    /// level counts from empty, as for mobs, and only while an enabled mod subscribes.
     pub(super) fn native_players_equipment(&mut self) {
-        let mut listened = false;
-        self.native_living_equipment_listened(&mut listened);
-        if !listened {
+        if self.remote.is_some()
+            || self.options.execution_role.is_client()
+            || !mod_api::__private::enabled_listened(mod_api::HookId::LivingEquipmentChange)
+        {
             return;
         }
         let Some(host) = self.lan.as_mut() else {
