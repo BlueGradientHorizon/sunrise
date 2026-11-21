@@ -52,8 +52,14 @@ impl Game<'_> {
             return;
         };
         let rect = [0.0, 0.0, batch.width, batch.height];
-        let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
-        session.render(&mut draw, rect);
+        let paint = batch.paint_checkpoint();
+        let rendered = {
+            let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
+            session.render(&mut draw, rect)
+        };
+        if !rendered {
+            paint.discard(batch);
+        }
     }
 
     /// Forward a mouse press to the open bound preset editor.
