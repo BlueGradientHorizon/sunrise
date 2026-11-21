@@ -3,10 +3,11 @@ use super::*;
 impl Game<'_> {
     /// Configure notice collection before this level can receive any block entities.
     pub(in crate::game) fn world_for_mods(
-        air: BlockStateId,
+        res: &Resources,
         seed: i64,
     ) -> sunrise_client::world::World {
-        let mut world = sunrise_client::world::World::new(air, seed);
+        let mut world = sunrise_client::world::World::new(res.facts().air, seed);
+        world.state_blocks = res.state_blocks();
         world
             .block_entities
             .set_on_load_enabled(mod_api::__private::has_part_hook(

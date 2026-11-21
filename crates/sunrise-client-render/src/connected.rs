@@ -159,6 +159,9 @@ pub struct ConnectedTextures {
     /// By block state: the highest point of its collision shape, for the rules that join by
     /// height ([`Self::set_heights`]); an empty shape has none.
     heights: Vec<f64>,
+    /// True if any loaded rule has `connect_group: true`. Cached at build time so the mesher
+    /// skips group-map checks completely when no rule uses connection groups.
+    has_group_rules: bool,
 }
 
 /// `list` appended to `lists`, as its range there.
@@ -528,11 +531,18 @@ impl ConnectedTextures {
         for (r, chain) in out.rules.iter_mut().zip(chains) {
             r.chain = chain;
         }
+        out.has_group_rules = out.rules.iter().any(|r| r.rule.connect_group);
         out
     }
 
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
+    }
+
+    /// Whether any loaded rule checks per-position mod connection groups (`connect_group`).
+    #[inline]
+    pub fn has_group_rules(&self) -> bool {
+        self.has_group_rules
     }
 
     /// Whether a rule joins by height, and the collision heights are needed.
@@ -593,9 +603,11 @@ impl ConnectedTextures {
     }
 
     /// What the `face` of the block `state` at `pos` draws, for a quad with sprite `layer`.
-    /// `neighbour` answers the state at an offset from the block; `biome` its biome, asked only
-    /// by rules that test one; `texture` the quad's own texture directions, asked only by rules
-    /// with `orient=texture`.
+    /// `neighbour` answers the state at an offset from the block; `group` answers the
+    /// mod-published connection group at an offset (`[0, 0, 0]` is the block itself), asked only
+    /// by rules with `connect_group`; `biome` its biome, asked only by rules that test one;
+    /// `texture` the quad's own texture directions, asked only by rules with `orient=texture`.
+    #[allow(clippy::too_many_arguments)]
     pub fn pick<'b>(
         &self,
         state: u32,
@@ -603,6 +615,7 @@ impl ConnectedTextures {
         face: Face,
         pos: [i32; 3],
         neighbour: impl Fn([i32; 3]) -> u32,
+        group: impl Fn([i32; 3]) -> Option<u64>,
         full_faces: impl Fn(u32) -> u8,
         biome: impl Fn() -> Option<&'b str>,
         texture: impl Fn() -> Option<Axes>,
@@ -644,6 +657,7 @@ impl ConnectedTextures {
                     face,
                     pos,
                     &neighbour,
+                    &group,
                     &full_faces,
                     &biome,
                     &texture,
@@ -681,6 +695,7 @@ impl ConnectedTextures {
                         face,
                         pos,
                         &neighbour,
+                        &group,
                         &full_faces,
                         &biome,
                         &texture,
@@ -707,6 +722,7 @@ impl ConnectedTextures {
         face: Face,
         pos: [i32; 3],
         neighbour: &impl Fn([i32; 3]) -> u32,
+        group: &impl Fn([i32; 3]) -> Option<u64>,
         full_faces: &impl Fn(u32) -> u8,
         biome: &impl Fn() -> Option<&'b str>,
         texture: &impl Fn() -> Option<Axes>,
@@ -727,49 +743,65 @@ impl ConnectedTextures {
         }
         let info = self.states.get(state as usize).copied().unwrap_or_default();
         let join = &r.overlay;
+        let own_group = if rule.connect_group {
+            group([0, 0, 0])
+        } else {
+            None
+        };
         let joins = |offset: [i32; 3]| {
             let other = neighbour(offset);
-            if join.any() {
+            let base = if join.any() {
                 // An overlay joins the blocks it is drawn beside.
-                return join.states.binary_search(&other).is_ok()
+                join.states.binary_search(&other).is_ok()
                     || self
                         .face_layers
                         .get(other as usize)
-                        .is_some_and(|f| join.tiles.binary_search(&f[face as usize]).is_ok());
-            }
-            match rule.connect {
-                Connect::Block => {
-                    self.states.get(other as usize).map(|s| s.block) == Some(info.block)
+                        .is_some_and(|f| join.tiles.binary_search(&f[face as usize]).is_ok())
+            } else {
+                match rule.connect {
+                    Connect::Block => {
+                        self.states.get(other as usize).map(|s| s.block) == Some(info.block)
+                    }
+                    Connect::State => other == state,
+                    Connect::Blocks => r.listed.binary_search(&other).is_ok(),
+                    Connect::Height(h) => {
+                        let own = self.height(state);
+                        let at = |cell: [i32; 3]| {
+                            let above = self.height(neighbour([cell[0], cell[1] + 1, cell[2]]));
+                            (self.height(neighbour(cell)), above)
+                        };
+                        let (height, above) = at(offset);
+                        let listed = r.rule.connect_blocks.is_empty()
+                            || r.listed.binary_search(&other).is_ok();
+                        h.joins(own, height, above, listed)
+                            || (h.side
+                                && geometry::beside(face.normal(), offset).is_some_and(|beside| {
+                                    beside.into_iter().any(|cell| {
+                                        let (height, above) = at(cell);
+                                        h.joins_beside(own, height, above)
+                                    })
+                                }))
+                    }
+                    Connect::Properties => r
+                        .keys
+                        .get(other as usize)
+                        .is_some_and(|&k| k != u32::MAX && Some(&k) == r.keys.get(state as usize)),
+                    Connect::Tile => self
+                        .face_layers
+                        .get(other as usize)
+                        .is_some_and(|f| f[face as usize] == layer),
                 }
-                Connect::State => other == state,
-                Connect::Blocks => r.listed.binary_search(&other).is_ok(),
-                Connect::Height(h) => {
-                    let own = self.height(state);
-                    let at = |cell: [i32; 3]| {
-                        let above = self.height(neighbour([cell[0], cell[1] + 1, cell[2]]));
-                        (self.height(neighbour(cell)), above)
-                    };
-                    let (height, above) = at(offset);
-                    let listed =
-                        r.rule.connect_blocks.is_empty() || r.listed.binary_search(&other).is_ok();
-                    h.joins(own, height, above, listed)
-                        || (h.side
-                            && geometry::beside(face.normal(), offset).is_some_and(|beside| {
-                                beside.into_iter().any(|cell| {
-                                    let (height, above) = at(cell);
-                                    h.joins_beside(own, height, above)
-                                })
-                            }))
-                }
-                Connect::Properties => r
-                    .keys
-                    .get(other as usize)
-                    .is_some_and(|&k| k != u32::MAX && Some(&k) == r.keys.get(state as usize)),
-                Connect::Tile => self
-                    .face_layers
-                    .get(other as usize)
-                    .is_some_and(|f| f[face as usize] == layer),
+            };
+            if !base {
+                return false;
             }
+            if rule.connect_group {
+                let Some(own) = own_group else {
+                    return false;
+                };
+                return group(offset) == Some(own);
+            }
+            true
         };
         let axes = |face| match (rule.orient, info.axis) {
             (Orient::StateAxis, Some(axis)) => Axes::column(face, axis),
@@ -1014,6 +1046,7 @@ mod tests {
             face,
             [0, 64, 0],
             at,
+            |_| None,
             full,
             || None,
             || None,
@@ -1467,6 +1500,7 @@ mod tests {
                 Face::North,
                 [x, 64, 0],
                 |_| 0,
+                |_| None,
                 |_| 0,
                 || None,
                 || None,
@@ -1478,6 +1512,7 @@ mod tests {
                 Face::North,
                 [x, 65, 0],
                 |_| 0,
+                |_| None,
                 |_| 0,
                 || None,
                 || None,
@@ -1502,6 +1537,7 @@ mod tests {
                 Face::Up,
                 [0, y, 0],
                 |_| 0,
+                |_| None,
                 |_| 0,
                 || Some(biome),
                 || None,
@@ -1548,6 +1584,7 @@ mod tests {
                 Face::North,
                 pos,
                 |_| 0,
+                |_| None,
                 |_| 0,
                 || None,
                 || None,
@@ -1633,6 +1670,7 @@ mod tests {
             face,
             [0, 64, 0],
             at,
+            |_| None,
             |_| 0,
             || None,
             || None,
@@ -1672,6 +1710,7 @@ mod tests {
             Face::Up,
             [0, 64, 0],
             |o| if o == [0, 0, -1] { 1 } else { 0 },
+            |_| None,
             |_| 0,
             || None,
             || None,
@@ -1711,6 +1750,7 @@ mod tests {
             Face::Up,
             [0, 64, 0],
             door_north,
+            |_| None,
             |_| 0,
             || None,
             || None,
@@ -1836,6 +1876,7 @@ mod tests {
                 Face::North,
                 [0, 64, 0],
                 east,
+                |_| None,
                 |_| 0,
                 || None,
                 mirrored,
@@ -1866,6 +1907,7 @@ mod tests {
             Face::Up,
             [0, 64, 0],
             north,
+            |_| None,
             |_| 0,
             || None,
             turned,
@@ -2095,6 +2137,7 @@ mod tests {
             Face::North,
             [0; 3],
             |_| 0,
+            |_| None,
             |_| 0,
             || None,
             || None,
@@ -2173,5 +2216,126 @@ mod tests {
             "a sheet that is not a grid of square tiles drops its rule"
         );
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn connect_group_requires_matching_group_including_zero_and_cover() {
+        use std::sync::Arc;
+        use sunrise_connected::{L, R, Rule, Table, TableSheet};
+
+        let none = BlockProperties::default();
+        let states = [
+            ("minecraft:air", &none),
+            ("demo:tank", &none),
+            ("minecraft:stone", &none),
+        ];
+        // Table with left/right tests and cover=true: 4 outcomes -> tiles 0..4.
+        let table = Table::new(vec![L, R], true, (4, 1), vec![0, 1, 2, 3]).unwrap();
+        let mut rule = Rule::table(
+            "assets/demo/sunrise/connected/tank.json".into(),
+            TableSheet {
+                sprite: "demo:block/tank_sheet".into(),
+                table: Arc::new(table),
+            },
+        );
+        rule.match_blocks = vec![sunrise_connected::BlockSel {
+            id: "demo:tank".into(),
+            states: Vec::new(),
+        }];
+        rule.connect_group = true;
+        let mut plain = rule.clone();
+        plain.connect_group = false;
+
+        let build = |r: Rule| {
+            let cells = (0u16..4)
+                .map(|i| {
+                    Some(TileLayer::Layer {
+                        layer: 100 + i,
+                        translucent: false,
+                        opaque: false,
+                    })
+                })
+                .collect();
+            let loaded = LoadedRule {
+                rule: r,
+                tiles: Vec::new(),
+                cells,
+                listed: Vec::new(),
+                keys: Vec::new(),
+                chain: Vec::new(),
+                overlay: OverlayJoin::default(),
+            };
+            ConnectedTextures::build(vec![loaded], states.iter().map(|&s| Some(s)), |_| None)
+        };
+
+        let plain_ctm = build(plain);
+        assert!(!plain_ctm.has_group_rules());
+        let ctm = build(rule);
+        assert!(ctm.has_group_rules());
+
+        // On Face::Up, left is [-1, 0, 0], right is [1, 0, 0], front (cover) is [0, 1, 0].
+        let full_down = 1u8 << (Face::Down as u8);
+        let pick_with =
+            |neighbours: &[([i32; 3], u32)], groups: &[([i32; 3], u64)], cover_full: bool| {
+                ctm.pick(
+                    1,
+                    0,
+                    Face::Up,
+                    [0, 64, 0],
+                    |o| {
+                        neighbours
+                            .iter()
+                            .find(|(p, _)| *p == o)
+                            .map_or(0, |&(_, s)| s)
+                    },
+                    |o| groups.iter().find(|(p, _)| *p == o).map(|&(_, g)| g),
+                    |s| if cover_full && s == 1 { full_down } else { 0 },
+                    || None,
+                    || None,
+                    |_| {},
+                )
+            };
+
+        // Group None joins nothing — not even another None neighbour of the same block.
+        assert_eq!(
+            pick_with(&[([-1, 0, 0], 1), ([1, 0, 0], 1)], &[], false),
+            tile(100)
+        );
+        // Same group (including group 0) joins; different group does not.
+        assert_eq!(
+            pick_with(
+                &[([-1, 0, 0], 1), ([1, 0, 0], 1)],
+                &[([0, 0, 0], 0), ([-1, 0, 0], 0), ([1, 0, 0], 7)],
+                false,
+            ),
+            tile(101)
+        );
+        // Different block with the same group still does NOT join under Connect::Block.
+        assert_eq!(
+            pick_with(
+                &[([-1, 0, 0], 2)],
+                &[([0, 0, 0], 5), ([-1, 0, 0], 5)],
+                false,
+            ),
+            tile(100)
+        );
+        // Cover suppresses left join only when the front-of-left cell [-1, 1, 0] ALSO matches
+        // the block and shares the connection group.
+        assert_eq!(
+            pick_with(
+                &[([-1, 0, 0], 1), ([-1, 1, 0], 1)],
+                &[([0, 0, 0], 5), ([-1, 0, 0], 5), ([-1, 1, 0], 9)],
+                true,
+            ),
+            tile(101)
+        );
+        assert_eq!(
+            pick_with(
+                &[([-1, 0, 0], 1), ([-1, 1, 0], 1)],
+                &[([0, 0, 0], 5), ([-1, 0, 0], 5), ([-1, 1, 0], 5)],
+                true,
+            ),
+            tile(100)
+        );
     }
 }

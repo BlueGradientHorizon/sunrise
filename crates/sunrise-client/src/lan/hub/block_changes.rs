@@ -4,9 +4,54 @@
 use super::{Guest, Hub};
 use crate::{chunk::Chunk, lan::viewed_levels::send::Runs, world::World};
 use sunrise_protocol::{
-    packets::play::{self, Clientbound as C},
+    connection_groups::{self, ChunkEntry, UpdateEntry},
+    packets::{
+        custom_payload::CustomPayload,
+        play::{self, Clientbound as C},
+    },
     viewed_levels::Level,
 };
+
+/// Encode one chunk's connection-group map into one or more `sunrise:connection_groups` play
+/// clientbound custom-payload packet bodies. Empty chunks produce nothing.
+pub(super) fn encode_chunk_connection_groups(chunk: &Chunk) -> Vec<Vec<u8>> {
+    if chunk.connection_groups.is_empty() {
+        return Vec::new();
+    }
+    let mut entries: Vec<ChunkEntry> = chunk
+        .connection_groups
+        .iter()
+        .map(|(&cell, &group)| {
+            let (local_x, y, local_z) = chunk.dynamic_cell_coords(cell);
+            ChunkEntry {
+                local_x,
+                y,
+                local_z,
+                group,
+            }
+        })
+        .collect();
+    entries.sort_unstable_by_key(|e| (e.y, e.local_z, e.local_x));
+    let mut packets = Vec::new();
+    for (part, slice) in entries.chunks(connection_groups::MAX_ENTRIES).enumerate() {
+        let msg = connection_groups::Message::Chunk {
+            cx: chunk.x,
+            cz: chunk.z,
+            replace: part == 0,
+            entries: slice.to_vec(),
+        };
+        if let Ok(data) = connection_groups::encode(&msg) {
+            packets.push(
+                C::CustomPayload(CustomPayload {
+                    channel: connection_groups::CHANNEL.into(),
+                    data,
+                })
+                .encode(),
+            );
+        }
+    }
+    packets
+}
 
 impl Hub {
     /// The players sent chunk `key` of the level in place: those in it (None), and those whose
@@ -97,6 +142,7 @@ impl Hub {
             keys.sort_unstable();
             keys
         };
+        let mut bulk_sent_groups: Vec<(i32, i32)> = Vec::new();
         if !bulk.is_empty() {
             // The single-player window's far terrain draws a column it isn't sent as the window last saw it: it is
             // handed the column to summarize again (`handoff::changed`).
@@ -125,9 +171,25 @@ impl Hub {
                 }
                 let body = self.encoder.body_in(chunk, world);
                 self.send_to_holders(&holders, &body);
+                if !chunk.connection_groups.is_empty() {
+                    let cg_holders: Vec<_> = holders
+                        .iter()
+                        .copied()
+                        .filter(|&(i, level)| {
+                            level.is_none() && self.guests[i].negotiated_connection_groups()
+                        })
+                        .collect();
+                    if !cg_holders.is_empty() {
+                        for packet in encode_chunk_connection_groups(chunk) {
+                            self.send_to_holders(&cg_holders, &packet);
+                        }
+                    }
+                    bulk_sent_groups.push(key);
+                }
             }
         }
         let Some(log) = world.block_log.as_mut() else {
+            self.broadcast_connection_group_changes(world, &bulk_sent_groups);
             return;
         };
         if !bulk.is_empty() {
@@ -140,79 +202,143 @@ impl Hub {
                     )
             });
         }
+        if !log.is_empty() {
+            let mut changes = std::mem::take(log);
+            changes.sort_unstable();
+            changes.dedup();
+            // Group by section.
+            let mut sections: std::collections::BTreeMap<(i32, i32, i32), Vec<(i32, i32, i32)>> =
+                Default::default();
+            for p in changes {
+                sections
+                    .entry((p.0 >> 4, p.1 >> 4, p.2 >> 4))
+                    .or_default()
+                    .push(p);
+            }
+            for ((sx, sy, sz), positions) in sections {
+                let holders = self.holders((sx, sz));
+                if holders.is_empty() {
+                    continue;
+                }
+                let packet = if positions.len() == 1 {
+                    let (x, y, z) = positions[0];
+                    C::BlockUpdate(play::BlockUpdate {
+                        pos: [x, y, z],
+                        state: world.block(x, y, z).0 as i32,
+                    })
+                } else {
+                    C::SectionBlocksUpdate(play::SectionBlocksUpdate {
+                        section: [sx, sy, sz],
+                        changes: positions
+                            .iter()
+                            .map(|&(x, y, z)| {
+                                let state = i64::from(world.block(x, y, z).0);
+                                state << 12
+                                    | i64::from(x & 15) << 8
+                                    | i64::from(z & 15) << 4
+                                    | i64::from(y & 15)
+                            })
+                            .collect(),
+                    })
+                };
+                self.send_to_holders(&holders, &packet.encode());
+                // Block entities with data the client shows.
+                for &(x, y, z) in &positions {
+                    let state = world.block(x, y, z).0;
+                    if !self
+                        .encoder
+                        .entity_matches(state, world.block_entities.get(&(x, y, z)))
+                    {
+                        continue;
+                    }
+                    // A decorated pot is no block entity: its tag is the chunk's saved one.
+                    let state = world.block(x, y, z).0;
+                    let tag = match world.block_entities.get(&(x, y, z)) {
+                        Some(entity) => self.encoder.change_tag((x, y, z), state, entity),
+                        None => world
+                            .chunks
+                            .get(&(x >> 4, z >> 4))
+                            .and_then(|c| crate::lan::chunks::pot_tag(c, (x, y, z))),
+                    };
+                    let Some(tag) = tag else {
+                        continue;
+                    };
+                    let Some(kind) = self.encoder.entity_type(state) else {
+                        continue;
+                    };
+                    let body = C::BlockEntityData(play::BlockEntityData {
+                        pos: [x, y, z],
+                        kind,
+                        tag,
+                    })
+                    .encode();
+                    self.send_to_holders(&holders, &body);
+                }
+            }
+        }
+        self.broadcast_connection_group_changes(world, &bulk_sent_groups);
+    }
+
+    /// Broadcast incremental connection-group edits/clears logged in `world.connection_group_log`
+    /// to negotiated guests that hold each entry's chunk.
+    fn broadcast_connection_group_changes(&self, world: &mut World, bulk: &[(i32, i32)]) {
+        let Some(log) = world.connection_group_log.as_mut() else {
+            return;
+        };
         if log.is_empty() {
             return;
         }
-        let mut changes = std::mem::take(log);
-        changes.sort_unstable();
-        changes.dedup();
-        // Group by section.
-        let mut sections: std::collections::BTreeMap<(i32, i32, i32), Vec<(i32, i32, i32)>> =
+        // Collapse repeated writes to the same position, keeping the last value.
+        let mut latest: std::collections::BTreeMap<(i32, i32, i32), Option<u64>> =
             Default::default();
-        for p in changes {
-            sections
-                .entry((p.0 >> 4, p.1 >> 4, p.2 >> 4))
-                .or_default()
-                .push(p);
-        }
-        for ((sx, sy, sz), positions) in sections {
-            let holders = self.holders((sx, sz));
-            if holders.is_empty() {
+        for (pos, group) in log.drain(..) {
+            if bulk.binary_search(&(pos.0 >> 4, pos.2 >> 4)).is_ok() {
                 continue;
             }
-            let packet = if positions.len() == 1 {
-                let (x, y, z) = positions[0];
-                C::BlockUpdate(play::BlockUpdate {
+            latest.insert(pos, group);
+        }
+        if latest.is_empty() {
+            return;
+        }
+        // Group by chunk so we only send to negotiated guests that hold that chunk.
+        let mut by_chunk: std::collections::BTreeMap<(i32, i32), Vec<UpdateEntry>> =
+            Default::default();
+        for ((x, y, z), group) in latest {
+            by_chunk
+                .entry((x >> 4, z >> 4))
+                .or_default()
+                .push(UpdateEntry {
                     pos: [x, y, z],
-                    state: world.block(x, y, z).0 as i32,
-                })
-            } else {
-                C::SectionBlocksUpdate(play::SectionBlocksUpdate {
-                    section: [sx, sy, sz],
-                    changes: positions
-                        .iter()
-                        .map(|&(x, y, z)| {
-                            let state = i64::from(world.block(x, y, z).0);
-                            state << 12
-                                | i64::from(x & 15) << 8
-                                | i64::from(z & 15) << 4
-                                | i64::from(y & 15)
-                        })
-                        .collect(),
-                })
-            };
-            self.send_to_holders(&holders, &packet.encode());
-            // Block entities with data the client shows.
-            for &(x, y, z) in &positions {
-                let state = world.block(x, y, z).0;
-                if !self
-                    .encoder
-                    .entity_matches(state, world.block_entities.get(&(x, y, z)))
+                    group,
+                });
+        }
+        // Batch per guest so one packet covers all chunks that guest holds.
+        let mut per_guest: std::collections::BTreeMap<usize, Vec<UpdateEntry>> = Default::default();
+        for (key, entries) in by_chunk {
+            for (i, g) in self.guests.iter().enumerate() {
+                if self.watches(g)
+                    && g.sent_chunks.contains(&key)
+                    && g.negotiated_connection_groups()
                 {
-                    continue;
+                    per_guest
+                        .entry(i)
+                        .or_default()
+                        .extend(entries.iter().copied());
                 }
-                // A decorated pot is no block entity: its tag is the chunk's saved one.
-                let state = world.block(x, y, z).0;
-                let tag = match world.block_entities.get(&(x, y, z)) {
-                    Some(entity) => self.encoder.change_tag((x, y, z), state, entity),
-                    None => world
-                        .chunks
-                        .get(&(x >> 4, z >> 4))
-                        .and_then(|c| crate::lan::chunks::pot_tag(c, (x, y, z))),
+            }
+        }
+        for (i, entries) in per_guest {
+            let g = &self.guests[i];
+            for slice in entries.chunks(connection_groups::MAX_ENTRIES) {
+                let msg = connection_groups::Message::Update {
+                    entries: slice.to_vec(),
                 };
-                let Some(tag) = tag else {
-                    continue;
-                };
-                let Some(kind) = self.encoder.entity_type(state) else {
-                    continue;
-                };
-                let body = C::BlockEntityData(play::BlockEntityData {
-                    pos: [x, y, z],
-                    kind,
-                    tag,
-                })
-                .encode();
-                self.send_to_holders(&holders, &body);
+                if let Ok(data) = connection_groups::encode(&msg) {
+                    g.send(&C::CustomPayload(CustomPayload {
+                        channel: connection_groups::CHANNEL.into(),
+                        data,
+                    }));
+                }
             }
         }
     }

@@ -8,7 +8,7 @@ impl Game<'_> {
     /// The length the block log had after the changed blocks went out
     /// (`ServerChunkCache.tick`'s broadcast), before the block events and the
     /// block entities ran.
-    pub(super) fn tick_blocks(&mut self) -> Result<Option<usize>> {
+    pub(super) fn tick_blocks(&mut self) -> Result<Option<(usize, usize)>> {
         let mut scratch = std::mem::take(&mut self.tick_scratch);
         let result = self.tick_blocks_with_scratch(&mut scratch);
         self.tick_scratch = scratch;

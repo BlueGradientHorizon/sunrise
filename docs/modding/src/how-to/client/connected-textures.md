@@ -32,6 +32,7 @@ overrides your models, and they are read again when resources reload.
 | `sprites` | The sprites the rule replaces. Leave it out to replace whatever sprite the block's faces use; name it to leave other sprites of the same block alone. A rule names `blocks`, `tag`, `sprites`, or several. |
 | `faces` | `down`, `up`, `north`, `south`, `west`, `east`, `sides` or `all` (the default). |
 | `connect` | What a neighbour must be to join: `"block"` (the default: the same block), `"state"` (the same block state), `"sprite"` (the same sprite on that face), `{"tag": "mymod:casings"}` (any block of a tag), `{"same": ["axis"]}` (the same block with equal values of the listed state properties: a pillar that joins only pillars along its own axis), or `{"height": {...}}` (by collision height, below). |
+| `connect_group` | Optional boolean, `false` by default. When `true`, the block and each joining neighbour (including a covering block under `cover`) must also share the same non-empty mod-published connection group (`LevelRef::set_connection_group`). Blocks with no group join nothing. |
 | `orient` | Where a face's left, right, up and down are: `"default"` (a vanilla cube's), `"axis"` (turned by the block's `axis` property, as a pillar's model is), or `"texture"` (the quad's own texture directions, so a turned or mirrored model turns its neighbours too: use it for a pane, whose vanilla model mirrors some faces, and for turned blocks whose model rotates the texture). A pane here is any block of vanilla's `IronBarsBlock` class (glass panes, iron bars, and a mod block declared on that template), whatever its name: it takes the cube's directions for its tiles and hides the strips shared with a stacked pane. |
 | `sheet` | The sprite the tiles are cut from. |
 | `table` | A table: the name of a shared one, or the table itself. |
@@ -96,6 +97,33 @@ Heights are compared exactly: they come from the published collision shapes, rea
 One rule per case, in order. Create's copper roofs, for example, are a rule for the bottom slab
 (a `blocks` entry with `"state": {"type": ["bottom"]}`) that joins with `higher`, and a rule for the other roof blocks that joins with
 `same`, `above` and `side`, both on the `up` face.
+
+## Joining by a connection group
+
+Some multiblock structures (fluid tanks, boilers, vaults) decide at runtime which touching blocks belong to the same
+structure: two 2 × 2 tanks placed side by side share the same block state, but their textures must not merge across
+the seam between them.
+
+Set `"connect_group": true` on the rule and publish an opaque `u64` group identifier per block position from the
+server with `LevelRef::set_connection_group(host, pos, Some(group))` (or `None` to clear it; read on either side
+with `LevelRef::connection_group(host, pos)`):
+
+```rust
+level.set_connection_group(host, pos, Some(tank_controller_id))?;
+```
+
+- **Combined with `connect`.** `connect_group` narrows `connect`: a neighbour joins only when both the rule's
+  `connect` predicate matches and `connection_group(pos) == connection_group(neighbour)` with a `Some` value. A
+  position with `None` joins nothing (not even another `None` neighbour). Every `u64`, including `0`, is a valid
+  group. When a table enables `cover`, the covering cell must also share the same connection group to suppress a join.
+- **Derived visual state.** Connection groups are never saved to disk. Republish them when a chunk or block entity
+  loads (for example in `BlockEntityPart::block_entity_on_load` or `Hooks::chunk_load`) and whenever your multiblock
+  forms, splits, or changes membership.
+- **Automatic lifetime.** Replacing a block with a different block clears its connection group automatically;
+  changing only a block state property of the same block preserves it.
+- **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads and incremental
+  updates (skipping vanilla clients) and remeshes affected sections and chunk borders. Writes inside a Host
+  transaction are tentative: aborting restores the previous group quietly, and committing publishes it.
 
 ## What it joins, and what it does not
 

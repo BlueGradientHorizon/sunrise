@@ -619,6 +619,18 @@ impl BlockFacts {
     pub fn sign_text(&self, block: &str) -> Option<SignTextDefaults> {
         self.sign_texts.get(block).copied()
     }
+    /// `WorldCore::state_blocks`: block identity index per state id, built once from `facts`.
+    /// Two states belong to the same block iff their entries are equal.
+    pub fn state_blocks(&self) -> Arc<[u32]> {
+        let mut by_name: HashMap<&str, u32> = HashMap::new();
+        let mut out = Vec::with_capacity(self.states.len());
+        for s in &self.states {
+            let next = by_name.len() as u32;
+            let id = *by_name.entry(&s.name).or_insert(next);
+            out.push(id);
+        }
+        Arc::from(out)
+    }
     pub fn is_air(&self, id: BlockStateId) -> bool {
         matches!(
             &*self.get(id).name,

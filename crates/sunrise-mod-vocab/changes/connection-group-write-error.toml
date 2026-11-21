@@ -1,0 +1,3 @@
+ids = ["type:LevelWriteError", "type:LevelWriteError.NotLoaded", "type:LevelWriteError.OutOfHeight"]
+why = "LevelRef::set_connection_group refuses unloaded chunks as NotLoaded and out-of-height positions as OutOfHeight instead of returning Ok(false). Adding these variants to LevelWriteError changes its Wire layout."
+migrate = "Let the non-exhaustive match handle the new variants, or match NotLoaded and OutOfHeight explicitly when distinguishing unloaded or out-of-height positions from unchanged writes."

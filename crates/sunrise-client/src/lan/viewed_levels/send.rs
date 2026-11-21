@@ -170,6 +170,9 @@ impl Hub {
         if world.block_log.is_none() {
             world.block_log = Some(Vec::new());
         }
+        if world.connection_group_log.is_none() {
+            world.connection_group_log = Some(Vec::new());
+        }
         if world.light_log.is_none() {
             world.light_log = Some(Default::default());
         }

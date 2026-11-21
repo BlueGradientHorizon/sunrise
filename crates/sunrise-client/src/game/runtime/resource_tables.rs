@@ -30,6 +30,9 @@ impl Resources {
     pub(super) fn facts(&self) -> &BlockFacts {
         &self.core.facts
     }
+    pub(super) fn state_blocks(&self) -> Arc<[u32]> {
+        self.core.state_blocks.clone()
+    }
     pub(super) fn item_defaults(&self) -> &sunrise_world::item_defaults::ItemDefaults {
         self.core.item_data.defaults()
     }

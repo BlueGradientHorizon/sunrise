@@ -137,7 +137,7 @@ impl Game<'_> {
     }
 
     fn fixture_reset(&mut self, seed: i64) {
-        self.world = Game::world_for_mods(self.res.facts().air, seed);
+        self.world = Game::world_for_mods(&self.res, seed);
         // The oracle level is plains everywhere (bone meal's flowers, freezing).
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         for cx in -2..=2 {

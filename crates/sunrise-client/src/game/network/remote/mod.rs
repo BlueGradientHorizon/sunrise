@@ -3394,6 +3394,10 @@ impl Game<'_> {
             C::CustomPayload(p) if p.channel == sunrise_protocol::collider_sync::CHANNEL => {
                 self.remote_collider_sync(&p.data);
             }
+            // Per-position connected-texture groups synced for the window's chunks.
+            C::CustomPayload(p) if p.channel == sunrise_protocol::connection_groups::CHANNEL => {
+                self.remote_connection_groups(&p.data);
+            }
             // A mod menu type's block and its mod's bytes, just before the
             // menu's `OpenScreen`.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {

@@ -186,6 +186,8 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
+    /// Each cell's original connection group before this transaction first changed it.
+    connection_groups: HashMap<Pos, Option<u64>>,
     /// Level.random before the first transactional level write drew from it.
     level_random: Option<sunrise_core::random::LegacyRandom>,
     /// Composter-local random streams before this depth first evaluated their layers.
@@ -660,6 +662,9 @@ impl Game<'_> {
                             kept.replay_removal |= block.replay_removal;
                         })
                         .or_insert(block);
+                }
+                for (pos, group) in level.connection_groups {
+                    outer.connection_groups.entry(pos).or_insert(group);
                 }
                 if outer.level_random.is_none() {
                     outer.level_random = level.level_random;
@@ -1177,6 +1182,30 @@ impl Game<'_> {
             }
         }
     }
+    /// Set or clear a connection group at `pos`. Inside an open Host transaction, writes
+    /// storage quietly, records the prior group so abort restores it silently, and defers
+    /// remesh + client sync to root commit. Returns `Err(true)` if the chunk is unloaded,
+    /// `Err(false)` if `pos[1]` is out of height, else `Ok(changed)`.
+    pub(super) fn journal_set_connection_group(
+        &mut self,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> std::result::Result<bool, bool> {
+        let Some(level) = self.transactions.last_mut() else {
+            return self
+                .world
+                .set_connection_group(pos[0], pos[1], pos[2], group, true);
+        };
+        let key = (pos[0], pos[1], pos[2]);
+        let old = self.world.connection_group(pos[0], pos[1], pos[2]);
+        let changed = self
+            .world
+            .set_connection_group_stored(pos[0], pos[1], pos[2], group)?;
+        if changed {
+            level.connection_groups.entry(key).or_insert(old);
+        }
+        Ok(changed)
+    }
     /// Sets the block at `pos` to `state`. In a transaction, stored only, keeping the old
     /// state, and set with its updates at the root commit; otherwise at once
     /// (`Level.setBlock`).
@@ -1212,6 +1241,21 @@ impl Game<'_> {
         level.after.push(After::Block(key));
         if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
             return false;
+        }
+        // Mirror live `World::set_with_notification`: replacing the block with a different block
+        // clears any tentative connection group at `pos`, while state-only changes preserve it.
+        if !self.world.same_block(old.0, state.0)
+            && let Some(old_group) = self.world.connection_group(pos[0], pos[1], pos[2])
+        {
+            if let Some(level) = self.transactions.last_mut() {
+                level
+                    .connection_groups
+                    .entry(key)
+                    .or_insert(Some(old_group));
+            }
+            let _ = self
+                .world
+                .set_connection_group_stored(pos[0], pos[1], pos[2], None);
         }
         self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
         true
@@ -1464,6 +1508,15 @@ impl Game<'_> {
                 _ => None,
             })
             .collect();
+        // Snapshot each tentatively written connection group's final value BEFORE block replays
+        // run, because replaying a block replacement at `pos` clears the group at `pos`. Then
+        // publish the surviving final values afterwards so `set_block(B); set_connection_group(g)`
+        // inside one transaction keeps `g`.
+        let final_groups: Vec<(Pos, Option<u64>, Option<u64>)> = level
+            .connection_groups
+            .into_iter()
+            .map(|(pos, was)| (pos, was, self.world.connection_group(pos.0, pos.1, pos.2)))
+            .collect();
         let mut told = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
@@ -1507,6 +1560,23 @@ impl Game<'_> {
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}
                 after => self.run_after(after),
+            }
+        }
+        // Publish committed connection-group changes (after block replays so a block replacement
+        // followed by set_connection_group in the same transaction keeps the new group).
+        for (pos, was, now) in final_groups {
+            let current = self.world.connection_group(pos.0, pos.1, pos.2);
+            if current != now {
+                let _ = self
+                    .world
+                    .set_connection_group(pos.0, pos.1, pos.2, now, true);
+            } else if now != was {
+                let _ = self
+                    .world
+                    .set_connection_group_stored(pos.0, pos.1, pos.2, was);
+                let _ = self
+                    .world
+                    .set_connection_group(pos.0, pos.1, pos.2, now, true);
             }
         }
         // A crafting grid the transaction changed has its result made again, once for each
@@ -1674,6 +1744,11 @@ impl Game<'_> {
         }
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
+        }
+        for (pos, group) in level.connection_groups {
+            let _ = self
+                .world
+                .set_connection_group_stored(pos.0, pos.1, pos.2, group);
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;

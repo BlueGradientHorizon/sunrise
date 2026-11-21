@@ -2561,6 +2561,7 @@ impl Hub {
                 .any(|g| g.participates_online() && g.dimension == self.config.dimension)
             {
                 let _ = ctx.world.block_log.take();
+                let _ = ctx.world.connection_group_log.take();
                 let _ = ctx.world.light_log.take();
                 ctx.world.bulk_log.clear();
             }
@@ -2568,6 +2569,9 @@ impl Hub {
         }
         if ctx.world.block_log.is_none() {
             ctx.world.block_log = Some(Vec::new());
+        }
+        if ctx.world.connection_group_log.is_none() {
+            ctx.world.connection_group_log = Some(Vec::new());
         }
         if ctx.world.light_log.is_none() {
             ctx.world.light_log = Some(Default::default());
@@ -2916,12 +2920,18 @@ impl Hub {
                 let size = batch.len();
                 // The single-player window shares the sections it is sent (handoff.rs).
                 let memory = g.address == super::conn::MEMORY_ADDRESS;
+                let sync_groups = g.negotiated_connection_groups();
+                let mut group_chunks: Vec<&Chunk> = Vec::new();
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
                     g.sender.send_many(batch.into_iter().map(|j| {
+                        let chunk = chunks[j];
                         if memory {
-                            super::handoff::offer(chunks[j]);
+                            super::handoff::offer(chunk);
+                        }
+                        if sync_groups && !chunk.connection_groups.is_empty() {
+                            group_chunks.push(chunk);
                         }
                         uses[j] -= 1;
                         if uses[j] == 0 {
@@ -2934,6 +2944,11 @@ impl Hub {
                         size: size as i32,
                     }));
                     g.unacknowledged += 1;
+                    for chunk in group_chunks {
+                        for packet in block_changes::encode_chunk_connection_groups(chunk) {
+                            g.sender.send(packet);
+                        }
+                    }
                 }
                 if watching {
                     // ChunkMap.markChunkPendingToSend, then PlayerChunkSender.sendChunk's end:
@@ -5248,6 +5263,7 @@ mod tests {
     mod cave_air_tests;
     mod collision_exclusion_tests;
     mod collision_part_tests;
+    mod connection_group_sync_tests;
     mod displace_tests;
     mod effect_meta_tests;
     mod entity_move_check_tests;

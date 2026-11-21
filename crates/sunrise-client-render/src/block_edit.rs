@@ -101,6 +101,8 @@ impl World {
             values.clear();
             values.resize_with(sections, || None);
             let mut any = 0u64;
+            let mut cleared_groups: Vec<u32> = Vec::new();
+            let check_groups = !chunk.connection_groups.is_empty();
             for &i in list {
                 let r = runs[i as usize];
                 let (lx, lz) = (r.x & 15, r.z & 15);
@@ -132,6 +134,12 @@ impl World {
                         vals[at] = r.state;
                         changed[s] = true;
                         any += 1;
+                        if check_groups && !self.same_block(old, r.state) {
+                            let cell = (s as u32) << 12 | at as u32;
+                            if chunk.connection_groups.contains_key(&cell) {
+                                cleared_groups.push(cell);
+                            }
+                        }
                         if tracked_memo.get(old, &mut tracked)
                             || tracked_memo.get(r.state, &mut tracked)
                         {
@@ -148,6 +156,9 @@ impl World {
             out.chunks += 1;
             let chunk =
                 std::sync::Arc::make_mut(self.chunks.get_mut(&key).expect("looked up above"));
+            for cell in cleared_groups {
+                chunk.connection_groups.remove(&cell);
+            }
             for s in 0..sections {
                 if changed[s]
                     && let Some(v) = &values[s]

@@ -69,6 +69,19 @@ pub trait LevelBlocksBackend {
     /// `block_state`. API 381.
     #[access(WorldOnly)]
     fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<String>;
+    /// Side: both.
+    /// The mod-published connection group at `pos`, or `Ok(None)` when unset, unloaded, or out
+    /// of height. Returns `Err(LevelReadError::Stale)` for a stale handle or closed level, and
+    /// `Err(LevelReadError::Unavailable)` when the host is not readable in this phase.
+    /// Connection groups are derived visual state: they are synced to Sunrise clients with chunk
+    /// loads and updates, never saved to disk, and cleared when the block at `pos` is replaced by
+    /// a different block (same-block state changes preserve the group).
+    #[access(WorldOnly)]
+    fn level_connection_group(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Result<Option<u64>, LevelReadError>;
 }
 /// The handles' writes of the `level_blocks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
@@ -209,4 +222,30 @@ pub trait LevelBlocksBackendMut {
     /// parked handle, a client, and a block that did not grow.
     #[access(WorldOnly)]
     fn level_bone_meal(&mut self, level: LevelRef, pos: [i32; 3]) -> bool;
+    /// Side: server.
+    /// Set or clear the mod-published connection group at `pos` (any `u64`, including `0`; `None`
+    /// clears). Connected-texture rules with `"connect_group": true` join two neighbours only when
+    /// both hold the same group; blocks with no group join nothing.
+    ///
+    /// Returns `Ok(true)` if the stored group changed, or `Ok(false)` if it was already `group`.
+    /// Refuses with `Err(LevelWriteError::Stale)` for a stale handle,
+    /// `Err(LevelWriteError::Unavailable)` on a client, parked level, or outside the world phase,
+    /// `Err(LevelWriteError::NotLoaded)` when the chunk is not loaded, and
+    /// `Err(LevelWriteError::OutOfHeight)` when `pos[1]` is outside the level's height.
+    ///
+    /// Connection groups are derived visual state: they are synced to Sunrise clients (on chunk
+    /// send and on each change) and are **never saved to disk**. Mods that keep multi-block
+    /// structure groups across reloads must republish them from `block_entity_on_load` (or
+    /// `chunk_load`). Changing a block's state properties on the same block preserves the group;
+    /// replacing it with a different block (or air) clears it automatically.
+    ///
+    /// Participates in open `Host` transactions: tentative writes are visible immediately,
+    /// synced on root commit, and restored silently on abort.
+    #[access(WorldOnly)]
+    fn level_set_connection_group(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> Result<bool, LevelWriteError>;
 }
