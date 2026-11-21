@@ -5,6 +5,32 @@ use crate::game::{
 };
 use mod_api::{prelude::*, *};
 
+/// Engine font view lent to [`ClientTooltipComponent`] and `render_tooltip_pre`.
+pub(in crate::game) struct EngineTooltipFont<'a> {
+    pub font: &'a sunrise_client::font::Font,
+    pub id: &'a mod_api::Identifier,
+}
+impl TooltipFont for EngineTooltipFont<'_> {
+    fn id(&self) -> &Identifier {
+        self.id
+    }
+    fn line_height(&self) -> i32 {
+        9
+    }
+    fn width(&self, text: &Text) -> Result<i32, TextFormError> {
+        let text: crate::text::Text = text.try_into_engine(&())?;
+        Ok(self.font.width_text_with_font(&text, self.id.as_str()) as i32)
+    }
+    fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
+        let text: crate::text::Text = text.try_into_engine(&())?;
+        self.font
+            .split_formatted_with_font(&text, max_width as f32, self.id.as_str())
+            .into_iter()
+            .map(|line| line.try_into_api())
+            .collect()
+    }
+}
+
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
@@ -60,6 +86,36 @@ impl DrawContext for GameDrawContext<'_, '_> {
     fn text(&mut self, text: &str, at: [f32; 2], argb: u32, shadow: bool) {
         self.game
             .native_text(&mut *self.surface, text, at, argb, shadow)
+    }
+    fn text_with_font(
+        &mut self,
+        font: &Identifier,
+        text: &Text,
+        at: [f32; 2],
+        argb: u32,
+        shadow: bool,
+    ) -> Result<f32, TextFormError> {
+        let text: crate::text::Text = text.try_into_engine(&())?;
+        let [a, r, g, b] = argb.to_be_bytes();
+        if a == 0 {
+            return Ok(0.0);
+        }
+        Ok(self.surface.text_styled_with_font(
+            &self.game.gui.atlas,
+            &text,
+            at[0],
+            at[1],
+            crate::hud::rgba(r, g, b, a),
+            shadow,
+            font.as_str(),
+        ))
+    }
+    fn with_tooltip_font_raw(&self, font: &Identifier, f: &mut dyn FnMut(&dyn TooltipFont)) {
+        let tooltip_font = EngineTooltipFont {
+            font: &self.game.gui.atlas.font,
+            id: font,
+        };
+        f(&tooltip_font);
     }
     fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
         self.game
@@ -867,5 +923,49 @@ mod tests {
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
         assert_eq!(doubled.lines[1].at[1], plain_size.lines[1].at[1] * 2.0);
         assert_eq!(doubled.height, plain_size.height * 2.0);
+    }
+
+    #[test]
+    fn engine_tooltip_font_measures_splits_and_rejects_excessive_depth() {
+        let default_json = r#"{"providers":[{"type":"space","advances":{" ":2,"a":3}}]}"#;
+        let alt_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":8}}]}"#;
+        let source = crate::resource_source::ResourceSource::indexed(BTreeMap::from([
+            (
+                "assets/minecraft/font/default.json".into(),
+                crate::resource_source::Resource::bytes(default_json.as_bytes().to_vec()),
+            ),
+            (
+                "assets/minecraft/font/alt.json".into(),
+                crate::resource_source::Resource::bytes(alt_json.as_bytes().to_vec()),
+            ),
+        ]));
+        let font = crate::font::Font::metrics(&source);
+        let default_id = Identifier::parse("minecraft:default").unwrap();
+        let alt_id = Identifier::parse("minecraft:alt").unwrap();
+
+        let default_tf = EngineTooltipFont {
+            font: &font,
+            id: &default_id,
+        };
+        let alt_tf = EngineTooltipFont {
+            font: &font,
+            id: &alt_id,
+        };
+        assert_eq!(default_tf.id(), &default_id);
+        assert_eq!(alt_tf.id(), &alt_id);
+        assert_eq!(default_tf.line_height(), 9);
+
+        let sample = mod_api::Text::literal("aa aa");
+        assert_eq!(default_tf.width(&sample).unwrap(), 14);
+        assert_eq!(alt_tf.width(&sample).unwrap(), 36);
+        assert_eq!(default_tf.split(&sample, 16).unwrap().len(), 1);
+        assert_eq!(alt_tf.split(&sample, 16).unwrap().len(), 2);
+
+        let mut deep = mod_api::Text::literal("x");
+        for _ in 0..600 {
+            deep = mod_api::Text::literal("").append(deep);
+        }
+        assert!(default_tf.width(&deep).is_err());
+        assert!(default_tf.split(&deep, 100).is_err());
     }
 }
