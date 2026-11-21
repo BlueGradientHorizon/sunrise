@@ -81,6 +81,24 @@ pub fn mod_index_on(index: usize) -> bool {
     crate::mod_index_on(index)
 }
 
+/// Whether this installed mod can still run delayed tasks. A task panic is independent of its
+/// normal enabled switch and lives as long as this installation, not the world's task queue.
+pub fn scheduled_tasks_on(index: usize) -> bool {
+    crate::mod_index_on(index)
+        && crate::runtime::installed()
+            .and_then(|installed| installed.scheduled_tasks_poisoned.get(index))
+            .is_some_and(|poisoned| !poisoned.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// Disable only this installed mod's delayed callbacks after one panics.
+pub fn poison_scheduled_tasks(index: usize) {
+    if let Some(poisoned) = crate::runtime::installed()
+        .and_then(|installed| installed.scheduled_tasks_poisoned.get(index))
+    {
+        poisoned.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Marks the thread as inside mod `id`'s `call` until the guard drops, as a hook's dispatch does,
 /// so a panic in it names both.
 pub fn enter(id: &'static str, call: &'static str) -> crate::content::crash::ModGuard {

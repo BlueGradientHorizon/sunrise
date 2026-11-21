@@ -69,12 +69,16 @@ pub trait ModStateServerHost {
     /// order they were scheduled.
     ///
     /// Move owned data into the closure, not the current host or event. The task gets a fresh
-    /// server host on the same thread. Journaled writes commit on return or roll back on panic;
-    /// other due tasks still run before the first panic resumes. When scheduled inside a mod call,
-    /// the task runs (and drops on cancel or shutdown) under that mod's identity, is discarded if
-    /// that mod is disabled when due, and reaching [`MAX_PENDING_TASKS`] logs a warning naming the
-    /// mod and returns [`ScheduleError::TooMany`]. Calls outside a mod call also succeed without a
-    /// shared global cap. Pending tasks are dropped with the world and are not saved.
+    /// server host on the same thread. When scheduled inside a mod call, it runs (and drops on
+    /// cancel or shutdown) under that mod's identity. A panic rolls back its journaled writes,
+    /// disables that mod's delayed callbacks for the session, and names the mod in the log and
+    /// in an error toast in the integrated server's window. The tick and other mods' tasks carry
+    /// on. A phase refusal rolls back the task and is logged each time without disabling it.
+    ///
+    /// Tasks whose mod is disabled, or whose delayed callbacks have been disabled, are discarded
+    /// when due. Reaching [`MAX_PENDING_TASKS`] logs a warning naming the mod and returns
+    /// [`ScheduleError::TooMany`]. Calls outside a mod call also succeed without a shared global
+    /// cap. Pending tasks are dropped with the world and are not saved.
     #[access(WorldOnly)]
     fn schedule_task(
         &mut self,

@@ -77,7 +77,7 @@ fn stack_for(min_stack: Option<&str>) -> usize {
 /// `LevelLoadProgressTracker.EXPECTED_PLAYER_CHUNKS`: the 7x7 chunks around the spawn.
 const PLAYER_CHUNKS: usize = 49;
 
-/// What the window tells its server thread.
+/// What the window and its server thread share.
 #[derive(Default)]
 struct Flags {
     #[cfg(test)]
@@ -87,6 +87,8 @@ struct Flags {
     stop: AtomicBool,
     finished: AtomicBool,
     failure: Mutex<Option<String>>,
+    /// Local system toasts reported by the server and displayed by the window.
+    system_toasts: Mutex<Vec<sunrise_client::toasts::SystemToast>>,
     /// `IntegratedServer.getPort`: the port it is open to the LAN on, 0
     /// while it is not.
     published: AtomicU16,
@@ -118,6 +120,10 @@ struct Flags {
 }
 
 impl Flags {
+    fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
+        std::mem::take(&mut *self.system_toasts.lock().unwrap())
+    }
+
     fn emergency_save(&self, server: std::thread::ThreadId, timeout: Duration) -> bool {
         if std::thread::current().id() == server || self.finished.load(Ordering::Acquire) {
             return true;
@@ -159,6 +165,11 @@ pub(super) struct Integrated {
     pub rule_registry: Arc<sunrise_client::gamerules::RuleRegistry>,
 }
 impl Integrated {
+    /// Local server reports to display in the window's toast queue.
+    pub(super) fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
+        self.flags.take_system_toasts()
+    }
+
     /// Queue every change, even if the currently published tree still has the requested state:
     /// an earlier update may be waiting for a busy server thread.
     fn queue_pregen_option(&self, enabled: bool) {
@@ -353,6 +364,16 @@ impl Serving {
             load: LoadPhase::default(),
         }
     }
+    /// Deliver a system notice to the local owner's window, not to LAN clients.
+    pub(super) fn report_system_toast(&self, toast: sunrise_client::toasts::SystemToast) {
+        self.flags.system_toasts.lock().unwrap().push(toast);
+    }
+
+    #[cfg(test)]
+    pub(super) fn take_system_toasts(&self) -> Vec<sunrise_client::toasts::SystemToast> {
+        self.flags.take_system_toasts()
+    }
+
     /// The window reads this as `MinecraftServer.isCurrentlySaving`.
     pub(super) fn set_saving(&self, saving: bool) {
         self.flags.saving.store(saving, Ordering::Relaxed);

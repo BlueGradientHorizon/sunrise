@@ -294,19 +294,54 @@ impl Game<'_> {
             self,
             |game| game.native_lifecycle.tasks.pop_due(),
             |game, (owner, task)| {
-                let _call = owner.map(|mod_id| mod_api::__private::enter(mod_id, "schedule_task"));
-                let enabled = owner.is_none_or(|mod_id| {
-                    mod_api::__private::mod_index(mod_id)
-                        .is_some_and(mod_api::__private::mod_index_on)
-                });
-                if enabled {
+                use mod_api::__private as api;
+
+                let Some(mod_id) = owner else {
+                    // Engine-owned work still follows the server's own failure policy.
                     let _: Result<(), std::convert::Infallible> =
                         mod_api::run_transaction(game, |game, _| {
                             task(game);
                             Ok(())
                         });
-                } else {
-                    drop(task);
+                    return;
+                };
+                let _call = api::enter(mod_id, "schedule_task");
+                let index = api::mod_index(mod_id);
+                let result = sunrise_client::crash::contain_unwind(|| {
+                    if index.is_some_and(api::scheduled_tasks_on) {
+                        mod_api::run_transaction(game, |game, _| {
+                            api::contain_refusal(mod_id, || task(game))
+                        })
+                    } else {
+                        drop(task);
+                        Ok(())
+                    }
+                });
+                match result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(refusal)) => log::warn!("scheduled task refused: {refusal}"),
+                    Err(panic) => {
+                        if let Some(index) = index {
+                            api::poison_scheduled_tasks(index);
+                        }
+                        log::error!(
+                            "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
+                        );
+                        if let Some(serving) = &game.serving {
+                            use sunrise_client::{hud::rgba, text::Text, toasts::SystemToast};
+
+                            serving.report_system_toast(
+                                SystemToast::new(
+                                    Text::tr("sunrise.mods.scheduled_task_error.title", &[]),
+                                    Some(Text::tr(
+                                        "sunrise.mods.scheduled_task_error.message",
+                                        &[&mod_id],
+                                    )),
+                                )
+                                .with_title_color(rgba(255, 85, 85, 255)),
+                            );
+                        }
+                    }
                 }
             },
         )
@@ -317,8 +352,8 @@ impl Game<'_> {
             self.native_console_lines();
             self.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
-            // Tasks come due after the start phase, still inside the tick's read scope. One that
-            // panics does not drop the others; its panic goes on once the scope is restored.
+            // Tasks come due after the start phase, still inside the tick's read scope. Only
+            // an unattributed engine panic resumes once the scope is restored.
             let panic = self.drain_due_tasks();
             self.native_lifecycle.read_scope = false;
             if let Some(payload) = panic {
@@ -629,16 +664,26 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn panicking_scheduled_write_rolls_back_before_the_next_task() {
+        use crate::game::integrated::Serving;
         use mod_api::{ObjectiveRenderType, Text, TransactionLifecycle};
-        use std::panic::{AssertUnwindSafe, catch_unwind};
+        use std::{cell::Cell, rc::Rc};
 
-        let mods = vec![ModEntry::new("task_owner", Box::new(TaskOwner))];
+        const FAILING: &str = "task_owner";
+        const HEALTHY: &str = "other_task_owner";
+        let mods = vec![
+            ModEntry::new(FAILING, Box::new(TaskOwner)),
+            ModEntry::new(HEALTHY, Box::new(TaskOwner)),
+        ];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
+                game.serving = Some(Serving::fixture(0));
+                let skipped = Rc::new(Cell::new(false));
+                let after_reset = Rc::new(Cell::new(false));
+                let unrelated = Rc::new(Cell::new(false));
                 {
                     let host: &mut dyn ServerHost = game;
-                    let _owner = mod_api::__private::enter("task_owner", "schedule fixture");
+                    let _owner = mod_api::__private::enter(FAILING, "schedule fixture");
                     host.schedule_task(
                         1,
                         Box::new(|host| {
@@ -653,9 +698,17 @@ mod tests {
                         }),
                     )
                     .unwrap();
+                    let skipped = Rc::clone(&skipped);
+                    host.schedule_task(1, Box::new(move |_| skipped.set(true)))
+                        .unwrap();
+                }
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = mod_api::__private::enter(HEALTHY, "schedule fixture");
+                    let unrelated = Rc::clone(&unrelated);
                     host.schedule_task(
                         1,
-                        Box::new(|host| {
+                        Box::new(move |host| {
                             assert!(host.objective("discarded").is_none());
                             host.add_objective(
                                 "kept",
@@ -664,21 +717,100 @@ mod tests {
                                 ObjectiveRenderType::Integer,
                             )
                             .unwrap();
+                            unrelated.set(true);
                         }),
                     )
                     .unwrap();
                 }
-                let panic = catch_unwind(AssertUnwindSafe(|| {
-                    game.native_lifecycle_server_tick_start(true);
-                }))
-                .unwrap_err();
-                assert_eq!(
-                    panic.downcast_ref::<&str>(),
-                    Some(&"scheduled callback panicked")
-                );
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert!(!skipped.get(), "the failed owner's next task ran");
+                assert!(unrelated.get(), "the other owner's task did not finish");
                 assert!(game.objective("discarded").is_none());
                 assert!(game.objective("kept").is_some());
                 assert_eq!(game.transaction_lifecycle(), TransactionLifecycle::None);
+                let toasts = game.serving.as_ref().unwrap().take_system_toasts();
+                assert_eq!(toasts.len(), 1);
+                assert_eq!(
+                    toasts[0].message.as_ref().unwrap().component()["with"][0]["text"],
+                    FAILING
+                );
+
+                // The poison outlives the world's queue without turning off the mod itself.
+                let index = mod_api::__private::mod_index(FAILING).unwrap();
+                assert!(mod_api::__private::mod_index_on(index));
+                game.native_lifecycle
+                    .begin_open(Authority::IntegratedServer);
+                game.native_lifecycle.world_open_ready().unwrap();
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = mod_api::__private::enter(FAILING, "schedule fixture");
+                    let after_reset = Rc::clone(&after_reset);
+                    host.schedule_task(0, Box::new(move |_| after_reset.set(true)))
+                        .unwrap();
+                }
+                game.native_lifecycle_server_tick_start(true);
+                game.native_lifecycle_server_tick_end(false);
+                assert!(!after_reset.get(), "reopening cleared the session poison");
+                assert!(
+                    game.serving
+                        .as_ref()
+                        .unwrap()
+                        .take_system_toasts()
+                        .is_empty()
+                );
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
+        use mod_api::{
+            __private::{ModPhase, PhaseOwner, enter},
+            ObjectiveRenderType, Text,
+        };
+        use std::{cell::Cell, rc::Rc};
+
+        const OWNER: &str = "task_owner";
+        let mods = vec![ModEntry::new(OWNER, Box::new(TaskOwner))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_game(|game| {
+                game.native_lifecycle.world_open_ready().unwrap();
+                game.native_lifecycle_server_tick_start(true);
+                let refused = Rc::new(Cell::new(false));
+                let later = Rc::new(Cell::new(false));
+                {
+                    let host: &mut dyn ServerHost = game;
+                    let _owner = enter(OWNER, "schedule fixture");
+                    let refused = Rc::clone(&refused);
+                    host.schedule_task(
+                        0,
+                        Box::new(move |host| {
+                            host.add_objective(
+                                "refused",
+                                "dummy",
+                                Text::literal("Refused"),
+                                ObjectiveRenderType::Integer,
+                            )
+                            .unwrap();
+                            refused.set(true);
+                            let _setup = PhaseOwner::scope(ModPhase::Setup);
+                            let _ = host.objective("refused");
+                        }),
+                    )
+                    .unwrap();
+                    let later = Rc::clone(&later);
+                    host.schedule_task(0, Box::new(move |_| later.set(true)))
+                        .unwrap();
+                }
+                game.native_lifecycle_server_tick_end(false);
+                assert!(refused.get(), "the first task never reached the refusal");
+                assert!(
+                    game.objective("refused").is_none(),
+                    "it committed its write"
+                );
+                assert!(later.get(), "a refusal disabled the owner's next task");
             });
         });
     }

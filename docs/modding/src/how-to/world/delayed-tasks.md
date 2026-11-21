@@ -27,9 +27,10 @@ order they were scheduled.
 
 **Ownership and cancellation.** Only the scheduled callable runs. When scheduled inside a mod call,
 it runs under that mod's identity (including when it schedules more work or when its captures drop
-on cancellation or world close), and if its owner is disabled when due, the game drops the task
-without calling it. Scheduling outside an active mod call also succeeds. `TaskId` is an opaque
-capability (mods cannot construct one): any holder of a still-pending `id` can cancel it with
+on cancellation or world close). When due, the game drops the task without calling it if its owner
+or that owner's delayed callbacks are disabled. Scheduling outside an active mod call also
+succeeds. `TaskId` is an opaque capability (mods cannot construct one): any holder of a
+still-pending `id` can cancel it with
 `host.cancel_task(id)`, which returns `true` when the task was still waiting. A cancelled or
 discarded task releases the values it captured; ids are never reused, even across world resets.
 
@@ -38,9 +39,12 @@ when the scheduling mod already has `MAX_PENDING_TASKS` tasks waiting (unattribu
 a mod callback share no global cap), and `ScheduleError::Unavailable` outside the world phase or
 without an open or opening server world.
 
-**Writes.** Each callback runs in its own transaction. Journaled writes commit on normal return or
-roll back if the callback panics. Other due tasks still run; the first panic resumes after the due
-work is drained.
+**Writes and failures.** Each callback runs in its own transaction. Journaled writes commit on
+normal return and roll back on panic or a phase refusal. If a mod's callback panics, the game names
+that mod in the log and shows an error toast in the integrated server owner's window. The mod's
+other delayed callbacks stop for the rest of the session, even if you reopen the world. Its other
+hooks are unaffected, the tick continues, and other mods' due tasks still run. A phase refusal is
+logged each time and does not disable further tasks.
 
 **Lifetime.** The queue belongs to the current world and is never saved. Closing the world or a
 failed open drops all its pending tasks. If a deadline needs to outlive a restart, save the deadline

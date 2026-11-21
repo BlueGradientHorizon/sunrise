@@ -72,28 +72,42 @@ fn attributed(message: String) -> String {
 /// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
 /// the load phase comes back as an error that names it.
 pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
-    CONTAINED.with(|c| c.set(c.get() + 1));
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    contain_unwind(|| {
         mod_api::__private::contain_refusal(
             mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
             f,
         )
-    }));
-    CONTAINED.with(|c| c.set(c.get() - 1));
-    match result {
-        Ok(Ok(value)) => Ok(value),
-        // A mod's Host call the load phase does not admit: named, not a panic, and no crash report.
-        Ok(Err(refusal)) => {
-            refusal.report();
-            Err(refusal.to_string())
-        }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
-    }
+    })?
+    .map_err(|refusal| {
+        refusal.report();
+        refusal.to_string()
+    })
 }
 
-/// For the hook: a panic inside `contain` is logged with its stack and kept for `contain` to
+/// Like [`contain`], for a caller that handles phase refusals separately, for example inside
+/// a transaction that needs to abort on refusal before returning to the panic boundary.
+pub fn contain_unwind<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let outer = CAUGHT.with(|c| c.replace(None));
+    CONTAINED.with(|c| c.set(c.get() + 1));
+    let result = catch_unwind(AssertUnwindSafe(f)).map_err(|payload| {
+        let message = CAUGHT
+            .with(|c| c.borrow_mut().take())
+            .unwrap_or_else(|| payload_text(&*payload));
+        // An opaque panic payload may have a mod-defined destructor. Contain that too,
+        // and keep the original panic's message even if disposal fails.
+        if let Err(secondary) = catch_unwind(AssertUnwindSafe(|| drop(payload))) {
+            std::mem::forget(secondary);
+        }
+        message
+    });
+    CONTAINED.with(|c| c.set(c.get() - 1));
+    drop(CAUGHT.with(|c| c.replace(outer)));
+    result
+}
+
+/// For the hook: a contained panic is logged with its stack and kept for its boundary to
 /// return. False for any other panic.
 fn contained_panic(info: &std::panic::PanicHookInfo) -> bool {
     if CONTAINED.with(Cell::get) == 0 {
