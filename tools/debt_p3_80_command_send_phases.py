@@ -116,7 +116,7 @@ def migrate_packet_fixtures():
             r"\g<hub>.send_commands(\g<index>); \g<hub>.finish_level_change(\g<index>, \g<portal>, \g<ctx>); }", text,
         )
         text = re.sub(r"^( +)\{ (.*?\.begin_(?:player_join|respawn|level_change)\(.*?) \};$", r"\1\2", text, flags=re.M)
-        text = re.sub(r"(\.begin_player_join\([^\n]*|\.finish_player_join\([^\n]*)&mut ctx", r"\1&ctx", text)
+        text = re.sub(r"(\.(?:begin|finish)_player_join\([^,\n]+, )&mut ctx\)", r"\1&ctx)", text)
         if path.name == "arrivals.rs":
             text = replace(text, "        let mut ctx = TickCtx {\n            sea_level: 63,", "        let ctx = TickCtx {\n            sea_level: 63,")
         if text != old:

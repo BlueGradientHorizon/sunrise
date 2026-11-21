@@ -1004,7 +1004,7 @@ mod hub_tests {
             border: &border,
             streaming: None,
         };
-        if let Some(i) = hub.begin_player_join(conn, &mut ctx) {
+        if let Some(i) = hub.begin_player_join(conn, &ctx) {
             hub.send_commands(i, hub.commands_packet(hub.guests[i].permission));
             hub.finish_player_join(i, &ctx);
         }

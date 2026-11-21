@@ -195,7 +195,7 @@ impl Server {
         for event in events {
             match event {
                 HostEvent::Joined(conn) => {
-                    if let Some(i) = self.hub.begin_player_join(conn, &mut ctx) {
+                    if let Some(i) = self.hub.begin_player_join(conn, &ctx) {
                         self.hub.send_commands(
                             i,
                             self.hub.commands_packet(self.hub.guests[i].permission),

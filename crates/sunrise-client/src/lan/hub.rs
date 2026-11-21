@@ -6409,12 +6409,12 @@ mod tests {
             let value = false;
             hub.guests.update(0, |g| g.placed = value);
         }
-        if let Some(i) = hub.begin_player_join(2, &mut ctx) {
+        if let Some(i) = hub.begin_player_join(2, &ctx) {
             hub.send_commands(i, hub.commands_packet(hub.guests[i].permission));
             hub.finish_player_join(i, &ctx);
         }
         assert!(rx.try_recv().is_err());
-        if let Some(i) = hub.begin_player_join(1, &mut ctx) {
+        if let Some(i) = hub.begin_player_join(1, &ctx) {
             hub.send_commands(i, hub.commands_packet(hub.guests[i].permission));
             hub.finish_player_join(i, &ctx);
         }
