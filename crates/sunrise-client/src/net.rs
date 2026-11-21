@@ -1331,8 +1331,7 @@ impl PlayRouter<'_> {
                             }
                             None
                         }
-                        // Raw channels only have serverbound receivers.
-                        Classified::Raw(_) => None,
+                        Classified::Skipped | Classified::Raw(_) => None,
                     }
                 } else {
                     receive_application(&self.endpoint, Phase::Play, payload, self.send)?
@@ -1592,8 +1591,9 @@ fn receive_application(
             );
             Ok(None)
         }
-        // Raw channels are server-side: a client's table has none.
-        crate::raw_payloads::Classified::Raw(_) => Ok(None),
+        crate::raw_payloads::Classified::Skipped | crate::raw_payloads::Classified::Raw(_) => {
+            Ok(None)
+        }
     }
 }
 

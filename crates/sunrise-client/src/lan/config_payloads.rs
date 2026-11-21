@@ -157,8 +157,9 @@ impl<'a> ConfigIo<'a> {
             .map_err(|error| error.to_string())?
         {
             crate::raw_payloads::Classified::Other(payload) => Ok(Some(payload)),
-            // Raw channels are play-only: configuration never classifies one.
-            crate::raw_payloads::Classified::Raw(_) => Ok(None),
+            crate::raw_payloads::Classified::Skipped | crate::raw_payloads::Classified::Raw(_) => {
+                Ok(None)
+            }
             crate::raw_payloads::Classified::Application(incoming) => {
                 let endpoint = crate::raw_payloads::Endpoint::configuration(sender.clone());
                 crate::raw_payloads::dispatch(

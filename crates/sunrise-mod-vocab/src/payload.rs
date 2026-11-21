@@ -259,7 +259,8 @@ pub enum PayloadHandleError {
 /// included); the other owners' copies still run. A successful handler's explicit disconnect
 /// and a main-queue refusal disconnect either way. A panic is not `Failed`: it disables this
 /// callback for the session, reports the owning mod, and discards the current journal or staged
-/// sends without disconnecting or skipping other handlers.
+/// sends without disconnecting or skipping other handlers. Later packets for this callback
+/// still undergo framing and channel checks but do not reserve callback queue capacity.
 pub trait IPayloadHandler: Send + Sync + 'static {
     /// Handle exact application bytes using connection-derived context.
     fn handle(
@@ -271,7 +272,8 @@ pub trait IPayloadHandler: Send + Sync + 'static {
 
 /// Work scheduled on the logical receiving main thread. It retains the handler's owner and
 /// disablement guard: a panic aborts the work's transaction and disables that receiving callback
-/// for the session, without disconnecting the peer.
+/// for the session, without disconnecting the peer. Later deliveries to that callback
+/// follow the same rules as a panic in [`IPayloadHandler::handle`].
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;

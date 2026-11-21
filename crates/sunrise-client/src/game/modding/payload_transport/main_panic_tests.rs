@@ -78,8 +78,11 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
                 channel: channel.into(),
                 data: vec![marker],
             };
-            for (id, step) in [(GOOD, 1), (BAD, 2), (BAD, 3), (GOOD, 4)] {
-                let delivery = Incoming::new(&transport, Phase::Play, payload(id, step)).unwrap();
+            // Admit the repeat before the panic to exercise the guard on already-queued work.
+            let deliveries = [(GOOD, 1), (BAD, 2), (BAD, 3), (GOOD, 4)].map(|(id, step)| {
+                Incoming::new(&transport, Phase::Play, payload(id, step)).unwrap()
+            });
+            for delivery in deliveries {
                 game.run_payload(endpoint.clone(), delivery);
                 assert!(!transport.closed());
             }

@@ -109,6 +109,10 @@ fn execute(
         return;
     }
     if matches!(incoming.body, Body::Work(_)) || incoming.receiver.thread == HandlerThread::Main {
+        // The callback may have panicked while this delivery waited for its ordered turn.
+        if incoming.receiver.poisoned() {
+            return;
+        }
         let epoch = incoming.epoch.clone();
         let prepared = match main.prepare(incoming, credit) {
             Ok(prepared) => prepared,

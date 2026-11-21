@@ -2226,6 +2226,7 @@ impl io_pool::Session for PlayConn {
                                 }
                                 return Verdict::Go;
                             }
+                            Ok(crate::raw_payloads::Classified::Skipped) => return Verdict::Go,
                             Ok(crate::raw_payloads::Classified::Other(payload))
                                 if self
                                     .payload_sender

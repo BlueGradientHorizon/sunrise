@@ -514,6 +514,9 @@ fn inline_main_receipt_pressure_closes_the_epoch_at_the_routed_step() {
 
 #[test]
 fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
+    const REPEAT: u8 = 8;
+    const REFUSED_MAIN_CHARGE: usize = 1 << 20;
+
     mod_platform::__private::initialize().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let registration = Registration(Arc::new(Probe(seen.clone())));
@@ -545,7 +548,7 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                 play::Clientbound::Ping(cfg::Ping { id: 0 }),
                 custom(MAIN, 1, 8 * 1024),
                 custom(PANIC_MAIN, 6, 1),
-                custom(PANIC_MAIN, 6, 1),
+                custom(PANIC_MAIN, REPEAT, 1),
                 play::Clientbound::Ping(cfg::Ping { id: 2 }),
                 custom(PANIC_NETWORK, 7, 1),
                 custom(PANIC_NETWORK, 7, 1),
@@ -562,7 +565,18 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                 + (subpackets.len() + 2)
                     * sunrise_mod_runtime::byte_channel::message_overhead::<Event>()
                 + 1024; // Room for a different envelope, but not another 8 KiB payload.
-            let (send, events) = ingress::channel(budget, Event::ingress_charge).unwrap();
+            assert!(budget < REFUSED_MAIN_CHARGE);
+            let (send, events) = ingress::channel(budget, |event| match event {
+                Event::RawPayload(incoming)
+                    if incoming.id.0 == PANIC_MAIN
+                        && matches!(&incoming.body, crate::raw_payloads::Body::Payload(bytes) if bytes.0 == [REPEAT]) =>
+                {
+                    // Staging admits the packet, but replacing its receipt would fail.
+                    REFUSED_MAIN_CHARGE
+                }
+                _ => event.ingress_charge(),
+            })
+            .unwrap();
             let endpoint = Endpoint::client(
                 writer.clone(),
                 Arc::new(AtomicBool::new(false)),
@@ -617,10 +631,9 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                                     .handle(bytes, &mut MainReply(&endpoint, &incoming.epoch));
                                 match channel.as_str() {
                                     MAIN => result.unwrap(),
-                                    PANIC_MAIN => assert!(matches!(
-                                        result,
-                                        Err(CallbackFailure::Panicked | CallbackFailure::Poisoned)
-                                    )),
+                                    PANIC_MAIN => {
+                                        assert!(matches!(result, Err(CallbackFailure::Panicked)))
+                                    }
                                     _ => panic!("unexpected Main channel"),
                                 }
                             }

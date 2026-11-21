@@ -109,6 +109,10 @@ impl PayloadReceiver {
     pub fn owner_enabled(&self) -> bool {
         crate::mod_index_on(self.owner_index)
     }
+    /// Whether a panic already disabled this callback, independently of its owner's state.
+    pub fn poisoned(&self) -> bool {
+        self.panicked.load(std::sync::atomic::Ordering::Acquire)
+    }
     /// Whether the mod and this callback are both still enabled.
     pub fn enabled(&self) -> bool {
         crate::callback_owner::enabled(self.owner_index, &self.panicked)
