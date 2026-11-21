@@ -282,6 +282,12 @@ impl mod_api::MenuPart for ClickPart {
 fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("movemod", Box::new(Mod))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
+        mod_api::__private::install_content_owners(
+            [],
+            [],
+            [],
+            [(DEPOT_MENU, "movemod"), (STATUS_MENU, "movemod")],
+        );
         crate::game::api_values::install_parts(&mods).unwrap();
         test();
     });

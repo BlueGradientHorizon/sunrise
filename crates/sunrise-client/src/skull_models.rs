@@ -4,7 +4,7 @@
 
 use crate::{block_entity_render::ModelPart, mobs};
 use mod_api::SkullModel;
-use std::{collections::HashMap, path::Path, sync::OnceLock};
+use std::{collections::HashMap, sync::OnceLock};
 
 /// A registered kind's baked head and its default texture.
 struct Skull {
@@ -20,15 +20,14 @@ static REGISTERED: OnceLock<HashMap<String, Skull>> = OnceLock::new();
 /// `minecraft:wither_skeleton`, `minecraft:player`, `minecraft:zombie`, `minecraft:creeper`,
 /// `minecraft:piglin`, `minecraft:dragon`), and duplicate registrations are logged as errors and
 /// left out by `sunrise_assets::item_model::register_skull_kinds`. One whose layer neither a mod
-/// nor vanilla (`entity-models.json` under `vanilla_root`) has, or whose texture is empty, is
+/// nor vanilla (the prepared entity model document) has, or whose texture is empty, is
 /// logged and left out here, before its kind is registered, so no item model can name it. Returns
 /// the kinds kept.
-pub fn register(models: Vec<SkullModel>, vanilla_root: &Path) -> Vec<String> {
+pub fn register(models: Vec<SkullModel>, vanilla: &mobs::EntityModelDocument) -> Vec<String> {
     if REGISTERED.get().is_some() {
         log::warn!("skull models were registered already; these are left out");
         return Vec::new();
     }
-    let mut vanilla = None;
     let mut baked = Vec::new();
     for model in models {
         if model.texture.is_empty() {
@@ -38,9 +37,7 @@ pub fn register(models: Vec<SkullModel>, vanilla_root: &Path) -> Vec<String> {
         let part = match mobs::model_layers::registered(&model.layer) {
             Some(definition) => Some(from_mod_part(&definition.bake_root())),
             None => vanilla
-                .get_or_insert_with(|| mobs::EntityModelDocument::load(vanilla_root).ok())
-                .as_ref()
-                .and_then(|document| document.model(&model.layer))
+                .model(&model.layer)
                 .map(|part| from_vanilla_part(&part)),
         };
         let Some(part) = part else {

@@ -418,6 +418,22 @@ fn a_biome_modifier_declared_in_code_applies_to_the_root_biomes() {
     let file_mod = zinc_mod(&scratch.join("file-zinc"), &[("declared", &declared[0][2])]);
     let file_out = scratch.join("file-out");
     build_fixture(&base, &base.join("jars"), &[file_mod], &file_out).unwrap();
+    let duplicate = [[
+        "code_owner".into(),
+        declared[0][1].clone(),
+        declared[0][2].clone(),
+    ]];
+    let error = biome_modifiers_over_packs(&file_out, &packs, &duplicate)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("duplicate biome modifier zinc:declared"),
+        "{error}"
+    );
+    assert!(
+        error.contains("mod zinc") && error.contains("mod code_owner"),
+        "{error}"
+    );
     let original: BTreeMap<String, String> =
         serde_json::from_slice(&fs::read(out.join("worldgen/biomes.json")).unwrap()).unwrap();
     let expected: BTreeMap<String, String> =
@@ -450,7 +466,11 @@ fn a_biome_modifier_declared_in_code_applies_to_the_root_biomes() {
         },
     };
     let ordered = [
-        ["zinc".to_owned(), "remove.json".to_owned(), removal.json()],
+        [
+            "zinc".to_owned(),
+            "data/zinc/neoforge/biome_modifier/remove.json".to_owned(),
+            removal.json(),
+        ],
         declared[0].clone(),
     ];
     let removed = biome_modifiers_over_packs(&out, &packs, &ordered)

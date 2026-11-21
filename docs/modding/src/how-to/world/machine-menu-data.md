@@ -450,7 +450,10 @@ hide it locally instead.
 
 A click callback returns `None` to leave the press alone or `Some(id)` to consume it and
 send that button to the server. The active menu's server `MenuPart` handles accepted IDs
-in `menu_button` after the normal window and menu checks and `menu_button_valid`. Do not use a client hit test or
+in `menu_button` after the normal window and menu checks and `menu_button_valid`. These callbacks
+belong to the package that registered the custom menu type or the verified mod block opening
+a stock menu, not the package supplying a factory, recipe book binding or slot mask.
+Do not use a client hit test or
 opening data as authority. A block-backed menu also supplies its backing block entity;
 a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for

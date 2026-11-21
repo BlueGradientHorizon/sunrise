@@ -27,13 +27,18 @@ pub struct BlockEntityTypes {
     /// Names in protocol order: a reload may not change numeric wire IDs either.
     wire: Vec<Arc<str>>,
     keys: BTreeSet<Arc<str>>,
+    native: BTreeSet<String>,
     /// Each registered name's numeric wire ID and tick subscription.
     registered: HashMap<Arc<str>, RegisteredBlockEntityType>,
 }
 
 impl BlockEntityTypes {
     /// Membership has already been checked by the content plan.
-    pub fn new(blocks: BTreeMap<String, String>, wire: Vec<String>) -> Self {
+    pub fn new(
+        blocks: BTreeMap<String, String>,
+        wire: Vec<String>,
+        native: impl IntoIterator<Item = String>,
+    ) -> Self {
         let wire: Vec<Arc<str>> = wire.into_iter().map(Into::into).collect();
         let keys = wire.iter().filter(|id| !id.is_empty()).cloned().collect();
         let registered = (0..)
@@ -67,6 +72,7 @@ impl BlockEntityTypes {
             blocks,
             wire,
             keys,
+            native: native.into_iter().collect(),
             registered,
         }
     }
@@ -158,7 +164,8 @@ impl BlockEntityTypes {
                 .valid
                 .iter()
                 .filter(move |kind| {
-                    !block.starts_with("minecraft:") || entry.factory_kind.as_ref() != Some(*kind)
+                    entry.template.as_ref() != Some(block)
+                        || entry.factory_kind.as_ref() != Some(*kind)
                 })
                 .map(move |kind| (block.as_str(), kind.as_str()))
         })
@@ -192,11 +199,9 @@ impl BlockEntityTypes {
         self.wire.len()
     }
 
-    /// Whether a mod declared the block entity type `id`.
-    /// Wire keys include vanilla types; `mod_content::Plan::new` refuses native
-    /// declarations in `minecraft:`.
+    /// Whether the block entity type `id` came from an admitted native declaration.
     pub fn declares(&self, id: &str) -> bool {
-        !id.starts_with("minecraft:") && self.keys.contains(id)
+        self.native.contains(id)
     }
 }
 

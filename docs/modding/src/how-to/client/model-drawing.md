@@ -70,7 +70,8 @@ inputs, not the event or its registration context. Use an unused `<namespace>:<p
 ID (built-in vanilla layers cannot be overwritten).
 
 The game calls each accepted supplier once when it freezes the layer table, in
-registration order. A duplicate ID does not run its supplier. The frozen table
+registration order. If mods register the same non-built-in ID, only its last
+supplier runs, even if it fails. The frozen table
 retains the definitions, not the suppliers. Call
 `ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
 resulting `ModelPart` tree for posing and drawing. Baking again and reloading

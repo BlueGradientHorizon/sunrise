@@ -358,15 +358,39 @@ pub mod tests {
 
     #[test]
     pub(crate) fn a_vanilla_type_refuses_a_native_payload_part_at_registration() {
-        let mut r = super::PartRegistrar::new("test");
-        let kind = r.block_entity_type_key("minecraft:chest");
-        assert_eq!(
-            (&mut r as &mut dyn Registrar).block_entity_part(&kind, Press),
-            Err(BlockEntityPartError::VanillaType { kind }),
+        let data = mod_vocab::__private::RegistrationData::new(
+            [(
+                "minecraft:block_entity_type".into(),
+                vec!["minecraft:chest".into()],
+            )]
+            .into(),
+            Default::default(),
+            Default::default(),
+            crate::RuntimeEnvironment::new(
+                crate::Dist::Client,
+                "26.3".into(),
+                "test".into(),
+                false,
+            ),
         );
-        assert!(r.parts.block_entity_kinds.is_empty());
-        assert!(r.parts.blocks.is_empty());
-        assert!(r.parts.block_entities.is_empty());
+        crate::load_state::with_test_registration_data(data, || {
+            let mut r = super::PartRegistrar::new("test");
+            let kind = r.block_entity_type_key("minecraft:chest");
+            assert_eq!(
+                (&mut r as &mut dyn Registrar).block_entity_part(&kind, Press),
+                Err(BlockEntityPartError::VanillaType { kind }),
+            );
+            assert!(r.parts.block_entity_kinds.is_empty());
+            assert!(r.parts.blocks.is_empty());
+            assert!(r.parts.block_entities.is_empty());
+            let native = r.block_entity_type("minecraft:test_press").build();
+            r.block_entity_part(&native, Press).unwrap();
+            assert!(
+                r.parts
+                    .block_entity_kinds
+                    .contains_key("minecraft:test_press")
+            );
+        });
     }
 
     #[test]
@@ -1031,7 +1055,7 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             .id(mod_vocab::__private::parts_installation::block_entity_type_key_slot(*key))
             .map(str::to_owned)
             .unwrap_or_default();
-        if id.starts_with("minecraft:") {
+        if self.has_builtin_entry("minecraft:block_entity_type", &id) {
             return Err(crate::BlockEntityPartError::VanillaType { kind: *key });
         }
         if self.attach_known(|p| &mut p.block_entity_kinds, kind, &id, part) {

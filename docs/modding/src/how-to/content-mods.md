@@ -725,7 +725,8 @@ round-trip through saved NBT; negative zero is not supported. A key such as
 `crafting_remainder` names what the item leaves in the crafting grid when a
 recipe uses it, as a milk bucket leaves a bucket (vanilla's
 `Item.Properties.craftRemainder`, not a data component): a vanilla item or
-one of the mod's own, refused at load otherwise. It holds on the crafting
+one of the package's own admitted items (including item-bearing blocks). An unused
+`minecraft:` name registered by another mod is not a vanilla item. It holds on the crafting
 table, the inventory grid, the crafter and as furnace fuel (the last of the stack leaves it in
 the fuel slot, a stack with more left drops it), not in a brewing stand. What the item leaves once eaten
 or drunk is the `minecraft:use_remainder` component instead:
@@ -1258,7 +1259,9 @@ do on NeoForge and Fabric, and `sunrise-port-pack carry` writes the last two fro
 
 A mod's own configured and placed features (`data/<ns>/worldgen/feature/`, `placed_feature/`) generate in
 biomes it does not own (vanilla's) through NeoForge's biome modifiers, files in `data/<ns>/neoforge/biome_modifier/`
-(older Forge mods: `data/<ns>/forge/biome_modifier/`, `forge:` types). `add_features` appends its `features` to one
+(older Forge mods: `data/<ns>/forge/biome_modifier/`, `forge:` types). Pack precedence picks
+one effective file; a code declaration of its registry key is refused, not applied a second time.
+`add_features` appends its `features` to one
 generation `step` of every biome in `biomes`; `remove_features` takes them out of its `steps` (every step when it lists
 none); `none` does nothing. `biomes` and `features` are an id, a `#tag` or a list of ids; `biomes` may also be
 NeoForge's `any`, `or`, `and` or `not`. Every addition comes before every removal, each in mod and file order, and a

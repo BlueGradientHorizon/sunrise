@@ -221,7 +221,7 @@ pub fn build_with_conditions(
                         continue;
                     }
                     let structure = structures::is_modifier(&file);
-                    if structure || biomes::is_modifier(&file) {
+                    if structure || biomes::modifier_key(&file).is_some() {
                         // Registry JSON has one winning source; don't even read a loser.
                         modifier_files.insert(file, (modifier_order, &m.id, layer, structure));
                         modifier_order += 1;
@@ -277,7 +277,23 @@ pub fn build_with_conditions(
         }
     }
     conditions.check_errors()?;
+    let native = mod_api::__private::biome_modifier_declarations()
+        .iter()
+        .map(|decl| (&decl.mod_id, decl.file()))
+        .collect::<Vec<_>>();
+    biomes::check_registry(
+        accepted
+            .iter()
+            .filter(|(_, _, _, structure)| !*structure)
+            .map(|(file, owner, _, _)| (owner.as_str(), file.as_str()))
+            .chain(
+                native
+                    .iter()
+                    .map(|(owner, file)| (owner.as_str(), file.as_str())),
+            ),
+    )?;
     let mut modifiers = Vec::new();
+    let mut modifier_sources = Vec::new();
     let mut structure_modifiers = Vec::new();
     for (file, owner, text, structure) in accepted {
         if structure {
@@ -289,6 +305,8 @@ pub fn build_with_conditions(
             )?);
         } else {
             modifiers.extend(biomes::Modifier::read(owner, &file, &text, &mut warnings)?);
+            // No-op and unsupported serializers still occupy their accepted registry keys.
+            modifier_sources.push([owner.clone(), file, text]);
         }
     }
     // A tag naming an id nobody registers fails as a whole in vanilla, and
@@ -396,6 +414,7 @@ pub fn build_with_conditions(
             base,
             &overlay,
             &modifiers,
+            modifier_sources,
             inventory.server_ids().map(str::to_owned).collect(),
             biome_tag_doc,
             placed_doc,

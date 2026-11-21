@@ -33,6 +33,8 @@ pub trait BiomeModifiersRegistrar {
     /// It performs the same operations as the data files in `data/<ns>/neoforge/biome_modifier/`
     /// (add and remove features, add and remove spawns, add and remove spawn costs) on the biomes
     /// it names.
+    /// Code declarations share keys with effective `data/<ns>/neoforge/biome_modifier/` files;
+    /// declaring a key that already has an effective file refuses the registration.
     /// The game applies it with the data-file modifiers, once, when the world's tables build:
     /// every addition first, then every removal, then every `ModifyBiome`, each in mod and
     /// registration order. A world

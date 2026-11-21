@@ -162,7 +162,7 @@ impl Game<'_> {
     /// a `native_use_duration` above 0. Its use is its own `Item.use`.
     pub(super) fn mod_use(&self, stack: &ItemStack) -> bool {
         let info = self.items().get(&stack.item);
-        !stack.item.starts_with("minecraft:")
+        mod_api::__private::is_content_item(&stack.item)
             && info.is_some()
             && self.consumable(stack).is_none()
             && !self.stack_carries_blocks_attacks(stack, info)

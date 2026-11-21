@@ -171,6 +171,7 @@ pub(super) fn load_core(
     load_role: mods::LoadRole,
     parallel: bool,
     progress: &Progress,
+    prepared_entity_models: Option<&Arc<sunrise_client::mobs::EntityModelDocument>>,
     launch_world: Option<&str>,
 ) -> std::result::Result<std::result::Result<CoreTables, String>, String> {
     let role = load_role.execution;
@@ -192,13 +193,17 @@ pub(super) fn load_core(
         let entity_models = (!headless).then(|| {
             Step::spawn(scope, parallel, "entity_models", || {
                 startup::time("core.entity_models", || {
-                    sunrise_client::mobs::EntityModelDocument::load(root).ok()
+                    prepared_entity_models.cloned().or_else(|| {
+                        sunrise_client::mobs::EntityModelDocument::load(root)
+                            .ok()
+                            .map(Arc::new)
+                    })
                 })
             })
         });
         let assets = startup::time("core.assets", || Assets::load(root));
         let models = models.map(|m| m.join().unwrap_or_else(|e| std::panic::resume_unwind(e)));
-        let entity_models = entity_models.and_then(|step| step.join()).map(Arc::new);
+        let entity_models = entity_models.and_then(|step| step.join());
         (assets, models, entity_models)
     });
     let assets = match assets {
@@ -663,6 +668,7 @@ pub(super) fn load_resources_for_mods(
                         load_role,
                         parallel,
                         progress,
+                        mod_sources.prepared_entity_models.as_ref(),
                         early,
                     )
                 })

@@ -10,8 +10,16 @@ pub(super) fn owned_item_ids(
     declarations
         .get(manifest.id.as_str())
         .into_iter()
-        .flat_map(|batch| &batch.items)
-        .map(|item| item.get().id.clone())
+        .flat_map(|batch| {
+            batch.items.iter().map(|item| &item.get().id).chain(
+                batch
+                    .blocks
+                    .iter()
+                    .filter(|block| block.get().item)
+                    .map(|block| &block.get().id),
+            )
+        })
+        .cloned()
         .collect()
 }
 

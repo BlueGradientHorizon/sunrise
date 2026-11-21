@@ -5020,9 +5020,11 @@ pub struct EntityModelDocument(Arc<Value>);
 
 impl EntityModelDocument {
     pub fn load(root: &Path) -> crate::Result<Self> {
-        Ok(Self(Arc::new(serde_json::from_slice(&fs::read(
-            root.join("entity-models.json"),
-        )?)?)))
+        let doc: Value = serde_json::from_slice(&fs::read(root.join("entity-models.json"))?)?;
+        if !doc.is_object() {
+            return Err("entity-models.json: expected a layer map".into());
+        }
+        Ok(Self(Arc::new(doc)))
     }
 
     pub fn model(&self, key: &str) -> Option<Part> {

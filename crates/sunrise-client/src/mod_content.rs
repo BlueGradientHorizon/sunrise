@@ -3054,6 +3054,7 @@ fn place_in_biomes(
     base: &Path,
     overlay: &Overlay<'_>,
     modifiers: &[biomes::Modifier],
+    modifier_sources: Vec<[String; 3]>,
     enabled_mods: Vec<String>,
     biome_tags: Option<J>,
     placed: Option<J>,
@@ -3094,7 +3095,7 @@ fn place_in_biomes(
         carver_ids,
         carver_tags: modifier_tags(base, overlay, tags, "worldgen/carver")?,
         enabled_mods,
-        modifiers: modifiers.iter().map(|m| m.source.clone()).collect(),
+        modifiers: modifier_sources,
         unmodified: BTreeMap::new(),
         feature_tags,
         entity_categories,
@@ -3259,7 +3260,9 @@ pub fn biome_modifiers_over_packs(
     };
     let mut warnings = Vec::new();
     let mut modifiers = Vec::new();
-    for [m, file, text] in saved.modifiers.iter().chain(declared) {
+    let sources = || saved.modifiers.iter().chain(declared);
+    biomes::check_registry(sources().map(|[owner, file, _]| (owner.as_str(), file.as_str())))?;
+    for [m, file, text] in sources() {
         modifiers.extend(biomes::Modifier::read(m, file, text, &mut warnings)?);
     }
     // What the generator reads without the modifiers over the packs.

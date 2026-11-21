@@ -87,14 +87,7 @@ fn menu_screen_factory(
             .then(|| rows.values().next())
             .flatten();
     }
-    let opener = opener?;
-    if let Some(index) = crate::runtime::content_owner_index(opener)
-        && let Some(reg) = rows.get(&index)
-    {
-        return Some(reg);
-    }
-    let owner = installed.menu_slot_exclusions.get(menu)?.get(opener)?.owner;
-    let index = crate::__private::mod_index(owner)?;
+    let index = crate::runtime::content_block(opener?)??;
     rows.get(&index)
 }
 
@@ -134,60 +127,26 @@ impl HookParts {
     ) -> &[Attached<dyn MenuPart>] {
         attached(&self.menus, id)
     }
-    /// The menu's owner lookup: only the part whose package owns the menu type, or the block
-    /// opening a built-in vanilla menu, receives callbacks. A bound recipe book, a custom
-    /// menu screen factory, or an opener-scoped slot exclusion identifies its declaring mod
-    /// directly without inferring ownership from the key's namespace.
+    /// Only the opened custom type's owner, or the verified stock opener's owner, receives
+    /// these gameplay callbacks. Screen, recipe book and slot-mask registrations are separate.
     pub(crate) fn menu_for_opener(
         &self,
         menu: &str,
         block: Option<&str>,
     ) -> &[Attached<dyn MenuPart>] {
-        let parts = attached(&self.menus, || Some(menu));
-        if parts.is_empty() {
+        let owner = if is_vanilla_menu_type(menu) {
+            block.and_then(crate::runtime::content_block).flatten()
+        } else {
+            crate::runtime::content_menu_owner(menu)
+        };
+        let Some(owner) = owner else {
             return &[];
-        }
-        let owner = crate::RecipeBookLayout::declaring_mod(menu)
-            .or_else(|| {
-                (!is_vanilla_menu_type(menu))
-                    .then(|| installed()?.menu_screen_factories.get(menu))
-                    .flatten()
-                    .filter(|rows| rows.len() == 1)
-                    .and_then(|rows| rows.values().next())
-                    .map(|reg| reg.owner)
-            })
-            .or_else(|| {
-                let block = block?;
-                installed()?
-                    .menu_slot_exclusions
-                    .get(menu)?
-                    .get(block)
-                    .map(|exclusion| exclusion.owner)
-            });
-        if let Some(owner) = owner {
-            return match parts.iter().position(|p| p.mod_id == owner) {
-                Some(i) => std::slice::from_ref(&parts[i]),
-                None => &[],
-            };
-        }
-        if is_vanilla_menu_type(menu) {
-            let Some(block) = block else {
-                return &[];
-            };
-            let Some(owner_index) = crate::runtime::content_owner_index(block) else {
-                return &[];
-            };
-            return match parts.iter().position(|p| p.mod_index == owner_index) {
-                Some(i) => std::slice::from_ref(&parts[i]),
-                None => &[],
-            };
-        }
-        if let Some(owner_index) = crate::runtime::content_owner_index(menu)
-            && let Some(i) = parts.iter().position(|p| p.mod_index == owner_index)
-        {
-            return std::slice::from_ref(&parts[i]);
-        }
+        };
+        let parts = self.menu(|| Some(menu));
         parts
+            .iter()
+            .find(|part| part.mod_index == owner)
+            .map_or(&[], std::slice::from_ref)
     }
 }
 
@@ -235,7 +194,9 @@ pub fn menu_slot_exclusion_masks(
 
 impl dyn Registrar + '_ {
     /// Attach gameplay behavior to `menu`: a mod's, or one of vanilla's that
-    /// a mod block opens. Register the client screen separately with
+    /// a mod block opens. Button validation and actions go to the package that registered the
+    /// open custom type or the verified stock opener, not to its presentation providers.
+    /// Register the client screen separately with
     /// [`MenusRegistrar::register_menu_screen`].
     pub fn menu_part<P: MenuPart>(&mut self, menu: &str, part: P) {
         self.attach_menu_part(menu, type_name::<P>(), Arc::new(part));

@@ -93,6 +93,8 @@ pub(super) struct ModsState {
     /// the window and its server. A later data reload must not overlay an
     /// already generated root recursively.
     pub(super) content_base: Arc<std::sync::OnceLock<PathBuf>>,
+    /// The prepared model document, when client registration needed it before resource loading.
+    pub(super) prepared_entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,
     /// `--dev-mod PATH`: content mods always on.
     pub(super) dev: Vec<PathBuf>,
     pub(super) native: std::sync::Arc<sunrise_mod_package::runtime::Runtime>,
@@ -463,18 +465,34 @@ pub(super) fn collect_key_mappings<'declared>(
     if role.is_client() { declared } else { &[] }
 }
 
-/// Freeze the native mods' entity model layer definitions at startup, then bake their skull
-/// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
-pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
+/// Freeze client presentations against the same prepared models later consumed by the loader.
+pub(super) fn register_layer_definitions(
+    role: ExecutionRole,
+    vanilla_root: &std::path::Path,
+) -> sunrise_client::Result<Option<Arc<sunrise_client::mobs::EntityModelDocument>>> {
+    use sunrise_client::mobs::{EntityModelDocument, model_layers};
     if !role.is_client() {
-        return;
+        return Ok(None);
     }
     let mut suppliers = Vec::new();
     Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
-    sunrise_client::mobs::model_layers::register(suppliers, Some(vanilla_root));
-    let mut models = Vec::new();
-    Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
-    sunrise_client::skull_models::register(models, vanilla_root);
+    let mut models = None;
+    if !suppliers.is_empty() {
+        let doc = Arc::new(EntityModelDocument::load(vanilla_root)?);
+        model_layers::register(suppliers, &doc);
+        models = Some(doc);
+    }
+    let mut skulls = Vec::new();
+    Game::native_create_skull_models(&RegistrationContext::new(), &mut skulls);
+    if !skulls.is_empty() {
+        let doc = match models.take() {
+            Some(doc) => doc,
+            None => Arc::new(EntityModelDocument::load(vanilla_root)?),
+        };
+        sunrise_client::skull_models::register(skulls, &doc);
+        models = Some(doc);
+    }
+    Ok(models)
 }
 /// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
 pub(super) fn register_debug_entries(role: ExecutionRole) {
@@ -1164,13 +1182,32 @@ pub(in crate::game) fn content_root(
     sunrise_client::mod_content::set_fluid_interactions(&overlay.mods);
     // Freeze ownership with the startup registries, before preparing Parts. Pack and data
     // reloads can change layers but cannot replace the registered blocks and block entity types.
-    mod_api::__private::install_content_owners(overlay.mods.iter().flat_map(|layer| {
-        layer
-            .content
-            .namespaces
+    mod_api::__private::install_content_owners(
+        overlay.mods.iter().flat_map(|m| {
+            m.content
+                .blocks
+                .iter()
+                .map(|block| (block.id.as_str(), m.id.as_str()))
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            m.content.items.iter().map(|item| item.id.as_str()).chain(
+                m.content
+                    .blocks
+                    .iter()
+                    .filter(|block| block.item)
+                    .map(|block| block.id.as_str()),
+            )
+        }),
+        overlay.mods.iter().flat_map(|m| {
+            m.content
+                .block_entity_types
+                .iter()
+                .map(|kind| (kind.id.as_str(), m.id.as_str()))
+        }),
+        sunrise_client::containers::mod_menu_types()
             .iter()
-            .map(|namespace| (namespace.as_str(), layer.id.as_str()))
-    }));
+            .map(|menu| (menu.id, menu.owner)),
+    );
     Ok(overlay.root)
 }
 
@@ -1224,12 +1261,25 @@ fn register_block_entity_types(
                 .map(|block| (block.clone(), kind.id.clone()))
         })
         .collect();
-    let mut types = BlockEntityTypes::new(membership, names.clone());
+    let mut types = BlockEntityTypes::new(
+        membership,
+        names.clone(),
+        mods.iter().flat_map(|m| {
+            m.content
+                .block_entity_types
+                .iter()
+                .map(|kind| kind.id.clone())
+        }),
+    );
     let blocks = builtin.get("minecraft:block");
+    let content_blocks: std::collections::HashSet<&str> = mods
+        .iter()
+        .flat_map(|m| m.content.blocks.iter().map(|block| block.id.as_str()))
+        .collect();
     for block in blocks
         .into_iter()
         .flat_map(|ids| &ids.names)
-        .filter(|name| name.starts_with("minecraft:"))
+        .filter(|name| !content_blocks.contains(name.as_str()))
     {
         if let Some(kind) = sunrise_client::lan::chunks::block_entity_type(block) {
             types.template(block.clone(), block.clone(), kind.to_owned());

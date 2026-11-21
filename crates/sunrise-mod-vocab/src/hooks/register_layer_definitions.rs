@@ -4,7 +4,7 @@ pub trait Hooks {
     /// Register suppliers for entity model layers (NeoForge's
     /// `EntityRenderersEvent.RegisterLayerDefinitions`). Called once at client startup.
     /// Use [`RegisterLayerDefinitionsEvent::register`] to bind each layer ID to its supplier;
-    /// accepted suppliers run once when the layer table is frozen. Bake the realized
+    /// only the last supplier for each non-built-in key runs when the layer table is frozen. Bake the realized
     /// definitions through `ClientHost::bake_layer`. API @API:model_layers@.
     #[notes = r#"## Entity model layers
 
@@ -13,10 +13,11 @@ pub trait Hooks {
 client startup. Call `event.register(id, supplier)` to stage a supplier that builds a
 `LayerDefinition`. Dedicated and integrated server roles do not fire this client event.
 IDs have the form `<namespace>:<path>#<layer>`; malformed IDs and built-in vanilla layer IDs
-are logged and dropped. The first valid registration for an ID wins.
+are logged and dropped. The last valid registration for an ID wins, as in NeoForge's
+`ClientHooks.registerLayerDefinition`.
 
 The game calls accepted suppliers in registration order when assembling the frozen layer table.
-Duplicates never run, even if the first supplier for that ID fails. A supplier that is disabled,
+Replaced suppliers never run, even if the winning supplier fails. A supplier that is disabled,
 refuses or panics leaves no definition. Bakes and resource reloads do not call suppliers again.
 
 A `LayerDefinition` holds a `MeshDefinition` of named parts whose `CubeListBuilder` boxes sit
@@ -48,7 +49,7 @@ The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
         answered_by = "mod",
         registration_append = "custom",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions",
-        version = 3
+        version = 4
     )]
     fn register_layer_definitions(layers: &mut Vec<Answered<LayerDefinitionRegistration>>);
 }

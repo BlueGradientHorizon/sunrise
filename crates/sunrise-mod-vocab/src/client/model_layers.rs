@@ -502,8 +502,8 @@ impl LayerDefinition {
 
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
-    /// The first valid registration of an ID wins. Malformed IDs, IDs in `minecraft`,
-    /// duplicates and registrations from a phase-refused listener never call their supplier.
+    /// The last valid registration of an ID wins. Malformed IDs, built-in vanilla layers,
+    /// replaced registrations and registrations from a phase-refused listener never run.
     /// An accepted supplier runs once at client startup to build the frozen definition, not
     /// when the layer is baked or resources are reloaded. Capture owned data in the supplier.
     pub fn register(

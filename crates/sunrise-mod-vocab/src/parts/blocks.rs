@@ -197,7 +197,8 @@ pub(crate) struct BlockHookParts {
 
 impl BlockHookParts {
     pub(crate) fn new(id: &str, parts: &[Attached<dyn BlockPart>]) -> Self {
-        let owner_slot = crate::runtime::content_owner_index(id)
+        let owner_slot = crate::runtime::content_block(id)
+            .flatten()
             .and_then(|owner| parts.iter().position(|part| part.mod_index == owner));
         Self {
             parts: parts.to_vec(),
