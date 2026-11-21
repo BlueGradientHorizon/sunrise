@@ -40,6 +40,7 @@ impl RegisterParticleGroupsEvent<'_> {
 
 /// A staged group factory; dispatch attributes it to the registering mod.
 // no wire: registration retains executable native code.
+#[non_exhaustive]
 pub struct ParticleGroupRegistration {
     /// The render group ID.
     pub id: Identifier,

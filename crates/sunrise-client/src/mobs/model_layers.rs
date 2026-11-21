@@ -46,7 +46,7 @@ pub fn register(layers: Vec<Answered<LayerDefinitionRegistration>>) {
         let mut seen = HashSet::new();
         let mut definitions = HashMap::new();
         for entry in &layers {
-            let LayerDefinitionRegistration { id, supplier } = &entry.answer;
+            let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
             let mod_id = entry.mod_id;
             if !is_mod_layer_id(id) {
                 log::warn!(

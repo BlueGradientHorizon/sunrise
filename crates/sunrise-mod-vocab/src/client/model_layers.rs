@@ -520,6 +520,7 @@ impl RegisterLayerDefinitionsEvent<'_> {
 
 /// A staged layer supplier; dispatch attributes it to the registering mod.
 // no wire: registration retains executable native code.
+#[non_exhaustive]
 pub struct LayerDefinitionRegistration {
     /// The model layer ID, validated when the layer table is frozen.
     pub id: String,

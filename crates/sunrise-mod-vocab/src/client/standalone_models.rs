@@ -110,6 +110,7 @@ pub enum StandaloneModelRegistration {
 
 // no wire: the baker is retained executable native code.
 /// A staged baker with its output ID and the model files it may append.
+#[non_exhaustive]
 pub struct StandaloneModelBaker {
     /// The model ID exposed to listeners after a successful bake.
     pub id: String,
