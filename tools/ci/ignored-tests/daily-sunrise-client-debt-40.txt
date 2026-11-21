@@ -1,5 +1,7 @@
 sunrise-client game::explosion::tests::disabled_block_drops_draw_offsets_without_constructing_items lib daily resources
+sunrise-client game::explosion::tests::explosion_field_edit_does_not_veto_a_compatible_swap lib daily resources
 sunrise-client game::explosion::tests::explosion_items_join_in_the_edited_drop_order lib daily resources
+sunrise-client game::explosion::tests::explosion_xp_only_edit_joins_admitted_items_after_the_orb_disables_drops lib daily resources
 sunrise-client game::explosion::tests::noop_explosion_drops_keep_rng_interleaved_with_item_joins lib daily resources
 sunrise-client game::native_player_destroyed_block_tests::block_drops_ignores_a_replacement_block_entity_placed_after_removal lib daily resources
 sunrise-client game::native_player_destroyed_block_tests::block_drops_lends_the_saved_only_pot_payload lib daily resources

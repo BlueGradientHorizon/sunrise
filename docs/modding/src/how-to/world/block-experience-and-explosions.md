@@ -56,13 +56,17 @@ Air, spared blocks, canceled explosions and explosions that keep blocks produce
 no callback. The initial explosion experience amount is zero.
 
 An explosion's `block_drops` list contains only that block's shares of merged
-stacks. Unchanged shares rejoin one entity per group. Without edits or reads of
-random fields, each group draws its position and motion and joins before the
-next group starts. Reading a position or velocity prepares that field through
-its group in vanilla order. A drop or experience edit prepares the original
-captures before items join. Compatible order edits across blocks all apply; an
-earlier block wins only when a later order would conflict, and otherwise ready
-groups join in vanilla order.
+stacks. Unchanged shares rejoin one entity per group. Reading a position or
+velocity prepares that field through its group in vanilla order. Without edits,
+each group draws its remaining fields and joins before the next group's
+remaining draws. A drop or experience edit prepares the original captures
+before items join. An experience orb's join listener can change `block_drops`
+without discarding items already admitted by the event.
+
+Compatible order edits across blocks all apply. Editing a field keeps that
+entry's place relative to its peers without fixing their order relative to each
+other. An earlier block wins only when a later order would conflict, and
+otherwise ready groups join in vanilla order.
 
 `explosion_resistance(level, event)` answers `Some(resistance)` to replace the
 block's own explosion resistance against `event.explosion`, as a ray of the
@@ -297,8 +301,9 @@ step runs as a blast's does, in vanilla's order:
 3. The drops of the whole call are merged (a stack is offered to every earlier
    pile, up to 16 a pile; the rest starts a pile at that block) and popped
    after the last block, in the order the piles began if no listener edits the
-   drops. An edited `block_drops` list sets the join order of its entries; a
-   merged group shared by several blocks still joins only once.
+   drops. Reordering a `block_drops` list changes the order of its joins;
+   editing just a field keeps that entry's place without ordering its peers.
+   A merged group shared by several blocks still joins only once.
 4. With `fire`, a third of the cells left air above a solid block catch fire,
    under `None` too.
 

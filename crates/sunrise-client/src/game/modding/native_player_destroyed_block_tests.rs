@@ -547,6 +547,13 @@ fn put_chest(game: &mut super::Game<'_>, pos: [i32; 3]) {
 fn block_drops_lends_the_saved_only_pot_payload() {
     use super::spill;
     use mod_api::{Compound, Tag};
+    use sunrise_client::mobs::MobEvent;
+
+    enum BreakSite {
+        Player,
+        Level,
+        Mob,
+    }
 
     struct Observe(Arc<Mutex<Vec<(bool, Option<Compound>)>>>);
     #[mod_api::__subscriptions]
@@ -574,7 +581,11 @@ fn block_drops_lends_the_saved_only_pot_payload() {
             ("id", Tag::String("minecraft:diamond".into())),
             ("count", Tag::Int(3)),
         ]);
-        for (pot, player_break) in [([7, 64, 4], true), ([8, 64, 4], false)] {
+        for (pot, site) in [
+            ([7, 64, 4], BreakSite::Player),
+            ([8, 64, 4], BreakSite::Level),
+            ([9, 64, 4], BreakSite::Mob),
+        ] {
             let [x, y, z] = pot;
             place(game, pot, "minecraft:decorated_pot");
             spill::put_saved_entity(
@@ -597,12 +608,23 @@ fn block_drops_lends_the_saved_only_pot_payload() {
                     Box::new(Observe(seen.clone())),
                 )]
                 .into(),
-                || {
-                    if player_break {
-                        assert!(game.player_destroy_block(player, pot, false));
-                    } else {
+                || match site {
+                    BreakSite::Player => assert!(game.player_destroy_block(player, pot, false)),
+                    BreakSite::Level => {
                         // The level destroy path shared with `/setblock ... destroy`.
                         game.destroy_block_dropping(pot).unwrap();
+                    }
+                    BreakSite::Mob => {
+                        let wither = game
+                            .spawn_mob_raw("minecraft:wither", [4.5, 64.0, 4.5], false)
+                            .unwrap();
+                        game.handle_mob_events(vec![MobEvent::BreakBlock {
+                            pos: pot,
+                            drop: true,
+                            by: Some(wither),
+                            breaker: None,
+                        }])
+                        .unwrap();
                     }
                 },
             );
