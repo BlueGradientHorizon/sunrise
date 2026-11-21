@@ -1,0 +1,1 @@
+cargo-sunrise-mod keygen_writes_registry_key_and_refuses_to_replace_either_file test:signing daily child-process

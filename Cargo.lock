@@ -513,6 +513,7 @@ dependencies = [
  "minisign",
  "minisign-verify",
  "ring",
+ "rpassword",
  "rustc-demangle",
  "serde",
  "serde_json",
