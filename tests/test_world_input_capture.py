@@ -70,7 +70,7 @@ class WorldInputCaptureTests(unittest.TestCase):
         ready = method(tick, "tick_client_load")
         self.assertLess(ready.index("r.loaded_sent = true"),
                         ready.index("self.capture_loaded_world()"))
-        level_fn = method(level_tick, "tick_remote_level")
+        level_fn = method(level_tick, "tick_remote_level_body")
         self.assertIn("self.tick_remote_player(running, hold)", level_fn)
         level = method(tick, "tick_remote_player")
         self.assertLess(level.index("self.tick_client_load()"),
