@@ -115,7 +115,7 @@ GlyphRenderTypes.createForColorTexture	skip:ui		one textured quad path for all g
 GlyphRenderTypes.select	port	crates/sunrise-client/src/game/interface/names.rs::Game::name_tag_geometry	gap: minor: normal and see-through only; polygon-offset text has no draw path
 GlyphStitcher.reset	port	crates/sunrise-client-render/src/font.rs::Font::reset_cache	atlas cursor rewound
 GlyphStitcher.stitch	port	crates/sunrise-client-render/src/font.rs::Region::place	rectangle placed in the atlas region
-PlainTextRenderable.render	port	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	shadow pass first, then the front text
+PlainTextRenderable.render	port	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	shadow pass first, then the front text
 PlayerGlyphProvider.Instance.renderSprite	missing		minor: player-head text objects are not parsed
 PlayerGlyphProvider.Instance.renderQuad	missing		minor: no player-head glyphs (same gap)
 TextFieldHelper.charTyped	inline	crates/sunrise-client/src/game/interface/sign_edit.rs::Game::sign_input	typed-text branch; EditBox::insert_text filters the text
@@ -132,19 +132,19 @@ TextFieldHelper.deleteSelection	inline	crates/sunrise-client-render/src/ui.rs::E
 TextFieldHelper.setCursorToEnd	port	crates/sunrise-client-render/src/ui.rs::EditBox::move_cursor_to_end
 TextFieldHelper.setCursorPos	port	crates/sunrise-client-render/src/ui.rs::EditBox::set_cursor	no vanilla caller (callers 0)
 TextFieldHelper.setSelectionRange	skip:other		no vanilla caller; Sunrise sets cursor and highlight separately (EditBox::set_cursor)
-BakedSheetGlyph.left	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
-BakedSheetGlyph.top	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
-BakedSheetGlyph.right	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
-BakedSheetGlyph.bottom	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
-BakedSheetGlyph.renderChar	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	shadow pass, bold double draw, italic shear
-BakedSheetGlyph.render	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	glyph quad with shear and bold
-BakedSheetGlyph.renderEffect	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	underline and strikethrough rectangles
-BakedSheetGlyph.buildEffect	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	rectangle quad of an effect
+BakedSheetGlyph.left	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
+BakedSheetGlyph.top	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
+BakedSheetGlyph.right	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
+BakedSheetGlyph.bottom	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	glyph edge with bold thickness and italic shear
+BakedSheetGlyph.renderChar	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	shadow pass, bold double draw, italic shear
+BakedSheetGlyph.render	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	glyph quad with shear and bold
+BakedSheetGlyph.renderEffect	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	underline and strikethrough rectangles
+BakedSheetGlyph.buildEffect	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	rectangle quad of an effect
 BakedSheetGlyph.createGlyph	skip:java		factory for a glyph instance
 BakedSheetGlyph.createEffect	skip:java		factory for an effect instance
-BakedSheetGlyph.EffectInstance.right	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	underline end: pen x plus advance
-BakedSheetGlyph.EffectInstance.bottom	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	underline row, 1 px at pen y plus 8
-BakedSheetGlyph.GlyphInstance.activeRight	inline	crates/sunrise-client-render/src/hud/batch.rs::HudBatch::text_styled	advance including the bold offset
+BakedSheetGlyph.EffectInstance.right	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	underline end: pen x plus advance
+BakedSheetGlyph.EffectInstance.bottom	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	underline row, 1 px at pen y plus 8
+BakedSheetGlyph.GlyphInstance.activeRight	inline	crates/sunrise-client-render/src/hud/batch_text.rs::HudBatch::text_styled	advance including the bold offset
 SpecialGlyphs.generate	port	crates/sunrise-client-render/src/font.rs::Font::white	gap: minor: white texel only; the missing-box outline is drawn in HudBatch::text_styled, not generated
 BitmapProvider.Definition.validateDimensions	missing		minor: no check of the bitmap grid; a ragged grid loads
 BitmapProvider.Definition.validate	missing		minor: no check that ascent is at most height

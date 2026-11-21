@@ -107,6 +107,7 @@ mod atlas_pack;
 mod image;
 pub use image::*;
 mod batch;
+mod batch_text;
 mod renderer;
 pub use batch::*;
 pub use renderer::*;
