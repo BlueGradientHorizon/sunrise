@@ -28,6 +28,7 @@ use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
 use sunrise_client::{
     Result,
     containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
+    item_data::cooking_fuel,
     items::{ItemStack, Items},
     mobs::Mob,
     save,
@@ -574,10 +575,7 @@ impl Containers<'_> {
                 2 => false,
                 1 => {
                     &*stack.item == "minecraft:bucket"
-                        || self
-                            .items
-                            .get(&stack.item)
-                            .is_some_and(|i| i.fuel.is_some())
+                        || cooking_fuel::for_stack(self.items, stack).is_some()
                 }
                 _ => true,
             },
@@ -633,7 +631,12 @@ impl Containers<'_> {
         match view.kind {
             Kind::Jukebox | Kind::Bookshelf => held.is_none(),
             Kind::Brewing => slot >= 3 || held.is_none(),
-            Kind::Furnace => slot != 1 || !is_bucket(stack) || !held.is_some_and(is_bucket),
+            Kind::Furnace => {
+                slot != 1
+                    || !is_bucket(stack)
+                    || !held.is_some_and(is_bucket)
+                    || cooking_fuel::for_stack(self.items, stack).is_some()
+            }
             Kind::Crafter => match self.world.block_entities.get(&view.parts[0].0) {
                 Some(BlockEntity::Crafter(c)) => {
                     // The slot's own stack sets the limit (`slotStack.getMaxStackSize`).

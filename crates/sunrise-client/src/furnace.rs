@@ -103,13 +103,9 @@ impl FurnaceCooking for Furnace {
                     };
                     if can_burn {
                         if !lit {
-                            let fuel = self.items[1].clone();
-                            let time = fuel
+                            let (time, speed) = self.items[1]
                                 .as_ref()
-                                .map_or(0, |f| providers.burn_time(items, f, fast));
-                            let speed = fuel
-                                .as_ref()
-                                .map_or(1.0, |f| providers.speed(items, f, fast));
+                                .map_or((0, 1.0), |fuel| providers.cooking_fuel(items, fuel, fast));
                             self.lit_remaining = time;
                             self.lit_total = time;
                             self.speed = speed;

@@ -3,6 +3,10 @@
 use crate::items::{ItemStack, Items};
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path};
+use sunrise_items::{
+    item_data::cooking_fuel,
+    properties::resolvable::{Float, Int},
+};
 
 /// Evaluator for `context_int_provider` / `context_float_provider` values.
 pub struct Providers {
@@ -147,19 +151,27 @@ impl Providers {
             floats: HashMap::new(),
         }
     }
-    pub fn burn_time(&self, items: &Items, stack: &ItemStack, fast: bool) -> i32 {
-        items
-            .get(&stack.item)
-            .and_then(|i| i.fuel.as_ref())
-            .map_or(0, |(time, _)| Self::eval(time, fast, &self.ints, 0) as i32)
-    }
-    pub fn speed(&self, items: &Items, stack: &ItemStack, fast: bool) -> f32 {
-        items
-            .get(&stack.item)
-            .and_then(|i| i.fuel.as_ref())
-            .map_or(1.0, |(_, speed)| {
-                Self::eval(speed, fast, &self.floats, 0) as f32
-            })
+    /// `AbstractFurnaceBlockEntity.getBurnDuration` and `AbstractFurnaceBlockEntity.getSpeedMultiplier`:
+    /// resolve the effective fuel against the furnace's block context when it lights.
+    pub fn cooking_fuel(&self, items: &Items, stack: &ItemStack, fast: bool) -> (i32, f32) {
+        let Some((time, speed)) = cooking_fuel::for_stack(items, stack) else {
+            return (0, 1.0);
+        };
+        let time = match time {
+            Int::Constant(value) => value,
+            Int::Reference(key) => self
+                .ints
+                .get(&key.to_string())
+                .map_or(0, |value| Self::eval(value, fast, &self.ints, 0) as i32),
+        };
+        let speed = match speed {
+            Float::Constant(value) => value,
+            Float::Reference(key) => self
+                .floats
+                .get(&key.to_string())
+                .map_or(1.0, |value| Self::eval(value, fast, &self.floats, 0) as f32),
+        };
+        (time, speed)
     }
 }
 

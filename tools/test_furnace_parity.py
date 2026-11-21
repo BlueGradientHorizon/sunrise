@@ -5,6 +5,7 @@ The Java oracle loads the vanilla data pack's real RecipeManager, puts a
 furnace, blast furnace or smoker in a block-update level and calls the real
 AbstractFurnaceBlockEntity.serverTick. The Rust probe runs FurnaceCooking::tick
 on the chunk's Furnace. Cases cover the burn table (every cooking_fuel item),
+stack component additions, overrides and removals, including provider references,
 the three kinds' 200/100/100 cook times, fuel stacks and the LIT state, the
 RecipesUsed experience, full output slots, timer decay, and an input changed
 mid-cook. `--no-change` leaves out the mid-cook family, reproducing the corpus
@@ -24,8 +25,20 @@ KIND_RECIPE = {'furnace': 'minecraft:smelting', 'blast_furnace': 'minecraft:blas
                'smoker': 'minecraft:smoking'}
 
 
-def stack(item, count=1):
-    return '{id:"%s",count:%d}' % (item, count)
+def stack(item, count=1, components=None):
+    patch = ',components:' + components if components else ''
+    return '{id:"%s",count:%d%s}' % (item, count, patch)
+
+
+def fuel_stacks():
+    return {
+        'added': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:407,speed_multiplier:2.5f}}'),
+        'removed': stack('minecraft:coal', components='{"!minecraft:cooking_fuel":{}}'),
+        'overridden': stack('minecraft:coal', components='{"minecraft:cooking_fuel":{burn_time:323,speed_multiplier:1.25f}}'),
+        'zero_time': stack('minecraft:diamond', components='{"minecraft:cooking_fuel":{burn_time:0,speed_multiplier:2.5f}}'),
+        'default_fuel': stack('minecraft:coal'),
+        'default_nonfuel': stack('minecraft:diamond'),
+    }
 
 
 def fcase(kind, ticks, inv, fuel, out='-', timer=0, total=0, lit=0, littotal=0,
@@ -62,7 +75,19 @@ def make_cases(build):
     fuels = sorted(item for item, data in catalog.items()
                    if 'minecraft:cooking_fuel' in data)
     coal = stack('minecraft:coal')
-    cases = []
+    # Patched fuels all start with a matching recipe. Observe ignition, speed,
+    # time remaining and recipe completion, without deriving any expected values here.
+    iron = stack('minecraft:iron_ore')
+    cases = [fcase('furnace', ticks, iron, fuel, total=200)
+             for fuel in fuel_stacks().values() for ticks in (1, 200)]
+    # Reuse a real registry reference on a different item, in both furnace contexts.
+    named = json.dumps({'minecraft:cooking_fuel': catalog['minecraft:coal']['minecraft:cooking_fuel']},
+                       separators=(',', ':'))
+    for kind in KINDS:
+        ing, _, cook, _ = all_recipes[kind][0]
+        cases.append(fcase(kind, 1, stack(ing), stack('minecraft:diamond', components=named), total=cook))
+    missing = '{"minecraft:cooking_fuel":{burn_time:31,speed_multiplier:"test:absent"}}'
+    cases.append(fcase('furnace', 1, iron, stack('minecraft:diamond', components=missing), total=200))
 
     # One recipe per kind, at its cook-time boundaries.
     for kind in KINDS:
@@ -125,9 +150,12 @@ def make_cases(build):
 if __name__ == '__main__':
     harness.differential(
         'furnace-parity', 'VanillaFurnaceOracle', 'furnace_fixture', make_cases,
-        'Furnace block entity tick: burn table for every cooking_fuel item, 200/100/100 '
+        'Furnace block entity tick: default and patched cooking_fuel, 200/100/100 '
         'cook times, fuel stack and LIT state, RecipesUsed experience, full output and '
         'timer decay, and input changed mid-cook. --no-change leaves out the change family.',
         sources=[lab.ROOT / 'crates/sunrise-client-render/src/chunk/block_entity.rs',
+                 lab.ROOT / 'crates/sunrise-client-render/src/providers.rs',
+                 lab.ROOT / 'crates/sunrise-items/src/item_data/cooking_fuel.rs',
+                 lab.ROOT / 'crates/sunrise-items/src/properties/resolvable.rs',
                  lab.ROOT / 'crates/sunrise-client/src/furnace.rs',
                  lab.ROOT / 'crates/sunrise-client/src/crafting.rs'])

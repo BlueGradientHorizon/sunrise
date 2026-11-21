@@ -1,5 +1,8 @@
 //! `CookingFuel.CODEC` and its borrowed `ResolvableInt` / `ResolvableFloat` values.
-use crate::properties::resolvable::{self, Float, Int};
+use crate::{
+    items::{ItemStack, Items},
+    properties::resolvable::{self, Float, Int},
+};
 use sunrise_core::nbt::Tag;
 
 fn fields(value: &Tag) -> Result<(Int<'_>, Float<'_>), &'static str> {
@@ -15,6 +18,28 @@ fn fields(value: &Tag) -> Result<(Int<'_>, Float<'_>), &'static str> {
         resolvable::float(speed)
             .ok_or("Invalid speed_multiplier: expected number or resource key")?,
     ))
+}
+
+/// `ItemStack.get(DataComponents.COOKING_FUEL)`: read the retained payload, or its
+/// prototype if the stack neither replaces nor removes the component.
+pub fn for_stack<'a>(items: &'a Items, stack: &'a ItemStack) -> Option<(Int<'a>, Float<'a>)> {
+    const ID: &str = "minecraft:cooking_fuel";
+    if let Some(data) = stack.data() {
+        if data.other("!minecraft:cooking_fuel").is_some() {
+            return None;
+        }
+        if let Some(value) = data.other(ID) {
+            return fields(value).ok();
+        }
+    }
+    fields(
+        items
+            .get(&stack.item)?
+            .component_prototype
+            .data()?
+            .other(ID)?,
+    )
+    .ok()
 }
 
 /// Decode the two required fields, ignoring unknown fields; neither has a default or range.

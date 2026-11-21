@@ -129,8 +129,8 @@ public final class VanillaFurnaceOracle {
           .append(" total=").append(field(AbstractFurnaceBlockEntity.class, "cookingTotalTime").getInt(be))
           .append(" lit=").append(field(AbstractFurnaceBlockEntity.class, "litTimeRemaining").getInt(be))
           .append(" littotal=").append(field(AbstractFurnaceBlockEntity.class, "litTotalTime").getInt(be))
-          .append(" speed=").append(String.format(Locale.ROOT, "%.3f",
-                  field(AbstractFurnaceBlockEntity.class, "speedMultiplier").getFloat(be)))
+          .append(" speed=").append(String.format(Locale.ROOT, "%08x", Float.floatToRawIntBits(
+                  field(AbstractFurnaceBlockEntity.class, "speedMultiplier").getFloat(be))))
           .append(" state=").append(state.getValue(AbstractFurnaceBlock.LIT));
         @SuppressWarnings("unchecked")
         Map<Object, Integer> used = (Map<Object, Integer>) field(AbstractFurnaceBlockEntity.class, "recipesUsed").get(be);
@@ -147,7 +147,8 @@ public final class VanillaFurnaceOracle {
         for (int i = 0; i < ids.size(); i++) {
             if (i > 0) sb.append(',');
             String id = ids.get(i);
-            sb.append(id).append('=').append(experience.getOrDefault(id, 0.0f));
+            sb.append(id).append('=').append(String.format(Locale.ROOT, "%08x",
+                    Float.floatToRawIntBits(experience.getOrDefault(id, 0.0f))));
         }
         return sb.toString();
     }

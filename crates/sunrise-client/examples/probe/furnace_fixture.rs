@@ -97,17 +97,17 @@ pub fn main() -> sunrise_client::Result<()> {
             write!(
                 out,
                 "s{i}={} ",
-                canon_stack(furnace.items[i].as_ref(), &Default::default())
+                canon_stack(furnace.items[i].as_ref(), &items)
             )?;
         }
         write!(
             out,
-            "timer={} total={} lit={} littotal={} speed={:.3} state={lit_state} used=",
+            "timer={} total={} lit={} littotal={} speed={:08x} state={lit_state} used=",
             furnace.cooking_timer,
             furnace.cooking_total,
             furnace.lit_remaining,
             furnace.lit_total,
-            furnace.speed
+            furnace.speed.to_bits()
         )?;
         let mut ids: Vec<&String> = furnace.recipes_used.keys().collect();
         ids.sort();
@@ -122,7 +122,7 @@ pub fn main() -> sunrise_client::Result<()> {
             if i > 0 {
                 out.push(',');
             }
-            write!(out, "{id}={}", recipes.cooking_experience(id))?;
+            write!(out, "{id}={:08x}", recipes.cooking_experience(id).to_bits())?;
         }
         writeln!(out)?;
     }
