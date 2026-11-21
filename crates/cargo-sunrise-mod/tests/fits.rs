@@ -104,8 +104,8 @@ impl Drop for Project {
     }
 }
 
-fn assert_answer(output: Output, code: i32, game_ids: &[&str]) {
-    let stdout = std::str::from_utf8(&output.stdout).unwrap();
+fn assert_answer(output: Output, code: i32, game_ids: &[&str]) -> String {
+    let stdout = String::from_utf8(output.stdout).unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(code), "{stdout}{stderr}");
     let reported: BTreeSet<_> = stdout
@@ -119,6 +119,16 @@ fn assert_answer(output: Output, code: i32, game_ids: &[&str]) {
         game_ids.iter().copied().collect(),
         "{stdout}{stderr}"
     );
+    stdout
+}
+
+fn assert_build_order(stdout: &str) {
+    let builds: Vec<_> = stdout
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|id| id.len() == 7 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .collect();
+    assert_eq!(builds, ["0123456", "89abcde"], "{stdout}");
 }
 
 #[test]
@@ -126,21 +136,23 @@ fn assert_answer(output: Output, code: i32, game_ids: &[&str]) {
 fn fits_judges_declared_game_code_by_each_builds_data() {
     let steady = Project::new("steady", &[STEADY]);
     assert_answer(steady.run(&["fits", "--build", NEW]), 0, &[]);
-    assert_answer(
+    let stdout = assert_answer(
         steady.run(&["fits", "--build", OLD, "--build", NEW]),
         0,
         &[],
     );
+    assert_build_order(&stdout);
 
     let moved = Project::new("moved", &[STEADY, RESHAPED, DROPPED]);
     assert_answer(moved.run(&["fits", "--build", NEW]), 1, CHANGED_IDS);
     // The build it was made for still fits; one build that does not decides the answer.
     assert_answer(moved.run(&["fits", "--build", OLD]), 0, &[]);
-    assert_answer(
+    let stdout = assert_answer(
         moved.run(&["fits", "--build", OLD, "--build", NEW]),
         1,
         CHANGED_IDS,
     );
+    assert_build_order(&stdout);
 
     // Neither build can fingerprint the method, so the answer is unknown, not a fit.
     let bodiless = Project::new("bodiless", &[STEADY, BODILESS]);
