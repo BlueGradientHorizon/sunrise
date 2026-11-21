@@ -679,8 +679,6 @@ pub(super) fn code_with<O: Ops>(kind: i32, r: &mut Reader, names: &dyn Names) ->
                 _ => O::create_list(predicates),
             }
         }
-        // UseRemainder: one template.
-        25 => super::raw::template_code_with::<O>(r, names)?,
         _ => return None,
     })
 }
