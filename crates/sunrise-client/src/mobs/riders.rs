@@ -709,7 +709,7 @@ fn tick_with<R>(
             owner = vehicle;
         }
     }
-    // Creaking's cramming continuation pins the selected peers' live identities.
+    // The fast path has no live mob list, so resumed Creaking cramming would drop every pinned peer.
     if mobs[index].species() != Species::Creaking
         && !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget)
     {
