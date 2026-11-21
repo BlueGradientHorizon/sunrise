@@ -43,8 +43,7 @@ pub trait ConfigHost {
     /// `<mod id>.<ext>` or `<mod id>-<rest>`, as Fabric and NeoForge mods
     /// keep theirs. The service is bound to the mod whose hook or part is
     /// running, so a mod never names its id and can't reach another mod's
-    /// files; a world's `serverconfig/` is read only through
-    /// `config_loading`.
+    /// files; a world's `serverconfig/` copy is read through registered `Server` config listeners.
     #[access(WorldOnly)]
     #[static_call]
     fn config_files(&self) -> &'static dyn ConfigFiles;

@@ -932,36 +932,40 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
             };
             use mod_api::__private::{ModPhase, PhaseOwner};
             use mod_api::{
-                ClientHost, ClientSetupEvent, ClientTickPreEvent, ConfigLoadingEvent, Hooks,
-                HostSide, ModEntry, RegisterConfigsEvent, ScreenOpening, ScreenOpeningEvent,
+                ClientHost, ClientSetupEvent, ClientTickPreEvent, ConfigEvent, ConfigKind,
+                ConfigListener, ConfigSnapshot, ConfigSpec, Hooks, HostSide, ModEntry, Mods,
+                Registrar, RegistrationContext, ScreenOpening, ScreenOpeningEvent,
             };
             use std::{sync::Mutex, time::Instant};
 
             struct Probe(Arc<Mutex<Vec<String>>>);
             #[mod_api::__subscriptions]
             impl Hooks for Probe {
-                fn register_configs(&self, _: HostSide<'_>, event: &mut RegisterConfigsEvent<'_>) {
-                    event.configs.push(mod_api::Config::new(
-                        "startup_phase",
-                        mod_api::ConfigKind::Client,
-                        "enabled = true\n",
-                    ));
-                    event.configs.push(mod_api::Config::new(
-                        "startup_phase",
-                        mod_api::ConfigKind::Common,
-                        "enabled = true\n",
-                    ));
+                fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+                    for kind in [ConfigKind::Client, ConfigKind::Common] {
+                        let seen = self.0.clone();
+                        let listener: Arc<ConfigListener> = Arc::new(
+                            move |_: HostSide<'_>, event: ConfigEvent, config: &ConfigSnapshot| {
+                                if event == ConfigEvent::Loading {
+                                    assert_eq!(
+                                        mod_api::__private::current_phase(),
+                                        ModPhase::Config
+                                    );
+                                    seen.lock().unwrap().push(format!("{:?}", config.kind));
+                                }
+                                Ok(())
+                            },
+                        );
+                        r.register_config(
+                            ConfigSpec::new(kind, "enabled = true\n"),
+                            Some(listener),
+                        )
+                        .unwrap();
+                    }
                 }
                 fn client_setup(&self, _: &mut dyn ClientHost, _: &mut ClientSetupEvent) {
                     assert_eq!(mod_api::__private::current_phase(), ModPhase::Setup);
                     self.0.lock().unwrap().push("setup".into());
-                }
-                fn config_loading(&self, _: HostSide<'_>, event: &mut ConfigLoadingEvent<'_>) {
-                    assert_eq!(mod_api::__private::current_phase(), ModPhase::Config);
-                    self.0
-                        .lock()
-                        .unwrap()
-                        .push(format!("{:?}", event.config.kind));
                 }
                 fn screen_opening(
                     &self,
@@ -981,12 +985,13 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                 }
             }
             let seen = Arc::new(Mutex::new(Vec::new()));
-            let mods = vec![ModEntry::new(
+            let mods: Mods = vec![ModEntry::new(
                 "startup_phase",
                 Box::new(Probe(seen.clone())),
             )]
             .into();
-            mod_platform::testing::with_mods(mods, || {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
                 for pack_error in [None, Some("selected resource pack failed")] {
                     seen.lock().unwrap().clear();
                     with_client_game(|game| {

@@ -154,8 +154,24 @@ impl RegisteredConfig {
         self.owner.id()
     }
 
-    /// Deliver the event after the engine has done its file I/O.
-    pub fn notify(&self, host: HostSide<'_>, event: ConfigEvent, path: &Path, text: &str) {
+    /// Build a snapshot for this registered config from the resolved path and text.
+    pub fn snapshot(&self, path: PathBuf, text: String) -> ConfigSnapshot {
+        ConfigSnapshot {
+            mod_id: self.mod_id(),
+            kind: self.kind,
+            file: self.file.clone(),
+            path,
+            text,
+        }
+    }
+
+    /// Deliver the event for an already-built snapshot after the engine has done its file I/O.
+    pub fn notify_snapshot(
+        &self,
+        host: HostSide<'_>,
+        event: ConfigEvent,
+        snapshot: &ConfigSnapshot,
+    ) {
         let Some(listener) = &self.listener else {
             return;
         };
@@ -164,19 +180,22 @@ impl RegisteredConfig {
             ConfigEvent::Reloading => "config_reloading",
             ConfigEvent::Unloading => "config_unloading",
         };
-        let snapshot = ConfigSnapshot {
-            mod_id: self.mod_id(),
-            kind: self.kind,
-            file: self.file.clone(),
-            path: path.to_owned(),
-            text: text.to_owned(),
-        };
         // CallbackOwner reports phase refusals and panics. Only the listener's own
         // returned error is reported here, independently on every invocation.
         if let Ok(Err(error)) = self.owner.call("config listener", operation, || {
-            listener(host, event, &snapshot)
+            listener(host, event, snapshot)
         }) {
-            log::error!("mod {}: {operation} for {path:?}: {error}", self.mod_id());
+            log::error!(
+                "mod {}: {operation} for {:?}: {error}",
+                self.mod_id(),
+                snapshot.path
+            );
         }
+    }
+
+    /// Deliver the event after the engine has done its file I/O.
+    pub fn notify(&self, host: HostSide<'_>, event: ConfigEvent, path: &Path, text: &str) {
+        let snapshot = self.snapshot(path.to_owned(), text.to_owned());
+        self.notify_snapshot(host, event, &snapshot);
     }
 }

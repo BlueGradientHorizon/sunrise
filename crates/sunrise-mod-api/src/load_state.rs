@@ -210,7 +210,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolved_dispatch_slice_keeps_order_in_registration_config_and_reload() {
+    fn resolved_dispatch_slice_keeps_order_in_registration_and_reload() {
         crate::__private::initialize().unwrap();
         use crate::*;
         use std::sync::Mutex;
@@ -224,10 +224,6 @@ mod tests {
                 assert_eq!(current_phase(), ModPhase::Registration);
                 self.calls.lock().unwrap().push(("register", self.id));
             }
-            fn config_loading(&self, _: HostSide<'_>, _: &mut ConfigLoadingEvent<'_>) {
-                assert_eq!(current_phase(), ModPhase::Config);
-                self.calls.lock().unwrap().push(("config", self.id));
-            }
             fn add_server_reload_listeners(
                 &self,
                 _: &dyn Host,
@@ -240,8 +236,6 @@ mod tests {
         struct Server;
         impl Host for Server {}
         mod_api::impl_host_areas!(Server);
-        impl ServerHost for Server {}
-        mod_api::impl_server_host_areas!(Server);
         // The loader supplies a dependency-resolved slice; phase dispatch must retain it.
         let order = [1, 0, 2];
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -269,32 +263,20 @@ mod tests {
         )
         .unwrap();
         owner.advance(ModPhase::Setup).unwrap();
-        let mut host = Server;
+        let host = Server;
         for _world in 0..2 {
             {
                 let _config = owner.config().unwrap();
-                dispatch_config_loading(
-                    HostSide::Server(&mut host),
-                    &crate::__private::built::ConfigFile {
-                        mod_id: "lib".into(),
-                        kind: ConfigKind::Server,
-                        file: "lib-server.toml".into(),
-                        text: String::new(),
-                    }
-                    .into(),
-                );
             }
             for _reload in 0..2 {
                 let _reload = owner.reloading().unwrap();
                 dispatch_add_server_reload_listeners(&host, &mut ServerListenerRegistry::new());
             }
         }
-        let expected = [
-            "register", "config", "reload", "reload", "config", "reload", "reload",
-        ]
-        .into_iter()
-        .flat_map(|moment| ["lib", "z", "a"].map(|id| (moment, id)))
-        .collect::<Vec<_>>();
+        let expected = ["register", "reload", "reload", "reload", "reload"]
+            .into_iter()
+            .flat_map(|moment| ["lib", "z", "a"].map(|id| (moment, id)))
+            .collect::<Vec<_>>();
         assert_eq!(*calls.lock().unwrap(), expected);
     }
 

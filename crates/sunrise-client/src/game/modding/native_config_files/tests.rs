@@ -153,8 +153,8 @@ fn a_mod_never_reaches_another_mods_files() {
     );
 }
 
-/// The service through a real game and the hooks' own dispatch: a mod
-/// saves its registered config from `config_loading` and keeps a file in
+/// The service through a real game and the owner-bound config listener: a mod
+/// saves its registered config from `ConfigEvent::Loading` and keeps a file in
 /// its folder, the reload poll hands the saved text back, and the same
 /// call for another mod's file is refused. In a fresh process, run in a
 /// scratch folder, since `config/` is beside the game's working folder.
@@ -162,10 +162,10 @@ fn a_mod_never_reaches_another_mods_files() {
 #[ignore = "daily"]
 fn a_mod_saves_its_config_through_the_game_and_the_reload_hears_it() {
     use mod_api::{
-        self, ConfigLoadingEvent, ConfigReloadingEvent, Hooks, HostSide, ModEntry, Mods,
-        RegisterConfigsEvent,
+        ConfigEvent, ConfigKind, ConfigListener, ConfigSnapshot, ConfigSpec, Hooks, HostSide,
+        ModEntry, Mods, Registrar, RegistrationContext,
     };
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
     fn heard() -> std::sync::MutexGuard<'static, Vec<String>> {
         HEARD
@@ -188,31 +188,40 @@ fn a_mod_saves_its_config_through_the_game_and_the_reload_hears_it() {
     struct Proof;
     #[mod_api::__subscriptions]
     impl Hooks for Proof {
-        fn register_configs(&self, _: HostSide, event: &mut RegisterConfigsEvent<'_>) {
-            event.configs.push(mod_api::Config::new(
-                "proof",
-                mod_api::ConfigKind::Common,
-                "count = 0\n",
-            ));
-        }
-        fn config_loading(&self, host: HostSide, event: &mut ConfigLoadingEvent<'_>) {
-            let files = files(&host);
-            heard().push(format!("loading {}", event.config.text.trim()));
-            files
-                .write(&path("proof-common.toml"), b"count = 1\n")
-                .unwrap();
-            files.write(&path("proof/state.bin"), &[1, 2, 3]).unwrap();
-            assert_eq!(files.read(&path("proof/state.bin")).unwrap(), [1, 2, 3]);
-            let other = path("other/secret.json");
-            assert_eq!(files.read(&other), Err(ConfigFileError::NotOwned));
-            assert_eq!(files.write(&other, b"x"), Err(ConfigFileError::NotOwned));
-        }
-        fn config_reloading(&self, _: HostSide, event: &mut ConfigReloadingEvent<'_>) {
-            heard().push(format!("reloading {}", event.config.text.trim()));
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let listener: Arc<ConfigListener> = Arc::new(
+                |host: HostSide<'_>, event: ConfigEvent, config: &ConfigSnapshot| {
+                    match event {
+                        ConfigEvent::Loading => {
+                            let files = files(&host);
+                            heard().push(format!("loading {}", config.text.trim()));
+                            files
+                                .write(&path("proof-common.toml"), b"count = 1\n")
+                                .unwrap();
+                            files.write(&path("proof/state.bin"), &[1, 2, 3]).unwrap();
+                            assert_eq!(files.read(&path("proof/state.bin")).unwrap(), [1, 2, 3]);
+                            let other = path("other/secret.json");
+                            assert_eq!(files.read(&other), Err(ConfigFileError::NotOwned));
+                            assert_eq!(files.write(&other, b"x"), Err(ConfigFileError::NotOwned));
+                        }
+                        ConfigEvent::Reloading => {
+                            heard().push(format!("reloading {}", config.text.trim()));
+                        }
+                        _ => {}
+                    }
+                    Ok(())
+                },
+            );
+            r.register_config(
+                ConfigSpec::new(ConfigKind::Common, "count = 0\n"),
+                Some(listener),
+            )
+            .unwrap();
         }
     }
     let mods: Mods = vec![ModEntry::new("proof", Box::new(Proof))].into();
-    mod_platform::testing::with_mods(mods, || {
+    mod_platform::testing::with_mods(mods.clone(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         super::super::native_entity_refs::tests::with_game(|game| {
             game.native_configs_client_start();
             game.native_configs_poll();

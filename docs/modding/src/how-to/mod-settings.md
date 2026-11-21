@@ -6,36 +6,42 @@ A mod keeps its options in one of two ways:
 | --- | --- | --- |
 | Lives in | The game's `config/` folder (on a server, `serverconfig/` per world) | `sunrise-mods/.sunrise-mod-data/<mod id>/`, one file per key |
 | Edited by | The player, in a text editor | The player, on the mod's page in **Options > Mods** |
-| You declare it with | `Hooks::register_configs` | `Registrar::register_setting` |
-| You read it in | `config_loading` and `config_reloading` | `Host::setting` and the typed `setting_*` reads |
+| You declare it with | `Registrar::register_config` | `Registrar::register_setting` |
+| You read it in | The config's `ConfigListener` (`ConfigEvent::Loading`, `Reloading`, `Unloading`) | `Host::setting` and the typed `setting_*` reads |
 | NeoForge counterpart | `ModContainer.registerConfig`, `ModConfigEvent` | `ModConfigSpec` entries on the config screen |
 
 ## Config files
 
 The startup registrar accepts `register_config(ConfigSpec::new(kind, default_text), listener)` in
-`Hooks::register`. The default filename uses the registering mod's ID, and `.file(path)` names a different
-file. A filename already registered by any mod or config kind returns `ConfigRegistrationError::Duplicate`
-and keeps the first declaration. The optional `Arc<ConfigListener>` is bound to that config's owner and
-receives a `ConfigEvent` and `&ConfigSnapshot` with both the registered filename and the path used on disk.
-Registering a specification does not open the file or call its listener.
+`Hooks::register`. The default filename uses the registering mod's ID (`<mod id>-<kind>.toml`), and
+`.file(path)` names a different native path. A filename already registered by any mod or config kind returns
+`ConfigRegistrationError::Duplicate` and keeps the first declaration. The optional `Arc<ConfigListener>` is
+bound to that config's owner and receives only its own `ConfigEvent` and `&ConfigSnapshot` with the owning
+`mod_id`, `kind`, registered `file`, resolved on-disk `path`, and `text`.
 
-Config files sit in the game's shared `config/` folder, beside `options.txt` (beside `server.properties` on a
-dedicated server), as Fabric and NeoForge mods' do. Your mod picks its own names: a folder `config/<mod id>/`, or
-files `config/<mod id>.<ext>` and `config/<mod id>-<rest>`.
+Config files sit in the game's `config/` folder, beside `options.txt` (beside `server.properties` on a
+dedicated server), as Fabric and NeoForge mods' do.
 
-1. In `register_configs`, push each file with its kind (`Client`, `Common` or `Server`) and the default text to
-   write when the file is missing. Push all of them every time: each game reads only its own kinds.
-2. The game reads each file and calls `config_loading` with the mod id, the file and its text, which your mod
-   parses (TOML by convention). Every mod hears every config, so check the mod id.
-3. When the file changes on disk, `config_reloading` brings the new text. The game checks modification times once a
-   second; a save with the same text, a removed file or an unreadable one fires nothing and keeps the last text.
-4. A `Server` config is per world: it loads before `server_about_to_start` from the world's `serverconfig/`, and
-   `config_unloading` drops it after `server_stopping`. `Client` and `Common` configs load once and stay until the
-   game quits.
+1. In `Hooks::register`, call `r.register_config(ConfigSpec::new(kind, default_text), listener)` for each
+   `Client`, `Common` or `Server` config. Declarations freeze in registration order before file I/O.
+2. When an owning side loads its configs (`Client` and `Common` once on the window; `Common` once and
+   `Server` per world on a dedicated server; `Server` per world on an integrated server), the game selects an
+   existing world `serverconfig/` override for `Server` configs when present, or the instance `config/` path
+   otherwise, writes the default text only for a missing base file, reads the file, and calls only that
+   registration's listener with `ConfigEvent::Loading`.
+3. Once a second the game checks tracked files' text; when a tracked file's text changed, it updates the
+   snapshot and calls only that registration's listener with `ConfigEvent::Reloading`. Unchanged files fire
+   nothing. An actual I/O failure (including a later missing or unreadable file) is logged with owner and path
+   and keeps the last successfully read snapshot without substituting another path, retrying, or latching.
+4. When a server stops, each tracked `Server` config is dropped and only its registration's listener receives
+   `ConfigEvent::Unloading` with its last snapshot. `Client` and `Common` configs stay until the game quits.
+   Returning `Err(message)` from a listener logs the error on every call without disabling future deliveries;
+   a panic disables only that registration for the rest of the session and raises an error notice naming that
+   mod without aborting server shutdown.
 
-These hooks run in the Config [load phase](../concepts/load-phases.md): settings reads and config files are
-available, world handles and transactions are not. A file outside `config/`, or one already registered, is
-skipped.
+`ConfigEvent::Loading` runs in the Config [load phase](../concepts/load-phases.md): settings reads and config
+files are available, world handles and transactions are not. Polling leaves the current phase unchanged and
+`ConfigEvent::Unloading` runs in World.
 
 For files the hooks don't manage, `Host::config_files()` gives your mod its own files in `config/`. Paths retain
 the ownership spelling above, such as `<mod id>/extra.toml`. The service is bound to the mod whose hook or Part

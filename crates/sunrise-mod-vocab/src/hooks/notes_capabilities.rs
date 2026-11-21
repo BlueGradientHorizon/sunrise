@@ -178,7 +178,7 @@ pub trait Notes {
   was queued, not whether a player heard it. The server discards unknown sound events when it dispatches
   the queue.
 
-- `Host::config_files()` retains the calling mod's `config/<mod id>/`, `<mod id>.<ext>` and `<mod id>-<rest>` ownership spelling and 4 MiB `CONFIG_FILE_MAX`; a world's `serverconfig/` copy is read through `config_loading`.
+- `Host::config_files()` retains the calling mod's `config/<mod id>/`, `<mod id>.<ext>` and `<mod id>-<rest>` ownership spelling and 4 MiB `CONFIG_FILE_MAX`; a world's `serverconfig/` copy is read through registered `Server` config listeners (`ConfigEvent::Loading`).
   `Host::data_files()` on both sides instead owns `<game directory>/sunrise-mod-data/<mod id>/`; server-only `ServerHost::world_data_files()` owns `<world>/sunrise-mod-data/<mod id>/`, copied, deleted and backed up with the save (`NoWorld` without a world).
   All three share `ConfigFiles`, `ConfigPath`, `ConfigEntry` and typed `ConfigFileError`; bulk paths omit the mod id, relative to the implicit mod root. Settings remain separate, one file per key, with unchanged scanning; bulk files are never scanned.
   Sunrise's bulk cap is `DATA_FILE_MAX` (64 MiB), not the config cap. Reads, writes and stats enforce their root; writes replace bytes atomically, never leaving a partial file.
@@ -331,8 +331,9 @@ pub trait Notes {
   On every exit after startup began, including a failed open, failed tick, or caught panic,
   `server_stopping(dedicated)` (`ServerStoppingEvent`) runs before player cleanup and the final world save attempt.
   `server_stopped(dedicated)` (`ServerStoppedEvent`) runs last, after network teardown, flushing saves and releasing
-  storage, even when the save failed or a shutdown listener panicked. An early callback panic (including
-  `config_unloading`) still reaches the final adopted-world save attempt and full server/network teardown,
+  storage, even when the save failed or a shutdown listener panicked. A panic in a registered server config's
+  `ConfigEvent::Unloading` listener is contained by its callback owner and does not abort shutdown, and an early
+  shutdown hook panic still reaches the final adopted-world save attempt and full server/network teardown,
   not just unpublishing or flushing queued writes. The first failure is retained if cleanup also fails.
   These are server-side, mutable `ServerHost` notifications, not cancellable.
   A failed open never overwrites a world the server did not successfully adopt: the session lock is taken before the prepared level is installed, and only that installation allows the final save. `WorldOpenFailed` or `WorldCloseFailed`
