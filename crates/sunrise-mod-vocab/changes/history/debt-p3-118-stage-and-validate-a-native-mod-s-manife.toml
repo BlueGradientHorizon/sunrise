@@ -1,0 +1,19 @@
+# SDK tooling history only: these helper functions were never part of the mod API surface.
+ids = [
+    "fn:sunrise_native_build::registry_generate::stage",
+    "fn:sunrise_native_build::registry_generate::rewrite_dependencies",
+]
+why = """
+The registry builder now validates and rewrites the manifest closure it actually compiles, collects its
+registry requests along the way, and applies the SDK's patches once. The throwaway validation tree and
+the removed source-workspace route's SDK path and lock exemptions are gone. `native-lock` uses the same
+manifest rules but still resolves an inert copy. This is Sunrise SDK tooling; there is no vanilla 26.3
+or NeoForge call site.
+"""
+migrate = """
+No change to mod code, manifest syntax, SDK paths or the `native-build` and `native-lock` commands.
+Tooling that called `registry_generate::stage` or `registry_generate::rewrite_dependencies` directly
+should use `cargo sunrise-mod native-lock` to resolve a mod's registry lock or
+`cargo sunrise-mod native-build` to build the mod. Keep cross-mod dependency declarations in
+`sunrise-mod.toml`, not Cargo paths to another mod's crate.
+"""

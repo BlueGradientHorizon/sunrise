@@ -129,116 +129,94 @@ pub fn compile(
     // Each mod's staged folder and library root, for the shared registry library.
     let mut mod_dirs = BTreeMap::new();
     let mut mod_roots = BTreeMap::new();
-    let packages: BTreeMap<_, _> = projects
+    let packages: BTreeMap<_, _> = resolution
+        .order
         .iter()
-        .map(|project| {
+        .map(|&index| {
+            let project = &projects[index];
             (
                 project.bundle.manifest.id.as_str(),
                 project.package.as_str(),
             )
         })
         .collect();
+    let mut wanted = Vec::new();
+    let mut generated_facades = BTreeMap::new();
     for (position, &index) in resolution.order.iter().enumerate() {
         let project = &projects[index];
         let bundle = project.bundle;
         let id = &bundle.manifest.id;
-        // Validate the whole local manifest closure without copying or executing its code.
-        let inert = out.join("validation").join(id);
-        super::registry_generate::stage(bundle, &inert)?;
         let relative = format!("native-api/{id}");
         let dest = out.join(&relative);
         super::copy_bundle(bundle, &dest)?;
-        let mut todo = vec![PathBuf::new()];
-        let mut seen = std::collections::BTreeSet::new();
-        while let Some(local) = todo.pop() {
-            if !seen.insert(local.clone()) {
-                continue;
-            }
-            let path = dest.join(&local).join("Cargo.toml");
-            let mut manifest: toml::Table = fs::read_to_string(&path)
-                .map_err(|e| e.to_string())?
-                .parse()
-                .map_err(|e| format!("Cargo.toml: {e}"))?;
-            super::registry_generate::rewrite_dependencies(
-                bundle,
-                &local,
-                &mut manifest,
-                &mut todo,
-            )?;
-            if let Some(targets) = manifest
-                .get_mut("target")
-                .and_then(toml::Value::as_table_mut)
-            {
-                for (_, target) in targets.iter_mut() {
-                    if let Some(table) = target.as_table_mut() {
-                        super::registry_generate::rewrite_dependencies(
-                            bundle, &local, table, &mut todo,
-                        )?;
-                    }
-                }
-            }
-            if local.as_os_str().is_empty() {
-                let targets: Vec<_> = declared[index]
-                    .iter()
-                    .map(|dependency| dependencies::Package {
-                        dependency,
-                        package: packages.get(dependency.id.as_str()).copied(),
-                    })
-                    .collect();
-                let enabled = dependencies::rewrite(id, &mut manifest, &targets)
-                    .map_err(|e| e.to_string())?;
-                let mut dependency =
-                    toml::toml! { path = (relative.clone()) package = (project.package.clone()) };
-                if !enabled.is_empty() {
-                    dependency.insert(
-                        "features".into(),
-                        enabled
-                            .into_iter()
-                            .map(toml::Value::String)
-                            .collect::<Vec<_>>()
-                            .into(),
-                    );
-                }
-                wrapper_deps.insert(format!("mod_{position}"), dependency.into());
-                let lib = manifest
-                    .entry("lib")
-                    .or_insert_with(|| toml::Table::new().into())
-                    .as_table_mut()
-                    .ok_or(tr("Invalid lib table"))?;
-                lib.insert(
-                    "crate-type".into(),
-                    vec![toml::Value::String("dylib".into())].into(),
-                );
-                let root = dest.join(
-                    lib.get("path")
-                        .and_then(toml::Value::as_str)
-                        .unwrap_or("src/lib.rs"),
-                );
-                let entry = root
-                    .parent()
-                    .ok_or(tr("Invalid library root"))?
-                    .join("__sunrise_entry.rs");
-                fs::write(
-                    &entry,
-                    prebuilt::library_entry(
-                        &template,
-                        &[&bundle.manifest],
-                        sdk.commit(),
-                        id,
-                        &bundle.manifest.version.to_string(),
-                        &[],
-                    ),
-                )
-                .map_err(|e| e.to_string())?;
-                let mut source = fs::read_to_string(&root).map_err(|e| e.to_string())?;
-                prebuilt::check_entry_root(&source, id)?;
-                source.push_str("\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n");
-                fs::write(&root, source).map_err(|e| e.to_string())?;
-                mod_dirs.insert(id.clone(), dest.clone());
-                mod_roots.insert(id.clone(), root);
-            }
-            fs::write(path, manifest.to_string()).map_err(|e| e.to_string())?;
+        let (mut manifest, requests) =
+            super::crates::rewrite_closure(project, &dest, |local, manifest| {
+                fs::write(dest.join(local).join("Cargo.toml"), manifest.to_string())
+                    .map_err(|e| e.to_string())
+            })?;
+        wanted.extend(requests);
+        // Only the builder creates cross-mod paths, from declared edges and actual stage members.
+        // The facade edge below likewise points to the exact package and path generated for this mod.
+        let targets: Vec<_> = declared[index]
+            .iter()
+            .map(|dependency| dependencies::Package {
+                dependency,
+                package: packages.get(dependency.id.as_str()).copied(),
+            })
+            .collect();
+        let enabled =
+            dependencies::rewrite(id, &mut manifest, &targets).map_err(|e| e.to_string())?;
+        let mut dependency =
+            toml::toml! { path = (relative.clone()) package = (project.package.clone()) };
+        if !enabled.is_empty() {
+            dependency.insert(
+                "features".into(),
+                enabled
+                    .into_iter()
+                    .map(toml::Value::String)
+                    .collect::<Vec<_>>()
+                    .into(),
+            );
         }
+        wrapper_deps.insert(format!("mod_{position}"), dependency.into());
+        let lib = manifest
+            .entry("lib")
+            .or_insert_with(|| toml::Table::new().into())
+            .as_table_mut()
+            .ok_or(tr("Invalid lib table"))?;
+        lib.insert(
+            "crate-type".into(),
+            vec![toml::Value::String("dylib".into())].into(),
+        );
+        let root = dest.join(
+            lib.get("path")
+                .and_then(toml::Value::as_str)
+                .unwrap_or("src/lib.rs"),
+        );
+        let entry = root
+            .parent()
+            .ok_or(tr("Invalid library root"))?
+            .join("__sunrise_entry.rs");
+        fs::write(
+            &entry,
+            prebuilt::library_entry(
+                &template,
+                &[&bundle.manifest],
+                sdk.commit(),
+                id,
+                &bundle.manifest.version.to_string(),
+                &[],
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        let mut source = fs::read_to_string(&root).map_err(|e| e.to_string())?;
+        prebuilt::check_entry_root(&source, id)?;
+        source.push_str(
+            "\n#[allow(unsafe_code)]\n#[path = \"__sunrise_entry.rs\"] mod __sunrise_entry;\n",
+        );
+        fs::write(&root, source).map_err(|e| e.to_string())?;
+        mod_dirs.insert(id.clone(), dest.clone());
+        mod_roots.insert(id.clone(), root);
         let mut externs: BTreeMap<String, PathBuf> = BTreeMap::from([
             ("mod_api".into(), prebuilt::library(&deps, "mod_api")?),
             ("mod_vocab".into(), prebuilt::library(&deps, "mod_vocab")?),
@@ -265,8 +243,8 @@ pub fn compile(
             fs::create_dir_all(facade_dir.join("src")).map_err(|e| e.to_string())?;
             fs::write(facade_dir.join("src/lib.rs"), &facade.source).map_err(|e| e.to_string())?;
             let facade_package = internals::package(id);
-            let manifest = toml::toml! { [package] name = (facade_package.clone()) version = "0.0.0" edition = "2024" };
-            fs::write(facade_dir.join("Cargo.toml"), manifest.to_string())
+            let facade_manifest = toml::toml! { [package] name = (facade_package.clone()) version = "0.0.0" edition = "2024" };
+            fs::write(facade_dir.join("Cargo.toml"), facade_manifest.to_string())
                 .map_err(|e| e.to_string())?;
             let mut facade_externs = BTreeMap::new();
             for name in facade
@@ -287,10 +265,6 @@ pub fn compile(
                 },
             );
             members.push(facade_relative.clone());
-            let mut manifest: toml::Table = fs::read_to_string(dest.join("Cargo.toml"))
-                .map_err(|e| e.to_string())?
-                .parse()
-                .map_err(|e| format!("Cargo.toml: {e}"))?;
             let dependencies = manifest
                 .entry("dependencies")
                 .or_insert_with(|| toml::Table::new().into())
@@ -305,12 +279,13 @@ pub fn compile(
             for alias in aliases {
                 dependencies.insert(alias, toml::toml! { path = (format!("../../{facade_relative}")) package = (facade_package.clone()) }.into());
             }
-            fs::write(dest.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
+            generated_facades.insert(facade_package.clone(), project.package.as_str());
             wrapper_deps.insert(
                 format!("mod_{position}_internals"),
                 toml::toml! { path = facade_relative package = facade_package }.into(),
             );
         }
+        fs::write(dest.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
         bindings.insert(
             dest,
             registry_rustc::Bindings {
@@ -405,25 +380,8 @@ pub fn compile(
         );
     manifest.insert("dependencies".into(), wrapper_deps.into());
     fs::write(out.join("Cargo.toml"), manifest.to_string()).map_err(|e| e.to_string())?;
-    let declared_paths = projects
-        .iter()
-        .map(|project| {
-            (
-                project.bundle.manifest.id.as_str(),
-                project
-                    .bundle
-                    .manifest
-                    .dependencies
-                    .keys()
-                    .map(String::as_str)
-                    .collect(),
-            )
-        })
-        .collect();
-    let wanted = super::crates::wanted(out, &declared_paths)?;
     let mut plan = registry_plan::Plan::read(lock, projects, &wanted)?;
     plan.authorize_game_patches(&patches);
-    registry_plan::apply_patches(out, &patches)?;
     fs::write(
         out.join("Cargo.lock"),
         plan.mods.seed("version=4\npackage=[]\n")?,
@@ -501,17 +459,21 @@ pub fn compile(
         metadata = super::registry_inventory::read(rust, out)
             .map_err(|error| plan.explain_resolution(error))?;
     }
+    let resolved_lock = super::read_lock(out)?;
     plan.allowed
-        .check_pins(&super::registry_lock::RegistryLock::parse(
-            &super::read_lock(out)?,
-        )?)?;
+        .check_pins(&super::registry_lock::RegistryLock::parse(&resolved_lock)?)?;
     let mut game_names = plan.game.game_package_names();
     for registry in patches.values() {
         for name in registry.as_table().expect("validated SDK patches").keys() {
             game_names.remove(name);
         }
     }
-    super::crates::check_game_graph_names(out, &super::read_lock(out)?, &game_names)?;
+    super::crates::check_game_graph_names(
+        projects,
+        &generated_facades,
+        &resolved_lock,
+        &game_names,
+    )?;
     let inventory = metadata.inventory(&super::registry_lock::RegistryLock::default(), links)?;
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());
