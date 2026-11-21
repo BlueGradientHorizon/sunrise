@@ -777,10 +777,17 @@ fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
             assert!(!scratch.path().join("crash-reports").exists());
             assert_eq!(
                 mod_api::__private::take_hook_panics().as_slice(),
-                [mod_api::__private::HookPanicReport {
-                    mod_id: "broken_tasks",
-                    hook: "register_configuration_tasks",
-                },]
+                [
+                    mod_api::__private::HookPanicReport {
+                        mod_id: "broken_tasks",
+                        hook: "register_configuration_tasks",
+                    },
+                    mod_api::__private::HookPanicReport {
+                        mod_id: "broken_tasks",
+                        hook: "ConfigurationTask::drop",
+                    },
+                ],
+                "registration and disposal panics are reported separately"
             );
             game.leave_server(None).unwrap();
         });
