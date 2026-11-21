@@ -255,6 +255,7 @@ impl Game<'_> {
             logged_out: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
+            collider_shove_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -516,6 +517,7 @@ impl Game<'_> {
             custom_books: false,
             attachments: HashMap::new(),
             colliders: HashMap::new(),
+            collider_shove_start: None,
             carry_age: Default::default(),
             far_terrain: None,
             builtin,
@@ -845,6 +847,9 @@ impl Game<'_> {
             self.forget_all_remote_columns();
         }
         let r = self.remote.as_mut().unwrap();
+        if !same {
+            r.collider_shove_start = None;
+        }
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;

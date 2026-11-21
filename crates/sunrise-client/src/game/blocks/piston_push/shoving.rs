@@ -75,7 +75,9 @@ impl Game<'_> {
                     before.translation_push_fraction(&after.collider, body.bounds, delta);
                 if fraction > 0.0 {
                     // The piston's clearance is added once to its largest box advance.
-                    let movement = delta.scale(fraction).add_vector(direction.scale(0.01));
+                    let movement = delta
+                        .scale(fraction)
+                        .add_vector(direction.scale(piston_push::PUSH_OFFSET));
                     let _shove = Shove::enter(selected.id, source);
                     self.move_pushed_body(
                         MoverType::Carried,

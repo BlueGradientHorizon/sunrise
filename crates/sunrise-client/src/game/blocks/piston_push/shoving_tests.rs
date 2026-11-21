@@ -6,6 +6,7 @@ use mod_api::{Collider, ColliderBox};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ItemEntity, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::nbt::Tag;
+use sunrise_protocol::packets::play::{self, Clientbound};
 
 const PLAYER: u32 = 42;
 const CONN: u32 = 1;
@@ -28,7 +29,9 @@ fn shape() -> Collider {
 }
 
 fn holder(game: &mut Game<'_>, x: f64) -> u32 {
+    game.options.dedicated = Some(Vec::new());
     game.native_level_opened(game.dim);
+    game.native_joins_skip();
     let id = game
         .summon(
             game.dim.id(),
@@ -144,14 +147,18 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                         source as u32,
                         sunrise_client::colliders::ColliderState::from_api(&shape()).unwrap(),
                     );
+                    // The last client tick saw the old pose; packet intake precedes the next.
                     let start = game.placed_moving_colliders();
-                    game.remote
-                        .as_mut()
-                        .unwrap()
-                        .entities
-                        .get_mut(&source)
-                        .unwrap()
-                        .position[0] = 4.75;
+                    game.carry_pass(&start);
+                    game.handle_packet(Clientbound::EntityPositionSync(play::EntityPositionSync {
+                        id: source,
+                        path: play::PositionPath::Linear([4.75, PIG_Y, 4.5]),
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        on_ground: false,
+                    }))
+                    .unwrap();
+                    let start = game.placed_moving_colliders();
                     game.carry_pass(&start);
                     let player = game.player.as_ref().unwrap();
                     let to = player.position.components();
@@ -183,11 +190,9 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
                 hub.update_guest(CONN, |g| {
                     g.loaded = true;
                     g.load_timeout = 0;
+                    g.inbox
+                        .push_back(sunrise_client::lan::guest::InboxItem::Packet(packet, None));
                 });
-                hub.guests
-                    .inbox_mut(CONN)
-                    .unwrap()
-                    .push_back(sunrise_client::lan::guest::InboxItem::uncredited(packet));
                 let placed = game.placed_moving_colliders();
                 moving_colliders::in_level(placed, || game.tick_lan_packets());
                 let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
