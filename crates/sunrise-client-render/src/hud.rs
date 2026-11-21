@@ -97,6 +97,8 @@ impl TextureFlags {
         (flags != Self::default()).then_some(flags)
     }
 }
+mod cit;
+use cit::*;
 mod atlas;
 pub use atlas::*;
 mod image;
