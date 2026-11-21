@@ -43,11 +43,16 @@ movement:
   nothing changes, for a value that is not finite or with no player of its own).
 - `host.set_local_player_on_ground(flag)` sets its on-ground flag, which this tick's jump decision reads and the move
   then sets again from the collision (`false` with no player of its own).
+- `player.reset_fall_distance(host)` clears the local player's accumulated fall distance without moving it.
+  It returns `Ok(false)` for a stale or non-local handle or when there is no local player, and
+  `Err(LevelWriteError::Unavailable)` if the hook has no writable client world, including while
+  `entity_entering_section` borrows it.
+  It does not reset the server's copy.
 
-None of these calls sends a packet. The normal position report carries the result and the server checks it as it
-checks any report, correcting a move its speed or collision check refuses. The server refuses a write of a player's
-velocity or ground flag. A server's write of a player's motion reaches that player's client only through an explicit
-motion packet, which replaces the client's velocity outright.
+None of these calls sends a packet. The normal position report carries the movement and ground flag, not the
+fall-distance reset. The server checks the report as usual, correcting a move its speed or collision check refuses.
+The server refuses a write of a player's velocity or ground flag. A server's write of a player's motion reaches
+that player's client only through an explicit motion packet, which replaces the client's velocity outright.
 
 At `player_tick_pre` the player's input fields hold the previous tick's applied values, so to scale this tick's forward
 input (Create's boots multiply a slow one by 1.3) use the `movement_input` hook, which runs after the keys are read
