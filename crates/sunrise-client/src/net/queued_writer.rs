@@ -347,10 +347,11 @@ impl QueuedWriter {
         let mut sender = self.sender.lock().unwrap();
         if self.seal_droppable()
             && let Some(sender) = sender.as_ref()
+            && let Ok(marker) = sender.reserve_terminal(0)
         {
-            // A publisher that won the cutoff may not have woken the writer
-            // yet. If this queue is already full, its jobs will poll the lane.
-            let _ = sender.try_send(WriteJob::Droppable, 0);
+            // Unpublished reliable reservations can fill the channel without
+            // leaving any queued job to wake the writer and poll this lane.
+            let _ = marker.publish(WriteJob::Droppable);
         }
         self.terminal.store(true, Ordering::Release);
         sender.take();

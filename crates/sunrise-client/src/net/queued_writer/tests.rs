@@ -242,14 +242,16 @@ fn closing_the_writer_seals_prepared_droppable_publication_in_its_drain() {
     let mut early = vec![42; 128 * 1024];
     early[0] = 1;
     writer.send(&early).unwrap();
-    let late = crate::raw_payloads::Prepared::Droppable(lane, Arc::default(), vec![2, 21]);
+    let late = crate::raw_payloads::Prepared::Droppable(lane.clone(), Arc::default(), vec![2, 21]);
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     while writer.probe[3].load(Ordering::Relaxed) == 0 {
         assert!(std::time::Instant::now() < deadline, "writer did not start");
         std::thread::yield_now();
     }
     writer.close_after_pending();
+    let before_publish = std::time::Instant::now();
     late.publish().unwrap();
+    assert!(lane.pop(before_publish).is_none());
     let (id, bytes) = peer.recv().unwrap();
     assert_eq!(id, 1);
     assert_eq!(bytes, early[1..]);
