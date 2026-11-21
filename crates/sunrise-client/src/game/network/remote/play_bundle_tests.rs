@@ -304,23 +304,7 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
 fn accept_transfer_login(
     listener: std::net::TcpListener,
 ) -> sunrise_protocol::connection::Connection {
-    listener.set_nonblocking(true).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let stream = loop {
-        match listener.accept() {
-            Ok((stream, _)) => break stream,
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                assert!(Instant::now() < deadline, "no transfer connection");
-                thread::yield_now();
-            }
-            Err(error) => panic!("transfer accept: {error}"),
-        }
-    };
-    stream.set_nonblocking(false).unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut connection = sunrise_protocol::connection::Connection::from_stream(stream).unwrap();
+    let mut connection = accept_tcp(listener);
     let (id, body) = connection.recv().unwrap();
     let handshake::Serverbound::Intention(packet) =
         handshake::Serverbound::decode(id, &body).unwrap()
@@ -453,6 +437,9 @@ fn accept_tcp(listener: std::net::TcpListener) -> sunrise_protocol::connection::
         }
     };
     stream.set_nonblocking(false).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     sunrise_protocol::connection::Connection::from_stream(stream).unwrap()
 }
 
