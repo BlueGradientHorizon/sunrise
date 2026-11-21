@@ -43,8 +43,9 @@ All three callbacks read the same resource generation's authoritative item tags.
 Use `is_in_tag(item, tag) -> Option<bool>` for membership, or iterate the borrowed
 `&[ItemKey]` from `items_in_tag(tag)` in the server's tag order. `None` means tags
 or item keys were not ready at publication (including before a client receives
-its server's item tags); a matcher should then not match. Once loaded, a missing
-or empty tag has no members and membership is `Some(false)`. Lookup does not
+its server's item tags), or a member of this tag could not be bound. A matcher
+should then not match; it never sees a partial list. Once loaded, a missing or
+empty tag has no members and membership is `Some(false)`. Lookup does not
 allocate or do I/O. Reload and sync publish a new snapshot, so one callback
 cannot mix generations.
 

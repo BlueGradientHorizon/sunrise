@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 // exhaustive: the backing map is private and can only be built by binding published item keys.
 #[doc(hidden)]
 // Keep tag names generation-owned: arbitrary server tags are not process-lifetime TagKeys.
-pub struct BoundItemTags(HashMap<String, Members>);
+pub struct BoundItemTags(HashMap<String, Option<Members>>);
 
 struct Members {
     ordered: Box<[ItemKey]>,
@@ -18,24 +18,33 @@ struct Members {
 impl BoundItemTags {
     /// Bind an authoritative tag table at publication. `None` means the item keys
     /// have not been published; an empty input still yields an available table.
+    /// If a member cannot bind, report and refuse that tag, not its neighbors.
     pub fn bind(tags: &HashMap<String, Vec<String>>, registry: &HashSet<&str>) -> Option<Self> {
         let items = crate::content::registry_keys::resolved_items().get()?;
         let tags = tags
             .iter()
-            .map(|(name, members)| {
-                let ordered: Box<[_]> = members
+            .map(|(tag, members)| {
+                let ordered = members
                     .iter()
-                    .filter(|name| registry.contains(name.as_str()))
-                    .filter_map(|name| items.slots.get(name.as_str()).copied().map(ItemKey))
-                    .collect();
-                let membership = ordered.iter().copied().collect();
-                (
-                    name.clone(),
-                    Members {
+                    .map(|id| {
+                        let name = id.as_str();
+                        if !registry.contains(name) {
+                            return Err(name);
+                        }
+                        items.slots.get(name).copied().map(ItemKey).ok_or(name)
+                    })
+                    .collect::<Result<Box<[_]>, _>>();
+                let bound = match ordered {
+                    Ok(ordered) => Some(Members {
+                        membership: ordered.iter().copied().collect(),
                         ordered,
-                        membership,
-                    },
-                )
+                    }),
+                    Err(member) => {
+                        log::warn!("Cannot bind loop item tag {tag}: unresolved member {member}");
+                        None
+                    }
+                };
+                (tag.clone(), bound)
             })
             .collect();
         Some(Self(tags))
@@ -55,8 +64,11 @@ impl BoundItemTags {
         )
     }
 
-    // The outer option refuses an invalid key; a valid key need not name an existing tag.
+    // The outer option refuses an invalid key or an unbound tag; the inner one marks absence.
     fn members(&self, tag: TagKey) -> Option<Option<&Members>> {
-        crate::world::tags::with_tag_name(tag, |name| Some(self.0.get(name?)))
+        crate::world::tags::with_tag_name(tag, |name| match self.0.get(name?) {
+            Some(bound) => bound.as_ref().map(Some),
+            None => Some(None),
+        })
     }
 }

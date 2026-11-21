@@ -21,8 +21,13 @@ Replace `BlockStateRecord::new(key, ordinal)` with a registry lookup. With
 to look up an existing local ordinal, or `BlockState::of(&metadata, key, constraints)`
 to construct a state from its block's default and a slice of `StateConstraint`s.
 Handle `None` for an unavailable range or missing ordinal, or `BlockStateError`
-for refused construction. If a callback already supplies `&dyn BlockMetadata`,
-pass that reference directly to `BlockState::of`.
+for refused construction. Tint workers get only `&dyn BlockMetadata`, not a
+`Host`. If you previously passed only a key and ordinal to a worker, do the
+`states_of` lookup on the owning thread while you have the Host, handle a missing
+state there, and retain the copyable `BlockState` in the data sent to the worker.
+Use the callback's `BlockState` for the block being tinted. If you have property
+constraints rather than an ordinal, the worker can pass its metadata directly
+to `BlockState::of`.
 
 In implementations of the low-level `BlockMetadata` trait, `property` and `with`
 take `state: BlockState`; `with` and `of` return `Result<BlockState, BlockStateError>`.

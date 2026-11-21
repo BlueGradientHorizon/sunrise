@@ -1,6 +1,6 @@
 //! Data-only inputs carried from an owning load boundary to native load hooks.
+use mod_api::__private::BoundItemTags;
 use std::{
-    any::Any,
     collections::{BTreeMap, HashMap},
     ffi::{OsStr, OsString},
     fs,
@@ -226,8 +226,7 @@ pub struct LoopContext {
     side: LoopSide,
     snapshot: Snapshot,
     recipe_properties: Arc<HashMap<String, std::collections::HashSet<String>>>,
-    // The API adapter binds the tag table; the world layer does not depend on mod vocab.
-    item_tags: Option<Arc<dyn Any + Send + Sync>>,
+    item_tags: Option<Arc<BoundItemTags>>,
 }
 
 #[path = "native_load_context/recipe_properties.rs"]
@@ -236,13 +235,13 @@ mod recipe_properties;
 impl LoopContext {
     /// Publish the API adapter's bound item tags at a load or synchronization boundary.
     /// `None` marks unavailable tags. Clones retain the previous generation.
-    pub fn set_item_tags<T: Any + Send + Sync>(&mut self, tags: Option<T>) {
-        self.item_tags = tags.map(|tags| Arc::new(tags) as Arc<dyn Any + Send + Sync>);
+    pub fn set_item_tags(&mut self, tags: Option<BoundItemTags>) {
+        self.item_tags = tags.map(Arc::new);
     }
 
-    /// Borrow the published item tags when building a typed API view of this loop.
-    pub fn item_tags<T: Any>(&self) -> Option<&T> {
-        self.item_tags.as_deref()?.downcast_ref()
+    /// Borrow the published item tags when building the API view of this loop.
+    pub fn item_tags(&self) -> Option<&BoundItemTags> {
+        self.item_tags.as_deref()
     }
 
     pub fn side(&self) -> LoopSide {

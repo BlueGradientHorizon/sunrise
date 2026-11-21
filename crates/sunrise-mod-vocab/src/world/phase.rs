@@ -861,14 +861,16 @@ impl DataLoadContext for OwningLoad<'_> {
 /// ```
 pub trait LoopContext {
     /// Membership in this generation's authoritative item tags. `None` means the
-    /// snapshot or item keys are unavailable. Unknown tags in a loaded snapshot
-    /// answer `Some(false)`. Reads allocate nothing and perform no file I/O.
+    /// snapshot is unavailable or a member of this tag could not be bound. Absent
+    /// or empty tags in a loaded snapshot answer `Some(false)`. Reads allocate
+    /// nothing and perform no file I/O.
     fn is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey) -> Option<bool>;
 
     /// Borrow the bound item members in authoritative order for this generation.
-    /// `None` means tags or item keys were unavailable at publication. A missing
-    /// or empty tag in a loaded snapshot returns `Some(&[])`. On clients these
-    /// are the server's synced tags, never the local pack's. Reads allocate nothing.
+    /// `None` means the snapshot was unavailable or a member of this tag could not
+    /// be bound at publication; no partial list is returned. A missing or empty tag
+    /// in a loaded snapshot returns `Some(&[])`. On clients these are the server's
+    /// synced tags, never the local pack's. Reads allocate nothing.
     fn items_in_tag(&self, tag: crate::TagKey) -> Option<&[crate::ItemKey]>;
 
     /// Whether a mod-created recipe property set accepts an item ID. Unknown

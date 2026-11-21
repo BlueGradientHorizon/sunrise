@@ -48,7 +48,8 @@ fn model_baking_completed(&self, host: &mut dyn ClientHost, _: &mut ModelBakingC
 | `baked_model(key)` | A `BakedModelView` borrowing the geometry and `particle` sprite name, and giving the model's `ambient_occlusion` flag. `StaleModel` once a reload superseded the key; `UnknownModel` for a slot the store lacks. |
 
 The model borrows from `render_assets()`. `view.quads()` iterates in bake order without copying the
-geometry or allocating a list. Keep the keys, not the views, between callbacks. `quad.baked_argb`
+geometry or allocating a list. Use `view.quad(i)` for direct, zero-based lookup in the same order;
+it returns `None` out of range. Keep the keys, not the views, between callbacks. `quad.baked_argb`
 is the baked `0xAARRGGBB` colour if set; `quad.tint_index` names a block tint source, or is `-1`
 for none. Neither is the final rendered colour. The view does not carry resolved lighting,
 render passes, per-quad ambient occlusion overrides, or shading overrides.

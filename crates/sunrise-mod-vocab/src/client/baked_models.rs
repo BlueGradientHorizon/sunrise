@@ -67,6 +67,12 @@ pub struct BakedModelView<'a> {
 }
 
 impl<'a> BakedModelView<'a> {
+    /// Borrow the quad at a zero-based index in bake order, in constant time.
+    /// Returns `None` if `index` is out of range.
+    pub fn quad(self, index: usize) -> Option<BakedQuad<'a>> {
+        self.geometry.quad(index)
+    }
+
     /// Its quads in bake order, already turned and UV-locked as the variant asks. Traversal
     /// borrows geometry and sprite names and does not resolve a block tint or draw material.
     pub fn quads(self) -> impl FusedIterator<Item = BakedQuad<'a>> {
@@ -121,7 +127,7 @@ pub struct BakedQuad<'a> {
 
 /// Renderer-side backing for a model's immutable quads. Indices are contiguous in bake order.
 pub trait BakedQuadSource: Sync {
-    /// Borrow the quad at `index`, or return `None` past the last quad.
+    /// Borrow the quad at `index` in constant time, or return `None` past the last quad.
     fn quad(&self, index: usize) -> Option<BakedQuad<'_>>;
 }
 

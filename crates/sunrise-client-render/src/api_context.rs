@@ -110,20 +110,39 @@ mod tests {
             [],
         );
         let mut generation = load.captured_loop_context(engine::LoopSide::Server);
-        let ids = ["minecraft:air", "minecraft:emerald", "minecraft:diamond"];
-        let registry = ids.into_iter().collect();
+        let ids = [
+            "minecraft:air",
+            "minecraft:emerald",
+            "minecraft:diamond",
+            "minecraft:iron_ingot",
+        ];
+        let registry = [
+            "minecraft:air",
+            "minecraft:emerald",
+            "minecraft:diamond",
+            "test:no_api_key",
+        ]
+        .into_iter()
+        .collect();
         let tags = std::collections::HashMap::from([
             (
                 "test:grain".into(),
                 vec![
                     "minecraft:emerald".into(),
-                    "test:absent".into(),
                     "minecraft:diamond".into(),
                     "minecraft:air".into(),
                 ],
             ),
             ("test:empty".into(), vec![]),
             ("test:late".into(), vec!["minecraft:air".into()]),
+            (
+                "test:no_api_key".into(),
+                vec!["minecraft:emerald".into(), "test:no_api_key".into()],
+            ),
+            (
+                "test:outside_generation".into(),
+                vec!["minecraft:emerald".into(), "minecraft:iron_ingot".into()],
+            ),
         ]);
         let emerald = *requested.get().unwrap();
         generation.set_item_tags(mod_api::__private::BoundItemTags::bind(&tags, &registry));
@@ -152,6 +171,12 @@ mod tests {
         assert_eq!(old.items_in_tag(missing), Some(&[][..]));
         assert_eq!(old.is_in_tag(emerald, tag), Some(true));
         assert_eq!(old.is_in_tag(emerald, missing), Some(false));
+        for name in ["test:no_api_key", "test:outside_generation"] {
+            let refused =
+                mod_api::__private::tag_key(&mod_api::Identifier::parse(name).unwrap()).unwrap();
+            assert_eq!(old.items_in_tag(refused), None, "{name}");
+            assert_eq!(old.is_in_tag(emerald, refused), None, "{name}");
+        }
 
         generation.set_item_tags(mod_api::__private::BoundItemTags::bind(
             &[("test:grain".into(), vec!["minecraft:diamond".into()])].into(),
