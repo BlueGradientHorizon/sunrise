@@ -574,9 +574,10 @@ impl Game<'_> {
     /// from the world's data packs'
     /// `data/<namespace>/data_maps/<registry folder>/<path>.json`, and from
     /// files you push through `native_data_pack_files` under the key
-    /// `data_maps/<namespace>:<registry folder>/<path>`: `replace`, `values`
-    /// (entry ids and `#tags` to JSON values) and `remove`, a newer value
-    /// overriding an older. Push a typed map's `DataMap::ty`
+    /// `data_maps/<namespace>:<registry folder>/<path>`. Each file has a `values`
+    /// object (entry IDs and `#tags` to JSON), optional boolean `replace` and
+    /// optional `remove` list. Entry conditions run before reading values and
+    /// malformed layers are skipped whole. Push a typed map's `DataMap::ty`
     /// and read its values with `ItemKey::data` and `BlockKey::data`. Server-side,
     /// not synced to clients.
     pub(in crate::game) fn native_data_map_types(&mut self, types: &mut Vec<DataMapType>) {

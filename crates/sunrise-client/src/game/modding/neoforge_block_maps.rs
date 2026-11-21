@@ -119,7 +119,13 @@ mod tests {
             ),
             (
                 "data_maps/neoforge:block/waxables".to_owned(),
-                file(json!({"values": {"test:tin": {"waxed": "test:waxed_tin"}}})),
+                file(json!({"values": {
+                    "test:tin": {"waxed": "test:waxed_tin"},
+                    "minecraft:stone": {
+                        "waxed": "test:waxed_tin",
+                        "neoforge:conditions": [{"type": "neoforge:never"}]
+                    }
+                }})),
             ),
         ];
         let overlay = sunrise_world::loot::PackOverlay {
@@ -139,6 +145,7 @@ mod tests {
         let block_maps = load(&overlay, &registries, block_id).unwrap();
         assert_eq!(block_maps.flammable("minecraft:stone"), Some((5, 20)));
         assert_eq!(block_maps.waxed("test:tin"), Some("test:waxed_tin"));
+        assert_eq!(block_maps.waxed("minecraft:stone"), None);
         assert_eq!(block_maps.next_oxidation("test:tin"), None);
         let none = load(
             &sunrise_world::loot::PackOverlay::NONE,

@@ -11,11 +11,13 @@ pub trait Hooks {
     /// `data/<namespace>/data_maps/<registry folder>/<path>.json` (the
     /// registry's path for a `minecraft` registry, `<namespace>/<path>`
     /// otherwise), and from files you push through `native_data_pack_files`
-    /// under the key `data_maps/<namespace>:<registry folder>/<path>`:
-    /// `replace`, `values`
-    /// (entry ids and `#tags` to JSON values, each optionally guarded by its
-    /// own `neoforge:conditions`) and `remove`, a newer value overriding an
-    /// older. Push a typed map's `DataMap::ty` and use the key's `data`
+    /// under the key `data_maps/<namespace>:<registry folder>/<path>`.
+    /// Each file has a `values` object mapping entry IDs and `#tags` to JSON,
+    /// with an optional boolean `replace` and a `remove` list. Entry conditions
+    /// (`neoforge:conditions`) are evaluated before the value, including on
+    /// direct objects. A malformed layer is logged and skipped as a whole;
+    /// otherwise newer values override older ones. Push a typed map's
+    /// `DataMap::ty` and use the key's `data`
     /// (`ItemKey::data`, `EntityTypeKey::data`...) for an owned decoded value.
     /// By name, `data_map_value` borrows a raw tag and `data_map_entries`
     /// borrows the whole slice in entry ID order. Both borrow from the host;

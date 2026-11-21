@@ -46,8 +46,11 @@ fn data_map_types(&self, _: &mut dyn ServerHost, event: &mut DataMapTypesEvent<'
 Its values are `data/mymod/data_maps/item/emc.json` in any data pack, and files the mod pushes
 through `data_pack_files` under `data_maps/mymod:item/emc`. The folder is the registry's path for
 a `minecraft` registry (`entity_type`, `worldgen/biome`) and `<namespace>/<path>` for another.
-An id the registry doesn't hold is skipped, with one warning per file. A value may carry its own
-load conditions (`WithConditions`): it counts only when they hold. A top-level
+An id the registry doesn't hold is skipped, with one warning per file. A layer must have a
+`values` object. If present, `replace` must be a boolean and `remove` a list of removal keys.
+A malformed layer is logged and skipped without changing earlier layers. A value may carry
+its own load conditions (`WithConditions`), including on an unwrapped object: it counts only
+when they hold, and the condition metadata isn't part of the value. A top-level
 `neoforge:conditions` key on the data-map file is ignored.
 
 ```json
@@ -108,10 +111,10 @@ Their files are `data/neoforge/data_maps/<registry path>/<name>.json`:
 
 Every name has the `neoforge:` namespace. Values may be a scalar, a record with the codec
 field above, or the usual conditional `{"value": ..., "replace": false}` wrapper.
-File and entry conditions run before merging. Every value is decoded before applying the
-file's replacement, values or removals: one invalid value refuses that whole file, even
-when its target is unknown. Valid unknown targets and unknown removals are skipped. Tags
-use the target registry, including profession and game-event tags.
+Entry conditions run before decoding their values; top-level conditions are ignored.
+The whole file is decoded before applying its replacement, values or removals: an invalid
+value, even for an unknown target, refuses the whole file. Valid unknown targets and unknown
+removals are skipped. Tags use the target registry, including profession and game-event tags.
 
 Distances parse the original decimal directly to `f32`, including negative values,
 signed zero and overflow to infinity (`1e500`). Frequencies truncate the exact decimal,

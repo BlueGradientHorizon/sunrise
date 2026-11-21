@@ -13,23 +13,14 @@
 //! `data_maps/<ns>:<registry folder>/<map path>`), merged each time the
 //! server's tables are built: a world's first open and every `/reload`.
 use super::Game;
+use super::data_map_files::{self, folder};
 use super::data_map_json::to_tag;
 pub use mod_api::game::DataMapType;
 use serde_json::Value;
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use sunrise_core::nbt::Tag;
-
-/// The folder a registry's data maps are under (`DataMapLoader`): its path for
-/// a `minecraft` registry, `<namespace>/<path>` for another.
-fn folder(registry: &str) -> String {
-    match registry.split_once(':') {
-        Some(("minecraft", path)) => path.to_owned(),
-        Some((namespace, path)) => format!("{namespace}/{path}"),
-        None => registry.to_owned(),
-    }
-}
+use std::collections::{BTreeMap, HashMap, HashSet};
+use sunrise_core::{identifier::Identifier, nbt::Tag};
 
 /// The registries mods read through a typed key (`DataMapEntry`): always
 /// known, even where the command registries list no ids.
@@ -182,111 +173,6 @@ fn full_id(id: &str) -> Cow<'_, str> {
     }
 }
 
-/// A file's value for an entry: the data itself, or the wrapper
-/// `{"value": ..., "replace": false}` (`DataMapEntry`'s codec), which may also
-/// carry `neoforge:conditions` (`WithConditions`): a value whose conditions
-/// fail is no value. `replace` only matters to mergers, which types don't have
-/// yet: a newer value overrides.
-fn entry_value<'a>(
-    raw: &'a Value,
-    conditions: &sunrise_world::conditions::LoadConditions,
-    path: &str,
-) -> Result<Option<&'a Value>, String> {
-    if let Value::Object(map) = raw
-        && let Some(value) = map.get("value")
-        && map.iter().all(|(k, v)| {
-            k == "value" || k == "neoforge:conditions" || (k == "replace" && v.is_boolean())
-        })
-    {
-        return Ok(conditions.allows_file_isolated(raw, path)?.then_some(value));
-    }
-    Ok(Some(raw))
-}
-
-/// One file over what earlier files made of the type: `replace` clears it,
-/// `values` attach (a tag to every entry in it), then `remove` takes entries
-/// away, as `DataMapFile` is applied. Every value decodes before any replace,
-/// insert or removal runs, so an undecodable entry skips the whole file
-/// atomically (matching NeoForge's `DataMapLoader.readData`).
-fn apply_file<'file, V: Clone>(
-    map: &mut BTreeMap<String, V>,
-    file: &'file Value,
-    registry: &str,
-    registries: &dyn MapRegistries,
-    conditions: &sunrise_world::conditions::LoadConditions,
-    path: &str,
-    decode: &impl Fn(&Value) -> Result<V, String>,
-) -> Result<(), String> {
-    let root = file.as_object().ok_or("not a data map object")?;
-    let values = file["values"]
-        .as_object()
-        .ok_or("missing data map values")?;
-    // Finish decoding the entire layer before replace, removals or inserts.
-    let mut decoded: Vec<(&'file str, V)> = Vec::new();
-    for (key, raw) in values {
-        if let Some(value) = entry_value(raw, conditions, path)? {
-            decoded.push((key.as_str(), decode(value)?));
-        }
-    }
-    if root.get("replace").and_then(Value::as_bool) == Some(true) {
-        map.clear();
-    }
-    let mut unknown = BTreeSet::new();
-    // The members of a tag or the entry itself, if the registry holds it.
-    let mut members = |key: &'file str| -> Vec<Cow<'file, str>> {
-        match key.strip_prefix('#') {
-            // A tag's members go through the same membership check the entry
-            // does: a tag naming an id the registry doesn't hold publishes
-            // nothing for it.
-            Some(tag) => registries
-                .tag(registry, &full_id(tag))
-                .into_iter()
-                .filter_map(|member| {
-                    if registries.contains(registry, &member) {
-                        Some(Cow::Owned(member))
-                    } else {
-                        unknown.insert(Cow::Owned(member));
-                        None
-                    }
-                })
-                .collect(),
-            None => {
-                let id = full_id(key);
-                if registries.contains(registry, &id) {
-                    vec![id]
-                } else {
-                    unknown.insert(id);
-                    Vec::new()
-                }
-            }
-        }
-    };
-    for (key, value) in decoded {
-        for entry in members(key) {
-            map.insert(entry.into_owned(), value.clone());
-        }
-    }
-    for removal in root
-        .get("remove")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        // An entry or `{"key": entry}`, as `DataMapEntry.Removal` reads it.
-        let key = removal.as_str().or_else(|| removal["key"].as_str());
-        for entry in key.map(&mut members).unwrap_or_default() {
-            map.remove(entry.as_ref());
-        }
-    }
-    if !unknown.is_empty() {
-        log::warn!(
-            "Sunrise: {path}: {registry} has no {}: skipped",
-            unknown.into_iter().collect::<Vec<_>>().join(", ")
-        );
-    }
-    Ok(())
-}
-
 /// Merge the types' values from the server's tables' pack files, in pack order (mods' below
 /// the packs'), with ids and tags resolved against `registries`. Unknown registries and bad
 /// type ids are left out with a warning; a file that isn't a valid data map or contains an
@@ -307,7 +193,7 @@ pub(super) fn load_maps<V: Clone>(
             );
             continue;
         }
-        let Some(id) = sunrise_core::identifier::Identifier::parse_namespaced(&ty.id) else {
+        let Some(id) = Identifier::parse_namespaced(&ty.id) else {
             log::warn!(
                 "Sunrise: data map type {} is not a valid namespaced identifier: left out",
                 ty.id
@@ -322,38 +208,28 @@ pub(super) fn load_maps<V: Clone>(
             );
             continue;
         }
-        let (ns, path) = (id.namespace(), id.path());
-        let directory = folder(&ty.registry);
-        let wanted = format!("data_maps/{ns}:{directory}/{path}");
-        let mut map = BTreeMap::new();
-        if let Some((_, versions)) = overlay.files.iter().find(|(k, _)| *k == wanted) {
-            for (layer, bytes) in versions.iter().enumerate() {
-                let source = format!(
-                    "data/{ns}/data_maps/{directory}/{path}.json (layer {})",
-                    layer + 1
-                );
-                let prepared = serde_json::from_slice::<Value>(bytes)
-                    .map_err(|error| error.to_string())
-                    .and_then(|file| {
-                        apply_file(
-                            &mut map,
-                            &file,
-                            &ty.registry,
-                            registries,
-                            overlay.conditions,
-                            &source,
-                            &|value| decode(&ty.id, value),
-                        )
-                    });
-                if let Err(error) = prepared {
-                    log::error!(
-                        "Sunrise: data map {} on {}: {source}: file skipped: {error}",
-                        ty.id,
-                        ty.registry
-                    );
+        let (map, _) = data_map_files::load(
+            &id,
+            &ty.registry,
+            BTreeMap::new(),
+            overlay,
+            |tag| registries.tag(&ty.registry, tag),
+            |raw| {
+                // A direct object can have a field named `value`; only an object with
+                // exactly the entry wrapper's fields is unwrapped. Conditions are already read.
+                if let Value::Object(object) = raw
+                    && let Some(value) = object.get("value")
+                    && object
+                        .iter()
+                        .all(|(k, v)| k == "value" || (k == "replace" && v.is_boolean()))
+                {
+                    decode(&ty.id, value)
+                } else {
+                    decode(&ty.id, raw)
                 }
-            }
-        }
+            },
+            |entry| registries.contains(&ty.registry, entry),
+        );
         registered.insert(ty.id.clone(), map);
     }
     maps
@@ -849,13 +725,19 @@ mod tests {
                 "minecraft:stick": {"neoforge:conditions": [
                     {"type": "neoforge:mod_loaded", "modid": "absent"}], "value": 2},
                 "minecraft:planks": {"neoforge:conditions": [
-                    {"type": "neoforge:always"}], "value": 3}
+                    {"type": "neoforge:always"}], "value": 3},
+                "minecraft:coal_block": {"neoforge:conditions": [
+                    {"type": "neoforge:always"}], "neoforge:value": 9},
+                "minecraft:kelp": {"neoforge:conditions": [
+                    {"type": "neoforge:always"}], "burn": 2}
             }})],
         )]);
         let maps = load(&f);
         assert_eq!(get(&maps, "minecraft:coal"), Some(&json!(1)));
         assert_eq!(get(&maps, "minecraft:stick"), None);
         assert_eq!(get(&maps, "minecraft:planks"), Some(&json!(3)));
+        assert_eq!(get(&maps, "minecraft:coal_block"), Some(&json!(9)));
+        assert_eq!(get(&maps, "minecraft:kelp"), Some(&json!({"burn": 2})));
     }
 
     #[test]
@@ -898,6 +780,19 @@ mod tests {
         assert_eq!(get(&maps, "minecraft:oak_log"), None);
         assert_eq!(get(&maps, "minecraft:planks"), None);
         assert_eq!(get(&maps, "minecraft:birch_log"), Some(&json!(6)));
+    }
+
+    #[test]
+    fn a_malformed_layer_envelope_preserves_earlier_values() {
+        let lower = json!({"values": {"minecraft:coal": 10}});
+        for invalid in [
+            json!({"replace": true, "values": {}, "remove": false}),
+            json!({"replace": "true", "values": {"minecraft:coal": 20}}),
+            json!({"values": {"minecraft:coal": 20}, "remove": ["minecraft:coal", {"key": false}]}),
+        ] {
+            let files = files(&[("data_maps/mymod:item/fuel", &[lower.clone(), invalid])]);
+            assert_eq!(get(&load(&files), "minecraft:coal"), Some(&json!(10)));
+        }
     }
 
     #[test]
