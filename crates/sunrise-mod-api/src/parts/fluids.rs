@@ -290,19 +290,21 @@ pub mod tests {
             }
             let air = crate::__private::block_key("minecraft:air")
                 .ok_or(crate::LevelReadError::Unavailable)?;
-            let entity = crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos);
-            let kind = entity.and_then(|entity| {
-                crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity)
-            });
+            let resident = crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos)
+                .map(|entity| {
+                    (
+                        entity,
+                        crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity),
+                    )
+                });
             visit(
                 &crate::parts::tests::Level,
-                crate::BlockCapabilitySite {
+                crate::BlockCapabilitySite::new(
                     at,
-                    state: crate::BlockStateRecord::new(air, 0).into(),
-                    entity,
-                    kind,
-                    builtin_items: false,
-                },
+                    crate::BlockStateRecord::new(air, 0).into(),
+                    resident,
+                    false,
+                ),
             );
             Ok(())
         }

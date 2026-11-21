@@ -8,6 +8,7 @@ use crate::*;
 pub trait LevelBlocksBackend {
     /// Visit one resident block's read-only level and resolved capability inputs, or do
     /// nothing when the position cannot be resolved. The borrow ends before server defaults.
+    // hidden: the typed capability methods own the query; only their engine adapter visits the site
     #[doc(hidden)]
     #[access(WorldOnly)]
     fn level_with_capability_site(

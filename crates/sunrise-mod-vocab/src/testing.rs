@@ -531,20 +531,17 @@ impl crate::prelude::LevelBlocksBackend for FakeHost {
         let Some(state) = crate::LevelHost::block_state(self, at.pos) else {
             return Err(crate::LevelReadError::Unavailable);
         };
-        let entity = crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos);
-        let kind = entity.and_then(|entity| {
-            crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity)
-        });
+        let resident =
+            crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos).map(|entity| {
+                (
+                    entity,
+                    crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity),
+                )
+            });
         let builtin_items = crate::prelude::ItemsBackend::container_size(self, at).is_some();
         visit(
             self,
-            crate::BlockCapabilitySite {
-                at,
-                state,
-                entity,
-                kind,
-                builtin_items,
-            },
+            crate::BlockCapabilitySite::new(at, state, resident, builtin_items),
         );
         Ok(())
     }

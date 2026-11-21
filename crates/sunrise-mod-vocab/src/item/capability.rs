@@ -29,21 +29,41 @@ pub(crate) enum BlockCapabilityDefault<T: ?Sized> {
 
 /// The subject of a lookup, resolved once from the same resident level view the providers read.
 // hidden: internal bridge from the engine's restricted level to the provider table
-// exhaustive: the game constructs this with a literal
+// exhaustive: only the engine's lookup resolves the site's inputs
 // no wire: the subject is scoped to one in-process provider dispatch
 #[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BlockCapabilitySite {
     /// The queried position and side.
-    pub at: BlockSide,
+    pub(crate) at: BlockSide,
     /// The current state at the position.
-    pub state: BlockState,
+    pub(crate) state: BlockState,
     /// The resident block entity, if any.
-    pub entity: Option<BlockEntityRef>,
+    pub(crate) entity: Option<BlockEntityRef>,
     /// The entity's registered type, if known.
-    pub kind: Option<BlockEntityTypeKey>,
+    pub(crate) kind: Option<BlockEntityTypeKey>,
     /// Whether the game offers its own item handler at this site.
-    pub builtin_items: bool,
+    pub(crate) builtin_items: bool,
+}
+
+impl BlockCapabilitySite {
+    /// Bundle the inputs resolved by the engine. An entity's registered type is only
+    /// meaningful when the lookup found a resident entity.
+    pub fn new(
+        at: BlockSide,
+        state: BlockState,
+        resident: Option<(BlockEntityRef, Option<BlockEntityTypeKey>)>,
+        builtin_items: bool,
+    ) -> Self {
+        let (entity, kind) = resident.map_or((None, None), |(entity, kind)| (Some(entity), kind));
+        Self {
+            at,
+            state,
+            entity,
+            kind,
+            builtin_items,
+        }
+    }
 }
 
 /// A provider's scoped answer. Leaving it untouched declines the lookup.

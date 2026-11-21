@@ -89,23 +89,20 @@ impl super::Containers<'_> {
                 .get(&(x, y, z))
                 .filter(|entity| !save::block_entity_placeholder(entity))
         };
-        let (entity_ref, kind) = entity
-            .and_then(|entity| {
-                let handle = block_entity_handle(self.world, at.level, at.pos)?;
-                let kind = mod_api::__private::block_entity_type_key(save::block_entity_id(
-                    entity,
-                    self.name(state),
-                ));
-                Some((Some(handle), kind))
-            })
-            .unwrap_or_default();
-        Some(BlockCapabilitySite {
+        let resident = entity.and_then(|entity| {
+            let handle = block_entity_handle(self.world, at.level, at.pos)?;
+            let kind = mod_api::__private::block_entity_type_key(save::block_entity_id(
+                entity,
+                self.name(state),
+            ));
+            Some((handle, kind))
+        });
+        Some(BlockCapabilitySite::new(
             at,
-            state: state.try_into_api().ok()?,
-            entity: entity_ref,
-            kind,
-            builtin_items: self.item_target(state, at.side, entity).is_some(),
-        })
+            state.try_into_api().ok()?,
+            resident,
+            self.item_target(state, at.side, entity).is_some(),
+        ))
     }
 
     fn capability_view(&self, at: BlockSide) -> Option<View> {
