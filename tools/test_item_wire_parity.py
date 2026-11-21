@@ -40,6 +40,8 @@ FIXTURES = [
     ('repair_cost', '{repair_cost:7}'),
     ('intangible_projectile', '{intangible_projectile:{}}'),
     ('tooltip_style', '{tooltip_style:"minecraft:fancy"}'),
+    ('tooltip_style custom', '{tooltip_style:"lobby:gold"}'),
+    ('tooltip_style nested', '{tooltip_style:"lobby:themes/royal"}'),
     ('interact_animation', '{interact_animation:{type:"stab",duration:9}}'),
     ('dyed_color', '{dyed_color:16711935}'),
     ('map_id', '{map_id:42}'),
@@ -105,7 +107,8 @@ FIXTURES = [
 # Fixtures on another item than a stick (the components need it, or read better there).
 ITEMS = {'profile name': 'player_head', 'profile full': 'player_head', 'trim registry': 'diamond_chestplate',
          'trim direct': 'diamond_chestplate', 'banner_patterns': 'white_banner', 'pot_decorations': 'decorated_pot',
-         'everything at once': 'diamond_chestplate', 'instrument registry': 'goat_horn'}
+         'everything at once': 'diamond_chestplate', 'instrument registry': 'goat_horn',
+         'tooltip_style custom': 'stone', 'tooltip_style nested': 'stone'}
 
 
 def compare(vanilla, rust):
@@ -133,11 +136,14 @@ def compare(vanilla, rust):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--record-tooltip-style', type=Path,
+                        help='Record 26.3 tooltip_style wire witness JSON using Java only')
     args = parser.parse_args()
     build = lab.LOCAL / 'item-wire-parity'
     build.mkdir(parents=True, exist_ok=True)
     report_path = build / 'report.json'
-    report_path.unlink(missing_ok=True)
+    if not args.record_tooltip_style:
+        report_path.unlink(missing_ok=True)
     if args.prepare:
         lab.prepare()
     lock, jars, libraries = base.verify_artifacts()
@@ -158,10 +164,37 @@ def main():
     vanilla_path, rust_path = build / 'vanilla.jsonl', build / 'rust.jsonl'
     run(['java', '-Xmx1G', '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
          'dev.sunriselab.parity.VanillaItemWireOracle', fixtures, vanilla_path], 'oracle')
+    read = lambda path: [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
+    if args.record_tooltip_style:
+        wanted = [label for label, _ in FIXTURES if label.startswith('tooltip_style')]
+        by_label = {row['label']: row for row in read(vanilla_path)}
+        cases = []
+        for label in wanted:
+            row = by_label.get(label)
+            if row is None or 'error' in row:
+                raise AssertionError(f'Missing or failed oracle row for {label}: {row}')
+            if len(row['added']) != 1 or row['removed']:
+                raise AssertionError(f'Unexpected component patch for {label}: {row}')
+            cases.append({
+                'label': label,
+                'item': row['item'],
+                'item_id': row['item_id'],
+                'component_id': row['added'][0],
+                'tooltip_style': row['tooltip_style'],
+                'hex': row['hex'],
+            })
+        dest = Path(args.record_tooltip_style)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps({
+            'minecraft_version': lock['minecraft']['version'],
+            'oracle': 'VanillaItemWireOracle',
+            'cases': cases,
+        }, indent=2) + '\n', encoding='utf-8')
+        print(f'Recorded {len(cases)} tooltip_style wire cases for {lock["minecraft"]["version"]}: {dest}')
+        return
     run(['cargo', 'build', '--release', '-p', 'sunrise-protocol', '--example', 'item_wire_probe'], 'compile-rust')
     binary = lab.cargo_target() / 'release/examples' / ('item_wire_probe.exe' if os.name == 'nt' else 'item_wire_probe')
     run([binary, vanilla_path, rust_path], 'rust')
-    read = lambda path: [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
     failures, stacks, covered = compare(read(vanilla_path), read(rust_path))
     for failure in failures[:40]:
         print(failure)

@@ -68,34 +68,116 @@ mod render_tooltip_texture_tests {
         (r.u0..=r.u1).contains(&uv[0]) && (r.v0..=r.v1).contains(&uv[1])
     }
 
-    /// `TooltipRenderUtil.extractTooltipBackground` with the stack's own `tooltip_style`: with no
-    /// mod, its background and frame sprites are drawn instead of the fills.
+    /// Vanilla 26.3 `TooltipRenderUtil.extractTooltipBackground` witness (`tools/witness/26.3/tooltip_style_sprites.json`): a stack's `minecraft:tooltip_style` draws exact sprites, bounds, and colours.
     #[test]
     #[ignore = "daily"]
     fn an_items_tooltip_style_draws_its_own_sprites() {
-        let mut styled = ItemStack::new("minecraft:stone", 1);
-        let given =
-            sunrise_client::item_data::command_components("[tooltip_style='lobby:gold']").unwrap();
-        (styled.damage, styled.extra) = sunrise_client::item_data::decode_components(Some(&given));
+        #[derive(serde::Deserialize)]
+        struct Witness {
+            minecraft_version: String,
+            cases: Vec<Case>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Case {
+            label: String,
+            item: String,
+            tooltip_style: String,
+            #[serde(rename = "box")]
+            bounds: [i32; 4],
+            draws: Vec<Draw>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Draw {
+            sprite: String,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+            color: u32,
+        }
+
+        let witness: Witness = serde_json::from_str(include_str!(
+            "../../../../../tools/witness/26.3/tooltip_style_sprites.json"
+        ))
+        .unwrap();
+        assert_eq!(witness.minecraft_version, "26.3");
+        assert!(!witness.cases.is_empty());
+
+        let vertex_bits = |batch: &HudBatch| -> Vec<([u32; 2], [u32; 2], u32)> {
+            batch
+                .vertices
+                .iter()
+                .map(|v| {
+                    (
+                        [v.pos[0].to_bits(), v.pos[1].to_bits()],
+                        [v.uv[0].to_bits(), v.uv[1].to_bits()],
+                        v.color,
+                    )
+                })
+                .collect()
+        };
+
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let plain = drawn(game, Some(&ItemStack::new("minecraft:stone", 1)));
-            let rects = [sprite(0.0), sprite(0.5)];
-            for (part, rect) in ["background", "frame"].iter().zip(rects) {
-                game.gui
-                    .atlas
-                    .sprites
-                    .insert(format!("lobby:gui/sprites/tooltip/gold_{part}"), rect);
+            for case in &witness.cases {
+                let [bx, by, bw, bh] = case.bounds.map(|v| v as f32);
+                let mut plain_batch = HudBatch::scratch([320, 240]);
+                game.tooltip_box(
+                    &mut plain_batch,
+                    Some(&ItemStack::new(&case.item, 1)),
+                    bx,
+                    by,
+                    bw,
+                    bh,
+                );
+                let plain = vertex_bits(&plain_batch);
+
+                let mut styled = ItemStack::new(&case.item, 1);
+                let given = sunrise_client::item_data::command_components(&format!(
+                    "[tooltip_style='{}']",
+                    case.tooltip_style
+                ))
+                .unwrap();
+                (styled.damage, styled.extra) =
+                    sunrise_client::item_data::decode_components(Some(&given));
+
+                let mut inserted = Vec::with_capacity(case.draws.len());
+                for (index, draw) in case.draws.iter().enumerate() {
+                    let key = sunrise_client::hud::atlas_key_of_gui_sprite(&draw.sprite);
+                    let rect = sprite(index as f32 * 0.25);
+                    game.gui.atlas.sprites.insert(key.clone(), rect);
+                    inserted.push((key, rect));
+                }
+
+                let mut batch = HudBatch::scratch([320, 240]);
+                game.tooltip_box(&mut batch, Some(&styled), bx, by, bw, bh);
+
+                let actual = vertex_bits(&batch);
+                assert_ne!(actual, plain, "{}", case.label);
+
+                let mut expected = Vec::with_capacity(case.draws.len() * 6);
+                for (draw, (_, rect)) in case.draws.iter().zip(&inserted) {
+                    let (x, y, w, h) = (draw.x as f32, draw.y as f32, draw.w as f32, draw.h as f32);
+                    let corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+                    let uvs = [
+                        [rect.u0, rect.v0],
+                        [rect.u1, rect.v0],
+                        [rect.u1, rect.v1],
+                        [rect.u0, rect.v1],
+                    ];
+                    for corner in [0, 1, 2, 0, 2, 3] {
+                        expected.push((
+                            [corners[corner][0].to_bits(), corners[corner][1].to_bits()],
+                            [uvs[corner][0].to_bits(), uvs[corner][1].to_bits()],
+                            draw.color,
+                        ));
+                    }
+                }
+                assert_eq!(actual, expected, "{}", case.label);
+
+                for (key, _) in inserted {
+                    game.gui.atlas.sprites.remove(&key);
+                }
             }
-            let quads = drawn(game, Some(&styled));
-            assert_ne!(quads, plain);
-            for rect in rects {
-                assert!(quads.iter().any(|&(uv, _)| in_sprite(uv, rect)));
-            }
-            assert!(
-                quads
-                    .iter()
-                    .all(|&(uv, _)| rects.iter().any(|&r| in_sprite(uv, r)))
-            );
         });
     }
 

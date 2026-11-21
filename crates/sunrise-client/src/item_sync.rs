@@ -1954,50 +1954,85 @@ mod tests {
         );
     }
 
-    /// `tooltip_style` goes out as `Identifier.STREAM_CODEC` and comes back as the
-    /// component the client's tooltip reads, through the encoded bytes.
+    /// Vanilla 26.3 `ItemStack.OPTIONAL_STREAM_CODEC` witness (`tools/witness/26.3/tooltip_style_wire.json`) round-trips `minecraft:tooltip_style` byte-for-byte.
     #[test]
     fn a_tooltip_style_crosses_the_wire() {
-        let mut components = vec![String::new(); 60];
-        components[component::TOOLTIP_STYLE as usize] = "minecraft:tooltip_style".into();
-        let items = ["minecraft:air", "minecraft:stone"];
-        let builtin = Builtin {
-            registries: [
-                (
-                    "minecraft:item".to_owned(),
-                    Ids::from_names(items.iter().map(|s| s.to_string()).collect()),
-                ),
-                (
-                    "minecraft:data_component_type".to_owned(),
-                    Ids::from_names(components),
-                ),
-            ]
-            .into(),
-        };
-        let given = crate::item_data::command_components("[tooltip_style='lobby:gold']").unwrap();
-        let (damage, extra) = crate::item_data::decode_components(Some(&given));
-        let stone = ItemStack {
-            damage,
-            extra,
-            ..ItemStack::new("minecraft:stone", 1)
-        };
-        let wire = crate::lan::guest::stack_to_network(
-            |name| items.iter().position(|i| *i == name).unwrap_or(0) as i32,
-            |_, _| None,
-            &Some(stone),
-        );
-        let mut writer = sunrise_protocol::buf::Writer::new();
-        sunrise_protocol::item::Slot::write(&wire, &mut writer);
-        let mut reader = sunrise_protocol::buf::Reader::new(&writer.data);
-        let read = sunrise_protocol::item::Slot::read(&mut reader)
-            .unwrap()
+        #[derive(serde::Deserialize)]
+        struct Witness {
+            minecraft_version: String,
+            cases: Vec<Case>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Case {
+            label: String,
+            item: String,
+            item_id: i32,
+            component_id: i32,
+            tooltip_style: String,
+            hex: String,
+        }
+
+        let witness: Witness = serde_json::from_str(include_str!(
+            "../../../tools/witness/26.3/tooltip_style_wire.json"
+        ))
+        .unwrap();
+        assert_eq!(witness.minecraft_version, "26.3");
+        assert!(!witness.cases.is_empty());
+
+        for case in &witness.cases {
+            let vanilla_bytes: Vec<u8> = (0..case.hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&case.hex[i..i + 2], 16).unwrap())
+                .collect();
+            let mut items = vec![String::new(); case.item_id as usize + 1];
+            items[case.item_id as usize] = case.item.clone();
+            let mut components = vec![String::new(); case.component_id as usize + 1];
+            components[case.component_id as usize] = "minecraft:tooltip_style".into();
+            let builtin = Builtin {
+                registries: [
+                    ("minecraft:item".to_owned(), Ids::from_names(items)),
+                    (
+                        "minecraft:data_component_type".to_owned(),
+                        Ids::from_names(components),
+                    ),
+                ]
+                .into(),
+            };
+
+            let mut reader = sunrise_protocol::buf::Reader::new(&vanilla_bytes);
+            let read = sunrise_protocol::item::Slot::read(&mut reader)
+                .unwrap()
+                .unwrap();
+            assert!(reader.rest().is_empty(), "{}: read short", case.label);
+            let back = from_network(&read, &builtin, &Dynamic::default());
+            assert_eq!(&*back.item, case.item.as_str(), "{}", case.label);
+            assert_eq!(
+                crate::save::text(back.data().unwrap().other("minecraft:tooltip_style")).as_deref(),
+                Some(case.tooltip_style.as_str()),
+                "{}",
+                case.label
+            );
+
+            let given = crate::item_data::command_components(&format!(
+                "[tooltip_style='{}']",
+                case.tooltip_style
+            ))
             .unwrap();
-        assert!(reader.rest().is_empty(), "the slot was read short");
-        let back = from_network(&read, &builtin, &Dynamic::default());
-        assert_eq!(
-            crate::save::text(back.data().unwrap().other("minecraft:tooltip_style")).as_deref(),
-            Some("lobby:gold")
-        );
+            let (damage, extra) = crate::item_data::decode_components(Some(&given));
+            let stack = ItemStack {
+                damage,
+                extra,
+                ..ItemStack::new(&case.item, 1)
+            };
+            let wire = crate::lan::guest::stack_to_network(
+                |name| if name == case.item { case.item_id } else { 0 },
+                |_, _| None,
+                &Some(stack),
+            );
+            let mut writer = sunrise_protocol::buf::Writer::new();
+            sunrise_protocol::item::Slot::write(&wire, &mut writer);
+            assert_eq!(writer.data, vanilla_bytes, "{}", case.label);
+        }
     }
 
     /// `custom_model_data` and `item_model` reach the client, whose item
