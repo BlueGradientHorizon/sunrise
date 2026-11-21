@@ -1,0 +1,4 @@
+# PACKAGE TEST TARGET daily REASON; exact logical libtest identities, sorted.
+# Player Entity.tickCount across body handoffs (#3890): need prepared resources.
+sunrise-client game::lan_actions::guest_body::tests::entity_tick_count_moves_through_teleport_bodies_but_respawn_starts_at_zero lib daily resources
+sunrise-client game::server_travel::changed_dimension_tests::player_tick_count_survives_teleports_and_deferred_arrivals lib daily resources
