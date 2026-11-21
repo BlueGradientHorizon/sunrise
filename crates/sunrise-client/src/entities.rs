@@ -862,6 +862,14 @@ pub struct OrbTickMove {
     pub movement: crate::motion::BodyMove,
     burnt_out: bool,
 }
+
+/// Server-side effects of an orb's contact with lava after a move.
+pub struct OrbLavaEffects<'a, W> {
+    pub next_float: &'a mut dyn FnMut() -> f32,
+    pub on_sound: &'a mut dyn FnMut([f64; 3], f32),
+    pub invulnerable: &'a mut dyn FnMut(&mut W) -> bool,
+}
+
 impl ExperienceOrb {
     /// A fresh orb (`new ExperienceOrb(level, pos, motion, value)`): full
     /// health, no age, fall or followed player, not yet ticked.
@@ -1067,9 +1075,11 @@ impl ExperienceOrb {
             fluids,
             tick,
             server,
-            next_float,
-            on_sound,
-            &mut |_| false,
+            OrbLavaEffects {
+                next_float,
+                on_sound,
+                invulnerable: &mut |_| false,
+            },
         );
         (stays, tick.step)
     }
@@ -1207,13 +1217,13 @@ impl ExperienceOrb {
         );
         if !gate.skipped() {
             motion.record_move(
-                self.position,
-                self.bounds(),
-                wanted,
-                moved,
-                server,
-                crate::motion::BodyMotion::entity_context(self.id, self.position),
-                None,
+                crate::motion::BodyCollision {
+                    footprint: (self.position, self.bounds()),
+                    movement: (wanted, moved),
+                    authoritative: server,
+                    context: crate::motion::BodyMotion::entity_context(self.id, self.position),
+                    subject: None,
+                },
                 &mut self.ground,
             );
         }
@@ -1248,7 +1258,6 @@ impl ExperienceOrb {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn finish_tick<W: std::ops::Deref<Target = World>>(
         &mut self,
         world: &mut W,
@@ -1261,9 +1270,7 @@ impl ExperienceOrb {
         fluids: &crate::motion::FluidResources,
         tick: OrbTickMove,
         server: bool,
-        next_float: &mut dyn FnMut() -> f32,
-        on_sound: &mut dyn FnMut([f64; 3], f32),
-        invulnerable: &mut dyn FnMut(&mut W) -> bool,
+        lava: OrbLavaEffects<'_, W>,
     ) -> bool {
         let OrbTickMove {
             movement: crate::motion::BodyMove { wanted, .. },
@@ -1277,9 +1284,9 @@ impl ExperienceOrb {
                 world,
                 fluids,
                 wanted,
-                next_float,
-                on_sound,
-                invulnerable,
+                lava.next_float,
+                lava.on_sound,
+                lava.invulnerable,
             );
         // `float friction = getAirDrag()` (0.98F), the ground's block
         // friction multiplied in as a float, widened once for the scale.
@@ -5179,11 +5186,13 @@ mod orb_lava_tests {
                 fluids,
                 tick,
                 true,
-                &mut || 0.0,
-                &mut |_, _| sounds += 1,
-                &mut |_| {
-                    calls += 1;
-                    true
+                OrbLavaEffects {
+                    next_float: &mut || 0.0,
+                    on_sound: &mut |_, _| sounds += 1,
+                    invulnerable: &mut |_| {
+                        calls += 1;
+                        true
+                    },
                 },
             ));
             assert_eq!(orb.health, 5);

@@ -3,9 +3,73 @@
 use super::Game;
 use super::minecarts::{CartKind, Minecart};
 use crate::game::collision_source::Mover;
-use sunrise_client::collisions::SceneCollisions;
-use sunrise_core::geometry::Vec3;
+use sunrise_client::{collisions::SceneCollisions, motion::BodyContact};
+use sunrise_core::geometry::{Aabb, Vec3};
+
+pub(super) struct CartLanding {
+    id: u32,
+    kind: CartKind,
+    at: Vec3,
+    bounds: Aabb,
+    distance: f64,
+}
 impl Game<'_> {
+    /// `Entity.move` resets a ray-clipped fall, then `checkFallDamage` uses the
+    /// current position, supporting block and the body's last water contact.
+    pub(super) fn cart_move_fall(
+        &self,
+        c: &Minecart,
+        from: Vec3,
+        moved: Vec3,
+    ) -> (f64, Option<CartLanding>) {
+        let mut distance = self.vehicle_fall_reset(c.fall_distance, from, moved);
+        if moved.y < 0.0 && !c.in_water {
+            distance -= f64::from(moved.y as f32);
+        }
+        if !c.ground.on_ground {
+            return (distance, None);
+        }
+        (
+            0.0,
+            (distance > 0.0).then(|| CartLanding {
+                id: c.id,
+                kind: c.kind,
+                at: c.position,
+                bounds: c.bounds(),
+                distance,
+            }),
+        )
+    }
+
+    /// Run `Block.fallOn`, including `MinecartTNT.causeFallDamage`, before the
+    /// landing game event. A removed cart cannot resolve block restitution.
+    pub(super) fn finish_cart_landing(
+        &mut self,
+        landing: Option<CartLanding>,
+        effect: BodyContact,
+        explode: impl FnOnce(&mut Self, f64) -> bool,
+    ) -> bool {
+        let Some(CartLanding {
+            id,
+            kind,
+            at,
+            bounds,
+            distance,
+        }) = landing
+        else {
+            return true;
+        };
+        self.nonliving_fall_on(id, at, effect);
+        let removed = if kind == CartKind::Tnt && distance >= 3.0 {
+            let speed = distance / 10.0;
+            explode(self, speed * speed)
+        } else {
+            false
+        };
+        self.post_landing_event(at, bounds, false);
+        !removed
+    }
+
     /// Entity.move for a cart: collisions zero the blocked components, the world border's walls
     /// among them (`CollisionGetter.borderCollision`, asked for every entity).
     pub(super) fn move_cart(&mut self, c: &mut Minecart, delta: Vec3) -> bool {
@@ -52,7 +116,7 @@ impl Game<'_> {
             0.0,
             c.ground.on_ground,
         ) {
-            c.fall_distance = self.vehicle_fall_reset(c.fall_distance, c.position, moved);
+            let from = c.position;
             c.position = Vec3::new(
                 c.position.x + moved.x,
                 c.position.y + moved.y,
@@ -69,39 +133,36 @@ impl Game<'_> {
             };
             if !gate.skipped() {
                 motion.record_move(
-                    c.position,
-                    c.bounds(),
-                    delta,
-                    moved,
-                    true,
-                    sunrise_client::motion::BodyMotion::entity_context(c.id, c.position),
-                    None,
+                    sunrise_client::motion::BodyCollision {
+                        footprint: (c.position, c.bounds()),
+                        movement: (delta, moved),
+                        authoritative: true,
+                        context: sunrise_client::motion::BodyMotion::entity_context(
+                            c.id, c.position,
+                        ),
+                        subject: None,
+                    },
                     &mut c.ground,
                 );
             }
             let effect = motion.legacy_contact(c.position, &c.ground);
-            // Entity.checkFallDamage: the move's drop counts (not in water, as of
-            // the tick before: `isInWater` is `wasTouchingWater`),
-            // and a landing hands the whole fall to causeFallDamage, which
-            // sets a TNT minecart off at (fall / 10) squared.
-            if moved.y < 0.0 && !c.in_water {
-                c.fall_distance -= f64::from(moved.y as f32);
-            }
-            if c.ground.on_ground {
-                let distance = c.fall_distance;
-                c.fall_distance = 0.0;
-                if distance > 0.0 {
-                    self.nonliving_fall_on(c.id, c.position, effect);
-                    let removed = if c.kind == CartKind::Tnt && distance >= 3.0 {
-                        let power = distance / 10.0;
-                        self.explode_cart(c, power * power)
-                    } else {
-                        false
-                    };
-                    self.post_landing_event(c.position, c.bounds(), false);
-                    if removed {
-                        return false;
-                    }
+            let (fall_distance, landing) = self.cart_move_fall(c, from, moved);
+            c.fall_distance = fall_distance;
+            if landing.is_some() {
+                let id = c.id;
+                let join = c.join;
+                if !self
+                    .finish_cart_landing(landing, effect, |game, power| game.explode_cart(c, power))
+                    || !self
+                        .carts
+                        .iter()
+                        .any(|row| row.id == id && row.join == join)
+                    || self
+                        .persist
+                        .removals
+                        .contains(&super::commands::Target::Cart(id))
+                {
+                    return false;
                 }
             }
             let entity = (c.id, c.kind.id());

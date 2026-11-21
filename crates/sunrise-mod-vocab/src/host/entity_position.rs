@@ -81,8 +81,9 @@ pub trait EntityPositionBackendMut {
     /// Moves the entity by `delta` blocks as `Entity.move(cause, delta)` does: the block,
     /// entity and world border collision scan stops it at what is in the way, it steps up what
     /// its step height allows, and its ground flag follows the move. It is not a teleport
-    /// (nothing is skipped over) and not a velocity: the entity's velocity is left as it is,
-    /// blocked components included. The `entity_move` hook fires for it with `cause`, once, so
+    /// or a velocity setter: when the body simulates a collided move, the collision response
+    /// can change its velocity, including through block restitution. The `entity_move` hook
+    /// fires for it with `cause`, once, so
     /// a listener may replace or cancel the delta as for any other move; a cancelled move is
     /// `Some([0.0; 3])`. A body with no physics (a marker or `NoGravity` armor stand, or one a
     /// mod set) moves the whole delta with no collision. `MoveCause::Piston` also applies a
@@ -91,8 +92,8 @@ pub trait EntityPositionBackendMut {
     /// the entity moved, `delta` less what the collisions took. None for a stale handle, on a
     /// client, for an entity outside the game's entity walk (a display, a painting, an item
     /// frame, an End crystal, a dragon part) and for a delta that is not finite or has a
-    /// component beyond 64 blocks. The entity's own tick still does what follows a move: fall
-    /// damage, block effects and triggers.
+    /// component beyond 64 blocks. The base move's fall handling can remove a body before
+    /// restitution. Block effects and triggers outside the base move still run at their own moments.
     ///
     /// A player moves as `Entity.move` with `MoverType.SELF` would, whatever `cause` the hook
     /// hears: blocks, entity and moving colliders and the player's collision exclusions stop

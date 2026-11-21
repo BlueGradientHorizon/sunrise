@@ -12,6 +12,9 @@
 //!
 #[path = "piston_push/carrying.rs"]
 mod carrying;
+#[cfg(test)]
+#[path = "piston_push/restitution_tests.rs"]
+mod restitution_tests;
 use super::{
     Game,
     entity::{Entity, EntityHandle, with_entity, with_entity_mut},
@@ -83,6 +86,14 @@ struct PistonIndex {
 struct StepHeights {
     player: f32,
     guests: std::collections::HashMap<u32, f32>,
+}
+
+/// One selected body; the handle is only a hint once a move can reenter the level.
+#[derive(Clone, Copy)]
+struct PushTarget {
+    hint: MoveWho,
+    id: u32,
+    join: Option<JoinSeq>,
 }
 
 /// What the push needs from one entity.
@@ -183,7 +194,7 @@ impl Game<'_> {
     /// by 2. Only the pushed body moves during the pushes, so a body outside
     /// all of those at the start is never reached: its box is read once a
     /// tick instead of once per moving block.
-    fn piston_push_targets(&self, pushes: &[Push], steps: &StepHeights) -> Vec<MoveWho> {
+    fn piston_push_targets(&self, pushes: &[Push], steps: &StepHeights) -> Vec<PushTarget> {
         let Some(reach) = pushes
             .iter()
             .map(|(p, ..)| {
@@ -203,6 +214,7 @@ impl Game<'_> {
                 self.piston_body(target, Some(at), steps)
                     .is_some_and(|body| body.bounds.intersects(reach))
             })
+            .filter_map(|target| self.stable_push_target(target))
             .collect()
     }
 
@@ -394,7 +406,14 @@ impl Game<'_> {
         let root = self.lid_root(lid);
         // The armor stands' obstacles, built at the first stand the lid meets.
         let mut stand_grid = None;
-        self.push_targets().for_each(|target| {
+        let targets: Vec<_> = self
+            .push_targets()
+            .filter_map(|target| self.stable_push_target(target))
+            .collect();
+        targets.into_iter().for_each(|selected| {
+            let Some(target) = self.resolve_push_target(selected) else {
+                return;
+            };
             let body = match lid {
                 Lid::Box => self.piston_body(target, None, &steps),
                 Lid::Shulker(_) => self.push_body(target, None, &steps),
@@ -422,23 +441,46 @@ impl Game<'_> {
         self.lid_breaks_attached(area, root);
     }
 
-    /// An opening lid's push for the player this game moves itself, applied
-    /// to its own body. A client owns its player's position (the server
-    /// thread's guest included), so the push is the client's own
-    /// `Entity.move`; the other bodies are the server's to push. A shulker's
-    /// lid leaves the player out as `lid_push` does (`lid_spares`).
+    /// The client moves its player and the boat this player controls. The
+    /// other entities' restitution stays on the side that simulates them.
     pub(super) fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
-        let Some(player) = self.player.as_ref() else {
-            return;
-        };
-        if player.spectator || !player.bounds().intersects(area) {
-            return;
+        let root = self.lid_root(lid);
+        let boat = self
+            .riding
+            .filter(|&id| self.controls_boat(id))
+            .and_then(|id| self.boats.iter().position(|boat| boat.id == id))
+            .and_then(|i| self.stable_push_target(MoveWho::Entity(EntityHandle::Boat(i))));
+        if self
+            .player
+            .as_ref()
+            .is_some_and(|p| !p.spectator && p.bounds().intersects(area))
+            && !self.lid_spares(lid, root, MoveWho::Player, false)
+        {
+            let _ = self.move_local_player(lid.mover(), movement);
         }
-        // A player's `noPhysics` is its spectating, checked above.
-        if self.lid_spares(lid, self.lid_root(lid), MoveWho::Player, false) {
-            return;
+        if let Some(boat) = boat
+            && self.controls_boat(boat.id)
+            && let Some(target @ MoveWho::Entity(handle)) = self.resolve_push_target(boat)
+        {
+            let body = self.listed_body(handle, None);
+            if !body.bounds.intersects(area)
+                || lid == Lid::Box && body.piston_reaction == PushReaction::IgnoreEntity
+            {
+                return;
+            }
+            let no_physics = self.pushed_no_physics(target);
+            if !self.lid_spares(lid, root, target, no_physics) {
+                self.move_pushed_body(
+                    lid.mover(),
+                    lid.shulker(),
+                    target,
+                    body,
+                    movement,
+                    no_physics,
+                    &mut None,
+                );
+            }
         }
-        let _ = self.move_local_player(lid.mover(), movement);
     }
 
     /// [`Self::lid_push_local`] for this tick's shulker box lids.
@@ -561,6 +603,9 @@ impl Game<'_> {
             self.shoves_armor_stand(i, mover, shulker, movement, stand_grid);
             return;
         }
+        let Some(selected) = self.stable_push_target(target) else {
+            return;
+        };
         let mut gate = self.entity_move(target, mover, movement);
         if gate.skipped() {
             return;
@@ -569,7 +614,9 @@ impl Game<'_> {
         // `Entity.move` with `noPhysics`: `setPos` the whole way.
         if no_physics {
             self.apply_push(&mut gate, target, movement);
-            self.release_after_block_move(target);
+            if let Some(target) = self.resolve_push_target(selected) {
+                self.release_after_block_move(target);
+            }
             return;
         }
         let entities = self.pushed_entity_colliders(target);
@@ -592,25 +639,18 @@ impl Game<'_> {
         ) else {
             return;
         };
-        let id = match target {
-            MoveWho::Entity(handle) => Some(with_entity!(self, handle, entity => entity.id())),
-            _ => None,
-        };
         if moved.length_squared() > 1.0e-7
             || movement.length_squared() - moved.length_squared() < 1.0e-7
         {
             self.apply_push(&mut gate, target, moved);
         }
-        let target = if let (Some(id), MoveWho::Entity(handle)) = (id, target) {
-            let Some(handle) = self.refresh_entity_handle(id, handle) else {
-                return;
-            };
-            MoveWho::Entity(handle)
-        } else {
-            target
+        let Some(target) = self.resolve_push_target(selected) else {
+            return;
         };
         self.set_pushed_on_ground(target, movement, moved, None);
-        if let Some(target) = self.finish_pushed_restitution(target, movement, moved) {
+        if let Some(target) =
+            self.finish_pushed_restitution(selected, target, body.position, movement, moved)
+        {
             self.release_after_block_move(target);
         }
     }
@@ -627,14 +667,15 @@ impl Game<'_> {
         movement: Vec3,
     ) -> Vec3 {
         let target = MoveWho::Entity(handle);
-        let (id, from) = with_entity!(self, handle, entity => (entity.id(), entity.position()));
+        let selected = self.stable_push_target(target).expect("listed move target");
+        let from = with_entity!(self, handle, entity => entity.position());
         let body = self.listed_body(handle, None);
         if self.pushed_no_physics(target) {
             let mut gate = self.entity_move(target, cause, movement);
             let movement = gate.delta();
             self.apply_push(&mut gate, target, movement);
-            if let Some(handle) = self.refresh_entity_handle(id, handle) {
-                self.release_after_block_move(MoveWho::Entity(handle));
+            if let Some(target) = self.resolve_push_target(selected) {
+                self.release_after_block_move(target);
             }
         } else if let Some(direction) = (cause == MoverType::Piston)
             .then(|| first_axis_direction(movement))
@@ -656,18 +697,22 @@ impl Game<'_> {
         } else {
             // A stand's shove zeroes the velocity a collision blocks; a mod's move keeps it.
             let stand = match handle {
-                EntityHandle::ArmorStand(i) => Some((i, self.armor_stands[i].velocity)),
+                EntityHandle::ArmorStand(i) => Some(self.armor_stands[i].velocity),
                 _ => None,
             };
             self.move_pushed_body(cause, None, target, body, movement, false, &mut None);
-            if let Some((i, velocity)) = stand {
+            if let Some(velocity) = stand
+                && let Some(MoveWho::Entity(EntityHandle::ArmorStand(i))) =
+                    self.resolve_push_target(selected)
+            {
                 self.armor_stands[i].velocity = velocity;
             }
         }
-        self.refresh_entity_handle(id, handle)
-            .map_or(Vec3::ZERO, |handle| {
-                with_entity!(self, handle, entity => entity.position()).subtract(from)
-            })
+        if let Some(MoveWho::Entity(handle)) = self.resolve_push_target(selected) {
+            with_entity!(self, handle, entity => entity.position()).subtract(from)
+        } else {
+            Vec3::ZERO
+        }
     }
 
     /// The local player's ordinary `Entity.move(mover, …)`: the collision scan stops
@@ -706,9 +751,9 @@ impl Game<'_> {
     fn push_for_piston(
         &mut self,
         (pos, piston, new_progress): Push,
-        targets: &[MoveWho],
+        targets: &[PushTarget],
         steps: &StepHeights,
-        accumulators: &mut std::collections::HashMap<MoveWho, PistonMovement>,
+        accumulators: &mut std::collections::HashMap<(u32, JoinSeq), PistonMovement>,
         pricked: &mut Vec<u32>,
     ) {
         let delta_progress = f64::from(new_progress - piston.progress);
@@ -763,7 +808,10 @@ impl Game<'_> {
                 delta_progress,
             )
         });
-        targets.iter().copied().for_each(|target| {
+        targets.iter().copied().for_each(|selected| {
+            let Some(target) = self.resolve_push_target(selected) else {
+                return;
+            };
             let Some(body) = self.piston_body(target, Some(pos), steps) else {
                 return;
             };
@@ -802,6 +850,7 @@ impl Game<'_> {
                 // an entity that is still inside its own block.
                 if !piston.extending
                     && piston.source
+                    && let Some(target) = self.resolve_push_target(selected)
                     && let Some(after) = self.piston_body(target, Some(pos), steps)
                     && let Some(fix) = piston_push::fix_within_piston_base(
                         pos,
@@ -828,7 +877,10 @@ impl Game<'_> {
         // Vanilla selects honey passengers after all collided entities have moved.
         if honey && movement.normal()[1] == 0 {
             let area = piston_push::sticky_area(pos, piston.shape_state(), sticky_top);
-            for &target in targets {
+            for &selected in targets {
+                let Some(target) = self.resolve_push_target(selected) else {
+                    continue;
+                };
                 let Some(body) = self.piston_body(target, Some(pos), steps) else {
                     continue;
                 };
@@ -931,7 +983,7 @@ impl Game<'_> {
             })
             .collect();
         for &mut (hint, id, join, ref mut moved) in &mut lift {
-            let Some(target) = self.resolve_lift_target(hint, id, join) else {
+            let Some(target) = self.resolve_push_target(PushTarget { hint, id, join }) else {
                 continue;
             };
             let body = match target {
@@ -994,7 +1046,11 @@ impl Game<'_> {
             let Some((from, _, motion_y)) = moved else {
                 continue;
             };
-            let Some(target) = self.resolve_lift_target(target, id, join) else {
+            let Some(target) = self.resolve_push_target(PushTarget {
+                hint: target,
+                id,
+                join,
+            }) else {
                 continue;
             };
             match target {
@@ -1016,12 +1072,18 @@ impl Game<'_> {
         false
     }
 
-    fn resolve_lift_target(
-        &self,
-        hint: MoveWho,
-        id: u32,
-        join: Option<JoinSeq>,
-    ) -> Option<MoveWho> {
+    fn stable_push_target(&self, hint: MoveWho) -> Option<PushTarget> {
+        let (id, join) = match hint {
+            MoveWho::Player => (self.player.as_ref()?.entity_id as u32, None),
+            MoveWho::Guest(conn) => (self.lan.as_ref()?.hub.guest(conn)?.entity_id as u32, None),
+            MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
+                (entity.id(), Some(entity.join_seq()))
+            }),
+        };
+        Some(PushTarget { hint, id, join })
+    }
+
+    fn resolve_push_target(&self, PushTarget { hint, id, join }: PushTarget) -> Option<MoveWho> {
         match hint {
             MoveWho::Player => self
                 .player
@@ -1031,15 +1093,15 @@ impl Game<'_> {
             MoveWho::Guest(conn) => {
                 let hub = &self.lan.as_ref()?.hub;
                 hub.guest(conn)
-                    .filter(|g| {
-                        g.entity_id as u32 == id && hub.here(g) && self.lan_acting != Some(conn)
-                    })
+                    .filter(|g| g.entity_id as u32 == id && hub.here(g))
                     .map(|_| hint)
             }
             MoveWho::Entity(handle) => {
                 let handle = self.refresh_entity_handle(id, handle)?;
                 with_entity!(self, handle, entity => {
-                    (!entity.is_removed() && Some(entity.join_seq()) == join).then_some(MoveWho::Entity(handle))
+                    (!entity.is_removed() && Some(entity.join_seq()) == join
+                        && !entity.selector_target().is_some_and(|named| self.persist.removals.contains(&named)))
+                        .then_some(MoveWho::Entity(handle))
                 })
             }
         }
@@ -1176,7 +1238,7 @@ impl Game<'_> {
         on_ground: bool,
         movement: Vec3,
         piston_direction: Direction,
-        accumulators: &mut std::collections::HashMap<MoveWho, PistonMovement>,
+        accumulators: &mut std::collections::HashMap<(u32, JoinSeq), PistonMovement>,
         pricked: &mut Vec<u32>,
     ) {
         let cause = MoverType::Piston;
@@ -1193,6 +1255,13 @@ impl Game<'_> {
             self.piston_cactus_contact(target, before, after, pricked);
             return;
         }
+        let Some(selected) = self.stable_push_target(target) else {
+            return;
+        };
+        let from = match target {
+            MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.position()),
+            _ => Vec3::ZERO,
+        };
         let mut gate = self.entity_move(target, cause, movement);
         if gate.skipped() {
             return;
@@ -1216,7 +1285,9 @@ impl Game<'_> {
                     self.projectile_piston_block_effects(i, at);
                 }
                 self.piston_block_triggers(before, before);
-                self.piston_cactus_contact(target, before, before, pricked);
+                if let Some(target) = self.resolve_push_target(selected) {
+                    self.piston_cactus_contact(target, before, before, pricked);
+                }
             });
             return;
         }
@@ -1271,10 +1342,6 @@ impl Game<'_> {
 
             let moved = resolved.length_squared() > 1.0e-7
                 || limited.length_squared() - resolved.length_squared() < 1.0e-7;
-            let id = match target {
-                MoveWho::Entity(handle) => Some(with_entity!(self, handle, entity => entity.id())),
-                _ => None,
-            };
             if moved {
                 self.apply_push(&mut gate, target, resolved);
             }
@@ -1283,17 +1350,14 @@ impl Game<'_> {
             } else {
                 before
             };
-            let target = if let (Some(id), MoveWho::Entity(handle)) = (id, target) {
-                let Some(handle) = self.refresh_entity_handle(id, handle) else {
-                    self.piston_block_triggers(before, after);
-                    return;
-                };
-                MoveWho::Entity(handle)
-            } else {
-                target
+            let Some(target) = self.resolve_push_target(selected) else {
+                self.piston_block_triggers(before, after);
+                return;
             };
             self.set_pushed_on_ground(target, limited, resolved, tnt.map(|(_, _, s, c)| (s, c)));
-            if let Some(target) = self.finish_pushed_restitution(target, limited, resolved) {
+            if let Some(target) =
+                self.finish_pushed_restitution(selected, target, from, limited, resolved)
+            {
                 // AbstractArrow.move releases embedded ammunition only after the base move.
                 self.release_after_block_move(target);
                 if let (MoveWho::Entity(EntityHandle::Tnt(i)), Some((_, from, _, _))) =
@@ -1308,10 +1372,8 @@ impl Game<'_> {
                 }
             }
             self.piston_block_triggers(before, after);
-            if let (Some(id), MoveWho::Entity(handle)) = (id, target)
-                && let Some(handle) = self.refresh_entity_handle(id, handle)
-            {
-                self.piston_cactus_contact(MoveWho::Entity(handle), before, after, pricked);
+            if let Some(target) = self.resolve_push_target(selected) {
+                self.piston_cactus_contact(target, before, after, pricked);
             }
         });
     }
@@ -1320,7 +1382,9 @@ impl Game<'_> {
     /// A piston's direct slime launch is not a collided move.
     fn finish_pushed_restitution(
         &mut self,
+        selected: PushTarget,
         target: MoveWho,
+        from: Vec3,
         wanted: Vec3,
         moved: Vec3,
     ) -> Option<MoveWho> {
@@ -1385,7 +1449,7 @@ impl Game<'_> {
                     std::panic::resume_unwind(payload);
                 }
             }
-            return Some(target);
+            return self.resolve_push_target(selected);
         }
         // Stands retain support, but do not use nonliving restitution.
         if matches!(handle, EntityHandle::ArmorStand(_)) {
@@ -1421,10 +1485,23 @@ impl Game<'_> {
                     }
                 }
                 EntityHandle::Falling(i) => self.finish_falling_piston_move(i, moved),
+                EntityHandle::Cart(i) => {
+                    let (distance, landing) = self.cart_move_fall(&self.carts[i], from, moved);
+                    self.carts.update(i, |c| c.fall_distance = distance);
+                    if !self.finish_cart_landing(landing, effect, |game, power| {
+                        // Only a TNT landing needs its live cart loaned to the explosion.
+                        let mut cart = game.carts[i].clone();
+                        game.explode_cart(&mut cart, power)
+                    }) {
+                        return None;
+                    }
+                }
                 _ => {}
             }
         }
-        let handle = self.refresh_entity_handle(id, handle)?;
+        let MoveWho::Entity(handle) = self.resolve_push_target(selected)? else {
+            return None;
+        };
         let differs = sunrise_world::entity_move::different;
         if !can_simulate
             || !(wanted.y != moved.y || differs(wanted.x, moved.x) || differs(wanted.z, moved.z))
@@ -1436,23 +1513,34 @@ impl Game<'_> {
             EntityHandle::Cart(_) => 0.95_f32,
             _ => 0.98_f32,
         };
-        let (response, bounced_kind) = with_entity!(self, handle, entity => {
-            let kind = match handle {
-                EntityHandle::Boat(i) => std::borrow::Cow::Borrowed(self.boats[i].entity_type_name()),
-                _ => entity.native_type(),
-            };
-            let response = self.body_motion(&game_side!(self)).restitute((id, &kind),
-                sunrise_client::motion::BodyMove { wanted, moved, effect },
-                entity.get_gravity(), drag, entity.velocity(), entity.body_fall_distance());
-            let bounced_kind = response.bounce.is_some().then(|| kind.into_owned());
-            (response, bounced_kind)
-        });
-        let velocity = if let Some(kind) = bounced_kind {
-            self.finish_body_restitution((id, &kind), feet, response)
-        } else {
-            response.velocity
+        let boat_name = match handle {
+            EntityHandle::Boat(i) => Some(self.boats[i].shared_type_name()),
+            _ => None,
         };
-        let handle = self.refresh_entity_handle(id, handle)?;
+        let kind = match handle {
+            EntityHandle::Boat(_) => boat_name.as_deref()?,
+            EntityHandle::Cart(i) => self.carts[i].kind.id(),
+            EntityHandle::Projectile(i) => self.creatures.projectiles[i].entity_type(),
+            EntityHandle::Item(_) => "minecraft:item",
+            EntityHandle::Orb(_) => "minecraft:experience_orb",
+            EntityHandle::Falling(_) => "minecraft:falling_block",
+            EntityHandle::Tnt(_) => "minecraft:tnt",
+            EntityHandle::Rocket(_) => "minecraft:firework_rocket",
+            EntityHandle::Trident(_) => "minecraft:trident",
+            EntityHandle::ArmorStand(_) => super::armor_stands::TYPE_ID,
+            EntityHandle::Mob(_) | EntityHandle::General(_) => {
+                return Some(MoveWho::Entity(handle));
+            }
+        };
+        let response = with_entity!(self, handle, entity => {
+            self.body_motion(&game_side!(self)).restitute((id, kind),
+                sunrise_client::motion::BodyMove { wanted, moved, effect },
+                entity.get_gravity(), drag, entity.velocity(), entity.body_fall_distance())
+        });
+        let velocity = self.finish_body_restitution((id, kind), feet, response);
+        let MoveWho::Entity(handle) = self.resolve_push_target(selected)? else {
+            return None;
+        };
         with_entity_mut!(self, handle, entity => *entity.velocity_mut() = velocity);
         Some(MoveWho::Entity(handle))
     }
@@ -1508,19 +1596,36 @@ impl Game<'_> {
         with_entity_mut!(self, handle, entity => {
             let (at, bounds, id) = (entity.position(), entity.bounds(), entity.id());
             let (subject, context) = tnt.map_or_else(
-                || (None, if matches!(handle, EntityHandle::Item(_)) {
-                    sunrise_world::collision_context::CollisionContext::for_entity(
-                        sunrise_world::collision_context::CollisionEntity {
-                            identity: sunrise_world::entity_obstruction::EntityIdentity(u64::from(id)),
-                            kind: sunrise_world::collision_context::EntityContextKind::Item,
-                            y: at.y, descending: false, main_hand: None,
-                        }, false,
-                    )
-                } else { sunrise_client::motion::BodyMotion::entity_context(id, at) }),
+                || {
+                    let context = if matches!(handle, EntityHandle::Item(_)) {
+                        sunrise_world::collision_context::CollisionContext::for_entity(
+                            sunrise_world::collision_context::CollisionEntity {
+                                identity: sunrise_world::entity_obstruction::EntityIdentity(u64::from(id)),
+                                kind: sunrise_world::collision_context::EntityContextKind::Item,
+                                y: at.y,
+                                descending: false,
+                                main_hand: None,
+                            },
+                            false,
+                        )
+                    } else {
+                        sunrise_client::motion::BodyMotion::entity_context(id, at)
+                    };
+                    (None, context)
+                },
                 |(subject, context)| (Some(subject), context),
             );
             if let Some(ground) = entity.ground_state_mut() {
-                motion.record_move(at, bounds, wanted, moved, authoritative, context, subject, ground);
+                motion.record_move(
+                    sunrise_client::motion::BodyCollision {
+                        footprint: (at, bounds),
+                        movement: (wanted, moved),
+                        authoritative,
+                        context,
+                        subject,
+                    },
+                    ground,
+                );
             } else {
                 entity.set_piston_on_ground(wanted.y < 0.0 && wanted.y != moved.y);
             }
@@ -1533,7 +1638,7 @@ impl Game<'_> {
         &mut self,
         target: MoveWho,
         movement: Vec3,
-        accumulators: &mut std::collections::HashMap<MoveWho, PistonMovement>,
+        accumulators: &mut std::collections::HashMap<(u32, JoinSeq), PistonMovement>,
     ) -> Option<Vec3> {
         let time = self.world.game_time;
         let limit = |state: &mut PistonMovement| state.limit(movement, || Ok::<i64, ()>(time)).ok();
@@ -1544,7 +1649,11 @@ impl Game<'_> {
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
             MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.mobs[i].piston),
-            _ => limit(accumulators.entry(target).or_default()),
+            MoveWho::Entity(handle) => {
+                let key = with_entity!(self, handle, entity => (entity.id(), entity.join_seq()));
+                limit(accumulators.entry(key).or_default())
+            }
+            MoveWho::Player => unreachable!("local player limits its own move"),
         }
     }
 

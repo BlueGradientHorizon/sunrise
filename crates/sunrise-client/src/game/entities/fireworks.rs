@@ -346,13 +346,13 @@ impl Rocket {
         let authoritative =
             motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
         motion.record_move(
-            self.position,
-            self.bounds(),
-            wanted,
-            moved,
-            authoritative,
-            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
-            None,
+            sunrise_client::motion::BodyCollision {
+                footprint: (self.position, self.bounds()),
+                movement: (wanted, moved),
+                authoritative,
+                context: sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
+                subject: None,
+            },
             &mut self.ground,
         );
         let effect = motion.legacy_contact(self.position, &self.ground);
