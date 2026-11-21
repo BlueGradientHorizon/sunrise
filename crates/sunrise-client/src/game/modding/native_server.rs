@@ -1813,7 +1813,7 @@ impl Game<'_> {
     /// swapped in (`native_run_mod_command`, `native_right_click_block`,
     /// `native_use_on`, `native_break_block`...): None outside such a
     /// hook.
-    pub(super) fn native_acting_player(&self) -> Option<PlayerRef> {
+    pub(in crate::game) fn native_acting_player(&self) -> Option<PlayerRef> {
         self.player.as_ref()?;
         self.lan_acting_name.as_ref()?;
         self.lan_acting_permission?;
