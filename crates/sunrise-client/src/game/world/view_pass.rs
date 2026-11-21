@@ -581,6 +581,7 @@ pub(in crate::game) mod tests {
         Plain(C),
         Open(i32),
         Wrapped(i32, C),
+        Groups(i32, sunrise_protocol::connection_groups::Section),
         Close(i32),
     }
 
@@ -612,14 +613,19 @@ pub(in crate::game) mod tests {
             match Message::decode_in(&p.data, REVISION_3).unwrap() {
                 Message::Open { level, .. } => got.push(Got::Open(level.number())),
                 Message::Close { level } => got.push(Got::Close(level.number())),
-                Message::Run { level, packets } => got.extend(
-                    (packets.into_iter())
-                        .filter_map(|packet| match packet {
-                            ScopedPacket::Play(id, body) => C::decode(id, body).ok(),
-                            ScopedPacket::ConnectionGroups(_) => None,
-                        })
-                        .map(|packet| Got::Wrapped(level.number(), packet)),
-                ),
+                Message::Run { level, packets } => {
+                    got.extend((packets.into_iter()).filter_map(|packet| {
+                        match packet {
+                            ScopedPacket::Play(id, body) => C::decode(id, body)
+                                .ok()
+                                .map(|packet| Got::Wrapped(level.number(), packet)),
+                            ScopedPacket::ConnectionGroups(body) => Some(Got::Groups(
+                                level.number(),
+                                sunrise_protocol::connection_groups::Section::decode(body).unwrap(),
+                            )),
+                        }
+                    }))
+                }
                 Message::Swap { .. } => unreachable!("no swap below revision 4"),
             }
         }
@@ -642,7 +648,7 @@ pub(in crate::game) mod tests {
             },
             raw_payloads::{Side, Transport},
         };
-        use sunrise_protocol::connection_groups::{self, Cell, Entry, Section};
+        use sunrise_protocol::connection_groups::{Cell, Entry, Section};
 
         const NAME: &str = "game::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
         if run_fresh_cases(NAME, "SUNRISE_VIEW_GROUP_REOPEN", &["run"]) {
@@ -751,15 +757,14 @@ pub(in crate::game) mod tests {
                 let [
                     Got::Plain(C::BundleDelimiter(_)),
                     _,
-                    Got::Wrapped(2, C::CustomPayload(group)),
+                    Got::Groups(2, group),
                     Got::Plain(C::BundleDelimiter(_)),
                 ] = &packets[body - 1..=body + 2]
                 else {
                     panic!("reloaded column was not bundled with its group");
                 };
-                assert_eq!(group.channel, connection_groups::CHANNEL);
                 assert_eq!(
-                    Section::decode(&group.data).unwrap(),
+                    *group,
                     Section {
                         pos: AT.map(|v| v >> 4),
                         entries: vec![Entry {
@@ -799,19 +804,14 @@ pub(in crate::game) mod tests {
                     [
                         Got::Plain(C::BundleDelimiter(_)),
                         Got::Wrapped(2, C::BlockUpdate(block)),
-                        Got::Wrapped(2, C::CustomPayload(group)),
+                        Got::Groups(2, group),
                         Got::Plain(C::BundleDelimiter(_)),
-                    ] if block.pos == AT
-                        && block.state == expected
-                        && group.channel == connection_groups::CHANNEL =>
-                    {
-                        Some(Section::decode(&group.data).unwrap())
-                    }
+                    ] if block.pos == AT && block.state == expected => Some(group),
                     _ => None,
                 });
                 assert_eq!(
                     updated,
-                    Some(Section {
+                    Some(&Section {
                         pos: AT.map(|v| v >> 4),
                         entries: vec![Entry {
                             cell: Cell::of(AT),
