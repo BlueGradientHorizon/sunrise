@@ -57,14 +57,18 @@ impl RegisterConfigurationTasksEvent<'_> {
         let id = task.task_type();
         let refusal = if id.namespace().is_empty() || id.path().is_empty() {
             ConfigurationTaskRegistrationError::EmptyType
-        } else if !self.registration.types.insert(id.clone()) {
-            ConfigurationTaskRegistrationError::DuplicateType(id.clone())
         } else {
-            self.registration.tasks.push(RegisteredConfigurationTask {
-                task: Box::new(task),
-                owner: crate::content::crash::current_native_mod(),
-            });
-            return Ok(());
+            let id = id.clone();
+            if !self.registration.types.insert(id.clone()) {
+                ConfigurationTaskRegistrationError::DuplicateType(id)
+            } else {
+                self.registration.registered_order.push(id);
+                self.registration.tasks.push(RegisteredConfigurationTask {
+                    task: Box::new(task),
+                    owner: crate::content::crash::current_native_mod(),
+                });
+                return Ok(());
+            }
         };
         self.registration
             .refusal
@@ -81,6 +85,7 @@ impl RegisterConfigurationTasksEvent<'_> {
 #[derive(Default)]
 pub struct ConfigurationTaskRegistration {
     tasks: Vec<RegisteredConfigurationTask>,
+    registered_order: Vec<Identifier>,
     types: BTreeSet<Identifier>,
     refusal: Option<ConfigurationTaskRegistrationError>,
 }
@@ -93,6 +98,20 @@ impl ConfigurationTaskRegistration {
     /// Move the ordered queue to the server after registration commits.
     pub fn into_tasks(self) -> Vec<RegisteredConfigurationTask> {
         self.tasks
+    }
+
+    pub(crate) fn checkpoint(&self) -> (usize, bool) {
+        (self.tasks.len(), self.refusal.is_some())
+    }
+
+    pub(crate) fn rollback(&mut self, (tasks_len, had_refusal): (usize, bool)) {
+        self.tasks.truncate(tasks_len);
+        for id in self.registered_order.drain(tasks_len..) {
+            self.types.remove(&id);
+        }
+        if !had_refusal {
+            self.refusal = None;
+        }
     }
 }
 

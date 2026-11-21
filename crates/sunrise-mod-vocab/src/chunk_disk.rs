@@ -157,19 +157,12 @@ pub use job::ChunkDiskJob;
 #[path = "chunk_disk/tests.rs"]
 mod tests;
 
-/// Fence listener unwinds before publication.
-pub(crate) fn invoke(
-    hook_id: HookId,
-    hook: &'static str,
-    mod_id: &'static str,
-    call: impl FnOnce(),
-) -> Result<(), ChunkDiskFailure> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).map_err(|payload| {
-        crate::runtime::record_hook_panic(hook_id, hook, mod_id, &*payload);
-        ChunkDiskFailure {
-            mod_id: mod_id.into(),
-            key: String::new(),
-            reason: "native listener unwound".into(),
-        }
-    })
+/// Build the job refusal recorded when a chunk-disk listener unwinds through
+/// [`crate::runtime::invoke`].
+pub(crate) fn unwound_failure(mod_id: &'static str) -> ChunkDiskFailure {
+    ChunkDiskFailure {
+        mod_id: mod_id.into(),
+        key: String::new(),
+        reason: "native listener unwound".into(),
+    }
 }

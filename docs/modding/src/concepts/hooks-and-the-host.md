@@ -25,10 +25,12 @@ A hook with no receiver gets no `Host`.
 
 ## Failures and panics
 
-Every hook's dispatcher catches panics in mod callbacks. A panicking callback is disabled for that
-hook for the rest of the session — the mod's other hooks and every other mod's listeners keep
-running — and the panic is reported once loudly with an error log line and an error toast naming
-the mod and the hook.
+Every hook's dispatcher — including chunk-disk callbacks and startup `Hooks::register` — catches
+panics in mod callbacks. A panicking callback is disabled for that hook for the rest of the session
+— the mod's other hooks and every other mod's listeners keep running — its mutable event fields and
+transactional host writes are rolled back, and the panic is reported once loudly with an `error!`
+log line and, on a client, a non-vetoable error toast naming the mod and the hook (headless
+dedicated servers log the error and do not drain the client toast queue).
 
 Isolated hooks additionally roll the panicking listener's outputs back to the game's requested
 values and stop the current invocation so no later listener runs on that call.

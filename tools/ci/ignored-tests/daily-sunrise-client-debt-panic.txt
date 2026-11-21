@@ -1,0 +1,2 @@
+sunrise-client game::creatures::borrowed_panic_tests::player_living_breathe_panic_rolls_back_transactional_writes lib daily resources
+sunrise-client game::server_packs::tests::hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add lib daily resources

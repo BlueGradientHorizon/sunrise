@@ -941,8 +941,6 @@ fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
     let a_post = Arc::new(AtomicUsize::new(0));
     let b_pre = Arc::new(AtomicUsize::new(0));
 
-    let _ = crate::__private::take_hook_panics();
-
     testing::with_dispatch(
         vec![
             ModEntry::new(
@@ -972,12 +970,8 @@ fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
             dispatch_client_tick_post(&mut host);
             assert_eq!(a_post.load(Ordering::Relaxed), 1);
 
-            let reports: Vec<_> = crate::__private::take_hook_panics()
-                .into_iter()
-                .filter(|report| matches!(report.mod_id, "mod_a" | "mod_b"))
-                .collect();
             assert_eq!(
-                reports,
+                crate::__private::take_hook_panics(),
                 [crate::__private::HookPanicReport {
                     mod_id: "mod_a",
                     hook: "client_tick_pre",
@@ -988,11 +982,137 @@ fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
             dispatch_client_tick_pre(&mut host);
             assert_eq!(a_pre.load(Ordering::Relaxed), 1);
             assert_eq!(b_pre.load(Ordering::Relaxed), 3);
-            let later: Vec<_> = crate::__private::take_hook_panics()
-                .into_iter()
-                .filter(|report| matches!(report.mod_id, "mod_a" | "mod_b"))
-                .collect();
-            assert!(later.is_empty());
+            assert!(crate::__private::take_hook_panics().is_empty());
+        },
+    );
+}
+
+#[test]
+fn world_phase_cloned_event_fields_roll_back_on_panic() {
+    struct Panicker;
+    #[crate::__subscriptions]
+    impl Hooks for Panicker {
+        fn broadcast_message(
+            &self,
+            _: &dyn ServerHost,
+            event: &mut BroadcastMessageEvent<'_>,
+        ) -> Flow {
+            *event.line = Text::literal("corrupted");
+            panic!("boom in broadcast_message");
+        }
+    }
+    struct Observer(Arc<std::sync::Mutex<Option<Text>>>);
+    #[crate::__subscriptions]
+    impl Hooks for Observer {
+        fn broadcast_message(
+            &self,
+            _: &dyn ServerHost,
+            event: &mut BroadcastMessageEvent<'_>,
+        ) -> Flow {
+            *self.0.lock().unwrap() = Some(event.line.clone());
+            *event.line = Text::literal("clean");
+            Flow::Continue
+        }
+    }
+
+    assert!(!crate::runtime::outside_world());
+    let observed = Arc::new(std::sync::Mutex::new(None));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("panicker", Box::new(Panicker)),
+            ModEntry::new("observer", Box::new(Observer(observed.clone()))),
+        ]
+        .into(),
+        || {
+            let host = FakeHost::new();
+            let mut line = Text::literal("hello");
+            let mut cancel = false;
+            dispatch_broadcast_message(&host, &mut line, &mut cancel);
+            assert_eq!(
+                observed.lock().unwrap().as_ref(),
+                Some(&Text::literal("hello"))
+            );
+            assert_eq!(line, Text::literal("clean"));
+            assert!(!cancel);
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "panicker",
+                    hook: "broadcast_message",
+                }]
+            );
+        },
+    );
+}
+
+#[test]
+fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
+    struct StubTask(Identifier);
+    impl ConfigurationTask for StubTask {
+        fn task_type(&self) -> &Identifier {
+            &self.0
+        }
+        fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+    }
+    struct PanickingRegistrar;
+    #[crate::__subscriptions]
+    impl Hooks for PanickingRegistrar {
+        fn register_configuration_tasks(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            event
+                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .unwrap();
+            panic!("panic after staging configuration task");
+        }
+    }
+    struct HealthyRegistrar;
+    #[crate::__subscriptions]
+    impl Hooks for HealthyRegistrar {
+        fn register_configuration_tasks(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            event
+                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .unwrap();
+        }
+    }
+
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("panicker", Box::new(PanickingRegistrar)),
+            ModEntry::new("healthy", Box::new(HealthyRegistrar)),
+        ]
+        .into(),
+        || {
+            let mut host = FakeHost::new();
+            let mut registration = crate::__private::ConfigurationTaskRegistration::default();
+            dispatch_register_configuration_tasks(
+                &mut host,
+                crate::__private::configuration_connection(1),
+                42,
+                "Steve",
+                &mut registration,
+            );
+            assert!(registration.refusal().is_none());
+            let tasks = registration.into_tasks();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].owner, Some("healthy"));
+            assert_eq!(
+                tasks[0].task.task_type(),
+                &Identifier::parse("test:shared_task").unwrap()
+            );
+            assert_eq!(
+                crate::__private::take_hook_panics(),
+                [crate::__private::HookPanicReport {
+                    mod_id: "panicker",
+                    hook: "register_configuration_tasks",
+                }]
+            );
         },
     );
 }

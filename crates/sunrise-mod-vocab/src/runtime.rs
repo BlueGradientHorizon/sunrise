@@ -4,7 +4,9 @@
 //! Every generated hook dispatcher runs mod callbacks through [`invoke`]:
 //! - A panic in a mod's callback disables that mod's callback for that hook for the rest of the
 //!   session, leaves the mod's other hooks and every other mod's listeners running, and reports the
-//!   panic once loudly via an `error!` log line and a queued error toast naming the mod and hook.
+//!   panic once loudly via an `error!` log line and (on a client) a queued error toast naming the
+//!   mod and hook. A headless dedicated server logs the `error!` line and does not drain the
+//!   client toast queue.
 //! - Any other failure or refusal (such as a load-phase refusal or output-validator refusal) is
 //!   reported each time and never latched or used to disable the listener.
 use crate::*;
@@ -69,6 +71,9 @@ pub(crate) struct Installed {
     /// answers through one atomic load, so a dispatch with no poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    /// Hook-listener panic reports queued for this installed set's client error toast.
+    hook_panics: std::sync::Mutex<Vec<HookPanicReport>>,
+    has_hook_panics: std::sync::atomic::AtomicBool,
 }
 
 impl Installed {
@@ -119,6 +124,8 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            hook_panics: std::sync::Mutex::new(Vec::new()),
+            has_hook_panics: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }
@@ -140,25 +147,55 @@ pub(crate) fn installed() -> Option<&'static Installed> {
 
 use crate::__private::HookPanicReport;
 
-static HOOK_PANICS: std::sync::Mutex<Vec<HookPanicReport>> = std::sync::Mutex::new(Vec::new());
-static HAS_HOOK_PANICS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! {
+    static HOOK_DISPATCH_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Active hook-dispatch panic-containment nesting depth on this thread.
+pub(crate) fn hook_dispatch_depth() -> u32 {
+    HOOK_DISPATCH_DEPTH.get()
+}
+
+struct DispatchPanicScope(u32);
+
+impl DispatchPanicScope {
+    #[inline]
+    fn enter() -> Self {
+        let prev = HOOK_DISPATCH_DEPTH.get();
+        HOOK_DISPATCH_DEPTH.set(prev.saturating_add(1));
+        Self(prev)
+    }
+}
+
+impl Drop for DispatchPanicScope {
+    #[inline]
+    fn drop(&mut self) {
+        HOOK_DISPATCH_DEPTH.set(self.0);
+    }
+}
 
 pub(crate) fn take_hook_panics() -> Vec<HookPanicReport> {
-    if !HAS_HOOK_PANICS.load(std::sync::atomic::Ordering::Acquire) {
+    let Some(installed) = installed() else {
+        return Vec::new();
+    };
+    if !installed
+        .has_hook_panics
+        .load(std::sync::atomic::Ordering::Acquire)
+    {
         return Vec::new();
     }
-    let mut queue = HOOK_PANICS.lock().unwrap_or_else(|e| e.into_inner());
-    HAS_HOOK_PANICS.swap(false, std::sync::atomic::Ordering::AcqRel);
+    let mut queue = installed
+        .hook_panics
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    installed
+        .has_hook_panics
+        .swap(false, std::sync::atomic::Ordering::AcqRel);
     std::mem::take(&mut *queue)
 }
 
 /// Install the process-wide ordered list of mods.
 pub(crate) fn install(mods: Mods) -> &'static Installed {
-    {
-        let mut queue = HOOK_PANICS.lock().unwrap_or_else(|e| e.into_inner());
-        queue.clear();
-        HAS_HOOK_PANICS.store(false, std::sync::atomic::Ordering::Release);
-    }
     let installed = Installed::new(mods);
     #[cfg(any(test, feature = "testing"))]
     {
@@ -237,17 +274,32 @@ pub(crate) fn record_hook_panic(
     payload: &(dyn std::any::Any + Send),
 ) {
     if poison(hook_id, mod_id) {
-        let reason = payload
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-            .unwrap_or("panic");
-        log::error!(
-            "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
-        );
-        let mut queue = HOOK_PANICS.lock().unwrap_or_else(|e| e.into_inner());
+        log_and_queue_panic(hook, mod_id, payload);
+    }
+}
+
+fn log_and_queue_panic(
+    hook: &'static str,
+    mod_id: &'static str,
+    payload: &(dyn std::any::Any + Send),
+) {
+    let reason = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("panic");
+    log::error!(
+        "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
+    );
+    if let Some(installed) = installed() {
+        let mut queue = installed
+            .hook_panics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         queue.push(HookPanicReport { mod_id, hook });
-        HAS_HOOK_PANICS.store(true, std::sync::atomic::Ordering::Release);
+        installed
+            .has_hook_panics
+            .store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -273,12 +325,37 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
+    let outcome = {
+        let _scope = DispatchPanicScope::enter();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call)))
+    };
+    match outcome {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
             record_hook_panic(hook_id, hook, mod_id, &*payload);
             DispatchOutcome::Panicked
+        }
+    }
+}
+
+/// Run one mod's startup `Hooks::register` callback under the unified hook-dispatch failure rule.
+///
+/// Returns `true` if registration completed without panicking, or `false` after recording the
+/// failure, logging the error, and queueing a client error toast so the caller can roll back the
+/// mod's partial registrations and continue with remaining mods.
+pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
+    let outcome = {
+        let _scope = DispatchPanicScope::enter();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(call))
+    };
+    match outcome {
+        Ok(()) => true,
+        Err(payload) => {
+            let (entered, trapped) = LISTENER_SERIAL.get();
+            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+            log_and_queue_panic("register", mod_id, &*payload);
+            false
         }
     }
 }

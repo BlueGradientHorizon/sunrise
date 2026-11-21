@@ -531,8 +531,14 @@ impl Game<'_> {
     }
 
     /// Queued hook-listener panics from any thread, each shown once per
-    /// `(hook, mod)` as a red-titled system toast.
+    /// `(hook, mod)` as a red-titled system toast. Enqueued directly on the
+    /// client toast queue rather than through `toast_add` so a mod cannot veto
+    /// or rewrite its own failure notice; headless servers log the error and do
+    /// not drain the client queue.
     fn add_hook_panic_toasts(&mut self) {
+        if self.serving.is_some() || self.options.dedicated.is_some() {
+            return;
+        }
         for report in mod_api::__private::take_hook_panics() {
             let toast = SystemToast::new(
                 Text::tr("sunrise.mods.hook_panic.title", &[]),
@@ -542,9 +548,7 @@ impl Game<'_> {
                 )),
             )
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
-            if let Some(toast) = self.add_system_toast(toast) {
-                self.server_packs.hook_panics.push(Some(toast));
-            }
+            self.server_packs.hook_panics.push(Some(toast));
         }
     }
 
@@ -696,5 +700,64 @@ mod tests {
         let (send, receive) = std::sync::mpsc::channel::<download::Progress>();
         drop(send);
         assert!(!PackNotifier::new(receive, 1).poll(Some));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn hook_panic_toast_cannot_be_vetoed_or_rewritten_by_toast_add() {
+        use mod_api::{ClientHost, ComponentTypesEvent, Flow, Hooks, ModEntry, ToastAddEvent};
+        struct VetoingPanicker;
+        #[mod_api::__subscriptions]
+        impl Hooks for VetoingPanicker {
+            fn component_types(&self, _: &mut ComponentTypesEvent<'_>) {
+                panic!("boom from vetoing mod");
+            }
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                *event.title = mod_api::Text::literal("rewritten");
+                *event.description = Some(mod_api::Text::literal("hidden"));
+                Flow::Cancel
+            }
+        }
+        let mods: mod_api::Mods = vec![ModEntry::new("veto_mod", Box::new(VetoingPanicker))].into();
+        mod_platform::testing::with_mods(mods, || {
+            super::super::native_entity_refs::tests::with_game(|game| {
+                game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+                game.serving = None;
+                game.options.dedicated = None;
+                game.server_packs.hook_panics.clear();
+                // Ordinary system toasts are still vetoed by toast_add.
+                assert!(
+                    game.add_system_toast(SystemToast::new(Text::literal("ordinary"), None))
+                        .is_none()
+                );
+                // Trigger a hook panic to queue a HookPanicReport.
+                mod_api::dispatch_component_types(
+                    &mod_api::RegistrationContext::new(),
+                    &mut Vec::new(),
+                );
+                // Dedicated/server instances do not drain the client toast queue.
+                game.options.dedicated = Some(Vec::new());
+                game.add_hook_panic_toasts();
+                assert!(game.server_packs.hook_panics.is_empty());
+                // The client drains and queues the toast directly without firing toast_add.
+                game.options.dedicated = None;
+                game.add_hook_panic_toasts();
+                assert_eq!(game.server_packs.hook_panics.len(), 1);
+                let toast = game.server_packs.hook_panics[0]
+                    .as_ref()
+                    .expect("hook panic toast queued");
+                assert_eq!(
+                    toast.title.component()["translate"],
+                    "sunrise.mods.hook_panic.title"
+                );
+                assert_eq!(
+                    toast.message.as_ref().unwrap().component(),
+                    serde_json::json!({
+                        "translate": "sunrise.mods.hook_panic.description",
+                        "with": ["veto_mod", "component_types"],
+                    })
+                );
+            });
+        });
     }
 }

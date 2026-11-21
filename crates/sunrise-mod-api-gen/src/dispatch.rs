@@ -926,9 +926,7 @@ pub(super) fn emit<'a>(
             (write_back, String::new())
         };
         // A listener refused by the phase gate or unwinding on a panic restores event fields from
-        // a snapshot taken before its call. Copy snapshots run unconditionally; cloned snapshots
-        // run outside `World` (`contained`).
-        let snapshot = fresh_name("snapshot", &mut used);
+        // a snapshot taken before its call, in every phase including `World`.
         let saved = fresh_name("saved", &mut used);
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
@@ -967,30 +965,24 @@ pub(super) fn emit<'a>(
                 if *by_reference { "*" } else { "" }
             ));
         }
+        if event_type == "RegisterConfigurationTasksEvent" {
+            let index = snaps.len();
+            snaps.push(format!("{event}.registration.checkpoint()"));
+            restores.push(format!("{event}.registration.rollback({saved}.{index});"));
+        }
         if mod_cancel {
             restores.push(format!("{event}.cancelled = {saved}.{};", snaps.len()));
             snaps.push(format!("{event}.cancelled"));
         }
-        let cheap_snapshot = !snaps.iter().any(|snap| snap.starts_with("ToOwned"));
         let snapshot_statement = if snaps.is_empty() {
             String::new()
-        } else if cheap_snapshot {
-            format!("let {saved} = ({},); ", snaps.join(", "))
         } else {
-            format!(
-                "let {snapshot} = contained.then(|| ({},)); ",
-                snaps.join(", ")
-            )
+            format!("let {saved} = ({},); ", snaps.join(", "))
         };
         let restore_statement = if snaps.is_empty() {
             String::new()
-        } else if cheap_snapshot {
-            format!("{} ", restores.join(" "))
         } else {
-            format!(
-                "if let Some({saved}) = {snapshot} {{ {} }} ",
-                restores.join(" ")
-            )
+            format!("{} ", restores.join(" "))
         };
         // Answered collectors drain this private batch after each mod. A refused or panicked mod
         // has no earlier entries to restore, and its entries must not leak to the next mod.
@@ -1182,17 +1174,12 @@ pub(super) fn emit<'a>(
                     "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }}; match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, false, || {mod_item}.{name}(context, &mut {event})) {{ super::runtime::DispatchOutcome::Ok(()) | super::runtime::DispatchOutcome::Panicked => {{}} super::runtime::DispatchOutcome::Refused(refusal) => {{ refusal.report(); }} }} }}"
                 ),
             ),
-            None if hook.context == Some(PhaseContext::ChunkDisk) => {
-                let chunk_call = format!(
-                    "{local_event} {snapshot_statement}match super::runtime::refusable(contained, || {mod_item}.{name}({invoke})) {{ Ok(()) => {{}} Err(refusal) => {{ {restore_statement}refusal.report(); }} }} {local_write_back} {stack_after}"
-                );
-                (
-                    String::new(),
-                    format!(
-                        "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ if {event}.data.failure().is_some() {{ break; }} let result = super::chunk_disk::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, || {{ {chunk_call} }}); result.unwrap_or_else(|error| {event}.data.refuse(error)); if let Some(error) = {event}.data.failure().cloned() {{ let mut error = error; if error.mod_id.is_empty() {{ error.mod_id = {listener_id}.into(); }} {event}.data.attribute_failure(error); break; }} }}"
-                    ),
-                )
-            }
+            None if hook.context == Some(PhaseContext::ChunkDisk) => (
+                String::new(),
+                format!(
+                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ if {event}.data.failure().is_some() {{ break; }} {local_event} {snapshot_statement}match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, contained, || {mod_item}.{name}({invoke})) {{ super::runtime::DispatchOutcome::Ok(()) => {{ {local_write_back} {stack_after} }} super::runtime::DispatchOutcome::Refused(refusal) => {{ {restore_statement}refusal.report(); }} super::runtime::DispatchOutcome::Panicked => {{ {restore_statement}{event}.data.refuse(super::chunk_disk::unwound_failure({listener_id})); }} }} if let Some(error) = {event}.data.failure().cloned() {{ let mut error = error; if error.mod_id.is_empty() {{ error.mod_id = {listener_id}.into(); }} {event}.data.attribute_failure(error); break; }} }}"
+                ),
+            ),
             None if name == "consume_effect" => (
                 format!(
                     "let Some(owner) = super::runtime::listening_kind_owner(HookId::{hook_id}, kind) else {{ return; }};"

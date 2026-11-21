@@ -202,6 +202,7 @@ impl Game<'_> {
             remainder.map(|value| value.to_string()),
         )
         .map(std::sync::Arc::<str>::from);
+        let failures = mod_api::runtime::isolated_failures();
         let result: Result<bool, ()> = mod_api::run_transaction(self, |game, _| {
             {
                 let mut mobs = game.mobs.lift();
@@ -216,7 +217,11 @@ impl Game<'_> {
                     game.mobs
                         .restore(mobs, sunrise_client::join_seq::RestoreOrder::SpawnsFirst);
                     if game.handle_mob_events(events).is_err() {
-                        return Ok(false);
+                        return if mod_api::runtime::isolated_failures() != failures {
+                            Err(())
+                        } else {
+                            Ok(false)
+                        };
                     }
                 } else {
                     game.mobs
@@ -228,6 +233,9 @@ impl Game<'_> {
                     &consumable.effects,
                     Some((consumer, MobConsumption::Fox(decision))),
                 );
+                if mod_api::runtime::isolated_failures() != failures {
+                    return Err(());
+                }
                 // A refusal (for example, a listener moved the fox under the
                 // pending teleport) still invalidates the original finish.
                 if !can_finish {
@@ -249,9 +257,16 @@ impl Game<'_> {
                         state: sunrise_world::registry::BlockStateId(0),
                     };
                     if game.handle_mob_events(vec![event]).is_err() {
-                        return Ok(false);
+                        return if mod_api::runtime::isolated_failures() != failures {
+                            Err(())
+                        } else {
+                            Ok(false)
+                        };
                     }
                 }
+            }
+            if mod_api::runtime::isolated_failures() != failures {
+                return Err(());
             }
             let Some(m) = game.mobs.iter_mut().find(|m| m.id == decision.mob) else {
                 return Ok(false);
@@ -347,6 +362,7 @@ impl Game<'_> {
             return;
         };
         let consumable = self.consumable(stack);
+        let failures = mod_api::runtime::isolated_failures();
         let result: Result<(), ()> = mod_api::run_transaction(self, |game, _| {
             if let Some(consumable) = &consumable
                 && !game.apply_consumable_effects(
@@ -355,7 +371,14 @@ impl Game<'_> {
                     Some((consumer, usage)),
                 )
             {
-                return Ok(());
+                return if mod_api::runtime::isolated_failures() != failures {
+                    Err(())
+                } else {
+                    Ok(())
+                };
+            }
+            if mod_api::runtime::isolated_failures() != failures {
+                return Err(());
             }
             if let Some(mob) = game
                 .mobs

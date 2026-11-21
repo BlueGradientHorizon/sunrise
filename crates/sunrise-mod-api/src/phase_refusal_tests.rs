@@ -226,7 +226,6 @@ fn a_phase_refusal_is_reported_each_time_and_never_disables_the_listener() {
 
     let before = Arc::new(AtomicUsize::new(0));
     let after = Arc::new(AtomicUsize::new(0));
-    let _ = mod_vocab::__private::take_hook_panics();
 
     testing::with_dispatch(
         vec![ModEntry::new(
@@ -241,14 +240,10 @@ fn a_phase_refusal_is_reported_each_time_and_never_disables_the_listener() {
             let mut host = testing::FakeHost::new();
             dispatch_client_tick_pre(&mut host);
             dispatch_client_tick_pre(&mut host);
+            assert!(mod_vocab::__private::take_hook_panics().is_empty());
         },
     );
 
     assert_eq!(before.load(Ordering::Relaxed), 2);
     assert_eq!(after.load(Ordering::Relaxed), 0);
-    assert!(
-        !mod_vocab::__private::take_hook_panics()
-            .into_iter()
-            .any(|report| report.mod_id == "phase_refused_mod")
-    );
 }

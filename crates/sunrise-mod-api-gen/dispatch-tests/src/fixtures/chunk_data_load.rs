@@ -1,12 +1,13 @@
-//! `chunk_data_load` and `chunk_data_save`: the disk hooks run each mod through the disk runtime's
-//! `invoke` and stop at the first failed job. Stand-ins for the restricted host and the store.
+//! `chunk_data_load` and `chunk_data_save`: the disk hooks run each mod through the unified
+//! `runtime::invoke` dispatcher and stop at the first failed job. Stand-ins for the restricted
+//! host and the store.
 mod stubs {
     pub(super) trait ChunkDiskHost {}
     #[derive(Clone, Debug, Default)]
     pub(super) struct ChunkDiskFailure {
         pub mod_id: String,
     }
-    #[derive(Default)]
+    #[derive(Clone, Default)]
     pub(super) struct ChunkDiskData {
         failure: Option<ChunkDiskFailure>,
     }
@@ -22,14 +23,10 @@ mod stubs {
         }
     }
     pub(super) mod chunk_disk {
-        pub(crate) fn invoke(
-            _: super::super::HookId,
-            _: &str,
-            _: &str,
-            call: impl FnOnce(),
-        ) -> Result<(), super::ChunkDiskFailure> {
-            call();
-            Ok(())
+        pub(crate) fn unwound_failure(mod_id: &'static str) -> super::ChunkDiskFailure {
+            super::ChunkDiskFailure {
+                mod_id: mod_id.into(),
+            }
         }
     }
 }

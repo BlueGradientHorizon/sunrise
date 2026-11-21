@@ -362,9 +362,11 @@ impl Game<'_> {
                     statistics: plan.statistics.iter().map(ToString::to_string).collect(),
                     item: held.item.to_string(),
                 };
+                let failures = mod_api::runtime::isolated_failures();
                 mod_api::run_transaction(self, |game, _| {
                     game.journal_player(player);
                     if callback.handler.fire(game, &input, &plan) != CauldronFire::Applied
+                        || mod_api::runtime::isolated_failures() != failures
                         || !unchanged(game)
                     {
                         return Err(());

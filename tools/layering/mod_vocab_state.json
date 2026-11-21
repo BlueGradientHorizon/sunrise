@@ -159,15 +159,10 @@
     "category": "immutable cache",
     "reason": "Empty or set-once resolved registry lookup returned when no installed Parts inventory supplies one."
   },
-  "runtime.rs::HAS_HOOK_PANICS": {
-    "type": "std::sync::atomic::AtomicBool",
-    "category": "dispatch table",
-    "reason": "Fast-path flag checked on the client tick before locking HOOK_PANICS to drain hook-listener panic reports for the error toast."
-  },
-  "runtime.rs::HOOK_PANICS": {
-    "type": "std::sync::Mutex<Vec<HookPanicReport>>",
-    "category": "dispatch table",
-    "reason": "Process-wide queue of first-time hook-listener panic reports drained by the game client to show error toasts."
+  "runtime.rs::HOOK_DISPATCH_DEPTH": {
+    "type": "std::cell::Cell<u32>",
+    "category": "reentrancy guard",
+    "reason": "Per-thread nesting depth of hook-dispatch catch_unwind frames, read by the production panic hook so contained hook panics defer to the dispatcher instead of triggering a crash report or process abort."
   },
   "runtime.rs::LISTENER_SERIAL": {
     "type": "std::cell::Cell<(u64,u64)>",

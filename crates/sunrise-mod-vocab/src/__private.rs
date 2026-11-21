@@ -108,6 +108,16 @@ pub fn take_hook_panics() -> Vec<HookPanicReport> {
     crate::runtime::take_hook_panics()
 }
 
+/// Active hook-dispatch panic-containment nesting depth on this thread.
+pub fn hook_dispatch_depth() -> u32 {
+    crate::runtime::hook_dispatch_depth()
+}
+
+/// Run one mod's startup `Hooks::register` callback under the unified hook-dispatch failure rule.
+pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
+    crate::runtime::invoke_registration(mod_id, call)
+}
+
 /// Revision of the enabled mod set, for engine caches of hook answers.
 pub fn mods_switched() -> u64 {
     crate::runtime::mods_switched()
