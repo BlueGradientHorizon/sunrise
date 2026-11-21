@@ -94,6 +94,10 @@ pub(super) struct Stage<'p> {
     pub(super) uninitialized: Vec<(usize, String, String)>,
     /// Authored global names; automatic core matrix inputs must not hide them.
     pub(super) globals: BTreeSet<String>,
+    /// The other names the stage declares at file scope: its structs' and blocks' names, a
+    /// block's instances, and the members of a block without one, which the stage reads as
+    /// globals (GLSL 4.60, 4.3.9). A game input of one of these names isn't given.
+    pub(super) declared: BTreeSet<String>,
     /// Their captured array size constants and declarator ends: `.length()` stays type-only.
     pub(super) runtime_array_lengths: HashMap<String, (String, usize)>,
     pub(super) errors: Vec<Error>,
@@ -279,6 +283,79 @@ pub(super) fn is_sampler_type(t: &str) -> bool {
     t.trim_start_matches(['i', 'u']).starts_with("sampler")
 }
 
+/// The members a struct's or a block's body declares, from its `{` at `open` (GLSL 4.60, 4.1.8
+/// and 4.3.9: `[layout(...)] [qualifiers] type[...] name[...], name[...];`, no definition
+/// inside): each name's token, and the body's `}` (or the end).
+pub(super) fn members(tokens: &[&str], open: usize) -> (Vec<usize>, usize) {
+    let next = |mut i: usize| {
+        while i < tokens.len() && !significant(tokens[i]) {
+            i += 1;
+        }
+        i
+    };
+    let at = |i: usize| tokens.get(i).copied().unwrap_or("}");
+    // Past the bracket opened at `i` (`(` or `[`), to its match.
+    let past = |i: usize| {
+        let mut depth = 0;
+        for (j, &t) in tokens.iter().enumerate().skip(i) {
+            match t {
+                "(" | "[" => depth += 1,
+                ")" | "]" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return next(j + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        tokens.len()
+    };
+    let mut names = Vec::new();
+    let mut i = next(open + 1);
+    while at(i) != "}" {
+        loop {
+            match at(i) {
+                "layout" => i = past(next(i + 1)),
+                w if QUALIFIERS.contains(&w)
+                    || matches!(
+                        w,
+                        "readonly" | "writeonly" | "coherent" | "volatile" | "restrict"
+                    ) =>
+                {
+                    i = next(i + 1)
+                }
+                _ => break,
+            }
+        }
+        // The type, and its dimensions (`float[2] a`).
+        i = next(i + 1);
+        while at(i) == "[" {
+            i = past(i);
+        }
+        loop {
+            if is_ident(at(i)) {
+                names.push(i);
+                i = next(i + 1);
+            }
+            while at(i) == "[" {
+                i = past(i);
+            }
+            if at(i) != "," {
+                break;
+            }
+            i = next(i + 1);
+        }
+        while !matches!(at(i), ";" | "}") {
+            i += 1;
+        }
+        if at(i) == ";" {
+            i = next(i + 1);
+        }
+    }
+    (names, i.min(tokens.len()))
+}
+
 pub(super) fn is_ident(t: &str) -> bool {
     t.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
 }
@@ -358,6 +435,7 @@ impl<'p> Stage<'p> {
             inits: Vec::new(),
             uninitialized: Vec::new(),
             globals: BTreeSet::new(),
+            declared: BTreeSet::new(),
             runtime_array_lengths: HashMap::new(),
             errors: Vec::new(),
         };
@@ -378,6 +456,7 @@ impl<'p> Stage<'p> {
                 "{" if depth == 0 && parens == 0 => {
                     s.global(start, i, true);
                     s.structure(start, i);
+                    s.declared_with_body(start, i);
                     depth = 1;
                 }
                 "{" => depth += 1,
@@ -1186,6 +1265,46 @@ impl<'p> Stage<'p> {
             }
         }
         self.structs.insert(name.to_owned(), members);
+    }
+
+    /// `struct S {`, or a block (`uniform B {`, `buffer B {`, `in`/`out` `B {`), at token `open`,
+    /// whose words start at `from`: the names it declares (`declared`). A block's members are
+    /// the stage's globals when no instance follows its `}`.
+    fn declared_with_body(&mut self, from: usize, open: usize) {
+        let head: Vec<&str> = self.tokens[from..open]
+            .iter()
+            .copied()
+            .filter(|t| significant(t))
+            .collect();
+        let Some(&name) = head.last().filter(|n| is_ident(n)) else {
+            return; // a function, or an anonymous struct
+        };
+        if head.contains(&"struct") {
+            self.declared.insert(name.to_owned());
+            return;
+        }
+        if !head
+            .iter()
+            .any(|w| matches!(*w, "uniform" | "buffer" | "in" | "out"))
+        {
+            return;
+        }
+        self.declared.insert(name.to_owned());
+        let (members, close) = members(&self.tokens, open);
+        let instances: Vec<&str> = (self.tokens.get(close + 1..).unwrap_or_default())
+            .iter()
+            .copied()
+            .filter(|t| significant(t))
+            .take_while(|t| *t != ";")
+            .filter(|t| is_ident(t))
+            .take(1)
+            .collect();
+        let names = if instances.is_empty() {
+            members.iter().map(|&i| self.tokens[i]).collect()
+        } else {
+            instances
+        };
+        self.declared.extend(names.into_iter().map(str::to_owned));
     }
 
     /// A function definition or prototype: remember which parameters are samplers.

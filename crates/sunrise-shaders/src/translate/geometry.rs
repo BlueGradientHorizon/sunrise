@@ -127,34 +127,24 @@ fn statements(tokens: &[&str]) -> Vec<Statement> {
     out
 }
 
-/// The tokens among `tokens` that declare a member of a struct (`vaNormal` in
-/// `struct S { vec3 vaNormal; };`), at file scope or in a function: a word in the struct's body
-/// after its type or a `,` and before a `;`, a `,` or an array's `[`. A member keeps its name,
-/// as each access to it (`s.vaNormal`) does. GLSL has no struct defined in another's body, so
-/// the first `}` closes it.
-fn struct_members(tokens: &[&str]) -> BTreeSet<usize> {
-    let words: Vec<usize> = (0..tokens.len())
-        .filter(|&i| significant(tokens[i]))
-        .collect();
+/// The tokens among `tokens` that declare a member of a struct or a block (`vaNormal` in
+/// `struct S { vec3 vaNormal; };` or `buffer B { vec3 vaNormal; } params;`), at file scope or
+/// in a function: those of each body whose `{` follows a name or `struct` (not a function's,
+/// after `)`, nor a statement's, nor an initializer list's), read as the scanner reads members
+/// (`scan::members`). A member keeps its name, as each access to it (`params.vaNormal`) does;
+/// a block without an instance makes its members globals of the stage, which the scan
+/// declares, so they aren't renamed either.
+fn members(tokens: &[&str]) -> BTreeSet<usize> {
     let mut members = BTreeSet::new();
-    for (at, &word) in words.iter().enumerate() {
-        if tokens[word] != "struct" {
+    for (open, &t) in tokens.iter().enumerate() {
+        if t != "{" {
             continue;
         }
-        let Some(open) = words[at..].iter().position(|&i| tokens[i] == "{") else {
-            continue;
-        };
-        let open = at + open;
-        let close = words[open..]
-            .iter()
-            .position(|&i| tokens[i] == "}")
-            .map_or(words.len(), |p| open + p);
-        for k in open + 1..close {
-            let after_type = !matches!(tokens[words[k - 1]], "{" | ";");
-            let declared = matches!(words.get(k + 1).map(|&i| tokens[i]), Some(";" | "," | "["));
-            if after_type && declared {
-                members.insert(words[k]);
-            }
+        let prev = (0..open).rev().find(|&j| significant(tokens[j]));
+        if prev.is_some_and(|j| {
+            super::scan::is_ident(tokens[j]) && !matches!(tokens[j], "else" | "do")
+        }) {
+            members.extend(super::scan::members(tokens, open).0);
         }
     }
     members
@@ -374,7 +364,7 @@ fn combine(
     let implicit = super::implicit_inputs(
         &inputs.inputs.attributes,
         vertex,
-        &super::scan::Stage::scan(vertex, naga::ShaderStage::Vertex).globals,
+        &super::scan::Stage::scan(vertex, naga::ShaderStage::Vertex),
     );
     defined.extend(implicit.iter().map(|(name, _, _)| name.to_string()));
     let renamed: BTreeSet<&str> = defined
@@ -382,7 +372,7 @@ fn combine(
         .map(String::as_str)
         .chain(vs_outs.iter().map(|(n, _)| n.as_str()))
         .collect();
-    let members = struct_members(&vs_tokens);
+    let members = members(&vs_tokens);
     for (i, t) in vs_tokens.iter().enumerate() {
         if vs_text[i] != *t || members.contains(&i) {
             continue;
@@ -775,6 +765,77 @@ mod tests {
             ("vaColor".to_owned(), "hz_Color".to_owned()),
         ];
         if let Err(errors) = fold_given(vsh, PASS_GSH, PASS_FSH, given) {
+            panic!("{errors:?}");
+        }
+    }
+
+    /// The names of `module`'s globals, and of its structs' members.
+    fn names(module: &naga::Module) -> (Vec<String>, Vec<String>) {
+        let globals = (module.global_variables.iter())
+            .filter_map(|(_, g)| g.name.clone())
+            .collect();
+        let members = (module.types.iter())
+            .flat_map(|(_, t)| match &t.inner {
+                naga::TypeInner::Struct { members, .. } => members.clone(),
+                _ => Vec::new(),
+            })
+            .filter_map(|m| m.name)
+            .collect();
+        (globals, members)
+    }
+
+    /// The game's `vaPosition` and `vaNormal`, as the entities' inputs give them.
+    fn position_and_normal() -> Vec<(String, String)> {
+        vec![
+            ("vaPosition".to_owned(), "hz_Vertex.xyz".to_owned()),
+            ("vaNormal".to_owned(), "hz_Vertex.xyz".to_owned()),
+        ]
+    }
+
+    /// A buffer block's field named `vaNormal` keeps its name under a geometry stage, as each
+    /// access to it (`params.vaNormal`) does, beside the game's `vaNormal`, which the stage
+    /// reads undeclared, given for the fold as `hz_vs_vaNormal`.
+    #[test]
+    fn a_buffer_field_named_as_a_game_input_keeps_its_name_under_a_geometry_stage() {
+        let vsh = "#version 430\nlayout(std430, binding = 2) buffer Params { float w; vec3 vaNormal; } params;\n\
+                   out vec3 vNormal;\nvoid main() {\n    vNormal = params.vaNormal + vaNormal;\n    \
+                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}\n";
+        let (program, _) = fold_given(vsh, PASS_GSH, PASS_FSH, position_and_normal())
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let (globals, members) = names(&program.vertex);
+        assert!(members.iter().any(|m| m == "vaNormal"), "{members:?}");
+        assert!(globals.iter().any(|g| g == "hz_vs_vaNormal"), "{globals:?}");
+    }
+
+    /// A block without an instance makes its members globals of the stage (GLSL 4.60, 4.3.9):
+    /// a buffer block's field `vaNormal` is what the stage reads as `vaNormal`, and an `out`
+    /// block's member `vaNormal` what it writes (an output of the fold's, `hz_vs_vaNormal`), so
+    /// the game gives no `vaNormal` of its own beside them: it would be declared twice.
+    #[test]
+    fn a_block_member_without_an_instance_is_the_stages_own_under_a_geometry_stage() {
+        let vsh = |block: &str, read: &str| {
+            format!(
+                "#version 430\n{block}\nout vec3 vNormal;\nvoid main() {{\n    {read}\n    \
+                 gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}}\n"
+            )
+        };
+        let buffer = vsh(
+            "layout(std430, binding = 2) buffer Params { float w; vec3 vaNormal; };",
+            "vNormal = vaNormal;",
+        );
+        let (program, _) = fold_given(&buffer, PASS_GSH, PASS_FSH, position_and_normal())
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let (globals, members) = names(&program.vertex);
+        assert!(members.iter().any(|m| m == "vaNormal"), "{members:?}");
+        assert!(
+            !globals.iter().any(|g| g == "hz_vs_vaNormal"),
+            "{globals:?}"
+        );
+        let output = vsh(
+            "out Extra { vec3 vaNormal; };",
+            "vaNormal = vec3(1.0);\n    vNormal = vaNormal;",
+        );
+        if let Err(errors) = fold_given(&output, PASS_GSH, PASS_FSH, position_and_normal()) {
             panic!("{errors:?}");
         }
     }

@@ -174,19 +174,39 @@ fn outline(gpu: &Fixture, edge: Edge, strokes: &[Stroke]) -> wgpu::Buffer {
 /// and its colour.
 type Band = (f32, [u8; 4]);
 
-/// Where the pack puts a point of the screen (column, row): `[scale, right, down]` scales it
-/// towards the top left corner, then moves it right and down, in pixels.
-type Place = [f32; 3];
+/// Where the pack puts a point of the screen (column c, row r), in pixels: column
+/// `p[0] c + p[1] r + p[2]`, row `p[3] c + p[4] r + p[5]`.
+type Place = [f32; 6];
 
 /// The pack leaves the line where the camera puts it.
-const IN_PLACE: Place = [1.0, 0.0, 0.0];
+const IN_PLACE: Place = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+
+/// The pack turns the frame a quarter turn anticlockwise about its centre (`turned`): (c, r)
+/// goes to (r, 64 - c), a pixel centre to a pixel centre.
+const TURNED: Place = [0.0, 1.0, 0.0, -1.0, 0.0, SIZE as f32];
+
+/// `line_vsh` with the frame turned a quarter turn anticlockwise last (clip x, y to -y, x),
+/// after the pack placed and, for a widening one, widened its line: a horizontal edge drawn
+/// vertical, a vertical one horizontal.
+fn turned(line_vsh: &str) -> String {
+    let end = line_vsh.rfind('}').expect("main's end");
+    format!(
+        "{}    gl_Position.xy = vec2(-gl_Position.y, gl_Position.x);\n{}",
+        &line_vsh[..end],
+        &line_vsh[end..]
+    )
+}
 
 /// The colour expected at pixel (x, y): that of the last of `bands` whose rectangle holds the
 /// pixel's centre, `OUTSIDE` for none. Each band is the edge on screen `ends`, placed by
 /// `place`, reaching its distance to each side.
 fn expected(x: u32, y: u32, ends: [[f32; 2]; 2], place: Place, bands: &[Band]) -> [u8; 4] {
-    let [scale, right, down] = place;
-    let at = |[c, r]: [f32; 2]| [c * scale + right, r * scale + down];
+    let at = |[c, r]: [f32; 2]| {
+        [
+            place[0] * c + place[1] * r + place[2],
+            place[3] * c + place[4] * r + place[5],
+        ]
+    };
     let (a, b) = (at(ends[0]), at(ends[1]));
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let length = (dx * dx + dy * dy).sqrt();
@@ -264,7 +284,13 @@ fn wrong_pixels_of(
 
 /// `wrong_pixels_of` the three edges ahead, the line moved `up` pixels up the screen.
 fn wrong_pixels(line_vsh: &str, strokes: &[Stroke], up: f32, bands: &[Band]) -> Option<Vec<Wrong>> {
-    wrong_pixels_of(line_vsh, strokes, &AHEAD, [1.0, 0.0, -up], bands)
+    wrong_pixels_of(
+        line_vsh,
+        strokes,
+        &AHEAD,
+        [1.0, 0.0, 0.0, 0.0, 1.0, -up],
+        bands,
+    )
 }
 
 fn assert_none_wrong(wrong: Option<Vec<Wrong>>) {
@@ -334,7 +360,7 @@ fn a_line_program_that_maps_the_frame_into_a_quarter_is_widened_by_the_game() {
         INTO_A_QUARTER,
         &strokes,
         &AHEAD,
-        [0.5, 0.0, 0.0],
+        [0.5, 0.0, 0.0, 0.0, 0.5, 0.0],
         &[(3.0, WHITE)],
     );
     assert_none_wrong(wrong);
@@ -342,25 +368,50 @@ fn a_line_program_that_maps_the_frame_into_a_quarter_is_widened_by_the_game() {
 
 /// A line the pack widens to 0.6 pixels keeps the pack's width (0.3 to each side, which no
 /// pixel centre of the horizontal and vertical edges is within, and only those on the
-/// diagonal's own line): its two sides are past half a pixel apart.
+/// diagonal's own line).
 #[test]
 fn a_line_widened_by_a_little_keeps_the_packs_width() {
     let wrong = wrong_pixels(&widening(0.6), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.3, WHITE)]);
     assert_none_wrong(wrong);
 }
 
-/// A line the pack widens to 0.4 pixels, its sides less than half a pixel apart, is the game's
-/// to widen: 3 pixels to each side, plus the pack's 0.2, as the pack puts each corner on the
-/// side the game widens it to (`a_line_program_that_writes_an_image_is_widened_by_the_game`).
-/// No pixel centre is between 3 and 3.2 pixels from an edge.
+/// A line the pack widens to 0.4 pixels, less than half a pixel, keeps the pack's width too:
+/// 0.2 to each side, within which only the pixel centres on the diagonal's own line are.
+/// Any width the pack gives its line is the pack's.
 #[test]
-fn a_line_widened_by_less_than_half_a_pixel_is_widened_by_the_game() {
-    let vsh = widening(0.4).replacen(
-        "if (offset.x < 0.0) offset = -offset;",
-        "offset = -offset;",
-        1,
+fn a_line_widened_by_less_than_half_a_pixel_keeps_the_packs_width() {
+    let wrong = wrong_pixels(&widening(0.4), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.2, WHITE)]);
+    assert_none_wrong(wrong);
+}
+
+/// A line program that widens its line to 4 pixels, then turns the frame a quarter turn (each
+/// edge drawn across its own direction before): its band is exactly the pack's, 2 to each side
+/// of the edge where the pack drew it. The game measures the pack's width across the edge as
+/// drawn, not as the camera puts it.
+#[test]
+fn a_line_program_that_widens_and_turns_its_line_draws_its_own_band() {
+    let wrong = wrong_pixels_of(
+        &turned(&widening(4.0)),
+        &[(0xFFFF_FFFF, 6.0)],
+        &AHEAD,
+        TURNED,
+        &[(2.0, WHITE)],
     );
-    let wrong = wrong_pixels(&vsh, &[(0xFFFF_FFFF, 6.0)], 0.0, &[(3.2, WHITE)]);
+    assert_none_wrong(wrong);
+}
+
+/// A line program that only places its line and turns the frame a quarter turn is widened by
+/// the game to its 6 pixels, 3 to each side, across the edge where the pack drew it: across
+/// the camera's direction, it would be along the drawn edge, with no area.
+#[test]
+fn a_line_program_that_turns_its_line_is_widened_across_it_by_the_game() {
+    let wrong = wrong_pixels_of(
+        &turned(&transforming(0.0)),
+        &[(0xFFFF_FFFF, 6.0)],
+        &AHEAD,
+        TURNED,
+        &[(3.0, WHITE)],
+    );
     assert_none_wrong(wrong);
 }
 
@@ -392,7 +443,7 @@ fn a_widened_line_with_a_jitter_keeps_the_packs_width_on_both_sides() {
         &widening_with(2.0, jitter, ""),
         &[(0xFFFF_FFFF, 6.0)],
         &AHEAD,
-        [1.0, 0.4, -0.4],
+        [1.0, 0.0, 0.4, 0.0, 1.0, -0.4],
         &[(1.0, WHITE)],
     );
     assert_none_wrong(wrong);
@@ -414,7 +465,7 @@ fn a_line_with_an_end_near_or_behind_the_camera_keeps_the_games_width() {
     assert_none_wrong(wrong);
 }
 
-/// A line program that declares an image (this one writes it) is run once per vertex, so its
+/// A line program that writes an image is run once per vertex, so its
 /// writes aren't repeated, and the game can't tell that it widens its line: it widens it too,
 /// by its 6 pixels on top of the pack's 4. The pack puts each corner on the side the game
 /// widens it to (an even corner to the right of the line's direction on screen), so the two
@@ -457,6 +508,17 @@ fn a_high_contrast_outline_keeps_its_black_border_under_a_pack_that_widens_its_l
     let strokes = [(0xFF00_0000, 6.0), (0xFFFF_FFFF, 2.0)];
     let bands = [(4.0, BLACK), (2.0, WHITE)];
     assert_none_wrong(wrong_pixels(&widening(4.0), &strokes, 0.0, &bands));
+}
+
+/// The same high contrast outline under a pack that widens its lines to 4 pixels and turns the
+/// frame a quarter turn: the black stroke's extra 2 pixels to each side are across the edge as
+/// drawn, so it still shows around the bright one, as without the turn.
+#[test]
+fn a_high_contrast_outline_keeps_its_black_border_under_a_pack_that_turns_its_lines() {
+    let strokes = [(0xFF00_0000, 6.0), (0xFFFF_FFFF, 2.0)];
+    let bands = [(4.0, BLACK), (2.0, WHITE)];
+    let wrong = wrong_pixels_of(&turned(&widening(4.0)), &strokes, &AHEAD, TURNED, &bands);
+    assert_none_wrong(wrong);
 }
 
 /// The same high contrast outline under a pack that only places its lines: each stroke at the

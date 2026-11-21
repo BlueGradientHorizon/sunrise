@@ -60,6 +60,9 @@ mod undrawn_terrain_tests;
 #[cfg(test)]
 mod line_side_tests;
 
+#[cfg(test)]
+mod geometry_input_tests;
+
 mod image_formats;
 use image_formats::{image_format, storage_formats_of};
 #[cfg(test)]

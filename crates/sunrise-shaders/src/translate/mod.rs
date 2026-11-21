@@ -177,8 +177,8 @@ pub struct GbuffersInputs {
     /// `hz_vertex()`, which runs `body`, the pack's `main` and leaves that vertex's
     /// `gl_Position` in wgpu's clip space, and its outputs; so they call it for this vertex
     /// last. Each run starts with the pack's globals as the first did. Only where
-    /// `hz_vertex_reruns` (a constant): a stage that declares images or buffers may write
-    /// them, would write again, and isn't run twice.
+    /// `hz_vertex_reruns` (a constant): a stage that writes an image or a buffer would write
+    /// again, and isn't run twice; one that only reads them is.
     pub after: String,
     /// The alpha test applied to output 0 (`gl_FragData[0]`, `gl_FragColor`), the loader's
     /// (3.2 `alphaTest.<program>`): `None` keeps every fragment. With `parts`, solid terrain's.
@@ -327,19 +327,24 @@ fn implicit_input_type(name: &str) -> Option<&'static str> {
 
 /// The game inputs `vertex` reads without declaring them, as (name, value, type): each of
 /// `given` (`GbuffersInputs::attributes`) with an `implicit_input_type` that the stage names and
-/// doesn't declare as a global: an attribute (`in`, `attribute`), a uniform, a constant or a
-/// variable of that name keeps its own.
+/// doesn't declare (`scanned`, the stage's scan): an attribute (`in`, `attribute`), a uniform,
+/// a constant, a variable, a struct, a block, its instance or, without one, its member of that
+/// name keeps its own.
 fn implicit_inputs<'a>(
     given: &'a [(String, String)],
     vertex: &Preprocessed,
-    globals: &std::collections::BTreeSet<String>,
+    scanned: &Stage,
 ) -> Vec<(&'a str, &'a str, &'static str)> {
     given
         .iter()
         .filter_map(|(name, value)| {
             Some((name.as_str(), value.as_str(), implicit_input_type(name)?))
         })
-        .filter(|(name, _, _)| uses_name(&vertex.code, name) && !globals.contains(*name))
+        .filter(|(name, _, _)| {
+            uses_name(&vertex.code, name)
+                && !scanned.globals.contains(*name)
+                && !scanned.declared.contains(*name)
+        })
         .collect()
 }
 
@@ -570,7 +575,7 @@ fn translate(
             .map(|g| g.attributes.as_slice())
             .unwrap_or_default(),
         vertex,
-        &v.globals,
+        &v,
     );
     let header = |stage: &Stage| {
         let mut h = resources(&uniforms, &samplers, &images);
@@ -622,14 +627,8 @@ fn translate(
         }
         if let (Some(inputs), ShaderStage::Vertex) = (gbuffers, stage.kind) {
             h.push_str(&inputs.declarations);
-            // A stage that declares images or buffers may write them, and runs once per vertex:
-            // run again, it would write twice (`GbuffersInputs::after`).
-            let reruns = stage.images.is_empty() && stage.buffers.is_empty();
-            writeln!(
-                h,
-                "\nuint hz_vertex_index;\nconst bool hz_vertex_reruns = {reruns};"
-            )
-            .unwrap();
+            // False in a stage that writes an image or a buffer, translated again for it.
+            writeln!(h, "\nuint hz_vertex_index;\n{RUNS_AGAIN}").unwrap();
             for (name, _, ty) in &implicit {
                 writeln!(h, "{ty} {name};").unwrap();
             }
@@ -808,7 +807,13 @@ fn translate(
     if !errors.is_empty() {
         return Err(errors);
     }
-    let vertex_module = compile(&v, &v_text, header(&v).lines().count());
+    let mut vertex_module = compile(&v, &v_text, header(&v).lines().count());
+    // A stage that writes an image or a buffer runs once per vertex: run again by the game's
+    // `after`, it would write twice. One that only reads them is run again like any other.
+    if run_again && vertex_module.as_ref().is_ok_and(writes_storage) {
+        let once = v_text.replacen(RUNS_AGAIN, RUNS_ONCE, 1);
+        vertex_module = compile(&v, &once, header(&v).lines().count());
+    }
     let fragment_module = compile(&f, &f_text, header(&f).lines().count());
     let (vertex, fragment) = match (vertex_module, fragment_module) {
         (Ok(v), Ok(f)) => (v, f),
@@ -861,6 +866,48 @@ fn alpha_test(test: Option<AlphaTest>) -> String {
             format!("    if (!(hz_out0.a {op} {reference:?})) {{ discard; }}\n")
         }
     }
+}
+
+/// `hz_vertex_reruns` as a gbuffers vertex stage's header declares it, and as it is for a
+/// stage that writes an image or a buffer (`GbuffersInputs::after`).
+const RUNS_AGAIN: &str = "const bool hz_vertex_reruns = true;";
+const RUNS_ONCE: &str = "const bool hz_vertex_reruns = false;";
+
+/// Whether `module` writes an image or a buffer anywhere: an image store or atomic, an atomic,
+/// or a store into a global of the storage address space (through any member or index).
+fn writes_storage(module: &naga::Module) -> bool {
+    use naga::{Expression as E, Statement as S};
+    fn storage(module: &naga::Module, f: &naga::Function, mut e: naga::Handle<E>) -> bool {
+        loop {
+            match f.expressions[e] {
+                E::Access { base, .. } | E::AccessIndex { base, .. } => e = base,
+                E::GlobalVariable(g) => {
+                    return matches!(
+                        module.global_variables[g].space,
+                        naga::AddressSpace::Storage { .. }
+                    );
+                }
+                _ => return false,
+            }
+        }
+    }
+    fn block(module: &naga::Module, f: &naga::Function, b: &naga::Block) -> bool {
+        b.iter().any(|s| match s {
+            S::ImageStore { .. } | S::ImageAtomic { .. } | S::Atomic { .. } => true,
+            S::Store { pointer, .. } => storage(module, f, *pointer),
+            S::CooperativeStore { target, .. } => storage(module, f, *target),
+            S::Block(b) => block(module, f, b),
+            S::If { accept, reject, .. } => block(module, f, accept) || block(module, f, reject),
+            S::Switch { cases, .. } => cases.iter().any(|c| block(module, f, &c.body)),
+            S::Loop {
+                body, continuing, ..
+            } => block(module, f, body) || block(module, f, continuing),
+            _ => false,
+        })
+    }
+    (module.functions.iter().map(|(_, f)| f))
+        .chain(module.entry_points.iter().map(|e| &e.function))
+        .any(|f| block(module, f, &f.body))
 }
 
 /// Images an atomic function uses (naga gave them atomic access) are bound for atomics.
@@ -1863,10 +1910,13 @@ mod tests {
         }
     }
 
-    /// A gbuffers vertex stage that declares an image or a buffer isn't run again for another
-    /// vertex (`hz_vertex_reruns` is false): its writes would be repeated. Others may be.
+    /// A gbuffers vertex stage that writes an image or a buffer isn't run again for another
+    /// vertex (`hz_vertex_reruns` is false where the game's `after` runs it again): its writes
+    /// would be repeated. One that declares them and only reads them is, as is a plain one.
+    /// A write counts wherever it is: through a member and an index, in a branch, a loop or a
+    /// function, through an `inout` parameter, an atomic.
     #[test]
-    fn a_vertex_stage_declaring_images_or_buffers_is_not_run_again() {
+    fn a_vertex_stage_writing_images_or_buffers_is_not_run_again() {
         let reruns = |declarations: &str, write: &str| {
             let vsh = format!(
                 "#version 430\n{declarations}\nvoid main() {{\n    {write}\n    \
@@ -1885,10 +1935,11 @@ mod tests {
             let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
             let inputs = GbuffersInputs {
                 body: "hz_Vertex = vec4(0.25, 0.5, -2.0, float(gl_VertexIndex));".into(),
+                after: "    hz_vertex_index = 1u;\n    hz_vertex();\n".into(),
                 ..Default::default()
             };
             let program = translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
-                .unwrap_or_else(|e| panic!("{e:?}"));
+                .unwrap_or_else(|e| panic!("{declarations} {write}: {e:?}"));
             let module = &program.vertex;
             let (_, constant) = (module.constants.iter())
                 .find(|(_, c)| c.name.as_deref() == Some("hz_vertex_reruns"))
@@ -1898,15 +1949,103 @@ mod tests {
                 ref e => panic!("{e:?}"),
             }
         };
+        let image = "layout(rgba8) writeonly uniform image2D colorimg5;";
+        let read_image = "layout(rgba8) readonly uniform image2D colorimg5;";
+        let counter = "layout(r32ui) uniform uimage2D colorimg6;";
+        let buffer = "layout(std430, binding = 0) buffer Counts { uint n; vec4 v[4]; };";
+        let named = "layout(std430, binding = 0) buffer Counts { uint n; vec4 v[4]; } counts;";
+        let read_only =
+            "layout(std430, binding = 0) readonly buffer Counts { uint n; vec4 v[4]; };";
         assert!(reruns("", ""));
-        assert!(!reruns(
-            "layout(rgba8) writeonly uniform image2D colorimg5;",
-            "imageStore(colorimg5, ivec2(gl_VertexID, 0), vec4(1.0));"
+        // Declared, only read.
+        assert!(reruns(
+            read_image,
+            "vec4 c = imageLoad(colorimg5, ivec2(0));"
         ));
-        assert!(!reruns(
-            "layout(std430, binding = 0) buffer Counts { uint n; };",
-            "n = uint(gl_VertexID);"
-        ));
+        assert!(reruns(buffer, "float f = float(n) + v[1].x;"));
+        assert!(reruns(read_only, "float f = float(n);"));
+        // Written.
+        let writes = [
+            (
+                image,
+                "imageStore(colorimg5, ivec2(gl_VertexID, 0), vec4(1.0));",
+            ),
+            (counter, "imageAtomicAdd(colorimg6, ivec2(0), 1u);"),
+            (buffer, "n = uint(gl_VertexID);"),
+            (buffer, "v[gl_VertexID].y = 1.0;"),
+            (named, "counts.v[1].y = 1.0;"),
+            (buffer, "if (gl_VertexID > 2) { n = 1u; }"),
+            (buffer, "for (int i = 0; i < 2; i++) { v[i] = vec4(0.0); }"),
+            (buffer, "atomicAdd(n, 1u);"),
+            (
+                &format!("{buffer}\nvoid bump(inout uint c) {{ c += 1u; }}"),
+                "bump(n);",
+            ),
+            (&format!("{buffer}\nvoid clear() {{ n = 0u; }}"), "clear();"),
+        ];
+        for (declarations, write) in writes {
+            assert!(!reruns(declarations, write), "{declarations} {write}");
+        }
+    }
+
+    /// A name the stage declares otherwise than as a variable is its own, and the game gives no
+    /// input of that name (a second declaration would reject the stage): a buffer block's field
+    /// without an instance (the stage reads it as `vaNormal`), an `out` block's member without
+    /// one, a block's instance, a block's name, a struct's name. A block's field with an
+    /// instance (`params.vaNormal`) doesn't declare `vaNormal`: the stage reads the game's too.
+    #[test]
+    fn names_a_stage_declares_are_not_given_by_the_game() {
+        let program = |source: &str| {
+            let files = [
+                ("shaders/gbuffers_line.vsh", source),
+                (
+                    "shaders/gbuffers_line.fsh",
+                    "#version 430\nvoid main() { gl_FragData[0] = vec4(1.0); }",
+                ),
+            ];
+            let pack = Pack::from_zip_bytes("line-declared.zip", zip(&files)).unwrap();
+            let macros = Macros::standard();
+            let vertex = preprocess(&pack, "gbuffers_line.vsh", &macros);
+            let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
+            let inputs = GbuffersInputs {
+                body: "hz_Vertex = vec4(0.25, 0.5, -2.0, 1.0);\nhz_Normal = vec3(1.0, 0.0, 0.0);"
+                    .into(),
+                attributes: ["vaPosition", "vaNormal", "vaColor"]
+                    .map(|n| (n.to_owned(), "hz_Vertex".to_owned()))
+                    .to_vec(),
+                ..Default::default()
+            };
+            translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
+        };
+        let cases = [
+            (
+                "layout(std430, binding = 0) buffer Params { float w; vec3 vaNormal; };",
+                "vec3 n = vaNormal;",
+            ),
+            ("out Extra { vec3 vaNormal; };", "vaNormal = vec3(1.0);"),
+            (
+                "layout(std430, binding = 0) buffer Params { vec4 c; } vaColor;",
+                "vec4 n = vaColor.c;",
+            ),
+            (
+                "layout(std430, binding = 0) buffer vaColor { vec4 c; } params;",
+                "vec4 n = params.c;",
+            ),
+            ("struct vaColor { float a; };", "vaColor n = vaColor(1.0);"),
+            (
+                "layout(std430, binding = 0) buffer Params { float w; vec3 vaNormal; } params;",
+                "vec3 n = params.vaNormal + vaNormal;",
+            ),
+        ];
+        for (declaration, read) in cases {
+            let source = format!(
+                "#version 430\n{declaration}\nvoid main() {{\n    {read}\n    \
+                 gl_Position = vec4(vaPosition, 1.0);\n}}\n"
+            );
+            if let Err(errors) = program(&source) {
+                panic!("{declaration}: {errors:?}");
+            }
+        }
     }
 
     /// A gbuffers vertex stage the game's `after` runs again starts each run with the pack's
