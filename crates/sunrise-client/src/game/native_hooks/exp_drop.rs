@@ -29,7 +29,7 @@ impl GameLevel<'_> {
             tool,
             experience: &mut experience,
         });
-        experience.map(|value| value.clamp(0, 32767) as u32)
+        experience.map(|value| value.max(0) as u32)
     }
 }
 

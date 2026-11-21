@@ -108,7 +108,8 @@ impl mod_api::Hooks for Listener {
     fn item_tooltip(&self, _: &dyn mod_api::ClientHost, event: &mut mod_api::ItemTooltipEvent<'_>) {
         event
             .lines
-            .push((mod_api::Text::literal("item hook tail"), 0xFF124578));
+            .push(mod_api::Text::literal("item hook tail"), 0xFF124578)
+            .unwrap();
     }
     fn render_tooltip_pre(
         &self,
