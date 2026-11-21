@@ -525,9 +525,8 @@ impl World {
             .get(&(x >> 4, z >> 4))?
             .connection_group(x & 15, y, z & 15)
     }
-    /// Write or clear the connection group in resident storage only (no log, no remesh): the one
-    /// checked storage mutation used both by open Host transactions and by
-    /// [`Self::set_connection_group`]. Returns `false` if the chunk is unloaded, `y` is out of
+    /// Write or clear the connection group in resident storage only: no log, remesh or sticky
+    /// marker for speculative writes. Returns `false` if the chunk is unloaded, `y` is out of
     /// height, or the group was unchanged.
     pub fn set_connection_group_stored(
         &mut self,
@@ -548,7 +547,6 @@ impl World {
         let chunk = Arc::make_mut(chunk);
         match group {
             Some(g) => {
-                chunk.has_held_connection_groups = true;
                 chunk.connection_groups.insert(cell, g);
             }
             None => {
@@ -575,7 +573,10 @@ impl World {
         if notify && let Some(log) = &mut self.connection_group_log {
             log.push((x, y, z));
         }
-        if let Some(chunk) = self.chunks.get(&(x >> 4, z >> 4)) {
+        if let Some(chunk) = self.chunks.get_mut(&(x >> 4, z >> 4)) {
+            if group.is_some() {
+                Arc::make_mut(chunk).has_held_connection_groups = true;
+            }
             let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
             self.mark_remesh_at(x, y, z, min_y, sections, false);
         }

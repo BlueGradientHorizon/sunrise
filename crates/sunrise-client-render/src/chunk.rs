@@ -733,10 +733,9 @@ pub struct Chunk {
     /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
     /// never saved to disk.
     pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
-    /// Sticky bit set on the first non-empty connection group written to this chunk and dropped
-    /// with the chunk. While false, block broadcasts and bulk resends pay zero connection-group
-    /// sync cost; while true, block changes in this chunk derive and send their authoritative
-    /// group at broadcast time.
+    /// Sticky bit set when a non-empty connection group is published, not on a tentative
+    /// write. Dropped with the chunk. A block sent from a marked chunk carries its current
+    /// group (including a clear) to peers that negotiated group sync.
     pub has_held_connection_groups: bool,
 }
 impl Chunk {

@@ -45,19 +45,13 @@ impl Game<'_> {
         };
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
-        let journaled_groups: Vec<((i32, i32, i32), BlockStateId)> = if self.transactions.is_empty()
-        {
-            Vec::new()
-        } else {
-            self.transactions
-                .journaled_connection_group_positions()
-                .into_iter()
-                .map(|pos| (pos, self.world.block(pos.0, pos.1, pos.2)))
-                .collect()
-        };
+        let journaled_groups = self
+            .transactions
+            .journaled_connection_group_positions(self.dim);
         let watched = std::mem::take(&mut self.world.watched);
         let out = self.world.edit_runs(
             &runs,
+            &journaled_groups,
             |f, s| {
                 super::commands::block_input_matches(
                     registry,
@@ -75,24 +69,18 @@ impl Game<'_> {
             },
         );
         self.world.watched = watched;
-        if !out.grouped_changes.is_empty() || !journaled_groups.is_empty() {
+        if !out.grouped_changes.is_empty() {
             let behaviours = self.res.behaviours();
-            for &((x, y, z), old, new) in &out.grouped_changes {
-                if !behaviours.keeps_connection_group(BlockStateId(old), BlockStateId(new)) {
-                    let _ = self.world.clear_connection_group_automatic(x, y, z);
-                    self.transactions
-                        .reconcile_bulk_connection_group_clear((x, y, z));
+            let mut cleared = FxHashSet::default();
+            for &(pos @ (x, y, z), old, new) in &out.grouped_changes {
+                if !behaviours.keeps_connection_group(BlockStateId(old), BlockStateId(new))
+                    && cleared.insert(pos)
+                {
+                    self.world.clear_connection_group_automatic(x, y, z);
                 }
             }
-            for (pos, before) in journaled_groups {
-                let after = self.world.block(pos.0, pos.1, pos.2);
-                if after != before && !behaviours.keeps_connection_group(before, after) {
-                    let _ = self
-                        .world
-                        .clear_connection_group_automatic(pos.0, pos.1, pos.2);
-                    self.transactions.reconcile_bulk_connection_group_clear(pos);
-                }
-            }
+            self.transactions
+                .reconcile_bulk_connection_group_clears(self.dim, &cleared);
         }
         // The block entities the new blocks bring, as `native_set_block` makes them (a mod block's own,
         // included), in the order `replace_block_entities` takes them: the positions needing a fresh entity.
@@ -631,6 +619,7 @@ mod tests {
                 state: 1,
                 only: None,
             }],
+            &FxHashSet::default(),
             |_, _| true,
             |s| s == 2,
         );
@@ -668,6 +657,7 @@ mod tests {
                 state: 1,
                 only: None,
             }],
+            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -695,6 +685,7 @@ mod tests {
                 state: 3,
                 only: None,
             }],
+            &FxHashSet::default(),
             |_, _| true,
             |s| s == 3,
         );
@@ -739,6 +730,7 @@ mod tests {
                 state: 4,
                 only: None,
             }],
+            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );
@@ -763,6 +755,7 @@ mod tests {
                 state: 4,
                 only: None,
             }],
+            &FxHashSet::default(),
             |_, _| true,
             |_| true,
         );
