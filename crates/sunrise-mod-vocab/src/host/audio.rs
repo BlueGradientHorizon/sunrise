@@ -74,34 +74,39 @@ pub trait AudioClientHost {
     fn open_push_audio_stream(&self, _spec: &StreamSpec) -> Result<AudioStreamRef, AudioRefusal>;
 
     /// Side: client.
-    /// Lists the client's available audio input device names. Returns an empty list when no input
-    /// devices exist or client audio is disabled.
+    /// Lists the client's available audio input devices, each with a distinct opaque selector
+    /// ([`MicDevice::id`]) and a human-readable display label ([`MicDevice::label`]). Returns an
+    /// empty list when no input devices exist or client audio capture is explicitly disabled.
     ///
     /// Refuses with [`MicRefusal::OnServer`] on a server, [`MicRefusal::OsDenied`] if the
     /// operating system denies microphone permission, [`MicRefusal::Unavailable`] outside client
-    /// setup or later, or [`MicRefusal::DeviceFailed`] if device enumeration fails.
+    /// setup or later, [`MicRefusal::Busy`] if probing reports a busy device with no available
+    /// inputs, or [`MicRefusal::DeviceFailed`] if device enumeration fails.
     ///
     /// ```
-    /// use mod_api::{ClientHost, MicRefusal};
+    /// use mod_api::{ClientHost, MicDevice, MicRefusal};
     ///
-    /// fn list(host: &dyn ClientHost) -> Result<Vec<String>, MicRefusal> {
+    /// fn list(host: &dyn ClientHost) -> Result<Vec<MicDevice>, MicRefusal> {
     ///     host.microphone_devices()
     /// }
     /// ```
     #[access(ClientSetup)]
-    fn microphone_devices(&self) -> Result<Vec<String>, MicRefusal>;
+    fn microphone_devices(&self) -> Result<Vec<MicDevice>, MicRefusal>;
 
     /// Side: client.
-    /// Opens live PCM capture from the system default or named input device directly on the
+    /// Opens live PCM capture from the system default or selected input device directly on the
     /// client. Returns a client-local [`MicRef`] readable from any thread off the OS audio
-    /// callback: [`MicRef::read`] fills a caller-provided slice with whole interleaved signed
-    /// 16-bit PCM frames from a bounded [`MIC_RING_MAX_MS`] ms ring that drops the oldest frames
-    /// on overflow. Capture stops when [`MicRef::close`] is called or the handle is dropped. The
-    /// engine never records or transmits captured audio.
+    /// callback: [`MicRef::read`] writes only validated whole interleaved signed 16-bit PCM frames
+    /// from a bounded [`MIC_RING_MAX_MS`] ms ring that drops the oldest frames on overflow,
+    /// leaving any unreturned suffix untouched and returning `0` immediately on concurrent reader
+    /// contention. Calling [`MicRef::close`] or dropping the handle stops capture and waits for
+    /// the stream's teardown thread to release the OS input device before returning; a backend
+    /// device error also releases the OS stream promptly without waiting for `close`, drop, or a
+    /// tick. The engine never records or transmits captured audio.
     ///
     /// Refuses with [`MicRefusal`] when called on a server, outside client setup or later, with
-    /// an invalid [`MicSpec`], when the OS denies permission, or when no matching device can be
-    /// opened.
+    /// an invalid [`MicSpec`], when the OS denies permission, when a selected device vanished or
+    /// is ambiguous, or when no matching device can be opened.
     ///
     /// ```
     /// use mod_api::{ClientHost, MicRef, MicRefusal, MicSpec};

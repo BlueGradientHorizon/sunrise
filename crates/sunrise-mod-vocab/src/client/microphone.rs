@@ -9,6 +9,35 @@ pub const MIC_RATE_MAX: u32 = 48_000;
 /// The capacity of a microphone capture ring, in milliseconds of audio.
 pub const MIC_RING_MAX_MS: u32 = 500;
 
+/// One audio input device discovered on this client.
+///
+/// Pass [`id`](Self::id) to [`MicSpec::with_device`] to open this specific endpoint, and display
+/// [`label`](Self::label) to the player. Two physically distinct devices may share a display
+/// label while carrying distinct selectors.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::MicDevice>();
+/// ```
+// no wire: client-local audio input device descriptor, never crosses the mod wire
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct MicDevice {
+    /// Opaque, distinct input selector to pass to [`MicSpec::with_device`].
+    pub id: String,
+    /// Human-readable display label for this input device.
+    pub label: String,
+}
+
+impl MicDevice {
+    /// Builds a device descriptor on the engine side.
+    // hidden: a game-side constructor, not part of the mod surface
+    #[doc(hidden)]
+    pub fn new(id: String, label: String) -> Self {
+        Self { id, label }
+    }
+}
+
 /// The input device and PCM format requested when opening microphone capture on this client.
 ///
 /// ```compile_fail,E0277
@@ -19,8 +48,8 @@ pub const MIC_RING_MAX_MS: u32 = 500;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct MicSpec {
-    /// Input device name from `microphone_devices()`, or `None` to select the system default
-    /// input device.
+    /// Input device selector (`MicDevice::id`) from `microphone_devices()`, a unique display
+    /// label, or `None` to select the system default input device.
     pub device: Option<String>,
     /// Channel count: `1` for mono or `2` for stereo.
     pub channels: u8,
@@ -39,7 +68,8 @@ impl MicSpec {
         }
     }
 
-    /// The same specification targeting the named input `device` from `microphone_devices()`.
+    /// The same specification targeting the input `device` selector (`MicDevice::id`) from
+    /// `microphone_devices()` or a unique display label.
     pub fn with_device(self, device: impl Into<String>) -> Self {
         Self {
             device: Some(device.into()),
@@ -90,9 +120,12 @@ pub enum MicRefusal {
     Unavailable,
     /// The capture specification has an invalid `channels` or `rate`.
     BadSpec(MicSpecFault),
-    /// No default input device exists, the named device was not found, or client audio is
-    /// disabled.
+    /// No default input device exists, the selected device was not found or vanished, or client
+    /// audio capture is disabled.
     NoDevice,
+    /// More than one input device matches the requested selection; select a specific
+    /// [`MicDevice::id`] from `microphone_devices()`.
+    AmbiguousDevice,
     /// The operating system denied microphone permission.
     OsDenied,
     /// The input device is busy or held in exclusive use.
@@ -108,6 +141,9 @@ impl std::fmt::Display for MicRefusal {
             Self::Unavailable => f.write_str("microphone capture is unavailable in this phase"),
             Self::BadSpec(fault) => write!(f, "the microphone spec is refused: {fault}"),
             Self::NoDevice => f.write_str("no matching microphone device is available"),
+            Self::AmbiguousDevice => {
+                f.write_str("multiple microphone devices match the requested selection")
+            }
             Self::OsDenied => f.write_str("the operating system denied microphone permission"),
             Self::Busy => f.write_str("the microphone device is busy"),
             Self::DeviceFailed => f.write_str("the microphone device failed to open or start"),
@@ -124,12 +160,14 @@ impl crate::AccessRefusal for MicRefusal {
 }
 
 /// The engine's side of one open microphone capture stream. A mod reaches it through [`MicRef`],
-/// not directly. Every method works from any thread without blocking on a tick or OS callback.
+/// not directly. Reads work from any thread without blocking on a tick or OS callback.
 // no wire: engine-side capture source reached in-process through MicRef
 pub trait MicSource: Send + Sync + 'static {
     /// Reads whole interleaved signed 16-bit PCM frames into `pcm` without blocking or waiting on
-    /// a tick. Any trailing incomplete frame in `pcm` is left untouched. Returns the number of
-    /// whole frames written, or `0` when no frames are ready or after [`close`](Self::close).
+    /// a tick. Only validated whole frames are written: any suffix beyond `returned * channels`
+    /// (including any trailing incomplete frame) is left untouched. Returns `0` immediately without
+    /// blocking or modifying `pcm` when no frames are ready, after [`close`](Self::close), or if
+    /// another thread is concurrently inside `read` on the same stream.
     fn read(&self, pcm: &mut [i16]) -> u32;
     /// Channel count of the captured PCM (`1` for mono or `2` for stereo).
     fn channels(&self) -> u8;
@@ -139,17 +177,21 @@ pub trait MicSource: Send + Sync + 'static {
     /// the reader fell behind.
     fn dropped_frames(&self) -> u64;
     /// Whether capture is still active; `false` after [`close`](Self::close) or if the OS input
-    /// device disconnects or errors.
+    /// device disconnects or errors (in which case the underlying OS stream is released promptly
+    /// on its own teardown thread without waiting for `close`, drop, or a tick).
     fn is_open(&self) -> bool;
-    /// Stops capture for good. Idempotent.
+    /// Stops capture and waits for the stream's teardown thread to release the OS input device
+    /// before returning. Idempotent; never waits behind unrelated device probes or opens.
     fn close(&self);
 }
 
 /// An owning handle to a live microphone capture stream on this client.
 ///
 /// Read captured PCM frames from any thread with [`read`](Self::read) without waiting for a tick
-/// or running on the OS audio callback. Capture stops immediately when [`close`](Self::close) is
-/// called or when the handle is dropped.
+/// or running on the OS audio callback. Calling [`close`](Self::close) or dropping the handle
+/// stops capture and releases the OS input device before returning. If the OS device disconnects
+/// or errors, [`is_open`](Self::is_open) flips to `false` and the failed OS stream is released
+/// promptly without waiting for `close`, drop, or a tick.
 ///
 /// ```compile_fail,E0277
 /// fn requires_wire<T: mod_api::wire::Wire>() {}
@@ -170,8 +212,10 @@ impl MicRef {
     }
 
     /// Reads whole interleaved signed 16-bit PCM frames into `pcm` without blocking or waiting on
-    /// a tick. Any trailing incomplete frame in `pcm` is left untouched. Returns the number of
-    /// whole frames written, or `0` when no frames are ready or after [`close`](Self::close).
+    /// a tick. Only validated whole frames are written: any suffix beyond `returned * channels`
+    /// (including any trailing incomplete frame) is left untouched. Returns `0` immediately without
+    /// blocking or modifying `pcm` when no frames are ready, after [`close`](Self::close), or if
+    /// another thread is concurrently inside `read` on the same handle.
     pub fn read(&self, pcm: &mut [i16]) -> u32 {
         self.source.read(pcm)
     }
@@ -193,12 +237,14 @@ impl MicRef {
     }
 
     /// Whether capture is still active; `false` after [`close`](Self::close) or if the OS input
-    /// device disconnects or errors.
+    /// device disconnects or errors (the failed OS stream is released promptly without waiting for
+    /// `close`, drop, or a tick).
     pub fn is_open(&self) -> bool {
         self.source.is_open()
     }
 
-    /// Stops capture for good. Idempotent, and also called automatically on drop.
+    /// Stops capture and waits for the stream's teardown thread to release the OS input device
+    /// before returning. Idempotent, and also called automatically on drop.
     pub fn close(&self) {
         self.source.close();
     }
@@ -285,14 +331,18 @@ mod tests {
     }
 
     #[test]
-    fn mic_spec_new_and_with_device() {
+    fn mic_device_and_spec_new_and_with_device() {
+        let dev = MicDevice::new("usb:1".into(), "USB Microphone".into());
+        assert_eq!(dev.id, "usb:1");
+        assert_eq!(dev.label, "USB Microphone");
+
         let default_spec = MicSpec::new(1, 48_000);
         assert_eq!(default_spec.device, None);
         assert_eq!(default_spec.channels, 1);
         assert_eq!(default_spec.rate, 48_000);
 
-        let named_spec = default_spec.with_device("USB Microphone");
-        assert_eq!(named_spec.device.as_deref(), Some("USB Microphone"));
+        let named_spec = default_spec.with_device(&dev.id);
+        assert_eq!(named_spec.device.as_deref(), Some("usb:1"));
         assert_eq!(named_spec.channels, 1);
         assert_eq!(named_spec.rate, 48_000);
     }
@@ -324,6 +374,10 @@ mod tests {
         assert_eq!(
             MicRefusal::NoDevice.to_string(),
             "no matching microphone device is available"
+        );
+        assert_eq!(
+            MicRefusal::AmbiguousDevice.to_string(),
+            "multiple microphone devices match the requested selection"
         );
         assert_eq!(
             MicRefusal::OsDenied.to_string(),

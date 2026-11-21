@@ -47,7 +47,7 @@ impl mod_api::prelude::AudioClientHost for StartupClientHost {
         Err(mod_api::AudioRefusal::Unavailable)
     }
 
-    fn microphone_devices(&self) -> Result<Vec<String>, mod_api::MicRefusal> {
+    fn microphone_devices(&self) -> Result<Vec<mod_api::MicDevice>, mod_api::MicRefusal> {
         Err(mod_api::MicRefusal::Unavailable)
     }
 

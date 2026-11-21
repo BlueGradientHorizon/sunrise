@@ -1235,6 +1235,13 @@ fn output_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<S
         .any(|c| c.as_os_str() == "vscreen")
         .then(|| "audio off on a virtual screen (vscreen); SUNRISE_AUDIO=1 opens it".into())
 }
+/// Whether microphone capture is suppressed by an explicit opt-out (`SUNRISE_NO_AUDIO`).
+/// Unlike [`output_disabled`], capture does not inherit the `WAYLAND_DISPLAY` `vscreen`
+/// speaker-suppression heuristic.
+#[cfg(any(feature = "audio", test))]
+fn capture_disabled(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
+    var("SUNRISE_NO_AUDIO").is_some()
+}
 /// An output stream on `device` in its default configuration, whatever its
 /// sample format: the mixer works in f32 and converts.
 #[cfg(feature = "audio")]
@@ -1533,7 +1540,7 @@ impl Audio {
             Vec::new()
         };
         #[cfg(feature = "audio")]
-        let mics_enabled = output && output_disabled(|k| std::env::var_os(k)).is_none();
+        let mics_enabled = output && !capture_disabled(|k| std::env::var_os(k));
         #[cfg(not(feature = "audio"))]
         let mics_enabled = false;
         Self {
@@ -1909,8 +1916,10 @@ impl Audio {
             .streams
             .open(&self.backend.mixer, owner, spec, source)
     }
-    /// Lists available microphone input device names on this client.
-    pub fn microphone_devices(&self) -> std::result::Result<Vec<String>, mod_api::MicRefusal> {
+    /// Lists available microphone input devices on this client.
+    pub fn microphone_devices(
+        &self,
+    ) -> std::result::Result<Vec<mod_api::MicDevice>, mod_api::MicRefusal> {
         self.mics.devices()
     }
     /// Opens a live microphone capture stream on this client.
@@ -2852,6 +2861,26 @@ mod tests {
         assert!(
             output_disabled(env(&[("SUNRISE_NO_AUDIO", "1"), ("SUNRISE_AUDIO", "1")])).is_some()
         );
+    }
+    #[test]
+    fn capture_ignores_virtual_screen_heuristic_but_honors_no_audio_override() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == name)
+                    .map(|(_, v)| std::ffi::OsString::from(*v))
+            }
+        };
+        const VSCREEN: &str = "/run/user/1000/vscreen/main/wayland-1";
+        assert!(!capture_disabled(env(&[])));
+        assert!(!capture_disabled(env(&[("WAYLAND_DISPLAY", "wayland-1")])));
+        assert!(!capture_disabled(env(&[("WAYLAND_DISPLAY", VSCREEN)])));
+        assert!(capture_disabled(env(&[("SUNRISE_NO_AUDIO", "1")])));
+        assert!(capture_disabled(env(&[
+            ("SUNRISE_NO_AUDIO", "1"),
+            ("SUNRISE_AUDIO", "1"),
+        ])));
     }
     #[test]
     #[cfg(feature = "audio")]

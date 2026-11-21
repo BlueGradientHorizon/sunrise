@@ -1,11 +1,20 @@
 ids = [
     "method:prelude::AudioClientHost::microphone_devices",
     "method:prelude::AudioClientHost::open_microphone",
+    "type:MicDevice",
     "type:MicSpec",
     "type:MicSpecFault",
     "type:MicRefusal",
     "type:MicRef",
     "trait:MicSource",
+    "handle:MicSpec::new",
+    "handle:MicSpec::with_device",
+    "handle:MicRef::read",
+    "handle:MicRef::channels",
+    "handle:MicRef::rate",
+    "handle:MicRef::dropped_frames",
+    "handle:MicRef::is_open",
+    "handle:MicRef::close",
 ]
-why = "Client mods such as voice chat need direct microphone PCM capture on the client host without adding codec, consent, or networking machinery to the engine. NeoForge has no microphone capture API and native mods are trusted code, so capture is exposed as a plain client-local PCM reader."
-migrate = "Additive: call `host.microphone_devices()` and `host.open_microphone(&MicSpec::new(channels, rate))` on a `ClientHost` from client setup onward, then read whole interleaved `i16` frames from any thread via `MicRef::read`."
+why = "Client mods such as voice chat need direct microphone PCM capture on the client host without adding codec, consent, or networking machinery to the engine. NeoForge has no microphone capture API and native mods are trusted code, so capture is exposed as a plain client-local PCM reader with distinct per-device selectors."
+migrate = "Additive: from client setup onward, call `host.microphone_devices()` to enumerate `MicDevice { id, label }` descriptors and `host.open_microphone(&spec)` with `MicSpec::new(channels, rate)` (1 or 2 channels; `MIC_RATE_MIN` = 8000 to `MIC_RATE_MAX` = 48000 Hz) or `.with_device(&device.id)` for a specific input endpoint. Read whole interleaved `i16` frames from any thread via `MicRef::read` off the bounded `MIC_RING_MAX_MS` (500 ms) drop-oldest ring, inspect stream format/health via `MicRef::{channels, rate, dropped_frames, is_open}`, and call `MicRef::close` or drop `MicRef` to stop capture and release the OS input device synchronously."

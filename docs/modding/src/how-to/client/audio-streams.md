@@ -125,12 +125,12 @@ can feed a stream already opened and placed on the main thread.
 List available input devices with `host.microphone_devices()` and open live PCM capture on a `ClientHost` from client setup onward with `host.open_microphone(&spec)`:
 
 ```rust
-use mod_api::{ClientHost, MicRef, MicRefusal, MicSpec};
+use mod_api::{ClientHost, MicDevice, MicRef, MicRefusal, MicSpec};
 
-fn open_mic(host: &dyn ClientHost, preferred: Option<&str>) -> Result<MicRef, MicRefusal> {
+fn open_mic(host: &dyn ClientHost, preferred: Option<&MicDevice>) -> Result<MicRef, MicRefusal> {
     let mut spec = MicSpec::new(1, 48_000); // 1 or 2 channels, 8000 to 48000 Hz.
-    if let Some(name) = preferred {
-        spec = spec.with_device(name);
+    if let Some(device) = preferred {
+        spec = spec.with_device(&device.id);
     }
     host.open_microphone(&spec)
 }
@@ -142,18 +142,21 @@ fn read_mono<'a>(mic: &MicRef, pcm: &'a mut [i16]) -> &'a [i16] {
 }
 ```
 
-`MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` writes whole interleaved signed 16-bit PCM frames (leaving any trailing incomplete frame untouched) and returns the frame count written. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
+Each entry returned by `host.microphone_devices()` is a `MicDevice { id, label }`. Show `device.label` in UI and pass `device.id` to `MicSpec::with_device` to target a specific endpoint even when multiple devices share the same display label. Passing a display label directly works only when it matches a single input device; if multiple input devices share that label, `open_microphone` refuses with `MicRefusal::AmbiguousDevice`.
 
-Call `mic.close()` or drop `MicRef` to stop capture immediately. `mic.is_open()` returns `false` after close or if the input device disconnects or errors. Handle `MicRefusal` directly:
+`MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` is nonblocking: it writes whole interleaved signed 16-bit PCM frames into the returned prefix `pcm[..frames * channels]`, leaves any remaining suffix untouched, and returns `0` without modifying `pcm` if no whole frames are ready or another reader is concurrently draining the same handle. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
+
+Call `mic.close()` or drop `MicRef` to stop capture and release the OS input stream synchronously before returning. `mic.is_open()` returns `false` after close or if the input device disconnects or errors (in which case the backend stream is released promptly without waiting for a later call). Handle `MicRefusal` directly:
 
 - `OsDenied`: the operating system denied microphone permission.
 - `Busy`: the input device is busy or held in exclusive use.
-- `NoDevice`: no default input device exists, the named device was not found, or client audio is disabled.
+- `NoDevice`: no default input device exists, the requested device selector or label was not found, or client audio is disabled.
+- `AmbiguousDevice`: a device label matched more than one input device (pass `MicDevice::id` instead).
 - `BadSpec(MicSpecFault)`: `channels` is not 1 or 2, or `rate` is outside 8000 to 48000 Hz (`MIC_RATE_MIN`..=`MIC_RATE_MAX`).
 - `OnServer` / `Unavailable`: called on a server or outside client setup or later.
 - `DeviceFailed`: the input device or capture worker failed to open or start.
 
-`MicRef`, `MicSpec`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
+`MicDevice`, `MicRef`, `MicSpec`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
 
 ## Known limits
 
