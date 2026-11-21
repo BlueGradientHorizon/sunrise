@@ -376,10 +376,15 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
                             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                         game.world.set(4, 63, 4, glass).unwrap();
                         game.carts.clear();
-                        let mut cart = Minecart::new(id, CartKind::Tnt, Vec3::new(4.5, 64.25, 4.5));
+                        game.carts.push(Minecart::new(
+                            id,
+                            CartKind::Tnt,
+                            Vec3::new(4.5, 64.25, 4.5),
+                        ));
+                        // Work on the same joined row that the tick lends out.
+                        let mut cart = game.carts[0].clone();
                         cart.fall_distance = fall;
                         cart.velocity = Vec3::new(0.0, -1.0, 0.0);
-                        game.carts.push(cart.clone());
                         part.calls.lock().unwrap().clear();
                         let result = sunrise_client::block_contact::in_level(
                             game.tick,
