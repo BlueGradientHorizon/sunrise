@@ -9,8 +9,11 @@
 //! A body's support is the one collider box under it: the highest top, a tie to the lower
 //! collider entity id. The supports form a forest, and it is carried from the roots: a collider
 //! that stands on another collider is carried first, and the bodies on it use its whole
-//! displacement. A body that rides something is not carried; it follows its vehicle. The server
-//! carries what it simulates, each client its own player.
+//! displacement. Then a translating collider shoves nearby bodies in the path of its boxes.
+//! A body that rides something follows its vehicle. The server moves what it simulates, each
+//! client its own player.
+#[path = "shoving.rs"]
+mod shoving;
 use super::*;
 use sunrise_client_render::moving_colliders::{self, Prepared};
 
@@ -90,9 +93,9 @@ impl Game<'_> {
         }
     }
 
-    /// Carries the bodies standing on the colliders of the level that moved this tick.
-    /// `start` is the colliders as the tick began, where the bodies stood. A tick where no
-    /// collider moved does nothing; the bodies are found through the level's collider index.
+    /// Carries bodies on colliders that moved this tick, then shoves bodies in the path of a
+    /// translating collider. `start` is the colliders as the tick began. A tick where none
+    /// moved does nothing.
     pub(in crate::game) fn carry_pass(&mut self, start: &Prepared) {
         if start.is_empty() || !self.any_collider_moved(start) {
             return;
@@ -100,16 +103,14 @@ impl Game<'_> {
         let mut scratch = SCRATCH.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
         let steps = self.push_step_heights();
         self.collider_riders(start, &steps, &mut scratch);
-        let carried = !scratch.riders.is_empty();
-        if carried {
+        if !scratch.riders.is_empty() {
             self.carry_in_order(start, &steps, &mut scratch);
-        }
-        SCRATCH.with(|cell| *cell.borrow_mut() = scratch);
-        if carried {
-            // A carried vehicle's passengers follow it now, through the one rider positioning
-            // the tick uses (`Entity.positionRider`), nested passengers in order.
+            // Position passengers before finding the colliders' full movement: a passenger
+            // may own a collider too (`Entity.positionRider`).
             self.position_riders();
         }
+        self.shove_pass(start, &steps, &scratch.riders);
+        SCRATCH.with(|cell| *cell.borrow_mut() = scratch);
     }
 
     /// Whether any collider of `start` stands elsewhere now.

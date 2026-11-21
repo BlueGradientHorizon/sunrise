@@ -399,8 +399,15 @@ impl OrientedCollider {
     /// they are axis-aligned): the grid's cells first, then each box's bounds.
     fn with_candidates<R>(&self, world: Aabb, f: impl FnOnce(&[u32]) -> R) -> R {
         let local = self.frame.local_bounds(world);
+        let Some(bounds) = self
+            .boxes
+            .bounds()
+            .filter(|bounds| bounds.intersects(local))
+        else {
+            return f(&[]);
+        };
         let mut out = CANDIDATES.with(|c| std::mem::take(&mut *c.borrow_mut()));
-        self.boxes.candidates(local, &mut out);
+        self.boxes.candidates(local.intersect(bounds), &mut out);
         out.retain(|&i| self.boxes.boxes[i as usize].intersects(local));
         let result = f(&out);
         CANDIDATES.with(|c| *c.borrow_mut() = out);
@@ -423,7 +430,7 @@ impl OrientedCollider {
         self.with_candidates(sweep, |candidates| {
             for &index in candidates {
                 let obb = self.obb(self.boxes.boxes[index as usize]);
-                if let Some(reach) = self.time_of_impact(&axes, mover, direction, &obb)
+                if let Some((_, reach)) = self.time_of_impact(&axes, mover, direction, amount, &obb)
                     && reach.abs() < allowed.abs()
                 {
                     allowed = reach;
@@ -431,6 +438,34 @@ impl OrientedCollider {
             }
         });
         allowed
+    }
+
+    /// Fraction of a straight collider's travel remaining after its first contact with `mover`.
+    /// Only boxes that survive at the same local index and bounds can sweep. `delta` is the
+    /// collider's displacement from this pose to `after`, which has the same orientation.
+    pub fn translation_push_fraction(&self, after: &Self, mover: Aabb, delta: Vec3) -> f64 {
+        // Translating the collider toward the body is the same relative motion as holding the
+        // collider still and sweeping the body the other way.
+        let relative = delta.scale(-1.0);
+        let sweep = mover.expand_towards(relative);
+        let axes = self.axes();
+        let amount = delta.length();
+        self.with_candidates(sweep, |candidates| {
+            let mut first = 1.0_f64;
+            for &index in candidates {
+                let index = index as usize;
+                let local = self.boxes.boxes[index];
+                if after.boxes.boxes.get(index) != Some(&local) {
+                    continue;
+                }
+                if let Some((time, _)) =
+                    self.time_of_impact(&axes, mover, relative, amount, &self.obb(local))
+                {
+                    first = first.min(time.max(0.0));
+                }
+            }
+            1.0 - first
+        })
     }
 
     /// Whether the entity box overlaps any box deeper than the collision epsilon.
@@ -516,10 +551,16 @@ impl OrientedCollider {
             .fold(f64::INFINITY, f64::min)
     }
 
-    /// How far along `direction` (one axis, signed) the box travels before meeting `obb`, if it
-    /// does within the movement.
-    fn time_of_impact(&self, axes: &Axes, mover: Aabb, direction: Vec3, obb: &Obb) -> Option<f64> {
-        let amount = direction.x + direction.y + direction.z;
+    /// The entry time and distance along `direction` before the box meets `obb`, if it does
+    /// within the movement. `amount` is signed for a mover sliding along one world axis.
+    fn time_of_impact(
+        &self,
+        axes: &Axes,
+        mover: Aabb,
+        direction: Vec3,
+        amount: f64,
+        obb: &Obb,
+    ) -> Option<(f64, f64)> {
         let (mut enter, mut exit) = (f64::NEG_INFINITY, f64::INFINITY);
         // The travel distance the entering axis gives; exact when that axis is the movement's.
         let mut reach = 0.0;
@@ -560,7 +601,7 @@ impl OrientedCollider {
             return None;
         }
         // Float noise from a turned frame is not a movement.
-        Some(if reach.abs() < 1.0e-9 { 0.0 } else { reach })
+        Some((enter, if reach.abs() < 1.0e-9 { 0.0 } else { reach }))
     }
 
     /// Heights, above the bottom of `step_box`, at which the box could stand on a face of this

@@ -145,6 +145,7 @@ thread_local! {
     });
     /// The entity whose move is being resolved, for the moves that do not say who they are.
     static MOVER: Cell<u64> = const { Cell::new(0) };
+    static SHOVE: Cell<Option<(u64, u32)>> = const { Cell::new(None) };
     static SCRATCH: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     /// The age the level's colliders are queried at (`at_age`), None for where they stand now.
     static AGE: Cell<Option<f64>> = const { Cell::new(None) };
@@ -206,6 +207,24 @@ pub fn as_mover<R>(id: u32, f: impl FnOnce() -> R) -> R {
     result
 }
 
+/// Keeps the collider giving this shove out of the pushed body's movement query. Like a
+/// piston's scoped noclip, it cannot stop its own push. Other bodies and overlap queries still
+/// see it, even if a move listener makes another query during the shove.
+#[must_use]
+pub struct Shove(Option<(u64, u32)>);
+
+impl Shove {
+    pub fn enter(mover: u32, source: u32) -> Self {
+        Self(SHOVE.with(|active| active.replace(Some((u64::from(mover), source)))))
+    }
+}
+
+impl Drop for Shove {
+    fn drop(&mut self) {
+        SHOVE.with(|active| active.set(self.0));
+    }
+}
+
 /// Calls `f` with each collider of `index` meeting `area` that `mover` collides with, until it
 /// answers true. `mover` 0 is exempt from nothing.
 fn visit(index: &Index, area: Aabb, mover: u64, mut f: impl FnMut(&Placed) -> bool) {
@@ -256,12 +275,12 @@ fn mover_of(entity: EntityIdentity) -> u64 {
 
 /// Calls `f` with each collider of the level meeting `area` that `mover` collides with, until it
 /// answers true: where the colliders stand now, or, inside [`at_age`], where they stood.
-fn visit_scene(area: Aabb, mover: u64, mut f: impl FnMut(&OrientedCollider) -> bool) {
+fn visit_scene(area: Aabb, mover: u64, mut f: impl FnMut(u32, &OrientedCollider) -> bool) {
     if let Some(age) = AGE.with(Cell::get)
         && let Some(history) = HISTORY.with(|cell| cell.borrow().clone())
     {
         let history = history.borrow();
-        for tracked in history.tracked.values() {
+        for (&id, tracked) in &history.tracked {
             if !tracked.swept.is_some_and(|swept| swept.intersects(area))
                 || (mover != 0 && tracked.exempt.iter().any(|id| u64::from(*id) == mover))
             {
@@ -271,13 +290,13 @@ fn visit_scene(area: Aabb, mover: u64, mut f: impl FnMut(&OrientedCollider) -> b
                 continue;
             };
             let collider = OrientedCollider::new(frame, tracked.boxes.clone());
-            if collider.world_bounds().is_some_and(|w| w.intersects(area)) && f(&collider) {
+            if collider.world_bounds().is_some_and(|w| w.intersects(area)) && f(id, &collider) {
                 return;
             }
         }
         return;
     }
-    PLACED.with_borrow(|current| visit(&current.index, area, mover, |p| f(&p.collider)));
+    PLACED.with_borrow(|current| visit(&current.index, area, mover, |p| f(p.id, &p.collider)));
 }
 
 /// The entity whose move [`as_mover`] names, or 0 outside one.
@@ -291,8 +310,11 @@ pub fn mover() -> u64 {
 pub fn near(entity: EntityIdentity, bounds: Aabb, out: &mut Vec<OrientedCollider>) {
     // EntityGetter.getEntityCollisions expands its query by 1e-7.
     let area = bounds.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-    visit_scene(area, mover_of(entity), |collider| {
-        out.push(collider.clone());
+    let mover = mover_of(entity);
+    visit_scene(area, mover, |id, collider| {
+        if SHOVE.with(Cell::get) != Some((mover, id)) {
+            out.push(collider.clone());
+        }
         false
     });
 }
@@ -302,7 +324,7 @@ pub fn near(entity: EntityIdentity, bounds: Aabb, out: &mut Vec<OrientedCollider
 pub fn overlaps(entity: EntityIdentity, bounds: Aabb) -> bool {
     let area = bounds.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
     let mut hit = false;
-    visit_scene(area, mover_of(entity), |collider| {
+    visit_scene(area, mover_of(entity), |_, collider| {
         hit = collider.intersects(bounds);
         hit
     });
@@ -316,7 +338,7 @@ pub fn overlaps(entity: EntityIdentity, bounds: Aabb) -> bool {
 pub fn new_collision(entity: EntityIdentity, old: Aabb, new: Aabb) -> bool {
     let area = new.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
     let mut found = false;
-    visit_scene(area, mover_of(entity), |collider| {
+    visit_scene(area, mover_of(entity), |_, collider| {
         collider.overlapping(new, |index| {
             found = !collider.overlaps_box(index, old);
             found
