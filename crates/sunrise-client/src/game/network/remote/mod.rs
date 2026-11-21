@@ -1024,7 +1024,7 @@ impl Game<'_> {
                 let delay = self.debug_millis() - p.time;
                 self.debug_charts.ping.log(delay);
             }
-            C::DebugSample(p) if p.kind == 0 => self.debug_charts.log_remote_sample(&p.sample),
+            C::DebugSample(p) => self.debug_charts.log_remote_sample(&p.sample)?,
             C::Login(p) => self.apply_login_packet(p),
             C::Respawn(p) => self.apply_respawn_packet(p),
             C::PlayerPosition(p) => self.remote_teleport(&p)?,
