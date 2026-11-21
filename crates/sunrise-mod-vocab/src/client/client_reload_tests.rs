@@ -10,7 +10,10 @@ fn files() -> FileToIdConverter {
 fn registry_views_and_explicit_order_before_vanilla() {
     let mut listeners = ClientListenerRegistry::new();
     let model_manager = VanillaClientListeners::model_manager();
-    assert_eq!(listeners.get_registry(), [model_manager.clone()]);
+    assert_eq!(
+        listeners.get_registry(),
+        std::slice::from_ref(&model_manager)
+    );
     assert!(listeners.get_graph().is_empty());
 
     let first = Arc::new(Boundary);

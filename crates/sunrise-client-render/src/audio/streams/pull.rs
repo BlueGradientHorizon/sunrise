@@ -755,7 +755,7 @@ mod tests {
             fn read(&mut self, buffer: &mut [i16]) -> usize {
                 assert!(buffer.len() <= SCRATCH_SAMPLES);
                 let frames = (END - self.next).min(buffer.len() / 2);
-                for frame in buffer[..frames * 2].chunks_exact_mut(2) {
+                for frame in buffer[..frames * 2].as_chunks_mut::<2>().0 {
                     let left = signal(self.next);
                     frame.copy_from_slice(&[left, -left]);
                     self.next += 1;
@@ -802,7 +802,7 @@ mod tests {
         // Source positions of successive outputs. At the third position, the fractional
         // offset would need source frame 779,133, so EOF instead holds frame 779,132.
         let expected = [(0, 0), (389_566, 2_145), (779_132, 0)];
-        for (frame, (index, remainder)) in samples.chunks_exact(2).zip(expected) {
+        for (frame, (index, remainder)) in samples.as_chunks::<2>().0.iter().zip(expected) {
             let a = f32::from(signal(index)) / 32768.0;
             let b = f32::from(signal(index + 1)) / 32768.0;
             let left = a + (b - a) * (remainder as f32 / OUTPUT_RATE as f32);
