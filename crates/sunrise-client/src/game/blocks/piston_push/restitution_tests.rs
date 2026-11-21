@@ -2,22 +2,33 @@ use super::*;
 use crate::game::boats::Boat;
 use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 use mod_api::{
-    BlockPart, BounceRestitutionEvent, Flow, Hooks, LevelSide, Registrar, RegistrationContext,
+    BlockPart, BounceOnEvent, BounceRestitutionEvent, Flow, Hooks, LevelRandomHost, LevelSide,
+    Registrar, RegistrationContext,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::chunk::Chunk;
 
 #[derive(Clone, Default)]
-struct PushBounce(Arc<Mutex<Vec<(bool, i32)>>>);
+struct PushBounce {
+    restitution: Arc<Mutex<Vec<(bool, i32)>>>,
+    landings: Arc<Mutex<Vec<(i32, f64)>>>,
+}
 
 #[mod_api::sunrise_part]
 impl BlockPart for PushBounce {
     fn bounce_restitution(&self, side: LevelSide<'_>, event: &mut BounceRestitutionEvent<'_>) {
-        self.0
+        self.restitution
             .lock()
             .unwrap()
             .push((matches!(side, LevelSide::Client(_)), event.entity));
         event.factor = 1.0;
+    }
+
+    fn bounce_on(&self, _: &mut dyn LevelRandomHost, event: &mut BounceOnEvent<'_>) {
+        self.landings
+            .lock()
+            .unwrap()
+            .push((event.entity, event.fall_distance));
     }
 }
 
@@ -85,6 +96,7 @@ fn a_bounce_listener_can_remove_a_later_lid_target() {
                 crate::game::native_hooks::install_block_contact_hooks();
                 with_game(|game| {
                     boats_over_glass(game, &[(71, 4), (72, 7), (73, 10)]);
+                    game.boats.update(0, |boat| boat.fall_distance = 5.0);
                     let area = Aabb::new(Vec3::new(3.0, 64.5, 3.0), Vec3::new(12.0, 65.0, 6.0));
                     sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         game.lid_push(Lid::Box, area, Vec3::new(0.0, -0.5, 0.0));
@@ -101,7 +113,11 @@ fn a_bounce_listener_can_remove_a_later_lid_target() {
                             assert!(boat.velocity.y > 0.0);
                         }
                     }
-                    assert_eq!(*part.0.lock().unwrap(), [(false, 71), (false, 73)]);
+                    assert_eq!(
+                        *part.restitution.lock().unwrap(),
+                        [(false, 71), (false, 73)]
+                    );
+                    assert_eq!(*part.landings.lock().unwrap(), [(71, 0.0), (73, 0.0)]);
                 });
             });
         },
@@ -125,6 +141,8 @@ fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
                     game.remote.as_mut().unwrap().first_passenger = true;
                     game.riding = Some(71);
                     boats_over_glass(game, &[(71, 4), (72, 7)]);
+                    game.boats.update(0, |boat| boat.fall_distance = 5.0);
+                    game.boats.update(1, |boat| boat.fall_distance = 5.0);
                     let facing = Direction::ALL
                         .iter()
                         .position(|d| *d == Direction::Down)
@@ -137,13 +155,41 @@ fn a_downward_shulker_box_lid_bounces_only_the_locally_driven_boat() {
                         )]);
                     });
                     assert_eq!(game.boats[0].position.y, 64.0);
+                    assert_eq!(game.boats[0].fall_distance, 0.0);
                     assert!(game.boats[0].velocity.y > 0.0);
-                    assert_eq!(game.boats[1].position.y, 64.25);
+                    assert_eq!(game.boats[1].position.y, 64.0);
+                    assert!(game.boats[1].ground.on_ground);
+                    assert_eq!(game.boats[1].fall_distance, 5.0);
                     assert_eq!(game.boats[1].velocity.y, -1.0);
-                    assert_eq!(*part.0.lock().unwrap(), [(true, 71)]);
+                    assert_eq!(*part.restitution.lock().unwrap(), [(true, 71)]);
                     assert!(!game.persist.sync_body_position.contains(&71));
                 });
             });
         },
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_shulker_box_lid_stops_a_driven_boat_at_another_boat() {
+    with_client_game(|game| {
+        game.init_remote_for_replay().unwrap();
+        game.remote.as_mut().unwrap().first_passenger = true;
+        game.riding = Some(71);
+        boats_over_glass(game, &[(71, 4), (72, 6)]);
+        game.boats.update(1, |boat| boat.position.x = 6.125);
+        let facing = Direction::ALL
+            .iter()
+            .position(|d| *d == Direction::East)
+            .unwrap() as u8;
+        game.push_shulker_local(vec![(
+            [4, 64, 4],
+            facing,
+            [4.125, 64.25, 3.5, 4.625, 64.75, 5.5],
+        )]);
+        // The 1.375-wide hulls are 1.625 blocks apart. The first boat
+        // moves 0.25 blocks before contact, not the lid's requested 0.51.
+        assert_eq!(game.boats[0].position.x, 4.75);
+        assert_eq!(game.boats[1].position.x, 6.125);
+    });
 }
