@@ -2179,6 +2179,44 @@ pub struct HudBatch {
     /// Player object profiles encountered while painting text this frame.
     pub inline_profiles: Vec<std::sync::Arc<serde_json::Value>>,
 }
+
+struct HudTail {
+    vertices: usize,
+    pictures: usize,
+    patches: usize,
+    image_patches: usize,
+    inline_profiles: usize,
+    blends: usize,
+    last_blend: Option<(std::ops::Range<u32>, Blend)>,
+    end_portal: EndPortalFill,
+    glint_alpha: f32,
+    blur_at: u32,
+}
+
+struct HudDrawRollback<'a> {
+    batch: &'a mut HudBatch,
+    tail: Option<HudTail>,
+}
+
+impl Drop for HudDrawRollback<'_> {
+    fn drop(&mut self) {
+        let Some(tail) = self.tail.take() else { return };
+        self.batch.vertices.truncate(tail.vertices);
+        self.batch.pictures.truncate(tail.pictures);
+        self.batch.patches.truncate(tail.patches);
+        self.batch.image_patches.truncate(tail.image_patches);
+        self.batch.inline_profiles.truncate(tail.inline_profiles);
+        self.batch.blends.truncate(tail.blends);
+        // `blend_since` can extend the preceding run instead of appending a new one.
+        if let Some(last) = tail.last_blend {
+            self.batch.blends[tail.blends - 1] = last;
+        }
+        self.batch.end_portal = tail.end_portal;
+        self.batch.glint_alpha = tail.glint_alpha;
+        self.batch.blur_at = tail.blur_at;
+    }
+}
+
 /// How a run of HUD vertices blends and tests depth.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Blend {
@@ -2245,6 +2283,37 @@ impl HudBatch {
             inline_profiles: Vec::new(),
         }
     }
+    /// Paint an append-only group, restoring the batch tail and the atlas font on `Err` or
+    /// unwind. Nested groups use the same batch and font; a successful child is still undone
+    /// if its parent aborts. Requested glyph uploads are appended only on outermost success.
+    pub fn draw_scope<T, E>(
+        &mut self,
+        font: &crate::font::Font,
+        draw: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let tail = HudTail {
+            vertices: self.vertices.len(),
+            pictures: self.pictures.len(),
+            patches: self.patches.len(),
+            image_patches: self.image_patches.len(),
+            inline_profiles: self.inline_profiles.len(),
+            blends: self.blends.len(),
+            last_blend: self.blends.last().cloned(),
+            end_portal: self.end_portal,
+            glint_alpha: self.glint_alpha,
+            blur_at: self.blur_at,
+        };
+        let mut rollback = HudDrawRollback {
+            batch: self,
+            tail: Some(tail),
+        };
+        let font = font.begin_draw();
+        let value = draw(rollback.batch)?;
+        rollback.batch.patches.extend(font.commit());
+        rollback.tail = None;
+        Ok(value)
+    }
+
     /// Draw the vertices added since `start` with the inverting blend.
     pub fn invert_since(&mut self, start: usize) {
         self.blend_since(start, Blend::Invert);
@@ -2493,9 +2562,6 @@ impl HudBatch {
             self.rect_uv(x, y, w, r.h as f32, r, u32::MAX);
         }
     }
-    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
-    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
-    /// triangles) are clipped as polygons.
     /// Scale the vertices pushed since `start` about `(cx, cy)` (a GUI pose
     /// matrix of translate, scale, translate back).
     pub fn scale_since(&mut self, start: usize, cx: f32, cy: f32, sx: f32, sy: f32) {
@@ -2504,6 +2570,9 @@ impl HudBatch {
             v.pos[1] = cy + (v.pos[1] - cy) * sy;
         }
     }
+    /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
+    /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
+    /// triangles) are clipped as polygons.
     pub fn clip_since(&mut self, start: usize, x0: f32, y0: f32, x1: f32, y1: f32) {
         let quads: Vec<[HudVertex; 6]> = self.vertices[start..].as_chunks::<6>().0.to_vec();
         self.vertices.truncate(start);
@@ -2575,13 +2644,19 @@ impl HudBatch {
             self.vertices.extend([0, 1, 2, 0, 2, 3].map(|i| c[i]));
         }
         moved.push(self.vertices.len() as u32);
-        let at = |v: u32| moved[((v as usize).saturating_sub(start) / 6).min(moved.len() - 1)];
-        for (range, _) in &mut self.blends {
-            if range.start as usize >= start {
-                *range = at(range.start)..at(range.end);
-            }
-        }
-        self.blends.retain(|(range, _)| !range.is_empty());
+        let at = |v: u32| moved[((v as usize - start) / 6).min(moved.len() - 1)];
+        let start = start as u32;
+        let first = self.blends.partition_point(|(range, _)| range.end <= start);
+        self.blends
+            .extract_if(first.., |(range, _)| {
+                // A coalesced run can straddle the start: its prefix stays put.
+                if range.start >= start {
+                    range.start = at(range.start);
+                }
+                range.end = at(range.end);
+                range.is_empty()
+            })
+            .for_each(drop);
     }
     /// `blit` of the top-left `w x h` texels of a `tw x th` texture.
     pub fn sprite_region(
@@ -4661,6 +4736,135 @@ mod tests {
             batch.blends,
             [(0..batch.vertices.len() as u32, Blend::Additive)]
         );
+    }
+
+    #[test]
+    fn clip_since_remaps_only_the_scoped_part_of_a_coalesced_blend() {
+        let mut batch = HudBatch::scratch([320, 240]);
+        let quad = |batch: &mut HudBatch, x: f32, y: f32| {
+            batch.quad(
+                [[x, y], [x + 4.0, y], [x + 4.0, y + 4.0], [x, y + 4.0]],
+                [[0.0; 2]; 4],
+                u32::MAX,
+            );
+        };
+        quad(&mut batch, 32.0, 32.0);
+        batch.invert_since(0);
+        let start = batch.vertices.len();
+        quad(&mut batch, -8.0, 0.0); // outside
+        quad(&mut batch, 0.0, 0.0); // cut at x = 2
+        batch.invert_since(start);
+        assert_eq!(batch.blends, [(0..18, Blend::Invert)]);
+
+        batch.clip_since(start, 2.0, 0.0, 8.0, 8.0);
+        let positions: Vec<_> = batch.vertices.iter().map(|v| v.pos).collect();
+        assert_eq!(
+            positions,
+            [
+                [32.0, 32.0],
+                [36.0, 32.0],
+                [36.0, 36.0],
+                [32.0, 32.0],
+                [36.0, 36.0],
+                [32.0, 36.0],
+                [2.0, 0.0],
+                [4.0, 0.0],
+                [4.0, 4.0],
+                [2.0, 0.0],
+                [4.0, 4.0],
+                [2.0, 4.0],
+            ]
+        );
+        assert_eq!(batch.blends, [(0..12, Blend::Invert)]);
+
+        let start = batch.vertices.len();
+        quad(&mut batch, 0.0, 0.0);
+        batch.invert_since(start);
+        batch.clip_since(start, 2.0, 0.0, 2.0, 8.0); // empty scissor
+        quad(&mut batch, 16.0, 16.0);
+        assert_eq!(
+            batch.runs(),
+            [(0..12, Blend::Invert), (12..18, Blend::Alpha)]
+        );
+        assert_eq!(batch.vertices[12].pos, [16.0, 16.0]);
+    }
+
+    #[test]
+    fn draw_scope_rollback_restores_the_prior_batch_tail() {
+        let font = crate::font::Font::metrics(&ResourceSource::indexed(Default::default()));
+        let mut batch = HudBatch::scratch([320, 240]);
+        let corners = [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
+        let portal = EndPortalFill {
+            game_time: 0.5,
+            ..Default::default()
+        };
+        batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+        batch.invert_since(0);
+        batch.end_portal = portal;
+        batch.glint_alpha = 0.5;
+        batch.blur_at = 6;
+        let profile = Arc::new(serde_json::json!({"name":"baseline"}));
+        batch.inline_profiles.push(profile.clone());
+        assert_eq!(
+            batch.draw_scope(&font, |batch| {
+                batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+                batch.invert_since(6);
+                batch.quad(corners, [[0.0; 2]; 4], u32::MAX);
+                batch.blend_since(12, Blend::Additive);
+                batch.end_portal = EndPortalFill::default();
+                batch.glint_alpha = 0.25;
+                batch.blur_at = 18;
+                batch.pictures.push(Arc::new(pictures::Picture {
+                    id: 1,
+                    width: 1,
+                    height: 1,
+                    pixels: vec![255; 4],
+                    flags: TextureFlags::default(),
+                }));
+                batch.patches.push(crate::font::Patch {
+                    x: 4,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                    rgba: vec![255; 4],
+                });
+                batch.image_patches.push(dynamic_textures::ImagePatch {
+                    origin: [0, 4],
+                    size: [1, 1],
+                    rgba: Arc::new([255; 4]),
+                });
+                batch
+                    .inline_profiles
+                    .push(Arc::new(serde_json::json!({"name":"scoped"})));
+                Err::<(), _>("abort")
+            }),
+            Err("abort")
+        );
+        batch.quad(corners.map(|[x, y]| [x + 8.0, y]), [[0.0; 2]; 4], u32::MAX);
+        assert_eq!(batch.runs(), [(0..6, Blend::Invert), (6..12, Blend::Alpha)]);
+        assert_eq!(
+            batch.vertices[..6]
+                .iter()
+                .map(|v| v.pos)
+                .collect::<Vec<_>>(),
+            [
+                [0.0, 0.0],
+                [4.0, 0.0],
+                [4.0, 4.0],
+                [0.0, 0.0],
+                [4.0, 4.0],
+                [0.0, 4.0]
+            ]
+        );
+        assert_eq!(batch.vertices[6].pos, [8.0, 0.0]);
+        assert_eq!(
+            (batch.end_portal, batch.glint_alpha, batch.blur_at),
+            (portal, 0.5, 6)
+        );
+        assert!(batch.pictures.is_empty());
+        assert!(batch.patches.is_empty());
+        assert!(batch.image_patches.is_empty());
+        assert_eq!(batch.inline_profiles, [profile]);
     }
 
     #[test]
