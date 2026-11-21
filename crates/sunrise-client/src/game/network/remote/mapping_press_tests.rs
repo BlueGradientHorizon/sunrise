@@ -253,7 +253,9 @@ fn a_screen_drops_the_clicks_and_holds_nothing() {
 }
 
 /// A resolved hotbar mapping selects its own slot on the next tick even after rebinding.
-/// Unknown names refuse resolution, while unavailable actions refuse the write without acting.
+/// Unknown names refuse resolution, every resolved vanilla mapping accepts `is_down`, `set_down`
+/// and `click` under `ClientSetup` access (with or without a world), and unavailable phases
+/// refuse without acting.
 #[test]
 #[ignore = "daily"]
 fn the_host_presses_by_name_and_refuses_the_others() {
@@ -274,37 +276,48 @@ fn the_host_presses_by_name_and_refuses_the_others() {
                 Err(MappingError::Unknown { key: key.into() })
             );
         }
+        // Every resolved vanilla mapping supports uniform `is_down`, `set_down` and `click`.
         for key in [
             "key.screenshot",
             "key.fullscreen",
             "key.chat",
             "key.spectatorHotbar",
+            "key.pickItem",
         ] {
             let mapping = game.vanilla_key_mapping(key).unwrap();
-            let refused = Err(MappingError::NotGameplay { key: key.into() });
-            assert_eq!(mapping.set_down(game, true), refused);
-            assert_eq!(mapping.click(game), refused);
+            assert_eq!(mapping.is_down(game), Ok(false));
+            assert_eq!(mapping.set_down(game, true), Ok(()));
+            assert_eq!(mapping.is_down(game), Ok(true));
+            assert_eq!(mapping.set_down(game, false), Ok(()));
+            assert_eq!(mapping.is_down(game), Ok(false));
+            assert_eq!(mapping.click(game), Ok(()));
+            if key == "key.chat" {
+                assert_eq!(game.screen, Screen::Chat);
+                game.screen = Screen::Playing;
+            }
         }
-        let pick = game.vanilla_key_mapping("key.pickItem").unwrap();
-        assert_eq!(
-            pick.set_down(game, true),
-            Err(MappingError::ClickOnly {
-                key: "key.pickItem".into()
-            })
-        );
-        assert_eq!(pick.click(game), Ok(()));
 
         let forward = game.vanilla_key_mapping("key.forward").unwrap();
+        // Registration phase is outside `ClientSetup` access.
         {
-            let _phase = PhaseOwner::scope(ModPhase::Setup);
+            let _phase = PhaseOwner::scope(ModPhase::Registration);
             assert_eq!(forward.set_down(game, true), Err(MappingError::Unavailable));
             assert_eq!(hotbar.click(game), Err(MappingError::Unavailable));
         }
         assert_eq!(forward.is_down(game), Ok(false));
-        assert_eq!(game.hotbar_presses[2].count(), 0);
+        assert_eq!(game.hotbar_presses[2], 0);
+        // `ClientSetup` allows setup-phase and no-world logical state writes.
+        {
+            let _phase = PhaseOwner::scope(ModPhase::Setup);
+            assert_eq!(forward.set_down(game, true), Ok(()));
+            assert_eq!(forward.is_down(game), Ok(true));
+            assert_eq!(forward.set_down(game, false), Ok(()));
+        }
         game.player = None;
-        assert_eq!(forward.set_down(game, true), Err(MappingError::NoWorld));
-        assert_eq!(hotbar.click(game), Err(MappingError::NoWorld));
+        assert_eq!(forward.set_down(game, true), Ok(()));
+        assert_eq!(forward.is_down(game), Ok(true));
+        assert_eq!(forward.set_down(game, false), Ok(()));
+        assert_eq!(hotbar.click(game), Ok(()));
     });
 }
 

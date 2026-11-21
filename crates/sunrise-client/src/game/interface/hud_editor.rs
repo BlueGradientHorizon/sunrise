@@ -60,6 +60,7 @@ impl Game<'_> {
             return;
         }
         self.mod_keys.release_all();
+        self.vanilla_mappings.release_all(self.toggle_options());
         self.keys.clear();
         self.pvp.editor = Some(HudEditor {
             from_options,

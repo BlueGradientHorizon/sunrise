@@ -69,12 +69,12 @@ impl Game<'_> {
         mapping: VanillaKeyMappingRef,
     ) -> Result<bool, MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        match (slot.definition().2, slot.default_input()) {
-            ("movement", Some(Ok(key))) => Ok(self.movement_key_held(key)),
-            ("gameplay", Some(Err(MouseButton::Left))) => Ok(self.left),
-            ("gameplay", Some(Err(MouseButton::Right))) => Ok(self.right),
-            _ => Err(MappingError::NoLogicalState),
-        }
+        Ok(match (slot.definition().2, slot.default_input()) {
+            ("movement", Some(Ok(key))) => self.movement_key_held(key),
+            ("gameplay", Some(Err(MouseButton::Left))) => self.left,
+            ("gameplay", Some(Err(MouseButton::Right))) => self.right,
+            _ => self.vanilla_mappings.is_down(slot),
+        })
     }
 
     pub(in crate::game) fn vanilla_key_mapping_physical_down(

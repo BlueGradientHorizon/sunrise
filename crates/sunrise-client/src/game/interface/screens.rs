@@ -851,6 +851,7 @@ impl Game<'_> {
         self.ui.death_text = None;
         // LocalPlayer.respawn: KeyMapping.resetToggleKeys.
         self.toggles.respawn();
+        self.vanilla_mappings.reset_toggle_keys();
         self.remote_respawn();
         Ok(())
     }

@@ -98,30 +98,15 @@ pub struct ModKeyMappingRef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MappingError {
-    /// A gameplay write needs a player in a world.
-    NoWorld,
     /// Resolution found no vanilla mapping with the given name.
     Unknown {
         /// The name asked for.
-        key: String,
-    },
-    /// The resolved mapping cannot be pressed as a movement, gameplay or inventory mapping
-    /// (`key.screenshot`, `key.fullscreen`, `key.chat`...).
-    NotGameplay {
-        /// The mapping's canonical name.
-        key: String,
-    },
-    /// The mapping accepts a click but has no held state (`key.pickItem`).
-    ClickOnly {
-        /// The mapping's canonical name.
         key: String,
     },
     /// The handle does not belong to the current client or no longer identifies a mapping.
     Stale,
     /// No client mapping backend is available in this host or phase.
     Unavailable,
-    /// The mapping exists, but the client does not track a readable logical held state for it.
-    NoLogicalState,
     /// The translated binding label could not be represented as API text.
     Label(TextFormError),
 }
@@ -147,15 +132,9 @@ impl From<TextFormError> for MappingError {
 impl std::fmt::Display for MappingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoWorld => f.write_str("no player is in a world"),
             Self::Unknown { key } => write!(f, "unknown vanilla mapping {key:?}"),
-            Self::NotGameplay { key } => write!(f, "{key:?} is not a gameplay mapping"),
-            Self::ClickOnly { key } => write!(f, "{key:?} accepts clicks only"),
             Self::Stale => f.write_str("stale vanilla mapping handle"),
             Self::Unavailable => f.write_str("client mappings are unavailable"),
-            Self::NoLogicalState => {
-                f.write_str("the client does not track this mapping's held state")
-            }
             Self::Label(error) => write!(f, "invalid mapping label: {error}"),
         }
     }

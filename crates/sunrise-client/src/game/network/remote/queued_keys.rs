@@ -1,20 +1,16 @@
 //! The keys whose presses send a packet on a server's client (swap hands, drop, a mount's
-//! inventory): queued by the key handling, acted on in the tick's `handleKeybinds` phase.
+//! inventory): counted by the key handling, drained completely in the tick's `handleKeybinds`
+//! phase (`while (key.consumeClick())`).
 use super::{Game, S};
-use sunrise_client::input_queue::QueueLimits;
 use sunrise_protocol::packets::play;
 use winit::keyboard::KeyCode;
 
-/// The bounds of `Remote::pending_keys`: a tick acts on 64 presses, oldest first, and 1024 wait at
-/// most. A player presses a few keys a tick.
-pub(super) const PENDING_KEYS: QueueLimits = QueueLimits {
-    name: "remote key presses",
-    max_len: 1024,
-    per_tick: 64,
-};
+/// `handleKeybinds`' order for the keys counted here: the inventory key, swap hands, then drop.
+pub(super) const KEY_ORDER: [KeyCode; 3] = [KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyQ];
 
-/// `handleKeybinds`' order for the keys queued here: the inventory key, swap hands, then drop.
-const KEY_ORDER: [KeyCode; 3] = [KeyCode::KeyE, KeyCode::KeyF, KeyCode::KeyQ];
+pub(super) fn key_index(key: KeyCode) -> Option<usize> {
+    KEY_ORDER.iter().position(|&k| k == key)
+}
 
 impl Game<'_> {
     /// handleKeybinds' keybind polls, before its attack, use and pick: each key's presses
@@ -25,10 +21,10 @@ impl Game<'_> {
         let pending = self
             .remote
             .as_mut()
-            .map(|r| r.pending_keys.take_tick())
-            .unwrap_or_default();
-        for key in KEY_ORDER {
-            for _ in pending.iter().filter(|&&pressed| pressed == key) {
+            .map(|r| std::mem::take(&mut r.pending_keys))
+            .unwrap_or([0; 3]);
+        for (key, count) in KEY_ORDER.into_iter().zip(pending) {
+            for _ in 0..count {
                 self.remote_key_press(key);
             }
         }

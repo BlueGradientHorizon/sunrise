@@ -14,12 +14,12 @@ sunrise-client game::agent::face_pick_tests::a_turn_with_motion_replies_after_th
 sunrise-client game::agent::face_pick_tests::an_ordinary_click_attacks_what_the_pick_holds lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_checks_its_own_click_behind_a_tick_of_player_clicks lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_click_drained_by_an_item_in_use_is_not_a_later_click lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_drains_behind_a_large_player_burst lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_drops_its_own_click_not_a_players_in_the_same_tick lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_ends_without_a_click_on_death_or_without_ticks lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_follows_the_listener_decision lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_hits_the_entity_it_turned_to lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily resources
-sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_full_click_queue lib daily resources
 sunrise-client game::agent::face_pick_tests::attack_by_id_reports_the_pick_the_click_was_taken_with lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_after_a_tick_pick_with_no_frame lib daily resources
 sunrise-client game::agent::face_pick_tests::look_at_entity_replies_with_the_entity_it_turned_to lib daily resources

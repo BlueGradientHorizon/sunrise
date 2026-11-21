@@ -528,12 +528,14 @@ impl KeyBinds {
             .map(|slot| slot.definition().0)
             .collect()
     }
+    /// Every slot bound to `key`, in [`MAPPINGS`] order.
+    pub fn slots_for<'a>(&'a self, key: &'a str) -> impl Iterator<Item = VanillaMappingSlot> + 'a {
+        VanillaMappingSlot::all().filter(move |&slot| self.binding_at(slot) == key)
+    }
     /// Every mapping a physical input triggers, in list order: like
     /// `KeyMapping.set`/`click`, one key drives all the mappings bound to it.
     pub fn mappings_for<'a>(&'a self, key: &'a str) -> impl Iterator<Item = &'static str> + 'a {
-        VanillaMappingSlot::all()
-            .filter(move |&slot| self.binding_at(slot) == key)
-            .map(|slot| slot.definition().0)
+        self.slots_for(key).map(|slot| slot.definition().0)
     }
     /// The mappings bound to `key` that [`KeyBinds::translate_all`] follows:
     /// all but the debug keys. Those act only with F3 held

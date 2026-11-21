@@ -5,7 +5,6 @@ ids = [
     "type:MappingError",
     "type:MappingError.Stale",
     "type:MappingError.Unavailable",
-    "type:MappingError.NoLogicalState",
     "type:MappingError.Label",
     "type:VanillaKeyMappingRef",
     "method:prelude::ClientInputClientHost::mapping",
@@ -50,7 +49,7 @@ Vanilla mappings: in `client_setup`, call `host.vanilla_key_mapping(name)` with 
 | `host.set_mapping_down(name, down)` | `mapping.set_down(host, down)` |
 | `host.click_mapping(name)` | `mapping.click(host)` |
 
-`is_down` and `physical_down` return `Result<bool, MappingError>`. `NoLogicalState` means the name resolved but the game does not track logical held state for it; use `physical_down` only when physical state is what you want. An unbound key yields `Ok(false)` from `physical_down`. `binding` returns `Result<&str, MappingError>`. Compare the borrowed name before the host borrow ends (and before taking a mutable borrow for a write); copy it explicitly if you need to keep it. `translated_key_message` returns the current Controls label as `Text`, with `MappingError::Label(error)` instead of a bare `TextFormError` on conversion failure. Gameplay writes require a world-phase host and a player. Handle `Unavailable` outside that phase and `NoWorld` without a player. `NotGameplay { key }` still refuses non-gameplay categories; use `click` for `key.pickItem`, whose `set_down` returns `ClickOnly { key }`.
+`is_down` and `physical_down` return `Result<bool, MappingError>`. Every resolved vanilla mapping tracks uniform logical held state (`KeyMapping.isDown`); `physical_down` checks only the current physical binding (an unbound key yields `Ok(false)`). `binding` returns `Result<&str, MappingError>`. Compare the borrowed name before the host borrow ends (and before taking a mutable borrow for a write); copy it explicitly if you need to keep it. `translated_key_message` returns the current Controls label as `Text`, with `MappingError::Label(error)` instead of a bare `TextFormError` on conversion failure. `set_down` and `click` accept any resolved vanilla mapping under `ClientSetup` access (returning `Unavailable` outside client-setup/world phases or `Stale` for a foreign client). See also `debt-fa-queued-vanilla-key-mappings.toml`.
 
 Registered mod mappings: still declare the binding with `Registrar::register_key_mapping`. In `client_setup`, call `host.mod_key_mapping(owner, id)` and keep the `ModKeyMappingRef` from `Ok(mapping)`. Handle `ModKeyRefusal::NotRegistered` here instead of an operation (or an old `None` or `false`). In later callbacks:
 

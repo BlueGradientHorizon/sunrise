@@ -114,7 +114,21 @@ impl Game<'_> {
     pub(super) fn restore_held_keys(&mut self) {
         let held: Vec<KeyCode> = self.physical_keys.iter().copied().collect();
         let toggles = [self.settings.toggle_crouch, self.settings.toggle_sprint];
+        let options = self.toggle_options();
         for key in held {
+            if let Some(name) = sunrise_client::keybinds::key_name(key) {
+                for slot in self.settings.keys.slots_for(name) {
+                    let option =
+                        sunrise_client::keymapping::toggle_index(slot).is_some_and(|i| options[i]);
+                    if self
+                        .vanilla_mappings
+                        .state(slot)
+                        .should_set_on_ingame_focus(option)
+                    {
+                        self.vanilla_mappings.set_down(slot, true, option);
+                    }
+                }
+            }
             for mapped in self.settings.keys.translate_all(key) {
                 match mapped {
                     Ok(slot_key @ (KeyCode::ShiftLeft | KeyCode::ControlLeft)) => {

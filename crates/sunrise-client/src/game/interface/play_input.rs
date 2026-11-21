@@ -32,6 +32,14 @@ fn studio_freecam_movement_key(key: KeyCode) -> bool {
 }
 
 impl Game<'_> {
+    pub(super) fn toggle_options(&self) -> [bool; 4] {
+        [
+            self.settings.toggle_crouch,
+            self.settings.toggle_sprint,
+            self.settings.toggle_attack,
+            self.settings.toggle_use,
+        ]
+    }
     /// Keep the held-key state of toggled sneak and sprint in step with their mapping.
     /// `KeyMapping.resetToggleKeys`: every toggle mapping up, and the latched sneak and sprint
     /// keys with it.
@@ -39,6 +47,7 @@ impl Game<'_> {
         for key in &mut self.toggles.0 {
             key.reset();
         }
+        self.vanilla_mappings.reset_toggle_keys();
         self.sync_toggle(0);
         self.sync_toggle(1);
         self.left = false;
@@ -53,6 +62,8 @@ impl Game<'_> {
     pub(super) fn sync_toggle(&mut self, slot: usize) {
         let key = [KeyCode::ShiftLeft, KeyCode::ControlLeft][slot];
         self.keys.sync_latch(key, self.toggles.is_down(slot));
+        self.vanilla_mappings
+            .sync_toggle_slot(slot, &self.toggles.0[slot]);
     }
     pub(super) fn update_modifiers(&mut self, state: winit::keyboard::ModifiersState) {
         self.modifiers = state;
@@ -161,17 +172,28 @@ impl Game<'_> {
         pressed: bool,
         repeat: bool,
     ) -> Result<()> {
+        let action = match (pressed, repeat) {
+            (false, _) => KeyAction::Release,
+            (_, false) => KeyAction::Press,
+            (_, true) => KeyAction::Repeat,
+        };
+        if let Some(name) = sunrise_client::keybinds::key_name(key) {
+            let screen_open = self.mod_mappings_screen_open();
+            let options = self.toggle_options();
+            self.vanilla_mappings.key_event(
+                &self.settings.keys,
+                name,
+                action,
+                screen_open,
+                options,
+            );
+        }
         for mapped in self.settings.keys.translate_all(key) {
             match mapped {
                 Ok(k) => {
                     self.mapped_key(k, pressed, repeat, key, Source::Keyboard)?;
                 }
                 Err(button) => {
-                    let action = match (pressed, repeat) {
-                        (false, _) => KeyAction::Release,
-                        (_, false) => KeyAction::Press,
-                        (_, true) => KeyAction::Repeat,
-                    };
                     if let Some(pressed) = keyboard_button(
                         gameplay_has_keyboard(
                             self.screen,
@@ -199,6 +221,15 @@ impl Game<'_> {
         input: &str,
         pressed: bool,
     ) -> Result<()> {
+        let screen_open = self.mod_mappings_screen_open();
+        let options = self.toggle_options();
+        self.vanilla_mappings.mouse_event(
+            &self.settings.keys,
+            input,
+            pressed,
+            screen_open,
+            options,
+        );
         for mapped in self.settings.keys.translate_mouse_all(button) {
             match mapped {
                 Err(b) if !self.shared_default_acts(b, Some(input)) => {}
@@ -299,18 +330,24 @@ impl Game<'_> {
         }
         self.was_playing = playing;
         if playing {
-            self.toggles.screen_closed([
-                self.settings.toggle_crouch,
-                self.settings.toggle_sprint,
-                self.settings.toggle_attack,
-                self.settings.toggle_use,
-            ]);
+            let options = self.toggle_options();
+            self.toggles.screen_closed(options);
+            self.vanilla_mappings
+                .restore_toggles_on_screen_closed(options);
         } else {
             self.release_screen_mappings();
             return;
         }
         self.sync_toggle(0);
         self.sync_toggle(1);
+        self.vanilla_mappings.sync_toggle_slot(
+            sunrise_client::keymapping::ATTACK,
+            &self.toggles.0[sunrise_client::keymapping::ATTACK],
+        );
+        self.vanilla_mappings.sync_toggle_slot(
+            sunrise_client::keymapping::USE,
+            &self.toggles.0[sunrise_client::keymapping::USE],
+        );
         self.left = self.toggles.is_down(2);
         self.right = self.toggles.is_down(3);
     }
@@ -319,14 +356,19 @@ impl Game<'_> {
     pub(super) fn release_screen_mappings(&mut self) {
         self.was_playing = false;
         self.keys.clear_overrides();
-        self.toggles.screen_opened([
-            self.settings.toggle_crouch,
-            self.settings.toggle_sprint,
-            self.settings.toggle_attack,
-            self.settings.toggle_use,
-        ]);
+        let options = self.toggle_options();
+        self.toggles.screen_opened(options);
+        self.vanilla_mappings.release_all(options);
         self.sync_toggle(SNEAK);
         self.sync_toggle(SPRINT);
+        self.vanilla_mappings.sync_toggle_slot(
+            sunrise_client::keymapping::ATTACK,
+            &self.toggles.0[sunrise_client::keymapping::ATTACK],
+        );
+        self.vanilla_mappings.sync_toggle_slot(
+            sunrise_client::keymapping::USE,
+            &self.toggles.0[sunrise_client::keymapping::USE],
+        );
         self.left = false;
         self.right = false;
     }

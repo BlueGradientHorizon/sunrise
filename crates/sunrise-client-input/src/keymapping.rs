@@ -1,17 +1,13 @@
 //! The down/click state of `KeyMapping` and `ToggleKeyMapping` (sneak,
 //! sprint, attack and use can be toggled instead of held).
+use crate::keybinds::{KeyBinds, MAPPINGS, VanillaMappingSlot};
 use std::{
     collections::HashMap,
     num::NonZeroU64,
-    sync::atomic::{AtomicU64, Ordering},
-};
-
-/// The bound of a mapping's pending clicks: its count's largest value. Nothing in the engine
-/// drains them in a loop; a mod's `consumeClick` takes one a call.
-const MAPPING_CLICKS: crate::input_queue::QueueLimits = crate::input_queue::QueueLimits {
-    name: "key mapping clicks",
-    max_len: i32::MAX as usize,
-    per_tick: 1,
+    sync::{
+        LazyLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 /// One mapping's runtime state. `toggle` is `Some(restore)` for a
@@ -20,8 +16,6 @@ const MAPPING_CLICKS: crate::input_queue::QueueLimits = crate::input_queue::Queu
 pub struct KeyState {
     pub is_down: bool,
     click_count: i32,
-    /// A click was refused at the largest count, and the log said so.
-    click_refused: bool,
     released_by_screen_when_down: bool,
     toggle: Option<bool>,
     keyboard: bool,
@@ -36,7 +30,6 @@ impl KeyState {
         Self {
             is_down: false,
             click_count: 0,
-            click_refused: false,
             released_by_screen_when_down: false,
             toggle: None,
             keyboard: true,
@@ -51,14 +44,9 @@ impl KeyState {
             ..Self::plain()
         }
     }
-    /// `KeyMapping.click`: one more pending click. At the largest count the click is refused
-    /// instead of wrapping (vanilla's `clickCount++` would).
+    /// `KeyMapping.click`: one more pending click.
     pub fn click(&mut self) {
-        let count = self.click_count.saturating_add(1);
-        if count == self.click_count {
-            crate::input_queue::refuse(&mut self.click_refused, MAPPING_CLICKS);
-        }
-        self.click_count = count;
+        self.click_count = self.click_count.saturating_add(1);
     }
     /// `consumeClick`.
     pub fn consume_click(&mut self) -> bool {
@@ -170,6 +158,157 @@ pub const SNEAK: usize = 0;
 pub const SPRINT: usize = 1;
 /// Attack (mouse).
 pub const ATTACK: usize = 2;
+/// Use (mouse).
+pub const USE: usize = 3;
+
+/// Toggle slot index in [`ToggleKeys`] for the four vanilla `ToggleKeyMapping`s.
+pub fn toggle_index(slot: VanillaMappingSlot) -> Option<usize> {
+    match slot.definition().0 {
+        "key.sneak" => Some(SNEAK),
+        "key.sprint" => Some(SPRINT),
+        "key.attack" => Some(ATTACK),
+        "key.use" => Some(USE),
+        _ => None,
+    }
+}
+
+fn toggle_vanilla_slot(toggle_slot: usize) -> Option<VanillaMappingSlot> {
+    static SLOTS: LazyLock<[Option<VanillaMappingSlot>; 4]> = LazyLock::new(|| {
+        [
+            VanillaMappingSlot::by_name("key.sneak"),
+            VanillaMappingSlot::by_name("key.sprint"),
+            VanillaMappingSlot::by_name("key.attack"),
+            VanillaMappingSlot::by_name("key.use"),
+        ]
+    });
+    SLOTS.get(toggle_slot).copied().flatten()
+}
+
+/// Uniform runtime `KeyState` (`isDown`, `clickCount`) for every vanilla mapping in [`MAPPINGS`].
+#[derive(Clone, Debug)]
+pub struct VanillaMappings {
+    states: Box<[KeyState; MAPPINGS.len()]>,
+}
+
+impl Default for VanillaMappings {
+    fn default() -> Self {
+        Self {
+            states: Box::new(std::array::from_fn(|index| match MAPPINGS[index].0 {
+                "key.sneak" | "key.sprint" => KeyState::toggle(true, true),
+                "key.attack" => KeyState::toggle(true, false),
+                "key.use" => KeyState::toggle(false, false),
+                _ => KeyState::plain(),
+            })),
+        }
+    }
+}
+
+impl VanillaMappings {
+    pub fn state(&self, slot: VanillaMappingSlot) -> &KeyState {
+        &self.states[slot.index()]
+    }
+
+    pub fn state_mut(&mut self, slot: VanillaMappingSlot) -> &mut KeyState {
+        &mut self.states[slot.index()]
+    }
+
+    pub fn is_down(&self, slot: VanillaMappingSlot) -> bool {
+        self.states[slot.index()].is_down
+    }
+
+    pub fn set_down(&mut self, slot: VanillaMappingSlot, down: bool, toggle_enabled: bool) {
+        self.states[slot.index()].set_down(down, toggle_enabled);
+    }
+
+    pub fn click(&mut self, slot: VanillaMappingSlot) {
+        self.states[slot.index()].click();
+    }
+
+    pub fn consume_click(&mut self, slot: VanillaMappingSlot) -> bool {
+        self.states[slot.index()].consume_click()
+    }
+
+    pub fn pending_clicks(&self, slot: VanillaMappingSlot) -> i32 {
+        self.states[slot.index()].pending_clicks()
+    }
+
+    /// `KeyboardHandler.keyPress`: update every vanilla mapping bound to `input`.
+    pub fn key_event(
+        &mut self,
+        binds: &KeyBinds,
+        input: &str,
+        action: KeyAction,
+        screen_open: bool,
+        needs_toggle: [bool; 4],
+    ) {
+        for slot in binds.slots_for(input) {
+            let option = toggle_index(slot).is_some_and(|i| needs_toggle[i]);
+            self.states[slot.index()].key(action, screen_open, option);
+        }
+    }
+
+    /// `MouseHandler.onButton`: update every vanilla mapping bound to `input`.
+    pub fn mouse_event(
+        &mut self,
+        binds: &KeyBinds,
+        input: &str,
+        pressed: bool,
+        screen_open: bool,
+        needs_toggle: [bool; 4],
+    ) {
+        for slot in binds.slots_for(input) {
+            let option = toggle_index(slot).is_some_and(|i| needs_toggle[i]);
+            self.states[slot.index()].button(pressed, screen_open, option);
+        }
+    }
+
+    /// `KeyMapping.releaseAll` when a screen or overlay opens.
+    pub fn release_all(&mut self, needs_toggle: [bool; 4]) {
+        for (index, state) in self.states.iter_mut().enumerate() {
+            let option = VanillaMappingSlot::from_index(index)
+                .and_then(toggle_index)
+                .is_some_and(|i| needs_toggle[i]);
+            state.release(option);
+        }
+    }
+
+    /// `KeyMapping.restoreToggleStatesOnScreenClosed`.
+    pub fn restore_toggles_on_screen_closed(&mut self, needs_toggle: [bool; 4]) {
+        for (index, state) in self.states.iter_mut().enumerate() {
+            if let Some(i) = VanillaMappingSlot::from_index(index).and_then(toggle_index)
+                && state.should_restore_state_on_screen_closed(needs_toggle[i])
+            {
+                state.set_down(true, needs_toggle[i]);
+            }
+        }
+    }
+
+    /// `KeyMapping.resetToggleKeys` (`LocalPlayer` respawn / new player).
+    pub fn reset_toggle_keys(&mut self) {
+        for (index, state) in self.states.iter_mut().enumerate() {
+            if VanillaMappingSlot::from_index(index)
+                .and_then(toggle_index)
+                .is_some()
+            {
+                state.reset();
+            }
+        }
+    }
+
+    /// Clear held state across all vanilla mappings without dropping pending clicks.
+    pub fn set_all_up(&mut self) {
+        for state in self.states.iter_mut() {
+            state.is_down = false;
+        }
+    }
+
+    /// Keep a toggle mapping slot in lockstep with [`ToggleKeys`].
+    pub fn sync_toggle_slot(&mut self, toggle_slot: usize, state: &KeyState) {
+        if let Some(slot) = toggle_vanilla_slot(toggle_slot) {
+            self.states[slot.index()] = state.clone();
+        }
+    }
+}
 
 /// The `ToggleKeyMapping`s `Options` builds: sneak and sprint (keyboard,
 /// restored after a screen), attack (mouse, restored) and use (mouse, not
@@ -814,5 +953,57 @@ mod tests {
         assert_eq!(key.pending_clicks(), i32::MAX);
         assert!(key.consume_click());
         assert_eq!(key.pending_clicks(), i32::MAX - 1);
+    }
+
+    /// Every `VanillaMappingSlot` (including non-gameplay and click-only ones) tracks uniform
+    /// `is_down` and `click_count`, with toggle behavior on the four vanilla toggle mappings and
+    /// `release_all` clearing held state and plain clicks on screen open.
+    #[test]
+    fn vanilla_mappings_track_all_slots_uniformly() {
+        let binds = KeyBinds::default();
+        let mut mappings = VanillaMappings::default();
+        let chat = VanillaMappingSlot::by_name("key.chat").unwrap();
+        let pick = VanillaMappingSlot::by_name("key.pickItem").unwrap();
+        let sneak = VanillaMappingSlot::by_name("key.sneak").unwrap();
+        let screenshot = VanillaMappingSlot::by_name("key.screenshot").unwrap();
+
+        mappings.key_event(
+            &binds,
+            "key.keyboard.t",
+            KeyAction::Press,
+            false,
+            [false; 4],
+        );
+        assert!(mappings.is_down(chat));
+        assert_eq!(mappings.pending_clicks(chat), 1);
+        assert!(mappings.consume_click(chat));
+        assert!(!mappings.consume_click(chat));
+
+        mappings.set_down(pick, true, false);
+        mappings.click(pick);
+        assert!(mappings.is_down(pick));
+        assert_eq!(mappings.pending_clicks(pick), 1);
+
+        mappings.set_down(screenshot, true, false);
+        mappings.click(screenshot);
+        assert!(mappings.is_down(screenshot));
+
+        // Sneak toggles when toggle_crouch is on and restores after a screen closes.
+        let toggle_crouch = [true, false, false, false];
+        mappings.set_down(sneak, true, true);
+        mappings.set_down(sneak, false, true);
+        assert!(mappings.is_down(sneak));
+
+        mappings.release_all(toggle_crouch);
+        assert!(!mappings.is_down(chat));
+        assert!(!mappings.is_down(pick));
+        assert_eq!(mappings.pending_clicks(pick), 0);
+        assert!(!mappings.is_down(screenshot));
+        assert_eq!(mappings.pending_clicks(screenshot), 0);
+        assert!(!mappings.is_down(sneak));
+
+        mappings.restore_toggles_on_screen_closed(toggle_crouch);
+        assert!(mappings.is_down(sneak));
+        assert!(!mappings.is_down(chat));
     }
 }

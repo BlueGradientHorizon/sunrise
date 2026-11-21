@@ -48,11 +48,26 @@ mod tests {
             game.physical_buttons.insert(MouseButton::Left);
             assert_eq!(attack_mapping.physical_down(game), Ok(false));
 
-            // The physical read is available even for a key with no tracked logical state.
+            // Logical state is tracked uniformly for every resolved vanilla mapping,
+            // independent of its physical key state.
+            game.screen = Screen::Playing;
+            game.title = None;
             let chat = game.vanilla_key_mapping("key.chat").unwrap();
             game.physical_keys.insert(KeyCode::KeyT);
             assert_eq!(chat.physical_down(game), Ok(true));
-            assert_eq!(chat.is_down(game), Err(MappingError::NoLogicalState));
+            assert_eq!(chat.is_down(game), Ok(false));
+            assert_eq!(chat.set_down(game, true), Ok(()));
+            assert_eq!(chat.is_down(game), Ok(true));
+            assert_eq!(chat.set_down(game, false), Ok(()));
+            assert_eq!(chat.is_down(game), Ok(false));
+            assert_eq!(chat.physical_down(game), Ok(true));
+
+            let pick = game.vanilla_key_mapping("key.pickItem").unwrap();
+            assert_eq!(pick.is_down(game), Ok(false));
+            assert_eq!(pick.set_down(game, true), Ok(()));
+            assert_eq!(pick.is_down(game), Ok(true));
+            assert_eq!(pick.set_down(game, false), Ok(()));
+            assert_eq!(pick.is_down(game), Ok(false));
         });
     }
 
@@ -80,12 +95,12 @@ mod tests {
             let current = game.vanilla_key_mapping("key.attack").unwrap();
             assert_eq!(current.binding(game), Ok("key.keyboard.r"));
             assert_eq!(current.is_down(game), Ok(false));
-            assert_eq!(game.attack_clicks.count(), 0);
+            assert_eq!(game.attack_clicks, 0);
             // A live handle can still write with the same player and phase.
             current.set_down(game, true).unwrap();
             current.click(game).unwrap();
             assert_eq!(current.is_down(game), Ok(true));
-            assert_eq!(game.attack_clicks.count(), 1);
+            assert_eq!(game.attack_clicks, 1);
         });
     }
 }

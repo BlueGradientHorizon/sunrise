@@ -235,7 +235,7 @@ impl Game<'_> {
                 if !self.spectator()
                     && let Some(r) = self.remote.as_mut()
                 {
-                    r.pending_keys.push(key);
+                    r.push_pending_key(key);
                 }
             }
             KeyCode::KeyF if self.screen == Screen::Playing => {
@@ -278,7 +278,7 @@ impl Game<'_> {
                 if self.spectator() {
                     self.spectator_hotbar_key(slot as i32);
                 } else {
-                    self.hotbar_presses[slot].press();
+                    self.hotbar_presses[slot] = self.hotbar_presses[slot].saturating_add(1);
                 }
             }
             _ if self.screen == Screen::Paused && self.pause_menu => {

@@ -41,7 +41,6 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client::first_person::{Hand, SwingAnimation};
-use sunrise_client::input_queue::InputQueue;
 use sunrise_client::{
     Result,
     blocks::Fluid,
@@ -859,10 +858,10 @@ pub(super) struct Remote {
     pub(in crate::game) interaction_swing: [bool; 2],
     destroy_delay: u32,
     pub(super) input: sunrise_client::interaction_input::InteractionInput,
-    /// Keys whose presses send a packet (swap hands, drop, a mount's
-    /// inventory): like the click queue, they wait for the tick's
-    /// `handleKeybinds` phase rather than going out between window events.
-    pub(super) pending_keys: InputQueue<KeyCode>,
+    /// Keys whose presses send a packet (inventory/E, swap hands/F, drop/Q), in
+    /// `queued_keys::KEY_ORDER`: counted as `KeyMapping.clickCount` and drained completely
+    /// in the tick's `handleKeybinds` phase.
+    pub(super) pending_keys: [u32; 3],
     /// Whether the main and off hand still wait for the server's answer to
     /// a SWAP_ITEM_WITH_OFFHAND (`remote_hand_slot_set`).
     swap_answer: [bool; 2],
@@ -900,6 +899,14 @@ pub(super) struct Remote {
     pub(super) server_links: Vec<sunrise_protocol::packets::configuration::ServerLink>,
     /// `ClientPacketListener.getDebugQueryHandler`: the F3+I query waiting for the server's data.
     pub(super) debug_query: super::debug_keys::DebugQuery,
+}
+
+impl Remote {
+    pub(super) fn push_pending_key(&mut self, key: KeyCode) {
+        if let Some(slot) = queued_keys::key_index(key) {
+            self.pending_keys[slot] = self.pending_keys[slot].saturating_add(1);
+        }
+    }
 }
 
 /// The time a frame spends on chunk packets before it leaves the rest of
@@ -1381,7 +1388,7 @@ impl Game<'_> {
             interaction_swing: [true; 2],
             destroy_delay: 0,
             input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
+            pending_keys: [0; 3],
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -1635,7 +1642,7 @@ impl Game<'_> {
             interaction_swing: [true; 2],
             destroy_delay: 0,
             input: Default::default(),
-            pending_keys: InputQueue::new(queued_keys::PENDING_KEYS),
+            pending_keys: [0; 3],
             swap_answer: [false; 2],
             stop_mining: false,
             flat: false,
@@ -9265,9 +9272,10 @@ impl Game<'_> {
         }
         if !ready {
             // A screen's opening released the keys (`KeyMapping.releaseAll`).
-            self.hotbar_presses
-                .iter_mut()
-                .for_each(sunrise_client::input_queue::ClickQueue::clear);
+            self.hotbar_presses = [0; 9];
+            if let Some(r) = self.remote.as_mut() {
+                r.pending_keys = [0; 3];
+            }
             self.agent_attack_clicks_left(0);
             return;
         }
@@ -9410,7 +9418,7 @@ impl Game<'_> {
                     return Ok(true);
                 }
                 if let Some(r) = self.remote.as_mut() {
-                    r.pending_keys.push(key);
+                    r.push_pending_key(key);
                 }
                 Ok(true)
             }
@@ -9423,7 +9431,7 @@ impl Game<'_> {
                     return Ok(true);
                 }
                 if let Some(r) = self.remote.as_mut() {
-                    r.pending_keys.push(key);
+                    r.push_pending_key(key);
                 }
                 Ok(true)
             }

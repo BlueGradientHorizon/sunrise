@@ -3369,6 +3369,8 @@ struct Game<'a> {
     smooth_camera: bool,
     /// Sneak, sprint, attack and use as ToggleKeyMappings.
     toggles: sunrise_client::keymapping::ToggleKeys,
+    /// Uniform `KeyState` (`isDown`, `clickCount`) for every vanilla mapping slot.
+    vanilla_mappings: sunrise_client::keymapping::VanillaMappings,
     /// A world screen with the pointer captured was open last frame.
     was_playing: bool,
     /// Minecraft.pause: a single-player screen that pauses the game is open.
@@ -3671,9 +3673,9 @@ struct Game<'a> {
     /// `Minecraft`'s attack handling, attack clicks since the last tick and
     /// the attack strength tickers the hand reads.
     clicks: sunrise_client::first_person::Clicks<Option<ItemStack>>,
-    attack_clicks: sunrise_client::input_queue::ClickQueue,
+    attack_clicks: u32,
     /// Use clicks since the last tick; `handleKeybinds` consumes them after the attack clicks.
-    use_clicks: sunrise_client::input_queue::ClickQueue,
+    use_clicks: u32,
     hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
     look: look::LookCache,
@@ -4131,7 +4133,7 @@ struct Game<'a> {
     tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
     /// Each number key's clicks since it was last consumed (`keyHotbarSlots[i].clickCount`):
     /// `Minecraft.handleKeybinds` selects them before the tick's inputs.
-    hotbar_presses: [sunrise_client::input_queue::ClickQueue; 9],
+    hotbar_presses: [u32; 9],
     /// `Player.entityInteractionRange` and `blockInteractionRange`, refreshed
     /// each tick from the attribute (a server's reach modifier, creative's
     /// +2): the pick helpers' `&self` reach.
@@ -11955,8 +11957,17 @@ impl Game<'_> {
                             {
                                 self.toggles.0[slot].set_down(false, needs_toggle);
                             }
+                            self.vanilla_mappings.set_all_up();
                             self.sync_toggle(0);
                             self.sync_toggle(1);
+                            self.vanilla_mappings.sync_toggle_slot(
+                                sunrise_client::keymapping::ATTACK,
+                                &self.toggles.0[sunrise_client::keymapping::ATTACK],
+                            );
+                            self.vanilla_mappings.sync_toggle_slot(
+                                sunrise_client::keymapping::USE,
+                                &self.toggles.0[sunrise_client::keymapping::USE],
+                            );
                             self.left = false;
                             self.right = false;
                             self.capture(false);
@@ -13235,6 +13246,7 @@ impl<'a> Game<'a> {
             agent_pointer: false,
             smooth_camera: false,
             toggles: Default::default(),
+            vanilla_mappings: Default::default(),
             was_playing: false,
             pause: false,
             debug: false,
@@ -13399,8 +13411,8 @@ impl<'a> Game<'a> {
             visible_hands: [(0, None), (0, None)],
             hands_replaced: [false; 2],
             clicks: Default::default(),
-            attack_clicks: hand::ATTACK_CLICKS,
-            use_clicks: hand::USE_CLICKS,
+            attack_clicks: 0,
+            use_clicks: 0,
             hand_strength: Default::default(),
             settings,
             look: Default::default(),
@@ -13652,7 +13664,7 @@ impl<'a> Game<'a> {
             forced_hit: None,
             tick_hit: Default::default(),
             tick_mob: None,
-            hotbar_presses: [hand::HOTBAR_CLICKS; 9],
+            hotbar_presses: [0; 9],
             entity_reach: 3.0,
             block_reach: 4.5,
             client_pick: Default::default(),

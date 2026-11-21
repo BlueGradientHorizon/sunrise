@@ -8,22 +8,8 @@ use sunrise_client::{
     Result,
     attack_strength::HeldStack,
     first_person::{Hand, HandWorld, Hit, SwingAnimation, UseResult, swing_duration},
-    input_queue::{ClickQueue, QueueLimits},
-    interaction_input::{Button, click_queue},
     items::ItemStack,
 };
-
-/// The local player's empty attack and use click queues, bounded as a server's client's are
-/// (`CLICK_QUEUES`).
-pub(super) const ATTACK_CLICKS: ClickQueue = click_queue(Button::Attack);
-pub(super) const USE_CLICKS: ClickQueue = click_queue(Button::Use);
-/// The clicks of one number key (`KeyMapping.clickCount`): a tick takes one, as
-/// `consumeClick` does, and 1024 wait at most.
-pub(super) const HOTBAR_CLICKS: ClickQueue = ClickQueue::new(QueueLimits {
-    name: "number keys",
-    max_len: 1024,
-    per_tick: 1,
-});
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The point a `ServerboundInteractPacket` carries: `EntityHitResult.getLocation()
@@ -256,8 +242,8 @@ impl Game<'_> {
             error: None,
         });
         self.clicks.destroying = destroying;
-        self.attack_clicks.clear();
-        self.use_clicks.clear();
+        self.attack_clicks = 0;
+        self.use_clicks = 0;
         self.request_remote_mining_stop();
         self.mining = None;
     }
@@ -342,9 +328,10 @@ impl Game<'_> {
     /// save toolbar key loads or saves that toolbar instead (load first when both are held).
     pub(super) fn select_queued_hotbar(&mut self) {
         for slot in 0..self.hotbar_presses.len() {
-            if self.hotbar_presses[slot].take_tick() == 0 {
+            if self.hotbar_presses[slot] == 0 {
                 continue;
             }
+            self.hotbar_presses[slot] -= 1;
             let load = self.creative && self.mapped_key_down("key.loadToolbarActivator");
             if load || (self.creative && self.mapped_key_down("key.saveToolbarActivator")) {
                 self.hotbar_load_or_save(slot, load);
@@ -458,9 +445,8 @@ impl Game<'_> {
     /// attack clicks since the last tick and the held attack button.
     pub(super) fn tick_local_hand(&mut self) -> Result<()> {
         if self.screen == Screen::Playing && self.title.is_none() && self.sleeping.is_none() {
-            // Up to each queue's bound; the rest act on the next ticks.
-            let attack_clicks = self.attack_clicks.take_tick();
-            let use_clicks = self.use_clicks.take_tick();
+            let attack_clicks = std::mem::take(&mut self.attack_clicks);
+            let use_clicks = std::mem::take(&mut self.use_clicks);
             let mut clicks = std::mem::take(&mut self.clicks);
             // keyAttack.isDown(); playing implies the grabbed mouse here
             // (scripts under --control hold buttons without grabbing it).
@@ -513,9 +499,9 @@ impl Game<'_> {
             // Minecraft.tick: a screen keeps the attack from starting, and
             // opening it released the keys (`KeyMapping.releaseAll`).
             self.clicks.miss_time = 10000;
-            self.attack_clicks.clear();
-            self.use_clicks.clear();
-            self.hotbar_presses.iter_mut().for_each(ClickQueue::clear);
+            self.attack_clicks = 0;
+            self.use_clicks = 0;
+            self.hotbar_presses = [0; 9];
         }
         let d = &self.clicks.destroying;
         self.set_client_mining(d.active.then_some(Mining {
