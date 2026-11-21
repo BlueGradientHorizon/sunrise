@@ -867,7 +867,7 @@ impl Game<'_> {
             });
             for t in &mut tridents {
                 if !round.canceled(t.id) {
-                    t.remote_tick(&world, self.remote_eye(t.owner));
+                    super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
                 }
             }
         }
@@ -1134,7 +1134,7 @@ impl Game<'_> {
             };
             for t in &mut tridents {
                 if !round.canceled(t.id) {
-                    t.remote_tick(&world, self.remote_eye(t.owner));
+                    super::trident::remote_tick(t, &world, self.remote_eye(t.owner));
                 }
             }
         }
@@ -1164,7 +1164,7 @@ impl Game<'_> {
                     border: Some(self.border.bounds()),
                 };
                 let eye = self.remote_eye(tridents[i].owner);
-                tridents[i].remote_tick(&world, eye);
+                super::trident::remote_tick(&mut tridents[i], &world, eye);
             }
             let changed;
             (projectiles, tridents, changed) =
