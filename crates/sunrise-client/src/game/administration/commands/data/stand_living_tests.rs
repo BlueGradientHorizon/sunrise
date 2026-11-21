@@ -1,19 +1,37 @@
 use super::{DataRef, Target};
 use crate::game::native_entity_refs::tests::with_game;
-use sunrise_client::motion::PlayerMotion;
+use serde::Deserialize;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
 use sunrise_core::geometry::Vec3;
-use sunrise_core::nbt::Tag;
+use sunrise_core::nbt::{Tag, parse_snbt};
 
-fn read(game: &mut crate::game::Game<'_>, stand: Target) -> [Option<Tag>; 5] {
-    let tag = game.data_of(&DataRef::Entity(stand)).unwrap();
-    [
-        "HurtTime",
-        "Air",
-        "FallFlying",
-        "current_impulse_context_reset_grace_time",
-        "PortalCooldown",
-    ]
-    .map(|key| tag.get(key).cloned())
+#[derive(Deserialize)]
+struct Witness {
+    minecraft: String,
+    fields: Vec<String>,
+    cases: Vec<Case>,
+}
+
+#[derive(Deserialize)]
+struct Case {
+    name: String,
+    in_water: bool,
+    nbt: String,
+    snapshots: Vec<Snapshot>,
+}
+
+#[derive(Deserialize)]
+struct Snapshot {
+    tick: usize,
+    values: BTreeMap<String, String>,
+}
+
+fn parse_expected(raw: &str) -> Tag {
+    let (tag, used) = parse_snbt(raw).unwrap();
+    assert_eq!(used, raw.len(), "trailing SNBT in witness value {raw:?}");
+    tag
 }
 
 fn tick(game: &mut crate::game::Game<'_>) {
@@ -21,60 +39,80 @@ fn tick(game: &mut crate::game::Game<'_>) {
     game.tick_armor_stands().unwrap();
 }
 
-/// #2678: an armor stand is a `LivingEntity`: its hurt time, portal cooldown
-/// and impulse grace time count down, its air refills by 4 up to 300 out of
-/// water, `updateFallFlying` clears the flag, and the save writes them live.
+/// #2678: vanilla 26.3 witness for armor stand living counters in air and water.
 #[test]
 #[ignore = "daily"]
 fn an_armor_stand_ticks_its_living_counters() {
+    let witness: Witness = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/stand_living_counters.json"
+    )))
+    .unwrap();
+    assert_eq!(witness.minecraft, "26.3");
+    assert!(!witness.cases.is_empty());
     with_game(|game| {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-        game.update_chunk_tickets();
-        let stand = game
-            .summon_with_nbt(
-                "minecraft:armor_stand",
-                [0.5, 64.0, 0.5],
-                "{NoGravity:1b,HurtTime:40s,Air:100s,FallFlying:1b,\
-                 current_impulse_context_reset_grace_time:20,PortalCooldown:20}",
-            )
-            .unwrap()
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
             .unwrap();
-        let full = game
-            .summon_with_nbt(
-                "minecraft:armor_stand",
-                [4.5, 64.0, 0.5],
-                "{NoGravity:1b,Air:32767s}",
-            )
-            .unwrap()
-            .unwrap();
-        tick(game);
-        assert_eq!(
-            read(game, stand),
-            [
-                Some(Tag::Short(39)),
-                Some(Tag::Short(104)),
-                Some(Tag::Byte(0)),
-                Some(Tag::Int(19)),
-                Some(Tag::Int(19)),
-            ]
-        );
-        for _ in 0..39 {
-            tick(game);
+        for x in 6..=10 {
+            for y in 64..=66 {
+                for z in 6..=10 {
+                    game.world.set(x, y, z, water).unwrap();
+                }
+            }
         }
-        assert_eq!(
-            read(game, stand),
-            [
-                Some(Tag::Short(0)),
-                Some(Tag::Short(260)),
-                Some(Tag::Byte(0)),
-                Some(Tag::Int(0)),
-                Some(Tag::Int(0)),
-            ]
-        );
-        assert_eq!(
-            read(game, full)[1],
-            Some(Tag::Short(32767)),
-            "above 300 it stays"
-        );
+        game.update_chunk_tickets();
+        let mut dry_index = 0u32;
+        let mut water_index = 0u32;
+        let actors: Vec<(&Case, Target)> = witness
+            .cases
+            .iter()
+            .map(|case| {
+                let pos = if case.in_water {
+                    let i = water_index;
+                    water_index += 1;
+                    [7.5 + 2.0 * f64::from(i), 64.0, 8.5]
+                } else {
+                    let i = dry_index;
+                    dry_index += 1;
+                    [1.5 + f64::from(i), 64.0, 2.5]
+                };
+                let stand = game
+                    .summon_with_nbt("minecraft:armor_stand", pos, &case.nbt)
+                    .unwrap()
+                    .unwrap();
+                (case, stand)
+            })
+            .collect();
+        let mut elapsed = 0usize;
+        let checkpoints: Vec<usize> = witness.cases[0].snapshots.iter().map(|s| s.tick).collect();
+        for (snap_idx, &target_tick) in checkpoints.iter().enumerate() {
+            for _ in elapsed..target_tick {
+                tick(game);
+            }
+            elapsed = target_tick;
+            for (case, stand) in actors.iter().copied() {
+                let snapshot = &case.snapshots[snap_idx];
+                assert_eq!(snapshot.tick, target_tick);
+                let tag = game.data_of(&DataRef::Entity(stand)).unwrap();
+                for field in &witness.fields {
+                    let expected = parse_expected(snapshot.values.get(field).unwrap());
+                    assert_eq!(
+                        tag.get(field.as_str()),
+                        Some(&expected),
+                        "case={} tick={} field={field}",
+                        case.name,
+                        target_tick,
+                    );
+                }
+            }
+        }
     });
 }
