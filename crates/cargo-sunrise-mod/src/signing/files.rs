@@ -1,6 +1,7 @@
 //! Bind every signing path from its filesystem root. Never reopen an ambient path to do I/O.
 use cap_fs_ext::{DirExt, FollowSymlinks, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, DirBuilder, File, Metadata, OpenOptions};
+use same_file::Handle;
 use std::{
     ffi::{OsStr, OsString},
     io::{self, Read, Write},
@@ -127,7 +128,7 @@ impl Directory {
 
     pub(super) fn read(&self, name: &OsStr, limit: u64) -> Result<Vec<u8>, String> {
         let path = self.path.join(name);
-        let file = open_file(&self.dir, name).map_err(|e| at(&path, e))?;
+        let file = open_file(&self.dir, name, &read_options()).map_err(|e| at(&path, e))?;
         let mut bytes = Vec::new();
         file.take(limit + 1)
             .read_to_end(&mut bytes)
@@ -142,8 +143,47 @@ impl Directory {
         let mut stage = Staging::new(&self.dir).map_err(|e| at(&self.path, e))?;
         stage
             .write(name, bytes)
-            .and_then(|()| stage.publish(name, &self.dir))
+            .and_then(|_| stage.publish(name, &self.dir))
             .map_err(|e| at(&self.path.join(name), e))
+    }
+
+    pub(super) fn write_pair(
+        &self,
+        first: (&OsStr, &[u8]),
+        second: (&OsStr, &[u8]),
+    ) -> Result<(), String> {
+        let mut stage = Staging::new(&self.dir).map_err(|e| at(&self.path, e))?;
+        let identity = stage
+            .write(first.0, first.1)
+            .and_then(|file| Handle::from_file(file.into_std()))
+            .map_err(|e| at(&self.path.join(first.0), e))?;
+        stage
+            .write(second.0, second.1)
+            .map_err(|e| at(&self.path.join(second.0), e))?;
+        self.publish_pair(&stage, first.0, &identity, second.0)
+    }
+
+    fn publish_pair(
+        &self,
+        stage: &Staging,
+        first: &OsStr,
+        identity: &Handle,
+        second: &OsStr,
+    ) -> Result<(), String> {
+        stage
+            .publish(first, &self.dir)
+            .map_err(|e| at(&self.path.join(first), e))?;
+        if let Err(e) = stage.publish(second, &self.dir) {
+            let error = at(&self.path.join(second), e);
+            if let Err(rollback) = remove_ours(&self.dir, first, identity) {
+                return Err(format!(
+                    "{error}; could not roll back {}: {rollback}",
+                    self.path.join(first).display()
+                ));
+            }
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
@@ -166,7 +206,7 @@ fn reject_reparse(_metadata: &Metadata) -> io::Result<()> {
     Ok(())
 }
 
-fn open_file(dir: &Dir, name: &OsStr) -> io::Result<File> {
+fn read_options() -> OpenOptions {
     let mut options = OpenOptions::new();
     options.read(true).follow(FollowSymlinks::No);
     #[cfg(unix)]
@@ -174,7 +214,11 @@ fn open_file(dir: &Dir, name: &OsStr) -> io::Result<File> {
         use cap_std::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NONBLOCK);
     }
-    let file = dir.open_with(name, &options)?;
+    options
+}
+
+fn open_file(dir: &Dir, name: &OsStr, options: &OpenOptions) -> io::Result<File> {
+    let file = dir.open_with(name, options)?;
     let metadata = file.metadata()?;
     reject_reparse(&metadata)?;
     if !metadata.is_file() {
@@ -184,6 +228,61 @@ fn open_file(dir: &Dir, name: &OsStr) -> io::Result<File> {
         ));
     }
     Ok(file)
+}
+
+fn remove_ours(dir: &Dir, name: &OsStr, original: &Handle) -> io::Result<()> {
+    let options = read_options();
+    #[cfg(windows)]
+    let options = {
+        use cap_std::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            DELETE, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
+        };
+        let mut options = options;
+        options
+            .access_mode(DELETE | FILE_READ_ATTRIBUTES)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+        options
+    };
+    let file = match open_file(dir, name, &options) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        result => result?,
+    };
+    let current = Handle::from_file(file.into_std())?;
+    if current != *original {
+        return Ok(());
+    }
+    #[cfg(unix)]
+    {
+        // The key directory is owned by the caller and not writable by other users.
+        // There is no portable identity-conditional unlink on Unix.
+        dir.remove_file(name)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
+            FILE_DISPOSITION_INFO_EX, FileDispositionInfoEx, SetFileInformationByHandle,
+        };
+        let info = FILE_DISPOSITION_INFO_EX {
+            Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_POSIX_SEMANTICS,
+        };
+        // SAFETY: the verified open file and initialized record remain live for the call.
+        let ok = unsafe {
+            SetFileInformationByHandle(
+                current.as_file().as_raw_handle(),
+                FileDispositionInfoEx,
+                std::ptr::from_ref(&info).cast(),
+                size_of::<FILE_DISPOSITION_INFO_EX>() as u32,
+            )
+        };
+        if ok == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 fn private_dir() -> DirBuilder {
@@ -220,7 +319,7 @@ impl Staging {
             .expect("staging directory is open until drop")
     }
 
-    fn write(&mut self, name: &OsStr, bytes: &[u8]) -> io::Result<()> {
+    fn write(&mut self, name: &OsStr, bytes: &[u8]) -> io::Result<File> {
         let mut options = OpenOptions::new();
         options
             .write(true)
@@ -231,7 +330,8 @@ impl Staging {
         let mut file = self.dir().open_with(name, &options)?;
         self.files.push(name.to_owned());
         file.write_all(bytes)?;
-        file.sync_all()
+        file.sync_all()?;
+        Ok(file)
     }
 
     fn publish(&self, name: &OsStr, destination: &Dir) -> io::Result<()> {
@@ -249,5 +349,37 @@ impl Drop for Staging {
             }
             let _ = dir.remove_open_dir();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_collision_after_staging_rolls_back_only_this_pairs_public_half() {
+        let temp = tempfile::tempdir().unwrap();
+        let out = Directory::open(&temp.path().canonicalize().unwrap(), true).unwrap();
+        let mut stage = Staging::new(&out.dir).unwrap();
+        let public = OsStr::new("signing.pub");
+        let private = OsStr::new("signing.key");
+        let identity =
+            Handle::from_file(stage.write(public, b"public fixture").unwrap().into_std()).unwrap();
+        stage.write(private, b"private fixture").unwrap();
+
+        // Simulate a different process winning the second destination after we staged both halves.
+        out.dir.write(private, b"another process").unwrap();
+        let error = out
+            .publish_pair(&stage, public, &identity, private)
+            .unwrap_err();
+        assert!(error.contains("signing.key"));
+        assert!(!out.dir.exists(public));
+        assert_eq!(out.dir.read(private).unwrap(), b"another process");
+        drop(stage);
+        assert_eq!(out.dir.entries().unwrap().count(), 1);
+
+        out.dir.write(public, b"not the staged public key").unwrap();
+        remove_ours(&out.dir, public, &identity).unwrap();
+        assert_eq!(out.dir.read(public).unwrap(), b"not the staged public key");
     }
 }

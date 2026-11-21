@@ -54,14 +54,10 @@ pub(crate) fn keygen(args: &[String]) -> Result<(), String> {
         .pk
         .to_box()
         .map_err(|_| "could not encode the new public key")?;
-    out.write_new(KEY_NAME.as_ref(), &secret_box.to_bytes())?;
-    out.write_new(PUBLIC_NAME.as_ref(), &public_box.to_bytes())
-        .map_err(|e| {
-            format!(
-                "{e}; the private key was saved at {}",
-                out.path().join(KEY_NAME).display()
-            )
-        })?;
+    out.write_pair(
+        (PUBLIC_NAME.as_ref(), &public_box.to_bytes()),
+        (KEY_NAME.as_ref(), &secret_box.to_bytes()),
+    )?;
     eprintln!(
         "Wrote {} and {}. Keep the private key out of Git and release assets.",
         out.path().join(KEY_NAME).display(),
