@@ -732,7 +732,7 @@ pub fn write_mob(
         position: m.position,
         motion: m.velocity,
         rotation: [m.yaw, m.head_pitch],
-        on_ground: m.on_ground,
+        on_ground: m.ground.on_ground,
         fall_distance: m.fall_distance,
     };
     // `Entity.saveWithoutId` consumes these live values in its own order.
@@ -1923,7 +1923,7 @@ fn mob_from_nbt_at(
     // LivingEntity.readAdditionalSaveData: `setSharedFlag(7, getBooleanOr(FallFlying, false))`.
     m.extra.fall_flying = flag(tag, "FallFlying");
     read_mob_home(&mut m, tag);
-    m.on_ground = flag(tag, "OnGround");
+    m.ground.on_ground = flag(tag, "OnGround");
     m.fall_distance = float(tag.get("fall_distance")).unwrap_or(0.0);
     // LivingEntity.readAdditionalSaveData: the saved attribute bases, then
     // the health, the max health when there is none.
@@ -3900,7 +3900,7 @@ pub fn armor_stand_tag(
         position: a.position,
         motion: a.velocity,
         rotation: [a.yaw, a.pitch],
-        on_ground: a.on_ground,
+        on_ground: a.ground.on_ground,
         fall_distance: a.enchantment_fall_distance,
     };
     let mut out = EntityTagWriter::new(raw);
@@ -4028,7 +4028,7 @@ pub fn armor_stand_from_nbt(tag: &Tag, id: u32) -> Option<ArmorStand> {
     a.invisible = flag(tag, "Invisible");
     a.marker = flag(tag, "Marker");
     a.no_gravity = flag(tag, "NoGravity");
-    a.on_ground = flag(tag, "OnGround");
+    a.ground.on_ground = flag(tag, "OnGround");
     // ArmorStand.readAdditionalSaveData: each part of `Pose` that is a list of
     // three numbers, the others staying at their defaults.
     if let Some(pose) = tag.get("Pose") {

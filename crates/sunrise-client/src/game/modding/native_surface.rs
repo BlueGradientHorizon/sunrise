@@ -512,7 +512,7 @@ mod tests {
             // An armor stand moving 0.2 along x on the ground, after one travel: 0.2 × friction × 0.91.
             let stand = |game: &Game<'_>| {
                 let mut stand = ArmorStand::new(7, Vec3::new(5.5, 65.0, 5.5), 0.0);
-                stand.on_ground = true;
+                stand.ground.on_ground = true;
                 stand.velocity = Vec3::new(0.2, 0.0, 0.0);
                 let mut scene = sunrise_client::collisions::SceneCollisions {
                     world: &game.world,
@@ -956,7 +956,7 @@ mod tests {
                 {
                     let world = game.mob_world_base(&snapshot);
                     let mut mob = Mob::new(10, horse.clone(), at, 0.0);
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.velocity = Vec3::new(0.2, 0.0, 0.0);
                     calls.store(0, Ordering::SeqCst);
                     mob.travel(&world, &mut damage.level(), Vec3::ZERO, &mut Vec::new());
@@ -971,7 +971,7 @@ mod tests {
                         "one answer per mob travel tick"
                     );
                     mob.position = at;
-                    mob.on_ground = true;
+                    mob.ground.on_ground = true;
                     mob.velocity = Vec3::ZERO;
                     mob.extra.leash = Some(leash::Holder::Mob(99));
                     mob.extra.leash_spin = 2.0;

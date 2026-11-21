@@ -686,7 +686,7 @@ mod tests {
                                 Mob::new(LANDING, pig.clone(), Vec3::new(1.5, start_y, 1.5), 0.0);
                             mob.ai.goals = Default::default();
                             mob.ai.targets = Default::default();
-                            mob.on_ground = walking;
+                            mob.ground.on_ground = walking;
                             mob.velocity = velocity;
                             let mut trample = None;
                             let progress = ai::tick_until_consumption(
@@ -701,7 +701,7 @@ mod tests {
                                 matches!(progress, ai::TickProgress::Complete(true)),
                                 "walking={walking}: {progress:?}"
                             );
-                            assert!(mob.on_ground);
+                            assert!(mob.ground.on_ground);
                             assert_eq!(mob.position.y, LANDING_Y);
                             assert_eq!(mob.fall_distance, 0.0);
                             assert_eq!(mob.position.x > 1.5, walking);

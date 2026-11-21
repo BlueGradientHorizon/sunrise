@@ -86,8 +86,12 @@ fn drop_pig(x: f64) -> (f32, Option<[i32; 3]>, f64) {
         .iter()
         .find(|m| m.species() == sunrise_client::mobs::Species::Pig)
         .expect("the pig");
-    assert!(pig.on_ground, "the pig has landed");
-    (pig.health, pig.supporting, pig.position.y)
+    assert!(pig.ground.on_ground, "the pig has landed");
+    (
+        pig.health,
+        pig.ground.supporting_block.map(|p| [p.x, p.y, p.z]),
+        pig.position.y,
+    )
 }
 
 #[test]

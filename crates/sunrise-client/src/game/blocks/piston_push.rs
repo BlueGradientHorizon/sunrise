@@ -1270,7 +1270,7 @@ impl Game<'_> {
         if let Some(i) = mob
             && self.mobs[i].no_ai
         {
-            self.mobs[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
+            self.mobs[i].ground.on_ground = limited.y < 0.0 && limited.y != resolved.y;
         }
         let moved = resolved.length_squared() > 1.0e-7
             || limited.length_squared() - resolved.length_squared() < 1.0e-7;
@@ -2288,9 +2288,9 @@ mod h255_mob_piston_ground_tests {
             let vertical = mob_index(game, 3);
             let id = game.mobs[main].id;
             let age = game.mobs[main].age;
-            assert!(game.mobs[main].on_ground);
-            assert!(game.mobs[idle].on_ground);
-            assert!(!game.mobs[vertical].on_ground);
+            assert!(game.mobs[main].ground.on_ground);
+            assert!(game.mobs[idle].ground.on_ground);
+            assert!(!game.mobs[vertical].ground.on_ground);
             assert_eq!(game.mobs[main].position, Vec3::new(4.5, 202.0, 4.5));
             assert_eq!(
                 game.res
@@ -2332,7 +2332,7 @@ mod h255_mob_piston_ground_tests {
                 assert!(game.mobs[main].no_ai);
                 assert_eq!(game.mobs[main].health, 10.0);
                 assert_eq!(game.mobs[main].velocity, Vec3::ZERO);
-                if game.mobs[main].on_ground {
+                if game.mobs[main].ground.on_ground {
                     failures.push(format!("tick{tick}: actual Mob still grounded"));
                 }
                 if game.mobs[main].position != Vec3::new(5.0, 202.0, 4.5) {
@@ -2346,12 +2346,12 @@ mod h255_mob_piston_ground_tests {
                     failures.push(format!("tick{tick}: saved ground is stale"));
                 }
                 assert_eq!(game.mobs[idle].position, Vec3::new(4.5, 202.0, 12.5));
-                assert!(game.mobs[idle].on_ground);
+                assert!(game.mobs[idle].ground.on_ground);
                 assert_eq!(
                     game.mobs[vertical].position,
                     Vec3::new(12.5, if tick == 1 { 202.51 } else { 203.01 }, 12.5)
                 );
-                assert!(!game.mobs[vertical].on_ground);
+                assert!(!game.mobs[vertical].ground.on_ground);
             }
             assert!(
                 failures.is_empty(),
@@ -2365,7 +2365,7 @@ mod h255_mob_piston_ground_tests {
         assert!(game.run_command(&format!("summon {kind} {x} 202 4.5 {{UUID:[I;255,1,0,{n}],Health:10f,NoAI:{}b,NoGravity:1b,OnGround:1b,Motion:[0d,0d,0d]{tame}}}",i32::from(no_ai))));
         let i = mob_index(game, n);
         assert_eq!(game.mobs[i].no_ai, no_ai);
-        assert!(game.mobs[i].on_ground);
+        assert!(game.mobs[i].ground.on_ground);
         assert_eq!(game.uuid_for(game.mobs[i].id), [255, 1, 0, n]);
         i
     }
@@ -2375,7 +2375,7 @@ mod h255_mob_piston_ground_tests {
             m.bounds(),
             [m.position.x, m.position.z],
             m.kind.step_height as f32,
-            m.on_ground,
+            m.ground.on_ground,
         );
         // Mob owns its actual piston budget; the map is for other entity kinds.
         game.move_pushed(
@@ -2484,12 +2484,15 @@ mod h255_mob_piston_ground_tests {
         with_game(|game| {
             let i = added_mob(game, 20, "horse", true, 8.5);
             added_push(game, i, Vec3::ZERO);
-            assert!(game.mobs[i].on_ground);
+            assert!(game.mobs[i].ground.on_ground);
             assert_eq!(game.mobs[i].position, Vec3::new(8.5, 202.0, 4.5));
             assert!(game.run_command("ride @s mount 000000ff-0000-0001-0000-000000000014"));
             assert_eq!(game.riding, Some(game.mobs[i].id));
             added_push(game, i, Vec3::new(0.51, 0.0, 0.0));
-            assert!(game.mobs[i].on_ground, "occupied path remains excluded");
+            assert!(
+                game.mobs[i].ground.on_ground,
+                "occupied path remains excluded"
+            );
             assert_eq!(game.mobs[i].position, Vec3::new(9.01, 202.0, 4.5));
             assert!(game.run_command("setblock 9 201 4 slime_block"));
             game.mobs[i].position.y = 202.25;
@@ -2514,7 +2517,7 @@ mod h255_mob_piston_ground_tests {
                 "real same-tick piston budget is exhausted"
             );
             assert!(
-                game.mobs[i].on_ground,
+                game.mobs[i].ground.on_ground,
                 "limitedZERO precedes the ground update"
             );
         });
@@ -2536,7 +2539,7 @@ mod h255_mob_piston_ground_tests {
                 "actual loaded wall blocks the nonzero request"
             );
             assert!(
-                !game.mobs[i].on_ground,
+                !game.mobs[i].ground.on_ground,
                 "Entity.move ground ordering, source/unit-only coverage"
             );
         });
@@ -2565,7 +2568,7 @@ mod h255_mob_piston_ground_tests {
                 let before = game.mobs[i].position;
                 added_push(game, i, movement);
                 assert_eq!(game.mobs[i].position, before.add_vector(movement));
-                assert_eq!(game.mobs[i].on_ground, on_ground);
+                assert_eq!(game.mobs[i].ground.on_ground, on_ground);
             });
         }
     }

@@ -1345,7 +1345,7 @@ fn player_push(m: &mut Mob, p: &super::PlayerView, w: &MobWorld, events: &mut Ve
     let speed = (p.velocity.length() * 2.0 * f64::from(0.3f32)).clamp(0.0, 0.5);
     let push = Vec3::new(
         dx / len * kb * speed,
-        if m.on_ground {
+        if m.ground.on_ground {
             kb * f64::from(0.3f32) * speed
         } else {
             0.0

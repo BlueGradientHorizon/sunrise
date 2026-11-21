@@ -1516,7 +1516,7 @@ impl Game<'_> {
                     m.ai.nav.stop();
                     m.velocity = teleport_velocity(m.velocity, relative, m.extra.fall_flying);
                     if !m.extra.fall_flying {
-                        m.on_ground = true;
+                        m.ground.on_ground = true;
                     }
                     sunrise_client::mobs::living::teleports::snap_to(m, v);
                     m.needs_sync = true;

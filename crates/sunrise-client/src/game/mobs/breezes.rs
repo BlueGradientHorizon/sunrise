@@ -80,6 +80,7 @@ impl Game<'_> {
             return (feet, in_block);
         }
         let on_ground = m
+            .ground
             .on_ground
             .then(|| self.supporting_block(m.position, m.bounds()));
         let at = on_ground.flatten().map_or(
@@ -174,7 +175,7 @@ mod tests {
         let fence = registry.default_state("minecraft:oak_fence").unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
         game.world.set(8, 64, 8, fence).unwrap();
-        game.mobs[0].on_ground = true;
+        game.mobs[0].ground.on_ground = true;
         assert_eq!(
             game.breeze_ground(&game.mobs[0]),
             ([8, 64, 8], fence),
@@ -211,7 +212,7 @@ mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
-        game.mobs[0].on_ground = true;
+        game.mobs[0].ground.on_ground = true;
         game.world.random = sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(1234));
         let level = game.world.random.state();
 
@@ -237,7 +238,7 @@ mod tests {
         let registry = &game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
-        game.mobs[0].on_ground = true;
+        game.mobs[0].ground.on_ground = true;
         for name in [
             "minecraft:oak_fence",
             "minecraft:cobblestone_wall",

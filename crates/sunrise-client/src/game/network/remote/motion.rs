@@ -69,7 +69,7 @@ impl Game<'_> {
                         m.yaw += wrap_degrees(yaw - m.yaw);
                         m.head_pitch = (pitch % 360.0).clamp(-90.0, 90.0);
                     }
-                    m.on_ground = on_ground;
+                    m.ground.on_ground = on_ground;
                     return;
                 }
                 // A living entity: LivingEntity.createInterpolationHandler's
@@ -90,7 +90,7 @@ impl Game<'_> {
                     m.previous_yaw = m.yaw;
                     m.previous_head_pitch = m.head_pitch;
                 }
-                m.on_ground = on_ground;
+                m.ground.on_ground = on_ground;
                 return;
             }
             // An armor stand is a living entity too: the same handler, over
@@ -112,7 +112,7 @@ impl Game<'_> {
                         at.yaw,
                     );
                 }
-                a.on_ground = on_ground;
+                a.ground.on_ground = on_ground;
                 return;
             }
             // Interaction extends Entity and keeps its NO_OP interpolation

@@ -1843,7 +1843,7 @@ impl Entity for Mob {
     }
 
     fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
     /// (a vex sets it only for the length of its own, custom travel). Its own
@@ -1921,7 +1921,7 @@ impl Entity for Mob {
         Mob::bounds(self)
     }
     fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     fn get_step_height(&self) -> f32 {
         self.kind.step_height as f32
@@ -1962,7 +1962,7 @@ impl Entity for Mob {
         self.needs_sync = true;
     }
     fn is_supported_by(&self, pos: BlockPos) -> bool {
-        self.supporting == Some([pos.x, pos.y, pos.z])
+        self.ground.supporting_block == Some(pos)
     }
     fn thunder_hit(&self) -> ThunderHit {
         if self.alive() {
@@ -2334,7 +2334,7 @@ impl Entity for ArmorStand {
     }
 
     fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn rotation(&self) -> [f32; 2] {
         [self.yaw, self.pitch]
@@ -2417,12 +2417,12 @@ impl Entity for ArmorStand {
         ArmorStand::bounds(self)
     }
     fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     /// A living entity's own flag too: keeping the old support flag would run
     /// Frost Walker while the stand is moving over open water.
     fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn is_living(&self) -> bool {
         true

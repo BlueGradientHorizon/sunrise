@@ -1871,7 +1871,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [m.position.x, m.position.y, m.position.z],
                 rotation: (m.yaw, m.head_pitch, m.head_yaw),
-                on_ground: m.on_ground,
+                on_ground: m.ground.on_ground,
                 velocity: [m.velocity.x, m.velocity.y, m.velocity.z],
             };
             let kind = m.kind.id.as_str();

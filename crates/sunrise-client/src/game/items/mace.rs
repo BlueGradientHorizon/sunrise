@@ -418,7 +418,7 @@ impl Game<'_> {
     /// waived from where the hit landed, the ground or air smash sounds, and
     /// the knockback around the target.
     fn mace_hurt_enemy(&mut self, index: usize) {
-        let target_on_ground = self.mobs[index].on_ground;
+        let target_on_ground = self.mobs[index].ground.on_ground;
         if let Some(fall) = self.mace_smash_self(target_on_ground) {
             let target = &self.mobs[index];
             self.smash_knockback(target.position, Spared::Mob(target.id), fall);
@@ -725,7 +725,7 @@ impl Game<'_> {
                 if let Some(s) = self.armor_stands.iter_mut().find(|s| s.id == id) {
                     s.velocity = Vec3::new(
                         s.velocity.x / 2.0 - kx / len * knock.strength,
-                        if s.on_ground {
+                        if s.ground.on_ground {
                             (s.velocity.y / 2.0 + knock.strength).min(0.4)
                         } else {
                             s.velocity.y

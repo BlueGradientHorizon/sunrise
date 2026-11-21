@@ -333,7 +333,7 @@ fn a_foxs_later_custom_effect_keeps_the_original_user_and_stack_after_discard() 
 
             let kind = game.res.mob_types().get("minecraft:fox").unwrap().clone();
             let mut fox = Mob::new(21, kind, Vec3::new(8.5, 64.0, 8.5), 0.0);
-            fox.on_ground = true;
+            fox.ground.on_ground = true;
             fox.extra.ints[1] = 601;
             let mut stack = ItemStack::new("minecraft:chorus_fruit", 7);
             stack

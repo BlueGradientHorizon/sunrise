@@ -852,7 +852,7 @@ impl Game<'_> {
         s.ticks_outside_raid = 0;
         s.active_raid = true;
         s.registered = true;
-        m.on_ground = true;
+        m.ground.on_ground = true;
         self.apply_raid_buffs(id, kind, wave, odds);
         Some(id)
     }

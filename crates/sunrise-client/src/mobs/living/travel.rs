@@ -67,7 +67,7 @@ impl Mob {
         // Camel.travel: on the ground, a camel that sits or changes pose keeps
         // the vertical part of its motion and drops the horizontal input.
         if super::super::camel::is_camel(self.species())
-            && self.on_ground
+            && self.ground.on_ground
             && super::super::camel::refuse_to_move(self)
         {
             let vertical = Vec3::new(0.0, 1.0, 0.0);

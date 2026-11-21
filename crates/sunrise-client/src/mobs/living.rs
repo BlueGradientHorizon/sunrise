@@ -428,7 +428,7 @@ impl TravelTail {
                 );
             }
             Self::FallFlying { before } => {
-                if mob.horizontal_collision {
+                if mob.ground.horizontal_collision {
                     let damage = ((before
                         - (mob.velocity.x * mob.velocity.x + mob.velocity.z * mob.velocity.z)
                             .sqrt())
@@ -926,7 +926,7 @@ impl Mob {
         // and no collision flag is set.
         if self.no_physics {
             self.position = self.position.add_vector(wanted);
-            self.horizontal_collision = false;
+            self.ground.horizontal_collision = false;
             self.vertical_collision_below = false;
             return None;
         }
@@ -954,7 +954,7 @@ impl Mob {
             self.bounds(),
             wanted,
             step,
-            self.on_ground,
+            self.ground.on_ground,
             border,
             &entities,
         )
@@ -983,15 +983,17 @@ impl Mob {
         let differs = |a: f64, b: f64| (b - a).abs() >= f64::from(1.0e-5_f32);
         let x_hit = differs(wanted.x, moved.x);
         let z_hit = differs(wanted.z, moved.z);
-        self.horizontal_collision = x_hit || z_hit;
+        self.ground.horizontal_collision = x_hit || z_hit;
         // A server's mobs are authoritative (`isLocalInstanceAuthoritative`):
         // the vertical flags update even without vertical movement.
         let vertical = wanted.y != moved.y;
         self.vertical_collision_below = vertical && wanted.y < 0.0;
-        self.on_ground = self.vertical_collision_below;
+        self.ground.on_ground = self.vertical_collision_below;
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
-        self.supporting = self.supporting_block(w, moved);
+        self.ground.supporting_block = self
+            .supporting_block(w, moved)
+            .map(|[x, y, z]| BlockPos::new(x, y, z));
         if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
             return Some(MoveTrample {
                 trample,
@@ -1068,7 +1070,7 @@ impl Mob {
             w.movement,
             w.loop_context,
             self.position,
-            self.supporting.map(|[x, y, z]| BlockPos::new(x, y, z)),
+            self.ground.supporting_block,
         )
     }
     /// `Entity.applyEffectsFromBlocks` as `LivingEntity.aiStep` runs it, after
@@ -1124,8 +1126,10 @@ impl Mob {
         on_ground: bool,
         events: &mut Vec<MobEvent>,
     ) -> Option<FarmlandTrample> {
-        self.on_ground = on_ground;
-        self.supporting = self.supporting_block(w, delta);
+        self.ground.on_ground = on_ground;
+        self.ground.supporting_block = self
+            .supporting_block(w, delta)
+            .map(|[x, y, z]| BlockPos::new(x, y, z));
         self.species_check_fall_damage(w, level, delta, events, true)
     }
     /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
@@ -1151,7 +1155,7 @@ impl Mob {
         if !self.fluids.in_water && moved.y < 0.0 {
             self.fall_distance -= f64::from(moved.y as f32);
         }
-        if self.on_ground {
+        if self.ground.on_ground {
             if self.fall_distance > 0.0 {
                 self.landing_dust(w, events);
                 if let Some(trample) = self.fall_on_block(w, level, events, pause) {
@@ -1242,7 +1246,7 @@ impl Mob {
         let full = (moved.length() * f64::from(0.6_f32)) as f32;
         let horizontal =
             ((moved.x * moved.x + moved.z * moved.z).sqrt() * f64::from(0.6_f32)) as f32;
-        let supporting = self.supporting;
+        let supporting = self.ground.supporting_block;
         let on = self.supported_on_pos(w, supporting, 1.0e-5);
         let state = w.world.block(on[0], on[1], on[2]);
         let climbable = w.facts.get(state).name.as_ref() == "minecraft:powder_snow"
@@ -1254,7 +1258,7 @@ impl Mob {
             let legacy = self.supported_on_pos(w, supporting, 0.2);
             let legacy_state = w.world.block(legacy[0], legacy[1], legacy[2]);
             let produced = !w.facts.is_air(legacy_state)
-                && (self.on_ground || climbable)
+                && (self.ground.on_ground || climbable)
                 && !self.fluids_swimming();
             if produced {
                 // `getMovementEmission().emitsSounds()`: the footfall is played
@@ -1311,7 +1315,7 @@ impl Mob {
             }
         } else if w.facts.is_air(state)
             && self.species() == super::Species::Bee
-            && !self.on_ground
+            && !self.ground.on_ground
             && self.age.is_multiple_of(2)
         {
             // Entity.processFlappingMovement: a flying bee beats its wings on
@@ -1362,7 +1366,7 @@ impl Mob {
     /// under the feet (`mainSupportingBlockPos`), looked for again where
     /// the mob came from if none is under it now.
     fn supporting_block(&self, w: &MobWorld, moved: Vec3) -> Option<[i32; 3]> {
-        if !self.on_ground {
+        if !self.ground.on_ground {
             return None;
         }
         let b = self.bounds();
@@ -1391,23 +1395,23 @@ impl Mob {
     /// `Entity.getBlockStateOnLegacy`'s position: 0.2 below the feet, or the
     /// supporting block.
     pub(super) fn block_on_legacy(&self, w: &MobWorld) -> [i32; 3] {
-        self.supported_on_pos(w, self.supporting, 0.2)
+        self.supported_on_pos(w, self.ground.supporting_block, 0.2)
     }
     /// `Entity.getOnPos(offset)` with a supporting block: its column (its
     /// own position for fences, walls and gates up to half a block down).
     fn supported_on_pos(
         &self,
         w: &MobWorld,
-        supporting: Option<[i32; 3]>,
+        supporting: Option<BlockPos>,
         offset: f32,
     ) -> [i32; 3] {
         let Some(p) = supporting else {
             return self.on_pos(offset);
         };
         if offset <= 1.0e-5 {
-            return p;
+            return [p.x, p.y, p.z];
         }
-        let name = &w.facts.get(w.world.block(p[0], p[1], p[2])).name;
+        let name = &w.facts.get(w.world.block(p.x, p.y, p.z)).name;
         let tall = [
             "minecraft:fences",
             "minecraft:walls",
@@ -1416,12 +1420,12 @@ impl Mob {
         .iter()
         .any(|t| w.has_tag(t, name));
         if offset <= 0.5 && tall {
-            p
+            [p.x, p.y, p.z]
         } else {
             [
-                p[0],
+                p.x,
                 (self.position.y - f64::from(offset)).floor() as i32,
-                p[2],
+                p.z,
             ]
         }
     }
@@ -1700,7 +1704,7 @@ impl Mob {
     }
     /// LivingEntity.getFrictionInfluencedSpeed.
     fn friction_speed(&self, w: &MobWorld, friction: f32) -> f32 {
-        if self.on_ground {
+        if self.ground.on_ground {
             let speed = self.speed(w);
             if friction > 0.6 {
                 speed * (0.216_000_02 / (friction * friction * friction))
@@ -1917,7 +1921,7 @@ impl Mob {
         pause: bool,
         stop_gliding: bool,
     ) -> Result<(), TravelTrample> {
-        let friction = if self.on_ground {
+        let friction = if self.ground.on_ground {
             // FRICTION_MODIFIER scales the block's slipperiness.
             let modifier = super::sulfur_cube::physics(self)
                 .map_or(1.0, |a| a.friction_modifier.clamp(0.0, 2048.0));
@@ -1947,7 +1951,7 @@ impl Mob {
 
     fn finish_air_travel(&mut self, w: &MobWorld, friction: f32) {
         let mut movement = self.velocity;
-        if (self.horizontal_collision || self.ai.jumping) && self.on_climbable(w) {
+        if (self.ground.horizontal_collision || self.ai.jumping) && self.on_climbable(w) {
             movement.y = 0.2;
         }
         let mut y = movement.y;
@@ -2005,7 +2009,7 @@ impl Mob {
             };
             let mut speed = 0.02f32;
             let mut efficiency = self.kind.water_efficiency as f32;
-            if !self.on_ground {
+            if !self.ground.on_ground {
                 efficiency *= 0.5;
             }
             if efficiency > 0.0 {
@@ -2044,7 +2048,7 @@ impl Mob {
             let mut m = self.velocity;
             // LivingEntity.travelInWater: `horizontalCollision && onClimbable()`,
             // a ladder or scaffolding under water as well as a climbing spider.
-            if self.horizontal_collision && self.on_climbable(w) {
+            if self.ground.horizontal_collision && self.on_climbable(w) {
                 m.y = 0.2;
             }
             m = Vec3::new(
@@ -2082,7 +2086,7 @@ impl Mob {
             m.z,
         ));
         let wide = ahead.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        if self.horizontal_collision
+        if self.ground.horizontal_collision
             && w.no_collision(ahead)
             && !w.contains_any_liquid(ahead)
             && !w.others_near(wide).any(|s| {
@@ -2119,9 +2123,9 @@ impl Mob {
                 )
             };
             let threshold = self.fluid_jump_threshold();
-            if !in_water_with_height || self.on_ground && fluid_height <= threshold {
-                if !self.fluids.in_lava || self.on_ground && self.fluids.lava <= threshold {
-                    if (self.on_ground || in_water_with_height && fluid_height <= threshold)
+            if !in_water_with_height || self.ground.on_ground && fluid_height <= threshold {
+                if !self.fluids.in_lava || self.ground.on_ground && self.fluids.lava <= threshold {
+                    if (self.ground.on_ground || in_water_with_height && fluid_height <= threshold)
                         && self.ai.no_jump_delay == 0
                     {
                         self.jump_from_ground(w);
@@ -2220,7 +2224,7 @@ impl Mob {
     /// `Entity.getBlockJumpFactor`: the block the mob stands in, or the one
     /// below that affects movement when the current block has a neutral jump factor of 1.0.
     pub fn block_jump_factor(&self, w: &MobWorld) -> f32 {
-        let supporting = self.supporting.map(|[x, y, z]| BlockPos::new(x, y, z));
+        let supporting = self.ground.supporting_block;
         crate::motion::block_jump_factor_at(
             w.world,
             w.movement,
@@ -2524,21 +2528,21 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
     fn movement_support_position(&mut self) -> Result<BlockPos, ()> {
         let position = self.mob.position;
         let offset = f64::from(sunrise_world::movement_support::MOVEMENT_SUPPORT_OFFSET);
-        let Some(support) = self.mob.supporting else {
+        let Some(support) = self.mob.ground.supporting_block else {
             return Ok(BlockPos::new(
                 position.x.floor() as i32,
                 (position.y - offset).floor() as i32,
                 position.z.floor() as i32,
             ));
         };
-        let state = self.world.world.block(support[0], support[1], support[2]);
+        let state = self.world.world.block(support.x, support.y, support.z);
         let keeps_column = self
             .movement(state)
             .is_ok_and(|b| b.wall || b.coefficients.fence_gate);
         Ok(if keeps_column {
-            BlockPos::new(support[0], support[1], support[2])
+            support
         } else {
-            BlockPos::new(support[0], (position.y - offset).floor() as i32, support[2])
+            BlockPos::new(support.x, (position.y - offset).floor() as i32, support.z)
         })
     }
     /// `BlockLandingRegistry.bounce_on`'s only case is the shelf mushroom's
@@ -3063,7 +3067,7 @@ mod tests {
             let kind = std::sync::Arc::new(types.types["minecraft:pig"].clone());
             let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
             m.position = Vec3::new(1.1, 1.0, 0.5);
-            m.supporting = Some([0, 0, 0]);
+            m.ground.supporting_block = Some(sunrise_core::position::BlockPos::new(0, 0, 0));
             m.velocity = Vec3::new(0.0, -1.0, 0.0);
             assert_eq!(m.on_pos(0.2), [1, 0, 0]);
             assert_eq!(m.block_on_legacy(&w), [0, 0, 0]);
@@ -3474,7 +3478,7 @@ mod tests {
             crate::mobs::world::with_built_test_world(&[], build, |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:zombie"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 1.5), 0.0);
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.velocity = Vec3::new(0.2, 0.0, 0.0);
                 m.do_move(w, level, &mut Vec::new(), &mut MoveGate::new());
                 let expected = f64::from(factor as f32) * 0.2;
@@ -3521,7 +3525,7 @@ mod tests {
                 m.velocity = Vec3::new(1.5, 0.0, 0.0);
                 m.do_move(&w, level, &mut Vec::new(), &mut MoveGate::new());
                 east_edge[i] = m.bounds().max_position().x;
-                assert_eq!(m.horizontal_collision, bordered);
+                assert_eq!(m.ground.horizontal_collision, bordered);
             }
             assert!(
                 east_edge[0] > 13.0,
@@ -3572,7 +3576,7 @@ mod tests {
                 if boosted {
                     m.add_effect("minecraft:jump_boost", -1, 1);
                 }
-                m.on_ground = true;
+                m.ground.on_ground = true;
                 m.fall_distance = 4.5;
                 let mut test_level = crate::health::TestLevel::new(0);
                 let mut events = Vec::new();
@@ -3784,7 +3788,7 @@ mod tests {
             crate::mobs::world::with_built_test_world(&[], build, |w, types| {
                 let kind = std::sync::Arc::new(types.types["minecraft:cow"].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(1.5, 10.0, 1.5), 0.0);
-                m.on_ground = false;
+                m.ground.on_ground = false;
                 let mut drops = Vec::new();
                 for _ in 0..12 {
                     let before = m.position.y;
@@ -3931,8 +3935,8 @@ mod tests {
             let walk = |id: &str| {
                 let kind = std::sync::Arc::new(types.types[id].clone());
                 let mut m = Mob::new(1, kind, Vec3::new(0.5, 1.0, 0.5), 0.0);
-                m.on_ground = true;
-                m.supporting = Some([0, 0, 0]);
+                m.ground.on_ground = true;
+                m.ground.supporting_block = Some(sunrise_core::position::BlockPos::new(0, 0, 0));
                 let mut events = Vec::new();
                 m.movement_emission(w, Vec3::new(2.0, 0.0, 0.0), &mut events);
                 events

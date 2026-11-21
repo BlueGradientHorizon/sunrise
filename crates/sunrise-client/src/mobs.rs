@@ -1568,8 +1568,7 @@ pub struct Mob {
     /// Entity.xRot
     pub head_pitch: f32,
     pub previous_head_pitch: f32,
-    pub on_ground: bool,
-    pub horizontal_collision: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     pub vertical_collision_below: bool,
     /// `Entity.needsSync`: knocked back, pushed or jumped since its server
     /// last sent it, so the next update goes out at once.
@@ -1636,9 +1635,6 @@ pub struct Mob {
     /// (`Entity.saveWithoutId` omits it) and no mob tick rewrites it except a
     /// vex, which sets it only for the length of its own tick.
     pub no_physics: bool,
-    /// `Entity.mainSupportingBlockPos`: the block it stood on after its last
-    /// move.
-    pub supporting: Option<[i32; 3]>,
     /// The block under the mob's feet by name (`minecraft:grass_block`), kept for the
     /// packs' random-model rules (`rule_index`); `None` without rules or off the ground.
     pub standing_on: Option<String>,
@@ -3675,8 +3671,7 @@ impl Mob {
             previous_head_yaw: yaw,
             head_pitch: 0.0,
             previous_head_pitch: 0.0,
-            on_ground: false,
-            horizontal_collision: false,
+            ground: Default::default(),
             vertical_collision_below: false,
             needs_sync: false,
             sync_position: false,
@@ -3708,7 +3703,6 @@ impl Mob {
             first_tick: true,
             no_gravity: false,
             no_physics: false,
-            supporting: None,
             standing_on: None,
             no_ai: false,
             silent: false,
@@ -5223,7 +5217,7 @@ impl Mob {
     /// (`elytraAnimationState`) and the swim amount (`updateSwimAmount`).
     pub fn tick_avatar_pose(&mut self, in_water: bool) {
         let (p, v) = (self.previous, self.velocity);
-        let on_ground_alive = self.on_ground && self.alive();
+        let on_ground_alive = self.ground.on_ground && self.alive();
         let e = &mut self.extra;
         e.fall_fly_ticks = if e.fall_flying {
             e.fall_fly_ticks + 1

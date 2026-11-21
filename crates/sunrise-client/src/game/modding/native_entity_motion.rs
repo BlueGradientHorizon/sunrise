@@ -434,7 +434,7 @@ mod tests {
                 .clone();
             // A zombie 0.6 wide straddling x = 1: its box is over blocks 0 and 1.
             let mut zombie = Mob::new(40, kind, Vec3::new(0.9, 65.0, 0.5), 0.0);
-            zombie.on_ground = true;
+            zombie.ground.on_ground = true;
             game.mobs.push(zombie);
             let entity = game.entity(40).unwrap();
             // Only block 1 is under the box: it supports, not the block of the feet's own column.
@@ -447,7 +447,7 @@ mod tests {
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
             // Off the ground there is no support: the cell under the feet.
             game.mobs[0].position = Vec3::new(0.9, 65.0, 0.5);
-            game.mobs[0].on_ground = false;
+            game.mobs[0].ground.on_ground = false;
             assert_eq!(game.entity_on_block(entity), Some([0, 64, 0]));
             let air = game
                 .pack
@@ -456,7 +456,7 @@ mod tests {
                 .default_state("minecraft:air")
                 .unwrap();
             game.world.set(0, 64, 0, air).unwrap();
-            game.mobs[0].on_ground = true;
+            game.mobs[0].ground.on_ground = true;
             assert_eq!(game.entity_on_block(entity), Some([1, 64, 0]));
 
             // Facing south (yaw 0) level, the eyes see a block two cells ahead.
