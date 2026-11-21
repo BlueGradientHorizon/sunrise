@@ -44,15 +44,17 @@ prepare succeeds.
 Outside a listener, `host.open_resource(pack_type, &identifier)` opens one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and
 `PackType::ClientResources` takes `mymod:models/block/furnace.json` from `assets/`. As with
-`ResourceManager.getResource`, the highest selected pack that supplies the file wins. Opening
-never reloads packs or substitutes a lower pack's file if the winner fails.
+`ResourceManager.getResource`, each selected pack in priority order first gets to supply its own
+file, then its `filter.block` can hide lower files. Opening reads the original file, not a merged
+file such as the language table. It never reloads packs or substitutes a lower pack's file if
+the winner fails.
 
 - `Ok(Some(reader))` gives a `std::io::Read` scoped to the host's published pack generation. Pass it
   to a streaming decoder, or call `reader.read_to_end(&mut bytes)` to fill a `Vec<u8>` when you need owned bytes.
   Opening does not load the whole resource or set a file-size limit; apply your codec's own limits
   when reading. The reader can report I/O or archive decoding errors, and the consumer reports its
   own format errors.
-- `Ok(None)` means no matching resource or pack stack.
+- `Ok(None)` means no matching resource or pack stack, including a resource hidden by a pack filter.
 - `Err(ResourceOpenError)` means the published stack is unavailable in this phase or lookup/opening
   failed. The `Io` variant preserves the original error.
 

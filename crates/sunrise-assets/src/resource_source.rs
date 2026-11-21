@@ -61,11 +61,13 @@ enum Storage {
         source: ResourceSource,
         prefix: String,
     },
-    /// Winning files and any retained file or named source stacks, lowest layer first.
+    /// Winning files, file stacks, named sources (lowest first), and the
+    /// original pack view when rendering has substituted or hidden files.
     Index(
         BTreeMap<String, Resource>,
         BTreeMap<String, Vec<Resource>>,
         Arc<[(String, ResourceSource)]>,
+        Option<ResourceSource>,
     ),
 }
 
@@ -201,22 +203,15 @@ impl Default for ResourceSource {
     }
 }
 
-/// Open `name` from the first source that supplies it, in highest-first priority
-/// order. As in vanilla's `FallbackResourceManager`, an I/O error from the winner
-/// is not a reason to try a lower layer.
-pub fn open_winning_resource<'a>(
-    sources: impl IntoIterator<Item = &'a ResourceSource>,
-    name: &str,
-) -> io::Result<Option<Box<dyn io::Read + 'a>>> {
-    if !stays_inside(name) {
-        return Ok(None);
+/// A resource path relative to a pack root. Validate it once before walking
+/// multiple layers of a resource manager.
+#[derive(Clone, Copy)]
+pub struct ResourcePath<'a>(&'a str);
+
+impl<'a> ResourcePath<'a> {
+    pub fn new(name: &'a str) -> Option<Self> {
+        stays_inside(name).then_some(Self(name))
     }
-    for source in sources {
-        if let Some(reader) = source.open_resource(name)? {
-            return Ok(Some(reader));
-        }
-    }
-    Ok(None)
 }
 
 /// A resource name cannot escape its layer. ZIP names already have separators
@@ -320,27 +315,35 @@ impl ResourceSource {
         Self(Arc::new(storage), Arc::default())
     }
     pub fn indexed(files: BTreeMap<String, Resource>) -> Self {
-        Self::from(Storage::Index(files, BTreeMap::new(), Arc::from([])))
+        Self::from(Storage::Index(files, BTreeMap::new(), Arc::from([]), None))
     }
-    /// An index that also keeps, for each name in `layers`, the file of every layer that
-    /// provides it, lowest first: what [`ResourceSource::stack`] gives.
+    /// An index with the file stacks for [`ResourceSource::stack`] and, if the
+    /// index includes rendering overrides, the unmodified pack view.
     pub fn indexed_with_layers(
         files: BTreeMap<String, Resource>,
         layers: BTreeMap<String, Vec<Resource>>,
+        raw: Option<Self>,
     ) -> Self {
-        Self::from(Storage::Index(files, layers, Arc::from([])))
+        Self::from(Storage::Index(files, layers, Arc::from([]), raw))
+    }
+    /// The original pack winners, before rendering merges and runtime textures.
+    pub fn raw_pack_files(&self) -> &Self {
+        match self.0.as_ref() {
+            Storage::Index(.., Some(raw)) => raw,
+            _ => self,
+        }
     }
     /// Retain the named sources below the flattened index, lowest layer first.
     pub fn indexed_with_sources(
         files: BTreeMap<String, Resource>,
         sources: Arc<[(String, ResourceSource)]>,
     ) -> Self {
-        Self::from(Storage::Index(files, BTreeMap::new(), sources))
+        Self::from(Storage::Index(files, BTreeMap::new(), sources, None))
     }
     /// The original named sources, when this index represents a composed pack.
     pub fn named_sources(&self) -> &[(String, ResourceSource)] {
         match self.0.as_ref() {
-            Storage::Index(.., sources) => sources,
+            Storage::Index(_, _, sources, _) => sources,
             _ => &[],
         }
     }
@@ -349,7 +352,7 @@ impl ResourceSource {
     /// file. Empty where there is none.
     pub fn stack(&self, name: &str) -> Vec<Resource> {
         match self.0.as_ref() {
-            Storage::Index(files, layers, _) => match layers.get(name) {
+            Storage::Index(files, layers, ..) => match layers.get(name) {
                 Some(layers) => layers.clone(),
                 None => files.get(name).cloned().into_iter().collect(),
             },
@@ -360,12 +363,12 @@ impl ResourceSource {
     /// The layers of the names an index keeps them for ([`ResourceSource::indexed_with_layers`]).
     pub fn layers(&self) -> Option<&BTreeMap<String, Vec<Resource>>> {
         match self.0.as_ref() {
-            Storage::Index(_, layers, _) => Some(layers),
+            Storage::Index(_, layers, ..) => Some(layers),
             _ => None,
         }
     }
-    /// A source of the same files, `files` added over them, in the same generation: it keeps
-    /// the layers and shares what [`ResourceSource::cached`] holds.
+    /// Add rendering files over this source. Keep the original pack view and
+    /// file stacks, and share what [`ResourceSource::cached`] holds.
     pub fn extended(&self, files: BTreeMap<String, Resource>) -> Self {
         let mut index: BTreeMap<_, _> = self
             .list("")
@@ -375,11 +378,16 @@ impl ResourceSource {
         index.extend(files);
         let layers = self.layers().cloned().unwrap_or_default();
         let sources = match self.0.as_ref() {
-            Storage::Index(.., sources) => sources.clone(),
+            Storage::Index(_, _, sources, _) => sources.clone(),
             _ => Arc::from([]),
         };
         Self(
-            Arc::new(Storage::Index(index, layers, sources)),
+            Arc::new(Storage::Index(
+                index,
+                layers,
+                sources,
+                Some(self.raw_pack_files().clone()),
+            )),
             self.1.clone(),
         )
     }
@@ -442,28 +450,30 @@ impl ResourceSource {
                 .read(),
         }
     }
-    /// Open a validated resource path without loading its contents. Prefixes are
-    /// validated at construction; indexed paths may come from a different layer.
-    fn open_resource(&self, name: &str) -> io::Result<Option<Box<dyn io::Read + '_>>> {
+    /// Open a relative resource path without loading its contents. A missing
+    /// resource is distinct from an I/O error.
+    pub fn open_resource(
+        &self,
+        ResourcePath(name): ResourcePath<'_>,
+    ) -> io::Result<Option<Box<dyn io::Read + '_>>> {
         match self.0.as_ref() {
             Storage::Directory(root) => {
                 sunrise_core::prepared_files::open_resource(&root.join(name))
             }
             Storage::Archive(archive) => archive.open_entry(name),
-            Storage::Prefix { source, prefix } => source.open_resource(&format!("{prefix}{name}")),
+            Storage::Prefix { source, prefix } => {
+                source.open_resource(ResourcePath(&format!("{prefix}{name}")))
+            }
             Storage::Index(files, ..) => match files.get(name).map(|file| &file.0) {
                 Some(ResourceStorage::Bytes(bytes)) => Ok(Some(Box::new(bytes.as_ref()))),
                 Some(ResourceStorage::File { source, name }) => {
-                    if !stays_inside(name) {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            "unsafe indexed resource name",
-                        ));
-                    }
+                    let path = ResourcePath::new(name).ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "unsafe indexed resource name")
+                    })?;
                     // The index already chose this source; a deleted file is an I/O
                     // error, not an absent entry that would reveal a lower layer.
                     let reader = source
-                        .open_resource(name)?
+                        .open_resource(path)?
                         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?;
                     Ok(Some(reader))
                 }
@@ -993,7 +1003,8 @@ mod tests {
         assert_eq!(source.read_limited(sound, 5).unwrap(), b"sound");
         fs::write(fixture.0.join(image), b"not in the prepared generation").unwrap();
         let mut bytes = Vec::new();
-        open_winning_resource([&source], image)
+        source
+            .open_resource(ResourcePath::new(image).unwrap())
             .unwrap()
             .unwrap()
             .read_to_end(&mut bytes)
@@ -1009,46 +1020,20 @@ mod tests {
     }
 
     #[test]
-    fn winning_resource_opens_the_highest_layer_without_masking_errors() {
+    fn indexed_resource_distinguishes_an_absent_name_from_an_unreadable_file() {
         let fixture = Fixture::new();
-        let name = "data/demo/config.json";
-        let broken_name = "data/demo/broken.json";
-        let base = ResourceSource::indexed(BTreeMap::from([
-            (name.to_owned(), Resource::bytes(b"base".to_vec())),
-            (broken_name.to_owned(), Resource::bytes(b"backup".to_vec())),
-        ]));
-        let pack = ResourceSource::indexed(BTreeMap::from([
-            (name.to_owned(), Resource::bytes(b"pack".to_vec())),
-            (
-                broken_name.to_owned(),
-                Resource::file(
-                    ResourceSource::directory(fixture.0.clone()),
-                    broken_name.to_owned(),
-                ),
-            ),
-        ]));
-        let sources = [&pack, &base];
-        let mut bytes = Vec::new();
-        open_winning_resource(sources, name)
-            .unwrap()
-            .unwrap()
-            .read_to_end(&mut bytes)
-            .unwrap();
-        assert_eq!(bytes, b"pack");
-        assert!(
-            open_winning_resource(sources, "data/demo/missing.json")
-                .unwrap()
-                .is_none()
-        );
+        let winner = "data/demo/config.json";
+        let pack = ResourceSource::indexed(BTreeMap::from([(
+            winner.to_owned(),
+            Resource::file(ResourceSource::directory(fixture.0.clone()), winner.into()),
+        )]));
+        let missing = ResourcePath::new("data/demo/missing.json").unwrap();
+        assert!(pack.open_resource(missing).unwrap().is_none());
         assert!(matches!(
-            open_winning_resource(sources, broken_name),
+            pack.open_resource(ResourcePath::new(winner).unwrap()),
             Err(error) if error.kind() == io::ErrorKind::NotFound
         ));
-        assert!(
-            open_winning_resource(sources, "../data/demo/config.json")
-                .unwrap()
-                .is_none()
-        );
+        assert!(ResourcePath::new("../data/demo/config.json").is_none());
     }
 
     #[test]
@@ -1065,7 +1050,10 @@ mod tests {
         drop(file);
         let source = ResourceSource::directory(fixture.0.clone());
 
-        let mut reader = open_winning_resource([&source], name).unwrap().unwrap();
+        let mut reader = source
+            .open_resource(ResourcePath::new(name).unwrap())
+            .unwrap()
+            .unwrap();
         let mut marker = [0; 5];
         reader.read_exact(&mut marker).unwrap();
         assert_eq!(&marker, b"start");
@@ -1085,7 +1073,8 @@ mod tests {
         let path = fixture.archive("pack.jar", &[(name, b"before")]);
         let before = ResourceSource::archive(&path).unwrap();
         let shared = before.clone();
-        let mut reader = open_winning_resource([&before], name).unwrap().unwrap();
+        let resource = ResourcePath::new(name).unwrap();
+        let mut reader = before.open_resource(resource).unwrap().unwrap();
         let replacement = fixture.archive(
             "new.jar",
             &[(name, b"after"), ("data/demo/new.json", b"new")],
@@ -1098,7 +1087,8 @@ mod tests {
         assert_eq!(bytes, b"before");
         assert_eq!(shared.read(name).unwrap(), b"before");
         bytes.clear();
-        open_winning_resource([&after], name)
+        after
+            .open_resource(resource)
             .unwrap()
             .unwrap()
             .read_to_end(&mut bytes)

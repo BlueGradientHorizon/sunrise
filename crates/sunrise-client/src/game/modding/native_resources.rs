@@ -2,7 +2,7 @@
 use super::Game;
 use mod_api::{Identifier, PackType, ResourceOpenError};
 use std::io::Read;
-use sunrise_assets::resource_source::open_winning_resource;
+use sunrise_assets::resource_source::ResourcePath;
 
 impl Game<'_> {
     pub(in crate::game) fn open_resource(
@@ -10,27 +10,29 @@ impl Game<'_> {
         pack_type: PackType,
         identifier: &Identifier,
     ) -> Result<Option<Box<dyn Read + '_>>, ResourceOpenError> {
-        if pack_type == PackType::ClientResources {
-            if !self.options.execution_role.is_client() {
-                return Ok(None);
+        match pack_type {
+            PackType::ClientResources if self.options.execution_role.is_client() => {
+                let name = format!("assets/{}/{}", identifier.namespace(), identifier.path());
+                let Some(path) = ResourcePath::new(&name) else {
+                    return Ok(None);
+                };
+                self.pack.source.raw_pack_files().open_resource(path)
             }
-            // `packs::resources` already applies client asset overrides and filters.
-            let name = format!("assets/{}/{}", identifier.namespace(), identifier.path());
-            return open_winning_resource([&self.pack.source], &name)
-                .map_err(ResourceOpenError::Io);
+            PackType::ServerData => {
+                let world = self
+                    .options
+                    .execution_role
+                    .is_logical_server()
+                    .then(|| self.fns.enabled_packs_highest_first())
+                    .into_iter()
+                    .flatten();
+                let lower = std::iter::once(&self.pack.data_changes)
+                    .chain((!self.cmds.vanilla_disabled).then_some(&self.pack.data_source));
+                sunrise_client::datapack::open_resource(world, lower, identifier)
+            }
+            _ => return Ok(None),
         }
-
-        let name = format!("data/{}/{}", identifier.namespace(), identifier.path());
-        let sources = self
-            .options
-            .execution_role
-            .is_logical_server()
-            .then(|| self.fns.pack_sources())
-            .into_iter()
-            .flatten()
-            .chain(std::iter::once(&self.pack.data_changes))
-            .chain((!self.cmds.vanilla_disabled).then_some(&self.pack.data_source));
-        open_winning_resource(sources, &name).map_err(ResourceOpenError::Io)
+        .map_err(ResourceOpenError::Io)
     }
 }
 
