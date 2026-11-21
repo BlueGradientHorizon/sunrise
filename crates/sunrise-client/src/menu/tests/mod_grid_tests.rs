@@ -35,6 +35,27 @@ fn rapid_clicks_on_a_crafting_result_each_craft() {
     });
 }
 
+#[test]
+fn pickup_takes_the_shown_result_instead_of_reassembling_a_registered_recipe() {
+    crate::crafting::mod_kinds::tests::with_recipe(0, |recipes, _| {
+        bare_env(|env| {
+            let env = Env {
+                recipes: &recipes,
+                ..*env
+            };
+            let mut menu = Menu::new(mod_crafting_table());
+            menu.set_slot(&env, 1, Some(ItemStack::new("test:input", 1)));
+            assert_eq!(menu.slot(0), Some(&ItemStack::new("test:output", 3)));
+            // The authoritative result has been edited since recipe preparation.
+            menu.load_slot(0, stack("stone", 5));
+            menu.click(&env, 0, 0, Input::Pickup).unwrap();
+            assert_eq!(menu.carried, stack("stone", 5));
+            assert_eq!(menu.slot(1), None);
+            assert_eq!(menu.slot(0), None);
+        });
+    });
+}
+
 /// The recipe book's placement (`ServerPlaceRecipe`) and the viewers'
 /// transfer fill a mod crafting grid as the crafting table's, and a
 /// placement without the items leaves the grid empty for a ghost.

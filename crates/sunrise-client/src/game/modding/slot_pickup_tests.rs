@@ -59,6 +59,7 @@ thread_local! {
     static QUICK_MOVE_LEFT: Cell<Option<u32>> = const { Cell::new(None) };
     /// The clicked stack the override was given.
     static QUICK_MOVE_SOURCE: Cell<Option<u32>> = const { Cell::new(None) };
+    static QUICK_MOVE_CONSUME: Cell<Option<usize>> = const { Cell::new(None) };
 }
 
 struct Pot;
@@ -110,6 +111,9 @@ impl BlockEntityPart for PotBlock {
         if let Some(left) = QUICK_MOVE_LEFT.take() {
             let source = event.stack.as_mut().unwrap();
             QUICK_MOVE_SOURCE.set(Some(source.count()));
+            if let Some(slot) = QUICK_MOVE_CONSUME.take() {
+                event.entity.items[slot] = None;
+            }
             if left == 0 {
                 *event.stack = None;
             } else {
@@ -607,6 +611,52 @@ fn a_handled_quick_move_writes_its_remainder_to_the_link_not_the_owner() {
 
 #[test]
 #[ignore = "daily"]
+fn a_cached_machine_menu_reopens_a_linked_slot_when_its_backing_appears() {
+    with_pot(|game, rx| {
+        serve(game, &prediction(&[(0, stone(5))], None));
+        link_pot(game);
+        let backing = game.world.block_entities.remove(&LINK).unwrap();
+        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+            guest.menu.as_mut().unwrap().hidden = vec![0];
+        });
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        // Cache the machine menu while the link has no backing.
+        click(
+            game,
+            rx,
+            (LINKED_SLOT as i32, 0, Input::Pickup),
+            Vec::new(),
+            None,
+        );
+        game.world.block_entities.insert(LINK, backing);
+        // Refreshing the link must not re-enable a layout-hidden slot.
+        click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
+        assert_eq!(
+            game.world.block_entities.get(&POS).unwrap().slots()[0],
+            stone(5)
+        );
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        click(
+            game,
+            rx,
+            (LINKED_SLOT as i32, 0, Input::QuickMove),
+            Vec::new(),
+            None,
+        );
+        assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [LINKED_SLOT]);
+        assert_eq!(
+            game.world.block_entities.get(&LINK).unwrap().slots()[0],
+            None
+        );
+        assert_eq!(
+            game.lan.as_ref().unwrap().hub.guests[0].inventory[8],
+            stone(7)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
     with_pot(|game, rx| {
         let craft = ModCrafting {
@@ -628,6 +678,7 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
             });
         });
         QUICK_MOVE_LEFT.set(Some(3));
+        QUICK_MOVE_CONSUME.set(Some(craft.grid));
         click(
             game,
             rx,
@@ -636,11 +687,132 @@ fn a_handled_quick_move_reads_and_leaves_the_shown_crafting_result() {
             None,
         );
         assert_eq!(QUICK_MOVE_SOURCE.take(), Some(5));
+        let block = game.world.block_entities.get(&POS).unwrap();
+        assert_eq!(block.slots()[craft.grid], None);
+        assert_eq!(block.slots()[RESULT], None);
+
+        game.lan_mod_crafting_tick();
         let host = game.lan.as_ref().unwrap();
         assert_eq!(host.hub.view_slot(0, &game.world, RESULT), stone(3));
+        // The next shift-click is given what the player still sees, not a recipe lookup on an
+        // empty grid. The handler can empty the result without re-consuming an input.
+        QUICK_MOVE_LEFT.set(Some(0));
+        click(
+            game,
+            rx,
+            (RESULT as i32, 0, Input::QuickMove),
+            Vec::new(),
+            None,
+        );
+        assert_eq!(QUICK_MOVE_SOURCE.take(), Some(3));
+        let host = game.lan.as_ref().unwrap();
+        assert_eq!(host.hub.view_slot(0, &game.world, RESULT), None);
+
+        // A subsequent input change invalidates the published result. Even before the next
+        // tick, a click reads the newly prepared result (one oak log makes four planks).
+        game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[craft.grid] =
+            Some(ItemStack::new("minecraft:oak_log", 1));
+        QUICK_MOVE_LEFT.set(Some(2));
+        click(
+            game,
+            rx,
+            (RESULT as i32, 0, Input::QuickMove),
+            Vec::new(),
+            None,
+        );
+        assert_eq!(QUICK_MOVE_SOURCE.take(), Some(4));
+        let host = game.lan.as_ref().unwrap();
         assert_eq!(
-            game.world.block_entities.get(&POS).unwrap().slots()[RESULT],
-            None
+            host.hub.view_slot(0, &game.world, RESULT),
+            Some(ItemStack::new("minecraft:oak_planks", 2))
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn quick_move_projection_failures_report_every_time_and_refuse_the_move() {
+    // Use a separate process because the test logger is process-global.
+    const CHILD: &str = "SUNRISE_TEST_QUICK_MOVE_PROJECTION_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", "game::slot_pickup_tests::quick_move_projection_failures_report_every_time_and_refuse_the_move"])
+            .env(CHILD, "1")
+            .status().unwrap().success());
+        return;
+    }
+    struct Capture(std::sync::Mutex<Vec<String>>);
+    impl log::Log for Capture {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            let message = record.args().to_string();
+            if message.starts_with("menu_quick_move: cannot project ") {
+                self.0.lock().unwrap().push(message);
+            }
+        }
+        fn flush(&self) {}
+    }
+    static LOG: Capture = Capture(std::sync::Mutex::new(Vec::new()));
+    log::set_logger(&LOG).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+
+    with_pot(|game, rx| {
+        let unknown = Some(ItemStack::new("pot:unregistered", 7));
+        link_pot(game);
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        // A linked source is not in the owner's snapshot. Its own projection fails.
+        game.world
+            .block_entities
+            .get_mut(&LINK)
+            .unwrap()
+            .slots_mut()[0] = unknown.clone();
+        for _ in 0..2 {
+            click(
+                game,
+                rx,
+                (LINKED_SLOT as i32, 0, Input::QuickMove),
+                Vec::new(),
+                None,
+            );
+        }
+        assert_eq!(
+            game.world.block_entities.get(&LINK).unwrap().slots()[0],
+            unknown
+        );
+        // This time the source is valid but the snapshot has another invalid stack.
+        serve(
+            game,
+            &prediction(&[(0, stone(5)), (SHOWN, unknown.clone())], None),
+        );
+        for _ in 0..2 {
+            click(game, rx, (0, 0, Input::QuickMove), Vec::new(), None);
+        }
+        assert_eq!(
+            game.world.block_entities.get(&POS).unwrap().slots()[0],
+            stone(5)
+        );
+        assert!(
+            game.lan.as_ref().unwrap().hub.guests[0]
+                .inventory
+                .iter()
+                .all(Option::is_none)
+        );
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        let records = LOG.0.lock().unwrap();
+        assert_eq!(records.len(), 4, "{records:?}");
+        assert!(
+            records[..2]
+                .iter()
+                .all(|s| s.contains("clicked stack") && s.contains("UnknownItem")),
+            "{records:?}"
+        );
+        assert!(
+            records[2..]
+                .iter()
+                .all(|s| s.contains("owning block entity") && s.contains("UnknownItem")),
+            "{records:?}"
         );
     });
 }

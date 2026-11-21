@@ -333,6 +333,32 @@ struct Slot {
     role: Role,
 }
 
+impl Slot {
+    fn mod_menu(kind: &crate::containers::ModMenuType, index: usize) -> Self {
+        match kind.crafting {
+            Some(c) if c.grid_slots().contains(&index) => Self {
+                container: GRID,
+                index: index - c.grid,
+                role: Role::Mod,
+            },
+            Some(c) if c.result == index => Self {
+                container: RESULT,
+                index: 0,
+                role: Role::CraftResult,
+            },
+            _ => Self {
+                container: MAIN,
+                index,
+                role: if kind.results.contains(&index) {
+                    Role::ModResult
+                } else {
+                    Role::Mod
+                },
+            },
+        }
+    }
+}
+
 /// `BeaconBlockEntity.BEACON_EFFECTS`: the powers of each pyramid level.
 pub const BEACON_EFFECTS: [&[&str]; 4] = [
     &["minecraft:speed", "minecraft:haste"],
@@ -537,26 +563,7 @@ impl Menu {
                 // grid container, its result over the result container.
                 let crafting = t.crafting;
                 grid_size = crafting.map_or(0, |c| c.size);
-                slots.extend((0..t.slots).map(|index| match crafting {
-                    Some(c) if c.grid_slots().contains(&index) => Slot {
-                        container: GRID,
-                        index: index - c.grid,
-                        role: Role::Mod,
-                    },
-                    Some(c) if c.result == index => Slot {
-                        container: RESULT,
-                        index: 0,
-                        role: Role::CraftResult,
-                    },
-                    _ => Slot {
-                        container: MAIN,
-                        index,
-                        role: match t.results.contains(&index) {
-                            true => Role::ModResult,
-                            false => Role::Mod,
-                        },
-                    },
-                }));
+                slots.extend((0..t.slots).map(|index| Slot::mod_menu(t, index)));
                 if t.player_inventory {
                     player(&mut slots);
                 }
@@ -1738,9 +1745,10 @@ impl Menu {
     }
 
     fn vanilla_may_pickup(&self, env: &Env, s: usize) -> bool {
+        // ResultSlot inherits Slot.mayPickup: the displayed stack is the result,
+        // even when it differs from what a fresh recipe assembly would make.
         match self.state.slots[s].role {
             Role::Inert | Role::Hidden => false,
-            Role::CraftResult => self.crafting_result_is_current(env, s),
             // AnvilMenu.mayPickup: the levels to pay, and a price.
             Role::CombineResult if self.state.kind == Kind::Anvil => {
                 (self.state.creative || self.state.levels >= self.state.data[0])

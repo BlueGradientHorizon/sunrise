@@ -487,7 +487,11 @@ impl Game<'_> {
                 Slots::Block(pos) => Some((
                     pos,
                     m.mod_type,
-                    m.hidden.clone(),
+                    m.hidden
+                        .iter()
+                        .copied()
+                        .chain(m.unlinked_slots(&self.world))
+                        .collect::<Vec<_>>(),
                     host.hub.registry_name("minecraft:menu", m.kind)?.to_owned(),
                 )),
                 _ => None,
@@ -506,11 +510,6 @@ impl Game<'_> {
                 .unwrap_or_default();
             (l, links)
         });
-        let mut hidden = hidden;
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links);
-            hidden.extend(l.slots().skip(bound));
-        }
         let Some(entity) = self.world.block_entities.get(&pos) else {
             return false;
         };
@@ -559,20 +558,24 @@ impl Game<'_> {
             .filter(|(window, m)| *window == p.container && m.kind() == kind)
             .map_or_else(|| Box::new(Menu::new(kind)), |(_, m)| m);
         menu.set_registry_id(Some(&menu_id));
-        for &slot in &hidden {
-            menu.hide_slot(slot);
+        let mut refreshed_result = None;
+        if matches!(kind, Kind::Mod(_)) {
+            menu.reset_mod_visibility(&hidden);
+            let host = self.lan.as_ref().unwrap();
+            let shown = Self::lan_mod_craft_shown(host, gi, &items);
+            let env = self.load_guest_menu(&mut menu, host, gi);
+            menu.load_container(&env, &items);
+            // The shown stack belongs to the grid it was prepared for. On a stale
+            // grid prepare the new result before any rule or move reads that slot.
+            if let Some((slot, result)) = shown {
+                menu.load_slot(slot, result);
+            } else if let Some(craft) = menu.mod_crafting() {
+                self.lan_mod_craft_settle(gi, pos, &mut menu);
+                refreshed_result = Some(craft.result);
+            }
         }
-        // A crafting grid's result is what the guest was shown, the mods' say
-        // included, while the grid is as it was then.
-        let shown = Self::lan_mod_craft_shown(self.lan.as_ref().unwrap(), gi, &items);
-        // What the click finds: the container's slots set in, as the guest was shown them.
         let prepare = |menu: &mut Menu, env: &Env| {
-            if matches!(kind, Kind::Mod(_)) {
-                menu.load_container(env, &items);
-                if let Some((slot, result)) = &shown {
-                    menu.set_slot(env, *slot, result.clone());
-                }
-            } else {
+            if !matches!(kind, Kind::Mod(_)) {
                 for (k, s) in items.iter().enumerate() {
                     menu.set_slot(env, k, s.clone());
                 }
@@ -591,13 +594,13 @@ impl Game<'_> {
             && slot < menu.slot_count()
         {
             let env = self.load_guest_menu(&mut menu, self.lan.as_ref().unwrap(), gi);
-            prepare(&mut menu, &env);
             if !menu.may_pickup(&env, slot) {
                 // The source refused before quickMoveStack. Correct the client's prediction.
                 if let Some(host) = self.lan.as_mut() {
                     *host.menus.entry(conn).or_default().crafting.machine =
                         Some((p.container, menu));
-                    host.hub.inventory_clicked(conn, p, &self.world, &[]);
+                    host.hub
+                        .inventory_clicked(conn, p, &self.world, refreshed_result.as_slice());
                 }
                 return true;
             }
@@ -853,7 +856,9 @@ impl Game<'_> {
                         .into_iter()
                         .enumerate()
                         .filter_map(|(s, old)| {
-                            (old != host.hub.view_slot(gi, &self.world, s)).then_some(s)
+                            (Some(s) == refreshed_result
+                                || old != host.hub.view_slot(gi, &self.world, s))
+                            .then_some(s)
                         })
                         .collect();
                     host.hub.inventory_clicked(conn, p, &self.world, &changed);
@@ -888,7 +893,9 @@ impl Game<'_> {
         ) else {
             return true;
         };
-        if let Some(slot) = self.lan_mod_craft_settle(gi, pos, &mut menu)
+        if let Some(slot) = self
+            .lan_mod_craft_settle(gi, pos, &mut menu)
+            .or(refreshed_result)
             && !changed.contains(&slot)
         {
             changed.push(slot);
@@ -1662,21 +1669,41 @@ impl Game<'_> {
     ) -> Option<usize> {
         let c = menu.mod_crafting()?;
         let guest = &self.lan.as_ref()?.hub.guests[gi];
-        let (uuid, name) = (guest.uuid, guest.name.clone());
-        let mut result = menu.slot(c.result).cloned();
-        let vanilla = result.clone();
-        self.native_prepare_item_craft(uuid, &name, Some([pos.0, pos.1, pos.2]), &mut result);
-        let grid = c.grid_slots().map(|k| menu.slot(k).cloned()).collect();
-        let changed = result != vanilla;
-        if changed {
-            menu.set_slot(&self.menu_env(), c.result, result.clone());
+        let open = guest.menu.as_ref()?;
+        let grid = c.grid_slots().map(|k| menu.slot(k));
+        let shown = menu.slot(c.result);
+        let cached = open.craft.as_ref();
+        let same_grid =
+            cached.is_some_and(|cached| cached.grid.iter().map(Option::as_ref).eq(grid));
+        if same_grid && cached.and_then(|cached| cached.result.as_ref()) == shown {
+            return None;
         }
-        self.lan.as_mut()?.hub.guests.update(gi, |guest| {
-            if let Some(m) = guest.menu.as_mut() {
-                m.craft = Some(ModCraft { grid, result });
-            }
-        });
+        let mut result = shown.cloned();
+        let window = open.window;
+        // Taking from the shown result is not a grid update. Do not build a new
+        // preview over what the click left unless the inputs changed.
+        if !same_grid {
+            let (uuid, name) = (guest.uuid, guest.name.clone());
+            self.native_prepare_item_craft(uuid, &name, Some([pos.0, pos.1, pos.2]), &mut result);
+        }
+        let changed = result.as_ref() != shown;
+        if changed {
+            menu.load_slot(c.result, result.clone());
+        }
+        let grid = c.grid_slots().map(|k| menu.slot(k).cloned()).collect();
+        self.lan_mod_craft_store(gi, window, ModCraft { grid, result });
         changed.then_some(c.result)
+    }
+
+    /// Publish the result and the grid it belongs to as one value, before the hub syncs it.
+    pub(super) fn lan_mod_craft_store(&mut self, gi: usize, window: i32, craft: ModCraft) {
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.guests.update(gi, |guest| {
+                if let Some(open) = guest.menu.as_mut().filter(|open| open.window == window) {
+                    open.craft = Some(craft);
+                }
+            });
+        }
     }
 
     /// `CraftingMenu.slotsChanged` for the guests' mod crafting menus: the

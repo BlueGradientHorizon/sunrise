@@ -209,12 +209,6 @@ impl ModRecipe {
     }
 }
 
-impl Recipes {
-    pub fn has_mod_crafting(&self) -> bool {
-        self.mod_crafting
-    }
-}
-
 #[cfg(test)]
 #[path = "mod_kinds_tests.rs"]
 pub(crate) mod tests;

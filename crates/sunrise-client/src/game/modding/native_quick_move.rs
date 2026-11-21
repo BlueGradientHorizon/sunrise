@@ -9,7 +9,7 @@ use std::{
 };
 use sunrise_client::{
     block_entities::Pos,
-    containers::{BlockEntity, ModBlockEntity, ModMenuType},
+    containers::{BlockEntity, ModBlockEntity, ModCrafting, ModMenuType},
     items::ItemStack,
     lan::menu::{ModCraft, Slots},
     menu::Menu,
@@ -64,9 +64,7 @@ enum Source {
         slot: usize,
         generation: Option<u64>,
     },
-    CraftingResult {
-        grid: Vec<Option<ItemStack>>,
-    },
+    CraftingResult(ModCrafting),
 }
 
 struct QuickMove {
@@ -128,7 +126,10 @@ impl Game<'_> {
         let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
             return false;
         };
-        if entity.id().is_empty() {
+        if !mod_api::__private::block_entity_type_listens(
+            mod_api::HookId::MenuQuickMove,
+            entity.id(),
+        ) {
             return false;
         }
         let slot = p.slot as usize;
@@ -143,9 +144,7 @@ impl Game<'_> {
         let source = if let Some(live) = live
             && let Some(craft) = live.mod_crafting().filter(|craft| craft.result == slot)
         {
-            Source::CraftingResult {
-                grid: craft.grid_slots().map(|k| live.slot(k).cloned()).collect(),
-            }
+            Source::CraftingResult(craft)
         } else if menu_type
             .and_then(|t| t.links)
             .is_some_and(|link| link.slots().contains(&slot))
@@ -256,12 +255,25 @@ impl Game<'_> {
         use crate::game::api_values::{
             BlockEntitySnapshotError, TryIntoApi, TryIntoEngine, finish_block_entity_writeback,
         };
-        let (Ok(mut api), Ok(mut held)) = (entity.try_into_api(), stack.try_into_api()) else {
-            return true;
+        let (mut api, mut held) = match (entity.try_into_api(), stack.try_into_api()) {
+            (Ok(api), Ok(held)) => (api, held),
+            (Err(reason), _) => {
+                log::warn!(
+                    "menu_quick_move: cannot project the owning block entity at {pos:?}: {reason:?}"
+                );
+                return false;
+            }
+            (_, Err(reason)) => {
+                log::warn!(
+                    "menu_quick_move: cannot project the clicked stack at {pos:?} slot {slot}: {reason:?}"
+                );
+                return false;
+            }
         };
         let revision = api.revision();
         let original = held.clone();
         let mut candidate_handled = *handled;
+        let failures = mod_api::runtime::isolated_failures();
         self.native_menu_quick_move(
             pos,
             &mut api,
@@ -270,6 +282,11 @@ impl Game<'_> {
             &mut held,
             &mut candidate_handled,
         );
+        if mod_api::runtime::isolated_failures() != failures {
+            // Dispatch reports and disables the callback. Refuse the action so its
+            // savepoint also rolls back Host writes, not just the event edits.
+            return false;
+        }
         let held = if held == original {
             Ok(None)
         } else {
@@ -351,12 +368,7 @@ impl Game<'_> {
                     self.after_commit(After::Changed(pos));
                 }
             }
-            Source::CraftingResult { grid } => {
-                craft = Some(ModCraft {
-                    grid,
-                    result: stack,
-                })
-            }
+            Source::CraftingResult(layout) => craft = Some((layout, stack)),
         }
         if let Some((menu, take)) = notice
             && !self.api_menu_slot_take(&mut taken, player, menu.id, &take)
@@ -365,21 +377,22 @@ impl Game<'_> {
             // the quick-move listener wrote before the notice failed.
             return false;
         }
-        if let Some(craft) = craft {
+        self.put_back_menu_entity(pos, taken, &items);
+        if let Some((layout, result)) = craft
+            && let Some(gi) = self.guest_index(conn)
+            && let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos)
+        {
+            // ResultSlot's owner is the menu, not block storage. Bind the remainder
+            // to the inputs *after* the handler and the take notice have written them.
+            let grid = layout
+                .grid_slots()
+                .map(|k| entity.items.get(k).cloned().flatten())
+                .collect();
             if let Some(player) = self.player(player) {
                 self.journal_menus(player);
             }
-            if let Some(host) = self.lan.as_mut()
-                && let Some(gi) = host.hub.guests.connection_index(conn)
-            {
-                host.hub.guests.update(gi, |guest| {
-                    if let Some(open) = guest.menu.as_mut().filter(|open| open.window == window) {
-                        open.craft = Some(craft);
-                    }
-                });
-            }
+            self.lan_mod_craft_store(gi, window, ModCraft { grid, result });
         }
-        self.put_back_menu_entity(pos, taken, &items);
         true
     }
 

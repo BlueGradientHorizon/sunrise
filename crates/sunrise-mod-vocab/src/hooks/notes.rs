@@ -1409,8 +1409,10 @@ is the menu's index: below `container_slots` a container slot (its own, linked, 
 player's inventory, its 27 main slots, then the hotbar. The live menu asks `Slot.mayPickup` first, then passes a copy of
 what that slot holds as `stack`. Take what you move out of `stack` and set `handled`: the same source keeps the remainder
 (`None` empties it) and the player's client gets the whole menu again. For a linked slot or result this does not replace
-an `entity.items` entry; the handler is responsible for consuming crafting inputs when it handles a result. Unhandled,
-listener writes are undone and the same menu moves the stack without a second pickup check; a later mod sees what an
+an `entity.items` entry; the handler is responsible for consuming crafting inputs when it handles a result. The remainder
+stays in the result for those inputs until the grid next changes. An owner or clicked stack that the API cannot read refuses
+the click and reports why. Unhandled, listener writes are undone and the same menu moves the stack without a second pickup
+check; a later mod sees what an
 earlier one did to `stack`. If the mod removes its own block, the menu
 closes and the player's inventory is sent again. This is how a storage terminal
 whose items live in other blocks, or a screen that hides the container's slots, takes a shift-click from the

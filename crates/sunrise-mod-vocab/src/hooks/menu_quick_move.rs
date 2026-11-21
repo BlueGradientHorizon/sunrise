@@ -15,13 +15,17 @@ pub trait Hooks {
     /// player's client gets the menu again. For a linked or crafting-result source,
     /// the remainder does not replace any slot in `entity.items`. A crafting result
     /// is not a craft by itself: the handler is responsible for consuming any inputs.
+    /// The remainder is the shown result for the inputs the handler leaves, until
+    /// the grid next changes and prepares a new result. Pickup uses that shown result,
+    /// not a fresh recipe assembly.
     /// Left unhandled, listener writes are undone and the same menu routes the move
     /// without asking `Slot.mayPickup` again. A later listener sees earlier edits to `stack`.
     ///
     /// The move is one action: the answer is validated once and applied once,
     /// and a refused move changes nothing, with every write the listener made
     /// undone and the client given the menu again. It is refused when a
-    /// listener fails (panics or traps), when the answer is invalid (a stack
+    /// listener fails (panics or traps), when the owner or clicked stack cannot be
+    /// read by the API (reported each time, without calling the handler), when the answer is invalid (a stack
     /// past its item's maximum in `entity.items` or `stack`), or when a
     /// listener wrote through the `Host` to a player's inventory, cursor or
     /// menu storage (the move read its own player's; a write to any player's

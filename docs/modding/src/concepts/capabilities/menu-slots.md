@@ -309,13 +309,15 @@ host.transaction(|host, tx| {
 `stack` copies what the clicked slot shows, including a linked container's stack or the current
 crafting result. If you handle the move, leave the remainder in `stack` (`None` empties the source).
 The remainder goes back to the clicked source, not to `entity.items[slot]` for a linked slot or
-crafting result. If you handle a result, consume its crafting inputs yourself. If you leave the
-move unhandled, the same menu routes the click without asking the source's pickup rule again.
+crafting result. If you handle a result, consume its crafting inputs yourself. The remainder stays
+available on later clicks against the inputs you leave, until the grid changes again. If you leave
+the move unhandled, the same menu routes the click without asking the source's pickup rule again.
 
 `menu_clicked` (contract version 2) and `menu_quick_move` each run as one action: what a listener writes
 through the `Host` stays when its action is accepted and is undone with the rest of the action when a listener fails. A
 `menu_quick_move` answer that is invalid, or a `Host` write to a player's inventory, cursor or menu storage,
-refuses the whole click instead of falling back to the game's routing. `menu_clicked` hears the raw slot, button
+refuses the whole click instead of falling back to the game's routing. If the API cannot read the owner or the
+clicked stack, the engine refuses the click before calling the listener and reports why. `menu_clicked` hears the raw slot, button
 and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
 set-slot never reach it, and it cannot know whether the click changes anything.
 
