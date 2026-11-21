@@ -17,7 +17,9 @@ pub trait AudioClientHost {
     /// [`AudioStreamRef::push`] always returns zero on this handle.
     ///
     /// Refuses with [`AudioRefusal`] when playback is unavailable, the spec is invalid, a stream
-    /// limit is reached, or the pull worker cannot take the source.
+    /// limit is reached, or the pull worker cannot take the source. A panicking source disables
+    /// further pull callbacks for the owning mod until restart: an otherwise valid pull open by
+    /// that mod returns [`AudioRefusal::PullDisabled`]. Other mods and push streams are unaffected.
     ///
     /// ```
     /// use mod_api::{AudioRead, AudioStream, SoundSource, StreamSpec};

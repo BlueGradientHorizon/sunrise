@@ -1,14 +1,18 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
 use super::{Control, Ring};
 use mod_api::{
+    __private::{contain_refusal, mod_index, mod_index_on},
     AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_TOTAL, AudioRead, AudioRefusal,
     AudioStream,
+    content::crash::{ModCall, enter_native_mod},
 };
 use std::{
+    collections::HashMap,
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering::*},
-        mpsc::{self, SyncSender, TryRecvError, TrySendError},
+        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
     },
     thread::{self, Thread},
 };
@@ -41,11 +45,14 @@ pub(super) struct Demand {
     pub(super) eof: AtomicBool,
 }
 
-/// The only sender. Disconnecting it and waking the worker makes teardown independent of the
-/// next device callback. Live voices and handles have only the wake token, not a sender.
+/// Holds the only job sender. Disconnecting it and waking the worker makes teardown independent
+/// of the next device callback. Live voices and handles have only the wake token.
 pub(super) struct Worker {
     sender: SyncSender<PullJob>,
     wake: Wake,
+    owners: HashMap<&'static str, Arc<PullOwner>>,
+    panic_sender: Sender<&'static str>,
+    panics: Receiver<&'static str>,
 }
 
 impl Worker {
@@ -78,13 +85,44 @@ impl Worker {
                 }
             })
             .map_err(|_| AudioRefusal::WorkerUnavailable)?;
-        Ok(Self {
+        Ok(Self::with_queue(
             sender,
-            wake: Wake {
+            Wake {
                 pending,
                 thread: worker.thread().clone(),
             },
-        })
+        ))
+    }
+
+    fn with_queue(sender: SyncSender<PullJob>, wake: Wake) -> Self {
+        let (panic_sender, panics) = mpsc::channel();
+        Self {
+            sender,
+            wake,
+            owners: HashMap::new(),
+            panic_sender,
+            panics,
+        }
+    }
+
+    pub(super) fn owner(&mut self, id: &'static str) -> Result<Arc<PullOwner>, AudioRefusal> {
+        let panics = &self.panic_sender;
+        let owner = self.owners.entry(id).or_insert_with(|| {
+            Arc::new(PullOwner {
+                id,
+                index: mod_index(id),
+                poisoned: AtomicBool::new(false),
+                panics: panics.clone(),
+            })
+        });
+        if owner.poisoned.load(Acquire) {
+            return Err(AudioRefusal::PullDisabled);
+        }
+        Ok(owner.clone())
+    }
+
+    pub(super) fn take_panics(&self) -> Vec<&'static str> {
+        self.panics.try_iter().collect()
     }
 
     pub(super) fn demand(&self) -> Demand {
@@ -117,18 +155,73 @@ impl Worker {
     }
 }
 
+/// All pull sources from one mod share a session poison, separate from the mod's other callbacks.
+pub(super) struct PullOwner {
+    id: &'static str,
+    index: Option<usize>,
+    poisoned: AtomicBool,
+    panics: Sender<&'static str>,
+}
+
+enum CallFailure {
+    Refused,
+    Panicked,
+}
+
+impl PullOwner {
+    fn enabled(&self) -> bool {
+        !self.poisoned.load(Acquire) && self.index.is_none_or(mod_index_on)
+    }
+
+    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, CallFailure> {
+        let id = self.id;
+        let _guard = enter_native_mod(ModCall {
+            id,
+            hook,
+            part: None,
+        });
+        match catch_unwind(AssertUnwindSafe(|| contain_refusal(id, call))) {
+            Ok(Ok(read)) => Ok(read),
+            Ok(Err(refusal)) => {
+                log::warn!("{hook} refused: {refusal}");
+                Err(CallFailure::Refused)
+            }
+            Err(payload) => {
+                // A mod can unwind with any payload, including one with a panicking destructor.
+                // Only ordinary string payloads are safe for the worker to drop.
+                let message = payload
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| payload.downcast_ref::<&str>().copied());
+                log::error!(
+                    "mod {id}: {hook} panicked ({}); its audio stream reads are disabled for this session",
+                    message.unwrap_or("non-string panic payload")
+                );
+                if message.is_none() {
+                    std::mem::forget(payload);
+                }
+                self.poisoned.store(true, Release);
+                // If the output has been destroyed, the log above still reports the panic.
+                let _ = self.panics.send(id);
+                Err(CallFailure::Panicked)
+            }
+        }
+    }
+}
+
 pub(super) struct PullJob {
     pub(super) control: Arc<Control>,
     pub(super) demand: Arc<Demand>,
     pub(super) ring: Arc<Ring>,
-    pub(super) source: Box<dyn AudioStream>,
+    pub(super) owner: Arc<PullOwner>,
+    pub(super) source: Option<Box<dyn AudioStream>>,
 }
 
 impl PullJob {
     /// At most one read per pass, using only the missing whole frames. False retires the job
     /// and its source on the worker; only the mixer decides when an EOF voice has drained.
     fn refill(&mut self, scratch: &mut [i16]) -> bool {
-        if self.control.closed.load(Acquire) {
+        if self.control.closed.load(Acquire) || !self.owner.enabled() {
             return false;
         }
         let target = self.demand.frames.swap(0, AcqRel);
@@ -143,14 +236,22 @@ impl PullJob {
         let channels = self.ring.channels;
         let pcm = &mut scratch[..missing * channels];
         pcm.fill(0);
-        match self.source.read(pcm) {
-            AudioRead::Frames(0) => true,
-            AudioRead::Frames(frames) if frames <= missing => {
+        let source = self.source.as_mut().expect("live pull job owns its source");
+        match self.owner.call("AudioStream::read", || source.read(pcm)) {
+            Ok(AudioRead::Frames(0)) | Err(CallFailure::Refused) => true,
+            Ok(AudioRead::Frames(frames)) if frames <= missing => {
                 self.ring.publish_frames(tail, &pcm[..frames * channels]);
                 true
             }
-            AudioRead::Frames(_) => false,
-            AudioRead::Eof => {
+            Ok(AudioRead::Frames(frames)) => {
+                log::warn!(
+                    "mod {}: AudioStream::read returned {frames} frames with room for {missing}; stopping this stream",
+                    self.owner.id,
+                );
+                false
+            }
+            Err(CallFailure::Panicked) => false,
+            Ok(AudioRead::Eof) => {
                 self.demand.eof.store(true, Release);
                 false
             }
@@ -160,9 +261,14 @@ impl PullJob {
 
 impl Drop for PullJob {
     fn drop(&mut self) {
-        // A job that leaves without EOF (invalid count, shutdown or worker unwinding) cannot
-        // produce again. Only an EOF voice should stay open to drain.
+        // A job that leaves without EOF cannot produce again. Only an EOF voice drains.
         if !self.demand.eof.load(Relaxed) {
+            self.control.stop();
+        }
+        // Destruction also runs mod code, even for a disabled owner. Contain it separately so
+        // it cannot unwind the worker during retirement or shutdown.
+        let source = self.source.take();
+        if let Err(CallFailure::Panicked) = self.owner.call("AudioStream drop", || drop(source)) {
             self.control.stop();
         }
     }
@@ -170,8 +276,8 @@ impl Drop for PullJob {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::{Mixer, mix_pieces};
-    use super::super::StreamPool;
+    use super::super::super::{Audio, Mixer, mix_pieces};
+    use super::super::{StreamPool, request_pull};
     use super::*;
     use mod_api::{AudioStreamSource, AudioStreamState, SoundSource, StreamSpec};
     use std::{sync::Mutex, thread::ThreadId, time::Duration};
@@ -187,7 +293,7 @@ mod tests {
     /// Takes the admitted job instead of starting a thread, so each refill happens at a chosen
     /// output buffer boundary. Uses the same queue, refill and mixer as a live output.
     struct Rig {
-        _pool: StreamPool,
+        pool: StreamPool,
         mixer: Mutex<Mixer>,
         stream: Arc<dyn AudioStreamSource>,
         job: Option<PullJob>,
@@ -196,15 +302,16 @@ mod tests {
 
     impl Rig {
         fn new(read: impl FnMut(&mut [i16]) -> AudioRead + Send + 'static) -> Self {
+            mod_platform::__private::initialize().unwrap();
             let pool = StreamPool::default();
             let (sender, receiver) = mpsc::sync_channel(CAPACITY);
-            pool.state().worker = Some(Worker {
+            pool.state().worker = Some(Worker::with_queue(
                 sender,
-                wake: Wake {
+                Wake {
                     pending: Arc::default(),
                     thread: thread::current(),
                 },
-            });
+            ));
             let mixer = Mutex::new(Mixer {
                 stream_gain: [1.0; 11],
                 ..Mixer::default()
@@ -214,7 +321,7 @@ mod tests {
                 .open(&mixer, "mod", &spec, Some(Box::new(Source(read))))
                 .unwrap();
             Self {
-                _pool: pool,
+                pool,
                 mixer,
                 stream,
                 job: Some(receiver.try_recv().unwrap()),
@@ -240,6 +347,7 @@ mod tests {
 
     #[test]
     fn a_pull_worker_reads_and_drops_the_source_with_both_guards_held() {
+        mod_platform::__private::initialize().unwrap();
         struct Probe {
             read: SyncSender<(ThreadId, usize)>,
             dropped: SyncSender<ThreadId>,
@@ -293,6 +401,168 @@ mod tests {
             drops.recv_timeout(timeout).expect("source was not dropped"),
             worker
         );
+    }
+
+    #[test]
+    fn pull_panic_retires_the_owner_without_stopping_the_shared_worker() {
+        mod_platform::__private::initialize().unwrap();
+        let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            std::path::PathBuf::from("/nonexistent/sunrise-test-audio"),
+        ));
+        audio.backend_live_for_bench();
+        let mixer = &audio.backend.mixer;
+        mixer.lock().unwrap().stream_gain = [1.0; 11];
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+        let (called, calls) = mpsc::sync_channel(2);
+        let broken_called = called.clone();
+        let broken = audio
+            .open_stream(
+                "broken",
+                &spec,
+                Some(Box::new(Source(move |pcm: &mut [i16]| {
+                    let _ = broken_called.try_send((
+                        thread::current().id(),
+                        mod_api::content::crash::current_native_call(),
+                    ));
+                    pcm.fill(i16::MAX);
+                    panic!("broken pull callback");
+                }))),
+            )
+            .unwrap();
+        let sibling = audio
+            .open_stream(
+                "broken",
+                &spec,
+                Some(Box::new(Source(|_: &mut [i16]| {
+                    panic!("a disabled owner's other stream must not be read");
+                }))),
+            )
+            .unwrap();
+        let good = audio
+            .open_stream(
+                "good",
+                &spec,
+                Some(Box::new(Source(move |pcm: &mut [i16]| {
+                    pcm.fill(16_384);
+                    let _ = called.try_send((
+                        thread::current().id(),
+                        mod_api::content::crash::current_native_call(),
+                    ));
+                    AudioRead::Frames(pcm.len() / 2)
+                }))),
+            )
+            .unwrap();
+        let mut out = [0.0; 2];
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert_eq!(out, [0.0; 2]);
+        let timeout = Duration::from_secs(1);
+        let (worker, broken_call) = calls
+            .recv_timeout(timeout)
+            .expect("broken mod did not read");
+        let (good_worker, good_call) = calls
+            .recv_timeout(timeout)
+            .expect("other mod lost its worker");
+        assert_eq!(good_worker, worker);
+        for (call, id) in [(broken_call, "broken"), (good_call, "good")] {
+            assert_eq!(
+                call,
+                Some(ModCall {
+                    id,
+                    hook: "AudioStream::read",
+                    part: None
+                })
+            );
+        }
+        assert_eq!(audio.take_pull_panics(), ["broken"]);
+        assert_eq!(broken.state(), AudioStreamState::Stopped);
+        assert_eq!(sibling.state(), AudioStreamState::Stopped);
+        assert_eq!(good.state(), AudioStreamState::Playing);
+        assert!(matches!(
+            audio.open_stream(
+                "broken",
+                &spec,
+                Some(Box::new(Source(|_: &mut [i16]| AudioRead::Eof)))
+            ),
+            Err(AudioRefusal::PullDisabled)
+        ));
+
+        let (opened, reads) = mpsc::sync_channel(1);
+        let _late = audio
+            .open_stream(
+                "late",
+                &spec,
+                Some(Box::new(Source(move |_: &mut [i16]| {
+                    let _ = opened.try_send(thread::current().id());
+                    AudioRead::Frames(0)
+                }))),
+            )
+            .unwrap();
+        request_pull(&mixer.lock().unwrap().streams, 1, 48_000);
+        assert_eq!(
+            reads
+                .recv_timeout(timeout)
+                .expect("new stream did not read"),
+            worker
+        );
+        // The later job ran on the same worker, after it published the healthy mod's PCM.
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert_eq!(out, [0.5; 2]);
+    }
+
+    #[test]
+    fn a_pull_job_retires_before_reading_when_its_mod_is_disabled() {
+        struct TestMod;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for TestMod {}
+
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("mod", Box::new(TestMod))].into(),
+            || {
+                let mut rig = Rig::new(|_| panic!("the disabled mod must not read"));
+                assert!(mod_api::__private::set_mod_enabled("mod", false));
+                assert_eq!(rig.play::<4>(), [0.0; 4]);
+                assert!(!rig.refill());
+                assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+                assert!(rig.pool.take_pull_panics().is_empty());
+            },
+        );
+    }
+
+    #[test]
+    fn a_phase_refusal_leaves_the_source_available_for_later_demand() {
+        let mut first = true;
+        let mut rig = Rig::new(move |pcm| {
+            if std::mem::take(&mut first) {
+                mod_api::__private::refuse("test_read", mod_api::__private::ModPhase::Reloading);
+            }
+            pcm.fill(16_384);
+            AudioRead::Frames(1)
+        });
+        assert_eq!(rig.play::<4>(), [0.0; 4]);
+        assert!(rig.refill());
+        assert_eq!(rig.play::<4>(), [0.0; 4]);
+        assert!(rig.refill());
+        assert_eq!(rig.play::<4>(), [0.5; 4]);
+        assert!(rig.pool.take_pull_panics().is_empty());
+    }
+
+    #[test]
+    fn a_pull_source_can_panic_during_retirement_without_unwinding_the_worker() {
+        struct PanicOnDrop;
+        impl Drop for PanicOnDrop {
+            fn drop(&mut self) {
+                panic!("broken pull source destructor");
+            }
+        }
+        let source = PanicOnDrop;
+        let mut rig = Rig::new(move |_| {
+            let _owned = &source;
+            AudioRead::Eof
+        });
+        assert_eq!(rig.play::<4>(), [0.0; 4]);
+        assert!(!rig.refill());
+        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+        assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
     }
 
     #[test]

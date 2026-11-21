@@ -22,12 +22,15 @@ pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 /// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
 /// Muting or unplacing the stream does not pause demand. The worker drops an admitted source
-/// at EOF or after stop, without waiting for another device callback.
+/// at EOF or after stop, without waiting for another device callback. Disabling the owning mod
+/// stops its pull streams.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
     /// stream's [`StreamSpec`] format. The buffer is cleared before each call. Report only
-    /// frames supplied; a count larger than the offered buffer stops the stream.
+    /// frames supplied; a count larger than the offered buffer stops the stream and is logged.
+    /// A panic stops this stream and disables this mod's pull callbacks for the session, with a
+    /// log and an error toast naming the mod. Other mods' streams continue.
     fn read(&mut self, pcm: &mut [i16]) -> AudioRead;
 }
 
@@ -84,9 +87,9 @@ pub enum AudioStreamState {
     /// positional stream after the listener changed dimension, until the next `set_placement`.
     /// The audio is still consumed, so no latency builds up.
     Unplaced,
-    /// Over: the pull source ended and its PCM drained, it reported an invalid frame count,
-    /// `stop` was called, the handle was dropped, or the game's sound output went away.
-    /// It never plays again.
+    /// Over: `stop` was called, the handle was dropped, or the game's sound output went away.
+    /// A pull stream also stops after EOF and drain, an invalid frame count, or if its owning
+    /// mod or pull callbacks are disabled. A stopped stream never plays again.
     #[default]
     Stopped,
 }
@@ -196,6 +199,8 @@ pub enum AudioRefusal {
     TooManyStreams,
     /// The pull worker could not start or admit this source.
     WorkerUnavailable,
+    /// The owning mod's pull callbacks are disabled for the session after a source panicked.
+    PullDisabled,
 }
 impl std::fmt::Display for AudioRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -212,6 +217,9 @@ impl std::fmt::Display for AudioRefusal {
                 write!(f, "{AUDIO_STREAMS_TOTAL} audio streams are already open")
             }
             Self::WorkerUnavailable => f.write_str("the audio pull worker cannot accept a source"),
+            Self::PullDisabled => {
+                f.write_str("this mod's audio pull callbacks are disabled for this session")
+            }
         }
     }
 }

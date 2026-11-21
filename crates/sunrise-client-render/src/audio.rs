@@ -1890,7 +1890,7 @@ impl Audio {
     /// the mod pushes PCM from any thread. Both paths use the separate mod stream pool.
     pub fn open_stream(
         &self,
-        owner: &str,
+        owner: &'static str,
         spec: &mod_api::StreamSpec,
         source: Option<Box<dyn mod_api::AudioStream>>,
     ) -> std::result::Result<Arc<dyn mod_api::AudioStreamSource>, mod_api::AudioRefusal> {
@@ -1900,6 +1900,10 @@ impl Audio {
         self.backend
             .streams
             .open(&self.backend.mixer, owner, spec, source)
+    }
+    /// Pull callback panics to show on the client, naming the owning mod.
+    pub fn take_pull_panics(&self) -> Vec<&'static str> {
+        self.backend.streams.take_pull_panics()
     }
     /// Places each entity-placed stream at its entity's position as `resolve` finds it now, or
     /// leaves it unplaced where it finds none. Called once a frame; it does nothing, and locks
