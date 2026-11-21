@@ -4070,6 +4070,8 @@ struct Game<'a> {
     debug_keys: sunrise_client::debug_keys::DebugKeys,
     /// The F3 overlay's charts (F3+2, F3+3).
     debug_charts: sunrise_client::debug_chart::DebugCharts,
+    /// Startup declarations shared by F3 options, the overlay and renderer selection.
+    registered_debug_entries: std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>,
     /// `Minecraft.debugEntries`: what the overlay and the debug renderers
     /// show (`debug-profile.json`, F3+F6).
     debug_entries: sunrise_client::debug_entries::DebugEntries,
@@ -13647,6 +13649,7 @@ impl<'a> Game<'a> {
             social: Default::default(),
             debug_keys: Default::default(),
             debug_charts: Default::default(),
+            registered_debug_entries: sunrise_client::debug_entries::registered(),
             debug_entries: sunrise_client::debug_entries::DebugEntries::load(
                 &std::env::current_dir().unwrap_or_default(),
             ),

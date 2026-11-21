@@ -9,7 +9,7 @@ use mod_api::{
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 /// `DebugScreenEntryStatus`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -112,23 +112,23 @@ impl Category {
     }
 }
 
-/// One registered entry: its path in the `minecraft` namespace, its section,
+/// One registered entry: its vanilla path or full mod ID, its section,
 /// and whether it shows while debug info is reduced (`isAllowed(true)`).
 #[derive(Clone, Copy, Debug)]
-pub struct Entry {
-    pub path: &'static str,
+pub struct Entry<'a> {
+    pub path: &'a str,
     pub category: Category,
     pub reduced: bool,
 }
 
-const fn text(path: &'static str, reduced: bool) -> Entry {
+const fn text(path: &'static str, reduced: bool) -> Entry<'static> {
     Entry {
         path,
         category: Category::Text,
         reduced,
     }
 }
-const fn renderer(path: &'static str) -> Entry {
+const fn renderer(path: &'static str) -> Entry<'static> {
     Entry {
         path,
         category: Category::Renderer,
@@ -137,7 +137,7 @@ const fn renderer(path: &'static str) -> Entry {
 }
 
 /// `DebugScreenEntries`' registrations, in their order.
-pub const ENTRIES: [Entry; 46] = [
+pub const ENTRIES: [Entry<'static>; 46] = [
     text("game_version", true),
     text("fps", true),
     text("tps", true),
@@ -193,24 +193,29 @@ pub struct RegisteredDebugEntry {
 }
 
 /// The entries native mods registered (`register_debug_entries`), kept once at start.
-static REGISTERED: OnceLock<Vec<RegisteredDebugEntry>> = OnceLock::new();
+static REGISTERED: OnceLock<Arc<[RegisteredDebugEntry]>> = OnceLock::new();
 
 /// Keeps the entries native mods registered, once at start. One whose id is not
 /// `<namespace>:<path>` in a namespace other than vanilla's, or that another entry has
 /// already, is logged and left out.
 pub fn register(entries: Vec<Answered<DebugEntry>>) {
-    let entries = entries.into_iter().map(|answer| RegisteredDebugEntry {
-        owner: answer.mod_id,
-        entry: answer.answer,
-    });
-    if REGISTERED.set(checked(entries)).is_err() {
+    if REGISTERED.set(collect_registrations(entries)).is_err() {
         log::warn!("debug entries were registered already; these are left out");
     }
 }
 
-/// The entries native mods registered, in registration order.
-pub fn registered() -> &'static [RegisteredDebugEntry] {
-    REGISTERED.get().map_or(&[], Vec::as_slice)
+/// Share the startup declarations with a newly constructed game.
+pub fn registered() -> Arc<[RegisteredDebugEntry]> {
+    REGISTERED.get().cloned().unwrap_or_default()
+}
+
+/// Apply the startup registration checks without publishing the resulting declarations.
+pub fn collect_registrations(entries: Vec<Answered<DebugEntry>>) -> Arc<[RegisteredDebugEntry]> {
+    checked(entries.into_iter().map(|answer| RegisteredDebugEntry {
+        owner: answer.mod_id,
+        entry: answer.answer,
+    }))
+    .into()
 }
 
 fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<RegisteredDebugEntry> {
@@ -235,7 +240,7 @@ fn checked(entries: impl IntoIterator<Item = RegisteredDebugEntry>) -> Vec<Regis
 }
 
 /// How a registered text entry or renderer toggle appears in the debug options.
-fn as_entry(registered: &'static RegisteredDebugEntry) -> Entry {
+fn as_entry(registered: &RegisteredDebugEntry) -> Entry<'_> {
     let entry = &registered.entry;
     Entry {
         path: entry.id(),
@@ -248,20 +253,26 @@ fn as_entry(registered: &'static RegisteredDebugEntry) -> Entry {
     }
 }
 
-/// Every entry: vanilla's, then the native mods' (`registered`).
-pub fn all() -> impl Iterator<Item = Entry> {
-    ENTRIES.into_iter().chain(registered().iter().map(as_entry))
+/// Every entry: vanilla's, then the native mods' startup declarations.
+fn all<'a>(registered: &'a [RegisteredDebugEntry]) -> impl Iterator<Item = Entry<'a>> {
+    let vanilla: &[Entry<'a>] = &ENTRIES;
+    vanilla
+        .iter()
+        .copied()
+        .chain(registered.iter().map(as_entry))
 }
 
 /// `DebugScreenEntries.getEntry` by path.
-pub fn entry(path: &str) -> Option<Entry> {
-    all().find(|e| e.path == path)
+fn entry<'a>(registered: &'a [RegisteredDebugEntry], path: &str) -> Option<Entry<'a>> {
+    all(registered).find(|e| e.path == path)
 }
 
 /// `DebugOptionsScreen.OptionList.updateSearch`: the entries whose path
 /// contains `search`, by category then identifier.
-pub fn search(search: &str) -> Vec<Entry> {
-    let mut entries: Vec<Entry> = all().filter(|e| e.path.contains(search)).collect();
+pub fn search<'a>(registered: &'a [RegisteredDebugEntry], search: &str) -> Vec<Entry<'a>> {
+    let mut entries: Vec<_> = all(registered)
+        .filter(|e| e.path.contains(search))
+        .collect();
     entries.sort_by(|a, b| a.category.cmp(&b.category).then(a.path.cmp(b.path)));
     entries
 }
@@ -473,8 +484,15 @@ impl DebugEntries {
     }
     /// `isCurrentlyEnabled` (`rebuildCurrentList`): on always, or in the
     /// `overlay` while it is open, and allowed with the debug info `reduced`.
-    pub fn enabled(&self, path: &str, overlay: bool, reduced: bool) -> bool {
-        self.status(path).shown(overlay) && entry(path).is_some_and(|e| e.reduced || !reduced)
+    pub fn enabled(
+        &self,
+        registered: &[RegisteredDebugEntry],
+        path: &str,
+        overlay: bool,
+        reduced: bool,
+    ) -> bool {
+        self.status(path).shown(overlay)
+            && entry(registered, path).is_some_and(|e| e.reduced || !reduced)
     }
     /// `DebugScreenEntryList.rebuildCurrentList`: invalidate even if the enabled set is unchanged.
     pub fn invalidate(&mut self) {
@@ -489,6 +507,7 @@ impl DebugEntries {
     /// an ID wins.
     pub fn active_renderers(
         &self,
+        entries: &[RegisteredDebugEntry],
         renderers: Vec<Answered<DebugRenderer>>,
         overlay: bool,
         reduced: bool,
@@ -496,16 +515,17 @@ impl DebugEntries {
         let mut active: Vec<Answered<DebugRenderer>> = Vec::new();
         for renderer in renderers {
             let id = renderer.answer.id();
-            let Some(declared) =
-                entry(id).filter(|e| id.contains(':') && e.category == Category::Renderer)
-            else {
+            if !entries
+                .iter()
+                .any(|entry| entry.entry.id() == id && entry.entry.text_lines().is_none())
+            {
                 log::warn!(
                     "{}: debug renderer {id} has no renderer entry; it is left out",
                     renderer.mod_id
                 );
                 continue;
-            };
-            if (declared.reduced || !reduced)
+            }
+            if !reduced
                 && self.status(id).shown(overlay)
                 && !active.iter().any(|kept| kept.answer.id() == id)
             {
@@ -516,11 +536,16 @@ impl DebugEntries {
     }
     /// `getCurrentlyEnabled().isEmpty()` negated: something to draw. Asked every frame, F3 closed
     /// or not, so it walks the few statuses kept rather than every entry.
-    pub fn any_enabled(&self, overlay: bool, reduced: bool) -> bool {
+    pub fn any_enabled(
+        &self,
+        registered: &[RegisteredDebugEntry],
+        overlay: bool,
+        reduced: bool,
+    ) -> bool {
         self.statuses
             .keys()
             .map(|id| id.strip_prefix("minecraft:").unwrap_or(id))
-            .any(|path| self.enabled(path, overlay, reduced))
+            .any(|path| self.enabled(registered, path, overlay, reduced))
     }
 }
 
@@ -599,14 +624,14 @@ mod tests {
     #[test]
     fn enabled_needs_the_overlay_and_full_debug_info() {
         let mut e = DebugEntries::default();
-        assert!(!e.any_enabled(false, false));
-        assert!(e.enabled("player_position", true, false));
+        assert!(!e.any_enabled(&[], false, false));
+        assert!(e.enabled(&[], "player_position", true, false));
         // Reduced debug info hides the position, not the section.
-        assert!(!e.enabled("player_position", true, true));
-        assert!(e.enabled("player_section_position", true, true));
+        assert!(!e.enabled(&[], "player_position", true, true));
+        assert!(e.enabled(&[], "player_section_position", true, true));
         e.load_profile(Profile::Performance);
-        assert!(e.enabled("fps", false, false));
-        assert!(!e.enabled("memory", false, false));
+        assert!(e.enabled(&[], "fps", false, false));
+        assert!(!e.enabled(&[], "memory", false, false));
     }
 
     #[test]
@@ -662,7 +687,7 @@ mod tests {
 
     #[test]
     fn the_list_sorts_text_before_renderers() {
-        let all = search("");
+        let all = search(&[], "");
         assert_eq!(all.len(), 46);
         assert_eq!(all[0].path, "biome");
         let first_renderer = all
@@ -675,7 +700,7 @@ mod tests {
                 .iter()
                 .all(|e| e.category == Category::Renderer)
         );
-        assert_eq!(search("chunk_b").len(), 1);
+        assert_eq!(search(&[], "chunk_b").len(), 1);
     }
 
     #[test]
@@ -774,24 +799,18 @@ mod tests {
 
     #[test]
     fn a_native_mods_renderer_entry_is_listed_as_a_renderer_and_has_no_lines() {
-        let entry: &'static RegisteredDebugEntry = Box::leak(Box::new(RegisteredDebugEntry {
+        let entry = RegisteredDebugEntry {
             owner: "mymod",
             entry: DebugEntry::renderer("mymod:pipes".into()),
-        }));
-        assert_eq!(as_entry(entry).category, Category::Renderer);
-        assert!(!as_entry(entry).reduced);
+        };
+        assert_eq!(as_entry(&entry).category, Category::Renderer);
+        assert!(!as_entry(&entry).reduced);
         let mut selection = DebugEntries::default();
         selection.set_status("mymod:pipes", Status::AlwaysOn);
         assert!(
-            mod_lines(
-                std::slice::from_ref(entry),
-                &FakeHost::new(),
-                &selection,
-                true,
-                false
-            )
-            .next()
-            .is_none()
+            mod_lines(&[entry], &FakeHost::new(), &selection, true, false)
+                .next()
+                .is_none()
         );
     }
 

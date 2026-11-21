@@ -44,10 +44,12 @@ impl Game<'_> {
     /// ones whose entries are on. Runs at start, at login and when the selection changes.
     pub(in crate::game) fn refresh_debug_renderers(&mut self) {
         let renderers = mods::debug_renderers(self.options.execution_role);
-        let reduced = self.reduced_debug_info();
-        self.debug_renderers = self
-            .debug_entries
-            .active_renderers(renderers, self.debug, reduced);
+        self.debug_renderers = self.debug_entries.active_renderers(
+            &self.registered_debug_entries,
+            renderers,
+            self.debug,
+            self.reduced_debug_info(),
+        );
     }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
     fn follow_debug_selection(&mut self) {
