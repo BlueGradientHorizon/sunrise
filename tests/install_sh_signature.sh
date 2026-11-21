@@ -65,7 +65,11 @@ out=; url=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) url=$1; shift ;; esac; done
 echo "$url" >> "$REL/urls"
 case "$url" in
-  https://api.github.com/*) src=$REL/release.json ;;
+  # A case that names its tag (only-tag) answers only that exact by-tag lookup, as GitHub would.
+  https://api.github.com/*)
+    only=https://api.github.com/repos/sunrise-org/sunrise/releases/tags/$(cat "$REL/only-tag" 2>/dev/null)
+    if [ -f "$REL/only-tag" ] && [ "$url" != "$only" ]; then exit 22; fi
+    src=$REL/release.json ;;
   */sunrise-verify-*)
     [ "${url%/*}" = "https://github.com/sunrise-org/sunrise/releases/download/verifier%40$WANT_VERIFIER" ] || exit 22
     src=$REL/files/$(basename "$url") ;;
@@ -129,9 +133,11 @@ run "$d"; verdict "good release installs (Nightly, signed for its own version)" 
 [ -x "$d/inst/current/sunrise-server" ] || { echo "FAIL nothing installed"; fails=$((fails+1)); }
 grep -q "Downloading Sunrise $NIGHTLY " "$d/out" || { echo "FAIL not installed as $NIGHTLY"; fails=$((fails+1)); }
 
-# 2. Good signature, a normal tag.
-d=$W/tag; make_release "$d" v1.2.3
-run "$d" --version v1.2.3; verdict "good release installs (release tag)" 0 "Release signature OK" "$d"
+# 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
+d=$W/tag; make_release "$d" 26.3-0.1.0; echo 26.3-0.1.0 > "$d/only-tag"
+run "$d" --version 26.3-0.1.0; verdict "good release installs (stable release tag)" 0 "" "$d"
+[ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] \
+  || { echo "FAIL current isn't 26.3-0.1.0"; fails=$((fails+1)); }
 
 # 3. --insecure-checksum-only: installs on GitHub's SHA-256, with a loud warning, and needs no verifier at all.
 d=$W/insecure; make_release "$d" v1.2.3; rm "$d/files/sunrise-verify-linux-x86_64" "$d/files/SHA256SUMS.sig"; json "$d" v1.2.3 no

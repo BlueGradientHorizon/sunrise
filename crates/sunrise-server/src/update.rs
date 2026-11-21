@@ -770,23 +770,7 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
                 return Ok(());
             }
             if check {
-                if version.is_some() && release.tag != current {
-                    println!(
-                        "Sunrise {} is on GitHub; this server runs {current}. `sunrise-server update --version {}` \
-                         installs it.",
-                        release.tag, release.tag
-                    );
-                } else if update_available(&release.tag, &current) {
-                    println!(
-                        "Sunrise {} is out; this server runs {current}. `sunrise-server update` installs it.",
-                        release.tag
-                    );
-                } else {
-                    println!(
-                        "Up to date: {current} (the newest release is {}).",
-                        release.tag
-                    );
-                }
+                println!("{}", check_line(version.as_deref(), &release.tag, &current));
                 return Ok(());
             }
             if version.is_none() && !update_available(&release.tag, &current) {
@@ -815,6 +799,22 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
     }
     unpacked?;
     switch_to(dir, &install, &tag, timeout)
+}
+
+/// What `update --check` says about `newest` for a server running `current`. With `--version`
+/// (`asked`), the command it suggests names the tag asked for, not the version that tag installs
+/// as: `nightly` resolves to `nightly-<date>-<commit>`, which is no tag on GitHub.
+fn check_line(asked: Option<&str>, newest: &str, current: &str) -> String {
+    match asked {
+        Some(asked) if newest != current => format!(
+            "Sunrise {newest} is on GitHub; this server runs {current}. `sunrise-server update --version {asked}` \
+             installs it."
+        ),
+        _ if update_available(newest, current) => format!(
+            "Sunrise {newest} is out; this server runs {current}. `sunrise-server update` installs it."
+        ),
+        _ => format!("Up to date: {current} (the newest release is {newest})."),
+    }
 }
 
 /// `rollback [--timeout SECONDS]`: back to the release used before the current one.
@@ -1233,12 +1233,21 @@ mod tests {
         let refs = json!([
             {"ref": "refs/tags/26.3-0.1.0"}, {"ref": "refs/tags/26.3-0.2.0"},
             {"ref": "refs/tags/26.3-0.3.0"}, {"ref": "refs/tags/26.3-0.2.0-rc.1"},
+            {"ref": "refs/tags/26.3-0.5.0"}, {"ref": "refs/tags/26.3-0.4.0"},
         ]);
+        // A newer stable-looking tag whose release is a draft or a pre-release: passed over.
+        let unpublished = |tag: &str, flag: &str| {
+            let mut release = json!({ "tag_name": tag, "prerelease": false, "draft": false, "assets": [asset(first)] });
+            release[flag] = json!(true);
+            release.to_string().into_bytes()
+        };
         let fetch = |url: &str| -> Result<Vec<u8>, String> {
             if url.ends_with("/git/matching-refs/tags/26.3-0.") {
                 return Ok(refs.to_string().into_bytes());
             }
             match url {
+                u if u == api("26.3-0.5.0") => Ok(unpublished("26.3-0.5.0", "draft")),
+                u if u == api("26.3-0.4.0") => Ok(unpublished("26.3-0.4.0", "prerelease")),
                 // Reserved by a release that never published.
                 u if u == api("26.3-0.3.0") => Err("404".into()),
                 u if u == api("26.3-0.2.0") => Ok(json!({
@@ -1258,8 +1267,13 @@ mod tests {
         assert!(update_available(&picked.tag, "26.3-0.1.0"));
         // On the newest release already: it is what GitHub has, so no update.
         assert!(!update_available(&picked.tag, "26.3-0.2.0"));
-        // The release served for 26.3-0.2.0 names another, validly signed tag: refused, never installed.
+        // The release served for 26.3-0.2.0 names another tag, with sums validly signed for that
+        // tag: refused for its tag, never installed.
+        let other = key.sign("26.4-1.0.0", sums.as_bytes());
         let swapped = |url: &str| -> Result<Vec<u8>, String> {
+            if url == "https://example.invalid/SHA256SUMS.sig" {
+                return Ok(other.clone().into_bytes());
+            }
             let body = fetch(url)?;
             Ok(if url == api("26.3-0.2.0") {
                 String::from_utf8(body)
@@ -1272,6 +1286,26 @@ mod tests {
         };
         let err = newest_on_line("26.3-0.1.0", swapped, &[key.public()]).unwrap_err();
         assert!(err.contains("names another tag"), "{err}");
+    }
+
+    #[test]
+    fn an_explicit_check_suggests_the_tag_asked_for() {
+        let line = check_line(Some("nightly"), "nightly-2026-11-21-0c02067", "26.3-0.1.0");
+        assert!(
+            line.contains("`sunrise-server update --version nightly`"),
+            "{line}"
+        );
+        assert!(
+            line.contains("nightly-2026-11-21-0c02067 is on GitHub"),
+            "{line}"
+        );
+        // Without --version, the update the server's own channel offers.
+        let line = check_line(None, "26.3-0.2.0", "26.3-0.1.0");
+        assert!(
+            line.contains("`sunrise-server update` installs it"),
+            "{line}"
+        );
+        assert!(check_line(None, "26.3-0.1.0", "26.3-0.1.0").starts_with("Up to date"));
     }
 
     #[test]
