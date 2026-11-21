@@ -1,0 +1,15 @@
+# Remove duplicate furnace_extract hook and update item_smelted to match NeoForge PlayerEvent.ItemSmeltedEvent.
+ids = [
+    "hook:furnace_extract",
+    "method:Hooks::furnace_extract",
+    "type:FurnaceExtractEvent",
+    "hook:item_smelted",
+    "hook:item_smelted.player",
+    "hook:item_smelted.player_entity_id",
+    "hook:item_smelted.stack",
+    "type:ItemSmeltedEvent.player",
+    "type:ItemSmeltedEvent.player_entity_id",
+    "type:ItemSmeltedEvent.stack",
+]
+why = "Keep one furnace result-take event matching vanilla FurnaceResultSlot.checkTakeAchievements and NeoForge PlayerEvent.ItemSmeltedEvent: remove the duplicate furnace_extract hook and update item_smelted to carry a live PlayerRef, a non-optional ItemStackView<'_>, and a nonzero amount_removed after AbstractFurnaceBlockEntity.awardUsedRecipesAndPopExperience."
+migrate = "Move furnace_extract listeners to item_smelted. Read event.player as a PlayerRef (use event.player.uuid(), event.player.entity().id(), or host methods like event.player.name(host)), read event.stack as an ItemStackView<'_> (event.stack.item(), event.stack.count(), event.stack.project()), and rely on item_smelted firing once per nonzero removeCount after furnace recipe experience is awarded."
