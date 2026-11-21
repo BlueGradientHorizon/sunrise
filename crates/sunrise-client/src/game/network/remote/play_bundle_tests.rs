@@ -3,7 +3,8 @@ use super::{connect_play_test, spawn_menu_test};
 use crate::game::{native_entity_refs::tests::with_client_game, viewed_worlds::tests::column};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
-    PayloadContextError, PayloadHandleError, PayloadId, PayloadWork, PayloadWorkStatus, Registrar,
+    PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
+    PayloadWorkStatus, Registrar,
 };
 use std::{
     sync::{Arc, Mutex, mpsc},
@@ -12,6 +13,7 @@ use std::{
 };
 use sunrise_client::{net::Event, raw_payloads};
 use sunrise_protocol::{
+    connection::ConnReader,
     packets::{
         Empty, configuration as cfg,
         custom_payload::CustomPayload,
@@ -24,12 +26,17 @@ use sunrise_protocol::{
 const MAIN: &str = "bundle_probe:main";
 const NETWORK: &str = "bundle_probe:network";
 const SERVER_ONLY: &str = "bundle_probe:server_only";
+const DROPPABLE: &str = "bundle_probe:droppable";
+// Larger than the memory pipe's 64 KiB window: the writer cannot finish this
+// frame until the inline drain witness starts reading.
+const DRAIN_LEN: usize = 128 * 1024;
 
 struct Witness {
     main: ThreadId,
     order: Mutex<Vec<&'static str>>,
     transfer_started: Mutex<Option<mpsc::Receiver<()>>>,
     parked_reader: Mutex<Option<JoinHandle<()>>>,
+    drain_reader: Mutex<Option<(ConnReader, Arc<raw_payloads::Local>)>>,
 }
 
 struct Handler {
@@ -64,6 +71,50 @@ impl IPayloadHandler for Handler {
                         .lock()
                         .unwrap()
                         .push("network after transfer");
+                    return Ok(());
+                }
+                if bytes.0 == [7] {
+                    assert_eq!(
+                        ctx.reply(&PayloadId(DROPPABLE.into()), bytes),
+                        Err(PayloadSendError::Disconnected)
+                    );
+                    self.witness.order.lock().unwrap().push("droppable refused");
+                    return Ok(());
+                }
+                if bytes.0 == [8] {
+                    let (mut reader, local) =
+                        self.witness.drain_reader.lock().unwrap().take().unwrap();
+                    let mut earlier = false;
+                    loop {
+                        match reader.recv() {
+                            Ok((id, body)) => {
+                                if let S::CustomPayload(p) =
+                                    S::decode_with_payload_codecs(id, &body, &local.codecs).unwrap()
+                                {
+                                    assert_ne!(
+                                        p.channel, DROPPABLE,
+                                        "post-close reply joined the drain"
+                                    );
+                                    if p.channel == MAIN {
+                                        assert!(!earlier);
+                                        assert_eq!(p.data.len(), DRAIN_LEN);
+                                        assert!(p.data.iter().all(|byte| *byte == 42));
+                                        earlier = true;
+                                    }
+                                }
+                            }
+                            Err(error) => {
+                                assert!(error.is_end_of_stream(), "expected EOF, got {error}");
+                                break;
+                            }
+                        }
+                    }
+                    assert!(earlier, "pre-close write was lost");
+                    self.witness
+                        .order
+                        .lock()
+                        .unwrap()
+                        .push("earlier write drained");
                     return Ok(());
                 }
                 if bytes.0 == [6] {
@@ -134,6 +185,20 @@ impl Hooks for Probe {
                 })
                 .play_bidirectional(PayloadId(id.into()), handler.clone(), Some(handler));
         }
+        let droppable = Arc::new(Handler {
+            witness: self.0.clone(),
+            network: true,
+        });
+        registrar
+            .payload_handlers()
+            .registrar("1")
+            .executes_on(HandlerThread::Network)
+            .droppable()
+            .play_bidirectional(
+                PayloadId(DROPPABLE.into()),
+                droppable.clone(),
+                Some(droppable),
+            );
         registrar.payload_handlers().registrar("1").play_to_server(
             PayloadId(SERVER_ONLY.into()),
             Arc::new(Handler {
@@ -154,6 +219,7 @@ fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
         order: Mutex::new(Vec::new()),
         transfer_started: Mutex::new(None),
         parked_reader: Mutex::new(None),
+        drain_reader: Mutex::new(None),
     });
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -307,6 +373,57 @@ fn a_bundle_applies_its_column_and_orders_main_network_and_close() {
                 }
             }
         }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_post_disconnect_droppable_reply_cannot_join_the_writer_drain() {
+    with_probe(|game, witness| {
+        let (local, reader, mut writer) = connect_probe(game);
+        let session = &game.remote.as_ref().unwrap().session;
+        let endpoint = session.payload_endpoint();
+        let epoch = session.payload_transport().epoch().unwrap();
+        endpoint
+            .prepare(
+                &epoch,
+                &PayloadId(MAIN.into()),
+                PayloadBytes(vec![42; DRAIN_LEN]),
+            )
+            .unwrap()
+            .publish()
+            .unwrap();
+        *witness.drain_reader.lock().unwrap() = Some((reader, local.clone()));
+        for packet in [
+            C::BundleDelimiter(Empty),
+            C::Disconnect(cfg::Disconnect {
+                reason: sunrise_core::nbt::Tag::String("bundle closed".into()),
+            }),
+            C::CustomPayload(CustomPayload {
+                channel: NETWORK.into(),
+                data: vec![7],
+            }),
+            C::CustomPayload(CustomPayload {
+                channel: NETWORK.into(),
+                data: vec![8],
+            }),
+            C::BundleDelimiter(Empty),
+        ] {
+            writer
+                .send(
+                    &packet
+                        .try_encode_with_payload_codecs(&local.codecs)
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.remote.is_none());
+        assert_eq!(
+            *witness.order.lock().unwrap(),
+            ["droppable refused", "earlier write drained"]
+        );
     });
 }
 
