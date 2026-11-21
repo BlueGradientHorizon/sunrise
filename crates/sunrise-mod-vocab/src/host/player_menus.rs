@@ -39,7 +39,7 @@ pub trait PlayerMenusBackendMut {
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
-    /// (at most 32 KiB) is available only during construction in [`crate::MenuScreenOpen::extra`].
+    /// is available only during construction in [`crate::MenuScreenOpen::extra`].
     /// `pos`, when given, is offered to the factory and available later through `screen_pos`.
     /// `data` has exactly the menu type's `data_slots` values; they arrive after opening and
     /// are read through [`crate::MenuScreenFrame::data`]. The menu's owning mod can change
@@ -50,7 +50,7 @@ pub trait PlayerMenusBackendMut {
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
     /// a mod cancelled the open or a registered exclusion is out of range. Errors:
     /// `NotModMenu`, `PlayerUnavailable` (including a
-    /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
+    /// disconnect in progress or a turn unavailable for the veto),
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
     #[access(WorldOnly)]

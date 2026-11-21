@@ -6,8 +6,6 @@
 //! mod, so inlined callers never hold a second copy of the state.
 use super::phase::ModPhase;
 use std::cell::Cell;
-use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
 
 // no wire: the payload of an unwind inside one process, not serialized data.
 /// What the phase gate records and unwinds with when a native mod calls a Host method its load
@@ -33,23 +31,15 @@ impl std::fmt::Display for PhaseRefusal {
 }
 
 impl PhaseRefusal {
-    /// Logs the first refusal of this operation for this mod.
+    /// Logs this refusal loudly via `log::warn!` every time it occurs.
     pub fn report(&self) {
-        static LOGGED: OnceLock<Mutex<HashSet<(&'static str, &'static str)>>> = OnceLock::new();
-        let first = LOGGED
-            .get_or_init(Mutex::default)
-            .lock()
-            .unwrap_or_else(|error| error.into_inner())
-            .insert((self.mod_id, self.operation));
-        if first {
-            log::warn!(
-                "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
-                self.mod_id,
-                crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
-                self.operation,
-                self.phase
-            );
-        }
+        log::warn!(
+            "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
+            self.mod_id,
+            crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
+            self.operation,
+            self.phase
+        );
     }
 }
 

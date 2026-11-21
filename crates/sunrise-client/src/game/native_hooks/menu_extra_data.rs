@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_> {
     /// Block `block` at `pos` opens its mod menu type `menu` for server
     /// player `player`: set `data` to hand the menu's screen bytes of your
-    /// own (a machine's tier, mode or recipes), up to 32 KiB, which the
+    /// own (a machine's tier, mode or recipes), which the
     /// client reads only from `MenuScreenOpen::extra` during construction
     /// (NeoForge's `openMenu` with an extra-data writer). The first mod to
     /// set it wins, so answer only for your blocks. Live data slots travel

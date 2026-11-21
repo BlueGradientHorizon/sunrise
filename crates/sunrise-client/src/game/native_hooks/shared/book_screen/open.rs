@@ -62,7 +62,7 @@ impl Game<'_> {
             backing_slots,
             player_slots: mod_type
                 .map_or(36, sunrise_client::containers::ModMenuType::player_slots),
-            data_slots: mod_type.map_or(STOCK_NATIVE_DATA_CAPACITY, |kind| kind.data_slots),
+            data_slots: mod_type.map_or(0, |kind| kind.data_slots),
             extra: extra.as_ref().map_or(&[], |extra| extra.data.as_slice()),
         };
         let created = mod_api::__private::create_menu_screen(self, open);

@@ -2522,6 +2522,7 @@ impl Game<'_> {
             .iter()
             .filter_map(|t| t.slot)
             .chain(packs)
+            .chain(self.mod_callback_toasts.iter().filter_map(|t| t.slot))
             .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
             .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
     }

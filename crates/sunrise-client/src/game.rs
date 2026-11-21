@@ -3448,7 +3448,7 @@ struct Game<'a> {
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
-    debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
+    debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
@@ -3683,6 +3683,8 @@ struct Game<'a> {
     tutorial_toasts: Vec<tutorial::HintToast>,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
     narrator_toast: Option<sunrise_client::toasts::SystemToast>,
+    /// Error toasts naming mods whose retained callbacks panicked and were disabled.
+    mod_callback_toasts: Vec<sunrise_client::toasts::SystemToast>,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -13419,6 +13421,7 @@ impl<'a> Game<'a> {
             tutorial,
             tutorial_toasts: Vec::new(),
             narrator_toast: None,
+            mod_callback_toasts: Vec::new(),
             narration: Default::default(),
             options_from_title: false,
             dragging: false,

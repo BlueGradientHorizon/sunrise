@@ -99,7 +99,7 @@ impl MenusRegistrar for PartRegistrar {
             if !recipe_type.contains(':') {
                 return Err("explicit recipe type namespace required".into());
             }
-            layout.validate(256)?;
+            layout.validate(i16::MAX as u16)?;
             self.menu_recipe_books.insert(
                 menu.into(),
                 MenuBookDeclaration {

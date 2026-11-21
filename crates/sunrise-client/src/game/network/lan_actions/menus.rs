@@ -236,16 +236,7 @@ impl Game<'_> {
             Slots::Block(k) if self.mod_menu_at(k).is_some() => {
                 let mut data = None;
                 self.native_menu_extra_data(uuid, menu, &block, [k.0, k.1, k.2], &mut data);
-                let mut data = data.unwrap_or_default();
-                if data.len() > sunrise_protocol::menu_extra::MAX_DATA {
-                    log::warn!(
-                        "Sunrise: {block}'s menu extra data ({} bytes) is past {} bytes; sent without it",
-                        data.len(),
-                        sunrise_protocol::menu_extra::MAX_DATA
-                    );
-                    data.clear();
-                }
-                Some(data)
+                Some(data.unwrap_or_default())
             }
             _ => None,
         };

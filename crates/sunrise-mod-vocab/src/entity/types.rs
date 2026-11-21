@@ -1342,8 +1342,6 @@ pub enum OpenMenuError {
     /// The player is stale, dead, disconnecting, has no supported client, or their turn
     /// is unavailable for the open veto. Also returned by a host without a game.
     PlayerUnavailable,
-    /// The extra data is past the 32 KiB a menu may carry.
-    TooLarge,
     /// The title could not cross to the game.
     Title(crate::text::TextFormError),
     /// The initial data must contain exactly the menu type's `data_slots` values.

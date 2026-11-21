@@ -1047,9 +1047,10 @@ impl MenuCrafting {
     }
 }
 
-/// the most container or data slots a mod menu type has, as many as a mod
-/// container (`native_block_entity_container`) may.
-pub const MAX_MENU_SLOTS: u16 = 256;
+/// The most container or data slots a mod menu type has: `i16::MAX` (32,767),
+/// the non-negative 16-bit signed index range of vanilla's
+/// `ClientboundContainerSetDataPacket` and container slot packets.
+pub const MAX_MENU_SLOTS: u16 = i16::MAX as u16;
 
 #[derive(Debug, Clone)]
 enum Source {
@@ -2860,12 +2861,29 @@ capabilities = ["registries"]
                 None,
             ]
         );
+        let big_menu = smod(
+            "menu-wide",
+            MANIFEST_TEXT,
+            &[(
+                "data/ruby/sunrise/menu/wide.json",
+                br#"{"slots": 257, "data_slots": 257}"#,
+            )],
+        )
+        .unwrap();
+        assert_eq!(big_menu.menu_types.len(), 1);
+        assert_eq!(
+            (
+                big_menu.menu_types[0].slots,
+                big_menu.menu_types[0].data_slots
+            ),
+            (257, 257)
+        );
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
+            ("menu-large", r#"{"slots": 32768}"#, &["32768"][..]),
             (
                 "menu-data",
-                r#"{"slots": 1, "data_slots": 257}"#,
-                &["257"][..],
+                r#"{"slots": 1, "data_slots": 32768}"#,
+                &["32768"][..],
             ),
             (
                 "menu-result",

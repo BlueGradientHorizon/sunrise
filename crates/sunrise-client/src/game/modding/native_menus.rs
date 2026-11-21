@@ -137,9 +137,6 @@ impl Game<'_> {
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
             sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
-        if extra.len() > menu_extra::MAX_DATA {
-            return Err(OpenMenuError::TooLarge);
-        }
         if data.len() != kind.data_slots {
             return Err(OpenMenuError::DataCountMismatch);
         }
@@ -1575,37 +1572,68 @@ mod tests {
                 Some((window, None))
             );
 
-            for (revision, extra, expected) in [
-                (1, vec![0; 33 * 1024], mod_api::OpenMenuError::TooLarge),
-                (0, vec![1], mod_api::OpenMenuError::PlayerUnavailable),
-            ] {
-                game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                    g.sender.menu_extra_rev = revision;
-                });
-                game.lan.as_mut().unwrap().hub.native_menu_events.clear();
-                assert_eq!(
-                    game.player_open_mod_menu(
-                        player,
-                        key,
-                        Text::literal("refused"),
-                        extra,
-                        Vec::new(),
-                        None,
-                        MenuReplace::InPlace,
-                    ),
-                    Err(expected)
-                );
-                assert_eq!(
-                    game.lan.as_ref().unwrap().hub.guests[0]
-                        .menu
-                        .as_ref()
-                        .map(|m| m.window),
-                    Some(window),
-                    "refusal preserves the current menu"
-                );
-                assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
-                assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
-            }
+            // Payloads past 32 KiB succeed and deliver all bytes (no invented 32 KiB cap).
+            let large_extra = vec![7u8; 33 * 1024];
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 1;
+            });
+            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            let large_window = game
+                .player_open_mod_menu(
+                    player,
+                    key,
+                    Text::literal("large"),
+                    large_extra.clone(),
+                    Vec::new(),
+                    None,
+                    MenuReplace::InPlace,
+                )
+                .unwrap()
+                .unwrap();
+            let large_sent: Vec<_> = sent(&rx)
+                .into_iter()
+                .filter_map(|p| match p {
+                    C::CustomPayload(c) if c.channel == sunrise_protocol::menu_extra::CHANNEL => {
+                        Some(sunrise_protocol::menu_extra::decode(&c.data).unwrap())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                large_sent,
+                vec![sunrise_protocol::menu_extra::Message {
+                    window: large_window,
+                    pos: None,
+                    data: large_extra,
+                }]
+            );
+
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender.menu_extra_rev = 0;
+            });
+            game.lan.as_mut().unwrap().hub.native_menu_events.clear();
+            assert_eq!(
+                game.player_open_mod_menu(
+                    player,
+                    key,
+                    Text::literal("refused"),
+                    vec![1],
+                    Vec::new(),
+                    None,
+                    MenuReplace::InPlace,
+                ),
+                Err(mod_api::OpenMenuError::PlayerUnavailable)
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .as_ref()
+                    .map(|m| m.window),
+                Some(large_window),
+                "refusal preserves the current menu"
+            );
+            assert!(game.lan.as_ref().unwrap().hub.native_menu_events.is_empty());
+            assert!(sent(&rx).is_empty(), "refusal sends neither close nor open");
         });
     }
 

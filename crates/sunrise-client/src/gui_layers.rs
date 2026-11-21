@@ -2,8 +2,8 @@
 //! draws them, with native layers inserted and bodies installed once at client startup.
 
 use mod_api::{
-    GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, Identifier,
-    content::crash::current_native_mod,
+    __private::game::CallbackOwner, GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar,
+    GuiLayerWrapper, Identifier, content::crash::current_native_mod,
 };
 use std::sync::OnceLock;
 
@@ -86,11 +86,11 @@ enum GuiLayerId {
 pub enum GuiLayerBody {
     Vanilla,
     Native {
-        owner: Option<&'static str>,
+        owner: CallbackOwner,
         draw: Box<GuiLayerDraw>,
     },
     Wrapped {
-        owner: Option<&'static str>,
+        owner: CallbackOwner,
         wrap: Box<GuiLayerWrapper>,
         previous: Box<GuiLayerBody>,
     },
@@ -167,7 +167,10 @@ impl GuiLayerRegistrar for GuiLayers {
             at,
             GuiLayerSlot {
                 id: GuiLayerId::Native(id),
-                body: GuiLayerBody::Native { owner, draw },
+                body: GuiLayerBody::Native {
+                    owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
+                    draw,
+                },
             },
         );
         true
@@ -178,7 +181,10 @@ impl GuiLayerRegistrar for GuiLayers {
         let Some(slot) = self.slot_for_edit(id, owner, "replace") else {
             return false;
         };
-        slot.body = GuiLayerBody::Native { owner, draw };
+        slot.body = GuiLayerBody::Native {
+            owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
+            draw,
+        };
         true
     }
 
@@ -189,7 +195,7 @@ impl GuiLayerRegistrar for GuiLayers {
         };
         let previous = Box::new(std::mem::replace(&mut slot.body, GuiLayerBody::Vanilla));
         slot.body = GuiLayerBody::Wrapped {
-            owner,
+            owner: CallbackOwner::for_mod(owner.unwrap_or("unknown")),
             wrap,
             previous,
         };

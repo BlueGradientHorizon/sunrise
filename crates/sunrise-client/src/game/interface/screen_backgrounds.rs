@@ -2,7 +2,6 @@
 //! menu blur and transparent background, the world border wall, and the screens' render events.
 use super::*;
 use crate::game::host::draw::GameDrawContext;
-use mod_api::content::crash::{ModCall, enter_native_mod};
 
 impl Game<'_> {
     /// The frame shows the title's panorama, not a level: the title screen, or a
@@ -43,18 +42,21 @@ impl Game<'_> {
         let Some(screen) = tracker.transition_screen() else {
             return false;
         };
-        let _owner = enter_native_mod(ModCall {
-            id: screen.owner,
-            hook: "dimension_transition_presentation",
-            part: None,
-        });
-        screen.presentation.draw(
-            self,
-            tracker.reason.into(),
-            progress,
-            &mut GameDrawContext::new(self, batch),
-        );
-        true
+        screen
+            .owner
+            .call(
+                "dimension transition presentation",
+                "dimension_transition_presentation",
+                || {
+                    screen.presentation.draw(
+                        self,
+                        tracker.reason.into(),
+                        progress,
+                        &mut GameDrawContext::new(self, batch),
+                    );
+                },
+            )
+            .is_ok()
     }
     /// `LevelLoadingScreen.extractBackground`.
     pub(super) fn draw_level_loading_background(

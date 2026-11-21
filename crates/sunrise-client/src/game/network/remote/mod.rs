@@ -2657,20 +2657,17 @@ impl Game<'_> {
         }
         self.finish_remote_level();
         if let Some((owner, factory)) = transition_factory {
-            use mod_api::content::crash::{ModCall, enter_native_mod};
+            use mod_api::__private::game::CallbackOwner;
             use sunrise_client_render::dimension_transition::ActiveTransitionScreen;
 
-            let presentation = {
-                let _owner = enter_native_mod(ModCall {
-                    id: owner,
-                    hook: "dimension_transition_factory",
-                    part: None,
-                });
-                factory.create(self, reason.into())
-            };
-            if let Some(r) = self.remote.as_mut() {
+            if let Ok(presentation) = owner.call(
+                "dimension transition factory",
+                "dimension_transition_factory",
+                || factory.create(self, reason.into()),
+            ) && let Some(r) = self.remote.as_mut()
+            {
                 r.level_load.set_transition_screen(ActiveTransitionScreen {
-                    owner,
+                    owner: CallbackOwner::for_mod(owner.id()),
                     presentation,
                 });
             }

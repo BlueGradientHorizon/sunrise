@@ -797,9 +797,6 @@ impl Game<'_> {
     }
 }
 
-// A stock menu opened by a mod block has dynamic data, capped by the block-entity API.
-const STOCK_NATIVE_DATA_CAPACITY: usize = 256;
-
 impl OpenNativeScreen {
     fn layout(&self) -> &mod_api::MenuScreenLayout {
         self.screen.layout()
@@ -841,10 +838,10 @@ impl OpenNativeScreen {
         if window != self.menu.window {
             return false;
         }
-        let count = self
-            .menu
-            .mod_type
-            .map_or(STOCK_NATIVE_DATA_CAPACITY, |kind| kind.data_slots);
+        let count = self.menu.mod_type.map_or(
+            usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS),
+            |kind| kind.data_slots,
+        );
         if index < count {
             if self.menu.data.len() <= index {
                 self.menu.data.resize(index + 1, 0);
@@ -1090,6 +1087,61 @@ impl Game<'_> {
             &mut toast.message,
         )
         .then_some(toast)
+    }
+
+    /// Drain pending retained-callback panic notices into system error toasts naming the mod.
+    pub(super) fn drain_mod_callback_panic_toasts(&mut self) {
+        for notice in mod_api::__private::game::take_callback_panic_notices() {
+            let detail = format!("{} ({}): {}", notice.kind, notice.operation, notice.message);
+            let toast = sunrise_client::toasts::SystemToast::new(
+                sunrise_client::text::Text::tr(
+                    "sunrise.toast.mod_callback_disabled",
+                    &[&notice.mod_id],
+                ),
+                Some(sunrise_client::text::Text::literal(detail)),
+            )
+            .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME)
+            .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
+            if let Some(toast) = self.add_system_toast(toast) {
+                self.mod_callback_toasts.push(toast);
+            }
+        }
+    }
+
+    /// Draw active mod-callback panic error toasts in free toast slots (`hidden`, F1, keeps
+    /// them timing out undrawn).
+    pub(super) fn draw_mod_callback_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
+        self.drain_mod_callback_panic_toasts();
+        if self.mod_callback_toasts.is_empty() {
+            return;
+        }
+        let multiplier = self.settings.notification_display_time;
+        let mut used = self.toast_slots_used();
+        let mut i = 0;
+        while i < self.mod_callback_toasts.len() {
+            if self.mod_callback_toasts[i].slot.is_none() {
+                let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
+                    i += 1;
+                    continue;
+                };
+                used |= 1 << slot;
+                self.mod_callback_toasts[i].slot = Some(slot);
+            }
+            let (sound, finished) = self.mod_callback_toasts[i].update(multiplier);
+            if let Some(show) = sound {
+                let event = if show { "ui.toast.in" } else { "ui.toast.out" };
+                self.audio
+                    .play(&format!("minecraft:{event}"), None, 1.0, 1.0);
+            }
+            if finished {
+                self.mod_callback_toasts.remove(i);
+                continue;
+            }
+            if let (false, Some(slot)) = (hidden, self.mod_callback_toasts[i].slot) {
+                self.mod_callback_toasts[i].draw(&self.gui.atlas, batch, 32.0 * slot as f32);
+            }
+            i += 1;
+        }
     }
 
     pub(super) fn settle_title_toasts(&mut self) {
@@ -2596,7 +2648,9 @@ impl Game<'_> {
                 let mut container = None;
                 self.native_block_entity_container(&state.name, &mut container);
                 container.map(|mut c| {
-                    c.slots = c.slots.min(256);
+                    c.slots = c
+                        .slots
+                        .min(usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS));
                     let n = c.slots;
                     for list in c.faces.iter_mut().chain([&mut c.inputs, &mut c.outputs]) {
                         list.retain(|&s| s < n);

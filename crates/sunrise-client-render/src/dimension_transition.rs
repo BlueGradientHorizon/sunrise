@@ -1,7 +1,7 @@
 //! Load-time dimension-key resolution and selection of client loading presentations.
 use mod_api::{
-    Answered, DimensionKey, DimensionTransition, DimensionTransitionPresentation,
-    DimensionTransitionScreen, Identifier,
+    __private::game::CallbackOwner, Answered, DimensionKey, DimensionTransition,
+    DimensionTransitionPresentation, DimensionTransitionScreen, Identifier,
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -11,14 +11,14 @@ use std::{
 
 /// A mod's presentation instance for the lifetime of one loading screen.
 pub struct ActiveTransitionScreen {
-    pub owner: &'static str,
+    pub owner: CallbackOwner,
     pub presentation: Box<dyn DimensionTransitionPresentation>,
 }
 
 impl fmt::Debug for ActiveTransitionScreen {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ActiveTransitionScreen")
-            .field("owner", &self.owner)
+            .field("owner", &self.owner.id())
             .finish_non_exhaustive()
     }
 }
@@ -37,7 +37,7 @@ type Registration = (&'static str, DimensionTransitionScreen);
 
 /// Registrations resolved once at load; lookups never build dimension names.
 #[derive(Default)]
-struct TransitionScreens(HashMap<TransitionKey, Registration>);
+struct TransitionScreens(HashMap<TransitionKey, (CallbackOwner, DimensionTransitionScreen)>);
 
 static SCREENS: OnceLock<TransitionScreens> = OnceLock::new();
 
@@ -54,7 +54,7 @@ impl TransitionScreens {
             };
             match key.map(|key| screens.entry(key)) {
                 Some(Entry::Vacant(entry)) => {
-                    entry.insert((owner, registration));
+                    entry.insert((CallbackOwner::for_mod(owner), registration));
                 }
                 Some(Entry::Occupied(_)) => {
                     log::warn!(
@@ -78,12 +78,12 @@ impl TransitionScreens {
         &self,
         to: DimensionKey,
         from: DimensionKey,
-    ) -> Option<(&'static str, &DimensionTransitionScreen)> {
+    ) -> Option<(&CallbackOwner, &DimensionTransitionScreen)> {
         self.0
             .get(&TransitionKey::Conditional { to, from })
             .or_else(|| self.0.get(&TransitionKey::Incoming(to)))
             .or_else(|| self.0.get(&TransitionKey::Outgoing(from)))
-            .map(|(owner, factory)| (*owner, factory))
+            .map(|(owner, factory)| (owner, factory))
     }
 }
 
@@ -104,7 +104,7 @@ pub fn register(registrations: Vec<Answered<DimensionTransitionScreen>>) {
 pub fn select(
     to: DimensionKey,
     from: DimensionKey,
-) -> Option<(&'static str, &'static DimensionTransitionScreen)> {
+) -> Option<(&'static CallbackOwner, &'static DimensionTransitionScreen)> {
     SCREENS.get().and_then(|screens| screens.select(to, from))
 }
 
@@ -146,7 +146,7 @@ mod tests {
     }
     fn chosen(screens: &TransitionScreens, to: &str, from: &str) -> Option<u32> {
         let (owner, factory) = screens.select(key(to), key(from))?;
-        assert_eq!(owner, "registrant");
+        assert_eq!(owner.id(), "registrant");
         let mut canvas = Canvas::default();
         factory.create(&Client, Reason::Other.into()).draw(
             &Client,
@@ -228,7 +228,7 @@ mod tests {
         tracker.start_client_load(0, Reason::Other);
         let (owner, factory) = screens.select(key("test:b"), key("test:a")).unwrap();
         tracker.set_transition_screen(ActiveTransitionScreen {
-            owner,
+            owner: CallbackOwner::for_mod(owner.id()),
             presentation: factory.create(&Client, tracker.reason.into()),
         });
         let progress = ServerLoadView::default();
@@ -276,7 +276,7 @@ mod tests {
             let token = Arc::new(());
             let lifetime = Arc::downgrade(&token);
             tracker.set_transition_screen(ActiveTransitionScreen {
-                owner: "registrant",
+                owner: CallbackOwner::for_mod("registrant"),
                 presentation: Box::new(move |_: &dyn ClientHost, _, _, _: &mut dyn DrawContext| {
                     assert_eq!(Arc::strong_count(&token), 1);
                 }),

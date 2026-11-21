@@ -26,7 +26,7 @@ vector when preparing a newly created or loaded machine. For a progress display,
 use one element initialized from the progress value in its saved payload.
 Do not reset the vector to its initial values on every tick.
 
-The method accepts at most the game's mod-menu data-slot limit (256).
+The method accepts at most the game's mod-menu data-slot limit (`i16::MAX`, 32,767).
 It returns `Ok(true)` when it changes the vector, `Ok(false)` for identical values,
 or `BlockEntityDataError::TooManySlots` with the submitted count and limit. It
 never silently clamps a vector. `BlockEntityDataError::Unavailable` means the
@@ -270,8 +270,9 @@ does not resolve. It never opens a replacement through an old handle.
 
 To open a content mod menu type with no block (from an item, an entity or a command),
 call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoForge's
-`openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
-32 KiB, is one-time context. Decode `open.extra` in the registered client screen factory.
+`openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra` is one-time
+context, bounded only by the network packet frame. Decode `open.extra` in the registered
+client screen factory.
 It is an empty slice when no payload matched this opening. Reusing a window id does not reuse
 its previous context. Keep owned decoded values if the screen needs them later; the bytes are
 borrowed only during construction. `pos` is an optional hint offered to the factory and later

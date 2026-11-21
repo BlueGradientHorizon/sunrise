@@ -85,6 +85,7 @@ impl Game<'_> {
         self.draw_toasts(batch, hidden);
         self.draw_tutorial_toasts(batch, hidden);
         self.draw_pack_toasts(batch, hidden);
+        self.draw_mod_callback_toasts(batch, hidden);
         self.draw_music_toast(batch, hidden);
     }
 
