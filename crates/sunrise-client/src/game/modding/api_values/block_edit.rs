@@ -112,12 +112,8 @@ mod tests {
         let registry = registry();
         let metadata = block_metadata_table().unwrap();
         let state = BlockStateId(2).try_into_api().unwrap();
-        let exact = StatePredicate::block(
-            metadata,
-            state.block(),
-            &[StateConstraint::new("left", "true")],
-        )
-        .unwrap();
+        let exact =
+            StatePredicate::block(state.block(), &[StateConstraint::new("left", "true")]).unwrap();
         let filter = compile_filter(&exact).unwrap();
         let tags = HashMap::from([(
             "stairs".to_owned(),
@@ -126,7 +122,7 @@ mod tests {
         let tags = [&tags, &tags];
         assert!(filter.matches(&registry, tags, BlockStateId(2)));
         assert!(!filter.matches(&registry, tags, BlockStateId(1)));
-        let wildcard = StatePredicate::block(metadata, state.block(), &[]).unwrap();
+        let wildcard = StatePredicate::block(state.block(), &[]).unwrap();
         let wildcard = compile_filter(&wildcard).unwrap();
         assert!(wildcard.matches(&registry, tags, BlockStateId(1)));
         assert!(wildcard.matches(&registry, tags, BlockStateId(2)));
@@ -159,8 +155,7 @@ mod tests {
     fn typed_bulk_preparation_rejects_late_bad_values_before_any_write() {
         let _registry = registry();
         let state = BlockStateId(2).try_into_api().unwrap();
-        let good =
-            StatePredicate::block(block_metadata_table().unwrap(), state.block(), &[]).unwrap();
+        let good = StatePredicate::block(state.block(), &[]).unwrap();
         let mut edit = mod_api::BlockEdit {
             palette: vec![state],
             filters: vec![good],

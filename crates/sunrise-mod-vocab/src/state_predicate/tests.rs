@@ -26,24 +26,17 @@ fn strict_block_predicates_validate_schema_without_default_bias() {
     let key = BlockKey(0);
     // The default is false/false, so setting just left=true would not be a complete state.
     // It is nevertheless a legal partial predicate matching the independent true/true row.
-    assert!(StatePredicate::block(&metadata, key, &[StateConstraint::new("left", "true")]).is_ok());
+    assert!(StatePredicate::block(key, &[StateConstraint::new("left", "true")]).is_ok());
     assert_eq!(
-        StatePredicate::block(&metadata, key, &[StateConstraint::new("missing", "true")])
-            .unwrap_err(),
+        StatePredicate::block(key, &[StateConstraint::new("missing", "true")]).unwrap_err(),
         BlockStateError::UnknownProperty(0)
     );
     assert_eq!(
-        StatePredicate::block(
-            &metadata,
-            key,
-            &[StateConstraint::new("left", "not_a_value")]
-        )
-        .unwrap_err(),
+        StatePredicate::block(key, &[StateConstraint::new("left", "not_a_value")]).unwrap_err(),
         BlockStateError::InvalidValue(0)
     );
     assert_eq!(
         StatePredicate::block(
-            &metadata,
             key,
             &[
                 StateConstraint::new("left", "true"),
@@ -59,7 +52,6 @@ fn strict_block_predicates_validate_schema_without_default_bias() {
     ] {
         assert_eq!(
             StatePredicate::block(
-                &metadata,
                 key,
                 &[
                     StateConstraint::new("left", "true"),
@@ -76,8 +68,6 @@ fn strict_block_predicates_validate_schema_without_default_bias() {
 fn tag_predicates_keep_vague_properties_and_refuse_duplicates() {
     let metadata = metadata();
     let vague = StatePredicate::tag(
-        &metadata,
-        &TagsAvailable,
         TagKey(0),
         &[StateConstraint::new(
             "property_no_member_has",
@@ -90,8 +80,6 @@ fn tag_predicates_keep_vague_properties_and_refuse_duplicates() {
     assert_eq!(vague.tag_key(), Some(TagKey(0)));
     assert_eq!(
         StatePredicate::tag(
-            &metadata,
-            &TagsAvailable,
             TagKey(0),
             &[
                 StateConstraint::new("unknown", "a"),
