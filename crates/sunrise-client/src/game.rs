@@ -8836,7 +8836,9 @@ impl Game<'_> {
         self.score = Default::default();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.reset_creative_contents();
-        let stack = self.open_world_datapacks(&level.enabled_features)?;
+        let stack = self
+            .open_world_datapacks(&level.enabled_features)
+            .map_err(|error| error.diagnostic())?;
         let root = self.options.resources.clone();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         // A code-mod switch can have rebuilt the root since `Game::new`.

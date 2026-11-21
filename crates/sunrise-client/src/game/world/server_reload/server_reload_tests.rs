@@ -922,6 +922,57 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+#[ignore = "daily"]
+fn world_open_reports_nested_reload_causes() {
+    struct Refusing;
+    impl ServerReloadListener for Refusing {
+        fn prepare(
+            &self,
+            _: &ServerReloadContext,
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            Err(ReloadResourceError::new(
+                Identifier::parse("open_refusal:table").unwrap(),
+                ReloadResourceError::new(
+                    Identifier::parse("open_refusal:row").unwrap(),
+                    std::io::Error::other("invalid world-open fixture row"),
+                ),
+            ))
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Refusing {
+        fn add_server_reload_listeners(
+            &self,
+            _: &dyn Host,
+            event: &mut AddServerReloadListenersEvent<'_>,
+        ) {
+            event
+                .listeners
+                .add_listener(
+                    Identifier::parse("open_refusal:listener").unwrap(),
+                    FileToIdConverter::json("machines").unwrap(),
+                    Arc::new(Self),
+                )
+                .unwrap();
+        }
+    }
+    let world = tempfile::tempdir().unwrap();
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("open_refusal", Box::new(Refusing))].into(),
+        || {
+            with_game(|game| {
+                let error = game
+                    .load_world(request(&world.path().join("refused")))
+                    .unwrap_err()
+                    .to_string();
+                assert!(error.contains("reload listener open_refusal:listener: open_refusal:table: open_refusal:row: invalid world-open fixture row"), "{error}");
+                assert!(game.fns.store.functions.is_empty());
+            })
+        },
+    );
+}
+
 struct RetainedData {
     live: Arc<Mutex<u64>>,
     reject: Arc<AtomicBool>,

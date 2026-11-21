@@ -1892,7 +1892,10 @@ impl Game<'_> {
             return;
         }
         if let Err(error) = self.reload_datapacks(true, &self.level.enabled_features.clone()) {
-            log::warn!("Sunrise: content mods data reload failed: {error}");
+            log::warn!(
+                "Sunrise: content mods data reload failed: {}",
+                error.diagnostic()
+            );
             return;
         }
         log::info!(
