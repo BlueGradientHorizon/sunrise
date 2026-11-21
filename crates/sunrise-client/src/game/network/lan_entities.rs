@@ -1580,6 +1580,11 @@ mod tests {
         }
         let case = std::env::var("SUNRISE_STAND_COMMAND_YAW_TEST").unwrap();
         crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+            );
             assert!(game.run_command(
                 r#"summon minecraft:armor_stand 3 64 5 {Tags:["turn_me"],Rotation:[45f,0f]}"#
             ));
