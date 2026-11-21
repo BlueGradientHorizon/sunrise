@@ -10,6 +10,8 @@ pub trait Hooks {
     /// (NeoForge 26.3 `SubmitCustomGeometryEvent`, vanilla `LevelRenderer.submitFeatures`).
     /// Client-only, noncancellable. `view` holds only camera, partial tick and game time,
     /// not full extracted level state or visible sections. Submit from extracted state.
+    /// A listener panic disables that mod's listener and reports it by name. Geometry
+    /// already submitted to this view is not rolled back.
     #[notes = r#"## Custom world geometry
 
 `Hooks::submit_custom_geometry` runs on the client after particles, before rendering. Its
@@ -21,7 +23,9 @@ fail atomically for invalid inputs, and `lines` enforces a fixed per-view limit 
 `pipeline_quads` checks `RenderPipelineRef` validity and staleness
 (`PipelineDrawError::Pipeline`) and skips any quad with non-finite coordinates or UVs
 individually without rejecting valid quads in the same slice. Output clears every view. Submit
-extracted state, without world writes or resource loading.
+extracted state, without world writes or resource loading. A listener panic is logged and shown in
+an error toast naming the mod, and disables that listener for the session. Geometry it already
+submitted stays in the current view; the next listener can still submit geometry.
 
 `WorldDrawContext::draw_model_instances` draws one batch of a resolved `ModelRef`. Each
 `ModelInstance` carries an f64 world origin, a row-major 3×4 local transform, an `0xAARRGGBB`

@@ -5,8 +5,8 @@
 //! a panic. A panic disables that mod's callback for that hook for the session, reports the mod
 //! and hook in the error log, and queues a local client error toast. A headless dedicated server
 //! logs the error without presenting a toast. A phase refusal is reported each time and does not
-//! disable the callback. Startup [`invoke_registration`] uses the same panic boundary for the
-//! once-only `Hooks::register` call.
+//! disable the callback. Once-only callbacks such as startup `Hooks::register` and model layer
+//! suppliers use the same panic boundary; they have no future invocation to disable.
 //!
 //! Dispatch and the owning publication boundary discard unfinished work. Later eligible listeners
 //! still run from the last accepted outputs; only a completed proposal can cancel or replace.
@@ -277,13 +277,14 @@ pub(crate) fn record_hook_panic(
     payload: &(dyn std::any::Any + Send),
 ) {
     if poison(hook_id, mod_id) {
-        log_and_queue_panic(hook, mod_id, payload);
+        log_and_queue_panic(hook, mod_id, "callback disabled for the session", payload);
     }
 }
 
 fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
+    outcome: &'static str,
     payload: &(dyn std::any::Any + Send),
 ) {
     let reason = payload
@@ -291,9 +292,7 @@ fn log_and_queue_panic(
         .copied()
         .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
         .unwrap_or("panic");
-    log::error!(
-        "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
-    );
+    log::error!("mod {mod_id} panicked in {hook} ({outcome}): {reason}");
     if let Some(installed) = installed() {
         let mut queue = installed
             .hook_panics
@@ -328,12 +327,37 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_callback(contained, call, |payload| {
+        record_hook_panic(hook_id, hook, mod_id, payload);
+    })
+}
+
+/// Run a callback called only once by its owner, without poisoning any other callback of the mod.
+pub(crate) fn invoke_once<T>(
+    hook: &'static str,
+    mod_id: &'static str,
+    contained: bool,
+    call: impl FnOnce() -> T,
+) -> DispatchOutcome<T> {
+    invoke_callback(contained, call, |payload| {
+        let (entered, trapped) = LISTENER_SERIAL.get();
+        LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+        log_and_queue_panic(hook, mod_id, "callback discarded", payload);
+    })
+}
+
+#[inline]
+fn invoke_callback<T>(
+    contained: bool,
+    call: impl FnOnce() -> T,
+    on_panic: impl FnOnce(&(dyn std::any::Any + Send)),
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            on_panic(&*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }
@@ -449,17 +473,10 @@ impl<T> RegistrationMap<T> {
 /// failure, logging the error, and queueing a client error toast so the caller can roll back the
 /// mod's partial registrations and continue with remaining mods.
 pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
-    let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
-        Ok(()) => true,
-        Err(payload) => {
-            let (entered, trapped) = LISTENER_SERIAL.get();
-            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-            log_and_queue_panic("register", mod_id, &*payload);
-            dispose_panic_payload(payload);
-            false
-        }
-    }
+    matches!(
+        invoke_once("register", mod_id, false, call),
+        DispatchOutcome::Ok(())
+    )
 }
 
 /// The process-wide list in dispatch order, or an empty list before installation.

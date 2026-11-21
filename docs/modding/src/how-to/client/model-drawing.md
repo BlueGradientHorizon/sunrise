@@ -74,7 +74,9 @@ Duplicate mod registrations for the same ID overwrite earlier suppliers (last-wr
 before freeze, so overwritten suppliers never run. Malformed IDs, collisions with existing
 vanilla layer definitions, or an unavailable/invalid vanilla `entity-models.json` fail
 startup freeze cleanly before invoking any supplier or publishing. The game calls each
-winning supplier once when it freezes the layer table. The frozen table
+winning supplier once when it freezes the layer table. A panicking supplier leaves no
+layer and is reported in the error log and client error toast under its mod's name.
+Other suppliers, including that mod's other suppliers, still run. The frozen table
 retains the definitions, not the suppliers. Call
 `ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
 resulting `ModelPart` tree for posing and drawing. Baking again and reloading

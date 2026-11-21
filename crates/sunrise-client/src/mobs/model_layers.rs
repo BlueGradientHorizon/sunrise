@@ -1,8 +1,8 @@
 //! Engine registration and vanilla resource conversion for model layers.
 use super::Part;
 use mod_api::{
-    __private::game::{CallbackOwner, LayerDefinitionRegistration},
-    Answered, LayerDefinition, ModelPart, ModelPolygon, ModelVertex, PartPose,
+    __private::game::LayerDefinitionRegistration, Answered, LayerDefinition, ModelPart,
+    ModelPolygon, ModelVertex, PartPose,
 };
 use std::{collections::HashMap, path::Path, sync::OnceLock};
 
@@ -89,17 +89,8 @@ pub fn register(
     let mut definitions = HashMap::new();
     for id in order {
         let entry = staged[id];
-        let LayerDefinitionRegistration { id, supplier, .. } = &entry.answer;
-        let mod_id = entry.mod_id;
-        let Some(owner) = CallbackOwner::new(mod_id) else {
-            log::warn!("Model layer {id} has no installed owner {mod_id}");
-            continue;
-        };
-        match owner.call("model layer supplier", "build_layer_definition", supplier) {
-            Ok(definition) => {
-                definitions.insert(id.clone(), definition);
-            }
-            Err(error) => log::warn!("Model layer {id}: {error}"),
+        if let Some(definition) = entry.answer.build(entry.mod_id) {
+            definitions.insert(id.to_owned(), definition);
         }
     }
     if REGISTERED.set(definitions).is_err() {
@@ -135,9 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn suppliers_overwrite_last_writer_wins_and_fail_closed_on_invalid_table_or_vanilla_collision()
-    {
-        use mod_api::__private::game::RegistrationContextNew;
+    fn freezes_winning_layer_suppliers_and_reports_the_failed_supplier() {
+        use mod_api::__private::{HookPanicReport, game::RegistrationContextNew, take_hook_panics};
         use mod_api::{Hooks, ModEntry, RegisterLayerDefinitionsEvent, RegistrationContext};
         use std::sync::{Arc, Mutex};
 
@@ -153,6 +143,7 @@ mod tests {
                     let calls = self.1.clone();
                     event.register(id, move || {
                         calls.lock().unwrap().push(offset);
+                        assert!(offset >= 0, "panicking model layer supplier");
                         let mut mesh = MeshDefinition::new();
                         mesh.add_or_replace_child(
                             mesh.root(),
@@ -236,6 +227,7 @@ mod tests {
                     "first",
                     Box::new(Layers(
                         &[
+                            ("first:broken#main", -1),
                             ("minecraft:custom_golem#main", 3),
                             ("first:golem#outer:armor", 6),
                             ("first:golem#a#b", 7),
@@ -260,8 +252,16 @@ mod tests {
                 );
                 assert!(calls.lock().unwrap().is_empty());
                 register(suppliers, &dir).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [3, 9, 7, 12]);
+                assert_eq!(*calls.lock().unwrap(), [-1, 3, 9, 7, 12]);
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "first",
+                        hook: "build_layer_definition",
+                    }],
+                );
 
+                assert!(registered("first:broken#main").is_none());
                 assert!(registered("minecraft:zombie#main").is_none());
                 assert_eq!(
                     registered("minecraft:custom_golem#main")
@@ -301,7 +301,8 @@ mod tests {
                     &mut late,
                 );
                 register(late, &dir).unwrap();
-                assert_eq!(*calls.lock().unwrap(), [3, 9, 7, 12]);
+                assert_eq!(*calls.lock().unwrap(), [-1, 3, 9, 7, 12]);
+                assert!(take_hook_panics().is_empty());
             },
         );
         let _ = std::fs::remove_dir_all(&dir);

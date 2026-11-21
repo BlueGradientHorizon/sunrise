@@ -504,13 +504,13 @@ impl LayerDefinition {
 impl RegisterLayerDefinitionsEvent<'_> {
     /// Register a supplier for a model layer ID such as `mymod:golem#main`.
     /// Write the model `Identifier` before the first `#` in its full `namespace:path` form,
-    /// as in `ModelLayerLocation`. Either half may be empty. The suffix after `#` is unrestricted. Duplicate mod registrations for an ID overwrite earlier
-    /// suppliers (last-writer-wins) before freeze. Malformed IDs, collisions with existing
-    /// vanilla layer definitions, or an unavailable vanilla layer table fail startup freeze before
-    /// any supplier runs or the layer table publishes; overwritten suppliers and registrations
-    /// from a phase-refused listener never call their supplier. Each winning supplier runs once at
-    /// client startup to build the frozen definition, not when the layer is baked or resources are
-    /// reloaded. Capture owned data in the supplier.
+    /// as in `ModelLayerLocation`. Either half may be empty. The suffix after `#` is unrestricted.
+    /// Duplicate mod registrations for an ID overwrite earlier suppliers (last-writer-wins)
+    /// before freeze. Malformed IDs, collisions with existing vanilla layer definitions, or an
+    /// unavailable vanilla layer table fail startup freeze before any supplier runs or the table
+    /// publishes. Each winning supplier runs once at client startup, not on bake or reload.
+    /// A panicking supplier leaves no definition and its mod is named in the error log and toast;
+    /// it does not prevent other suppliers from running. Capture owned data in the supplier.
     pub fn register(
         &mut self,
         id: impl Into<String>,
@@ -529,8 +529,37 @@ impl RegisterLayerDefinitionsEvent<'_> {
 pub struct LayerDefinitionRegistration {
     /// The model layer ID, validated when the layer table is frozen.
     pub id: String,
-    /// The supplier called when assembling the frozen table.
-    pub supplier: Box<dyn Fn() -> LayerDefinition + Send + Sync>,
+    supplier: Box<dyn Fn() -> LayerDefinition + Send + Sync>,
+}
+
+impl LayerDefinitionRegistration {
+    /// Realize a winning supplier once at freeze, under its registering mod's identity.
+    pub fn build(&self, mod_id: &'static str) -> Option<LayerDefinition> {
+        let id = &self.id;
+        let Some(index) = crate::__private::mod_index(mod_id) else {
+            log::warn!("Model layer {id} has no installed owner {mod_id}");
+            return None;
+        };
+        if !crate::__private::mod_index_on(index) {
+            log::warn!("Model layer {id}: mod {mod_id} is disabled");
+            return None;
+        }
+        let operation = "build_layer_definition";
+        let _owner = crate::runtime::mark_mod(mod_id, operation);
+        match crate::runtime::invoke_once(
+            operation,
+            mod_id,
+            crate::runtime::outside_world(),
+            &self.supplier,
+        ) {
+            crate::runtime::DispatchOutcome::Ok(definition) => Some(definition),
+            crate::runtime::DispatchOutcome::Refused(refusal) => {
+                refusal.report();
+                None
+            }
+            crate::runtime::DispatchOutcome::Panicked => None,
+        }
+    }
 }
 
 /// A corner of a baked face (`ModelPart.Vertex`): in texels in its part's

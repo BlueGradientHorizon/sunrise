@@ -154,7 +154,9 @@ reload answers `Stale`.
 `pipeline_quads` works wherever a `WorldDrawContext` is given: `submit_custom_geometry` and each
 `render_level_stage`. Within a stage, pipeline quads draw after that stage's plain quads and
 lines, in the order submitted. Under a shader pack they follow the plain quads: a stage the pack
-draws itself is drawn with the next stage the game reaches.
+draws itself is drawn with the next stage the game reaches. If a listener to either hook panics,
+it is reported by name in the error log and client error toast and disabled for that hook for the
+session. Geometry already submitted stays in the current view; other listeners can still draw.
 
 ## Sampling a texture
 

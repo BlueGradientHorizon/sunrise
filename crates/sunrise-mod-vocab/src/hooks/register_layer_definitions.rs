@@ -4,8 +4,9 @@ pub trait Hooks {
     /// Register suppliers for entity model layers (NeoForge's
     /// `EntityRenderersEvent.RegisterLayerDefinitions`). Called once at client startup.
     /// Use [`RegisterLayerDefinitionsEvent::register`] to bind each layer ID to its supplier;
-    /// accepted suppliers run once when the layer table is frozen. Bake the realized
-    /// definitions through `ClientHost::bake_layer`. API @API:model_layers@.
+    /// accepted suppliers run once when the layer table is frozen. A supplier panic is
+    /// logged and shown in a client error toast naming its mod; other suppliers still run.
+    /// Bake the realized definitions through `ClientHost::bake_layer`. API @API:model_layers@.
     #[notes = r#"## Entity model layers
 
 `Hooks::register_layer_definitions` is the client registration-phase counterpart of NeoForge 26.3's
@@ -20,8 +21,10 @@ existing vanilla layer definitions, or an unavailable/invalid vanilla `entity-mo
 table fail startup freeze before any supplier runs or the layer table publishes.
 
 The game calls each winning supplier once when assembling the frozen layer table. Overwritten
-suppliers never run. A supplier that is disabled, refuses or panics leaves no definition. Bakes
-and resource reloads do not call suppliers again.
+suppliers never run. A supplier that is disabled, refuses or panics leaves no definition.
+A panic names the mod and `build_layer_definition` in the shared error log and client error
+toast; other suppliers, including that mod's other suppliers, still run. Bakes and resource
+reloads do not call suppliers again.
 
 A `LayerDefinition` holds a `MeshDefinition` of named parts whose `CubeListBuilder` boxes sit
 at a `PartPose`, on a texture of the given size. Texture offsets, mirroring and

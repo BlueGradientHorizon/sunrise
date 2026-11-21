@@ -5,7 +5,8 @@ pub trait Hooks {
     /// `RenderLevelStageEvent`), asked for each `RenderLevelStage` in frame order. `draw` is
     /// the view's `WorldDrawContext` and shares its limits with `submit_custom_geometry`; its
     /// lines and quads draw at `stage`, its `name_tag` labels with the world's name tags.
-    /// Client-only, noncancellable.
+    /// Client-only, noncancellable. A listener panic disables that mod's stage listener
+    /// for the session and reports it by name; geometry already submitted is not rolled back.
     #[notes = r#"## World render stages
 
 `Hooks::render_level_stage` is the client counterpart of NeoForge 26.3's
@@ -21,7 +22,9 @@ extracted, in stage order, with `Hooks::submit_custom_geometry` and the debug re
 just before `AfterLevel`. All take the same `WorldRenderView` and `WorldDrawContext`:
 [the custom geometry limits and rules](#custom-world-geometry) apply and are shared by all stages. Only where it is drawn differs. `draw_model_instances` copies
 are part of the world's model pass, so they draw with entities whatever the stage, and `name_tag`
-labels draw with the world's name tags, whatever the stage too.
+labels draw with the world's name tags, whatever the stage too. A stage listener panic is logged
+and shown in an error toast naming its mod, and disables that listener across all stages for the
+session. Geometry already submitted to the view stays; other listeners can still draw.
 
 A route that does not draw a stage's part of the world in the world pass draws that stage's
 geometry at the next stage it reaches instead, depth tested as usual: a shader pack that draws

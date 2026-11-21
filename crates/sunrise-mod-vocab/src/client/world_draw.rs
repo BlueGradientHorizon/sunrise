@@ -277,4 +277,89 @@ mod tests {
         dispatch_submit_custom_geometry(&Empty, &view, &mut Empty);
         assert_eq!(CALLS.load(Ordering::Relaxed), 1);
     }
+
+    #[test]
+    fn world_draw_hook_panics_leave_submitted_geometry_and_disable_only_the_listener() {
+        use crate::__private::{HookPanicReport, take_hook_panics};
+
+        const RED: u32 = 0xffff_0000;
+        const GREEN: u32 = 0xff00_ff00;
+        const CORNERS: [[f64; 3]; 4] = [
+            [0.0, 1.0, -2.0],
+            [0.0, 0.0, -2.0],
+            [1.0, 0.0, -2.0],
+            [1.0, 1.0, -2.0],
+        ];
+
+        #[derive(Default)]
+        struct Draw(Vec<u32>);
+        impl WorldDrawContext for Draw {
+            fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
+                self.0.extend(quads.iter().map(|quad| quad.color));
+                Ok(())
+            }
+        }
+
+        struct Geometry(u32);
+        impl Geometry {
+            fn submit(&self, draw: &mut dyn WorldDrawContext) {
+                draw.quads(&[WorldQuad::new(CORNERS, self.0, WorldDepth::Tested)])
+                    .unwrap();
+                assert_ne!(self.0, RED, "panicking draw listener");
+            }
+        }
+
+        #[mod_api::__subscriptions]
+        impl Hooks for Geometry {
+            fn submit_custom_geometry(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut SubmitCustomGeometryEvent<'_>,
+            ) {
+                self.submit(event.draw);
+            }
+
+            fn render_level_stage(
+                &self,
+                _: &dyn ClientHost,
+                event: &mut RenderLevelStageEvent<'_>,
+            ) {
+                self.submit(event.draw);
+            }
+        }
+
+        testing::with_dispatch(
+            vec![
+                ModEntry::new("broken", Box::new(Geometry(RED))),
+                ModEntry::new("healthy", Box::new(Geometry(GREEN))),
+            ]
+            .into(),
+            || {
+                let view = WorldRenderView::new([0.0; 3], 0.5, 42);
+                let mut draw = Draw::default();
+                dispatch_submit_custom_geometry(&Empty, &view, &mut draw);
+                dispatch_render_level_stage(&Empty, RenderLevelStage::AfterLevel, &view, &mut draw);
+                assert_eq!(draw.0, [RED, GREEN, RED, GREEN]);
+                assert_eq!(
+                    take_hook_panics(),
+                    [
+                        HookPanicReport {
+                            mod_id: "broken",
+                            hook: "submit_custom_geometry"
+                        },
+                        HookPanicReport {
+                            mod_id: "broken",
+                            hook: "render_level_stage"
+                        },
+                    ],
+                );
+
+                draw.0.clear();
+                dispatch_submit_custom_geometry(&Empty, &view, &mut draw);
+                dispatch_render_level_stage(&Empty, RenderLevelStage::AfterSky, &view, &mut draw);
+                assert_eq!(draw.0, [GREEN, GREEN]);
+                assert!(take_hook_panics().is_empty());
+            },
+        );
+    }
 }
