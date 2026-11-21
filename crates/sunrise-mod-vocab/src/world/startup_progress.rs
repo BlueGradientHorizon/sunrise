@@ -7,7 +7,7 @@ use std::sync::{Arc, OnceLock};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StartupProgressError {
-    /// The screen already has 64 open bars. Close a bar before retrying.
+    /// The calling mod already has 64 open bars. Close a bar before retrying.
     TooManyBars,
     /// The game's screen has already been installed.
     AlreadyInstalled,
@@ -15,7 +15,9 @@ pub enum StartupProgressError {
 impl std::fmt::Display for StartupProgressError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TooManyBars => f.write_str("the startup screen already has 64 open bars"),
+            Self::TooManyBars => {
+                f.write_str("the calling mod already has 64 open startup progress bars")
+            }
             Self::AlreadyInstalled => f.write_str("the startup screen is already installed"),
         }
     }
@@ -28,7 +30,7 @@ impl std::error::Error for StartupProgressError {}
 pub trait StartupScreen: Send + Sync + 'static {
     /// Open a bar of `steps` steps under the stage bar and return its owned meter.
     /// The screen borrows `label` for the call; the meter does not borrow it.
-    /// Returns `StartupProgressError::TooManyBars` if 64 bars are already open.
+    /// Returns `StartupProgressError::TooManyBars` if the calling mod already has 64 open bars.
     fn open(
         self: Arc<Self>,
         label: &str,
@@ -117,7 +119,7 @@ impl crate::RegistrationContext {
     /// under the game's own stage bar, newest first (NeoForge's `addProgressBar`). The bar
     /// may be updated from any thread and is removed when dropped. On a dedicated server,
     /// the label and progress in 10% increments are logged instead.
-    /// Returns `TooManyBars` when 64 bars are already open; no bar is created.
+    /// Returns `TooManyBars` when the calling mod already has 64 open bars; no bar is created.
     pub fn progress(
         &self,
         label: &str,

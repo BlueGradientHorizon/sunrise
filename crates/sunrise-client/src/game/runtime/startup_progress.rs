@@ -11,8 +11,8 @@ const LINE_TIME: Duration = Duration::from_secs(5);
 const SHOWN_BARS: usize = 4;
 /// The most lines drawn, newest last.
 const SHOWN_LINES: usize = 3;
-/// Bars open at once: past this, opening a bar returns `TooManyBars`.
-const MAX_BARS: usize = 64;
+/// Bars open at once per mod: past this, opening another bar for that mod returns `TooManyBars`.
+const MAX_BARS_PER_MOD: usize = 64;
 /// Lines kept for drawing.
 const MAX_LINES: usize = 32;
 /// A startup message line is cut to this many bytes when it is kept.
@@ -31,9 +31,14 @@ struct Meter {
     bar: Arc<Mutex<Bar>>,
 }
 
+struct TrackedBar {
+    owner: Option<&'static str>,
+    bar: Arc<Mutex<Bar>>,
+}
+
 #[derive(Default)]
 struct State {
-    bars: Vec<Arc<Mutex<Bar>>>,
+    bars: Vec<TrackedBar>,
     lines: VecDeque<(String, Instant)>,
 }
 
@@ -97,8 +102,8 @@ impl ModProgress {
             .iter()
             .rev()
             .take(SHOWN_BARS)
-            .map(|bar| {
-                let bar = bar.lock().unwrap_or_else(|p| p.into_inner());
+            .map(|entry| {
+                let bar = entry.bar.lock().unwrap_or_else(|p| p.into_inner());
                 let done = if bar.steps == 0 {
                     0.0
                 } else {
@@ -124,12 +129,18 @@ impl mod_api::StartupScreen for ModProgress {
         label: &str,
         steps: u32,
     ) -> Result<Box<dyn mod_api::ProgressMeter>, mod_api::StartupProgressError> {
+        let owner = mod_api::content::crash::current_native_mod();
         let mut state = self.state();
-        if state.bars.len() >= MAX_BARS {
+        let open_for_owner = state
+            .bars
+            .iter()
+            .filter(|entry| entry.owner == owner)
+            .count();
+        if open_for_owner >= MAX_BARS_PER_MOD {
             drop(state);
             log::warn!(
-                "Sunrise: mod {} exceeded the {MAX_BARS}-bar startup progress limit",
-                mod_api::content::crash::current_native_mod().unwrap_or("unknown")
+                "Sunrise: mod {} exceeded the {MAX_BARS_PER_MOD}-bar startup progress limit",
+                owner.unwrap_or("unknown")
             );
             return Err(mod_api::StartupProgressError::TooManyBars);
         }
@@ -139,7 +150,10 @@ impl mod_api::StartupScreen for ModProgress {
             steps,
             logged: 0,
         }));
-        state.bars.push(bar.clone());
+        state.bars.push(TrackedBar {
+            owner,
+            bar: bar.clone(),
+        });
         drop(state);
         if self.dedicated {
             log::info!("{label}");
@@ -210,7 +224,7 @@ impl Drop for Meter {
         self.screen
             .state()
             .bars
-            .retain(|kept| !Arc::ptr_eq(kept, &self.bar));
+            .retain(|kept| !Arc::ptr_eq(&kept.bar, &self.bar));
     }
 }
 
@@ -233,21 +247,52 @@ mod tests {
     }
 
     #[test]
-    fn sixty_fifth_bar_is_refused_until_a_meter_is_dropped() {
+    fn sixty_fifth_bar_is_refused_per_mod_without_blocking_other_mods() {
+        use mod_api::content::crash::{ModCall, enter_native_mod};
+
         let screen = Arc::new(ModProgress::new(false));
-        let mut meters: Vec<_> = (0..64)
-            .map(|_| screen.clone().open("kept", 1).unwrap())
-            .collect();
-        assert!(matches!(
-            screen.clone().open("refused", 1),
-            Err(mod_api::StartupProgressError::TooManyBars)
-        ));
-        drop(meters.pop());
-        meters.push(screen.clone().open("replacement", 1).unwrap());
-        assert!(matches!(
-            screen.clone().open("refused", 1),
-            Err(mod_api::StartupProgressError::TooManyBars)
-        ));
+        let alpha_call = ModCall {
+            id: "alpha",
+            hook: "register",
+            part: None,
+        };
+        let beta_call = ModCall {
+            id: "beta",
+            hook: "register",
+            part: None,
+        };
+
+        let mut alpha_meters = {
+            let _guard = enter_native_mod(alpha_call);
+            let meters: Vec<_> = (0..64)
+                .map(|_| screen.clone().open("alpha kept", 1).unwrap())
+                .collect();
+            assert!(matches!(
+                screen.clone().open("alpha refused", 1),
+                Err(mod_api::StartupProgressError::TooManyBars)
+            ));
+            meters
+        };
+
+        // Another mod still has its full 64-bar budget while alpha holds 64 bars.
+        let beta_meter = {
+            let _guard = enter_native_mod(beta_call);
+            screen.clone().open("beta allowed", 1).unwrap()
+        };
+        assert_eq!(screen.shown(Instant::now()).0[0].0, "beta allowed");
+
+        // Dropping one of alpha's bars reopens one slot for alpha only.
+        drop(alpha_meters.pop());
+        {
+            let _guard = enter_native_mod(alpha_call);
+            alpha_meters.push(screen.clone().open("alpha replacement", 1).unwrap());
+            assert!(matches!(
+                screen.clone().open("alpha refused again", 1),
+                Err(mod_api::StartupProgressError::TooManyBars)
+            ));
+        }
+        drop(beta_meter);
+        drop(alpha_meters);
     }
 
     #[test]
