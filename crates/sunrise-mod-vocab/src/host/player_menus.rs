@@ -26,8 +26,8 @@ pub trait PlayerMenusBackendMut {
     /// Side: server.
     /// Opens a block entity's menu for a connected player (`ServerPlayer.openMenu`).
     /// Returns Stale for an invalidated entity; Ok(false) for a wrong-level player,
-    /// non-provider, cancelled open, active menu click, an out-of-range slot exclusion, or an
-    /// unconnected player such as a fake player.
+    /// non-provider, cancelled open, active speculative trade action, an out-of-range slot
+    /// exclusion, or an unconnected player such as a fake player.
     #[access(WorldOnly)]
     fn player_open_menu(
         &mut self,
@@ -54,7 +54,8 @@ pub trait PlayerMenusBackendMut {
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
     /// a mod cancelled the open or a registered exclusion is out of range. Errors: `NotModMenu`,
-    /// `OwnedSlotsWithResults`, `ClickInProgress` (a speculative click cannot open a new screen),
+    /// `OwnedSlotsWithResults`, `ClickInProgress` (an active speculative trade action cannot
+    /// open a new screen),
     /// `PlayerUnavailable` (including a client that does not support the blockless layout, a
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open

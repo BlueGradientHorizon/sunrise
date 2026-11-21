@@ -1374,7 +1374,7 @@ pub enum OpenMenuError {
     NotModMenu,
     /// A menu with `owned_slots` also declares a take-only or crafting result.
     OwnedSlotsWithResults,
-    /// Opening a new window is not possible during the active menu click action.
+    /// Opening a new window is not possible during an active speculative trade action.
     ClickInProgress,
     /// The player is stale, dead, disconnecting, has no supported client, or their turn
     /// is unavailable for the open veto. Also returned by a host without a game.

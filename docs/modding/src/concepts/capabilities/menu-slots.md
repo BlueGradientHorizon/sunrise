@@ -308,18 +308,25 @@ host.transaction(|host, tx| {
 })
 ```
 
-`MenuPart::menu_clicked` v3 runs on parts registered for the open mod menu's type. The event names
-that type and gives the raw slot, button and click type. Menu-button clicks, recipe placement and creative
-set-slot do not reach it. Return `Flow::Cancel` after doing the click yourself to skip the default. On
-`Flow::Continue`, the part and the default action share one transaction. If the part changes what the
-default would read, or if the default refuses, the action rolls back without trying a different click.
-The client still predicts the default action. After an override or refusal the server sends the full menu,
-cursor and any predicted swap target omitted from the menu. A display-only menu has no default moves.
+`MenuPart::menu_clicked` v4 runs directly on parts registered for the open mod menu's type before
+default click execution (`ServerGamePacketListenerImpl.handleContainerClick`,
+`AbstractContainerMenu.clicked`). The event names that type and gives the raw slot, button and
+click type. Menu-button clicks, recipe placement and creative set-slot do not reach it. There is
+no synthetic decided-action wrapper or whole-inventory rollback: open a transaction explicitly with
+`host.transaction(...)` when a callback wants atomic multi-step edits, and prior unrelated writes
+stand even when the default click is cancelled or refused. Return `Flow::Cancel` after doing the
+click yourself to skip only the default click. On `Flow::Continue`, the server rechecks receiver
+preconditions (live player, same menu generation and window, non-spectator, valid backing slots and
+slot index) and runs the default click on the live menu. The client still predicts the default
+action; after an override or refusal the server sends the full menu, cursor and any predicted swap
+target omitted from the menu. A display-only menu has no default moves.
 
-A click action cannot replace a screen: `open_menu` returns `Ok(None)` and `PlayerRef::open_mod_menu`
-returns `OpenMenuError::ClickInProgress`. `close_menu` and `MenuRef::close_container` wait for a
-successful commit. An abort leaves the window and its items in place and sends no close packet.
-`menu_set_items` changes also roll back without sending a packet if the action aborts.
+Inside `menu_clicked`, `open_menu`, `PlayerRef::open_mod_menu`, `close_menu` and
+`MenuRef::close_container` run directly on the player's live menu. Closing or replacing the menu
+inside `menu_clicked` prevents the default click from running on the old menu. A panic in a part's
+`menu_clicked` callback aborts any transaction that callback opened, disables only that mod's
+`menu_clicked` callback for the session with an error log and error toast naming the mod, and lets
+remaining parts continue.
 
 `menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
 menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder

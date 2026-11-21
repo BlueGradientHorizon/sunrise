@@ -257,19 +257,13 @@ impl Game<'_> {
         let host = self.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
         host.hub
             .set_native_menu_items(conn, window, items, !transactional)?;
-        // The scoped click reconciles its own window on both override and refusal.
-        if transactional
-            && !self
-                .transactions
-                .iter()
-                .any(|level| level.menu_click_active == Some(conn))
-        {
+        if transactional {
             self.reply_menu_click(conn, super::lan_menus::ClickReply::Resend(window));
         }
         Ok(())
     }
-    /// Closes the player's native menu (a `native_menu_closed` follows). An active click
-    /// stages the close for its current window and sends it only once the transaction commits.
+    /// Closes the player's native menu (a `native_menu_closed` follows). During an active
+    /// speculative trade action, stages the close for its current window until commit.
     pub(super) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))

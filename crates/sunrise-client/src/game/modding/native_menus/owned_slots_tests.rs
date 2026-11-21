@@ -15,9 +15,15 @@ use sunrise_protocol::packets::play::{
     Clientbound as C, ContainerClick, ContainerClose, Serverbound as S, SetCursorItem,
 };
 
+#[derive(Clone, Copy)]
+enum WindowAction {
+    Close { by_handle: bool },
+    Replace { mod_menu: MenuKey },
+}
+
 thread_local! {
     static SCRIPTED_CLICK: std::cell::Cell<Option<Flow>> = const { std::cell::Cell::new(None) };
-    static WINDOW_REQUEST: std::cell::Cell<Option<(MenuKey, bool)>> = const { std::cell::Cell::new(None) };
+    static WINDOW_REQUEST: std::cell::Cell<Option<WindowAction>> = const { std::cell::Cell::new(None) };
     static CLOSE_NOTICES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static LOCK_FIRST_SLOT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -46,34 +52,34 @@ impl MenuPart for Part {
     }
 
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
-        if let Some((key, by_handle)) = WINDOW_REQUEST.get() {
-            let title = mod_api::Text::literal("Would replace the current menu");
-            assert_eq!(
-                host.open_menu(
-                    event.uuid,
-                    1,
-                    title.clone(),
-                    Vec::new(),
-                    MenuReplace::InPlace
-                ),
-                Ok(None)
-            );
+        if let Some(action) = WINDOW_REQUEST.get() {
             let player = host.player(event.uuid).unwrap();
-            assert_eq!(
-                player.open_mod_menu(host, mod_api::ModMenuOpen::new(key, title)),
-                Err(mod_api::OpenMenuError::ClickInProgress)
-            );
-            if by_handle {
-                let menu = player.container_menu(host).unwrap();
-                assert!(menu.close_container(host));
-            } else {
-                host.close_menu(event.uuid);
+            match action {
+                WindowAction::Close { by_handle } => {
+                    if by_handle {
+                        let menu = player.container_menu(host).unwrap();
+                        assert!(menu.close_container(host));
+                    } else {
+                        host.close_menu(event.uuid);
+                    }
+                    assert!(
+                        host.menu(event.uuid, event.window).is_none(),
+                        "close runs directly on the live menu"
+                    );
+                }
+                WindowAction::Replace { mod_menu } => {
+                    let title = mod_api::Text::literal("Replacement menu");
+                    let next = player
+                        .open_mod_menu(host, mod_api::ModMenuOpen::new(mod_menu, title))
+                        .unwrap()
+                        .expect("open_mod_menu replaces the current menu directly");
+                    assert_ne!(next, event.window);
+                    assert!(host.menu(event.uuid, event.window).is_none());
+                    assert!(host.menu(event.uuid, next).is_some());
+                }
             }
-            assert!(
-                host.menu(event.uuid, event.window).is_some(),
-                "close is deferred"
-            );
-            return Flow::Cancel;
+            // Even on Continue, closing or replacing the menu prevents default click execution.
+            return Flow::Continue;
         }
         if let Some(flow) = SCRIPTED_CLICK.get() {
             return flow;
@@ -903,7 +909,7 @@ fn send_scoped_click(
 fn a_click_refuses_opens_and_closes_only_on_commit() {
     with_owned_menu(true, |game, rx, key| {
         for by_handle in [false, true] {
-            let (window, menu) = open(game, key);
+            let (window, _) = open(game, key);
             let stored = ItemStack::new("minecraft:stick", 3);
             let carried = ItemStack::new("minecraft:dirt", 2);
             let hub = &mut game.lan.as_mut().unwrap().hub;
@@ -915,21 +921,7 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
             hub.resend_menu(1, window, &game.world);
             sent(&rx);
             CLOSE_NOTICES.set(0);
-            WINDOW_REQUEST.set(Some((key, by_handle)));
-
-            let seal = game.transaction_open();
-            click(game, window, 0);
-            assert_eq!(game.menu(123, window), Some(menu));
-            assert!(sent(&rx).is_empty());
-            game.transaction_close(&seal, false);
-            game.run_native_menu_events();
-            assert_eq!(game.menu(123, window), Some(menu));
-            let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
-            assert_eq!(guest.native_menu, [None, Some(stored.clone())]);
-            assert_eq!(guest.carried, Some(carried.clone()));
-            assert!(guest.inventory.iter().all(Option::is_none));
-            assert!(sent(&rx).is_empty());
-            assert_eq!(CLOSE_NOTICES.get(), 0);
+            WINDOW_REQUEST.set(Some(WindowAction::Close { by_handle }));
 
             click(game, window, 0);
             WINDOW_REQUEST.set(None);
@@ -951,8 +943,60 @@ fn a_click_refuses_opens_and_closes_only_on_commit() {
                     .count(),
                 1
             );
-            assert!(!packets.iter().any(|p| matches!(p, C::OpenScreen(_))));
+            assert!(
+                !packets
+                    .iter()
+                    .any(|p| matches!(p, C::ContainerSetContent(p) if p.container == window)),
+                "no stale resend after closing the menu"
+            );
         }
+
+        // Replacing the menu inside `menu_clicked` opens the new window directly and skips
+        // default click execution on both the old and replacement windows.
+        let (window, _) = open(game, key);
+        let stored = ItemStack::new("minecraft:stick", 3);
+        let carried = ItemStack::new("minecraft:dirt", 2);
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        hub.guests.update(0, |g| {
+            g.inventory.fill(None);
+            g.native_menu[0] = Some(stored.clone());
+            g.carried = Some(carried.clone());
+        });
+        hub.resend_menu(1, window, &game.world);
+        sent(&rx);
+        CLOSE_NOTICES.set(0);
+        WINDOW_REQUEST.set(Some(WindowAction::Replace { mod_menu: key }));
+
+        click(game, window, 0);
+        WINDOW_REQUEST.set(None);
+        assert!(game.menu(123, window).is_none());
+        let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+        let replacement = guest.menu.as_ref().expect("replacement menu is open");
+        assert_ne!(replacement.window, window);
+        assert!(guest.carried.is_none());
+        assert_eq!(
+            guest.native_menu,
+            [None, None],
+            "default click did not run on the replacement menu"
+        );
+        assert_eq!(
+            guest.inventory.iter().flatten().collect::<Vec<_>>(),
+            [&carried, &stored],
+            "replacing the menu returned the old cursor and detached owned inputs"
+        );
+        assert_eq!(CLOSE_NOTICES.get(), 1);
+        let packets = sent(&rx);
+        assert!(
+            packets
+                .iter()
+                .any(|p| matches!(p, C::OpenScreen(p) if p.container == replacement.window))
+        );
+        assert!(
+            !packets
+                .iter()
+                .any(|p| matches!(p, C::ContainerSetContent(p) if p.container == window)),
+            "no stale resend for the replaced window"
+        );
     });
 }
 

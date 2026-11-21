@@ -192,7 +192,7 @@ impl Game<'_> {
     pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()
-            .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
+            .any(|level| level.trades.active == Some(conn))
     }
 
     fn run_merchant_take(

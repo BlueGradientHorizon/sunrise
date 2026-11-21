@@ -1318,6 +1318,14 @@ pub(super) fn emit<'a>(
                         "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
                         call(&part_item, "break 'dispatch_parts"),
                     )
+                } else if hook.isolate && contract == Contract::Cancel {
+                    // An isolated scoped cancel hook catches panics per part, poisons only
+                    // that mod's callback for this hook, reports loudly, and continues to
+                    // remaining parts. Phase refusals report each time without poisoning.
+                    let o = out.unwrap();
+                    format!(
+                        "for (mod_id, {part_item}) in super::entered_isolated_parts(HookId::{hook_id}, {part_list}, \"{name}\") {{ match super::callback_owner::contain_unwind(|| super::runtime::refusable(contained, || {part_item}.{name}({invoke}))) {{ Ok(Ok(Flow::Cancel)) => {{ *{o} = true; {stack_after} break; }} Ok(Ok(Flow::Continue)) => {{ {stack_after} }} Ok(Err(refusal)) => {{ refusal.report_each(); }} Err(message) => {{ super::callback_owner::report_scoped_part_panic(HookId::{hook_id}, mod_id, \"{name}\", message); }} }} }}"
+                    )
                 } else {
                     format!(
                         "for {part_item} in super::entered_parts({part_list}, \"{name}\") {{ {} }}",

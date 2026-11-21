@@ -270,7 +270,6 @@ pub(super) struct Level {
     menus: HashMap<u32, KeptMenus>,
     /// Drag, machine and preview state before a scoped default click.
     menu_clicks: HashMap<u64, KeptClick>,
-    pub(super) menu_click_active: Option<u32>,
     /// Each native window's slots before the first write, by menu generation.
     native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
     menu_data: MenuDataJournal,

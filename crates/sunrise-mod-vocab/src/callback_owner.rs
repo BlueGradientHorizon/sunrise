@@ -165,7 +165,7 @@ pub fn take_callback_panic_notices() -> Vec<CallbackPanicNotice> {
     queue.drain(..).collect()
 }
 
-fn record_callback_panic(
+pub(crate) fn record_callback_panic(
     owner: &'static str,
     kind: &'static str,
     operation: &'static str,
@@ -180,6 +180,21 @@ fn record_callback_panic(
             operation,
             message,
         });
+}
+
+/// Report a panicking scoped part callback: poison that mod for `hook` for this session,
+/// log an error naming the mod, and queue the client error toast notice.
+pub(crate) fn report_scoped_part_panic(
+    hook: crate::HookId,
+    owner: &'static str,
+    operation: &'static str,
+    message: String,
+) {
+    crate::runtime::poison(hook, owner);
+    log::error!(
+        "mod {owner}: menu part callback ({operation}) panicked and is disabled for this session: {message}"
+    );
+    record_callback_panic(owner, "menu part", operation, message);
 }
 
 /// Owner identity and poison state for one retained mod callback.

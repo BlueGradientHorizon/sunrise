@@ -512,29 +512,29 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // A listener that unwinds is disabled for this hook. Cancellation rolls back and
-        // stops dispatch (#2414); an answered collector has no output until its listener returns.
+        // A listener that unwinds is disabled for this hook. Global cancellation rolls back
+        // and stops dispatch (#2414); scoped cancel hooks isolate each part and continue to
+        // later parts; an answered collector has no output until its listener returns.
         let isolate = api.isolate.unwrap_or(false);
         if isolate
-            && (scope.is_some()
-                || !(api.contract == Contract::Cancel
-                    || api.contract == Contract::Collect && answered_by_mod))
+            && !(api.contract == Contract::Cancel
+                || (scope.is_none() && api.contract == Contract::Collect && answered_by_mod))
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error:
-                    "isolate is for a global cancel hook or a global collect hook answered by mod"
-                        .into(),
+                error: "isolate is for a cancel hook or a global collect hook answered by mod"
+                    .into(),
             });
         }
         if let Some(validator) = &api.output_validator
             && (!isolate
+                || scope.is_some()
                 || api.contract != Contract::Cancel
                 || syn::parse_str::<syn::Path>(validator).is_err())
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on an isolated cancel hook".into(),
+                error: "output_validator is a path on a global isolated cancel hook".into(),
             });
         }
         let counterparts = Counterparts {

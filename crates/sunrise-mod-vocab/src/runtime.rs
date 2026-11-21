@@ -482,6 +482,33 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
         })
 }
 
+/// Like [`entered_parts`], yielding `(mod_id, part)` while skipping mods whose callback
+/// on `hook_id` was poisoned by a panic in this session.
+pub(crate) fn entered_isolated_parts<'a, P: ?Sized>(
+    hook_id: generated::HookId,
+    parts: &'a [Attached<P>],
+    hook: &'static str,
+) -> impl Iterator<Item = (&'static str, &'a P)> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    parts
+        .iter()
+        .filter(move |attached| {
+            mod_index_on(attached.mod_index) && !poisoned(hook_id, attached.mod_id)
+        })
+        .map(move |attached| {
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook,
+                    part: Some(attached.type_name),
+                },
+            );
+            (attached.mod_id, &*attached.part)
+        })
+}
+
 pub(crate) struct Entered<'a> {
     pub(crate) mods: std::slice::Iter<'a, ModEntry>,
     pub(crate) hook: &'static str,
