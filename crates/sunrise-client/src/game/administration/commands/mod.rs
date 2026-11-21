@@ -4345,15 +4345,15 @@ capabilities = ["registries"]
     #[ignore = "daily"]
     fn summon_checks_the_mod_type_instead_of_its_template() {
         with_types(ExecutionRole::IntegratedServer, |game| {
-            let context = |id: &str, nbt: bool| {
+            let context = |id: &str, nbt: Option<&str>| {
                 let arg = |name: &str, value| ParsedArg {
                     name: name.into(),
                     value,
                     range: (0, 0),
                 };
                 let mut args = vec![arg("entity", Arg::Resource(id.into()))];
-                if nbt {
-                    args.push(arg("nbt", Arg::Str("{NoAI:1b}".into())));
+                if let Some(nbt) = nbt {
+                    args.push(arg("nbt", Arg::Str(nbt.into())));
                 }
                 Context {
                     root: 0,
@@ -4366,17 +4366,17 @@ capabilities = ["registries"]
                 }
             };
             for id in [TRADER, "peaceful_test:inherited_zombie", "minecraft:zombie"] {
-                for nbt in [false, true] {
+                for nbt in [None, Some("{NoAI:1b}")] {
                     let error = game.cmd_summon(&context(id, nbt)).unwrap_err();
                     assert_eq!(
                         error.key, "commands.summon.failed.peaceful",
-                        "{id}, NBT {nbt}"
+                        "{id}, NBT {nbt:?}"
                     );
                 }
             }
             assert!(game.mobs.is_empty());
             assert_eq!(
-                game.cmd_summon(&context("peaceful_test:zombie", false)),
+                game.cmd_summon(&context("peaceful_test:zombie", Some("{UUID:[I;1,2,3,4]}"))),
                 Ok(1)
             );
             assert!(
@@ -4384,6 +4384,22 @@ capabilities = ["registries"]
                     .iter()
                     .any(|mob| mob.kind.id == "peaceful_test:zombie")
             );
+            for uuid in ["", ",UUID:[I;1,2,3,4]"] {
+                // The already loaded zombie owns the second rider's UUID.
+                // The skipped rider's own permitted rider must not spawn either.
+                let nbt = format!(
+                    "{{Passengers:[{{id:\"{TRADER}\"{uuid},Passengers:[{{id:\"minecraft:pig\"}}]}}]}}"
+                );
+                let before = game.mobs.len();
+                assert_eq!(
+                    game.cmd_summon(&context("minecraft:cow", Some(&nbt))),
+                    Ok(1)
+                );
+                assert_eq!(game.mobs.len(), before + 1);
+                let cow = &game.mobs[before];
+                assert_eq!(cow.kind.id, "minecraft:cow");
+                assert!(cow.extra.rider.is_none());
+            }
         });
     }
 }
