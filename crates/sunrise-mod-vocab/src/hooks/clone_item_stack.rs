@@ -16,5 +16,13 @@ pub trait Hooks {
         host = "read",
         neoforge = "IBlockExtension.getCloneItemStack"
     )]
-    fn clone_item_stack();
+    fn clone_item_stack(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        block: &str,
+        state: BlockState,
+        include_data: bool,
+        player: PlayerRef,
+        stack: &mut Option<ItemStack>,
+    );
 }

@@ -1114,13 +1114,17 @@ impl Game<'_> {
                     let mut replacement = None;
                     if let Some(player) = g.native_acting_player() {
                         g.native_clone_item_stack(
-                            g.dim.level(),
-                            sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]),
-                            &g.res.facts().get(state).name,
-                            state,
-                            include_data,
-                            player,
-                            &mut replacement,
+                            crate::game::native_hooks::fire::CloneItemStackCall {
+                                dimension: g.dim.level(),
+                                pos: sunrise_core::position::BlockPos::new(
+                                    p.pos[0], p.pos[1], p.pos[2],
+                                ),
+                                block: &g.res.facts().get(state).name,
+                                state,
+                                include_data,
+                                player,
+                                stack: &mut replacement,
+                            },
                         );
                     }
                     let mut stack = replacement.or(stack)?;
