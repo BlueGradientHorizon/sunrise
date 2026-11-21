@@ -192,14 +192,14 @@ pub(crate) fn default_source(name: &str) -> Option<&'static str> {
 /// answer first.
 pub const STORAGE: CapabilityKey<dyn ItemStorage> = CapabilityKey {
     name: "sunrise:storage",
-    default: Some(|host, at| {
+    default: Some(crate::BlockCapabilityDefault::Server(|host, at| {
         let slots = at.level.capability(host, STORAGE_SOURCE, at.pos, at.side)?;
         // The game's own slots are asked in one pass each; a mod's ITEMS, slot by slot.
         Some(match slots.owner {
             None => Box::new(GameStorage(at)) as Box<dyn ItemStorage>,
             Some(_) => Box::new(Slots(slots)),
         })
-    }),
+    })),
     handler: PhantomData,
 };
 

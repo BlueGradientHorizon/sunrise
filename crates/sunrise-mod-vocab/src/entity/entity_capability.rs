@@ -113,10 +113,11 @@ impl EntityRef {
             .provided(ProvidedBy::Entity, key.name)
             .then(|| self.kind(host).map(|kind| kind.id(host)))
             .flatten();
+        let mut index = 0;
         crate::answered(
             crate::ask_providers(
                 host,
-                |index| table.entity_provider(key.name, kind.as_deref()?, index),
+                || table.entity_provider(key.name, kind.as_deref()?, &mut index),
                 crate::EntityProviderOf::get::<T, C>,
                 |provider, host| provider.provide(host, self, context),
                 |host| {

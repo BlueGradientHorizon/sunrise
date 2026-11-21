@@ -101,7 +101,12 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 let input = level
                     .capability(game, &mod_api::ITEMS, POS, Some(Direction::Up))
                     .unwrap();
-                let unsided = level.capability(game, &mod_api::ITEMS, POS, None).unwrap();
+                assert!(level.capability(game, &mod_api::ITEMS, POS, None).is_none());
+                assert!(
+                    level
+                        .capability(game, &mod_api::STORAGE, POS, None)
+                        .is_none()
+                );
                 let output = level
                     .capability(game, &mod_api::ITEMS, POS, Some(Direction::Down))
                     .unwrap();
@@ -139,7 +144,6 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 assert_eq!(storage_output.amount(game, &bone), Ok(0));
                 assert_eq!(storage_output.space_for(game, &seeds), Ok(0));
                 assert_eq!(input.size(game), 1);
-                assert_eq!(unsided.size(game), 1);
                 assert_eq!(output.size(game), 1);
                 assert_eq!(input.capacity(game, 0, Some(&seeds)), 1);
                 assert_eq!(input.capacity(game, 0, Some(&stone)), 0);
@@ -209,11 +213,11 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 assert_quiet(game, &heard);
 
                 // Inner abort does not discard an outer insert, and an outer commit runs only
-                // that insert's feedback. This also exercises the unsided input port.
+                // that insert's feedback.
                 composter(game, 0);
                 quiet(game, &heard);
                 run_transaction(game, |game, tx| {
-                    assert_eq!(unsided.insert_at(game, tx, 0, &pie, 64), 1);
+                    assert_eq!(input.insert_at(game, tx, 0, &pie, 64), 1);
                     let aborted = run_transaction(game, |game, tx| {
                         assert_eq!(input.insert_at(game, tx, 0, &pie, 64), 1);
                         assert_eq!(game.composter_level(POS), Some(2));
@@ -270,7 +274,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                         .any(|s| s.event == "minecraft:block.composter.ready")
                 );
                 assert_eq!(input.amount(game, 0), 0);
-                assert_eq!(unsided.amount(game, 0), 0);
+                assert_eq!(input.amount(game, 0), 0);
                 assert_eq!(output.amount(game, 0), 1);
                 assert_eq!(output.resource(game, 0), Some(bone.clone()));
                 assert_eq!(storage_input.amount(game, &bone), Ok(0));

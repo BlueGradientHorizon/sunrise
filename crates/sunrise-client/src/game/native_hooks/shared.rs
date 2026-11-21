@@ -3401,12 +3401,14 @@ mod tests {
                 registrar
                     .block_entity_part(&kind, Press)
                     .expect("native type");
-                registrar
-                    .block_entity_capability(&PROBE, &kind, |_, _| Some(Box::new(Marker(6300))));
+                registrar.block_entity_capability(&PROBE, &kind, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(6300)))
+                });
                 record_key(&self.keys.shared, kind);
                 let vanilla = registrar.block_entity_type_key("minecraft:chest");
-                registrar
-                    .block_entity_capability(&PROBE, &vanilla, |_, _| Some(Box::new(Marker(26))));
+                registrar.block_entity_capability(&PROBE, &vanilla, |_, _, _, _, offer| {
+                    offer.offer(|| Box::new(Marker(26)))
+                });
                 record_key(&self.keys.vanilla, vanilla);
                 if let Some(id) = self.unknown {
                     registrar.block_entity_type_key(id);

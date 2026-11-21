@@ -971,12 +971,13 @@ impl ItemPlace {
         let mut game = None;
         let table = host.capability_providers();
         let provided = table.provided(crate::ProvidedBy::Item, key.name);
+        let mut index = 0;
         crate::answered(
             crate::ask_providers(
                 host,
-                |index| {
+                || {
                     provided
-                        .then(|| table.item_provider(key.name, stack.item(), index))
+                        .then(|| table.item_provider(key.name, stack.item(), &mut index))
                         .flatten()
                 },
                 crate::ItemProviderOf::get::<T>,

@@ -118,14 +118,18 @@ impl<T: ?Sized + 'static, C: Copy + 'static> EntityProviders<T, C> {
     /// registered `before_game`, else, where the game has no answer (`game`), the first mod's.
     pub fn ask(self, host: &mut dyn ServerHost, game: bool) -> Option<Capability<T>> {
         let (entity, context) = (self.entity, self.context);
+        let mut index = 0;
         match ask_providers(
             host,
-            |index| next_provider(self.parts, index),
+            || next_provider(self.parts, &mut index),
             EntityProviderOf::get::<T, C>,
             |provider, host| provider.provide(host, entity, context),
             |_| game,
         ) {
-            Answer::Mod(found) => Some(found),
+            Answer::Mod(handler, owner) => Some(Capability {
+                handler,
+                owner: Some(owner),
+            }),
             Answer::Game | Answer::Nobody => None,
         }
     }

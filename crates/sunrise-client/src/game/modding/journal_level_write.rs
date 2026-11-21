@@ -81,6 +81,7 @@ impl LevelHost for JournalLevelWrite<'_, '_> {
     }
     read_level! {
         fn block_entity(&self, pos: [i32; 3]) -> Option<BlockEntityRef>;
+        fn has_item_capability(&self, pos: [i32; 3], side: Option<Direction>) -> Option<bool>;
         fn container_size(&self, at: BlockSide) -> Option<usize>;
         fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack>;
         fn block_entity_part_snapshot(&self, entity: BlockEntityRef, namespace: &str, name: &str) -> Result<AttachmentBatch, PartStateError>;

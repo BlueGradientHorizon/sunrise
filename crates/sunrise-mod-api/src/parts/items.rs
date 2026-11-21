@@ -712,6 +712,32 @@ pub mod tests {
         fn level_block(&self, _: LevelRef, _: [i32; 3]) -> Option<crate::BlockKey> {
             None
         }
+        fn level_with_capability_site(
+            &self,
+            at: BlockSide,
+            visit: &mut dyn FnMut(&dyn crate::LevelHost, crate::BlockCapabilitySite),
+        ) -> Result<(), crate::LevelReadError> {
+            if at.level != here() {
+                return Err(crate::LevelReadError::Unavailable);
+            }
+            let air = crate::__private::block_key("minecraft:air")
+                .ok_or(crate::LevelReadError::Unavailable)?;
+            let entity = crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos);
+            let kind = entity.and_then(|entity| {
+                crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity)
+            });
+            visit(
+                &crate::parts::tests::Level,
+                crate::BlockCapabilitySite {
+                    at,
+                    state: crate::BlockStateRecord::new(air, 0).into(),
+                    entity,
+                    kind,
+                    builtin_items: at.pos == SHELF,
+                },
+            );
+            Ok(())
+        }
     }
     #[cfg(test)]
     impl mod_api::prelude::LevelTickingBackend for Shelf {
@@ -1836,8 +1862,11 @@ pub mod tests {
         (&mut r as &mut dyn Registrar).place_provider("test:charms", Arc::new(Charms));
         (&mut r as &mut dyn Registrar).place_provider("charms", Arc::new(Charms));
         let invalid = r.block_entity_type_key("minecraft:");
-        (&mut r as &mut dyn Registrar)
-            .block_entity_capability(&ITEMS, &invalid, |_, at| Some(Box::new(Pipe(at))));
+        (&mut r as &mut dyn Registrar).block_entity_capability(
+            &ITEMS,
+            &invalid,
+            |_, at, _, _, offer| offer.offer(|| Box::new(Pipe(at))),
+        );
         assert_eq!(r.refused.len(), 3, "{:?}", r.refused);
         assert!(
             r.refused[0]

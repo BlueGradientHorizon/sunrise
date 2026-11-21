@@ -319,6 +319,11 @@ The veto's placement neighbour and the post-placement notice use the resolved fa
 and the notice uses the resolved click location. Neither changes the sides of the block placement or
 survival hooks.
 
+A placement part can ask its `LevelHost` whether a resident neighbour offers `ITEMS`, using
+`has_item_capability(pos, None)` for an unsided answer. It sees the same state and block entities as
+other reads on that view, including staged changes. A client asks its own providers about its
+local data; placement still follows the server's result. See [Capabilities](capabilities.md).
+
 `level.state_for_placement(host, block, &context)` takes `&mut dyn ServerHost` and queries only
 the level in play. It runs the block's `Block.getStateForPlacement`, including its
 `state_for_placement` parts, without resolving the click again or placing anything. The caller

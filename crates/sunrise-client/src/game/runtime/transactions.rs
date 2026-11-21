@@ -217,6 +217,8 @@ pub(super) struct Level {
     /// The block entities this transaction removed (`journal_remove_block_entity`): an abort
     /// puts them back as `block_entities` keeps them.
     removed_block_entities: std::collections::HashSet<Pos>,
+    /// A decorated pot lives in its chunk's saved block-entity tags, not the slot table.
+    saved_pots: HashMap<Pos, Option<sunrise_core::nbt::Tag>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -709,6 +711,9 @@ impl Game<'_> {
                 for (pos, kept) in level.block_entities {
                     outer.block_entities.entry(pos).or_insert(kept);
                 }
+                for (pos, tag) in level.saved_pots {
+                    outer.saved_pots.entry(pos).or_insert(tag);
+                }
                 outer
                     .removed_block_entities
                     .extend(level.removed_block_entities);
@@ -919,6 +924,20 @@ impl Game<'_> {
             level.composter_randoms.clear();
         }
     }
+    /// Keeps a pot's saved item and loot metadata until root commit.
+    pub(super) fn journal_saved_pot(&mut self, pos: Pos) {
+        self.transactions.writes = self.transactions.writes.wrapping_add(1);
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .saved_pots
+                .entry(pos)
+                .or_insert_with(|| super::spill::saved_entity(&self.world, [pos.0, pos.1, pos.2]));
+            level
+                .save_gate
+                .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+        }
+    }
+
     /// Keeps the block entity at `pos` as it is, with its attachments and a hopper's
     /// cooldown, if a transaction is open and hasn't yet.
     pub(super) fn journal_block_entity(&mut self, pos: Pos) {
@@ -1856,6 +1875,9 @@ impl Game<'_> {
             }
         }
 
+        for ((x, y, z), tag) in level.saved_pots {
+            super::spill::set_saved_entity(&mut self.world, [x, y, z], tag);
+        }
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {

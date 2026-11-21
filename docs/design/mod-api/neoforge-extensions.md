@@ -260,6 +260,12 @@ are reachable through `BlockEntityRef`.
 | `invalidateCapabilities()` | Covered | `LevelRef::invalidate_capabilities` (`crates/sunrise-mod-vocab/src/host/level_block_updates.rs`) | `level.invalidate_capabilities(host, pos)` with the block entity's position, as NeoForge's calls `Level.invalidateCapabilities(worldPosition)`: it moves the capability generation there on; every `BlockCapabilityCache` there compares it and looks up again at its next `get`. At the root commit inside a transaction; nothing when it aborts. |
 | `applyStructureRotation(mirror, rotation)` | Missing | — | Structure rotation is engine-owned; no callback. |
 
+## `ILevelExtension`: block capability lookup
+
+| Method | Verdict | Sunrise | Notes |
+| --- | --- | --- | --- |
+| `getCapability(BlockCapability, pos, context)` | Partial | `LevelRef::capability`, `LevelHost::has_item_capability` | Server handle lookup preserves provider order and returns a handler. Both sides can query `ITEMS` presence from a read-only view without constructing a handler or loading chunks. `None` as context is unsided. Client answers use only locally resident data and enabled providers. |
+
 ## `IFluidExtension`
 
 Fluid type facts are one record, `FluidTypeProperties` (`crates/sunrise-mod-vocab/src/block/fluid_states.rs`), read with

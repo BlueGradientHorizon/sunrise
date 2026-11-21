@@ -303,19 +303,21 @@ impl Hooks for Probe {
         ] {
             let key = r.block_key(block);
             let probe = self.clone();
-            r.block_capability_before_game(&ITEMS, &key, move |_, at, _, _| {
+            r.block_capability_before_game(&ITEMS, &key, move |_, at, _, _, offer| {
                 if at.pos == SINK || at.pos == OTHER {
-                    return None;
+                    return;
                 }
-                probe
-                    .trace
-                    .lock()
-                    .unwrap()
-                    .push(format!("face:{:?}", at.side.unwrap()));
-                Some(Box::new(Storage {
-                    probe: probe.clone(),
-                    at,
-                }))
+                offer.offer(|| {
+                    probe
+                        .trace
+                        .lock()
+                        .unwrap()
+                        .push(format!("face:{:?}", at.side.unwrap()));
+                    Box::new(Storage {
+                        probe: probe.clone(),
+                        at,
+                    })
+                });
             });
         }
         for block in ["minecraft:barrel", "minecraft:hopper"] {
@@ -404,6 +406,145 @@ fn default_fixture(name: &str, test: impl FnOnce(&mut Game<'_>)) {
 fn place(game: &mut Game<'_>, pos: Pos, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+}
+
+#[test]
+#[ignore = "daily"]
+fn item_capability_presence_does_not_open_loot_or_load_chunks() {
+    use crate::game::{
+        execution_role::ExecutionRole,
+        native_entity_refs::tests::{fixture_root, with_game_role},
+        spill,
+    };
+    use sunrise_core::nbt::Tag;
+
+    if run_fresh_cases(
+        "game::machines::native_items::storage_attempt_tests::item_capability_presence_does_not_open_loot_or_load_chunks",
+        "SUNRISE_ITEM_PRESENCE_CHILD",
+        &["server", "client"],
+    ) {
+        return;
+    }
+    let client = std::env::var("SUNRISE_ITEM_PRESENCE_CHILD").unwrap() == "client";
+    let role = if client {
+        ExecutionRole::Client
+    } else {
+        ExecutionRole::IntegratedServer
+    };
+    with_game_role(fixture_root(), role, |game| {
+        if client {
+            let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(pipe, "StorageContents").unwrap();
+            game.remote.as_mut().unwrap().logged_in = true;
+        } else {
+            game.options.dedicated = Some(Vec::new());
+        }
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.sync_tick_chunks();
+        let chest = [1, 64, 0];
+        let pot = [4, 64, 0];
+        let composter = [5, 64, 0];
+        place(game, (1, 64, 0), "minecraft:chest");
+        game.world
+            .block_entities
+            .insert((1, 64, 0), BlockEntity::Chest(vec![None; 27]));
+        place(game, (1, 65, 0), "minecraft:stone");
+        place(game, (3, 64, 0), "minecraft:campfire");
+        game.world
+            .block_entities
+            .insert((3, 64, 0), BlockEntity::Campfire(Box::default()));
+        place(game, (4, 64, 0), "minecraft:decorated_pot");
+        place(game, (5, 64, 0), "minecraft:composter");
+        let pending = Tag::compound([
+            ("id", Tag::String("minecraft:decorated_pot".into())),
+            ("x", Tag::Int(pot[0])),
+            ("y", Tag::Int(pot[1])),
+            ("z", Tag::Int(pot[2])),
+            (
+                "LootTable",
+                Tag::String("minecraft:chests/simple_dungeon".into()),
+            ),
+        ]);
+        spill::put_saved_entity(&mut game.world, pot, pending.clone());
+        game.world.block_log = Some(Vec::new());
+        let before = (
+            game.world.modified.clone(),
+            game.world.random.state(),
+            game.world.chunks.len(),
+        );
+        let level = game.level(game.dim.id()).unwrap();
+        for (pos, side, expected) in [
+            (chest, None, Some(true)),
+            ([1, 65, 0], None, Some(false)),
+            ([3, 64, 0], None, Some(false)),
+            (pot, None, Some(true)),
+            (composter, None, Some(false)),
+            (composter, Some(Direction::North), Some(false)),
+            (composter, Some(Direction::Up), Some(true)),
+            (composter, Some(Direction::Down), Some(true)),
+            ([16, 64, 0], None, None),
+            ([0, game.world.top_y(), 0], None, None),
+        ] {
+            game.with_level(|_, world, ticks| {
+                assert_eq!(
+                    world.view(ticks).has_item_capability(pos, side),
+                    expected,
+                    "{pos:?} {side:?}"
+                );
+            });
+            if !client {
+                assert_eq!(
+                    level.capability(game, &ITEMS, pos, side).is_some(),
+                    expected == Some(true)
+                );
+            }
+        }
+        assert_eq!(spill::saved_entity(&game.world, pot), Some(pending));
+        assert_eq!(
+            (
+                game.world.modified.clone(),
+                game.world.random.state(),
+                game.world.chunks.len()
+            ),
+            before
+        );
+        assert!(game.world.block_log.as_ref().unwrap().is_empty());
+
+        if !client {
+            // The real handler uses the saved slot; aborting a parent also restores a
+            // newly created tag written by its committed child.
+            let empty_pot = [6, 64, 0];
+            place(game, (6, 64, 0), "minecraft:decorated_pot");
+            let cap = level.capability(game, &ITEMS, empty_pot, None).unwrap();
+            let stick = ItemResource::of(
+                &mod_api::ItemStack::new(
+                    game.item_key(&Identifier::parse("minecraft:stick").unwrap())
+                        .unwrap(),
+                    1,
+                )
+                .unwrap(),
+            );
+            let aborted: Result<(), ()> = mod_api::run_transaction(game, |game, _| {
+                mod_api::run_transaction(game, |game, tx| {
+                    assert_eq!(cap.insert_at(game, tx, 0, &stick, 3), 3);
+                    assert_eq!(cap.amount(game, 0), 3);
+                    Ok(())
+                })?;
+                Err(())
+            });
+            assert_eq!(aborted, Err(()));
+            assert!(spill::saved_entity(&game.world, empty_pot).is_none());
+            mod_api::run_transaction(game, |game, tx| {
+                assert_eq!(cap.insert_at(game, tx, 0, &stick, 3), 3);
+                assert_eq!(cap.extract_at(game, tx, 0, &stick, 2), 2);
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            assert_eq!(cap.amount(game, 0), 1);
+        }
+    });
 }
 
 #[test]

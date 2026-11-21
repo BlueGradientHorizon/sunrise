@@ -279,6 +279,35 @@ pub mod tests {
         }
     }
     #[cfg(test)]
+    impl mod_api::prelude::LevelBlocksBackend for TankWorld {
+        fn level_with_capability_site(
+            &self,
+            at: BlockSide,
+            visit: &mut dyn FnMut(&dyn crate::LevelHost, crate::BlockCapabilitySite),
+        ) -> Result<(), crate::LevelReadError> {
+            if at.level != here() {
+                return Err(crate::LevelReadError::Unavailable);
+            }
+            let air = crate::__private::block_key("minecraft:air")
+                .ok_or(crate::LevelReadError::Unavailable)?;
+            let entity = crate::prelude::BlockEntitiesHost::block_entity(self, at.level, at.pos);
+            let kind = entity.and_then(|entity| {
+                crate::prelude::BlockEntitiesBackend::block_entity_kind(self, entity)
+            });
+            visit(
+                &crate::parts::tests::Level,
+                crate::BlockCapabilitySite {
+                    at,
+                    state: crate::BlockStateRecord::new(air, 0).into(),
+                    entity,
+                    kind,
+                    builtin_items: false,
+                },
+            );
+            Ok(())
+        }
+    }
+    #[cfg(test)]
     impl mod_api::prelude::LevelTickingBackend for TankWorld {
         fn level_in_place(&self, level: LevelRef) -> bool {
             level == here()
@@ -317,7 +346,7 @@ pub mod tests {
     #[cfg(test)]
     mod_api::impl_backend_areas!(
         TankWorld,
-        except(block_entities, fluids_energy, level_ticking)
+        except(block_entities, fluids_energy, level_blocks, level_ticking)
     );
     #[cfg(test)]
     impl mod_api::prelude::FluidsEnergyBackendMut for TankWorld {

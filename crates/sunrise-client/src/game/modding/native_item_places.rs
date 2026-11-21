@@ -3232,8 +3232,10 @@ pub(super) mod tests {
         impl Hooks for TrashCan {
             fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
                 let lodestone = r.block_key("minecraft:lodestone");
-                r.block_capability(&mod_api::ITEMS, &lodestone, |_, _, _, entity| {
-                    entity.is_none().then(|| Box::new(Voids) as _)
+                r.block_capability(&mod_api::ITEMS, &lodestone, |_, _, _, entity, offer| {
+                    if entity.is_none() {
+                        offer.offer(|| Box::new(Voids));
+                    }
                 });
             }
         }

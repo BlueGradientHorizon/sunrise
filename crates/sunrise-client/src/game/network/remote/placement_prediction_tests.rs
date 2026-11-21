@@ -133,6 +133,225 @@ fn client_placement_prediction_asks_placement_and_survival_parts() {
     });
 }
 
+struct StorageFacing;
+#[mod_api::sunrise_part]
+impl BlockPart for StorageFacing {
+    fn state_for_placement(
+        &self,
+        level: LevelSide<'_>,
+        event: &mut StateForPlacementEvent<'_>,
+    ) -> Option<Option<BlockState>> {
+        let level = match level {
+            LevelSide::Client(level) | LevelSide::Server(level) => level,
+        };
+        let pos = event.context.pos;
+        let present = level.has_item_capability([pos.x + 1, pos.y, pos.z], None)?;
+        level
+            .state_with_property(event.state, "axis", if present { "x" } else { "z" })
+            .map(Some)
+    }
+}
+
+struct StoragePort;
+impl mod_api::ResourceHandler<mod_api::ItemResource> for StoragePort {
+    fn size(&self, _: &mut dyn mod_api::ServerHost) -> usize {
+        0
+    }
+    fn resource(&self, _: &mut dyn mod_api::ServerHost, _: usize) -> Option<mod_api::ItemResource> {
+        None
+    }
+    fn amount(&self, _: &mut dyn mod_api::ServerHost, _: usize) -> u32 {
+        0
+    }
+    fn capacity(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        _: usize,
+        _: Option<&mod_api::ItemResource>,
+    ) -> u32 {
+        0
+    }
+    fn insert_at(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        _: &mod_api::Transaction,
+        _: usize,
+        _: &mod_api::ItemResource,
+        _: u32,
+    ) -> u32 {
+        0
+    }
+    fn extract_at(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        _: &mod_api::Transaction,
+        _: usize,
+        _: &mod_api::ItemResource,
+        _: u32,
+    ) -> u32 {
+        0
+    }
+}
+
+struct PlacementStorageMod;
+#[mod_api::__subscriptions]
+impl Hooks for PlacementStorageMod {
+    fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+        let log = r.block_key("minecraft:oak_log");
+        r.block_part(log, StorageFacing);
+        let fire = r.block_entity_type_key("minecraft:campfire");
+        r.block_entity_capability(&mod_api::ITEMS, &fire, |level, at, state, _, offer| {
+            if at.side.is_none() && level.state_with_property(state, "lit", "true") == Some(state) {
+                offer.offer(|| Box::new(StoragePort));
+            }
+        });
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn placement_and_prediction_choose_from_their_local_item_providers() {
+    use crate::game::{
+        execution_role::ExecutionRole,
+        native_entity_refs::tests::{fixture_root, run_fresh_cases},
+    };
+    use mod_api::{Direction, LevelHost};
+    use sunrise_core::position::BlockPos;
+    use sunrise_world::level::{PlaceContext, PlaceOutcome};
+
+    if run_fresh_cases(
+        "game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",
+        "SUNRISE_PLACEMENT_STORAGE_CHILD",
+        &["run"],
+    ) {
+        return;
+    }
+    const TARGET: [i32; 3] = [4, 65, 4];
+    const PORT: [i32; 3] = [5, 65, 4];
+    let mods = || {
+        vec![mod_api::ModEntry::new(
+            "placement_storage",
+            Box::new(PlacementStorageMod),
+        )]
+        .into()
+    };
+    let server_state = std::cell::Cell::new(None);
+    let setup = |game: &mut Game<'_>, lit: bool| {
+        let registry = game.pack.assets.registry;
+        let state = registry
+            .resolve(&sunrise_world::chunk::BlockState {
+                name: "minecraft:campfire".into(),
+                properties: [
+                    ("facing", "north"),
+                    ("lit", if lit { "true" } else { "false" }),
+                    ("signal_fire", "false"),
+                    ("waterlogged", "false"),
+                ]
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+            })
+            .unwrap();
+        let ground = registry.default_state("minecraft:stone").unwrap();
+        game.world.set(4, 64, 4, ground).unwrap();
+        game.world.set(5, 65, 4, state).unwrap();
+        game.world.block_entities.insert(
+            (5, 65, 4),
+            sunrise_client::containers::BlockEntity::Campfire(Box::default()),
+        );
+        state
+    };
+    mod_platform::testing::with_mods(mods(), || {
+        with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            game.sync_tick_chunks();
+            setup(game, true);
+            let context = PlaceContext {
+                clicked_pos: BlockPos::new(4, 64, 4),
+                face: Direction::Up,
+                hit: sunrise_core::geometry::Vec3::new(4.5, 65.0, 4.5),
+                inside: false,
+                yaw: 0.0,
+                pitch: 0.0,
+                sneaking: false,
+                item: "minecraft:oak_log".to_owned(),
+                can_use_game_master_blocks: false,
+            };
+            let placed =
+                game.with_level(|rules, level, ticks| rules.place_block(level, ticks, &context));
+            let PlaceOutcome::Placed { pos, state } = placed else {
+                panic!("server refused placement")
+            };
+            assert_eq!(pos, BlockPos::new(4, 65, 4));
+            assert_eq!(
+                game.pack.assets.registry.state(state).unwrap().properties["axis"],
+                "x"
+            );
+            server_state.set(Some(state));
+        });
+    });
+    on_a_client(mods(), |game| {
+        game.remote.as_mut().unwrap().logged_in = true;
+        setup(game, false);
+        let guess = game
+            .remote_can_place(&top_of(4, 4), &ItemStack::new("minecraft:oak_log", 1))
+            .unwrap();
+        assert_eq!(guess.pos, BlockPos::new(4, 65, 4));
+        assert_eq!(guess.changes.len(), 1);
+        let guessed = guess.changes[0].1;
+        assert_eq!(
+            game.pack.assets.registry.state(guessed).unwrap().properties["axis"],
+            "z"
+        );
+        game.predict_blocks(&guess.changes, 7);
+        assert_eq!(game.world.block(4, 65, 4), guessed);
+        let server = server_state.get().unwrap();
+        game.handle_packet(C::BlockUpdate(play::BlockUpdate {
+            pos: TARGET,
+            state: server.0 as i32,
+        }))
+        .unwrap();
+        game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence: 7 }))
+            .unwrap();
+        assert_eq!(game.world.block(4, 65, 4), server);
+
+        // Keep the same campfire state but remove its block entity in the disposable level.
+        let campfire = setup(game, true);
+        game.with_level(|_, level, ticks| {
+            assert_eq!(
+                level.view(ticks).has_item_capability(PORT, None),
+                Some(true)
+            );
+        });
+        game.check_dry_fire_odds_view(
+            |_, dry, _| {
+                dry.remove_block_entity(BlockPos::new(5, 65, 4), campfire, false);
+            },
+            |view| assert_eq!(view.has_item_capability(PORT, None), Some(false)),
+        );
+        // A staged replacement also removes the previous provider through the placement view.
+        let air = game.world.air;
+        game.with_level(|_, level, ticks| {
+            let changes =
+                sunrise_world::level::PreviewBlocks::from([(BlockPos::new(5, 65, 4), air)]);
+            assert_eq!(
+                level
+                    .view(ticks)
+                    .previewing(Some(&changes))
+                    .has_item_capability(PORT, None),
+                Some(false)
+            );
+            assert_eq!(
+                level.view(ticks).has_item_capability(PORT, None),
+                Some(true)
+            );
+        });
+    });
+}
+
 struct BedInstead;
 #[mod_api::sunrise_part]
 impl BlockPart for BedInstead {
