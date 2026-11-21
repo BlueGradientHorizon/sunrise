@@ -116,7 +116,7 @@ KeybindContents.getNestedComponent	port	crates/sunrise-client-core/src/key_displ
 KeybindContents.visit	port	crates/sunrise-client-core/src/key_display.rs::display_name	visits the nested key text
 KeybindContents.equals	skip:java		value equality
 ObjectContents.resolve	inline	crates/sunrise-client-core/src/component.rs::inline_object	the object's own fallback text: '[sprite]' for a sprite and '[name head]' for a player head, replaced by the drawn sprite
-ObjectContents.visit	port	crates/sunrise-client-render/src/hud.rs::draw_inline_object	the sprite or player head is drawn at the text's U+FFFC placeholder span, with the hat toggle and the span's tint
+ObjectContents.visit	port	crates/sunrise-client-render/src/hud/batch.rs::draw_inline_object	the sprite or player head is drawn at the text's U+FFFC placeholder span, with the hat toggle and the span's tint
 PlainTextContents.LiteralContents.visit	skip:java		leaf of the visit walk; Text holds the literal in its spans
 ScoreContents.findTargetName	inline	crates/sunrise-client/src/game/administration/commands/text_commands.rs::Game::resolve_score_component	a selector matching one entity is that entity, none is the name, more than one is an error
 ScoreContents.getScore	port	crates/sunrise-client/src/game/administration/commands/text_commands.rs::Game::resolve_score_component	the objective's value in the holder's format; empty when there is none
