@@ -185,16 +185,18 @@ The backing contents are already written, before dirty/comparator updates. The d
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
 for vanilla containers and engine-managed mod slots. In contract version 5, notices committed
 inside `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
-it finishes without one). Explicit `BlockEntityRef::set_changed` notifies immediately, even
-inside a transaction and for unchanged contents; abort does not retract
-it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
+it finishes without one). If the original backing container was removed or replaced, neither
+its replacement nor watchers receive that notice. Explicit `BlockEntityRef::set_changed`
+notifies immediately, even inside a transaction and for unchanged contents; abort does not
+retract it. Each Part runs in its own transaction. Keep using `host.transaction` for additional writes:
 a successful nested transaction merges into the Part's frame, but a panic in that Part discards
 its writes without undoing the backing change that raised the notice. The next Part can still
 run, and only the panicking callback is disabled for the session.
 Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides itself
 do not synthesize notifications; neither do rollback restores. A double container notifies
-each component, not again for the other half's comparator refresh. A listener's writes still apply,
-but its backing block does not re-enter; another block notifies normally.
+each component, not again for the other half's comparator refresh. A listener's same-block writes
+still apply and mark storage dirty and refresh comparators, but do not re-enter or queue a second
+notice, even during a quick move. Another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:
 
 ```rust,ignore

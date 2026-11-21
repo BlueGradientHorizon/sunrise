@@ -174,7 +174,9 @@ for vanilla containers and engine-managed mod slots. On the default block `ITEMS
 successful `set_max_stack_size` call queues the backing container's change notice at root commit,
 even if no items moved. If a root commit runs during `menu_quick_move`, those implicit notices
 wait until the clicked slot's accepted remainder is in place, or until the hook finishes without one.
-Direct writes by mods to their own storage and rollback restores do not
+A deferred notice does not run if the original backing container was removed or replaced. A write
+from an active `contents_changed` callback to its own backing block still applies without queuing
+another notice. Direct writes by mods to their own storage and rollback restores do not
 issue notices. Keep storage in the transaction journal: a handler
 that ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
 

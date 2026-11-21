@@ -365,15 +365,7 @@ impl Game<'_> {
         // AbstractContainerMenu.moveItemStackTo changes the source before notifying the
         // destination. Release committed capability notices only once the remainder is settled.
         // Surviving edits still notify after an unanswered or refused move.
-        for (dim, destination) in notices {
-            let back = self.enter_command_level(dim);
-            if self.dim == dim {
-                self.after_commit(After::Changed(destination));
-            }
-            if let Some(back) = back {
-                self.enter_command_level(back);
-            }
-        }
+        self.publish_quick_move_notices(notices);
         // Notify about any live source edits, but not at a replacement holder.
         if publish && self.quick_move_holder_matches(handle) {
             self.after_commit(After::Changed(pos));

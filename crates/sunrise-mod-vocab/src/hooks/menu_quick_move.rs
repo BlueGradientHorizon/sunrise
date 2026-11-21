@@ -26,11 +26,12 @@ pub trait Hooks {
     /// chunk dirty. The container notice (`BlockEntity.setChanged`) for the
     /// move's resident slot edits and the implicit notices from committed
     /// `ITEMS` writes follow settlement of the clicked slot and precede
-    /// `menu_slot_take`. Surviving edits on an unhandled or refused move
-    /// still notify. An explicit `BlockEntityRef::set_changed` call is
-    /// immediate. Use
-    /// `subject.transaction(...)` when an edit must span the subject and other
-    /// world storage atomically. A panicking callback is contained and disabled
+    /// `menu_slot_take`. Deferred notices require the original backing container
+    /// to remain in place. Surviving edits on an unhandled or refused move still
+    /// notify. An explicit `BlockEntityRef::set_changed` call is immediate; a
+    /// same-block write made by that notice's callback does not queue another
+    /// notice. Use `subject.transaction(...)` when an edit must span the subject
+    /// and other world storage atomically. A panicking callback is contained and disabled
     /// for `menu_quick_move` for the rest of the session, discarding only its
     /// `stack` and `handled` outputs. A later Part can still handle the move;
     /// if none does after a quick-move Part panics, the menu is resynced

@@ -32,6 +32,10 @@ struct Script {
     /// capability, leave 6 in `stack`, and return unhandled unless `handle_cross` is set.
     cross: bool,
     handle_cross: bool,
+    /// Explicitly notify the destination, whose `contents_changed` Part inserts into itself.
+    notify_destination: bool,
+    /// Replace the destination with a clone of the source after committing the `ITEMS` move.
+    replace_destination: bool,
     fail_take: bool,
     /// `menu_button`: replace the open menu through the host, returning its cursor to inventory.
     replace_menu: bool,
@@ -169,6 +173,12 @@ impl BlockEntityPart for Part {
                 panic!("a listener failed");
             });
         }
+        if s.notify_destination {
+            let host = event.subject.host();
+            let level = host.level("minecraft:overworld").unwrap();
+            let destination = host.block_entity(level, [2, 64, 1]).unwrap();
+            assert!(destination.set_changed(host).unwrap());
+        }
         if s.take {
             event
                 .subject
@@ -206,6 +216,14 @@ impl BlockEntityPart for Part {
                 Ok(())
             });
             event.stack.as_mut().unwrap().set_count(6).unwrap();
+        }
+        if s.replace_destination {
+            let host = event.subject.host();
+            assert!(host.commands().run_command("setblock 2 64 1 minecraft:air"));
+            assert!(
+                host.commands()
+                    .run_command("clone 1 64 1 1 64 1 2 64 1 replace force")
+            );
         }
         if s.replace_backing {
             assert!(
@@ -1281,10 +1299,25 @@ impl mod_api::BlockPart for QuickMoveObserver {
             .level
             .capability(host, &ITEMS, [POS.0, POS.1, POS.2], None)
             .unwrap();
+        let at = [event.pos.x, event.pos.y, event.pos.z];
         self.0.lock().unwrap().push(QuickMoveNotice {
-            at: [event.pos.x, event.pos.y, event.pos.z],
+            at,
             source_slots: [0, 1, 2].map(|slot| items.amount(host, slot)),
         });
+        if at == [2, 64, 1] && SCRIPT.with(|s| s.borrow().notify_destination) {
+            let items = event.level.capability(host, &ITEMS, at, None).unwrap();
+            let stone = mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:stone").unwrap(),
+                1,
+            )
+            .unwrap();
+            assert_eq!(
+                host.transaction(|host, tx| {
+                    Ok::<_, ()>(items.insert_at(host, tx, 0, &ItemResource::of(&stone), 2))
+                }),
+                Ok(2)
+            );
+        }
     }
 }
 
@@ -1359,6 +1392,73 @@ fn a_handled_items_quick_move_notifies_the_destination_after_settling_the_source
                         source_slots: [6, 0, 0]
                     },
                 ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_explicit_quick_move_destination_notice_does_not_reenter_after_a_self_write() {
+    with_quick_move_observer(|observer| {
+        with_guests(|game| {
+            let window = open_depot(game);
+            second_block(game);
+            script(Script {
+                take: true,
+                notify_destination: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_eq!(stone_everywhere(game), (10, 2, 0));
+            assert_eq!(
+                observer.0.lock().unwrap().as_slice(),
+                [
+                    QuickMoveNotice {
+                        at: [2, 64, 1],
+                        source_slots: [10, 0, 0],
+                    },
+                    QuickMoveNotice {
+                        at: [1, 64, 1],
+                        source_slots: [1, 4, 5],
+                    },
+                ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_quick_move_does_not_notify_a_replaced_items_destination_or_its_watchers() {
+    with_quick_move_observer(|observer| {
+        with_guests(|game| {
+            game.build_registries();
+            let window = open_depot(game);
+            second_block(game);
+            let before = game.world.block_entities.identity(SECOND).unwrap();
+            let level = game.native_level_here().unwrap();
+            game.block_entity(level, [1, 64, 1])
+                .unwrap()
+                .watch_contents(game, mod_api::BlockPos::new(2, 64, 1), true)
+                .unwrap();
+            script(Script {
+                cross: true,
+                handle_cross: true,
+                replace_destination: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_ne!(game.world.block_entities.identity(SECOND).unwrap(), before);
+            assert_eq!(stone_everywhere(game), (6, 10, 0));
+            assert_eq!(
+                observer.0.lock().unwrap().as_slice(),
+                [QuickMoveNotice {
+                    at: [1, 64, 1],
+                    source_slots: [6, 0, 0],
+                }]
             );
         });
     });

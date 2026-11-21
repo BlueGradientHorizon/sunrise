@@ -34,6 +34,7 @@ use super::{
 use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
+    block_entities::BlockEntityIdentity,
     effects::EffectInstance,
     items::ItemStack,
     lan::configuration_tasks::ConfigurationCompletion,
@@ -69,7 +70,7 @@ pub(super) struct OpenTransactions {
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
     /// Committed implicit container notices waiting for a quick move's source slot.
-    quick_move_notices: Option<Vec<(super::Dim, Pos)>>,
+    quick_move_notices: Option<Vec<QuickMoveNotice>>,
     /// How many writes the journals have been asked to keep, ever: a whole-state epoch that no
     /// restore moves back. A decision that read a player's inventory or a container's slots
     /// compares it before and after its listeners ran; an equal rewrite counts as a write.
@@ -202,10 +203,16 @@ impl Drop for ClosingPhase<'_, '_> {
     }
 }
 
+/// A committed `setChanged` notice bound to the backing container that received the write.
+pub(super) struct QuickMoveNotice {
+    dim: super::Dim,
+    holder: BlockEntityIdentity,
+}
+
 /// Restore the enclosing notice scope even if the engine unwinds out of a quick move.
 struct QuickMoveNotices<'a, 'g> {
     game: &'a mut Game<'g>,
-    outer: Option<Vec<(super::Dim, Pos)>>,
+    outer: Option<Vec<QuickMoveNotice>>,
 }
 
 impl Drop for QuickMoveNotices<'_, '_> {
@@ -1540,7 +1547,7 @@ impl Game<'_> {
     pub(super) fn collect_quick_move_notices<R>(
         &mut self,
         dispatch: impl FnOnce(&mut Self) -> R,
-    ) -> (R, Vec<(super::Dim, Pos)>) {
+    ) -> (R, Vec<QuickMoveNotice>) {
         let outer = self.transactions.quick_move_notices.replace(Vec::new());
         let scope = QuickMoveNotices { game: self, outer };
         let result = dispatch(&mut *scope.game);
@@ -1551,6 +1558,22 @@ impl Game<'_> {
             .take()
             .expect("active quick-move notice scope");
         (result, notices)
+    }
+
+    /// Publish the already-committed notices after quick-move source settlement. A replacement
+    /// container did not receive the write and its Parts and watchers must not hear about it.
+    pub(super) fn publish_quick_move_notices(&mut self, notices: Vec<QuickMoveNotice>) {
+        for QuickMoveNotice { dim, holder } in notices {
+            let back = self.enter_command_level(dim);
+            let [x, y, z] = holder.position;
+            let pos = (x, y, z);
+            if self.dim == dim && self.world.block_entities.identity(pos) == Some(holder) {
+                self.run_after(After::Changed(pos));
+            }
+            if let Some(back) = back {
+                self.enter_command_level(back);
+            }
+        }
     }
 
     /// Runs `after` at once, or at the root commit inside a transaction.
@@ -1574,8 +1597,21 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => {
-                if let Some(notices) = &mut self.transactions.quick_move_notices {
-                    notices.push((self.dim, pos));
+                // A same-block write must reach the existing guard now, not once it drops.
+                // Calling container_changed still marks the chunk dirty and updates comparators.
+                let reentering = self.transactions.quick_move_notices.is_some()
+                    && !self.contents_changing.is_empty()
+                    && self.native_level_here().is_some_and(|level| {
+                        self.contents_notice_active(level, BlockPos::new(pos.0, pos.1, pos.2))
+                    });
+                if !reentering
+                    && let Some(notices) = &mut self.transactions.quick_move_notices
+                    && let Some(holder) = self.world.block_entities.identity(pos)
+                {
+                    notices.push(QuickMoveNotice {
+                        dim: self.dim,
+                        holder,
+                    });
                 } else {
                     self.container_changed(pos);
                 }

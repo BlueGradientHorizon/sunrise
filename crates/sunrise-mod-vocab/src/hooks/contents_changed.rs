@@ -6,12 +6,15 @@ pub trait Hooks {
     /// `ITEMS` and item `STORAGE` handlers coalesce implicit notices per backing block at root
     /// commit, for vanilla containers and engine-managed mod slots. Notices committed during
     /// `menu_quick_move` wait until that hook's accepted source remainder is in place (or until
-    /// the hook finishes without one). Explicit `set_changed` notifies immediately, even for
-    /// equal contents and inside a transaction; the notice survives abort.
+    /// the hook finishes without one). If the original backing container was removed or
+    /// replaced, neither its replacement nor watchers receive the deferred notice. Explicit
+    /// `set_changed` notifies immediately, even for equal contents and inside a transaction;
+    /// the notice survives abort.
     /// Direct `set_item_slot`, writes to storage a mod provides itself, and rollback restores
     /// synthesize no notice. Nested writes to the backing block whose notice is active still
-    /// apply but do not re-enter its notice; another block notifies normally. Double containers
-    /// notify each backing component, not the other half merely refreshed for comparators.
+    /// apply, with dirty/comparator updates, but do not re-enter or queue a second notice for
+    /// that block. Another block notifies normally. Double containers notify each backing
+    /// component, not the other half merely refreshed for comparators.
     /// Vehicle/menu placeholder coordinates are excluded. The source level, pos and state
     /// always name the changed backing block. `observer` is `None` for its own Parts, or `Some`
     /// for Parts of a block entity watching that source through `watch_contents`. Source Parts

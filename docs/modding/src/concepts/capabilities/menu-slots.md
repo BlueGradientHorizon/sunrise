@@ -326,9 +326,11 @@ live resident block entity and the server `Host` sequentially through `event.sub
 detaching a snapshot or wrapping untaken fallbacks in a rollback transaction. Writes through
 `event.subject.with_view(...)` validate at the boundary and apply in place, marking the chunk dirty. A handled move
 settles the clicked slot before publishing implicit container notices (`BlockEntity.setChanged`) for its resident
-slot edits and committed `ITEMS` writes, then calls `menu_slot_take` where applicable. Surviving slot edits on a
-refused or unhandled move still notify. An explicit `BlockEntityRef::set_changed` call is immediate. Use
-`event.subject.transaction(...)` when an edit must span the subject and other world storage atomically.
+slot edits and committed `ITEMS` writes, then calls `menu_slot_take` where applicable. Deferred notices are
+only delivered if the original backing container remains. Surviving slot edits on a refused or unhandled move
+still notify. An explicit `BlockEntityRef::set_changed` call is immediate; same-block writes made by that notice's
+callback still apply but do not queue another notice. Use `event.subject.transaction(...)` when an edit must span
+the subject and other world storage atomically.
 A panicking callback is contained and disabled for `menu_quick_move` for the rest of the session; only its `stack`
 and `handled` outputs are discarded. A later Part can still handle the move. If no Part handles it after a quick-move
 Part panics, the menu is resynced instead of running the game's routing. A panic contained in a nested hook does not
