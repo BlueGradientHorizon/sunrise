@@ -48,7 +48,7 @@ impl mod_api::Hooks for Declare {
 /// fallback nobody reads, and the declaration then refuses as frozen.
 fn with_types(test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_api::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || with_game(test));
 }
@@ -187,7 +187,6 @@ fn mixed_passengers_sit_and_unload_with_their_actual_root() {
             )
             .unwrap();
         let [root_ref, pig_ref, leaf_ref] = [root, pig, leaf].map(|id| game.entity(id).unwrap());
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert_eq!(game.entity_start_riding(pig_ref, root_ref, false), Ok(()));
         assert_eq!(game.entity_start_riding(leaf_ref, pig_ref, false), Ok(()));
         assert_eq!(
@@ -594,7 +593,6 @@ fn a_same_level_teleport_places_the_general_tree_and_unseats_a_separately_moved_
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         let to = [10.5, 64.0, 0.5];
         assert!(root.teleport_to(game, to, Some([90.0, 30.0])));
@@ -643,7 +641,6 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
             ],
             3,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         let velocity = Vec3::new(0.25, -0.5, 0.75);
         fn rider<'a>(game: &'a mut Game<'_>, id: u32) -> &'a mut GeneralRow {
             game.resident_entities.general.row_mut(id).unwrap()
@@ -684,7 +681,6 @@ fn a_nested_general_tree_takes_each_riders_transition_from_its_vehicle() {
             ],
             4,
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [25.442, 20.88, 4.214],
@@ -738,7 +734,6 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
             g.position = [0.5, 64.5, 0.25];
             g.yaw = 30.0;
         });
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [10.0, 70.0, -4.0],
@@ -756,7 +751,7 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
 /// `with_types` for a fixture that also hosts guests 12 and 13.
 fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_api::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(test)
@@ -806,7 +801,6 @@ fn a_seated_guest_hears_the_general_vehicles_real_pose_and_its_own_teleport_once
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
         let before = game.lan.as_ref().unwrap().hub.guest(13).unwrap().position;
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(root),
             [10.0, 70.0, -4.0],
@@ -838,7 +832,6 @@ fn a_seated_guest_that_runs_the_teleport_is_published_once() {
     with_types_and_guests(|game| {
         let (root, rx) = seat_guest_on_general_root(game);
         let _ = guest_teleport_packets(&rx);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.as_guest(13, |game| {
             game.teleport_to_in_level(
                 Target::General(root),
@@ -865,7 +858,6 @@ fn a_deep_general_chain_teleports_without_a_stack_frame_per_rider() {
             .map(|n| ([0.0, 64.0 + n as f64 * 0.5, 0.0], [0.0, 0.0]))
             .collect();
         let ids = general_chain(game, &poses, 5);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.teleport_to_in_level(
             Target::General(ids[0]),
             [8.0, 64.0, 8.0],
@@ -892,7 +884,6 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
                 game.entity(rows[start].id).unwrap(),
                 game.entity(rows[start + 1].id).unwrap(),
             );
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
             if by_command {
                 game.kill_target(Target::General(root.id()));
@@ -922,7 +913,6 @@ fn a_general_entity_turns_in_place_without_dismounting() {
             game.entity(rows[0].id).unwrap(),
             game.entity(rows[1].id).unwrap(),
         );
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         assert!(rider.set_rotation(game, 90.0, 30.0));
         assert_eq!(rider.rotation(game), Some([90.0, 30.0]));
@@ -947,7 +937,6 @@ fn a_general_row_has_its_declared_kind_and_is_selectable_by_type() {
             game.entity(rows[1].id).unwrap(),
         );
         game.build_registries();
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
 
         assert_eq!(
             robot.kind(game).unwrap().id(game).as_deref(),
@@ -978,7 +967,6 @@ fn a_volume_selector_finds_a_general_rows_box_without_its_origin() {
         game.build_registries();
         // The 0.8-wide row is centered at x=0.5. The selector starts at x=0.75,
         // so the edge of the box enters its volume but the position does not.
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         assert!(game.as_console(|game| {
             game.run_command("kill @e[type=mymod:robot,x=0.75,y=64,z=0,dx=0,dy=0,dz=0]")
         }));
@@ -1005,8 +993,6 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
         let rows = &game.resident_entities.general.rows;
         let (old_root, old_rider, old_join) = (rows[0].id, rows[1].id, rows[0].join);
         {
-            use mod_api::__private::{ModPhase, PhaseOwner};
-            let _world = PhaseOwner::scope(ModPhase::World);
             assert_eq!(
                 game.entity(old_root).unwrap().set_persistent(game, false),
                 Ok(true)

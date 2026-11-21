@@ -12,7 +12,6 @@ pub trait LevelDatapacksBackend {
     /// after each reload; a declared registry omitted from the snapshot is empty. An empty
     /// list means the registry has no entries. `None` means the level or registry is
     /// unavailable. Reads nothing from disk.
-    #[access(WorldOnly)]
     fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>>;
     /// Side: both.
     /// A handle to `entry` of `registry` at the published generation (on a client, the one its
@@ -21,7 +20,6 @@ pub trait LevelDatapacksBackend {
     /// [`DatapackReadError::WrongSession`]. An unknown registry, a stale or parked level, or no
     /// published set returns [`DatapackReadError::UnknownRegistry`]; a missing entry in the
     /// registry returns [`DatapackReadError::MissingEntry`].
-    #[access(WorldOnly)]
     fn level_datapack_handle(
         &self,
         level: LevelRef,
@@ -41,7 +39,6 @@ pub trait LevelDatapacksBackend {
     /// generation, then the registry and entry. An unavailable set, unknown registry or
     /// missing entry is refused as in [`LevelRef::datapack_handle`]. A host without a backend
     /// returns [`DatapackReadError::Unavailable`]. No error calls `visit`.
-    #[access(WorldOnly)]
     fn level_datapack_read(
         &self,
         level: LevelRef,
@@ -58,7 +55,6 @@ pub trait LevelDatapacksBackend {
     /// A valid input without a match returns Ok(None); invalid shapes/items and unavailable
     /// levels are typed refusals. Crafting dimensions are 1 through 3, with row-major slots.
 
-    #[access(WorldOnly)]
     fn level_recipe_for(
         &self,
         level: LevelRef,
@@ -81,7 +77,6 @@ pub trait LevelDatapacksBackendMut {
     /// Mods' loot kinds see `origin` and this level; no `loot_drops` event, since nothing
     /// drops. None for a table that isn't there, a stale or parked handle, a client, and a
     /// stale `entity`.
-    #[access(WorldOnly)]
     fn level_roll_loot(
         &mut self,
         level: LevelRef,

@@ -1,8 +1,5 @@
 // exports: none (reached inside the crate only)
-//! Registration refusals and bounded loading messages.
-use std::sync::{Arc, Mutex};
-
-use crate::RegistrationContext;
+//! Registration refusals and loading messages.
 
 /// Why a native declaration was not accepted.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
@@ -97,9 +94,6 @@ pub enum DeclarationKind {
     Item,
 }
 
-/// The most loading warnings one mod keeps; later ones are dropped.
-const MAX_LOADING_WARNINGS: usize = 16;
-
 /// A loading message as a translation key and its arguments, resolved against the
 /// selected language when the game shows it (NeoForge's `ModLoadingIssue`).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,14 +104,11 @@ pub struct LoadingMessage {
 }
 
 impl LoadingMessage {
-    /// A message from `key` and its `%s` arguments, each cut to 4096 bytes as `refuse` cuts.
+    /// A message from `key` and its `%s` arguments, stored verbatim.
     pub fn new(key: &str, args: &[&str]) -> Self {
         Self {
-            key: bounded_text(key).to_owned(),
-            args: args
-                .iter()
-                .map(|arg| bounded_text(arg).to_owned())
-                .collect(),
+            key: key.to_owned(),
+            args: args.iter().map(|arg| (*arg).to_owned()).collect(),
         }
     }
     /// The translation key; also the text shown when no language has it.
@@ -130,72 +121,26 @@ impl LoadingMessage {
     }
 }
 
-/// `text` cut to at most 4096 UTF-8 bytes, at a character boundary.
-fn bounded_text(text: &str) -> &str {
-    let mut end = text.len().min(4096);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
-}
+/// Registration diagnostics for the mod currently running
+/// [`Hooks::register`](crate::Hooks::register).
+pub trait DiagnosticsRegistrar {
+    /// Refuse this mod's registration without panicking.
+    ///
+    /// Every refusal reason recorded during the callback is preserved verbatim and reported
+    /// together, including an empty reason. All of this mod's declarations from the callback
+    /// are discarded, including declarations made before or after the call, without adding
+    /// secondary validation errors. Other mods' declarations are unchanged. Return from the
+    /// callback after refusing registration.
+    fn refuse(&mut self, reason: &str);
 
-/// One mod's diagnostic record, owned by the native registrar and written through its context.
-// no wire: the native registrar retains this record for admission and warning publication.
-// hidden: engine registration plumbing, not a mod authoring surface.
-#[doc(hidden)]
-#[derive(Default)]
-#[non_exhaustive]
-pub struct RegistrationDiagnostics {
-    /// The first reason the mod gave for refusing its own registration, if any.
-    pub refusal: Option<String>,
-    /// Warnings recorded in call order up to the per-mod limit.
-    pub warnings: Vec<LoadingMessage>,
-}
-
-/// Lend the native registrar's sink to this mod's `Hooks::register` callback.
-// hidden: other registration hooks only receive the read view.
-#[doc(hidden)]
-pub fn registration_context_with_diagnostics(
-    diagnostics: Arc<Mutex<RegistrationDiagnostics>>,
-) -> RegistrationContext {
-    RegistrationContext {
-        diagnostics: Some(diagnostics),
-        ..RegistrationContext::new()
-    }
-}
-
-impl RegistrationContext {
-    /// In [`Hooks::register`](crate::Hooks::register), refuse this mod's registration without
-    /// panicking. The first reason wins, even if empty. Reasons over 4096 UTF-8 bytes are
-    /// truncated at a character boundary; shorter reasons are preserved verbatim.
-    /// All this mod's declarations from the callback are discarded, including later
-    /// declarations, without adding their validation errors to the report. Other mods'
-    /// declarations are unchanged. Return from the callback after calling this method.
-    /// This method has no effect in other hooks.
-    pub fn refuse(&self, reason: &str) {
-        if let Some(diagnostics) = &self.diagnostics {
-            diagnostics
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .refusal
-                .get_or_insert_with(|| bounded_text(reason).to_owned());
-        }
-    }
-
-    /// In [`Hooks::register`](crate::Hooks::register), record a loading problem without
-    /// refusing this mod. `key` is a translation key in the mod's own `lang/` files and
-    /// `args` its `%s` arguments. The log names the key and arguments; the Mods screen
-    /// shows the first warning in the player's language. The first 16 warnings are kept,
-    /// with each key and argument cut as [`refuse`](Self::refuse) cuts its reason.
-    /// This method has no effect in other hooks.
-    pub fn warn(&self, key: &str, args: &[&str]) {
-        if let Some(diagnostics) = &self.diagnostics {
-            let mut diagnostics = diagnostics.lock().unwrap_or_else(|p| p.into_inner());
-            if diagnostics.warnings.len() < MAX_LOADING_WARNINGS {
-                diagnostics.warnings.push(LoadingMessage::new(key, args));
-            }
-        }
-    }
+    /// Record a loading problem without refusing this mod (NeoForge's
+    /// `ModLoader.addLoadingIssue` with `ModLoadingIssue.withAffectedMod`).
+    ///
+    /// `key` is a translation key in the mod's own `lang/` files and `args` its `%s`
+    /// arguments, stored verbatim in call order with no per-mod limit. The log names the
+    /// mod, key, and arguments; the Mods screen shows the first warning in the player's
+    /// language.
+    fn warn(&mut self, key: &str, args: &[&str]);
 }
 
 /// The loading warnings mod `id` gave during registration, in order, from the installed Parts.
@@ -217,31 +162,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bounded_reasons_preserve_utf8_and_empty_is_a_refusal() {
-        for (reason, expected) in [
-            ("a".repeat(4095) + "é!", "a".repeat(4095)),
-            ("é".repeat(2048), "é".repeat(2048)),
-            (String::new(), String::new()),
-        ] {
-            let diagnostics = Arc::new(Mutex::new(RegistrationDiagnostics::default()));
-            let cx = registration_context_with_diagnostics(Arc::clone(&diagnostics));
-            cx.refuse(&reason);
-            cx.refuse("not the first reason");
-            assert_eq!(diagnostics.lock().unwrap().refusal, Some(expected));
-        }
-    }
-
-    #[test]
-    fn a_warning_cuts_key_and_arguments_at_a_character_boundary_and_keeps_every_argument() {
-        let fits = "a".repeat(4096);
-        let over = format!("{}é", "a".repeat(4095));
+    fn a_loading_message_keeps_key_and_arguments_verbatim() {
+        let long_key = format!("{}é!", "a".repeat(4096));
+        let long_arg = format!("{}é!", "b".repeat(4096));
         let many: Vec<String> = (0..20).map(|i| i.to_string()).collect();
-        let mut args: Vec<&str> = vec![&fits, &over];
+        let mut args: Vec<&str> = vec!["", &long_arg];
         args.extend(many.iter().map(String::as_str));
-        let warning = super::LoadingMessage::new(&format!("{fits}b"), &args);
-        assert_eq!(warning.key(), fits);
-        assert_eq!(warning.args()[0], fits);
-        assert_eq!(warning.args()[1], "a".repeat(4095));
+        let warning = LoadingMessage::new(&long_key, &args);
+        assert_eq!(warning.key(), long_key);
+        assert_eq!(warning.args()[0], "");
+        assert_eq!(warning.args()[1], long_arg);
         assert_eq!(warning.args().len(), 22);
         assert_eq!(warning.args()[21], "19");
     }

@@ -11,19 +11,16 @@ pub trait PlayerSessionBackend {
     /// players keep their address; an acting player with no known connection
     /// has an empty address. None for a stale or unavailable player. The text
     /// borrows the host; copy it only to keep it beyond that borrow.
-    #[access(WorldOnly)]
     fn player_address(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// The stable name of a connected or acting player, borrowed from the host.
     /// None for a stale or unavailable player; displaced online players retain their identity.
-    #[access(WorldOnly)]
     fn player_name(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// `ServerPlayer.getGameProfile`: the UUID, name and login properties (skin
     /// `textures` included) of a connected or acting player, borrowed from the host.
     /// Displaced online players keep their profile. An offline-mode player has no
     /// properties. None for a stale or unavailable player.
-    #[access(WorldOnly)]
     fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>>;
     /// Side: server.
     /// The player's permission level, 0 to 4 (`Player.permissions()`,
@@ -31,28 +28,24 @@ pub trait PlayerSessionBackend {
     /// single-player owner's 4 with commands allowed. A displaced connected
     /// player keeps their permission level even while their body is unavailable.
     /// None for a stale or unavailable player.
-    #[access(WorldOnly)]
     fn player_permission_level(&self, player: PlayerRef) -> Option<u8>;
     /// Side: server.
     /// `ServerPlayer.isTextFilteringEnabled`: the text-filtering option the player's client
     /// announced (`ClientInformation.textFilteringEnabled`). False for the player running the
     /// server and for an acting player with no connection, as for a client that sent none. None
     /// for a stale or unavailable player.
-    #[access(WorldOnly)]
     fn player_text_filtering(&self, player: PlayerRef) -> Option<bool>;
     /// Side: server.
     /// Borrows the compound mods keep on a server player (NeoForge's `Entity.getPersistentData`),
     /// saved as `NeoForgeData`. An explicitly empty compound is still present. Returns `None`
     /// if no compound is stored, the player is stale or unavailable, or this is a client.
     /// The borrow lasts only as long as the shared Host borrow; clone explicitly for a snapshot.
-    #[access(WorldOnly)]
     fn player_persistent_data(&self, player: PlayerRef) -> Option<&Compound>;
     /// Side: both.
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
     /// The brand borrows the host.
-    #[access(WorldOnly)]
     fn player_client_brand(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// A shared snapshot, in announcement order, of the plugin channels the client announced
@@ -62,7 +55,6 @@ pub trait PlayerSessionBackend {
     /// client that announced none and for an acting player with no known connection; None
     /// for a stale or unavailable player. A snapshot can outlive the host borrow and does
     /// not change when the client registers or unregisters channels later.
-    #[access(WorldOnly)]
     fn player_announced_channels(&self, player: PlayerRef) -> Option<Arc<[String]>>;
     /// Side: server.
     /// Whether `viewer`'s client is shown the player `target` by the rules players are tracked
@@ -73,7 +65,6 @@ pub trait PlayerSessionBackend {
     /// sees themselves. Refuses with `PlayerWorldRefusal`: `Client`, `Stale` (a handle of the
     /// two no longer identifies a player in the server's list) and `NoConnection` (a fake
     /// player is no one's viewer or target).
-    #[access(WorldOnly)]
     fn player_sees(&self, viewer: PlayerRef, target: PlayerRef)
     -> Result<bool, PlayerWorldRefusal>;
     /// Side: server.
@@ -82,20 +73,17 @@ pub trait PlayerSessionBackend {
     /// keep-alive answer, for a fake player and for an acting player with no known connection.
     /// Refuses with `PlayerWorldRefusal`: `Client`, and `Stale` for a handle that no longer
     /// identifies a player.
-    #[access(WorldOnly)]
     fn player_latency(&self, player: PlayerRef) -> Result<i32, PlayerWorldRefusal>;
     /// Side: server.
     /// The permission level `player_hide` set for that player, `None` when they are shown. Kept
     /// by UUID, so a player who rejoined hidden reads it too, and read as stored in a world
     /// nobody else can join yet (it applies once the world is opened to others). Refuses with
     /// `PlayerWorldRefusal`: `Client`, and `Stale` for a handle of an earlier open of the world.
-    #[access(WorldOnly)]
     fn player_hidden(&self, player: PlayerRef) -> Result<Option<u8>, PlayerWorldRefusal>;
     /// Side: server.
     /// The name `player_set_nickname` set for that player, borrowed from the host,
     /// `None` when there is none. Refuses with `PlayerWorldRefusal`: `Client`,
     /// and `Stale` for a stale or offline player.
-    #[access(WorldOnly)]
     fn player_nickname(&self, player: PlayerRef) -> Result<Option<&str>, PlayerWorldRefusal>;
 }
 /// The handles' writes of the `player_session` area, implemented by the game and reached through [`BackendMut`].
@@ -115,8 +103,8 @@ pub trait PlayerSessionBackendMut {
     /// owner) and a player whose disconnect is already pending (a second call, also from
     /// `player_kicked`: the first reason stands).
     /// A second disconnect on a guest already leaving is a no-op and keeps the first reason.
-    #[access(WorldOnly)]
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn player_disconnect(&mut self, player: PlayerRef, reason: Text)
     -> Result<bool, TextFormError>;
     /// Side: server.
@@ -127,7 +115,6 @@ pub trait PlayerSessionBackendMut {
     /// sets it again or the server stops (also if they leave and come back).
     /// Plain text: the mod checks it (its length, other players' names). False when the server list is unavailable,
     /// the handle is stale or the player isn't online.
-    #[access(WorldOnly)]
     fn player_set_nickname(&mut self, player: PlayerRef, nickname: Option<&str>) -> bool;
     /// Side: server.
     /// Hides that player (a vanish) from the players below permission
@@ -139,7 +126,6 @@ pub trait PlayerSessionBackendMut {
     /// after this handle disconnects (the player rejoins hidden), until a mod sets it again
     /// or the server stops. Works inside a player's hook too; false for a stale
     /// world epoch and on a client.
-    #[access(WorldOnly)]
     fn player_hide(&mut self, player: PlayerRef, level: Option<u8>) -> bool;
     /// Side: server.
     /// Sets one literal NBT `key` in the server player's `NeoForgeData`; `None` removes only
@@ -154,7 +140,6 @@ pub trait PlayerSessionBackendMut {
     /// Refuses with [`PlayerPersistentDataError`] and writes nothing if the player cannot be
     /// written or the entry cannot be saved. An open transaction journals the edit; aborting
     /// restores the previous value, including absence of the compound.
-    #[access(WorldOnly)]
     fn player_set_persistent_data_key(
         &mut self,
         player: PlayerRef,

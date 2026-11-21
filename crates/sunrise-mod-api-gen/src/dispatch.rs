@@ -387,6 +387,7 @@ pub(super) fn emit<'a>(
         if mod_cancel && !is_render {
             cancel_hooks.push_str(&format!("pub const {name}: () = ();\n"));
         }
+        let registration = hook.context == Some(PhaseContext::Registration);
         let mut trait_params = vec!["&self".to_owned()];
         let mut dispatch_params = Vec::new();
         let mut call_args = Vec::new();
@@ -398,7 +399,9 @@ pub(super) fn emit<'a>(
                 if by_side { "mut " } else { "" },
                 param.ty
             ));
-            call_args.push(if by_side {
+            call_args.push(if registration {
+                format!("&{name}.for_mod(mod_id)")
+            } else if by_side {
                 format!("{name}.reborrow()")
             } else if param.ty.starts_with("&mut ") {
                 format!("&mut *{name}")
@@ -414,9 +417,7 @@ pub(super) fn emit<'a>(
         // Fields restored to the last accepted values on a listener failure, each with whether
         // the event holds it behind a `&mut`.
         let mut rollback: Vec<(String, bool)> = Vec::new();
-        // The rolled-back fields a snapshot copies by `Clone` rather than by `Copy`.
         let mut cloned: Vec<String> = Vec::new();
-        // The `&mut dyn Trait` fields: registrars and draw surfaces, with no value to snapshot.
         let mut surfaces: Vec<String> = Vec::new();
         let stack_outputs: Vec<_> = args
             .iter()
@@ -925,8 +926,7 @@ pub(super) fn emit<'a>(
             let entry = entry.to_token_stream();
             dispatch.push_str(&format!(
                 "impl{impl_params} {event_type}{event_params} {{\n\
-                 /// Stage one entry for registration. If the phase gate refuses this listener,\n\
-                 /// its entries are discarded and earlier registrations stand.\n\
+                 /// Stage one entry for registration.\n\
                  pub fn register(&mut self, entry: {entry}) {{ self.{out}.push(entry); }}\n}}\n"
             ));
         }
@@ -1003,7 +1003,7 @@ pub(super) fn emit<'a>(
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
         {
-            if (hook.owned_answer_batch || answered_collect_batch) && Some(field.as_str()) == out {
+            if (answered_collect_batch) && Some(field.as_str()) == out {
                 continue;
             }
             if stack_outputs.iter().any(|(name, _)| *name == field) {
@@ -1052,7 +1052,7 @@ pub(super) fn emit<'a>(
         };
         // Answered collectors drain this private batch after each mod. A refused or panicked mod
         // has no earlier entries to restore, and its entries must not leak to the next mod.
-        let clear_batch = if hook.owned_answer_batch || answered_collect_batch {
+        let clear_batch = if answered_collect_batch {
             format!("{event}.{}.clear(); ", out.unwrap())
         } else {
             String::new()
@@ -1148,9 +1148,7 @@ pub(super) fn emit<'a>(
                 }
                 _ => format!("{plain_call};"),
             };
-            format!(
-                "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
-            )
+            format!("{local_event} {invocation} {local_write_back} {stack_after}")
         };
         // Global cancel hooks use the same snapshot and invoke path even when they validate
         // outputs. Only a completed listener has a proposal for the validator to check.
@@ -1199,7 +1197,7 @@ pub(super) fn emit<'a>(
             None if declaration.is_some() => (
                 String::new(),
                 format!(
-                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id: {listener_id}, context, {name} }}; match super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, false, || {mod_item}.{name}(context, &mut {event})) {{ super::runtime::DispatchOutcome::Ok(()) | super::runtime::DispatchOutcome::Panicked => {{}} super::runtime::DispatchOutcome::Refused(refusal) => {{ refusal.report(); }} }} }}"
+                    "for ({listener_id}, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let listener_context = context.for_mod({listener_id}); let checkpoint = {name}.len(); let mut {event} = {event_type} {{ mod_id: {listener_id}, context: &listener_context, {name} }}; if let super::runtime::DispatchOutcome::Panicked = super::runtime::invoke(HookId::{hook_id}, \"{name}\", {listener_id}, || {mod_item}.{name}(&listener_context, &mut {event})) {{ {name}.truncate(checkpoint); }} }}"
                 ),
             ),
             None if hook.context == Some(PhaseContext::ChunkDisk) => {

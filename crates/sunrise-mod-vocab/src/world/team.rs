@@ -119,12 +119,6 @@ pub enum TeamMembersReadError {
     Unavailable,
 }
 
-impl crate::AccessRefusal for TeamMembersReadError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 impl crate::NoBackend for TeamMembersReadError {
     fn no_backend() -> Self {
         Self::Unavailable

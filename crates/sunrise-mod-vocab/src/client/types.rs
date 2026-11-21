@@ -126,12 +126,6 @@ pub enum MappingError {
     Label(TextFormError),
 }
 
-impl AccessRefusal for MappingError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 impl NoBackend for MappingError {
     fn no_backend() -> Self {
         Self::Unavailable

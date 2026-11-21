@@ -238,7 +238,7 @@ impl Endpoint {
     }
     /// A failure closes this physical connection only; a client reason joins its ordered events.
     pub fn disconnect(&self, reason: Text) {
-        let reason = crate::api_text::to_engine(&reason).unwrap_or_else(|error| {
+        let reason = crate::api_text::to_serialized_engine(&reason).unwrap_or_else(|error| {
             crate::text::Text::tr(
                 "disconnect.genericReason",
                 &[&format!("invalid payload disconnect reason: {error:?}")],

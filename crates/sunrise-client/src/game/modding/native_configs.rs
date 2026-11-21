@@ -161,10 +161,6 @@ impl NativeConfigs {
 impl Game<'_> {
     /// Asks the mods for their configs and loads those of `kinds`.
     fn native_configs_load(&mut self, kinds: &[mod_api::ConfigKind], world: Option<&Path>) {
-        let phase = self.mod_phase.clone();
-        let _config = phase
-            .config()
-            .expect("config load on its owning game thread");
         let config_dir = match Self::native_config_dir() {
             Ok(dir) => dir,
             Err(e) => {
@@ -233,36 +229,43 @@ mod tests {
     use mod_api::ConfigKind::{Client, Common, Server};
 
     #[test]
-    fn engine_test_host_operation_reads_the_real_phase_provider() {
-        use mod_api::{
-            __private::{ModPhase, PhaseOwner},
-            Host,
-            prelude::EntitiesHost,
-        };
-        Game::initialize_mod_runtime_for_tests();
-        struct EmptyHost;
-        impl Host for EmptyHost {}
-        mod_api::impl_host_areas!(EmptyHost);
-        let _phase = PhaseOwner::scope(ModPhase::Setup);
-        assert_eq!(mod_api::__private::current_phase(), ModPhase::Setup);
-        let refused = std::panic::catch_unwind(|| EmptyHost.entity(1)).unwrap_err();
-        let message = refused.downcast_ref::<String>().unwrap();
-        assert!(message.contains("Setup"), "{message}");
-    }
-
-    #[test]
     #[ignore = "daily"]
     fn config_permissions_and_once_per_side_survive_two_worlds() {
-        use mod_api::{Hooks, Host, HostSide, HostTransaction, ModEntry};
+        use crate::game::native_entity_refs::tests::{
+            run_fresh_cases, with_client_game, with_game,
+        };
+        use mod_api::{
+            ConfigContext, Hooks, ModEntry, Registrar, RegistrationContext, SettingSpec,
+        };
         use std::sync::{Arc, Mutex};
+
+        if run_fresh_cases(
+            "game::native_configs::tests::config_permissions_and_once_per_side_survive_two_worlds",
+            "SUNRISE_CONFIG_LIFECYCLE_CHILD",
+            &["lifecycle"],
+        ) {
+            return;
+        }
+
         struct Probe(Arc<Mutex<Vec<(bool, mod_api::ConfigKind)>>>);
         #[mod_api::__subscriptions]
         impl Hooks for Probe {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar
+                    .register_setting(SettingSpec::toggle(
+                        "unloaded",
+                        "phase_probe.unloaded",
+                        false,
+                    ))
+                    .unwrap();
+            }
+
             fn register_configs(
                 &self,
-                _: HostSide<'_>,
+                context: &dyn ConfigContext,
                 event: &mut mod_api::RegisterConfigsEvent<'_>,
             ) {
+                let _ = context.setting("phase_probe", "unused");
                 for kind in [Client, Common, Server] {
                     event
                         .configs
@@ -271,66 +274,42 @@ mod tests {
             }
             fn config_loading(
                 &self,
-                mut host: HostSide<'_>,
+                context: &dyn ConfigContext,
                 event: &mut mod_api::ConfigLoadingEvent<'_>,
             ) {
-                assert_eq!(
-                    mod_api::__private::current_phase(),
-                    mod_api::__private::ModPhase::Config
-                );
-                let read: &dyn Host = match &host {
-                    HostSide::Server(host) => &**host,
-                    HostSide::Client(host) => &**host,
-                };
-                let _ = read.setting("phase_probe", "unused");
-                let refused =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read.entity(1)))
-                        .unwrap_err();
-                assert_eq!(
-                    refused
-                        .downcast_ref::<mod_api::__private::PhaseRefusal>()
-                        .map(|refusal| refusal.phase),
-                    Some(mod_api::__private::ModPhase::Config)
-                );
-                if let HostSide::Server(host) = &mut host {
-                    let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        let _: Result<(), ()> = host.transaction(|_, _| Ok(()));
-                    }))
-                    .unwrap_err();
-                    assert_eq!(
-                        refused
-                            .downcast_ref::<mod_api::__private::PhaseRefusal>()
-                            .map(|refusal| refusal.phase),
-                        Some(mod_api::__private::ModPhase::Config)
-                    );
-                }
+                let _ = context.setting("phase_probe", "unused");
+                let _ = context.config_files();
                 self.0.lock().unwrap().push((true, event.config.kind));
             }
             fn config_unloading(
                 &self,
-                _: &mut dyn mod_api::ServerHost,
+                context: &mut dyn mod_api::ServerHost,
                 event: &mut mod_api::ConfigUnloadingEvent<'_>,
             ) {
-                assert_eq!(
-                    mod_api::__private::current_phase(),
-                    mod_api::__private::ModPhase::World
-                );
+                let next = match context.setting("phase_probe", "unloaded").as_deref() {
+                    Some("true") => "false",
+                    _ => "true",
+                };
+                context.set_setting("phase_probe", "unloaded", next);
                 self.0.lock().unwrap().push((false, event.config.kind));
             }
         }
         let calls = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new("phase_probe", Box::new(Probe(calls.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
-                game.mod_phase =
-                    mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Setup);
+            with_client_game(|game| {
                 game.native_configs_client_start();
                 game.native_configs_client_start();
-                game.options.execution_role =
-                    crate::game::execution_role::ExecutionRole::IntegratedServer;
-                for world in ["phase-world-one", "phase-world-two"] {
+            });
+            with_game(|game| {
+                for (world, expected) in [("phase-world-one", "true"), ("phase-world-two", "false")]
+                {
                     game.native_configs_server_start(Path::new(world), false);
                     game.native_configs_server_stop();
+                    assert_eq!(
+                        game.setting("phase_probe", "unloaded").as_deref(),
+                        Some(expected)
+                    );
                 }
             });
         });

@@ -116,9 +116,9 @@ not translate:
 ## 3. Resolve and draw
 
 ```rust,ignore
-fn client_setup(&self, host: &dyn ClientHost, _event: &mut ClientSetupEvent<'_>) {
+fn client_setup(&self, context: &mut dyn ClientSetupContext, _event: &mut ClientSetupEvent<'_>) {
     let id = Identifier::parse("example:glow").unwrap();
-    *self.glow.lock().unwrap() = host.render_assets().render_pipeline(&id).ok();
+    *self.glow.lock().unwrap() = context.render_assets().render_pipeline(&id).ok();
 }
 
 fn submit_custom_geometry(&self, _host: &dyn ClientHost, event: &mut SubmitCustomGeometryEvent<'_>) {

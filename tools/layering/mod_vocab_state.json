@@ -189,11 +189,6 @@
     "category": "immutable cache",
     "reason": "Bounded interning for decoded static strings; entries are immutable, shared by value, and never evicted."
   },
-  "world/phase_refusal.rs::SCOPE": {
-    "type": "Cell<Option<Scope>>",
-    "category": "reentrancy guard",
-    "reason": "Per-thread record of the mod and hook whose listener call is in flight and whether a refusal has latched, which the gate reads to contain a wrong-phase Host call."
-  },
   "world/server_reload.rs::first::ID": {
     "type": "LazyLock<Identifier>",
     "category": "immutable cache",

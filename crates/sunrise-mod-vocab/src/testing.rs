@@ -80,6 +80,24 @@ pub fn with_dispatch<R>(mods: Mods, f: impl FnOnce() -> R) -> R {
     f()
 }
 
+/// Lend new registration contexts on this thread a test startup screen, restoring the previous
+/// screen on exit or unwind.
+#[doc(hidden)]
+pub fn with_startup_screen<R>(
+    screen: std::sync::Arc<dyn crate::StartupScreen>,
+    run: impl FnOnce() -> R,
+) -> R {
+    use crate::world::startup_progress::TEST_SCREEN;
+    struct Restore(Option<std::sync::Arc<dyn crate::StartupScreen>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TEST_SCREEN.replace(self.0.take());
+        }
+    }
+    let _restore = Restore(TEST_SCREEN.replace(Some(screen)));
+    run()
+}
+
 struct RestoreParts {
     previous: Option<&'static crate::parts::Installed>,
     committed: bool,
@@ -397,6 +415,9 @@ impl crate::prelude::BlockStatesHost for FakeHost {
     }
 }
 impl crate::prelude::LevelsHost for FakeHost {
+    fn lit_block_name(&self, _: [i32; 3]) -> Option<crate::BlockKey> {
+        None
+    }
     fn is_loaded(&self, id: &str) -> bool {
         self.registries.is_loaded(id)
     }

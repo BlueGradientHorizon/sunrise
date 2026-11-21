@@ -183,7 +183,6 @@ fn with_opener(
     let mods = vec![ModEntry::new(name, Box::new(opener))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             // Levels' folders go under a world root of the test's own, never the checkout.
             let root = TempRoot::new(name);
             game.world_root = root.0.clone();

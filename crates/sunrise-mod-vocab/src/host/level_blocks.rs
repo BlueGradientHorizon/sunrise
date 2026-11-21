@@ -13,7 +13,6 @@ pub trait LevelBlocksBackend {
     /// an active read or exceeds the nesting bound. A stale level, unknown state, or
     /// unavailable host or phase returns a typed read error.
     /// The query never loads chunks or changes the world.
-    #[access(WorldOnly)]
     fn level_friction(
         &self,
         level: LevelRef,
@@ -27,7 +26,6 @@ pub trait LevelBlocksBackend {
     /// rule for, the tool's default mining speed), before the player's enchantments, attributes, water, ground and
     /// `player_break_speed` hooks, which `player_break_speed` itself hears. None for a stale
     /// handle or an unloaded or out-of-height position. Reads no chunks.
-    #[access(WorldOnly)]
     fn level_block_break_speed(
         &self,
         level: LevelRef,
@@ -40,7 +38,6 @@ pub trait LevelBlocksBackend {
     /// state is the one the server sent for a chunk the client holds, in the level it shows
     /// or in one the server opened for viewing (`host.level`): a viewed level reads its own
     /// world, never the player's, and never loads a column.
-    #[access(WorldOnly)]
     fn level_block_state(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockState>;
     /// Side: server.
     /// Preview a held tool's transformation without changing the block or stack. The existing
@@ -48,7 +45,6 @@ pub trait LevelBlocksBackend {
     /// simulation. The player must be live in the level in place, and the block must be loaded;
     /// parked levels cannot provide the hook's level context. A stale handle, invalid face,
     /// unavailable player or level, or no transformation returns None.
-    #[access(WorldOnly)]
     fn level_block_transform(
         &self,
         level: LevelRef,
@@ -61,13 +57,11 @@ pub trait LevelBlocksBackend {
     /// Side: both.
     /// The block at `pos` without its properties: `minecraft:oak_stairs`.
     /// None as for `block_state`. API 381.
-    #[access(WorldOnly)]
     fn level_block(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockKey>;
     /// Side: both.
     /// Property `key` of the block state at `pos` (`BlockState.getValue`):
     /// `east` for `facing`. None for a block without it, or as for
     /// `block_state`. API 381.
-    #[access(WorldOnly)]
     fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<String>;
 }
 /// The handles' writes of the `level_blocks` area, implemented by the game and reached through [`BackendMut`].
@@ -79,7 +73,6 @@ pub trait LevelBlocksBackendMut {
     /// Set a block (`Level.setBlock`). Stale/unavailable levels and invalid states return
     /// typed errors without mutation. Ok(false) means vanilla refused an unchanged,
     /// unloaded or out-of-height write. Notification follows the supplied update flags.
-    #[access(WorldOnly)]
     fn level_set_block(
         &mut self,
         level: LevelRef,
@@ -95,7 +88,6 @@ pub trait LevelBlocksBackendMut {
     /// are queued, as vanilla's do. Neighbours that are not loaded read as air. Stale or
     /// unavailable levels and invalid states return typed errors; a position outside the
     /// world or not loaded gives `state` back unchanged.
-    #[access(WorldOnly)]
     fn level_update_from_neighbour_shapes(
         &mut self,
         level: LevelRef,
@@ -117,7 +109,6 @@ pub trait LevelBlocksBackendMut {
     /// Returns `Ok(None)` for vanilla's `null`, a part's `Some(None)`, an unknown block
     /// or item key, an unloaded or out-of-bounds destination, or a non-finite hit or
     /// rotation. `None` in `context.item` means an empty hand.
-    #[access(WorldOnly)]
     fn level_state_for_placement(
         &mut self,
         level: LevelRef,
@@ -135,7 +126,6 @@ pub trait LevelBlocksBackendMut {
     /// (the origin, a companion or a callback write) with `Ok(false)`; neighbour updates follow
     /// the level's normal rules. A completed wither pattern in an open Host transaction returns
     /// `LevelWriteError::InTransaction`.
-    #[access(WorldOnly)]
     fn level_place_block(
         &mut self,
         level: LevelRef,
@@ -155,7 +145,6 @@ pub trait LevelBlocksBackendMut {
     /// companions; neighbour updates follow the level's normal rules.
     /// Stale or unavailable levels and invalid stacks return typed errors before any effects.
     /// A placement that would summon a wither is refused while a Host transaction is open.
-    #[access(WorldOnly)]
     #[read_stack]
     fn level_set_placed_by(
         &mut self,
@@ -166,7 +155,6 @@ pub trait LevelBlocksBackendMut {
     /// Side: server.
     /// Remove a block in place (`Level.removeBlock`), preserving its fluid.
     /// In a Host transaction the removal is tentative and its effects wait for commit.
-    #[access(WorldOnly)]
     fn level_remove_block(&mut self, level: LevelRef, pos: [i32; 3], moved: bool) -> bool;
     /// Side: server.
     /// Destroy a block in the level in place (`Level.destroyBlock`), optionally dropping
@@ -176,7 +164,6 @@ pub trait LevelBlocksBackendMut {
     /// once, in vanilla's random order. `drop` false suppresses resources entirely.
     /// `Ok(None)` means nothing broke: air, a refused write, a stale handle, a client, an
     /// unloaded/out-of-height position, a parked level, or an open Host transaction.
-    #[access(WorldOnly)]
     fn level_destroy_block(
         &mut self,
         level: LevelRef,
@@ -194,7 +181,6 @@ pub trait LevelBlocksBackendMut {
     /// does, so it moves later draws: that is why this is a write. No `block_drops` event,
     /// item entity or experience: that is `destroy_block`. None for a refused write, a stale or
     /// parked handle, a client, an unloaded or out-of-height position, and a stale `entity`.
-    #[access(WorldOnly)]
     fn level_block_drops(
         &mut self,
         level: LevelRef,
@@ -207,6 +193,5 @@ pub trait LevelBlocksBackendMut {
     /// `growWaterPlant`), with no player and no item: the mods' `bonemeal` hook first, level event
     /// 1505 when something grew. True when something grew; false for a refused write, a stale or
     /// parked handle, a client, and a block that did not grow.
-    #[access(WorldOnly)]
     fn level_bone_meal(&mut self, level: LevelRef, pos: [i32; 3]) -> bool;
 }

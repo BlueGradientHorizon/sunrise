@@ -11,8 +11,8 @@ pub mod text;
 pub mod wire;
 pub mod world;
 pub use backend::{
-    AccessRefusal, ActionOutcome, ActionRefused, BackendMutRef, BackendRef, ClientBackendMutRef,
-    NoBackend, backend_mut_of, backend_of, client_backend_mut_of,
+    ActionOutcome, ActionRefused, BackendMutRef, BackendRef, ClientBackendMutRef, NoBackend,
+    backend_mut_of, backend_of, client_backend_mut_of,
 };
 pub use block::types::*;
 pub use client::types::*;

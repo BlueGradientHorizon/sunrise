@@ -64,12 +64,12 @@ A native bundle accepts the manifest, optional icon, root `Cargo.toml`, `Cargo.l
 any other file causes the archive to be refused ([the manifest](../../reference/manifest.md)).
 
 `runtime/` holds the data files your code opens beside itself: each is listed in `[runtime]` with its SHA-512, any
-file type, up to 64 MiB a file, 256 MiB and 256 files in all. They are not pack data and no reload touches them;
+file type. They are not pack data and no reload touches them;
 a missing, extra or mismatched file refuses the package by name ([`[runtime]`](../../reference/manifest.md)).
 
 The game hashes each file once, when the package opens, and retains the verified bytes. Get the handle with
-`cx.runtime_files()` in registration; you can keep it and use it from any thread. A mod can read only its own
-package's files. A package with no `[runtime]` returns `RuntimeFilesError::NoRuntimeFiles`.
+`cx.runtime_files(mod_id)` in registration; you can keep it and use it from any thread. A package with no
+`[runtime]` returns `RuntimeFilesError::NoRuntimeFiles`.
 
 - `files.names()` borrows the listed names in name order as `&[String]`.
 - `files.file("nav.bin")` returns `Option<&[u8]>`: parse the borrowed bytes directly, or use `.to_vec()` only

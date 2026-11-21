@@ -87,12 +87,116 @@ mod entry {
         }
     }
 
-    /// The registry an entry is in, and its id there through the game's backend.
+    /// Common read-only lookup surface shared by [`Backend`] and [`crate::ReloadContext`].
+    pub trait DataMapReader {
+        fn data_map_value(
+            &self,
+            registry: &str,
+            entry: &str,
+            map: &str,
+        ) -> Result<Option<&crate::Tag>, DataMapError>;
+        fn game_event_key_id(
+            &self,
+            key: crate::GameEventKey,
+        ) -> Result<RegistryName, crate::GameEventKeyError>;
+        fn item_key_id(&self, key: ItemKey) -> Option<&str>;
+        fn block_key_id(&self, key: BlockKey) -> Option<&str>;
+        fn fluid_key_id(&self, key: FluidKey) -> Option<&str>;
+        fn effect_key_id(&self, key: EffectKey) -> Option<&str>;
+        fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName>;
+        fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName>;
+        fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str>;
+        fn biome_key_id(&self, key: BiomeKey) -> Result<&str, crate::BiomeKeyError>;
+    }
+
+    impl DataMapReader for &(dyn Backend + '_) {
+        fn data_map_value(
+            &self,
+            registry: &str,
+            entry: &str,
+            map: &str,
+        ) -> Result<Option<&crate::Tag>, DataMapError> {
+            Backend::data_map_value(*self, registry, entry, map)
+        }
+        fn game_event_key_id(
+            &self,
+            key: crate::GameEventKey,
+        ) -> Result<RegistryName, crate::GameEventKeyError> {
+            Backend::game_event_key_id(*self, key)
+        }
+        fn item_key_id(&self, key: ItemKey) -> Option<&str> {
+            Backend::item_key_id(*self, key)
+        }
+        fn block_key_id(&self, key: BlockKey) -> Option<&str> {
+            Backend::block_key_id(*self, key)
+        }
+        fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
+            Backend::fluid_key_id(*self, key)
+        }
+        fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
+            Backend::effect_key_id(*self, key)
+        }
+        fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
+            Backend::entity_type_key_id(*self, key)
+        }
+        fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
+            Backend::enchantment_key_id(*self, key)
+        }
+        fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
+            Backend::block_entity_type_key_id(*self, key)
+        }
+        fn biome_key_id(&self, key: BiomeKey) -> Result<&str, crate::BiomeKeyError> {
+            Backend::biome_key_id(*self, key)
+        }
+    }
+
+    impl DataMapReader for &(dyn crate::ReloadContext + '_) {
+        fn data_map_value(
+            &self,
+            registry: &str,
+            entry: &str,
+            map: &str,
+        ) -> Result<Option<&crate::Tag>, DataMapError> {
+            crate::ReloadContext::data_map_value(*self, registry, entry, map)
+        }
+        fn game_event_key_id(
+            &self,
+            key: crate::GameEventKey,
+        ) -> Result<RegistryName, crate::GameEventKeyError> {
+            crate::ReloadContext::game_event_key_id(*self, key)
+        }
+        fn item_key_id(&self, key: ItemKey) -> Option<&str> {
+            crate::ReloadContext::item_key_id(*self, key)
+        }
+        fn block_key_id(&self, key: BlockKey) -> Option<&str> {
+            crate::ReloadContext::block_key_id(*self, key)
+        }
+        fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
+            crate::ReloadContext::fluid_key_id(*self, key)
+        }
+        fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
+            crate::ReloadContext::effect_key_id(*self, key)
+        }
+        fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
+            crate::ReloadContext::entity_type_key_id(*self, key)
+        }
+        fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
+            crate::ReloadContext::enchantment_key_id(*self, key)
+        }
+        fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
+            crate::ReloadContext::block_entity_type_key_id(*self, key)
+        }
+        fn biome_key_id(&self, key: BiomeKey) -> Result<&str, crate::BiomeKeyError> {
+            crate::ReloadContext::biome_key_id(*self, key)
+        }
+    }
+
+    /// The registry an entry is in, and its id there through a read-only data-map source.
     pub trait Entry {
         /// The registry's id.
         const REGISTRY: &'static str;
         /// The entry's full registry id.
-        fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError>;
+        fn id<'a>(&self, reader: &'a dyn DataMapReader) -> Result<EntryName<'a>, DataMapError>;
     }
 }
 
@@ -102,8 +206,11 @@ macro_rules! typed_entries {
         impl DataMapEntry for $key {}
         impl entry::Entry for $key {
             const REGISTRY: &'static str = $registry;
-            fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
-                backend.$id(*self).into_result()
+            fn id<'a>(
+                &self,
+                reader: &'a dyn entry::DataMapReader,
+            ) -> Result<EntryName<'a>, DataMapError> {
+                reader.$id(*self).into_result()
             }
         }
         impl $key {
@@ -166,8 +273,8 @@ typed_entries! {
 impl DataMapEntry for BiomeKey {}
 impl entry::Entry for BiomeKey {
     const REGISTRY: &'static str = "minecraft:worldgen/biome";
-    fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
-        backend
+    fn id<'a>(&self, reader: &'a dyn entry::DataMapReader) -> Result<EntryName<'a>, DataMapError> {
+        reader
             .biome_key_id(*self)
             .map(EntryName::Borrowed)
             .map_err(|error| match error {
@@ -190,7 +297,7 @@ impl BiomeKey {
 impl DataMapEntry for ProfessionKey {}
 impl entry::Entry for ProfessionKey {
     const REGISTRY: &'static str = "minecraft:villager_profession";
-    fn id<'a>(&self, _: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
+    fn id<'a>(&self, _: &'a dyn entry::DataMapReader) -> Result<EntryName<'a>, DataMapError> {
         Ok(EntryName::Owned(self.0.to_string()))
     }
 }
@@ -229,6 +336,20 @@ impl NoBackend for DataMapError {
     }
 }
 
+/// `entry`'s value in `map`, decoded through any read-only data-map source.
+fn read_data<M: DataMap>(
+    entry: &M::Entry,
+    reader: &dyn entry::DataMapReader,
+    map: &M,
+) -> Result<Option<M::Value>, DataMapError> {
+    let id = entry::Entry::id(entry, reader)?;
+    let registry = <M::Entry as entry::Entry>::REGISTRY;
+    match reader.data_map_value(registry, id.as_str(), map.id())? {
+        Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
+        None => Ok(None),
+    }
+}
+
 /// `entry`'s value in `map`, decoded.
 fn data<M: DataMap>(
     entry: &M::Entry,
@@ -236,12 +357,7 @@ fn data<M: DataMap>(
     map: &M,
 ) -> Result<Option<M::Value>, DataMapError> {
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
-    let id = entry::Entry::id(entry, backend)?;
-    let registry = <M::Entry as entry::Entry>::REGISTRY;
-    match backend.data_map_value(registry, id.as_str(), map.id())? {
-        Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
-        None => Ok(None),
-    }
+    read_data(entry, &backend, map)
 }
 
 /// Entry `entry` of registry `registry`: its raw NBT value in data map `map`
@@ -275,6 +391,18 @@ pub fn data_map_entries<'host>(
 ) -> Result<&'host [(String, Tag)], DataMapError> {
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     backend.data_map_entries(registry, map)
+}
+
+impl dyn crate::ReloadContext + '_ {
+    /// Entry `entry`'s decoded value in data map `map`, for reload hooks such as
+    /// `data_maps_updated`.
+    pub fn data_map<M: DataMap>(
+        &self,
+        entry: &M::Entry,
+        map: &M,
+    ) -> Result<Option<M::Value>, DataMapError> {
+        read_data(entry, &self, map)
+    }
 }
 
 #[cfg(test)]

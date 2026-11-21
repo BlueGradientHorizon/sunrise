@@ -80,7 +80,8 @@ fn structural_families_fit_a_small_stack() {
             round(&Box::new(place), 0);
             round(&Box::new(entity), 0);
             // These public SCC members no longer recurse structurally: every Text
-            // edge crosses through a flat table. Their own envelope still guards depth.
+            // edge crosses through the stack-independent iterative codec. Their own
+            // envelope still guards depth.
             round(&crate::text::TextContent::Literal(String::new()), 31);
             round(&crate::text::TextStyle::default(), 31);
             round(
@@ -148,27 +149,24 @@ fn vanilla_trees_keep_their_depth_on_a_small_stack() {
             let mut out = Writer::new();
             out.put(&text);
             assert_eq!(out.error(), None);
-            // Append a complete row without the encoder's depth check.
-            let mut invalid = out.bytes().to_vec();
-            invalid[..4].copy_from_slice(&513u32.to_le_bytes());
-            invalid.extend([1, 255, 1, 0, 0]); // Parent row 511.
-            invalid.extend([0; 4 + 4 + 4 + 11]); // Child relation, empty literal, unset styles.
-            invalid.extend([10, 0, 0, 0, 0, 0, 0, 0]); // Empty style metadata compound.
-            invalid.extend([10, 0, 0, 0, 0, 0, 0, 0]); // Empty component metadata compound.
-            assert!(matches!(
-                Reader::decode::<Text>(&invalid),
-                Err(WireError::Invalid(_))
-            ));
-            // Drop is outside Wire's ownership; intentionally discard a deep tree iteratively.
+            // Wrap the 512-deep encoded tree in one more parent node to exceed MAX_TEXT_DEPTH.
+            let mut too_deep_bytes = vec![0; 4 + 4 + 11]; // Literal(""), unset style options.
+            too_deep_bytes.extend([10, 0, 0, 0, 0, 0, 0, 0]); // Empty style metadata compound.
+            too_deep_bytes.extend([1, 0, 0, 0]); // One child.
+            too_deep_bytes.extend_from_slice(out.bytes());
+            too_deep_bytes.extend([10, 0, 0, 0, 0, 0, 0, 0]); // Empty component metadata compound.
+            assert_eq!(
+                Reader::decode::<Text>(&too_deep_bytes),
+                Err(WireError::Depth)
+            );
             let decoded = Reader::decode::<Text>(out.bytes()).unwrap();
             let text = Text::literal("").append(text);
             let mut too_deep = Writer::new();
             too_deep.put(&text);
             assert_eq!(too_deep.error(), Some(WireError::Depth));
-            let mut pending = vec![text, decoded];
-            while let Some(mut text) = pending.pop() {
-                pending.append(&mut text.children);
-            }
+            // Drop both deep trees directly on the 128 KiB stack (iterative Drop for Text).
+            drop(text);
+            drop(decoded);
         })
         .unwrap()
         .join()

@@ -15,12 +15,6 @@ use std::{
 
 /// The folder of a package that holds its runtime files.
 pub const RUNTIME_DIR: &str = "runtime";
-/// The most one runtime file may weigh.
-pub const MAX_RUNTIME_FILE: u64 = 64 << 20;
-/// The most all of a package's runtime files may weigh together.
-pub const MAX_RUNTIME_TOTAL: u64 = 256 << 20;
-/// The most files a package's `[runtime]` may list.
-pub const MAX_RUNTIME_FILES: usize = 256;
 
 /// A `[runtime]` table: each file's name under `runtime/` and its SHA-512.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -33,12 +27,6 @@ impl TryFrom<BTreeMap<String, String>> for RuntimeTable {
     fn try_from(files: BTreeMap<String, String>) -> Result<Self, Self::Error> {
         if files.is_empty() {
             return Err("[runtime] lists no file".into());
-        }
-        if files.len() > MAX_RUNTIME_FILES {
-            return Err(format!(
-                "[runtime] lists {} files, over the {MAX_RUNTIME_FILES}-file runtime cap",
-                files.len()
-            ));
         }
         for (name, hash) in &files {
             if !super::plain_path(name) {
@@ -77,33 +65,13 @@ impl RuntimeTable {
         sha.finalize().iter().map(|b| format!("{b:02x}")).collect()
     }
 
-    /// Refuse a package whose `runtime/` holds a file this table does not list, lacks one it
-    /// lists, or goes over a cap. `found` is each file under `runtime/` as `(name below it, bytes)`.
+    /// Refuse a package whose `runtime/` holds a file this table does not list or lacks one it
+    /// lists. `found` is each file under `runtime/` as `(name below it, bytes)`.
     pub fn check_layout(table: Option<&Self>, found: &[(String, u64)]) -> Result<(), String> {
-        if found.len() > MAX_RUNTIME_FILES {
-            return Err(format!(
-                "{RUNTIME_DIR}/ holds {} files, over the {MAX_RUNTIME_FILES}-file runtime cap",
-                found.len()
-            ));
-        }
-        let mut total = 0u64;
-        for (name, size) in found {
+        for (name, _) in found {
             if !table.is_some_and(|table| table.lists(name)) {
                 return Err(format!("{RUNTIME_DIR}/{name}: not listed in [runtime]"));
             }
-            if *size > MAX_RUNTIME_FILE {
-                return Err(format!(
-                    "{RUNTIME_DIR}/{name} is over {} MiB, the per-file runtime cap",
-                    MAX_RUNTIME_FILE >> 20
-                ));
-            }
-            total = total.saturating_add(*size);
-        }
-        if total > MAX_RUNTIME_TOTAL {
-            return Err(format!(
-                "{RUNTIME_DIR}/ is over {} MiB, the package's runtime total cap",
-                MAX_RUNTIME_TOTAL >> 20
-            ));
         }
         if let Some(table) = table
             && let Some(missing) = table
@@ -123,12 +91,6 @@ impl RuntimeTable {
         let Some(hash) = self.0.get(name) else {
             return Err(format!("{RUNTIME_DIR}/{name}: not listed in [runtime]"));
         };
-        if bytes.len() as u64 > MAX_RUNTIME_FILE {
-            return Err(format!(
-                "{RUNTIME_DIR}/{name} is over {} MiB, the per-file runtime cap",
-                MAX_RUNTIME_FILE >> 20
-            ));
-        }
         if sha512_of(bytes) != *hash {
             return Err(format!(
                 "{RUNTIME_DIR}/{name} doesn't match its [runtime] sha512"

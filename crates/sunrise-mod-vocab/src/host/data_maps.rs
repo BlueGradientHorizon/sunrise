@@ -13,7 +13,6 @@ pub trait DataMapsBackend {
     /// to retain it beyond the borrow. `Ok(None)` means the map gives this entry no value;
     /// unavailable maps, unknown map types and values that cannot be represented as NBT are
     /// errors.
-    #[access(PublishedResources)]
     fn data_map_value(
         &self,
         registry: &str,
@@ -25,7 +24,6 @@ pub trait DataMapsBackend {
     /// (`IRegistryExtension.getDataMap`). The slice borrows from this backend; call `to_vec`
     /// only to retain all the rows beyond that borrow. An empty map gives an empty slice;
     /// a value that cannot be represented as NBT refuses the entire read.
-    #[access(PublishedResources)]
     fn data_map_entries(&self, registry: &str, map: &str)
     -> Result<&[(String, Tag)], DataMapError>;
 }

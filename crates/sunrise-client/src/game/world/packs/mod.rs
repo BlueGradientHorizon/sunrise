@@ -663,7 +663,7 @@ impl Game<'_> {
             &mut self.native_shaders.picked,
         ));
         self.ui.chat.rescale(&self.gui.atlas);
-        super::client_reload::apply_client_reload(&self.mod_phase, client_applies);
+        super::client_reload::apply_client_reload(client_applies);
         self.install_loop_context(loop_context);
         // A reload from the title can apply before the start's world-rest worker is done.
         self.join_world_rest()?;
@@ -702,12 +702,8 @@ pub(super) fn stage_pack(
     // The mod listeners prepare against the merged root before the heavy
     // staging builds run: a listener that fails aborts the reload without the
     // renderer work, keeping every listener's previous assets.
-    let client_applies = super::client_reload::stage_client_reload(
-        &source,
-        client_listeners,
-        mod_api::__private::ModPhase::World,
-    )
-    .map_err(|e| e.to_string())?;
+    let client_applies = super::client_reload::stage_client_reload(&source, client_listeners)
+        .map_err(|e| e.to_string())?;
     // The world's models and sprites and the GUI atlas read the same root and nothing of
     // each other: about a second each, side by side.
     let pool = super::resource_tables::dynamic_texture_pool();

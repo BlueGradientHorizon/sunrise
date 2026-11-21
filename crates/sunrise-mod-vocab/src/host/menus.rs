@@ -16,7 +16,7 @@ pub trait MenusServerHost {
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
     /// opening it again.
-    #[access(WorldOnly)]
+    #[serialize_text]
     fn open_menu(
         &mut self,
         uuid: u128,
@@ -33,11 +33,9 @@ pub trait MenusServerHost {
     /// tick's container sync (`AbstractContainerMenu.broadcastChanges`), as
     /// for any open menu. None for another window, a menu the game opened, or
     /// a player who isn't here.
-    #[access(WorldOnly)]
     fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef>;
     /// Side: server.
     /// Closes the player's native menu (a `menu_closed` follows).
-    #[access(WorldOnly)]
     fn close_menu(&mut self, uuid: u128);
     /// Side: server.
     /// Replaces everything the player's open `open_menu` menu `window` shows with `items` (by
@@ -50,7 +48,6 @@ pub trait MenusServerHost {
     /// `MenuItemsRefusal`: `Client`, `NoPlayer` (no placed player of that UUID), `NotOpen`
     /// (`window` is not their open `open_menu` menu) and `Stack` (a stack the game's item
     /// conversion refuses).
-    #[access(WorldOnly)]
     fn menu_set_items(
         &mut self,
         uuid: u128,
@@ -63,7 +60,6 @@ pub trait MenusServerHost {
 pub trait MenusClientHost {
     /// Side: client.
     /// The local player in a logged-in client world.
-    #[access(ClientSetup)]
     fn local_player(&self) -> Option<PlayerRef>;
 }
 /// The handles' reads of the `menus` area, implemented by the game and reached through [`Backend`].
@@ -73,45 +69,37 @@ pub trait MenusClientHost {
 pub trait MenusBackend {
     /// Side: server.
     /// Container id (0 for the player's inventory menu).
-    #[access(WorldOnly)]
     fn menu_container_id(&self, menu: MenuRef) -> Option<i32>;
     /// Side: server.
     /// Registry menu type; the inventory menu has no MenuType in vanilla.
     /// The outer None means an unavailable menu.
-    #[access(WorldOnly)]
     fn menu_kind(&self, menu: MenuRef) -> Option<Option<String>>;
     /// Side: both.
     /// Number of slots in AbstractContainerMenu.slots.
-    #[access(WorldOnly)]
     fn menu_slot_count(&self, menu: MenuRef) -> Option<usize>;
     /// Side: both.
     /// Full stack at a menu index. Outer None means unavailable or out of
     /// range; Some(None) means an empty slot. `slot` is the slot's position in the menu's slot
     /// list, vanilla's `Slot.index`, the number container click packets carry; vanilla has no other
     /// player-visible slot number. `menu_slot_backing` gives the index inside the backing container.
-    #[access(WorldOnly)]
     fn menu_slot(&self, menu: MenuRef, slot: usize) -> Option<Option<ItemStack>>;
     /// Side: both.
     /// Carried (cursor) stack; outer None means unavailable.
-    #[access(WorldOnly)]
     fn menu_carried(&self, menu: MenuRef) -> Option<Option<ItemStack>>;
     /// Side: server.
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
     /// to feet), a block entity's or an entity's slot, the ender chest's, the crafting grid's
     /// or a mod's chest menu's.
-    #[access(WorldOnly)]
     fn menu_slot_backing(&self, menu: MenuRef, slot: usize) -> Option<MenuSlotBacking>;
     /// Side: server.
     /// How many of `stack` menu slot `slot` holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
     /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
     /// none.
-    #[access(WorldOnly)]
     fn menu_slot_holds(&self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
     /// Side: server.
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
     /// on outside creative.
-    #[access(WorldOnly)]
     fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool>;
 }
 /// The handles' client reads of the `menus` area, implemented by the game and reached through [`ClientBackend`].
@@ -126,7 +114,6 @@ pub trait MenusClientBackend {
     /// Returns `None` for a stale menu, another screen, or an inventory covered
     /// by the recipe book. The boxes follow the actual layout, including GUI
     /// scale and the recipe book's horizontal offset.
-    #[access(WorldOnly)]
     fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>>;
     /// Side: client.
     /// Slot roles from the client layout and content menu declaration, in menu order.
@@ -138,7 +125,6 @@ pub trait MenusClientBackend {
     /// classified layouts give all `Other` when their count is known. Creative returns the underlying inventory menu, not tab wrappers:
     /// read the screen type to distinguish them. Stable until the menu changes.
     /// Built per call with one Vec allocation and a table lookup; cache for the menu.
-    #[access(WorldOnly)]
     fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>>;
     /// Side: client.
     /// The local player's open merchant menu's synchronized offers, copied in display order
@@ -150,7 +136,6 @@ pub trait MenusClientBackend {
     /// An open merchant menu without offers returns `Ok(Some(Vec::new()))`.
     /// Returns [`LevelReadError::Unavailable`] when the phase or backend cannot supply the
     /// read, or an offer cannot be converted to an API value.
-    #[access(WorldOnly)]
     fn menu_merchant_offers(
         &self,
         menu: MenuRef,
@@ -169,7 +154,6 @@ pub trait MenusClientBackendMut {
     /// Refuses stale menus, invalid slots/hotbar indices, spectators, non-client hosts,
     /// the creative inventory screen and empty batches without changing items.
     /// True means submitted, not accepted by the server: its corrections win.
-    #[access(WorldOnly)]
     fn menu_click(&mut self, menu: MenuRef, clicks: &[MenuClick]) -> bool;
     /// Side: client.
     /// Close the local player's open container screen as Escape does
@@ -177,7 +161,6 @@ pub trait MenusClientBackendMut {
     /// server is told (`ContainerClose`) and the screen goes. Refuses stale
     /// menus, non-client hosts and a menu whose screen is not open, such as
     /// the inventory menu while playing. A server closes a menu with `close_container`.
-    #[access(WorldOnly)]
     fn menu_close(&mut self, menu: MenuRef) -> bool;
     /// Side: client.
     /// Press button `button` of the local player's open menu as a click on
@@ -188,7 +171,6 @@ pub trait MenusClientBackendMut {
     /// or the wheel; no sound, that is the screen's. Refuses
     /// stale menus, non-client hosts and the inventory menu, which no server
     /// opened. True means sent, not that the menu took it.
-    #[access(WorldOnly)]
     fn menu_click_button(&mut self, menu: MenuRef, button: i32) -> bool;
 }
 /// The handles' server writes of the `menus` area, implemented by the game and reached through [`Backend`].
@@ -203,14 +185,12 @@ pub trait MenusBackendMut {
     /// `player_container_close`, then the client's window closed (`ContainerClose`). Refuses
     /// stale menus, clients, a player whose state is swapped in for a turn, and the player's own
     /// inventory menu, which is never closed. A client closes its own screen with `close`.
-    #[access(WorldOnly)]
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.
     /// Set a data slot of the owning mod's current blockless menu (`DataSlot.set`).
     /// Returns true only if the value changed. Publishes the final signed `i32` at
     /// root commit (immediately outside a transaction); an abort restores it silently.
     /// Stale handles, unsupported menus, other mods and undeclared indices are refused.
-    #[access(WorldOnly)]
     fn menu_set_data_slot(
         &mut self,
         menu: MenuRef,

@@ -1,6 +1,5 @@
 //! Concrete authoring extracted verbatim from the vocabulary layer.
 use super::*;
-use std::sync::Mutex;
 
 pub(crate) fn insert_part<P: ?Sized>(
     table: &mut HashMap<Box<str>, Vec<Attached<P>>>,
@@ -47,6 +46,10 @@ pub struct PartRegistrar {
     pub(crate) menu_slot_exclusions: HashMap<String, HashMap<String, Box<[u16]>>>,
     /// Loading warnings for each owning mod, in registration order.
     pub(crate) warnings: Vec<(&'static str, Vec<crate::LoadingMessage>)>,
+    /// Refusal reasons recorded for the mod currently running `Hooks::register`.
+    pub(crate) current_refusals: Vec<String>,
+    /// Loading warnings recorded for the mod currently running `Hooks::register`.
+    pub(crate) current_warnings: Vec<crate::LoadingMessage>,
     pub(crate) recipe_book_types: HashMap<String, String>,
     pub(crate) recipe_book_fields: HashMap<String, (String, String)>,
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
@@ -103,6 +106,8 @@ impl PartRegistrar {
             menu_recipe_books: HashMap::new(),
             menu_slot_exclusions: HashMap::new(),
             warnings: Vec::new(),
+            current_refusals: Vec::new(),
+            current_warnings: Vec::new(),
             biome_modifiers: Vec::new(),
             biome_regions: Vec::new(),
             datapack_registries: Vec::new(),
@@ -237,42 +242,37 @@ pub(crate) fn register_all(
         }
     }
     let _active = ActiveRegistration::enter();
-    // `register` runs in the registration phase and nowhere else: a declaration of a frozen registry
-    // (a general entity type) is refused after it. Production enters it already; a test thread's
-    // default phase is World.
-    let _phase = crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
+    // `register` runs with startup registration open: a declaration of a frozen registry
+    // (a general entity type) is refused once it closes.
+    let _registration = crate::__private::RegistrationGuard::open();
     let _scope = RestoreKeys(REGISTERING_KEYS.replace(Some(registrar.registry_keys.clone())));
+    let context = RegistrationContext::new();
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
-        let diagnostics = Arc::new(Mutex::new(RegistrationDiagnostics::default()));
+        registrar.current_refusals.clear();
+        registrar.current_warnings.clear();
         let rollback = registrar.registration_checkpoint();
-        let completed = mod_vocab::__private::invoke_registration(registrar.mod_id, || {
-            hooks.register(
-                &mut registrar,
-                &registration_context_with_diagnostics(Arc::clone(&diagnostics)),
-            );
-        });
-        if !completed {
+        let cx = mod_vocab::__private::game::bind_registration_context(&context, registrar.mod_id);
+        if !mod_vocab::__private::invoke_registration(registrar.mod_id, || {
+            hooks.register(&mut registrar, &cx);
+        }) {
             rollback(&mut registrar);
             continue;
         }
-        // The borrowed context has ended; the registrar can move its record into the report.
-        let diagnostics = Arc::into_inner(diagnostics)
-            .expect("only the registrar and its registration context own the diagnostic sink")
-            .into_inner()
-            .unwrap_or_else(|p| p.into_inner());
-        if !diagnostics.warnings.is_empty() {
-            registrar
-                .warnings
-                .push((registrar.mod_id, diagnostics.warnings));
+        let warnings = std::mem::take(&mut registrar.current_warnings);
+        if !warnings.is_empty() {
+            registrar.warnings.push((registrar.mod_id, warnings));
         }
-        if let Some(reason) = diagnostics.refusal {
+        let refusals = std::mem::take(&mut registrar.current_refusals);
+        if !refusals.is_empty() {
             rollback(&mut registrar);
-            registrar.refused.push(format!(
-                "mod {} refused registration: {reason}",
-                registrar.mod_id
-            ));
+            for reason in refusals {
+                registrar.refused.push(format!(
+                    "mod {} refused registration: {reason}",
+                    registrar.mod_id
+                ));
+            }
         }
     }
     registrar.expand_block_entity_parts();

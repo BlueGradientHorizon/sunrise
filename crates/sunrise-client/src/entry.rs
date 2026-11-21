@@ -432,16 +432,10 @@ mod name_conversion_tests {
     use sunrise_client_core::text::Text;
     use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs, LoopSide};
 
-    // Both crossing directions reject a component tree deeper than 512 nodes.
-    fn deep_engine_text() -> Text {
-        let mut value = serde_json::json!({"text": "leaf"});
-        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
-            let mut parent = serde_json::Map::new();
-            parent.insert("text".into(), "parent".into());
-            parent.insert("extra".into(), serde_json::Value::Array(vec![value]));
-            value = serde_json::Value::Object(parent);
-        }
-        Text::empty().with_component(value)
+    // Engine -> API rejects unrepresentable opaque metadata (NestedNull);
+    // API -> Engine rejects a component tree deeper than 512 nodes at the serialization boundary.
+    fn unrepresentable_engine_text() -> Text {
+        Text::empty().with_component(serde_json::json!({"text": "leaf", "test:meta": [null]}))
     }
 
     fn deep_api_text() -> mod_api::Text {
@@ -496,19 +490,23 @@ mod name_conversion_tests {
         with_names(|context, calls| {
             let username = Text::literal("Steve");
             let original = Text::literal("Original");
-            let deep = deep_engine_text();
+            let unrepresentable = unrepresentable_engine_text();
             let mut display = original.clone();
-            sunrise_client_lib::lan::hub::native_player_name_format(context, &deep, &mut display);
+            sunrise_client_lib::lan::hub::native_player_name_format(
+                context,
+                &unrepresentable,
+                &mut display,
+            );
             assert_eq!(display.component(), original.component());
             assert_eq!(calls.load(Ordering::Relaxed), 0);
 
-            display = deep.clone();
+            display = unrepresentable.clone();
             sunrise_client_lib::lan::hub::native_player_name_format(
                 context,
                 &username,
                 &mut display,
             );
-            assert_eq!(display.component_view(), deep.component_view());
+            assert_eq!(display.component_view(), unrepresentable.component_view());
             assert_eq!(calls.load(Ordering::Relaxed), 0);
 
             display = original.clone();
@@ -525,8 +523,8 @@ mod name_conversion_tests {
     #[test]
     fn tab_list_name_conversion_failure_keeps_the_engine_name() {
         with_names(|context, calls| {
-            let deep = deep_engine_text();
-            let mut display = Some(deep.clone());
+            let unrepresentable = unrepresentable_engine_text();
+            let mut display = Some(unrepresentable.clone());
             sunrise_client_lib::lan::hub::native_player_tab_list_name_format(
                 context,
                 1,
@@ -535,7 +533,7 @@ mod name_conversion_tests {
             );
             assert_eq!(
                 display.as_ref().unwrap().component_view(),
-                deep.component_view()
+                unrepresentable.component_view()
             );
             assert_eq!(calls.load(Ordering::Relaxed), 0);
 

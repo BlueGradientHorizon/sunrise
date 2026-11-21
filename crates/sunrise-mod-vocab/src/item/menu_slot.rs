@@ -63,12 +63,6 @@ impl crate::NoBackend for MenuDataRefusal {
     }
 }
 
-impl crate::AccessRefusal for MenuDataRefusal {
-    fn unavailable() -> Self {
-        Self::Unsupported
-    }
-}
-
 impl MenuRef {
     /// The stack on this menu's cursor, as a place (`ItemAccess.forPlayerCursor`): nothing once
     /// the menu is gone.

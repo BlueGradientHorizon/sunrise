@@ -85,9 +85,6 @@ Runtime files are not pack data: no datapack or resource pack can replace them a
 | Every file of `runtime/` is listed | `runtime/<name>: not listed in [runtime]` |
 | Every listed file exists | `[runtime] lists <name>, but the package has no runtime/<name>` |
 | Each file matches its SHA-512 | `runtime/<name> doesn't match its [runtime] sha512` |
-| At most 256 files | `…over the 256-file runtime cap` |
-| At most 64 MiB a file | `runtime/<name> is over 64 MiB, the per-file runtime cap` |
-| At most 256 MiB in all | `runtime/ is over 256 MiB, the package's runtime total cap` |
 | A content mod has none | `a content mod has no code, so no [runtime]` |
 
 The hashes are checked once, when the package opens: at install, at a dedicated server's or a game's start

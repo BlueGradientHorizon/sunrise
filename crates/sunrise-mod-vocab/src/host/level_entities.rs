@@ -40,7 +40,6 @@ pub trait LevelEntitiesBackend {
     /// `entity_entering_section`. Entities kept outside the residency families
     /// (lingering potion clouds, lightning bolts, eyes of ender) are not
     /// members.
-    #[access(WorldOnly)]
     fn level_visit_all_entities(
         &self,
         level: LevelRef,
@@ -76,7 +75,6 @@ pub trait LevelEntitiesBackend {
     /// that do not resolve, eyes of ender and leash knots are not visited. The projectile
     /// list is temporarily absent during `hears_projectile_impacts`; it is visible again
     /// during `projectile_impact`.
-    #[access(WorldOnly)]
     fn level_visit_entities_in(
         &self,
         level: LevelRef,
@@ -98,7 +96,6 @@ pub trait LevelEntitiesBackend {
     /// [`LevelReadError::Stale`]; a client or unavailable world access returns
     /// [`LevelReadError::Unavailable`]. Neither error calls the visitor. Collect
     /// the players you need up front if you need mutable host access afterwards.
-    #[access(WorldOnly)]
     fn level_visit_online_players(
         &self,
         level: LevelRef,
@@ -117,7 +114,6 @@ pub trait LevelEntitiesBackend {
     /// Use this when you need every hit or must process hits in nearest-first order.
     /// If you just need the nearest hit matching a filter (such as `canHitEntity` or
     /// `isPickable`), use [`LevelRef::ray_trace_nearest_entity`] instead.
-    #[access(WorldOnly)]
     fn level_ray_trace_entities(
         &self,
         level: LevelRef,
@@ -142,7 +138,6 @@ pub trait LevelEntitiesBackend {
     /// level returns [`LevelReadError::Stale`]. A negative or non-finite margin, non-finite
     /// endpoints or padded bounds, a parked or undisplayed level, or unavailable world
     /// access return [`LevelReadError::Unavailable`]. A refusal does not call `accept`.
-    #[access(WorldOnly)]
     fn level_ray_trace_nearest_entity(
         &self,
         level: LevelRef,
@@ -169,7 +164,6 @@ pub trait LevelEntitiesBackendMut {
     /// item a mod kept out (`entity_join_level`).
     /// Inside a transaction its join waits for the root commit, so a mod keeping the item out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_pop_resource(
         &mut self,
         level: LevelRef,
@@ -188,7 +182,6 @@ pub trait LevelEntitiesBackendMut {
     /// item a mod kept out (`entity_join_level`).
     /// Inside a transaction its join waits for the root commit, so a mod keeping the item out is not
     /// known at the call: the handle is returned and reads stale from the commit on.
-    #[access(WorldOnly)]
     fn level_spawn_item(
         &mut self,
         level: LevelRef,
@@ -204,7 +197,6 @@ pub trait LevelEntitiesBackendMut {
     /// deltaX, deltaY, deltaZ)`, and the same `pickup_delay` ticks before it
     /// can be picked up (`ItemEntity.setPickupDelay`). None in the same
     /// cases, and for a motion that isn't finite.
-    #[access(WorldOnly)]
     fn level_spawn_item_with_motion(
         &mut self,
         level: LevelRef,
@@ -226,7 +218,6 @@ pub trait LevelEntitiesBackendMut {
     /// one out (`entity_join_level`). False, with no orbs, for 0, a
     /// value that isn't finite, on a client, for a stale handle or a level
     /// not in place.
-    #[access(WorldOnly)]
     fn level_award_experience(
         &mut self,
         level: LevelRef,

@@ -616,18 +616,32 @@ mod tests {
             let host: &dyn Host = game;
             let water = host.fluid_key("minecraft:water").unwrap();
             let flowing = host.fluid_key("minecraft:flowing_water").unwrap();
-            let service = host.fluid_states();
-            for phase in [
-                mod_api::__private::ModPhase::Setup,
-                mod_api::__private::ModPhase::Reloading,
-            ] {
-                let _scope = mod_api::__private::PhaseOwner::scope(phase);
+            let setup: &dyn mod_api::ClientSetupContext = game;
+            let reload: &dyn mod_api::ReloadContext = game;
+            for context in [setup as &dyn mod_api::ReloadContext, reload] {
+                let water = context.fluid_key("minecraft:water").unwrap();
+                let fluids = context.fluid_states();
                 assert!(matches!(
-                    service.definition(water),
+                    fluids.definition(water),
                     Some(FluidDefinition::World { .. })
                 ));
-                assert_eq!(service.validate(water, &[]), Ok(()));
+                assert_eq!(fluids.validate(water, &[]), Ok(()));
+                let stone = context.block_state_id("minecraft:stone").unwrap();
+                assert_eq!(context.block_states().destroy_speed(stone), Some(1.5));
+
+                let item = |id| {
+                    let key = context
+                        .item_key(&mod_api::Identifier::parse(id).unwrap())
+                        .unwrap();
+                    mod_api::ItemResource::of(&mod_api::ItemStack::new(key, 1).unwrap())
+                };
+                let sword = item("minecraft:iron_sword");
+                assert!(sword.damageable(context));
+                assert!(!sword.foil(context));
+                assert!(sword.repairable(context, &item("minecraft:iron_ingot")));
+                assert!(!sword.repairable(context, &item("minecraft:stick")));
             }
+            let service = host.fluid_states();
             let tank = host.fluid_key("sunrise:definition_test").unwrap();
             assert_eq!(service.definition(tank), Some(FluidDefinition::TankOnly));
             assert_eq!(

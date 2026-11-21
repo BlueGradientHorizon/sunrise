@@ -4,11 +4,13 @@ pub trait Hooks {
     /// packs (`AddPackFindersEvent`). The builder reports the repository's pack
     /// type. Runs at startup and whenever that repository is rediscovered; no
     /// world state is available during startup registration. A callback that panics
-    /// or incurs a phase refusal contributes no packs; later callbacks still run.
+    /// contributes no packs; later callbacks still run.
     #[notes = r##"## Discoverable bundled packs
 
-`Hooks::add_pack_finders` receives a typed `HostSide` and an
-`AddPackFindersEvent`. Use `event.packs.pack_type()` to distinguish
+`Hooks::add_pack_finders` receives a `&mut dyn PackDiscoveryContext` and an
+`AddPackFindersEvent`. It provides local text operations before a game exists.
+On live rediscovery, `context.live_host()` lends the game's `HostSide`; whether
+that host has an open world is separate. Use `event.packs.pack_type()` to distinguish
 `PackType::ClientResources` from `PackType::ServerData`. Register a
 `PackRegistration` with `event.packs.add_pack_finders(...)`; registrations for
 the other repository type are ignored. This hook contributes whole packs, while
@@ -42,12 +44,14 @@ A hidden pack still loads when selected, so pair it with `always_active` for one
 that is always on. `/datapack list` and `/datapack enable|disable` still name
 hidden data packs for operators."##]
     #[hook(
+        receiver = "associated",
+        context = "pack_discovery",
         dispatch = "flat",
         side = "both",
         contract = "listen",
         staged_surface = "packs",
-        version = 3,
-        neoforge = "AddPackFindersEvent"
+        neoforge = "AddPackFindersEvent",
+        version = 4
     )]
     fn add_pack_finders(packs: &mut dyn mod_api::PackFinders);
 }

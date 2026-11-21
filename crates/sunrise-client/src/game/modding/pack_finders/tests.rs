@@ -120,7 +120,11 @@ struct Finder {
 }
 #[mod_api::__subscriptions]
 impl Hooks for Finder {
-    fn add_pack_finders(&self, _host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+    fn add_pack_finders(
+        &self,
+        _context: &mut dyn PackDiscoveryContext,
+        event: &mut AddPackFindersEvent<'_>,
+    ) {
         for (kind, path) in [
             (PackType::ClientResources, ASSET_PACK),
             (PackType::ServerData, DATA_PACK),
@@ -163,19 +167,36 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
 }
 
 #[test]
-fn restricted_pack_discovery_refuses_game_text_reads() {
+fn both_startup_repositories_lend_only_available_text_services() {
     use std::sync::{Arc, Mutex};
 
     struct Observe(Arc<Mutex<Vec<PackType>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
-        fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+        fn add_pack_finders(
+            &self,
+            context: &mut dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
             let component = mod_api::Text::literal("Startup");
-            let resolved = match host {
-                HostSide::Client(host) => host.text_string(&component),
-                HostSide::Server(host) => host.text_string(&component),
-            };
-            assert_eq!(resolved, Err(mod_api::text::TextFormError::Unavailable));
+            let fallback = mod_api::Text::new(mod_api::text::TextContent::Translatable {
+                key: "test.discovery.missing".into(),
+                fallback: Some("Fallback %s".into()),
+                arguments: vec![mod_api::Text::literal("Pack")],
+            });
+            let mut deep = mod_api::Text::literal("Deep");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            assert_eq!(context.text_string(&component), "Startup");
+            assert_eq!(context.text_string(&fallback), "Fallback Pack");
+            assert_eq!(context.text_string(&deep), "Deep");
+            assert_eq!(
+                context.text_from_json(r#""Startup""#),
+                Err(mod_api::text::TextFormError::Unavailable)
+            );
+            assert!(context.client_text().is_none());
+            assert!(context.live_host().is_none());
             self.0.lock().unwrap().push(event.packs.pack_type());
         }
     }
@@ -199,41 +220,61 @@ fn restricted_pack_discovery_refuses_game_text_reads() {
 }
 
 #[test]
-fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
-    struct FailingFinder(Finder);
+#[ignore = "daily"]
+fn live_pack_rediscovery_can_read_a_registered_client_setting() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
+
+    if run_fresh_cases(
+        "game::pack_finders::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
+        "SUNRISE_PACK_DISCOVERY_CHILD",
+        &["client"],
+    ) {
+        return;
+    }
+
+    struct SettingFinder;
     #[mod_api::__subscriptions]
-    impl Hooks for FailingFinder {
-        fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
-            self.0.add_pack_finders(host, event);
-            panic!("finder failed after offering its pack");
+    impl Hooks for SettingFinder {
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            registrar
+                .register_setting(SettingSpec::toggle("offer", "packmod.offer", false))
+                .unwrap();
+        }
+
+        fn add_pack_finders(
+            &self,
+            context: &mut dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
+            if let Some(HostSide::Client(host)) = context.live_host()
+                && host.setting("packmod", "offer").as_deref() == Some("true")
+            {
+                event
+                    .packs
+                    .add_pack_finders(PackRegistration::new(
+                        Identifier::parse(&format!("packmod:{ASSET_PACK}")).unwrap(),
+                        PackType::ClientResources,
+                        mod_api::Text::literal("Setting-selected pack"),
+                    ))
+                    .unwrap();
+            }
         }
     }
+
     let fixture = Fixture::new(false);
-    let sources = fixture.sources();
-    let finder = |required| Finder {
-        feature: false,
-        required,
-        position: PackPosition::Bottom,
-        hidden: false,
-    };
     with_mods(
-        vec![
-            ModEntry::new("failing", Box::new(FailingFinder(finder(true)))),
-            ModEntry::new("healthy", Box::new(finder(false))),
-        ]
-        .into(),
+        vec![ModEntry::new("packmod", Box::new(SettingFinder))].into(),
         || {
-            let packs = discover(PackType::ClientResources, &sources);
-            assert_eq!(packs.len(), 1);
-            assert_eq!(packs[0].id, fixture.asset_id());
-            assert!(!packs[0].selection.as_ref().unwrap().required);
-            assert_eq!(
-                mod_api::__private::take_hook_panics(),
-                [mod_api::__private::HookPanicReport {
-                    mod_id: "failing",
-                    hook: "add_pack_finders",
-                }]
-            );
+            with_client_game(|game| {
+                game.mods = fixture.sources();
+                let ty = PackType::ClientResources;
+                assert!(game.discover_mod_packs(ty).is_empty());
+                game.set_setting("packmod", "offer", "true");
+                let packs = game.discover_mod_packs(ty);
+                assert_eq!(packs.len(), 1);
+                assert_eq!(packs[0].id, fixture.asset_id());
+            });
         },
     );
 }
@@ -359,17 +400,13 @@ fn refused_registrations_leave_the_repository_unchanged() {
         )
     };
     let valid = format!("packmod:{ASSET_PACK}");
-    registry.add_pack_finders(entry(&valid)).unwrap();
-    let mut refused = entry("packmod:missing");
-    let mut title = mod_api::Text::literal("leaf");
-    for _ in 1..513 {
-        title = mod_api::Text::literal("parent").append(title);
+    let mut titled = entry(&valid);
+    titled.title = mod_api::Text::literal("leaf");
+    for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+        titled.title = mod_api::Text::literal("").append(titled.title);
     }
-    refused.title = title;
-    assert_eq!(
-        registry.add_pack_finders(refused),
-        Err(PackFinderError::Text(mod_api::TextFormError::TooDeep))
-    );
+    registry.add_pack_finders(titled).unwrap();
+    assert_eq!(registry.packs[0].title.plain(), "leaf");
     assert_eq!(registry.packs.len(), 1);
     for (path, error) in [
         (valid.as_str(), PackFinderError::Duplicate),
@@ -714,4 +751,44 @@ fn hidden_optional_data_pack_is_command_selectable_and_loads_its_function() {
             [FunctionLine::Command("say from-optional".into())]
         );
     });
+}
+
+#[test]
+fn a_panicking_pack_finder_does_not_reserve_its_pack_id() {
+    struct FailingFinder(Finder);
+    #[mod_api::__subscriptions]
+    impl Hooks for FailingFinder {
+        fn add_pack_finders(&self, context: &mut dyn PackDiscoveryContext, event: &mut AddPackFindersEvent<'_>) {
+            self.0.add_pack_finders(context, event);
+            panic!("finder failed after offering its pack");
+        }
+    }
+    let fixture = Fixture::new(false);
+    let sources = fixture.sources();
+    let finder = |required| Finder {
+        feature: false,
+        required,
+        position: PackPosition::Bottom,
+        hidden: false,
+    };
+    with_mods(
+        vec![
+            ModEntry::new("failing", Box::new(FailingFinder(finder(true)))),
+            ModEntry::new("healthy", Box::new(finder(false))),
+        ]
+        .into(),
+        || {
+            let packs = discover(PackType::ClientResources, &sources);
+            assert_eq!(packs.len(), 1);
+            assert_eq!(packs[0].id, fixture.asset_id());
+            assert!(!packs[0].selection.as_ref().unwrap().required);
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "failing",
+                    hook: "add_pack_finders",
+                }]
+            );
+        },
+    );
 }

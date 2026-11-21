@@ -816,8 +816,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             GoalOp::CanUse => goal.can_use(&mut context),
             GoalOp::CanContinue => goal.can_continue(&mut context),
             GoalOp::Start => {
@@ -833,8 +832,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 
     fn run_behavior(
@@ -862,8 +859,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
             hook: call,
             part: Some(part),
         });
-        // Outside the world (a reload or setup) a refused Host call is no answer.
-        mod_api::__private::contain_outside_world(|| match op {
+        Some(match op {
             BehaviorOp::CheckExtraStartConditions => {
                 behavior.check_extra_start_conditions(&mut context)
             }
@@ -881,8 +877,6 @@ impl mobs::part_goals::GoalHost for Game<'_> {
                 true
             }
         })
-        .map_err(|refusal| refusal.report())
-        .ok()
     }
 }
 
