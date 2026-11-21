@@ -6,7 +6,7 @@ use crate::game::{
 };
 use mod_api::{ClientHost, ClientItemUseBehavior, Hooks, ItemKey, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
-use sunrise_client::{interaction_input::Button, items::ItemStack};
+use sunrise_client::{chunk::Chunk, interaction_input::Button, items::ItemStack};
 use sunrise_core::nbt::{JavaString, Tag};
 
 const OWNER: &str = "client_use_fixture";
@@ -160,6 +160,9 @@ fn interception_does_not_send_item_use_or_release_packets() {
                 .registry
                 .default_state("minecraft:stone")
                 .unwrap();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             game.world.set(0, 64, 0, stone).unwrap();
             game.forced_hit = Some(Hit {
                 pos: [0, 64, 0],
