@@ -1100,31 +1100,23 @@ impl Game<'_> {
             let (at, yaw, pitch) = if let Some(found) = own {
                 found
             } else {
-                let [x, y, z] =
-                    [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
-                let suggestion = if legacy_personal_point {
-                    // As in end_arrival, use the shared spawn search only if this is its column.
-                    self.level
-                        .world_spawn
-                        .filter(|&[wx, _, wz]| (wx, wz) == (x, z))
+                let landing = if legacy_personal_point {
+                    self.end_exit_landing(trip.target, &mut trip.finder)
+                } else if trip.world_spawn {
+                    let suggestion =
+                        [trip.target.x, trip.target.y, trip.target.z].map(|v| v.floor() as i32);
+                    self.search_spawn(suggestion, &mut trip.finder)
                 } else {
-                    trip.world_spawn.then_some([x, y, z])
+                    Ok(trip.target)
                 };
-                let at = if let Some(suggestion) = suggestion {
-                    match self.search_spawn(suggestion, &mut trip.finder) {
-                        Ok(at) => at,
-                        Err(chunk) => {
-                            if let Some(search) = &mut trip.spawn_search {
-                                search.waiting_for = Some(chunk);
-                            }
-                            return Ok(Some(trip));
+                let at = match landing {
+                    Ok(at) => at,
+                    Err(chunk) => {
+                        if let Some(search) = &mut trip.spawn_search {
+                            search.waiting_for = Some(chunk);
                         }
+                        return Ok(Some(trip));
                     }
-                } else if legacy_personal_point {
-                    let y = self.land_column(x, z).map_or(trip.target.y, f64::from);
-                    Vec3::new(trip.target.x, y, trip.target.z)
-                } else {
-                    trip.target
                 };
                 let [yaw, pitch] = self.level.world_spawn_angle;
                 (at, yaw, pitch)

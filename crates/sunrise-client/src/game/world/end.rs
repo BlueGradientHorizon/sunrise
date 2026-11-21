@@ -780,19 +780,29 @@ impl Game<'_> {
         } else {
             [Some(yaw), Some(pitch)]
         };
+        Ok(match self.end_exit_landing(target, finder) {
+            Ok(at) => Some((at, facing)),
+            Err(chunk) => {
+                self.spawn_wait.push(chunk);
+                None
+            }
+        })
+    }
+
+    /// `TeleportTransition.findAdjustedSharedSpawnPos` on the shared spawn column;
+    /// elsewhere, use the personal column's surface or its saved height if it has none.
+    /// Returns the next chunk to load if the shared spawn search is still pending.
+    pub(super) fn end_exit_landing(
+        &self,
+        target: Vec3,
+        finder: &mut Option<PlayerSpawnFinder>,
+    ) -> std::result::Result<Vec3, (i32, i32)> {
         let (x, z) = (target.x.floor() as i32, target.z.floor() as i32);
-        // findAdjustedSharedSpawnPos: PlayerSpawnFinder around the world spawn.
         if let Some(world) = self.level.world_spawn.filter(|w| w[0] == x && w[2] == z) {
-            return Ok(match self.search_spawn(world, finder) {
-                Ok(at) => Some((at, facing)),
-                Err(chunk) => {
-                    self.spawn_wait.push(chunk);
-                    None
-                }
-            });
+            return self.search_spawn(world, finder);
         }
         let y = self.land_column(x, z).map_or(target.y, f64::from);
-        Ok(Some((Vec3::new(target.x, y, target.z), facing)))
+        Ok(Vec3::new(target.x, y, target.z))
     }
 
     /// EnderDragonFight without a dragon: once the centre of the main island

@@ -379,16 +379,14 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
     });
 }
 
-#[test]
-#[ignore = "daily"]
-fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
-    with_end_travel(None, |game, rx, heard| {
+fn cold_legacy_end_exit(point: [f64; 3], floor: [i32; 3], landing: [f64; 3]) {
+    with_end_travel(None, move |game, rx, heard| {
         game.level.world_spawn_angle = [20.0, 5.0];
         assert!(!game.streaming.is_lit(0, 0));
         put_guest_in_end_exit(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.respawn_elsewhere = None;
-            g.spawn = Some([9.5, 64.0, 9.5]);
+            g.spawn = Some(point);
             (g.yaw, g.pitch) = (-67.0, 27.0);
         });
 
@@ -402,16 +400,14 @@ fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
 
         game.enter_level(Dim::Overworld).unwrap();
         light_spawn_chunks(game);
-        assert!(
-            game.set_state_named([9, 112, 9], "minecraft:stone", &[])
-                .unwrap()
-        );
+        assert!(game.ui.rules.set_string("respawn_radius", "1"));
+        assert!(game.set_state_named(floor, "minecraft:stone", &[]).unwrap());
         game.tick_server_travel();
         game.tick_server_travel();
 
         let player = game.command_guest(2).unwrap();
         assert_eq!(player.dimension, Dim::Overworld.id());
-        assert_eq!(player.position, [9.5, 113.0, 9.5]);
+        assert_eq!(player.position, landing);
         assert_eq!([player.yaw, player.pitch], [-67.0, 27.0]);
         let packets: Vec<_> = received_packets(rx).collect();
         assert_eq!(
@@ -428,7 +424,7 @@ fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
                 _ => None,
             })
             .collect();
-        assert_eq!(positions, [([9.5, 113.0, 9.5], -67.0, 27.0)]);
+        assert_eq!(positions, [(landing, -67.0, 27.0)]);
         assert_eq!(
             *heard.lock().unwrap(),
             [
@@ -437,6 +433,19 @@ fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
             ]
         );
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_end_exit_resolves_a_cold_legacy_personal_column_and_keeps_facing() {
+    cold_legacy_end_exit([9.5, 64.0, 9.5], [9, 112, 9], [9.5, 113.0, 9.5]);
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_end_exit_searches_around_a_cold_legacy_point_on_the_shared_spawn_column() {
+    // The shared spawn column is empty; only the column east of it has a floor.
+    cold_legacy_end_exit([0.5, 64.0, 0.5], [1, 112, 0], [1.5, 113.0, 0.5]);
 }
 
 #[test]
