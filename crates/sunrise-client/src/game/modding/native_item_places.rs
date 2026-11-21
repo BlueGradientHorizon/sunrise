@@ -2706,24 +2706,19 @@ pub(super) mod tests {
                         vec![Some((ItemResource::of(&map), 1))],
                     )
                     .unwrap();
+                let player = game.player(12).unwrap();
                 let host: &mut dyn ServerHost = game;
-                let window = host
-                    .open_menu(
-                        12,
+                let menu = player
+                    .open_chest_menu(
+                        host,
                         3,
                         mod_api::Text::literal("map fixture"),
                         Vec::new(),
                         MenuReplace::CloseFirst,
                     )
-                    .unwrap()
                     .unwrap();
-                let menu = host.menu(12, window).unwrap();
-                game.player_back_mod_menu_slots(
-                    menu.fields().player,
-                    window,
-                    vec![MenuSlotPlace::EntityItems { entity, slot: 0 }],
-                )
-                .unwrap();
+                menu.back_slots(host, vec![MenuSlotPlace::EntityItems { entity, slot: 0 }])
+                    .unwrap();
                 let place = ItemPlace::MenuSlot { menu, slot: 0 };
                 assert_eq!(
                     place.with_stack(game, |stack| stack.project()).flatten(),

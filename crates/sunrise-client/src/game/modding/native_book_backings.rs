@@ -281,7 +281,7 @@ impl Backings {
         let (Some(native), Some((conn, uuid, window))) = (&self.native, self.native_menu) else {
             return self.native.is_none() && self.native_menu.is_none();
         };
-        if game.menu(uuid, window).is_none()
+        if game.native_menu_ref(uuid, window).is_none()
             || native.iter().enumerate().any(|(slot, before)| {
                 !self.native_hidden.contains(&slot)
                     && game.native_menu_place(conn, window, slot)
@@ -292,7 +292,7 @@ impl Backings {
         }
         // Live handler values are checked through the same menu slot place recipe placement
         // publishes, not the guest's cached native-menu mirror.
-        let Some(menu) = game.menu(uuid, window) else {
+        let Some(menu) = game.native_menu_ref(uuid, window) else {
             return false;
         };
         let player = menu.fields().player;

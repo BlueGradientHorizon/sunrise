@@ -381,7 +381,7 @@ impl Game<'_> {
                 slot: n,
             },
             SlotBacking::Ender(n) => MenuSlotBacking::Ender(n),
-            // Only a slot a mod backed (`player_back_mod_menu_slots`) reads as a place.
+            // Only a slot a mod backed (`MenuRef::back_slots`) reads as a place.
             SlotBacking::Native(n) => match self.native_menu_place(guest.conn, open.window, n) {
                 Some(place) => MenuSlotBacking::Place(place),
                 None if open.owned_slots().is_some() => MenuSlotBacking::Owned(n),
