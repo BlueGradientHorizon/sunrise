@@ -8,7 +8,7 @@ impl Game<'_> {
         &self,
         player: PlayerRef,
         side: LogicalSide,
-        check: SwimmingCheck,
+        check: mod_api::SwimmingCheck,
         can_start_swimming: &mut Option<bool>,
     ) {
         self.fire_can_start_swimming(player, side, check, can_start_swimming);
