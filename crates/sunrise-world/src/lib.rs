@@ -31,6 +31,7 @@ pub mod collision_exclusions;
 pub mod combat_rules;
 pub mod component_durability;
 pub mod component_patch;
+pub mod component_value;
 pub mod compression;
 pub mod conditions;
 pub mod consumable;

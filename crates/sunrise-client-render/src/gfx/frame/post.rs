@@ -114,7 +114,7 @@ impl Renderer {
                     .prepare(
                         &self.device,
                         &mut encoder,
-                        &mut self.uploads,
+                        |enc, buf, offset, data| self.uploads.buffer(enc, buf, offset, data),
                         atlas,
                         frame.weather,
                         frame.weather_time,
@@ -200,7 +200,8 @@ impl Renderer {
             // Both strokes of a high contrast outline, the black one first.
             post.set_lines(pack_draws_outline.then(|| pack_post::Lines {
                 edges: self.outline.clone(),
-                count: outline_edges as u32 * if frame.outline_high_contrast { 2 } else { 1 },
+                count: outline_edges as u32,
+                strokes: if frame.outline_high_contrast { 2 } else { 1 },
             }));
             post.set_clouds(pack_draws_clouds.then(|| pack_post::Clouds {
                 vertices: self.cloud_buffer.clone(),
@@ -224,6 +225,7 @@ impl Renderer {
                 pages,
                 &mut terrain,
                 &self.device_lost,
+                super::super::in_flight::poll_live,
             );
             // Keep the capacity, not the buffers: a page the arena frees must not stay alive
             // here until the next shader-pack frame (or forever once the pack is off).

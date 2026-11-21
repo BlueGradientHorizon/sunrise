@@ -10,7 +10,9 @@ run-name: "${{ inputs.pr && format('PR #{0} gate', inputs.pr) || inputs.prepare-
 # Scheduled events run only the hosted dispatcher and the churn report; the dispatched run uses Dyna.
 on:
   push:
-    branches: [main]
+    # release/26.3 too: a break-glass patch release needs the gate passed on a push of its exact commit
+    # (release_train.break_glass_problems).
+    branches: [main, release/26.3]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   schedule:
@@ -875,6 +877,14 @@ jobs:
         id: ignored_test_policy_files_read_cleanly
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_ignored_test_rows.py
+      # tools/port_map/: a row that names a Sunrise function still finds it, or is listed in
+      # tools/ci/port_map_known_stale.txt, which only shrinks (tools/ci/check_port_map_paths.py).
+      - name: Port-map rows find their function
+        id: port_map_rows_find_their_function
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 tools/ci/check_port_map_paths.py ${BASE_SHA:+--base "$BASE_SHA"}
       - name: Fetch locked Cargo dependencies for the vanilla build check
         id: extras_fetch
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && runner.os == 'Linux' && needs.changes.outputs.rust_required != 'false' }}

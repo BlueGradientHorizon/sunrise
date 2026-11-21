@@ -455,7 +455,11 @@ fn clone_tree(root: &Tag, java_copy: bool) -> Tag {
 
 /// Release a boundary-owned tag without recursive list/compound drops.
 pub fn discard_tag(root: Tag) {
-    let mut pending = vec![root];
+    let mut pending: Vec<_> = match root {
+        Tag::List(values) => values,
+        Tag::Compound(values) => values.into_values().collect(),
+        _ => return,
+    };
     while let Some(tag) = pending.pop() {
         match tag {
             Tag::List(values) => pending.extend(values),
@@ -1429,6 +1433,12 @@ pub fn compare_nbt(expected: &Tag, actual: Option<&Tag>) -> bool {
         }
         _ => expected == actual,
     }
+}
+
+/// Run the next recursive step over a materialized tree without a binary-read depth limit.
+#[doc(hidden)]
+pub fn with_tree_stack<T>(step: impl FnOnce() -> T) -> T {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, step)
 }
 
 #[path = "nbt_snbt.rs"]

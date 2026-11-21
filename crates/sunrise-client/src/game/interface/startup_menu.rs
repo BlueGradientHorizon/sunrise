@@ -410,6 +410,9 @@ pub(super) fn spawn_loader(
             let root =
                 packs::startup_root(&vanilla_root, &settings.resource_packs, &[], &mod_sources)
                     .or_else(|error| {
+                        if error.is::<mods::DeclarationFailures>() {
+                            return Err(error);
+                        }
                         pack_error = Some(error.to_string());
                         mods::content_root(&vanilla_root, &mod_sources)
                     });
@@ -434,9 +437,8 @@ pub(super) fn spawn_loader(
                 .map(|mut loaded| {
                     loaded.pack_error = loaded.pack_error.or(pack_error);
                     loaded
-                })
-                .map_err(|error| error.to_string());
-            let _ = sender.send(LoaderMsg::Done(result));
+                });
+            let _ = sender.send(LoaderMsg::done(result));
         })?;
     Ok((receiver, handle))
 }
@@ -1839,7 +1841,7 @@ mod tests {
             published.send(()).unwrap();
             wait.recv().unwrap();
             sender
-                .send(LoaderMsg::Done(Err("core failure".into())))
+                .send(LoaderMsg::done(Err("core failure".into())))
                 .unwrap();
         });
         published_rx.recv().unwrap();
@@ -1876,7 +1878,9 @@ mod tests {
         release.send(()).unwrap();
         worker.join().unwrap();
         loading.poll_menu_resources().unwrap();
-        assert!(matches!(loading.loaded, Some(Err(ref error)) if error == "core failure"));
+        assert!(
+            matches!(loading.take_worker_result(), Some(Err(error)) if error.to_string() == "core failure")
+        );
     }
 
     #[test]
@@ -1902,7 +1906,7 @@ mod tests {
         let (sender, receiver) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
             sender
-                .send(LoaderMsg::Done(Err("missing facts.json".into())))
+                .send(LoaderMsg::done(Err("missing facts.json".into())))
                 .unwrap();
         });
         let mut loading = loading(receiver);
@@ -1912,12 +1916,48 @@ mod tests {
         }
         // App::about_to_wait takes the result to report it; the loop may poll
         // once more before it exits, with the loader gone.
-        assert!(matches!(loading.loaded.take(), Some(Err(e)) if e == "missing facts.json"));
+        assert!(
+            matches!(loading.take_worker_result(), Some(Err(error)) if error.to_string() == "missing facts.json")
+        );
         while !loading.handle.as_ref().is_none_or(JoinHandle::is_finished) {
             std::thread::yield_now();
         }
         loading.poll_menu_resources().unwrap();
         assert!(loading.loaded.is_none());
+    }
+
+    #[test]
+    fn native_declaration_failures_survive_the_graphical_loader() {
+        use mod_api::__private::{DeclarationKind, DeclarationRefusal};
+        let report = mods::DeclarationFailures::new(vec![
+            DeclarationRefusal::new(
+                "maker",
+                DeclarationKind::Block,
+                mod_api::DeclarationError::InvalidId {
+                    id: "maker:Bad Key".into(),
+                },
+            ),
+            DeclarationRefusal::new(
+                "porter",
+                DeclarationKind::Item,
+                mod_api::DeclarationError::UnownedNamespace {
+                    id: "foreign:wrench".into(),
+                    namespace: "foreign".into(),
+                },
+            ),
+        ]);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || sender.send(LoaderMsg::done(Err(report.into()))).unwrap())
+            .join()
+            .unwrap();
+        let mut loading = loading(receiver);
+        loading.poll_menu_resources().unwrap();
+        let error = loading.take_worker_result().unwrap().err().unwrap();
+        // Entry can log each refusal instead of treating the worker failure as one string.
+        let report = error.downcast::<mods::DeclarationFailures>().unwrap();
+        let lines = report.lines();
+        assert!(matches!(lines.as_slice(), [first, second]
+            if first.contains("maker:Bad Key") && second.contains("foreign:wrench")));
     }
 
     #[test]

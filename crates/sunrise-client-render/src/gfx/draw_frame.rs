@@ -117,7 +117,12 @@ impl Renderer {
             // The calibration draw's wait is the one that can find a loss here; the acquired
             // surface texture goes back undrawn and unpresented (`render` leaves recovery to
             // its caller).
-            t.begin(&self.device, &self.queue, &self.device_lost)?;
+            t.begin(
+                &self.device,
+                &self.queue,
+                &self.device_lost,
+                super::in_flight::poll_live,
+            )?;
         }
         if self.animated_textures {
             self.hud.animate(
@@ -2062,6 +2067,14 @@ impl Renderer {
                 .as_ref()
                 .and_then(|p| p.1.as_ref())
                 .is_some_and(|p| p.has_celestial());
+        // The pack's `sky`, `stars`, `sun` and `moon`: the parts no pack program draws are the
+        // game's, which leaves the same ones out.
+        let sky_switches = self
+            .pack_post
+            .as_ref()
+            .and_then(|p| p.1.as_ref())
+            .map(|p| p.sky_switches())
+            .unwrap_or_default();
         let pack_draws_water = pack_draws_terrain
             && self
                 .pack_post
@@ -2181,7 +2194,12 @@ impl Renderer {
                 self.light_revision,
             );
             if let Some(t) = &mut native.timing {
-                t.begin(&self.device, &self.queue, &self.device_lost)?;
+                t.begin(
+                    &self.device,
+                    &self.queue,
+                    &self.device_lost,
+                    super::in_flight::poll_live,
+                )?;
                 native_sky_pass =
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
@@ -2401,6 +2419,7 @@ impl Renderer {
                 native_sky_pass,
                 celestial_vertices,
                 pack_draws_celestial,
+                sky_switches,
                 hdr_gain,
             );
             // The next stage of the mods' primitives to draw (`RenderLevelStage`): a stage this

@@ -3,15 +3,14 @@
 //! player's `PlayerEnderChestContainer`, saved as `EnderItems`).
 use super::Game;
 use sunrise_client::{
-    containers::{BlockEntity, ChestHalf, is_chest_block},
+    containers::{BlockEntity, is_chest_block},
     items::ItemStack,
     text::Text,
 };
 use sunrise_core::random::RandomSource;
 
-pub(super) fn is_shulker_box(name: &str) -> bool {
-    name.ends_with("shulker_box")
-}
+pub(super) use sunrise_gameplay::chests::{chest_connected_pos, is_shulker_box};
+use sunrise_gameplay::chests::{chest_half, facing_step};
 impl Game<'_> {
     /// `ServerPlayerGameMode.useItemOn` for a spectator: the block's menu
     /// (`BlockState.getMenuProvider`) opens, and nothing else happens. The
@@ -213,36 +212,6 @@ impl Game<'_> {
 }
 
 // ---- chest menus: double chests, titles and shift-click ----
-
-/// A chest block state's half: its block, `type` and `facing`.
-fn chest_half(state: &sunrise_world::chunk::BlockState) -> Option<ChestHalf<'_>> {
-    Some(ChestHalf {
-        block: &state.name,
-        kind: state.properties.get("type")?,
-        facing: state.properties.get("facing")?,
-    })
-}
-fn facing_step(facing: &str) -> (i32, i32) {
-    match facing {
-        "north" => (0, -1),
-        "south" => (0, 1),
-        "west" => (-1, 0),
-        _ => (1, 0),
-    }
-}
-
-/// `ChestBlock.getConnectedBlockPos` for a chest whose `type` is not single:
-/// where its other half belongs, whatever stands there now.
-pub(super) fn chest_connected_pos(
-    state: &sunrise_world::chunk::BlockState,
-    pos: [i32; 3],
-) -> Option<[i32; 3]> {
-    if !is_chest_block(&state.name) {
-        return None;
-    }
-    let (dx, dz) = chest_half(state)?.connected_step()?;
-    Some([pos[0] + dx, pos[1], pos[2] + dz])
-}
 
 impl Game<'_> {
     /// The other half of the open double chest and whether the open one is
@@ -584,6 +553,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_client::containers::ChestHalf;
 
     /// `ChestBlockEntity`'s opener counter plays the block's own hinge
     /// sound: a copper chest's, by weather state, not the wooden chest's.

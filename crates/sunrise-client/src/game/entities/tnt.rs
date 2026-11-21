@@ -480,6 +480,13 @@ impl Game<'_> {
             self.bubble_column_particles(pos);
         }
     }
+    pub(super) fn take_removed_tnt(&mut self, id: u32) -> Option<PrimedTnt> {
+        self.with_destroying_vehicle(super::commands::Target::Tnt(id), |game| {
+            let i = game.tnts.iter().position(|t| t.id == id)?;
+            Some(game.tnts.remove(i))
+        })?
+    }
+
     /// `PrimedTnt.tick` for every primed TNT, in order; an expired fuse
     /// explodes immediately (later TNT in the list feel its knockback this
     /// tick). TNT primed by an explosion starts ticking next tick.
@@ -511,7 +518,10 @@ impl Game<'_> {
         for pos in tops {
             self.bubble_column_particles(pos);
         }
-        let t = &mut self.tnts[i];
+        let Some(i) = super::native_ticks::place(&self.tnts, i, |t| t.id == id) else {
+            return Ok(());
+        };
+        let t = &self.tnts[i];
         if t.fuse <= 0 {
             let center = [
                 t.position.x,
@@ -524,7 +534,9 @@ impl Game<'_> {
             let silent = self.entity_silent(id);
             let (owner, guest) = self.tnt_owner(id, owner, guest);
             let in_water = self.bounds_in_water(bounds);
-            self.tnts.remove(i);
+            if self.take_removed_tnt(id).is_none() {
+                return Ok(());
+            }
             // PrimedTnt.tick: with `tnt_explodes` off it goes away without exploding.
             if !self
                 .ui
@@ -548,7 +560,11 @@ impl Game<'_> {
                     super::explosion::ExplosionSource::default()
                         .with_silence(silent)
                         .with_portal_proof(used_portal)
-                        .with_entity(id, "minecraft:tnt"),
+                        .with_entity(
+                            id,
+                            "minecraft:tnt",
+                            sunrise_client::health::DirectEntity::Other,
+                        ),
                 )
             });
             self.combat.blast_owner = None;

@@ -437,7 +437,7 @@ where
 /// Validate a mod value against the game's registry before admitting it to engine state.
 #[path = "api_values/content_declarations.rs"]
 mod content_declarations;
-pub(in crate::game) use content_declarations::push_reaction;
+pub(in crate::game) use content_declarations::{api_push_reaction, push_reaction};
 
 #[path = "api_values/stack_count.rs"]
 mod stack_count;
@@ -1162,11 +1162,12 @@ pub(crate) fn menu_still_valid(
     menu: &str,
     pos: Option<[i32; 3]>,
     eye: [f64; 3],
+    opening_item: Option<mod_api::MenuOpeningItem>,
     valid: &mut bool,
 ) {
     let reader = sunrise_client_render::api_context::LoopReader(context);
     let context = reader.context();
-    mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, valid);
+    mod_api::dispatch_menu_still_valid(&context, player, menu, pos, eye, opening_item, valid);
 }
 
 impl TryIntoApi for crate::stations::AnvilResult {
@@ -2584,11 +2585,10 @@ impl TryIntoEngine<()> for mod_api::BlockEntityTypeDecl {
     }
 }
 pub(in crate::game) fn block_entity_declarations()
--> Vec<sunrise_mod_package::content::BlockEntityType> {
+-> impl Iterator<Item = (&'static str, sunrise_mod_package::content::BlockEntityType)> {
     mod_api::__private::block_entity_types()
         .iter()
-        .map(|decl| decl.try_into_engine(&()).unwrap())
-        .collect()
+        .map(|(owner, decl)| (*owner, decl.try_into_engine(&()).unwrap()))
 }
 
 #[cfg(test)]
@@ -2612,9 +2612,10 @@ mod declaration_snapshot_tests {
             }
         }
         install_parts(&[mod_api::ModEntry::new("test", Box::new(Mod))]).unwrap();
-        let declarations = block_entity_declarations();
-        assert_eq!(declarations[0].id, "test:machine");
-        assert_eq!(declarations[0].blocks, ["test:second", "test:first"]);
+        let (owner, declaration) = block_entity_declarations().next().unwrap();
+        assert_eq!(owner, "test");
+        assert_eq!(declaration.id, "test:machine");
+        assert_eq!(declaration.blocks, ["test:second", "test:first"]);
         let registry = game_rule_registry();
         let key = *KEY.get().unwrap();
         assert_eq!(
@@ -2919,9 +2920,10 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
         mod_api::__private::resolve_block_entity_types(
             types
                 .names()
-                .chain(declared.iter().map(|kind| kind.id.as_str())),
+                .chain(declared.iter().map(|(_, kind)| kind.id.as_str())),
             |id| {
-                (types.key(id).is_some() || declared.iter().any(|kind| kind.id == id)).then_some(())
+                (types.key(id).is_some() || declared.iter().any(|(_, kind)| kind.id == id))
+                    .then_some(())
             },
         )
         .unwrap();

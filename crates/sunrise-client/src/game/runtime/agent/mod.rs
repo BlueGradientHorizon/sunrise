@@ -6,8 +6,7 @@
 #[cfg(test)]
 #[path = "face_pick_tests.rs"]
 mod face_pick_tests;
-#[path = "agent_navigation.rs"]
-mod navigation;
+use sunrise_client_gameplay::agent_navigation as navigation;
 
 use super::event_loop::EventLoopCtl;
 use super::owner_link::{ControlRequest, OwnerRequest};

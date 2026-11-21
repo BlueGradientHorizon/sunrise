@@ -780,7 +780,9 @@ mod tests {
                 registrar.block_entity_part(&kind, PanelEntity).unwrap();
             }
             fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
-                event.blocks.push(Block::new(PANEL, "minecraft:stone"));
+                event
+                    .register(Block::new(PANEL, "minecraft:stone"))
+                    .unwrap();
             }
         }
         #[mod_api::sunrise_part]

@@ -9,7 +9,7 @@ use super::{
 };
 use crate::join_seq::JoinList;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_core::nbt::{Compound, Tag};
+use sunrise_core::nbt::Tag;
 
 /// The goal flags a controlling passenger takes from its vehicle.
 const CONTROLLED: u8 = MOVE | JUMP | LOOK;
@@ -93,6 +93,15 @@ pub fn happy_ghast_attachment(index: usize) -> [f64; 3] {
     let [x, y, z] = SEATS[index.min(SEATS.len() - 1)];
     pt(x, y, z)
 }
+/// `HappyGhast.BABY_DIMENSIONS` scale the seats by `0.2375F` before `getScale` does.
+fn happy_ghast_seat(index: usize, baby: bool) -> [f64; 3] {
+    let [x, y, z] = happy_ghast_attachment(index);
+    if !baby {
+        return [x, y, z];
+    }
+    let k = f64::from(0.2375_f32);
+    [x * k, y * k, z * k]
+}
 /// `Pig.getDefaultDimensions` and other species' age-specific passenger attachments.
 fn base_attachment_at(v: &Mob, index: usize) -> [f64; 3] {
     let baby = v.is_baby();
@@ -136,7 +145,7 @@ fn base_attachment_at(v: &Mob, index: usize) -> [f64; 3] {
         Species::Endermite | Species::Silverfish => up(0.2375),
         Species::Enderman => up(2.80625),
         Species::Ghast => up(4.0625),
-        Species::HappyGhast => happy_ghast_attachment(index),
+        Species::HappyGhast => happy_ghast_seat(index, baby),
         Species::Warden => up(3.15),
         Species::Sniffer => up(2.09375),
         Species::Fox => pt(0.0, 0.6375, -0.25),
@@ -736,7 +745,7 @@ pub fn keeps_alive(m: &Mob) -> bool {
 }
 
 /// `IsChickenJockey`, `SkeletonTrap` and `SkeletonTrapTime`.
-pub fn write_nbt(m: &Mob, map: &mut Compound) {
+pub fn write_nbt(m: &Mob, map: &mut crate::entity_nbt::EntityTagWriter) {
     match m.species() {
         Species::Chicken => {
             map.insert(
