@@ -854,8 +854,8 @@ impl GameLevel<'_> {
         let generation = self.world.block_entities.generation(&key);
         // A mod's block entity answers its parts in place (its slot, so its
         // attachments, stay until `put`), as vanilla's override runs on `this`.
-        // One out for its own tick or menu button, which an empty id stands in
-        // for, isn't here to answer: its part isn't asked.
+        // A ticker leaves its row resident. A menu operation that detached the row
+        // leaves an empty id in its place, which cannot answer its part.
         let mut outputs = RemovalOutputs::default();
         if side_effects
             && matches!(
@@ -1645,12 +1645,11 @@ mod tests {
         });
     }
 
-    /// A mod block entity that replaces its own block during its tick is out of the level for
-    /// the call, so its removal doesn't reach its part: the part isn't asked, its attachments
-    /// go with the block entity, and only its container slots come back out.
+    /// LevelChunk ticks the resident row and calls its pre-removal effects before retiring it.
+    /// Replacing its own block must spill both the container contents and the Part's gold.
     #[test]
     #[ignore = "daily"]
-    fn a_block_entity_removing_itself_in_its_tick_is_not_asked() {
+    fn a_block_entity_removing_itself_in_its_tick_runs_resident_removal() {
         use mod_api::Holder;
         use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED};
         use std::sync::Arc;
@@ -1658,7 +1657,7 @@ mod tests {
         use sunrise_client::chunk::Chunk;
         use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
         let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
-            "game::spill::tests::a_block_entity_removing_itself_in_its_tick_is_not_asked",
+            "game::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal",
         ) else {
             return;
         };
@@ -1702,15 +1701,22 @@ mod tests {
             HOARD.set(host, holder, 5).unwrap();
             let asked = HOARD_ASKED.load(Ordering::Relaxed);
             let dropped = game.dropped.len();
-            game.tick_mod_block_entity(key);
+            assert!(game.tick_mod_block_entity(key));
             assert_eq!(game.world.block(pos.x, pos.y, pos.z), granite);
-            assert_eq!(HOARD_ASKED.load(Ordering::Relaxed), asked);
+            assert_eq!(HOARD_ASKED.load(Ordering::Relaxed), asked + 1);
+            assert!(game.world.block_entities.get(&key).is_none());
             assert!(game.world.block_entities.attachments(key).is_none());
             let out: Vec<_> = game.dropped[dropped..]
                 .iter()
                 .map(|d| (d.stack.item.to_string(), d.stack.count))
                 .collect();
-            assert_eq!(out, [("minecraft:diamond".to_owned(), 3)]);
+            assert_eq!(
+                out,
+                [
+                    ("minecraft:diamond".to_owned(), 3),
+                    ("minecraft:gold_ingot".to_owned(), 5),
+                ]
+            );
         });
     }
     use sunrise_client::{block_entity_item, item_data, mobs::raider, save};

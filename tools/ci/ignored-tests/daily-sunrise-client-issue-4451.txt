@@ -2450,7 +2450,7 @@ sunrise-client game::spawn_yaw_tests::a_summoned_mob_without_nbt_faces_south lib
 sunrise-client game::spawner::tests::a_running_delay_counts_down_without_drawing lib daily resources
 sunrise-client game::spill::crafter_drop_name_tests::actual_crafter_destruction_keeps_source_name_off_the_dropped_item lib daily resources
 sunrise-client game::spill::tests::a_block_entity_part_gives_back_what_it_held_when_removed lib daily resources
-sunrise-client game::spill::tests::a_block_entity_removing_itself_in_its_tick_is_not_asked lib daily resources
+sunrise-client game::spill::tests::a_block_entity_removing_itself_in_its_tick_runs_resident_removal lib daily resources
 sunrise-client game::spill::tests::block_drops_draws_before_the_event_and_cancel_empties_the_break lib daily resources
 sunrise-client game::splash_water::tests::a_doused_campfire_posts_block_change_from_the_potion_owner lib daily resources
 sunrise-client game::stand_break_loot_tests::a_burnt_out_stand_drops_its_loot_table lib daily resources

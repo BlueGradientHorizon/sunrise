@@ -1461,7 +1461,8 @@ pub trait LevelHost {
         None
     }
     /// `BlockGetter.getBlockEntity` in this level. None if absent, unloaded, outside the
-    /// build height, or out for its own tick. Never loads chunks or opens loot containers.
+    /// build height, or temporarily detached for a menu operation. Tick callbacks keep the
+    /// entity resident until removal. Never loads chunks or opens loot containers.
     /// Clients return their local block entity handle, not unsynced server contents. Owning
     /// game thread only, never reachable from a worker-thread hook body.
     fn block_entity(&self, _pos: [i32; 3]) -> Option<crate::BlockEntityRef> {

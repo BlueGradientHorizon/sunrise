@@ -6,13 +6,13 @@ use crate::*;
 pub trait BlockEntitiesHost {
     /// Side: both.
     /// Find a block entity in a loaded chunk of an open level, or on a client in
-    /// the level it shows. An entity taken out for its tick cannot be read in that tick.
+    /// the level it shows. Tick callbacks keep the entity resident and readable until removal.
     fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef>;
     /// Side: both.
     /// The handle [`BlockEntitiesHost::block_entity`] gives, and also for a block entity
-    /// out of the world for its own tick, whose identity and attachments stay in place
-    /// meanwhile: what its Part state (`BlockEntityPartState`) checks a handle against.
-    /// Its data reads still find nothing during that tick.
+    /// temporarily detached for a menu operation. Its identity and attachments stay in place,
+    /// so its Part state (`BlockEntityPartState`) can still check its handle even though
+    /// data reads find nothing until the row is put back.
     fn block_entity_identity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef>;
 }
 /// The server host's methods of the `block_entities` area, implemented by the game and reached through [`ServerHost`].
