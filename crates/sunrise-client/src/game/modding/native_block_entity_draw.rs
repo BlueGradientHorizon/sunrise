@@ -1700,25 +1700,19 @@ impl Game<'_> {
 
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
     /// at its pose, as `EntityModelSet.bakeLayer` bakes it: one a native mod
-    /// registered (`native_register_layer_definitions`), or vanilla's, by the name
-    /// `entity-models.json` gives it (`minecraft:zombie#main`,
-    /// `minecraft:player#main`). The tree is the caller's own copy: bake it
-    /// once, as a renderer does, and set its parts' poses each frame. None
-    /// for a layer neither has. A vanilla layer no mob has (a player's, a
-    /// chest's) is read from the resources each call, so slow. API
-    /// @API:model_layers@.
+    /// registered (`native_register_layer_definitions`), or a vanilla or
+    /// resource-pack layer by the name `entity-models.json` gives it
+    /// (`minecraft:zombie#main`, `minecraft:player#main`,
+    /// `minecraft:chest#main`). All vanilla and resource-pack layers are
+    /// indexed at client resource load and reload, so `bake_layer` never reads
+    /// from disk. The tree is the caller's own copy: bake it once, as a
+    /// renderer does, and set its parts' poses each frame. None for a layer
+    /// neither has. API @API:model_layers@.
     pub(super) fn bake_layer(&self, layer: &str) -> Option<ModelPart> {
         if let Some(definition) = model_layers::registered(layer) {
             return Some(definition.bake_root());
         }
-        let key = layer.strip_prefix("minecraft:")?;
-        if let Some(part) = self.res.mob_types().values().find_map(|t| t.layer(key)) {
-            return Some(model_layers::from_part(part));
-        }
-        let models = sunrise_client::mobs::EntityModelDocument::load(&self.vanilla_root()).ok()?;
-        models
-            .model(layer)
-            .map(|part| model_layers::from_part(&part))
+        self.entity_models.layers.get(layer).cloned()
     }
 
     /// Draws `stack` under `draw`'s pose as an item is drawn in the world

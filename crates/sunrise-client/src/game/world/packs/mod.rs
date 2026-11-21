@@ -486,6 +486,7 @@ impl Game<'_> {
             block_entity_shapes,
             waypoint_styles,
             armor_stand_assets,
+            entity_models,
             frame_models,
             sounds,
             language,
@@ -549,6 +550,7 @@ impl Game<'_> {
         ] = frame_models;
         self.waypoint_styles = waypoint_styles;
         self.armor_stand_assets.apply_resources(armor_stand_assets);
+        self.entity_models = entity_models;
         self.random_tick_sections.clear();
         self.portals.sections.clear();
         self.options.resources = root.clone();
@@ -768,7 +770,10 @@ pub(super) fn stage_pack(
     ));
     let block_entity_shapes = res.block_entity_render().shapes_for(&source);
     let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
-    let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
+    let entity_models_doc = sunrise_client::mobs::EntityModelDocument::load(&root).ok();
+    let armor_stand_assets =
+        super::armor_stands::ArmorStandAssets::load(&source, entity_models_doc.as_ref());
+    let entity_models = super::EntityModels::load(entity_models_doc.as_ref());
     let frame_models = super::frames::bake_frames(pack.render.model_library.as_deref().ok());
     progress.set(3);
     Ok(StagedPack {
@@ -781,6 +786,7 @@ pub(super) fn stage_pack(
         block_entity_shapes,
         waypoint_styles,
         armor_stand_assets,
+        entity_models,
         frame_models,
         sounds,
         language,
@@ -793,6 +799,7 @@ pub(super) struct StagedPack {
     pub root: PathBuf,
     pub waypoint_styles: sunrise_client::locator_bar::WaypointStyles,
     pub armor_stand_assets: super::armor_stands::ArmorStandAssets,
+    pub entity_models: super::EntityModels,
     pub frame_models: [super::frames::FrameModel; 4],
     /// The mod reload listeners' prepared applies, run when the rest of the
     /// staged pack is published.
