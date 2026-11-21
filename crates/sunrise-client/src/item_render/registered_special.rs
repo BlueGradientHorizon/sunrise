@@ -5,7 +5,7 @@ use super::{
 };
 use glam::{Mat4, Vec3};
 use mod_api::{
-    __private::{BakedSpecialModelRenderer, SpecialModelSubmission},
+    __private::{BakedSpecialModelRenderer, SpecialModelSubmission, game::CallbackOwner},
     ItemDisplayContext, ItemStack, SpecialModelBakeContext, SpecialModelCollector,
     SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry, SpecialModelQuad,
     SpecialModelStack, SpecialModelTints,
@@ -13,11 +13,7 @@ use mod_api::{
 use std::{
     collections::BTreeMap,
     ops::ControlFlow,
-    panic::{AssertUnwindSafe, catch_unwind},
-    sync::{
-        Arc, Mutex, OnceLock, PoisonError,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, OnceLock},
 };
 use sunrise_assets::{
     DecodeError,
@@ -31,7 +27,24 @@ use sunrise_assets::{
     model::Material,
 };
 
-pub type SpecialModelFactories = BTreeMap<String, SpecialModelFactory>;
+pub type SpecialModelFactories = BTreeMap<String, OwnedSpecialModelFactory>;
+
+/// One winning type, with the owner of its factory and retained renderer callbacks.
+pub struct OwnedSpecialModelFactory {
+    factory: SpecialModelFactory,
+    bake_owner: CallbackOwner,
+    draw_owner: CallbackOwner,
+}
+
+impl OwnedSpecialModelFactory {
+    pub fn new(id: &'static str, factory: SpecialModelFactory) -> Self {
+        Self {
+            factory,
+            bake_owner: CallbackOwner::for_mod(id),
+            draw_owner: CallbackOwner::for_mod(id),
+        }
+    }
+}
 
 pub(super) static FACTORIES: OnceLock<SpecialModelFactories> = OnceLock::new();
 
@@ -53,8 +66,7 @@ pub struct BakedSpecialModel {
     pub kind: Box<str>,
     renderer: BakedSpecialModelRenderer,
     base: SpecialLayerBase,
-    /// A draw failure disables this type in this resource load only.
-    failed: Arc<AtomicBool>,
+    owner: CallbackOwner,
 }
 
 /// The item geometry and extents retained by an API lease from this bake context.
@@ -160,16 +172,22 @@ impl ItemRenderer {
             let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };
+            if !factory.bake_owner.is_enabled() {
+                return Ok(None);
+            }
             let renderer = factory
-                .bake(SpecialModelConfig::new(fields), &SpecialBaker(self))
+                .bake_owner
+                .call("special model factory", "special_model_bake", || {
+                    factory
+                        .factory
+                        .bake(SpecialModelConfig::new(fields), &SpecialBaker(self))
+                })
+                .and_then(|result| {
+                    result.map_err(|error| format!("mod {}: {error}", factory.bake_owner.id()))
+                })
                 .map_err(|error| format!("special model {kind}: {error}"))?;
             let base = self.bake(base);
             let particle = Arc::from(sprite_name(&base.particle.sprite));
-            let mut failures = self
-                .special_failures
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            let failed = failures.entry(kind.to_owned()).or_default().clone();
             Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
                 kind: kind.into(),
                 renderer,
@@ -177,7 +195,7 @@ impl ItemRenderer {
                     model: base,
                     particle,
                 },
-                failed,
+                owner: factory.draw_owner.clone(),
             }))))
         })
     }
@@ -197,7 +215,7 @@ impl ItemRenderer {
         let Some(model) = model.0.downcast_ref::<BakedSpecialModel>() else {
             return ControlFlow::Break(());
         };
-        if model.failed.load(Ordering::Relaxed) {
+        if !model.owner.is_enabled() {
             return ControlFlow::Break(());
         }
         let Some(input) = env.special_model_input(model, ancestor.stack, ctx) else {
@@ -221,42 +239,37 @@ impl ItemRenderer {
             failure: None,
             committed: false,
         };
-        let result = catch_unwind(AssertUnwindSafe(|| {
-            let mut pose = PoseWriter {
-                layer: &mut writer,
-                local_pose: AssetMatrix::IDENTITY,
-            };
-            model.renderer.submit(
-                input.host,
-                &stack,
-                &input.context,
-                &mut SpecialModelCollector::new(&mut pose),
-            )
-        }));
-        match result {
-            // A panic is a fault even when the renderer had already met a nested refusal.
-            Err(_) => writer.failure = Some(SubmissionFailure::Fault("it panicked".into())),
-            Ok(Err(error)) if writer.failure.is_none() => {
-                writer.failure = Some(SubmissionFailure::Fault(error));
-            }
-            _ => {}
+        let result = model
+            .owner
+            .call("special model renderer", "special_model_draw", || {
+                let mut pose = PoseWriter {
+                    layer: &mut writer,
+                    local_pose: AssetMatrix::IDENTITY,
+                };
+                model.renderer.submit(
+                    input.host,
+                    &stack,
+                    &input.context,
+                    &mut SpecialModelCollector::new(&mut pose),
+                )
+            });
+        let Ok(result) = result else {
+            return ControlFlow::Break(());
+        };
+        if let Some(error) = writer
+            .failure
+            .as_deref()
+            .or_else(|| result.as_ref().err().map(String::as_str))
+        {
+            log::warn!(
+                "mod {}: special model renderer {} refused its draw: {error}",
+                model.owner.id(),
+                model.kind
+            );
+            return ControlFlow::Break(());
         }
-        match writer.failure.as_ref() {
-            Some(SubmissionFailure::Fault(error)) => {
-                if !model.failed.swap(true, Ordering::Relaxed) {
-                    log::warn!(
-                        "Sunrise: the special model renderer of {} failed ({error}); its models draw the missing model until resources reload",
-                        model.kind
-                    );
-                }
-                ControlFlow::Break(())
-            }
-            Some(SubmissionFailure::Nested) => ControlFlow::Break(()),
-            None => {
-                writer.committed = true;
-                ControlFlow::Continue(())
-            }
-        }
+        writer.committed = true;
+        ControlFlow::Continue(())
     }
 }
 
@@ -270,11 +283,6 @@ struct SpecialLayerBase {
 pub(super) struct StackAncestor<'a> {
     pub(super) stack: &'a StackView,
     pub(super) parent: Option<&'a StackAncestor<'a>>,
-}
-
-enum SubmissionFailure {
-    Nested,
-    Fault(String),
 }
 
 /// Writes one special layer into the item state. Dropping without a commit rolls back every
@@ -291,7 +299,7 @@ struct LayerWriter<'out, 'draw> {
     foil: FoilType,
     outer_transform: AssetMatrix,
     display_transform: LayerTransform,
-    failure: Option<SubmissionFailure>,
+    failure: Option<String>,
     committed: bool,
 }
 
@@ -335,7 +343,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         let local_pose = self.local_pose.mul(&pose);
         if !local_pose.is_finite() {
             let error = "the composed special model pose is not finite";
-            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
+            self.layer.failure = Some(error.into());
             return Err(error.into());
         }
         let mut child = PoseWriter {
@@ -346,7 +354,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         if let Err(error) = &result
             && self.layer.failure.is_none()
         {
-            self.layer.failure = Some(SubmissionFailure::Fault(error.clone()));
+            self.layer.failure = Some(error.clone());
         }
         result
     }
@@ -369,7 +377,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             })
         else {
             let error = "the special model geometry was not baked for this resource generation";
-            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
+            self.layer.failure = Some(error.into());
             return Err(error.into());
         };
         let matrix = self.matrix();
@@ -396,16 +404,17 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             return Err("the special layer was already refused".into());
         }
         let Some((stack, display)) = layer.env.special_model_stack(stack, display) else {
-            layer.failure = Some(SubmissionFailure::Nested);
-            return Err("the nested special model stack or display context is unreadable".into());
+            let error = "the nested special model stack or display context is unreadable";
+            layer.failure = Some(error.into());
+            return Err(error.into());
         };
         if *layer.remaining == 0
             || std::iter::successors(Some(layer.ancestor), |entry| entry.parent)
                 .any(|entry| *entry.stack == stack)
         {
-            warn_refused_nesting_once(&stack.item);
-            layer.failure = Some(SubmissionFailure::Nested);
-            return Err("the nested special model stack is a cycle or past the budget".into());
+            let error = "the nested special model stack is a cycle or past the budget";
+            layer.failure = Some(error.into());
+            return Err(error.into());
         }
         *layer.remaining -= 1;
         let ancestor = StackAncestor {
@@ -429,8 +438,9 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             )
             .is_break()
         {
-            layer.failure = Some(SubmissionFailure::Nested);
-            return Err("the nested special model refused its draw".into());
+            let error = "the nested special model refused its draw";
+            layer.failure = Some(error.into());
+            return Err(error.into());
         }
         // Compose after resolving the child: preserve parent * (child * grandchild) order
         // as well as the child's own display, foil and tint state.
@@ -439,20 +449,5 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             layer.matrix = matrix * layer.matrix;
         }
         Ok(())
-    }
-}
-
-/// Says once per item that a special model renderer's nested stack was refused as a cycle or past
-/// the budget.
-fn warn_refused_nesting_once(item: &str) {
-    static SEEN: Mutex<std::collections::BTreeSet<String>> =
-        Mutex::new(std::collections::BTreeSet::new());
-    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
-    if !seen.contains(item) {
-        seen.insert(item.to_owned());
-        drop(seen);
-        log::warn!(
-            "Sunrise: a special model renderer's nested stack of {item} is a cycle or past the nesting budget; the special layer draws the missing model"
-        );
     }
 }

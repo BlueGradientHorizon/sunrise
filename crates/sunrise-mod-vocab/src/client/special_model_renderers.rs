@@ -57,8 +57,9 @@ impl SpecialModelFactory {
     /// naming this type, the game decodes and then bakes once per client resource load. The
     /// resulting renderer owns any configuration or geometry it needs during drawing.
     ///
-    /// A decode or bake error or panic refuses the enclosing item definition, not the whole
-    /// resource load. The game does not try a lower pack's definition.
+    /// The game calls both functions as the registering mod. An error refuses the enclosing item
+    /// definition without trying a lower pack's definition. A panic also disables this type's
+    /// factory for the session.
     pub fn new<C: 'static, R: SpecialModelRenderer>(
         decode: impl for<'a> Fn(SpecialModelConfig<'a>) -> Result<C, String> + Send + Sync + 'static,
         bake: impl Fn(C, &dyn SpecialModelBakeContext) -> Result<R, String> + Send + Sync + 'static,
@@ -365,8 +366,9 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
     /// The typed value passed from extraction to submission during the same draw.
     type Argument;
 
-    /// Read the stack and host state needed by [`Self::submit`]. Read only the components you
-    /// need; the game does not build an owned stack or clone the component patch for this call.
+    /// Read the stack and host state needed by [`Self::submit`] as the registering mod. Read only
+    /// the components you need; the game does not build an owned stack or clone the component
+    /// patch for this call.
     fn extract_argument(
         &self,
         host: &dyn ClientHost,
@@ -374,11 +376,10 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
     ) -> Self::Argument;
 
     /// Submit the geometry and stacks for this draw in order. A submission fault, including a
-    /// callback error, panic in either callback or invalid geometry or pose, discards the layer
-    /// and disables the offending type until resources reload. Unreadable input or a nested
-    /// refusal discards the enclosing layer without disabling it. Use `?` to propagate the
-    /// collector's errors. Only the outermost refused layer draws a missing model; unrelated
-    /// layers are left intact.
+    /// callback error, panic in either callback or invalid geometry or pose, discards the layer.
+    /// Only a panic disables the callback for the session, including across resource reloads.
+    /// Use `?` to propagate the collector's errors. Only the outermost refused layer draws a
+    /// missing model; unrelated layers are left intact.
     fn submit(
         &self,
         argument: &Self::Argument,
@@ -411,11 +412,13 @@ pub struct ReplacedSpecialModelRenderer {
 }
 
 // no wire: process-local listener or callback storage; trait objects are invoked through host dispatch, not serialized.
+type SpecialModelRegistration = (Option<&'static str>, SpecialModelFactory);
+
 /// The game's [`SpecialModelRenderers`]: the registrations by type.
 #[derive(Default)]
 // exhaustive: its fields are private; the game builds it
 pub struct SpecialModelRendererRegistry {
-    factories: BTreeMap<String, (Option<&'static str>, SpecialModelFactory)>,
+    factories: BTreeMap<String, SpecialModelRegistration>,
     replaced: Vec<ReplacedSpecialModelRenderer>,
     initial: Vec<(String, Option<&'static str>)>,
 }
@@ -444,20 +447,15 @@ impl SpecialModelRendererRegistry {
             .map(|(kind, owner)| (kind.as_str(), *owner))
     }
 
-    /// Consume the registry into its winning factories, keyed by type, and the list of
-    /// registrations that replaced an earlier one.
+    /// Consume the registry into its winning `(owner, factory)` pairs, keyed by type, and
+    /// the list of registrations that replaced an earlier one.
     pub fn into_renderers(
         self,
     ) -> (
-        BTreeMap<String, SpecialModelFactory>,
+        BTreeMap<String, SpecialModelRegistration>,
         Vec<ReplacedSpecialModelRenderer>,
     ) {
-        let factories = self
-            .factories
-            .into_iter()
-            .map(|(kind, (_, factory))| (kind, factory))
-            .collect();
-        (factories, self.replaced)
+        (self.factories, self.replaced)
     }
 }
 
@@ -497,7 +495,7 @@ mod tests {
         );
         let (renderers, replaced) = registry.into_renderers();
         assert_eq!(renderers.len(), 2);
-        assert!(Arc::ptr_eq(&renderers["a:pan"].0, &last.0));
+        assert!(Arc::ptr_eq(&renderers["a:pan"].1.0, &last.0));
         assert_eq!(replaced.len(), 1);
         assert_eq!(replaced[0].kind, "a:pan");
     }

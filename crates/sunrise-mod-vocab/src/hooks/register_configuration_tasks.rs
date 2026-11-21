@@ -5,14 +5,16 @@ pub trait Hooks {
     /// The profile has no player handle yet. Use `event.connection.has_channel`
     /// to check what the peer negotiated and `event.register(task)` to give this
     /// connection an owned task. An empty or duplicate type refuses admission.
-    /// Tasks start in registration order and can finish, wait or fail this peer.
+    /// If a listener hits a phase refusal, discard only its staged tasks and type checks;
+    /// other listeners' registrations stand. Tasks start in registration order and can
+    /// finish, wait or fail this peer.
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
     #[hook(
         dispatch = "flat",
         side = "server",
         contract = "listen",
-        version = 2,
+        version = 3,
         neoforge = "RegisterConfigurationTasksEvent"
     )]
     fn register_configuration_tasks(

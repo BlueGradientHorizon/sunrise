@@ -279,17 +279,29 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 rng: random,
                 pos,
             };
-            match &row.predicates {
-                data::SpawnPredicates::Replacement(predicate) => {
-                    predicate.test(row.kind, &mut ctx, reason, pos)
+            let test = |p: &data::OwnedSpawnPredicate, ctx: &mut SpawnContext<'_, L, _>| {
+                if !p.owner.is_enabled() {
+                    return None;
                 }
+                p.owner
+                    .call("spawn placement", "spawn_placement_predicate", || {
+                        p.predicate.test(row.kind, ctx, reason, pos)
+                    })
+                    .ok()
+            };
+            match &row.predicates {
+                data::SpawnPredicates::Replacement(predicate) => test(predicate, &mut ctx)
+                    .unwrap_or_else(|| {
+                        row.vanilla
+                            && placement_predicate(kind.species, l, reason, ctx.rng, x, y, z)
+                    }),
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
-                        Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
+                        Some(predicate) => test(predicate, &mut ctx).unwrap_or(false),
                         None => placement_predicate(kind.species, l, reason, ctx.rng, x, y, z),
                     };
-                    (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
-                        && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
+                    (original || or.iter().any(|p| test(p, &mut ctx) == Some(true)))
+                        && and.iter().all(|p| test(p, &mut ctx) != Some(false))
                 }
             }
         }

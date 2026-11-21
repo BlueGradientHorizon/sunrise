@@ -1,9 +1,6 @@
 use super::*;
 use crate::game::host::draw::GameDrawContext;
-use mod_api::{
-    ClientHost, DrawContext, GuiLayerWrapContext,
-    content::crash::{ModCall, enter_native_mod},
-};
+use mod_api::{ClientHost, DrawContext, GuiLayerWrapContext};
 use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
 
 #[allow(dead_code)]
@@ -264,32 +261,28 @@ impl<'g> Game<'g> {
                 }
             }
             GuiLayerBody::Native { owner, draw } => {
-                let _guard = owner.map(|id| {
-                    enter_native_mod(ModCall {
-                        id,
-                        hook: "gui_layer_callback",
-                        part: None,
-                    })
-                });
-                draw(self, &mut GameDrawContext::new(self, batch));
+                if let Some(owner) = owner.as_ref().filter(|owner| owner.is_enabled()) {
+                    let _ = owner.call("HUD layer", "gui_layer_draw", || {
+                        draw(self, &mut GameDrawContext::new(self, batch));
+                    });
+                }
             }
             GuiLayerBody::Wrapped {
                 owner,
                 wrap,
                 previous,
             } => {
-                let _guard = owner.map(|id| {
-                    enter_native_mod(ModCall {
-                        id,
-                        hook: "gui_layer_wrapper",
-                        part: None,
-                    })
-                });
-                wrap(&mut GuiLayerWrapFrame {
-                    game: self,
-                    batch,
-                    previous,
-                    vanilla,
+                let Some(owner) = owner.as_ref().filter(|owner| owner.is_enabled()) else {
+                    self.draw_gui_layer_body(batch, previous, vanilla);
+                    return;
+                };
+                let _ = owner.call("HUD layer", "gui_layer_wrapper", || {
+                    wrap(&mut GuiLayerWrapFrame {
+                        game: self,
+                        batch,
+                        previous,
+                        vanilla,
+                    });
                 });
             }
         }

@@ -31,7 +31,7 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 
 ## Configuration tasks before play
 
-The server's `register_configuration_tasks` hook (version 2) runs once per
+The server's `register_configuration_tasks` hook (version 3) runs once per
 connecting client, including vanilla clients, after the built-in registry, tag
 and resource-pack steps. During registration, keep using
 `event.connection.has_channel(host, &channel)` to check what the peer negotiated.
@@ -43,7 +43,8 @@ from `task_type(&self) -> &Identifier`. The type is read once on registration an
 must be nonempty and unique for that connection across all listeners. `register`
 returns `ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)`
 for an invalid submission. The first refusal aborts registration and admission
-and supplies the disconnect diagnostic, even if its result is ignored.
+and supplies the disconnect diagnostic, even if its result is ignored. A phase refusal
+in a listener discards just that listener's tasks, reservations and diagnostic.
 
 Move `configuration_task_start` and `configuration_task_tick` into your task's
 `start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
@@ -82,9 +83,11 @@ wins over `finish`. An explicit payload-handler disconnect discards the request
 even if the rest of the handler succeeds.
 
 A refused task payload send, explicit `fail`, or callback panic aborts the task
-callback and closes that client with the configuration-error reason. Check the
-channel before sending to an optional or vanilla peer, then request completion
-or explain why it cannot join.
+callback and closes that client with the configuration-error reason. Start and tick
+run as the registering mod. Disabled callbacks are skipped. A panic disables the
+mod's task implementation for this session; ordinary errors do not. Check the channel
+before sending to an optional or vanilla peer, then request completion or explain why it
+cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

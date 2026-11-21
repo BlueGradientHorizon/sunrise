@@ -29,7 +29,8 @@ use crate::{
 use glam::{Mat3, Mat4, Vec3};
 use mod_api::{ClientHost, ItemDisplayContext, ItemKey, SpecialModelContext, SpecialModelTints};
 pub use registered_special::{
-    BakedSpecialGeometry, BakedSpecialModel, SpecialModelFactories, install_special_model_factories,
+    BakedSpecialGeometry, BakedSpecialModel, OwnedSpecialModelFactory, SpecialModelFactories,
+    install_special_model_factories,
 };
 use registered_special::{FACTORIES, StackAncestor};
 use serde_json::Value;
@@ -38,7 +39,7 @@ use std::{
     num::NonZeroU32,
     ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, Mutex},
 };
 use sunrise_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
@@ -743,7 +744,6 @@ pub struct ItemRenderer {
     sprites: FileSprites,
     baked: Mutex<HashMap<String, Arc<BakedItemModel>>>,
     extents: Mutex<HashMap<String, Arc<Vec<Vec3>>>>,
-    special_failures: Mutex<HashMap<String, Arc<AtomicBool>>>,
     special_generation: Arc<()>,
     /// GUI items already drawn: the HUD vertices of a static item at a GUI position
     /// (`gui::draw`), which are the same every frame it stays there.
@@ -943,7 +943,6 @@ impl ItemRenderer {
             sprites: FileSprites::new(root.source().clone()),
             baked: Mutex::default(),
             extents: Mutex::default(),
-            special_failures: Mutex::default(),
             special_generation: Arc::new(()),
             gui_drawn: Mutex::default(),
             parts,

@@ -53,7 +53,7 @@ ids = [
 ]
 why = "Each connection now owns its ordered task instances, so their state stays with them and only the registered task runs. A delayed reply cannot complete a newer task or another connection's task. Completion publishes after the outermost commit and its deferred sends, so rollback cannot advance the queue."
 migrate = """
-In `Hooks::register_configuration_tasks` (now version 2), replace \
+In `Hooks::register_configuration_tasks` (now version 3), replace \
 `event.tasks.push(ConfigurationTask::new(id))` with `event.register(MyTask { id, ... })`. \
 Define `MyTask: Send + 'static` and implement `ConfigurationTask`; replace the old record's \
 `id` field with your own, returned by `task_type(&self) -> &Identifier`. A nonempty type \

@@ -6,11 +6,13 @@ use crate::{ClientHost, DrawContext};
 /// Draws one registered HUD layer with the current client and drawing context.
 /// The client owns the closure for the session and calls it as the mod that installed it.
 /// Capture per-layer data; the host and canvas are borrowed only for this draw.
+/// A disabled owner is skipped. A panic disables this callback for the session.
 pub type GuiLayerDraw = dyn Fn(&dyn ClientHost, &mut dyn DrawContext) + Send + Sync + 'static;
 
 // no wire: the wrapper and its captures are kept in the client process.
 /// Draws around the previous body of a layer, or omits that body for this draw.
-/// The client owns this callback for its lifetime.
+/// The client owns this callback for its lifetime. A disabled wrapper (including one
+/// disabled by panic) leaves the previous layer body to draw directly.
 pub type GuiLayerWrapper = dyn Fn(&mut dyn GuiLayerWrapContext) + Send + Sync + 'static;
 
 // no wire: lends the current client and the HUD batch only while a wrapper runs.

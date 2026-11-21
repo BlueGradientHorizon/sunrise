@@ -1,7 +1,7 @@
 //! Load-time dimension-key resolution and selection of client loading presentations.
 use mod_api::{
-    Answered, DimensionKey, DimensionTransition, DimensionTransitionPresentation,
-    DimensionTransitionScreen, Identifier,
+    __private::game::CallbackOwner, Answered, DimensionKey, DimensionTransition,
+    DimensionTransitionPresentation, DimensionTransitionScreen, Identifier,
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -11,14 +11,14 @@ use std::{
 
 /// A mod's presentation instance for the lifetime of one loading screen.
 pub struct ActiveTransitionScreen {
-    pub owner: &'static str,
+    pub owner: CallbackOwner,
     pub presentation: Box<dyn DimensionTransitionPresentation>,
 }
 
 impl fmt::Debug for ActiveTransitionScreen {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ActiveTransitionScreen")
-            .field("owner", &self.owner)
+            .field("owner", &self.owner.id())
             .finish_non_exhaustive()
     }
 }
@@ -35,9 +35,16 @@ enum TransitionKey {
 
 type Registration = (&'static str, DimensionTransitionScreen);
 
+/// One frozen registration, with separate panic state for the factory and presentations.
+pub struct RegisteredTransitionScreen {
+    pub factory: DimensionTransitionScreen,
+    pub factory_owner: CallbackOwner,
+    pub draw_owner: CallbackOwner,
+}
+
 /// Registrations resolved once at load; lookups never build dimension names.
 #[derive(Default)]
-struct TransitionScreens(HashMap<TransitionKey, Registration>);
+struct TransitionScreens(HashMap<TransitionKey, RegisteredTransitionScreen>);
 
 static SCREENS: OnceLock<TransitionScreens> = OnceLock::new();
 
@@ -59,7 +66,11 @@ impl TransitionScreens {
             };
             match key.map(|key| screens.entry(key)) {
                 Some(Entry::Vacant(entry)) => {
-                    entry.insert((owner, registration));
+                    entry.insert(RegisteredTransitionScreen {
+                        factory: registration,
+                        factory_owner: CallbackOwner::for_mod(owner),
+                        draw_owner: CallbackOwner::for_mod(owner),
+                    });
                 }
                 _ => log::warn!("[{owner}] Invalid or duplicate dimension transition: {id}"),
             }
@@ -68,16 +79,11 @@ impl TransitionScreens {
     }
 
     /// Conditional, then incoming, then outgoing, as NeoForge's event javadoc specifies.
-    fn select(
-        &self,
-        to: DimensionKey,
-        from: DimensionKey,
-    ) -> Option<(&'static str, &DimensionTransitionScreen)> {
+    fn select(&self, to: DimensionKey, from: DimensionKey) -> Option<&RegisteredTransitionScreen> {
         self.0
             .get(&TransitionKey::Conditional { to, from })
             .or_else(|| self.0.get(&TransitionKey::Incoming(to)))
             .or_else(|| self.0.get(&TransitionKey::Outgoing(from)))
-            .map(|(owner, factory)| (*owner, factory))
     }
 }
 
@@ -95,10 +101,7 @@ pub fn register(registrations: Vec<Answered<DimensionTransitionScreen>>) {
 
 /// Choose a factory and its owner once, when a new loading screen opens for travel.
 /// Without dimension keys (login or death), the caller does not try to select a factory.
-pub fn select(
-    to: DimensionKey,
-    from: DimensionKey,
-) -> Option<(&'static str, &'static DimensionTransitionScreen)> {
+pub fn select(to: DimensionKey, from: DimensionKey) -> Option<&'static RegisteredTransitionScreen> {
     SCREENS.get().and_then(|screens| screens.select(to, from))
 }
 
@@ -139,15 +142,13 @@ mod tests {
         )
     }
     fn chosen(screens: &TransitionScreens, to: &str, from: &str) -> Option<u32> {
-        let (owner, factory) = screens.select(key(to), key(from))?;
-        assert_eq!(owner, "registrant");
+        let registration = screens.select(key(to), key(from))?;
+        assert_eq!(registration.factory_owner.id(), "registrant");
         let mut canvas = Canvas::default();
-        factory.create(&Client, Reason::Other.into()).draw(
-            &Client,
-            Reason::Other.into(),
-            None,
-            &mut canvas,
-        );
+        registration
+            .factory
+            .create(&Client, Reason::Other.into())
+            .draw(&Client, Reason::Other.into(), None, &mut canvas);
         canvas.0
     }
 
@@ -257,10 +258,10 @@ mod tests {
         };
         let mut tracker = LevelLoadTracker::new(500);
         tracker.start_client_load(0, Reason::Other);
-        let (owner, factory) = screens.select(key("test:b"), key("test:a")).unwrap();
+        let registration = screens.select(key("test:b"), key("test:a")).unwrap();
         tracker.set_transition_screen(ActiveTransitionScreen {
-            owner,
-            presentation: factory.create(&Client, tracker.reason.into()),
+            owner: registration.draw_owner.clone(),
+            presentation: registration.factory.create(&Client, tracker.reason.into()),
         });
         let progress = ServerLoadView::default();
         progress.start(Stage::LoadInitialChunks, 0);
@@ -307,7 +308,7 @@ mod tests {
             let token = Arc::new(());
             let lifetime = Arc::downgrade(&token);
             tracker.set_transition_screen(ActiveTransitionScreen {
-                owner: "registrant",
+                owner: CallbackOwner::for_mod("registrant"),
                 presentation: Box::new(move |_: &dyn ClientHost, _, _, _: &mut dyn DrawContext| {
                     assert_eq!(Arc::strong_count(&token), 1);
                 }),

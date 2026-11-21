@@ -282,6 +282,72 @@ mod tests {
     use super::*;
 
     #[test]
+    fn phase_refusal_drops_only_the_current_listeners_task_registrations() {
+        use mod_api::{
+            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
+            ConfigurationTask, ConfigurationTaskContext, Identifier,
+            RegisterConfigurationTasksEvent, ServerHost,
+        };
+
+        struct Task(Identifier);
+        impl ConfigurationTask for Task {
+            fn task_type(&self) -> &Identifier {
+                &self.0
+            }
+
+            fn start(&mut self, _: &mut dyn ServerHost, _: &mut ConfigurationTaskContext<'_>) {}
+        }
+
+        struct Registers(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Registers {
+            fn register_configuration_tasks(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut RegisterConfigurationTasksEvent<'_>,
+            ) {
+                let task = || Task(Identifier::parse(self.0).unwrap());
+                event.register(task()).unwrap();
+                if self.1 {
+                    // Both the reservation and this validation error belong to the refused listener.
+                    assert!(event.register(task()).is_err());
+                    mod_api::__private::refuse("test gated operation", ModPhase::Setup);
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("first_task", Box::new(Registers("config:first", false))),
+                mod_api::ModEntry::new("refused_task", Box::new(Registers("config:next", true))),
+                mod_api::ModEntry::new("next_task", Box::new(Registers("config:next", false))),
+            ]
+            .into(),
+            || {
+                let _phase = PhaseOwner::scope(ModPhase::Setup);
+                let mut host = mod_api::testing::FakeHost::new();
+                let mut registration = ConfigurationTaskRegistration::default();
+                mod_api::dispatch_register_configuration_tasks(
+                    &mut host,
+                    mod_api::__private::configuration_connection(1),
+                    0,
+                    "Test",
+                    &mut registration,
+                );
+                assert_eq!(registration.refusal(), None);
+                let tasks = registration.into_tasks();
+                assert_eq!(
+                    tasks
+                        .iter()
+                        .map(|task| task.owner.as_ref().unwrap().id())
+                        .collect::<Vec<_>>(),
+                    ["first_task", "next_task"]
+                );
+            },
+        );
+    }
+
+    #[test]
     fn completion_only_takes_effect_on_publication_for_its_own_turn() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};

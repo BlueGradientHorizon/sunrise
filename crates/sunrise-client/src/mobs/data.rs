@@ -7,7 +7,7 @@ use super::keyframes::Animation;
 use super::path::PathType;
 use super::spawn_selection::Heightmap;
 use crate::blocks::{BlockFacts, Fluid};
-use mod_api::__private::SpawnPlacementDeclaration;
+use mod_api::__private::{SpawnPlacementDeclaration, game::CallbackOwner};
 pub use mod_api::entity::mobs::PathComputationType;
 use mod_api::{
     EntityTypeKey, SpawnPlacementOperation, SpawnPlacementPredicate, SpawnPlacementType,
@@ -164,16 +164,22 @@ pub struct RegisteredSpawnPlacement {
     placement: Option<Placement>,
     heightmap: Option<Heightmap>,
     pub(super) predicates: SpawnPredicates,
+    pub(super) vanilla: bool,
 }
 
 pub(super) enum SpawnPredicates {
     Combined {
         /// `None` means the original is the vanilla predicate.
-        original: Option<Arc<dyn SpawnPlacementPredicate>>,
-        or: Vec<Arc<dyn SpawnPlacementPredicate>>,
-        and: Vec<Arc<dyn SpawnPlacementPredicate>>,
+        original: Option<OwnedSpawnPredicate>,
+        or: Vec<OwnedSpawnPredicate>,
+        and: Vec<OwnedSpawnPredicate>,
     },
-    Replacement(Arc<dyn SpawnPlacementPredicate>),
+    Replacement(OwnedSpawnPredicate),
+}
+
+pub(super) struct OwnedSpawnPredicate {
+    pub(super) owner: CallbackOwner,
+    pub(super) predicate: Arc<dyn SpawnPlacementPredicate>,
 }
 
 pub struct MobData {
@@ -506,6 +512,10 @@ impl MobData {
                 let refuse = |reason: &str| {
                     format!("mod {} spawn placement for {}: {reason}", d.mod_id, d.id)
                 };
+                let bind = || OwnedSpawnPredicate {
+                    owner: CallbackOwner::for_mod(d.mod_id),
+                    predicate: d.predicate.clone(),
+                };
                 let row = match installed.entry(d.id.clone()) {
                     Entry::Occupied(entry) => entry.into_mut(),
                     Entry::Vacant(entry) => {
@@ -522,14 +532,11 @@ impl MobData {
                                     "the first registration needs both a placement and a heightmap",
                                 ));
                             };
-                            (
-                                Some(placement.into()),
-                                Some(heightmap.into()),
-                                Some(d.predicate.clone()),
-                            )
+                            (Some(placement.into()), Some(heightmap.into()), Some(bind()))
                         };
                         let row = entry.insert(RegisteredSpawnPlacement {
                             kind: d.kind,
+                            vanilla: is_vanilla,
                             placement,
                             heightmap,
                             predicates: SpawnPredicates::Combined {
@@ -548,7 +555,7 @@ impl MobData {
                     SpawnPlacementOperation::Replace => {
                         row.placement = d.placement.map(Placement::from).or(row.placement);
                         row.heightmap = d.heightmap.map(Heightmap::from).or(row.heightmap);
-                        row.predicates = SpawnPredicates::Replacement(d.predicate.clone());
+                        row.predicates = SpawnPredicates::Replacement(bind());
                     }
                     op @ (SpawnPlacementOperation::And | SpawnPlacementOperation::Or) => {
                         if d.placement.is_some() || d.heightmap.is_some() {
@@ -562,7 +569,7 @@ impl MobData {
                             } else {
                                 and
                             };
-                            predicates.push(d.predicate.clone());
+                            predicates.push(bind());
                         }
                     }
                 }

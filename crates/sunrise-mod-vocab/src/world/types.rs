@@ -1053,7 +1053,9 @@ pub enum SpawnPlacementOperation {
 /// [`Send`] and [`Sync`] function or closure with the same signature, or implement this trait.
 /// Use the lent level and random stream to decide the result; do not depend on call counts.
 pub trait SpawnPlacementPredicate: Send + Sync + 'static {
-    /// Whether this check passes. Use the lent random stream for any draws.
+    /// Whether this check passes. Use the lent random stream for any draws. The game invokes
+    /// the predicate as the registering mod, skipping it when disabled. A panic disables
+    /// the predicate for this session but does not rewind draws already made.
     fn test(
         &self,
         kind: EntityTypeKey,

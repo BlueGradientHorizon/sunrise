@@ -1,12 +1,24 @@
 //! Configuration tasks and capabilities valid before the player joins.
+use crate::callback_owner::CallbackOwner;
 use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent, ServerHost};
-use std::{collections::BTreeSet, fmt};
+use std::{
+    any::{Any, TypeId},
+    collections::{BTreeSet, HashMap},
+    fmt,
+    sync::{LazyLock, Mutex},
+};
+
+// The number of concrete native task types is fixed by the installed code, not by peers.
+type TaskOwners = HashMap<(&'static str, TypeId), CallbackOwner>;
+static TASK_OWNERS: LazyLock<Mutex<TaskOwners>> = LazyLock::new(Mutex::default);
 
 // no wire: tasks are owned objects with server-thread callbacks and local state.
 /// One task instance owned by a configuring connection. Register the instance with
 /// [`RegisterConfigurationTasksEvent::register`]. The server runs it in queue order,
 /// on the server thread without holding the connection's task lock, and keeps the
-/// same instance while it waits.
+/// same instance while it waits. Callbacks run as the registering mod. A disabled
+/// callback is skipped; a panic closes that peer and disables the task implementation
+/// for that mod for the session, without disabling other mods' tasks.
 pub trait ConfigurationTask: Send + 'static {
     /// The namespaced task type, read once on registration. It must be nonempty and
     /// unique among all tasks registered for this connection.
@@ -50,6 +62,7 @@ impl RegisterConfigurationTasksEvent<'_> {
     /// Append a task to this connection's queue. An invalid or duplicate type refuses
     /// registration, aborting the registration transaction and admission even if the
     /// listener ignores this result. The first refusal supplies the diagnostic.
+    /// If the listener itself hits a phase refusal, discard its staged tasks and diagnostic.
     pub fn register(
         &mut self,
         task: impl ConfigurationTask,
@@ -60,9 +73,18 @@ impl RegisterConfigurationTasksEvent<'_> {
         } else if !self.registration.types.insert(id.clone()) {
             ConfigurationTaskRegistrationError::DuplicateType(id.clone())
         } else {
+            let owner = crate::content::crash::current_native_mod().map(|mod_id| {
+                TASK_OWNERS
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .entry((mod_id, (&task as &dyn Any).type_id()))
+                    .or_insert_with(|| CallbackOwner::for_mod(mod_id))
+                    .clone()
+            });
             self.registration.tasks.push(RegisteredConfigurationTask {
+                kind: id.clone(),
                 task: Box::new(task),
-                owner: crate::content::crash::current_native_mod(),
+                owner,
             });
             return Ok(());
         };
@@ -90,6 +112,21 @@ impl ConfigurationTaskRegistration {
         self.refusal.as_ref()
     }
 
+    /// Checkpoint one listener's append-only staging before invoking it.
+    pub fn checkpoint(&self) -> (usize, bool) {
+        (self.tasks.len(), self.refusal.is_some())
+    }
+
+    /// Discard only a phase-refused listener's tasks, reserved types and diagnostic.
+    pub fn rollback(&mut self, (len, had_refusal): (usize, bool)) {
+        for task in self.tasks.drain(len..) {
+            self.types.remove(&task.kind);
+        }
+        if !had_refusal {
+            self.refusal = None;
+        }
+    }
+
     /// Move the ordered queue to the server after registration commits.
     pub fn into_tasks(self) -> Vec<RegisteredConfigurationTask> {
         self.tasks
@@ -102,10 +139,11 @@ impl ConfigurationTaskRegistration {
 #[doc(hidden)]
 #[non_exhaustive]
 pub struct RegisteredConfigurationTask {
+    kind: Identifier,
     /// The connection-owned instance.
     pub task: Box<dyn ConfigurationTask>,
     /// The registering mod, for Host calls that depend on the caller's identity.
-    pub owner: Option<&'static str>,
+    pub owner: Option<CallbackOwner>,
 }
 
 /// One configuring connection, available while registering its tasks.

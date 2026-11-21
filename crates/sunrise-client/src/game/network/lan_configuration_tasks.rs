@@ -138,19 +138,22 @@ impl Game<'_> {
                         } else {
                             "ConfigurationTask::tick"
                         };
-                        let _mod = task
-                            .owner
-                            .map(|owner| mod_api::__private::enter(owner, call));
+                        let Some(owner) = task.owner.as_ref().filter(|owner| owner.is_enabled())
+                        else {
+                            return Ok(Some(turn.ordinal));
+                        };
                         let mut outcome = ConfigurationTaskOutcome::Pending;
                         let mut context = configuration_task_context(
                             configuration_task_ref(connection, turn.ordinal),
                             &mut outcome,
                         );
-                        if turn.start {
-                            task.task.start(game, &mut context);
-                        } else {
-                            task.task.tick(game, &mut context);
-                        }
+                        owner.call("configuration task", call, || {
+                            if turn.start {
+                                task.task.start(game, &mut context);
+                            } else {
+                                task.task.tick(game, &mut context);
+                            }
+                        })?;
                         match outcome {
                             ConfigurationTaskOutcome::Pending => Ok(None),
                             ConfigurationTaskOutcome::Finish => Ok(Some(turn.ordinal)),

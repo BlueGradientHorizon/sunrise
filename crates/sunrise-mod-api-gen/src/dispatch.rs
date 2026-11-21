@@ -487,14 +487,11 @@ pub(super) fn emit<'a>(
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
-            // Owned configuration tasks cannot be snapshotted. The connection's
-            // registration transaction owns the entire staging sink.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
-            if scalar {
+            if scalar || task_registration {
                 rollback.push((name.clone(), false));
-            } else if !task_registration
-                && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
+            } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
                 {
@@ -999,6 +996,11 @@ pub(super) fn emit<'a>(
                 continue;
             }
             let index = snaps.len();
+            if event_type == "RegisterConfigurationTasksEvent" && field == "registration" {
+                snaps.push(format!("{event}.{field}.checkpoint()"));
+                restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
+                continue;
+            }
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));

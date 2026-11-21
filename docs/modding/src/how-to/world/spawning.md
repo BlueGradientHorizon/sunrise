@@ -67,7 +67,9 @@ Level reads never load chunks or write to the world. Use namespaced block and bi
 `reason == SpawnReason::TrialSpawner` first, as above. For a brightness condition, use
 `ctx.level().is_bright_enough_to_spawn(pos)` in place of the darkness test. To allow any light
 level, omit the light test. Draw any additional randomness from `ctx.random()`. The darkness
-helper also draws from that stream. Short-circuited predicates don't draw, and draws that did
+helper also draws from that stream. Short-circuited predicates don't draw. The game calls retained predicates as their registering mod;
+a disabled or refused predicate supplies no answer (a vanilla type keeps its vanilla check if its
+replacement cannot answer). A panic disables only that predicate for the session. Draws that did
 happen are not rolled back if the spawn is later refused.
 
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
