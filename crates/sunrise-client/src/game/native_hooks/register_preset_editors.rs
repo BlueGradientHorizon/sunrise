@@ -106,12 +106,15 @@ mod tests {
             modifiers: u32,
             _draft: &mut PresetEditorDraft<'_>,
         ) -> bool {
-            // Consume Shift+Tab ahead of menu focus navigation, plus either Shift on its own.
-            if key_code == 258 && modifiers == 1 {
+            // Vanilla 26.3 InputConstants uses SDL scancodes, not the old GLFW key IDs.
+            const TAB: u32 = 43;
+            const LEFT_SHIFT: u32 = 225;
+            const RIGHT_SHIFT: u32 = 229;
+            if key_code == TAB && modifiers == 1 {
                 self.keys.fetch_add(1, Ordering::Relaxed);
                 return true;
             }
-            matches!(key_code, 340 | 344)
+            matches!(key_code, LEFT_SHIFT | RIGHT_SHIFT)
         }
 
         fn char_typed(
