@@ -84,32 +84,35 @@ pub(super) fn load_player(menu: &mut Menu, g: &Guest) {
     menu.carried = g.carried.clone();
 }
 
-/// The vanilla menu engine's kind for a guest's menu over block entity `entity`, with the
-/// container's slots: a furnace's, a brewing stand's, a crafter's, or a content mod's menu type
-/// with its slots' rules. None for the others, whose clicks the hub runs.
-pub(super) fn machine_menu(
+/// The menu engine's kind for a guest's machine or block-backed mod menu.
+pub(super) fn machine_menu_kind(
     entity: &BlockEntity,
-    mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
-) -> Option<(Kind, Vec<Option<ItemStack>>)> {
+    mod_type: Option<&'static ModMenuType>,
+) -> Option<Kind> {
     Some(match entity {
-        BlockEntity::Furnace(f) => {
-            let recipe = match f.kind.recipe_type() {
-                "minecraft:blasting" => "blasting",
-                "minecraft:smoking" => "smoking",
-                _ => "smelting",
-            };
-            (Kind::Furnace(recipe), f.items.to_vec())
-        }
-        BlockEntity::Brewing(b) => (Kind::Brewing, b.items.to_vec()),
-        BlockEntity::Crafter(c) => (Kind::CrafterBlock, c.items.to_vec()),
-        BlockEntity::Mod(m) => {
-            let t = mod_type?;
-            let mut items = m.items.clone();
-            items.resize(t.slots, None);
-            (Kind::Mod(t), items)
-        }
+        BlockEntity::Furnace(f) => Kind::Furnace(match f.kind.recipe_type() {
+            "minecraft:blasting" => "blasting",
+            "minecraft:smoking" => "smoking",
+            _ => "smelting",
+        }),
+        BlockEntity::Brewing(_) => Kind::Brewing,
+        BlockEntity::Crafter(_) => Kind::CrafterBlock,
+        BlockEntity::Mod(_) => Kind::Mod(mod_type?),
         _ => return None,
     })
+}
+
+/// The machine's working slot storage for an edit, including any empty mod menu slots.
+pub(super) fn machine_menu(
+    entity: &BlockEntity,
+    mod_type: Option<&'static ModMenuType>,
+) -> Option<(Kind, Vec<Option<ItemStack>>)> {
+    let kind = machine_menu_kind(entity, mod_type)?;
+    let mut items = entity.slots().to_vec();
+    if let Kind::Mod(layout) = kind {
+        items.resize(layout.slots, None);
+    }
+    Some((kind, items))
 }
 
 /// `load_player` back.

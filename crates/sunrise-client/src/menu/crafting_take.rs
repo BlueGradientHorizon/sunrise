@@ -1,26 +1,35 @@
 //! Result-slot take handling, including pre-take revalidation and remainders.
 use super::*;
+pub(super) fn crafting_result_matches(
+    env: &Env,
+    grid: &[Option<ItemStack>],
+    grid_size: usize,
+    shown: Option<&ItemStack>,
+) -> bool {
+    if !env.recipes.has_mod_crafting() {
+        return true;
+    }
+    env.recipes
+        .find_with(env.loop_context, grid, grid_size, &|id| {
+            env.maps
+                .and_then(|maps| maps.state(id))
+                .map(|(_, scale)| scale)
+        })
+        .is_some_and(|(_, result)| {
+            shown.is_some_and(|shown| {
+                shown.count == result.count && shown.same_item_same_components(&result)
+            })
+        })
+}
+
 impl Menu {
     pub(super) fn crafting_result_is_current(&self, env: &Env, slot: usize) -> bool {
-        if !env.recipes.has_mod_crafting() {
-            return true;
-        }
-        env.recipes
-            .find_with(
-                env.loop_context,
-                &self.state.containers[GRID],
-                self.state.grid_size,
-                &|id| {
-                    env.maps
-                        .and_then(|maps| maps.state(id))
-                        .map(|(_, scale)| scale)
-                },
-            )
-            .is_some_and(|(_, result)| {
-                self.slot(slot).is_some_and(|shown| {
-                    shown.count == result.count && shown.same_item_same_components(&result)
-                })
-            })
+        crafting_result_matches(
+            env,
+            &self.state.containers[GRID],
+            self.state.grid_size,
+            self.slot(slot),
+        )
     }
 
     /// `ResultSlot.onTake` and the other `Slot.onTake` overrides.

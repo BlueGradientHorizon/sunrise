@@ -303,6 +303,35 @@ pub enum SlotBacking {
 }
 
 impl Slots {
+    /// The persisted limit of the block entity backing menu slot `n`.
+    /// `ChestBlockEntity.getContainerSize` gives 27 slots per double-chest half.
+    pub fn slot_stack_limit(self, world: &World, n: usize) -> Option<u32> {
+        match self {
+            Self::Block(pos) => world.container_stack_limit(pos),
+            Self::Double(a, b) => world.container_stack_limit(if n < 27 { a } else { b }),
+            Self::Ender | Self::Native => None,
+        }
+    }
+
+    /// Borrow the backing storage in menu order, without overlaying linked slots or previews.
+    /// For a double chest, each slice is a separate half, as in `CompoundContainer`.
+    pub fn shown_slices<'a>(
+        self,
+        world: &'a World,
+        guest: &'a Guest,
+        acting_ender: Option<&'a [Option<ItemStack>]>,
+    ) -> (&'a [Option<ItemStack>], &'a [Option<ItemStack>]) {
+        match self {
+            Self::Block(pos) => (shown(world, pos).unwrap_or_default(), &[]),
+            Self::Double(a, b) => (
+                shown(world, a).unwrap_or_default(),
+                shown(world, b).unwrap_or_default(),
+            ),
+            Self::Ender => (acting_ender.unwrap_or(&guest.ender_items), &[]),
+            Self::Native => (&guest.native_menu, &[]),
+        }
+    }
+
     /// Optional persisted limits in the container's menu order.
     pub fn stack_limits(self, world: &World, size: usize) -> Vec<Option<u32>> {
         match self {

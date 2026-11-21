@@ -18,6 +18,61 @@ impl Asked {
     }
 }
 
+impl LiveSlotRules<'_> {
+    /// Query pickup before a click, recording just the answer and the slots its rule read
+    /// so the click can reuse it while those reads still match.
+    pub fn ask_pickup(&self, env: &Env, s: usize, held: Option<&ItemStack>) -> (bool, Asked) {
+        let mut asked = Asked::default();
+        let may_pickup = self.pickup_rules(env, s, held, Some(&mut asked));
+        (may_pickup.unwrap_or(false), asked)
+    }
+
+    pub(super) fn pickup_rules(
+        &self,
+        env: &Env,
+        s: usize,
+        held: Option<&ItemStack>,
+        asked: Option<&mut Asked>,
+    ) -> Option<bool> {
+        let slot = self.kind.slot(s)?;
+        if !vanilla_may_pickup_for_role(
+            slot.role,
+            self.kind,
+            env,
+            held,
+            self.creative,
+            self.grid,
+            self.kind.grid_size(),
+            None,
+            false,
+        ) {
+            return Some(false);
+        }
+        if matches!(self.kind, Kind::Mod(_))
+            && slot.role != Role::Hidden
+            && let Some(held) = held
+            && let Some(id) = self.registry_id
+        {
+            let own = self.vanilla_answers(env, slot, held);
+            let item_max = item_max_stack(env.items, held);
+            let context = self.slot_context(env, slot);
+            let ask = |context: SlotContext<'_>| {
+                apply_menu_slot_rules(env.slot_rules, id, slot.index, held, context, own, item_max)
+            };
+            let answer = if let Some(asked) = asked {
+                let (answer, reads) = context.record(ask);
+                asked.0.push(((s, held.clone(), own, reads), answer));
+                answer
+            } else {
+                ask(context)
+            };
+            Some(answer.1)
+        } else {
+            Some(true)
+        }
+    }
+}
+
 /// A menu's answers while a click runs; none outside one, where every question asks afresh.
 #[derive(Debug, Default)]
 pub(super) struct Planning(RefCell<Option<Asked>>);
