@@ -285,26 +285,31 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     } else {
         Kind::Mod
     };
-    let existing = if let Some(checkout) = &o.registry {
-        let loaded = registry::load(checkout).map_err(|errors| format!(
-            "--registry {} is not a valid registry checkout: {}. Restore the checked-in entries or use a clean checkout",
-            checkout.display(),
-            errors.join("; ")
-        ))?;
-        if loaded
+    let checkout = o
+        .registry
+        .as_ref()
+        .map(|checkout| {
+            registry::load(checkout).map_err(|errors| format!(
+                "--registry {} is not a valid registry checkout: {}. Restore the checked-in entries or use a clean checkout",
+                checkout.display(),
+                errors.join("; ")
+            ))
+        })
+        .transpose()?;
+    if let Some(loaded) = &checkout
+        && loaded
             .collections
             .iter()
             .any(|collection| &collection.id == id)
-        {
-            return Err(format!(
-                "{id} is already a registry collection: choose a different `id` in {MANIFEST}"
-            ));
-        }
-        // The registry loader has bound every entry's id to its file name; select this project's id.
-        loaded.entries.into_iter().find(|e| &e.id == id)
-    } else {
-        None
-    };
+    {
+        return Err(format!(
+            "{id} is already a registry collection: choose a different `id` in {MANIFEST}"
+        ));
+    }
+    // The registry loader has bound every entry's id to its file name; select this project's id.
+    let existing = checkout
+        .as_ref()
+        .and_then(|loaded| loaded.entries.iter().find(|e| &e.id == id).cloned());
     if let Some(entry) = &existing {
         if let Some(repo) = &entry.repo {
             return Err(format!(
@@ -469,7 +474,26 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     }
     write(out.join("PULL_REQUEST.md"), body.as_bytes())?;
 
-    let remaining = checklist(before.as_slice(), &entry, o.registry.as_deref());
+    let mut remaining = checklist(before.as_slice(), &entry, o.registry.as_deref());
+    if let Some(loaded) = &checkout {
+        let game = &version.game;
+        remaining.extend(
+            loaded
+                .unmet_dependencies(game, &report.facts.dependencies)
+                .into_iter()
+                .map(|unmet| {
+                    let listed = if unmet.listed.is_empty() {
+                        "no version of it".to_owned()
+                    } else {
+                        format!("only {}", unmet.listed.join(", "))
+                    };
+                    format!(
+                        "{id}: requires {} {}, but the registry lists {listed} for Minecraft {game}: publish a matching version of {} first, or change the range in {MANIFEST}",
+                        unmet.id, unmet.range, unmet.id
+                    )
+                }),
+        );
+    }
     println!(
         "{} {} ({}, {} bytes, SHA-256 {})",
         entry.id,

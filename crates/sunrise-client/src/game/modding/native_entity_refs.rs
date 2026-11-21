@@ -1236,10 +1236,10 @@ pub(super) mod tests {
         for z in center.z - 2..=center.z + 2 {
             for x in center.x - 2..=center.x + 2 {
                 if !game.world.chunks.contains_key(&(x, z)) {
-                    game.world.chunks.insert(
-                        (x, z),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
-                    );
+                    let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                    // A ticking column is lit (`ChunkMap.prepareTickingChunk`); `forceload` waits for it.
+                    chunk.lit = true;
+                    game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
                     game.block_ticks
                         .add_empty_chunk(sunrise_core::position::ChunkPos::new(x, z))
                         .unwrap();

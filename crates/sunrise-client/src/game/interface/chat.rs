@@ -200,50 +200,8 @@ impl Game<'_> {
 /// The local player's name (offline single player).
 pub const PLAYER_NAME: &str = "Player";
 
-/// The Overworld's world clock.
-pub(in crate::game) const OVERWORLD_CLOCK: &str = "minecraft:overworld";
-
-/// ServerClockManager.ServerClockInstance (the total ticks of the one the level in place follows
-/// are the world's day time).
-#[derive(Clone, Copy, Debug)]
-pub struct WorldClock {
-    pub partial: f32,
-    pub rate: f32,
-    pub paused: bool,
-}
-impl Default for WorldClock {
-    fn default() -> Self {
-        Self {
-            partial: 0.0,
-            rate: 1.0,
-            paused: false,
-        }
-    }
-}
-/// A clock time marker from the timelines (ClockTimeMarker); `resolve` is None past `i64::MAX`.
-#[derive(Clone, Copy, Debug)]
-pub struct TimeMarker {
-    pub ticks: i64,
-    pub period: Option<i64>,
-    pub show: bool,
-}
-impl TimeMarker {
-    pub fn occurs_at(&self, total: i64) -> bool {
-        match self.period {
-            Some(p) => self.ticks == total.rem_euclid(p),
-            None => self.ticks == total,
-        }
-    }
-    pub fn resolve(&self, total: i64) -> Option<i64> {
-        match self.period {
-            Some(p) => {
-                let d = self.ticks - total.rem_euclid(p);
-                total.checked_add(if d > 0 { d } else { p + d })
-            }
-            None => Some(self.ticks),
-        }
-    }
-}
+pub(in crate::game) use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
+pub use sunrise_gameplay::world_clock::{TimeMarker, WorldClock};
 /// `ChatComponent.Draft`: the text the chat box kept, and whether it was a command.
 pub struct ChatDraft {
     pub text: String,
@@ -875,18 +833,7 @@ impl Game<'_> {
         reg.block_tags.sort();
         reg.blocks = BlockProperties::clone(&block_properties(self.pack.assets.registry));
         reg.summonable = summonable_entities(&ids.entity_types, self.res.mob_types().keys());
-        let mut types = ids.entity_types.clone();
-        if types.is_empty() {
-            types = reg.summonable.clone();
-            types.push("minecraft:player".into());
-            types.sort();
-        }
-        for key in super::general::general_type_catalog().keys() {
-            if !types.iter().any(|id| id == key) {
-                types.push(key.to_owned());
-            }
-        }
-        reg.entity_types = types;
+        reg.entity_types.clone_from(&ids.entity_types);
         // The mob effect registry: every effect `/effect` and the
         // `mob_effect` resource arguments accept.
         reg.effects = sunrise_client::brewing::all_effects()
@@ -914,6 +861,22 @@ impl Game<'_> {
             }
         }
         let reg = &mut self.ui.registries;
+        if reg.entity_types.is_empty() {
+            reg.entity_types.clone_from(&reg.summonable);
+            reg.entity_types.push("minecraft:player".into());
+        }
+        reg.entity_types.extend(
+            super::general::general_type_catalog()
+                .keys()
+                .map(str::to_owned),
+        );
+        reg.entity_types.sort();
+        reg.entity_types.dedup();
+        // Selector validation prefers the exported registry entry. Replace its
+        // vanilla IDs with the live list, keeping its tags.
+        if let Some(entry) = reg.by_registry.get_mut("minecraft:entity_type") {
+            entry.ids.clone_from(&reg.entity_types);
+        }
         // Native component names were validated and frozen before resources loaded.
         // The same inventory supplies both wire IDs and command components.
         for (_, name) in sunrise_protocol::item::custom::entries() {

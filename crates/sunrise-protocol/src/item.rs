@@ -11,6 +11,7 @@ use sunrise_core::nbt::Tag;
 #[doc(hidden)]
 pub mod custom;
 mod hash;
+pub mod persistent;
 mod skip;
 mod trim;
 pub use trim::{TrimHolder, TrimMaterial, TrimPattern};
@@ -330,6 +331,30 @@ impl SkinPatch {
 impl Component {
     pub(crate) fn read(kind: i32, r: &mut Reader) -> Result<Self> {
         use component::*;
+        match kind {
+            CHARGED_PROJECTILES | BUNDLE_CONTENTS => {
+                // Each template needs bytes; the codec has no item-count cap.
+                let n = r.count(r.remaining())?;
+                let mut stacks = Vec::with_capacity(n.min(1024));
+                for _ in 0..n {
+                    stacks.push(Template::read(r)?);
+                }
+                Ok(Self::Stacks(stacks))
+            }
+            CAN_PLACE_ON | CAN_BREAK | USE_REMAINDER | SULFUR_CUBE_CONTENT | POT_DECORATIONS
+            | CONTAINER => Self::read_raw(kind, r),
+            _ => Self::read_flat(kind, r),
+        }
+    }
+    fn read_raw(kind: i32, r: &mut Reader) -> Result<Self> {
+        let start = r.position();
+        skip::component(kind, r)?;
+        Ok(Self::Raw(r.since(start).to_vec()))
+    }
+    // Keep the large typed decoder's locals off every recursive template/predicate frame.
+    #[inline(never)]
+    fn read_flat(kind: i32, r: &mut Reader) -> Result<Self> {
+        use component::*;
         Ok(match kind {
             MAX_STACK_SIZE
             | MAX_DAMAGE
@@ -365,10 +390,6 @@ impl Component {
                     pages_filtered,
                     resolved: r.bool()?,
                 })
-            }
-            CHARGED_PROJECTILES | BUNDLE_CONTENTS => {
-                let n = r.count(1024)?;
-                Self::Stacks((0..n).map(|_| Template::read(r)).collect::<Result<_>>()?)
             }
             DYED_COLOR => Self::Int(r.i32()?),
             UNBREAKABLE | CREATIVE_SLOT_LOCK => Self::Unit,
@@ -552,11 +573,7 @@ impl Component {
                 }
             }
             other if custom::contains(other) => Self::Nbt(r.nbt()?),
-            other => {
-                let start = r.position();
-                skip::component(other, r)?;
-                Self::Raw(r.since(start).to_vec())
-            }
+            other => Self::read_raw(other, r)?,
         })
     }
     /// The layers of encoded `BannerPatternLayers` whose patterns are all
@@ -789,16 +806,45 @@ impl WirePatch {
         for _ in 0..positive {
             let kind = r.varint()?;
             let len = r.count(r.remaining())?;
-            let (component, _) = read_added(kind, &mut Reader::new(r.bytes(len)?))?;
+            let mut value = Reader::new(r.bytes(len)?);
+            let (component, _) = read_added(kind, &mut value)?;
+            if value.remaining() != 0 {
+                return Err(crate::Error::new("trailing retained component data"));
+            }
             added.push((kind, component));
         }
-        Ok((added, read_removed(&mut r, negative)?))
+        let removed = read_removed(&mut r, negative)?;
+        if r.remaining() != 0 {
+            return Err(crate::Error::new("trailing retained patch data"));
+        }
+        Ok((added, removed))
     }
 }
 impl PartialEq for WirePatch {
     fn eq(&self, _: &Self) -> bool {
         true
     }
+}
+
+// The stream reads every set before every removal, into one map. Walking the
+// retained wire groups must give the same last-entry result.
+fn effective_wire_patch<'a>(
+    sets: &'a [(i32, Component)],
+    removals: &[i32],
+) -> (impl Iterator<Item = &'a (i32, Component)>, Vec<i32>) {
+    let mut seen = std::collections::HashSet::with_capacity(sets.len() + removals.len());
+    let mut removed: Vec<_> = removals
+        .iter()
+        .rev()
+        .copied()
+        .filter(|kind| seen.insert(*kind))
+        .collect();
+    removed.reverse();
+    let sets = sets
+        .iter()
+        .rev()
+        .filter(move |(kind, _)| seen.insert(*kind));
+    (sets, removed)
 }
 
 /// A non-empty item stack.
@@ -952,6 +998,11 @@ impl Codec<Stack> for Template {
     fn read(r: &mut Reader) -> Result<Stack> {
         let item = r.varint()?;
         let count = r.varint()?;
+        if item <= 0 || count == 0 {
+            return Err(crate::Error::new(
+                "item template must have a non-air item and nonzero count",
+            ));
+        }
         let positive = r.count(65536)?;
         let negative = r.count(65536)?;
         let mut added = Vec::with_capacity(positive.min(64));
@@ -985,10 +1036,25 @@ pub struct Hashed {
     pub added: Vec<(i32, i32)>,
     pub removed: Vec<i32>,
 }
+/// The wire patch or a component's persistent hash could not be produced.
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum StackHashError {
+    Wire(crate::Error),
+    Component(i32),
+}
+impl std::fmt::Display for StackHashError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Wire(error) => write!(f, "invalid retained item patch: {error}"),
+            Self::Component(id) => write!(f, "cannot hash component {id}"),
+        }
+    }
+}
+impl std::error::Error for StackHashError {}
 impl Hashed {
-    /// The stack hashed without registry names: only components that hold no
-    /// registry id get a hash (see [`Hashed::create`]).
-    pub fn of(stack: &Stack) -> Self {
+    /// Hash a stack with only components that don't require registry names.
+    pub fn of(stack: &Stack) -> std::result::Result<Self, StackHashError> {
         Self::create(stack, &NoNames)
     }
 }
@@ -1506,7 +1572,12 @@ mod tests {
         round::<Option<Stack>, Slot>(Some(quill));
         assert_eq!(sword.damage(), 17);
         round::<Option<Stack>, Slot>(Some(sword.clone()));
-        round::<Option<Hashed>, HashedSlot>(Some(Hashed::of(&sword)));
+        let names = persistent::NameLookup::new(&|registry, id| match (registry, id) {
+            ("minecraft:enchantment", 5) => Some("minecraft:sharpness".into()),
+            ("minecraft:enchantment", 12) => Some("minecraft:looting".into()),
+            _ => None,
+        });
+        round::<Option<Hashed>, HashedSlot>(Some(Hashed::create(&sword, &names).unwrap()));
         round::<Option<Hashed>, HashedSlot>(None);
     }
 

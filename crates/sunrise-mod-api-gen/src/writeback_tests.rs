@@ -24,18 +24,19 @@ fn untouched_writeback_runtime_and_mutants() {
         "{} self.native_generated(&mut __api_stack, &mut __api_handled); {}",
         crossing.before, crossing.after
     );
-    let handwritten = include_str!("../../sunrise-client/src/game/modding/api_values.rs");
+    let api_values = include_str!("../../sunrise-client/src/game/modding/api_values.rs");
+    let quick_move = include_str!("../../sunrise-client/src/game/modding/native_quick_move.rs");
     let mut methods =
         format!("fn generated(&mut self, stack: &mut Stack, handled: &mut bool) {{ {generated} }}");
-    for name in [
-        "anvil_update",
-        "grindstone_place",
-        "grindstone_take",
-        "menu_button",
-        "menu_quick_move",
+    for (name, source, adapter) in [
+        ("anvil_update", api_values, "fn api_anvil_update("),
+        ("grindstone_place", api_values, "fn api_grindstone_place("),
+        ("grindstone_take", api_values, "fn api_grindstone_take("),
+        ("menu_button", api_values, "fn api_menu_button("),
+        ("menu_quick_move", quick_move, "fn menu_quick_move_checked("),
     ] {
-        let start = handwritten.find(&format!("fn api_{name}(")).unwrap();
-        let text = &handwritten[start..];
+        let start = source.find(adapter).unwrap();
+        let text = &source[start..];
         let begin = text.find("{").unwrap();
         let mut depth = 1;
         let end = text[begin + 1..]
@@ -64,6 +65,12 @@ fn untouched_writeback_runtime_and_mutants() {
         };
         let body = if matches!(name, "grindstone_place" | "grindstone_take") {
             body.to_owned()
+        } else if name == "menu_quick_move" {
+            // The checked adapter answers whether the mods' answer was valid; a refusal
+            // is the decision's error.
+            format!(
+                "if (|| -> bool {{ {body} }})() {{ Ok(()) }} else {{ Err(InvalidReason::Count) }}"
+            )
         } else {
             // Keep the adapter's early `return` inside its original unit-returning body.
             format!("(|| {{ {body} }})(); Ok(())")
@@ -91,6 +98,7 @@ mod game { pub mod api_values {
     pub trait TryIntoApi { type Api; fn try_into_api(&self) -> Result<Self::Api, ()>; }
     pub trait TryIntoEngine { type Engine; fn try_into_engine(&self, _: &()) -> Result<Self::Engine, crate::mod_api::StackWriteError>; }
     pub trait ItemBoundary { fn boundary_items(&self) -> Option<&()> { Some(&()) } }
+    pub(crate) use crate::{BlockEntitySnapshotError, finish_block_entity_writeback};
 }
 pub mod transactions { pub mod decision {
     #[derive(Debug, PartialEq, Eq)] pub enum InvalidReason { Count }
@@ -129,7 +137,7 @@ fn main() {
             let result = fire(&mut game, &mut value, &mut entity, &mut carried, &mut stack, &mut cancel, &mut handled);
             assert_eq!(VALIDATIONS.load(std::sync::atomic::Ordering::Relaxed), usize::from(change));
             assert_eq!(value, Stack(251)); assert_eq!(stack, Stack(251)); assert_eq!(carried, Some(Stack(251)));
-            if matches!(index, 1 | 2) && change {
+            if matches!(index, 1 | 2 | 4) && change {
                 assert_eq!(result, Err(InvalidReason::Count));
             } else {
                 assert_eq!(result, Ok(()));

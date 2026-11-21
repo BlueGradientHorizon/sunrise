@@ -99,8 +99,9 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
     use sunrise_client::level_loading::Reason;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
+        buf::Reader,
         connection::Pipe,
-        item::Stack,
+        item::{Component, Stack, component},
         packets::play::{self, Clientbound as C},
     };
 
@@ -160,6 +161,40 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         assert!(!menu.click(game, &[pickup(36)]));
         game.screen = screen;
         game.remote.as_mut().unwrap().state_id = 17;
+
+        // The wire reader retains a negative damage patch that cannot be hashed.
+        let mut unhashable = Stack::new(game.item_id("minecraft:wooden_pickaxe"), 1);
+        unhashable
+            .added
+            .push((component::DAMAGE, Component::Int(-1)));
+        let inventory = |slot, item| C::SetPlayerInventory(play::SetPlayerInventory { slot, item });
+        let packet = inventory(0, Some(unhashable)).encode();
+        let mut packet = Reader::new(&packet);
+        game.handle_packet(C::decode(packet.varint().unwrap(), packet.rest()).unwrap())
+            .unwrap();
+        game.handle_packet(inventory(1, stone.clone())).unwrap();
+        let before = (
+            game.inventory[0].clone(),
+            game.inventory[1].clone(),
+            game.carried.clone(),
+        );
+        assert!(before.0.as_ref().unwrap().wire_patch().is_some());
+        // The first pickup can hash. The second swaps the pickaxe onto the cursor.
+        assert!(!menu.click(game, &[pickup(37), pickup(36)]));
+        assert_eq!(
+            (&game.inventory[0], &game.inventory[1], &game.carried),
+            (&before.0, &before.1, &before.2)
+        );
+        reader
+            .set_read_timeout(Some(std::time::Duration::from_millis(20)))
+            .unwrap();
+        assert!(reader.recv().unwrap_err().is_timed_out());
+        reader
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        game.handle_packet(inventory(0, stone.clone())).unwrap();
+        game.handle_packet(inventory(1, None)).unwrap();
+
         assert!(menu.click(game, &[pickup(36)]));
         let (id, body) = reader.recv().unwrap();
         let play::Serverbound::ContainerClick(sent) = play::Serverbound::decode(id, &body).unwrap()

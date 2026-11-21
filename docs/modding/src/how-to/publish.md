@@ -30,9 +30,10 @@ registry. The submission goes into `target/sunrise-mod/publish/` (change it with
 
 What the manifest cannot say comes from flags: `--summary` (at most 160 characters), `--owner <login>` (repeat it for
 several; the GitHub accounts allowed to publish updates), `--categories a,b` (1 to 3 from [your kind's
-list](../reference/registry-index.md#submitting-a-project)), `--tags a,b` and `--changelog <text>`. Anything still
-missing is written as a value that starts with `TODO(publish)`, and the command lists what remains. The registry
-refuses an entry that holds one, so edit `mods/<id>.toml` (or the manifest, then run `publish` again) until the list is empty.
+list](../reference/registry-index.md#submitting-a-project)), `--tags a,b` and `--changelog <text>`. An entry or page
+field still missing is written as a value that starts with `TODO(publish)`, and the command lists what remains. The
+registry refuses an entry that holds one, so edit `mods/<id>.toml` (or the manifest, then run `publish` again) until the
+list is empty.
 
 Save `icon.png` beside `sunrise-mod.toml` as a square PNG, 64 to 512 pixels per side and at most 256 KiB, so it fits
 both the package and the registry.
@@ -89,8 +90,13 @@ A new version of a listing that has no screenshots needs one too: add the file u
 in the entry's `screenshots` in the same pull request, or the check refuses it (a `mod` or `native-mod` in the
 `library` category is exempt, and a listing that gains no version stays valid as it is). Repeat steps 2 to 4.
 
-`--registry <checkout>` also checks a first listing's id against the checkout's collection ids; without it, the
-registry's CI checks the id when the pull request opens.
+`--registry <checkout>` also checks a first listing's id against the checkout's collection ids, and lists among what
+remains each required dependency of the package that no listed mod version for the same game satisfies, with the
+versions the checkout does list; a version taken down in `revoked.toml` does not count. These lines are printed only,
+not written into the entry. The dependencies are read from the package itself, so after changing `[dependencies]` in
+`sunrise-mod.toml`, build again (and sign the new file, for a signed project) before running `publish`. Without
+`--registry`, the registry's CI checks both when the pull request opens; it also checks sides and what the dependencies
+themselves require.
 
 Published versions never change and are never removed: a version already in the entry is refused by name, and a file
 that must go is taken down by the registry's maintainers in `revoked.toml`.
