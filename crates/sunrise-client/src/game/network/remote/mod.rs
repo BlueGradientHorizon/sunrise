@@ -890,7 +890,6 @@ pub(super) struct Remote {
     chunk_center: (i32, i32),
     /// Received events a frame left for the next one, in order, and when
     /// the oldest of them first waited (`poll_remote`).
-    backlog: VecDeque<Received>,
     backlog_since: Option<Instant>,
     /// `ClientboundTransferPacket`'s target: when the connection ends the
     /// game connects here, the stored cookies carried over (`TransferState`).
@@ -1124,6 +1123,7 @@ impl Game<'_> {
         self.server_packs_connect(local.is_none().then_some(address), user);
         let session = match local {
             Some(pipe) => Session::connect_local(
+                &self.client_inbox,
                 pipe,
                 name,
                 auth.clone(),
@@ -1135,6 +1135,7 @@ impl Game<'_> {
                 self.connection_starts(address, name, lan);
                 match cookies {
                     Some(cookies) => Session::connect_transferred(
+                        &self.client_inbox,
                         address,
                         name,
                         auth.clone(),
@@ -1150,6 +1151,7 @@ impl Game<'_> {
                             Session::connect
                         };
                         connect(
+                            &self.client_inbox,
                             address,
                             name,
                             auth.clone(),
@@ -1397,7 +1399,6 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
-            backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
@@ -1438,7 +1439,7 @@ impl Game<'_> {
             |a| (a.name.clone(), a.uuid),
         );
         self.server_packs_connect(None, user);
-        let session = Session::replay(name);
+        let session = Session::replay(&self.client_inbox, name);
         let player_type = super::perspective::player_type(&root);
         let mut streaming = Streaming::new(
             Arc::new(NoTerrain),
@@ -1651,7 +1652,6 @@ impl Game<'_> {
             overworld_clock: None,
             clock_game_time: 0,
             chunk_center: (0, 0),
-            backlog: VecDeque::new(),
             backlog_since: None,
             server_links: Vec::new(),
             debug_query: Default::default(),
@@ -1692,14 +1692,6 @@ impl Game<'_> {
         self.kept_block_entities.get_mut().clear();
         self.mod_view_distances.take();
         self.clear_narrator();
-        // updateLevelInEngines(null): every sound stops and the music manager
-        // lets go of its track. Leaving a server comes straight here, not
-        // through finish_close_world, so the biome's ambient loop would
-        // otherwise play on over the title screen until the next world.
-        self.ambience.clear(&mut self.audio);
-        self.music.stop_playing(None, &mut self.audio);
-        self.audio.leave_level();
-        self.mod_sounds.clear();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
         // Minecraft.disconnect: the client level goes.
@@ -1718,7 +1710,12 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
-        // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
+        // Minecraft.disconnect -> updateLevelInEngines(null), after the logout and level
+        // unload notifications: stop even the sounds a listener started during teardown.
+        self.ambience.clear(&mut self.audio);
+        self.music.stop_playing(None, &mut self.audio);
+        self.audio.leave_level();
+        self.mod_sounds.clear();
         self.update_window_title();
         super::lan::sync::forget_sync_data();
         self.gui.atlas.clear_object_skins();
@@ -2299,7 +2296,9 @@ impl Game<'_> {
     /// Received events left for the next frame (`poll_remote`): until they
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
-        self.remote.as_ref().map_or(0, |r| r.backlog.len())
+        self.remote
+            .as_ref()
+            .map_or(0, |_| self.client_backlog.len())
     }
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -2334,19 +2333,20 @@ impl Game<'_> {
     /// `CHUNK_PACKETS_PER_FRAME`: once a frame has spent it, the events from
     /// the next chunk packet on wait for the next frame, unless they have
     /// already waited `BACKLOG_LIMIT`. A chunk packet still decoding holds
-    /// back what follows it.
+    /// back later network events and the executor phase that follows them.
     pub(super) fn poll_remote(&mut self) -> Result<()> {
         self.poll_remote_with(false)
     }
 
-    /// `Minecraft.runTick` handles every packet that came (`runAllTasks`)
+    /// `Minecraft.runTick` handles every packet that came (`processQueuedPackets`)
     /// before the frame's ticks. What this frame's poll left for later (chunks
     /// past its budget or still decoding, and everything after them) is taken
     /// when a tick is about to run, so the tick moves through those chunks, as
-    /// vanilla's does. A batch's `ChunkBatchReceived` is not among them: the
-    /// network thread answers it (`net::receive_play`).
+    /// vanilla's does. Finishing that work resumes the same packet-before-task
+    /// order for newly published events. The network thread still answers a
+    /// batch's `ChunkBatchReceived` (`net::receive_play`).
     pub(in crate::game) fn poll_remote_before_tick(&mut self) -> Result<()> {
-        if self.remote.as_ref().is_none_or(|r| r.backlog.is_empty()) {
+        if self.client_backlog.is_empty() && self.client_backlog_tasks.is_empty() {
             return Ok(());
         }
         self.poll_remote_with(true)
@@ -2557,7 +2557,6 @@ impl Game<'_> {
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         self.build_level_environments();
-        self.audio.set_world(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
         self.level.last_death = spawn
@@ -2566,8 +2565,6 @@ impl Game<'_> {
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
             self.clock.reset_client_level_tick_state();
-            // A new ClientLevel: Minecraft.setLevel stops every sound.
-            self.stop_sounds_for_new_level();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),
                 self.worker_context(),
@@ -2626,7 +2623,10 @@ impl Game<'_> {
             if let Some(old) = old {
                 self.native_client_level_unload(&old);
             }
+            // Minecraft.setLevel -> updateLevelInEngines, after the old-level unload.
+            self.stop_sounds_for_new_level();
         }
+        self.audio.set_world(&spawn.dimension);
         self.streaming.relight_resent = relight_resent;
         let has_sky = self
             .remote

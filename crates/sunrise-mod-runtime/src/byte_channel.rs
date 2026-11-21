@@ -126,6 +126,16 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
 }
 
 impl<T> Sender<T> {
+    /// Publish in FIFO order without spending this channel's byte budget. For local work
+    /// or values whose credit is already held elsewhere.
+    pub fn send_uncharged(&self, value: T) -> Result<(), T> {
+        Permit {
+            shared: self.0.clone(),
+            charge: 0,
+        }
+        .publish(value)
+    }
+
     /// Never waits for capacity. Overflowing charges are refused as full.
     /// `owned_bytes` must cover all heap storage retained by `value`.
     pub fn try_send(&self, value: T, owned_bytes: usize) -> Result<(), TrySendError<T>> {
@@ -161,6 +171,11 @@ impl<T> Sender<T> {
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
+    }
+
+    /// Whether a receiver exists now; publication still checks for concurrent closure.
+    pub fn receiver_is_open(&self) -> bool {
+        self.0.lock().receiver_alive
     }
 }
 impl<T> Permit<T> {
@@ -255,6 +270,7 @@ impl<T> Receiver<T> {
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
     }
+
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let mut state = self.0.lock();
         Self::pop(&mut state).ok_or(if state.senders == 0 {
@@ -325,6 +341,21 @@ impl<T> Drop for Receiver<T> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn local_work_shares_fifo_without_using_transport_credit() {
+        let charge = message_overhead::<&str>();
+        let (tx, rx) = channel(charge).unwrap();
+        tx.send_uncharged("first task").unwrap();
+        tx.try_send("packet", 0).unwrap();
+        tx.send_uncharged("second task").unwrap();
+        assert_eq!(tx.stats().reserved_bytes, charge);
+        assert_eq!(rx.try_recv().unwrap(), "first task");
+        assert_eq!(tx.stats().reserved_bytes, charge);
+        assert_eq!(rx.try_recv().unwrap(), "packet");
+        assert_eq!(rx.try_recv().unwrap(), "second task");
+        assert_eq!(tx.stats().reserved_bytes, 0);
+    }
 
     #[test]
     fn owned_dequeue_keeps_credit_until_lease_drop() {

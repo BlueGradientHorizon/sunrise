@@ -2,7 +2,7 @@
 use super::{Side, Transport, connection::Epoch, encode, encoded_len};
 use crate::{
     lan::{PlayerSender, config_payloads::ConfigSender},
-    net::{Event, PreparedPayload, queued_writer::QueuedWriter},
+    net::{EventSender, PreparedPayload, queued_writer::QueuedWriter},
 };
 use mod_api::{PayloadBytes, PayloadFrameStage, PayloadId, PayloadSendError, Text};
 use std::sync::{
@@ -19,7 +19,7 @@ enum Target {
         writer: Arc<Mutex<Option<QueuedWriter>>>,
         configuring: Arc<AtomicBool>,
         transport: Arc<Transport>,
-        events: crate::net::ingress::Producer<Event>,
+        events: EventSender,
     },
     Server(PlayerSender),
     Configuration(ConfigSender),
@@ -75,7 +75,7 @@ impl Endpoint {
         writer: Arc<Mutex<Option<QueuedWriter>>>,
         configuring: Arc<AtomicBool>,
         transport: Arc<Transport>,
-        events: crate::net::ingress::Producer<Event>,
+        events: EventSender,
     ) -> Self {
         Self(Target::Client {
             writer,

@@ -11,7 +11,7 @@ use sunrise_client::{
     chunk::{
         BIOME_STRATEGY, Chunk, ColumnLayout, Light, Section, block_strategy, known_blocks_only,
     },
-    net::Event,
+    net::{ClientReceiveCredit, Event},
 };
 use sunrise_core::paletted::{PalettedContainer, Strategy};
 use sunrise_protocol::{
@@ -416,26 +416,18 @@ pub enum Next {
 /// handed to the decoder (with the format it decodes with), whose column
 /// comes back from `ChunkDecoder::next`.
 pub enum Received {
-    Event(Event, sunrise_client::net::ingress::ReceiveLease<Event>),
-    Chunk(
-        Arc<ChunkFormat>,
-        sunrise_client::net::ingress::ReceiveLease<Event>,
-    ),
+    Event(Event, Option<ClientReceiveCredit>),
+    Chunk(Arc<ChunkFormat>, Option<ClientReceiveCredit>),
 }
 
 // Keep net::Event's transport-owned staging slot bound honest as the actor evolves.
 const _: () = assert!(
     std::mem::size_of::<Received>()
-        <= std::mem::size_of::<(
-            Event,
-            sunrise_client::net::ingress::ReceiveLease<Event>,
-            usize,
-            usize,
-        )>()
+        <= std::mem::size_of::<(Event, Option<ClientReceiveCredit>, usize, usize)>()
 );
 
 impl Received {
-    pub fn into_event_credit(self) -> sunrise_client::net::ingress::ReceiveLease<Event> {
+    pub fn into_event_credit(self) -> Option<ClientReceiveCredit> {
         let Self::Event(_, credit) = self else {
             unreachable!()
         };

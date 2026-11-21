@@ -1,0 +1,2 @@
+sunrise-client game::remote::tests::client_level_lifecycle_tests::a_reconfiguring_client_stops_flat_audio_streams_before_configuration lib daily resources
+sunrise-client game::remote::tests::client_level_lifecycle_tests::client_level_transitions_stop_streams_opened_during_unload lib daily resources

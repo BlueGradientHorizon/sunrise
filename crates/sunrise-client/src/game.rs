@@ -272,6 +272,8 @@ mod client_ambient;
 mod client_attack_targets;
 #[path = "game/modding/client_cracks.rs"]
 mod client_cracks;
+#[path = "game/modding/client_executor.rs"]
+mod client_executor;
 #[path = "game/modding/client_item_extensions.rs"]
 mod client_item_extensions;
 #[path = "game/interface/client_reload/mod.rs"]
@@ -4009,6 +4011,12 @@ struct Game<'a> {
     attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
+    client_inbox: sunrise_client::net::ClientInbox,
+    // One ingress, with deferred packets and pending tasks held in their respective phases.
+    client_backlog: std::collections::VecDeque<raw_backlog::Received>,
+    client_backlog_tasks: std::collections::VecDeque<sunrise_client::net::ClientTask>,
+    client_backlog_serial: Option<u64>,
+    client_executor: client_executor::State,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
     /// The server this window connected to last over the network: kept while something may
@@ -7079,6 +7087,7 @@ impl Game<'_> {
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
         self.draw_narrator_toast(&mut batch);
+        self.draw_client_task_errors(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -11717,7 +11726,10 @@ impl Game<'_> {
                     {
                         return;
                     }
-                    self.pending_save.as_mut().unwrap().quit = true;
+                    if let Err(error) = self.begin_closing_save(true) {
+                        self.error = Some(error);
+                        event_loop.exit();
+                    }
                 }
                 WindowEvent::Focused(focused) => {
                     self.focused = focused;
@@ -12268,8 +12280,8 @@ impl Game<'_> {
                     if sound {
                         self.audio.play_button_click();
                     }
-                    self.title_action(event_loop, action)?;
-                    self.reopen_data_packs(event_loop)?;
+                    self.title_action(action)?;
+                    self.reopen_data_packs()?;
                 }
                 // AbstractSelectionList.mouseClicked: the world list takes a
                 // click of any button, so the middle one selects its row
@@ -12687,7 +12699,7 @@ impl Game<'_> {
                                 if sound {
                                     self.audio.play_button_click();
                                 }
-                                self.title_action(event_loop, action)?;
+                                self.title_action(action)?;
                             }
                             PhysicalKey::Code(
                                 key @ (KeyCode::Backspace
@@ -12729,7 +12741,7 @@ impl Game<'_> {
                             PhysicalKey::Code(KeyCode::Escape) => {
                                 if let Some(t) = self.title.as_mut() {
                                     t.escape();
-                                    self.reopen_data_packs(event_loop)?;
+                                    self.reopen_data_packs()?;
                                 }
                                 self.save_title_options();
                             }
@@ -12813,6 +12825,10 @@ impl Game<'_> {
                     if self.title.is_none() {
                         sunrise_client::spans::time("update_world", || self.update_world());
                         sunrise_client::spans::time("spawn_player", || self.spawn_player())?;
+                    } else if let Err(e) =
+                        sunrise_client::spans::time("poll_remote", || self.poll_remote())
+                    {
+                        log::warn!("Sunrise: {e}");
                     }
                     let updated = Instant::now();
                     self.track_toggle_screens();
@@ -13595,6 +13611,11 @@ impl<'a> Game<'a> {
             entity_initialization: Default::default(),
             attachment_indexes: Default::default(),
             remote: None,
+            client_inbox: Default::default(),
+            client_backlog: Default::default(),
+            client_backlog_tasks: Default::default(),
+            client_backlog_serial: None,
+            client_executor: Default::default(),
             realm_session: false,
             last_connection: None,
             connection_open: false,

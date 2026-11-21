@@ -266,6 +266,7 @@ impl Game<'_> {
 
     /// The loop ended: close the pads' output, save the world.
     pub(super) fn shut_down(&mut self) {
+        self.close_client_tasks();
         if self.error.is_none()
             && let Some(renderer) = &mut self.renderer
         {
@@ -332,7 +333,7 @@ impl Game<'_> {
         }
         // A Realm's address came back (GetServerDetailsTask hands over to ConnectScreen).
         if let Some(action) = self.title.as_mut().and_then(|t| t.take_connect_request())
-            && let Err(error) = self.title_action(event_loop, action)
+            && let Err(error) = self.title_action(action)
         {
             self.error = Some(error);
             event_loop.exit();

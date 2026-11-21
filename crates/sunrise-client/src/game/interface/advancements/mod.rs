@@ -2523,6 +2523,7 @@ impl Game<'_> {
             .filter_map(|t| t.slot)
             .chain(packs)
             .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
+            .chain(self.client_executor.errors.iter().filter_map(|t| t.slot))
             .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
     }
     pub(super) fn add_advancement_toast(&mut self, mut toast: Toast) {

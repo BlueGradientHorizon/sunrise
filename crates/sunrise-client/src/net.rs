@@ -7,7 +7,10 @@
 //! (crate::auth): the login joins the server through the session service and
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
 use crate::auth::AuthSession;
+mod client_inbox;
 mod held_packets;
+pub(crate) use client_inbox::PreparedEvent;
+pub use client_inbox::{ClientInbox, ClientReceiveCredit, ClientTask, EventSender, QueuedEvent};
 pub mod ingress;
 mod known_packs;
 use known_packs::{fill_known_entries, select_known_packs};
@@ -105,6 +108,8 @@ pub enum Event {
     Packet(Box<play::Clientbound>),
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
+    /// Locally submitted main-thread work, independent of the active session.
+    ClientTask(ClientTask),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
     DecodeError(String),
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
@@ -148,8 +153,13 @@ pub enum Event {
     },
 }
 
-fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
-    ingress::channel(96 << 20, Event::ingress_charge).expect("positive incoming byte budget")
+#[cfg(test)]
+fn event_channel() -> (
+    EventSender,
+    sunrise_mod_runtime::byte_channel::Receiver<QueuedEvent>,
+) {
+    let inbox = ClientInbox::default();
+    (inbox.connection(0), inbox.into_receiver())
 }
 impl Event {
     fn ingress_charge(&self) -> usize {
@@ -167,7 +177,8 @@ impl Event {
             | Self::CustomBooks
             | Self::Reconfiguring
             | Self::ClearDialog
-            | Self::PackPop(_) => 0,
+            | Self::PackPop(_)
+            | Self::ClientTask(_) => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
                 in_flight: _,
@@ -201,13 +212,12 @@ impl Event {
         // Layout-derived allowance for a frozen receiving vector, actor backlog,
         // decoder marker and retained receipt, including vector spare capacity.
         // Raw application buffers themselves are never multiplied.
-        owned.saturating_add(8 * size_of::<(Self, ingress::ReceiveLease<Self>, usize, usize)>())
+        owned.saturating_add(8 * size_of::<(QueuedEvent, usize, usize)>())
     }
 }
 
 pub struct Session {
-    events: ingress::Consumer<Event>,
-    payload_events: ingress::Producer<Event>,
+    payload_events: EventSender,
     payloads: Arc<crate::raw_payloads::Transport>,
     writer: Arc<Mutex<Option<QueuedWriter>>>,
     /// The connection is in configuration (else in play). Changed only
@@ -243,6 +253,7 @@ impl Session {
     }
     /// Start connecting in the background, as `auth`'s account when there is one.
     pub fn connect(
+        inbox: &ClientInbox,
         address: &str,
         name: &str,
         auth: Option<Arc<AuthSession>>,
@@ -251,13 +262,14 @@ impl Session {
         resources: Arc<ItemData>,
     ) -> Self {
         Self::start(
-            address, name, auth, info, lang, None, None, resources, false,
+            inbox, address, name, auth, info, lang, None, None, resources, false,
         )
     }
     /// `ClientHandshakePacketListenerImpl.handleHello`: LAN entries can continue
     /// after session authentication fails; the server still decides whether to admit them.
     /// Only for entries selected from LAN discovery, not addresses classified by IP.
     pub fn connect_lan(
+        inbox: &ClientInbox,
         address: &str,
         name: &str,
         auth: Option<Arc<AuthSession>>,
@@ -265,11 +277,15 @@ impl Session {
         lang: Arc<Language>,
         resources: Arc<ItemData>,
     ) -> Self {
-        Self::start(address, name, auth, info, lang, None, None, resources, true)
+        Self::start(
+            inbox, address, name, auth, info, lang, None, None, resources, true,
+        )
     }
     /// `ConnectScreen.startConnecting` for a `transfer`: the cookies the
     /// server stored carry to the new connection (`TransferState`).
+    #[allow(clippy::too_many_arguments)]
     pub fn connect_transferred(
+        inbox: &ClientInbox,
         address: &str,
         name: &str,
         auth: Option<Arc<AuthSession>>,
@@ -279,6 +295,7 @@ impl Session {
         resources: Arc<ItemData>,
     ) -> Self {
         Self::start(
+            inbox,
             address,
             name,
             auth,
@@ -295,6 +312,7 @@ impl Session {
     /// `ServerboundHelloPacket(getUser().getName(), getUser().getProfileId())`), so the
     /// world's `players/data/<uuid>.dat` and `singleplayer_uuid` are the account's.
     pub fn connect_local(
+        inbox: &ClientInbox,
         pipe: sunrise_protocol::connection::Pipe,
         name: &str,
         auth: Option<Arc<AuthSession>>,
@@ -303,6 +321,7 @@ impl Session {
         resources: Arc<ItemData>,
     ) -> Self {
         Self::start(
+            inbox,
             "local",
             name,
             auth,
@@ -315,11 +334,10 @@ impl Session {
         )
     }
     /// A lightweight session for studio replay playback without background network IO.
-    pub fn replay(name: &str) -> Self {
-        let (_send, events) = event_channel();
+    pub fn replay(inbox: &ClientInbox, name: &str) -> Self {
+        let serial = next_serial();
         Self {
-            payload_events: _send,
-            events,
+            payload_events: inbox.connection(serial),
             writer: Arc::new(Mutex::new(None)),
             configuring: Arc::new(AtomicBool::new(false)),
             thread: None,
@@ -331,10 +349,20 @@ impl Session {
             debug: false,
             far: Arc::new(crate::lod_net::Inbox::default()),
             recorder: Arc::new(Mutex::new(None)),
-            serial: next_serial(),
+            serial,
         }
     }
+    /// A deterministic client fixture producer using this session's actual receive window and FIFO.
+    #[cfg(feature = "test-payload-probe")]
+    #[doc(hidden)]
+    pub fn received_packet_probe(&self) -> impl Fn(play::Clientbound) + Send + Sync + use<> {
+        let sender = self.payload_events.clone();
+        move |packet| sender.send(Event::Packet(Box::new(packet))).unwrap()
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn start(
+        inbox: &ClientInbox,
         address: &str,
         name: &str,
         auth: Option<Arc<AuthSession>>,
@@ -345,7 +373,8 @@ impl Session {
         resources: Arc<ItemData>,
         lan: bool,
     ) -> Self {
-        let (send, events) = event_channel();
+        let serial = next_serial();
+        let send = inbox.connection(serial);
         let payload_events = send.clone();
         let captured_payloads =
             crate::raw_payloads::Transport::capture(crate::raw_payloads::Side::Client);
@@ -425,7 +454,6 @@ impl Session {
             .ok();
         let debug = std::env::var_os("SUNRISE_NET_DEBUG").is_some();
         Self {
-            events,
             payload_events,
             payloads,
             writer,
@@ -438,7 +466,7 @@ impl Session {
             debug,
             far,
             recorder,
-            serial: next_serial(),
+            serial,
         }
     }
     /// Validate an untrusted mod packet once, reserve its physical writer credit,
@@ -492,11 +520,6 @@ impl Session {
             .cloned()
             .ok_or(SendPacketError::NotConnected)?;
         writer.prepare_packet(encoded.data, None)
-    }
-    /// The frozen receiving turn, retaining every input credit through its actor.
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn poll(&self) -> Vec<ingress::OwnedReceipt<Event>> {
-        self.events.take_turn()
     }
     /// Starts recording into `recorder`. `initialize` runs first, while the network thread
     /// can't record, so what it writes (a snapshot of the world) comes before any live packet.
@@ -653,6 +676,7 @@ impl Session {
     /// doesn't wake a read already waiting, so joining it held the window until
     /// the server dropped the connection, many seconds later.
     pub fn disconnect(&mut self) {
+        self.payload_events.close();
         self.payloads.close();
         if let Some(w) = self.writer.lock().unwrap().take() {
             w.shutdown();
@@ -727,7 +751,7 @@ pub fn save_friends_relay(relay: &str) {
 fn join_friend(
     code: &str,
     lang: &Language,
-    send: &ingress::Producer<Event>,
+    send: &EventSender,
 ) -> Result<(String, u16, Vec<u8>), Reason> {
     let Some(resolver) = sunrise_hooks::engine::tunnel() else {
         return Err(Reason::keyed_arg(
@@ -754,7 +778,7 @@ fn join_friend(
     Ok(("127.0.0.1".to_owned(), opened.port, opened.token))
 }
 
-fn status(send: &ingress::Producer<Event>, text: &str) {
+fn status(send: &EventSender, text: &str) {
     let _ = send.send(Event::Status(text.to_owned()));
 }
 
@@ -903,7 +927,7 @@ fn run(
     auth: Option<&AuthSession>,
     info: cfg::ClientInformation,
     lang: &Language,
-    send: &ingress::Producer<Event>,
+    send: &EventSender,
     shared_writer: &Arc<Mutex<Option<QueuedWriter>>>,
     configuring: &Arc<AtomicBool>,
     shared_counters: &Mutex<Option<Arc<Counters>>>,
@@ -1112,7 +1136,7 @@ fn receive_play(
     shared_writer: &Arc<Mutex<Option<QueuedWriter>>>,
     configuring: &Arc<AtomicBool>,
     lang: &Language,
-    send: &ingress::Producer<Event>,
+    send: &EventSender,
     cookies: &Cookies,
     far: &crate::lod_net::Inbox,
     resources: &ItemData,
@@ -1264,7 +1288,7 @@ fn receive_application(
     endpoint: &crate::raw_payloads::Endpoint,
     phase: sunrise_protocol::payload_negotiation::Phase,
     payload: cfg::CustomPayload,
-    send: &ingress::Producer<Event>,
+    send: &EventSender,
 ) -> Result<Option<cfg::CustomPayload>, Reason> {
     match crate::raw_payloads::Incoming::classify(endpoint.transport(), phase, payload)
         .map_err(|error| Reason::plain(error.to_string()))?
@@ -1290,7 +1314,7 @@ fn configure(
     writer: &Arc<Mutex<Option<QueuedWriter>>>,
     configuring: &Arc<AtomicBool>,
     lang: &Language,
-    send: &ingress::Producer<Event>,
+    send: &EventSender,
     cookies: &Cookies,
     resources: &ItemData,
     payloads: &Arc<crate::raw_payloads::Transport>,
@@ -1540,7 +1564,7 @@ fn configure(
 }
 
 #[sunrise_mod_api_macros::replaceable]
-fn receive_brand(payload: &cfg::CustomPayload, send: &ingress::Producer<Event>) {
+fn receive_brand(payload: &cfg::CustomPayload, send: &EventSender) {
     if payload.channel == "minecraft:brand"
         && let Ok(brand) = sunrise_protocol::buf::Reader::new(&payload.data).string(32767)
     {
@@ -2246,7 +2270,9 @@ mod tests {
         ] {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             let port = listener.local_addr().unwrap().port();
+            let inbox = ClientInbox::default();
             let session = Session::connect(
+                &inbox,
                 &format!("localhost:{port}"),
                 "Probe",
                 None,
@@ -2609,7 +2635,8 @@ mod tests {
             .is_ok()
         );
         for expected in [true, false] {
-            let (event, _credit) = events.try_recv_owned().unwrap().into_parts();
+            let (QueuedEvent { event, .. }, _credit) =
+                events.try_recv_owned().unwrap().into_parts();
             let Event::ShowDialog { dialog, registries } = event else {
                 panic!("expected a configuration dialog");
             };
@@ -2763,7 +2790,7 @@ mod tests {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             let (_reader, writer) = Connection::local(client).split();
             let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-            let (_send, events) = event_channel();
+            let (send, _events) = event_channel();
             let (release, stalled) = channel();
             let (finished, completed) = channel();
             let thread = std::thread::spawn(move || {
@@ -2771,8 +2798,7 @@ mod tests {
                 let _ = finished.send(());
             });
             let mut session = Session {
-                events,
-                payload_events: event_channel().0,
+                payload_events: send.clone(),
                 payloads: crate::raw_payloads::Transport::empty(),
                 writer: writer.clone(),
                 configuring: Arc::new(AtomicBool::new(false)),
@@ -2863,9 +2889,11 @@ mod tests {
             play::Serverbound::KeepAlive(cfg::KeepAlive { id: 9 })
         );
         let timeout = Duration::from_secs(5);
-        let (event, _teleport_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        let (QueuedEvent { event, .. }, _teleport_credit) =
+            events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(matches!(event, Event::Packet(p) if *p == teleport));
-        let (event, _ping_credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        let (QueuedEvent { event, .. }, _ping_credit) =
+            events.recv_timeout_owned(timeout).unwrap().into_parts();
         assert!(
             matches!(event, Event::Packet(p) if *p == play::Clientbound::Ping(cfg::Ping { id: 7 }))
         );
@@ -2938,10 +2966,9 @@ mod tests {
     fn local_send_rejects_unknown_oversize_payload_before_writing() {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (_, writer) = Connection::local(client).split();
-        let (_, events) = event_channel();
+        let (send, _events) = event_channel();
         let session = Session {
-            events,
-            payload_events: event_channel().0,
+            payload_events: send.clone(),
             payloads: crate::raw_payloads::Transport::empty(),
             writer: Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap()))),
             configuring: Arc::new(AtomicBool::new(false)),
@@ -2982,10 +3009,9 @@ mod tests {
         let (root, data) = empty_item_data("reconfiguration");
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
-        let (send, events) = event_channel();
+        let (send, _events) = event_channel();
         let session = Session {
-            events,
-            payload_events: event_channel().0,
+            payload_events: send.clone(),
             payloads: crate::raw_payloads::Transport::empty(),
             writer: Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap()))),
             configuring: Arc::new(AtomicBool::new(false)),
@@ -3103,14 +3129,10 @@ mod tests {
         });
         server.send(&transfer.encode()).unwrap();
         assert!(thread.join().unwrap().is_ok());
-        let turn: Vec<_> = events
-            .take_turn()
-            .into_iter()
-            .map(ingress::OwnedReceipt::into_parts)
-            .collect();
+        let last_event = std::iter::from_fn(|| events.try_recv().ok()).last();
         assert!(matches!(
-            turn.last(),
-            Some((Event::Transfer { host, port: 25566 }, _credit)) if host == "example.net"
+            last_event,
+            Some(QueuedEvent { event: Event::Transfer { host, port: 25566 }, .. }) if host == "example.net"
         ));
         // The stored cookie stays for the next connection (TransferState).
         assert_eq!(
@@ -3130,7 +3152,7 @@ mod tests {
             data: writer.data,
         };
         receive_brand(&payload, &send);
-        let (event, _credit) = events.try_recv_owned().unwrap().into_parts();
+        let (QueuedEvent { event, .. }, _credit) = events.try_recv_owned().unwrap().into_parts();
         assert!(matches!(event, Event::Brand(brand) if brand == "vanilla"));
         payload.channel = "example:other".into();
         receive_brand(&payload, &send);
@@ -3206,7 +3228,9 @@ mod tests {
             )]
             .into_iter()
             .collect();
-            let session = connect(
+            let inbox = ClientInbox::default();
+            let _session = connect(
+                &inbox,
                 &address,
                 "Tester",
                 None,
@@ -3215,8 +3239,8 @@ mod tests {
                 Arc::clone(&data),
             );
             let (reason, _credit) = loop {
-                let (event, credit) = session
-                    .events
+                let (QueuedEvent { event, .. }, credit) = inbox
+                    .receiver_for_test()
                     .recv_timeout_owned(Duration::from_secs(60))
                     .unwrap()
                     .into_parts();
@@ -3284,10 +3308,9 @@ mod tests {
         let (root, data) = empty_item_data("studio_recording");
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
-        let (send, events) = event_channel();
+        let (send, _events) = event_channel();
         let session = Session {
-            events,
-            payload_events: event_channel().0,
+            payload_events: send.clone(),
             payloads: crate::raw_payloads::Transport::empty(),
             writer: Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap()))),
             configuring: Arc::new(AtomicBool::new(false)),
@@ -3356,7 +3379,7 @@ mod tests {
     fn session_recorder_gets_the_packets_the_client_makes() {
         use sunrise_protocol::entity_data::{Value, serializer};
 
-        let session = Session::replay("StudioTester");
+        let session = Session::replay(&ClientInbox::default(), "StudioTester");
         session.record_clientbound(&play::Clientbound::SwingAnimation(play::SwingAnimation {
             id: 1,
             hand: 0,

@@ -24,7 +24,7 @@ use sunrise_client::{
         data::SyncData,
         hub::{HostEvent, Hub, HubConfig, TickCtx},
     },
-    net::{Event, Session},
+    net::{ClientInbox, Event, Session},
     world::World,
 };
 use sunrise_protocol::{
@@ -210,28 +210,31 @@ impl Drop for Resources {
     }
 }
 
-fn connect(port: u16, name: &str, data: &Arc<ItemData>) -> Session {
-    Session::connect(
+fn connect(port: u16, name: &str, data: &Arc<ItemData>) -> (Session, ClientInbox) {
+    let inbox = ClientInbox::default();
+    let session = Session::connect(
+        &inbox,
         &format!("127.0.0.1:{port}"),
         name,
         None,
         ClientInformation::new(8),
         Arc::new(Default::default()),
         Arc::clone(data),
-    )
+    );
+    (session, inbox)
 }
 
 /// Ticks the host and polls the session until `done` takes an event; fails after 30 seconds.
 fn drive<T>(
     host: &mut Host,
-    session: &Session,
+    session: &(Session, ClientInbox),
     mut done: impl FnMut(&mut Host, Event) -> Option<T>,
 ) -> T {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         host.tick();
-        for receipt in session.poll() {
-            let (event, _credit) = receipt.into_parts();
+        for receipt in session.1.poll() {
+            let (_serial, event, _credit) = receipt.into_parts();
             if let Some(found) = done(host, event) {
                 return found;
             }
@@ -241,7 +244,7 @@ fn drive<T>(
     }
 }
 
-fn join(host: &mut Host, session: &Session) {
+fn join(host: &mut Host, session: &(Session, ClientInbox)) {
     drive(host, session, |_, event| match event {
         Event::Joined { .. } => Some(()),
         Event::Disconnected { reason, .. } => panic!("the join ended: {reason}"),

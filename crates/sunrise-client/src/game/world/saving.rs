@@ -45,6 +45,9 @@ impl Game<'_> {
             })
     }
     pub(super) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
+        if quit {
+            self.close_client_tasks();
+        }
         if let Some(save) = &mut self.pending_save {
             save.quit |= quit;
             return Ok(());
