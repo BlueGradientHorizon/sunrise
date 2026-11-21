@@ -667,15 +667,15 @@ held stacks, selected poses and `is_using_item`. `event.partial_tick` and option
 owned or serializable snapshot. Use `event.parts.get(HumanoidPart::RightArm)` to read
 `[position, rotation]`, then `set_rotation` or `set_position` on that same view. The head, hat,
 body, arms and legs are editable if present; sleeves, jacket and pants are not. Positions are
-local texels and rotations are radians. A non-finite component is refused
-while other finite components apply immediately, so later listeners see those
-edits. Scale and visibility are not changed. Later ITEM, attack, crouch, bob
-and swim animation still apply. Armor stands then replace rotations with
-their saved pose, preserving position edits. Their armor models run the same
-setup independently. A model can animate more than once per frame, so listeners
-must not treat this as a once-per-entity frame notification or advance simulation
-from it. The hook does not fire when an incoming base-part position or rotation
-is non-finite. When nobody subscribes, there is no callback or held-stack snapshot. To read
+local texels and rotations are radians. Writes apply all three components
+immediately on any present editable part, matching `HumanoidModel.setupAnim`
+with no finiteness gate, so later listeners see those edits. Scale and visibility
+are not changed. Later ITEM, attack, crouch, bob and swim animation still apply.
+Armor stands then replace rotations with their saved pose, preserving position
+edits. Their armor models run the same setup independently. A model can animate
+more than once per frame, so listeners must not treat this as a once-per-entity
+frame notification or advance simulation from it. When nobody subscribes, there
+is no callback or held-stack snapshot. To read
 the completed animation, use a [layer's or Post hook's final model](client/model-drawing.md#read-the-final-body-model).
 
 ```json
