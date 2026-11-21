@@ -486,33 +486,18 @@ impl Game<'_> {
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
     }
     /// Set or clear the mod-published connection group at `pos`.
-    /// Returns `Ok(true)` if changed, `Ok(false)` if unchanged, and typed refusals for stale,
-    /// unavailable (client/parked/fenced), unloaded chunk (`NotLoaded`), or out-of-height
-    /// (`OutOfHeight`) positions.
+    /// Returns `Ok(true)` if changed, `Ok(false)` if unchanged, unloaded, out of height, or
+    /// fenced, and `Err(LevelWriteError::Stale | Unavailable)` for stale or non-writable levels.
     pub(super) fn level_set_connection_group(
         &mut self,
         level: LevelRef,
         pos: [i32; 3],
         group: Option<u64>,
     ) -> Result<bool, mod_api::LevelWriteError> {
-        let world = self.native_level_world_result(level)?;
-        if self.dim.key() != level.dimension() || self.world.carrier_fences.locks_cell(&pos) {
-            return Err(mod_api::LevelWriteError::Unavailable);
+        if !self.native_level_write_position(level, pos)? {
+            return Ok(false);
         }
-        if !world.loaded(pos[0], pos[2]) {
-            return Err(mod_api::LevelWriteError::NotLoaded);
-        }
-        if !world.shape.contains_y(pos[1]) {
-            return Err(mod_api::LevelWriteError::OutOfHeight);
-        }
-        self.journal_set_connection_group(pos, group)
-            .map_err(|unloaded| {
-                if unloaded {
-                    mod_api::LevelWriteError::NotLoaded
-                } else {
-                    mod_api::LevelWriteError::OutOfHeight
-                }
-            })
+        Ok(self.journal_set_connection_group(pos, group))
     }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the

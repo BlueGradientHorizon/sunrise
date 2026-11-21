@@ -789,6 +789,9 @@ impl Chunk {
     /// Read the mod-published connection group at chunk-local `(x, z)` and world `y`.
     #[inline]
     pub fn connection_group(&self, x: i32, y: i32, z: i32) -> Option<u64> {
+        if self.connection_groups.is_empty() {
+            return None;
+        }
         let cell = self.dynamic_cell(x, y, z)?;
         self.connection_groups.get(&cell).copied()
     }

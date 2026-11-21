@@ -18,10 +18,6 @@ pub enum LevelWriteError {
     InvalidStack(StackWriteError),
     /// This placement completes a wither pattern and cannot run inside a Host transaction.
     InTransaction,
-    /// The target position is not in a loaded chunk.
-    NotLoaded,
-    /// The target position lies outside the level's vertical height bounds.
-    OutOfHeight,
 }
 impl crate::AccessRefusal for LevelWriteError {
     fn unavailable() -> Self {

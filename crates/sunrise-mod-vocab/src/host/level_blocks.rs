@@ -227,11 +227,10 @@ pub trait LevelBlocksBackendMut {
     /// clears). Connected-texture rules with `"connect_group": true` join two neighbours only when
     /// both hold the same group; blocks with no group join nothing.
     ///
-    /// Returns `Ok(true)` if the stored group changed, or `Ok(false)` if it was already `group`.
-    /// Refuses with `Err(LevelWriteError::Stale)` for a stale handle,
-    /// `Err(LevelWriteError::Unavailable)` on a client, parked level, or outside the world phase,
-    /// `Err(LevelWriteError::NotLoaded)` when the chunk is not loaded, and
-    /// `Err(LevelWriteError::OutOfHeight)` when `pos[1]` is outside the level's height.
+    /// Returns `Ok(true)` if the stored group changed, or `Ok(false)` if it was already `group`
+    /// or `pos` is in an unloaded chunk or outside the level's vertical bounds. Refuses with
+    /// `Err(LevelWriteError::Stale)` for a stale handle and `Err(LevelWriteError::Unavailable)`
+    /// on a client, parked level, or outside the world phase.
     ///
     /// Connection groups are derived visual state: they are synced to Sunrise clients (on chunk
     /// send and on each change) and are **never saved to disk**. Mods that keep multi-block

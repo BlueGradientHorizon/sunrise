@@ -95,14 +95,14 @@ mod tests {
                 Some(&[((2, 64, 3), Some(0))][..])
             );
 
-            // Unloaded chunk and out-of-height positions return typed refusals.
+            // Unloaded chunk and out-of-height positions return Ok(false) per LevelWriteError.
             assert_eq!(
                 level.set_connection_group(game, [32, 64, 0], Some(1)),
-                Err(LevelWriteError::NotLoaded)
+                Ok(false)
             );
             assert_eq!(
                 level.set_connection_group(game, [2, 9999, 3], Some(1)),
-                Err(LevelWriteError::OutOfHeight)
+                Ok(false)
             );
             assert_eq!(level.connection_group(game, [32, 64, 0]), Ok(None));
             assert_eq!(level.connection_group(game, [2, 9999, 3]), Ok(None));
@@ -189,10 +189,43 @@ mod tests {
             assert!(game.world.dirty_sections.is_empty());
             assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
 
-            // Committed transaction replacing a block and setting a new group keeps the new group.
-            let commit_seal = game.transaction_open();
+            // Aborted transaction replacing a block restores the cleared group silently.
+            let abort_replace = game.transaction_open();
             assert_eq!(
                 level.set_block(game, [4, 64, 4], glass, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(None));
+            game.transaction_close(&abort_replace, false);
+            assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(Some(11)));
+            assert!(game.world.dirty_sections.is_empty());
+            assert!(game.world.connection_group_log.as_ref().unwrap().is_empty());
+
+            // Committed transaction replacing a block without setting a new group clears and logs
+            // None via `on_block_replaced`.
+            let commit_clear = game.transaction_open();
+            assert_eq!(
+                level.set_block(game, [4, 64, 4], glass, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(None));
+            game.transaction_close(&commit_clear, true);
+            assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(None));
+            assert_eq!(
+                game.world.connection_group_log.as_deref(),
+                Some(&[((4, 64, 4), None)][..])
+            );
+
+            // Committed transaction replacing a block and setting a new group keeps the new group.
+            assert_eq!(
+                level.set_connection_group(game, [4, 64, 4], Some(11)),
+                Ok(true)
+            );
+            game.world.dirty_sections.clear();
+            game.world.connection_group_log.as_mut().unwrap().clear();
+            let commit_seal = game.transaction_open();
+            assert_eq!(
+                level.set_block(game, [4, 64, 4], stone, BlockUpdateFlags::NONE),
                 Ok(true)
             );
             assert_eq!(level.connection_group(game, [4, 64, 4]), Ok(None));

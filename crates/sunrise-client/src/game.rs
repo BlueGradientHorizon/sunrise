@@ -699,7 +699,6 @@ pub struct Resources {
 struct WorldCore {
     item_data: Arc<sunrise_world::item_defaults::ItemData>,
     facts: BlockFacts,
-    state_blocks: Arc<[u32]>,
     biomes: Arc<Biomes>,
     environment: Environment,
     collision: Arc<BlockCollisionRegistry<'static>>,
@@ -6753,7 +6752,7 @@ impl Game<'_> {
         self.mod_view_distances.take();
         self.bosses = Default::default();
         self.streaming.paused = true;
-        self.world = Game::world_for_mods(&self.res, 0);
+        self.world = Game::world_for_mods(self.res.facts().air, 0);
         self.player = None;
         // `LocalPlayer`'s constructor: `KeyMapping.resetToggleKeys`, so a sneak or sprint toggled
         // in this world is not still on in the next one.
@@ -10838,7 +10837,7 @@ impl<'a> Game<'a> {
                 None,
             )
         })?;
-        let world = Game::world_for_mods(res, 0);
+        let world = Game::world_for_mods(res.facts().air, 0);
         let tutorial = tutorial::Tutorial::new(tutorial::Step::from_option(
             settings.file.int("tutorialStep"),
         ));

@@ -135,10 +135,6 @@ pub struct World {
     /// States (by id) whose writes are recorded in `watched_writes` (sculk
     /// blocks, which need a block entity).
     pub watched: Vec<bool>,
-    /// Block identity index per block state id, built once per registry and shared across
-    /// levels: two states have the same block iff `state_blocks[a] == state_blocks[b]`.
-    /// Empty in synthetic unit worlds that never bind a registry (falls back to state equality).
-    pub state_blocks: std::sync::Arc<[u32]>,
     /// Writes of watched states: position, previous and new state.
     pub watched_writes: Vec<((i32, i32, i32), u32, u32)>,
     /// `ChunkAccess.inhabitedTime` of resident chunks: ticks a player spent
@@ -351,7 +347,6 @@ impl World {
             chest_openers: FxHashMap::default(),
             block_names: FxHashMap::default(),
             watched: Vec::new(),
-            state_blocks: std::sync::Arc::from([]),
             watched_writes: Vec::new(),
             inhabited: FxHashMap::default(),
             game_time: 0,
@@ -474,21 +469,6 @@ impl World {
     pub fn set(&mut self, x: i32, y: i32, z: i32, state: BlockStateId) -> crate::Result<()> {
         self.set_with_notification(x, y, z, state, true)
     }
-    /// Whether two block state ids belong to the same block. Uses [`Self::state_blocks`] when
-    /// populated; otherwise falls back to exact state equality.
-    #[inline]
-    pub fn same_block(&self, a: u32, b: u32) -> bool {
-        if a == b {
-            return true;
-        }
-        match (
-            self.state_blocks.get(a as usize),
-            self.state_blocks.get(b as usize),
-        ) {
-            (Some(&ba), Some(&bb)) => ba == bb,
-            _ => false,
-        }
-    }
     /// Mark sections whose mesh depends on `(x, y, z)` dirty: the containing section, its
     /// vertical neighbours on section borders (`height_above`: also `local_y == 1` for
     /// `Connect::Height` two-above checks), and horizontal neighbours (including diagonals) on
@@ -544,34 +524,31 @@ impl World {
     }
     /// Write or clear the connection group in resident storage only (no log, no remesh): used by
     /// open Host transactions so tentative writes roll back quietly on abort.
-    /// Returns `Err(true)` if the chunk is not loaded, `Err(false)` if `y` is out of height,
-    /// else `Ok(changed)`.
+    /// Returns `false` if the chunk is unloaded, `y` is out of height, or the group was unchanged.
     pub fn set_connection_group_stored(
         &mut self,
         x: i32,
         y: i32,
         z: i32,
         group: Option<u64>,
-    ) -> Result<bool, bool> {
+    ) -> bool {
         let Some(chunk) = self.chunks.get_mut(&(x >> 4, z >> 4)) else {
-            return Err(true);
+            return false;
         };
         if chunk.section_index(y).is_none() {
-            return Err(false);
+            return false;
         }
-        let existing = chunk.connection_group(x & 15, y, z & 15);
-        if existing == group {
-            return Ok(false);
+        if chunk.connection_group(x & 15, y, z & 15) == group {
+            return false;
         }
-        Ok(Arc::make_mut(chunk)
+        Arc::make_mut(chunk)
             .set_connection_group(x & 15, y, z & 15, group)
-            .unwrap_or(false))
+            .unwrap_or(false)
     }
     /// Set or clear the connection group at `(x, y, z)`, marking affected sections for remesh
     /// (without relighting or marking the chunk unsaved) and logging the change for connected
     /// clients when `notify` is true and [`Self::connection_group_log`] is active.
-    /// Returns `Err(true)` if the chunk is not loaded, `Err(false)` if `y` is out of height,
-    /// else `Ok(changed)`.
+    /// Returns `false` if the chunk is unloaded, `y` is out of height, or the group was unchanged.
     pub fn set_connection_group(
         &mut self,
         x: i32,
@@ -579,23 +556,23 @@ impl World {
         z: i32,
         group: Option<u64>,
         notify: bool,
-    ) -> Result<bool, bool> {
+    ) -> bool {
         let Some(chunk) = self.chunks.get_mut(&(x >> 4, z >> 4)) else {
-            return Err(true);
+            return false;
         };
         let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
         if chunk.section_index(y).is_none() {
-            return Err(false);
+            return false;
         }
         if chunk.connection_group(x & 15, y, z & 15) == group {
-            return Ok(false);
+            return false;
         }
         Arc::make_mut(chunk).set_connection_group(x & 15, y, z & 15, group);
         if notify && let Some(log) = &mut self.connection_group_log {
             log.push(((x, y, z), group));
         }
         self.mark_remesh_at(x, y, z, min_y, sections, false);
-        Ok(true)
+        true
     }
     /// Apply a server-sent chunk snapshot of connection groups on a client world, marking
     /// affected sections for remesh. Ignores unloaded chunks or out-of-height entries.
@@ -651,26 +628,6 @@ impl World {
         }
         let previous = Arc::make_mut(chunk).set(x & 15, y, z & 15, state.0);
         if previous != state.0 {
-            if !self.same_block(previous, state.0) {
-                let cleared = self
-                    .chunks
-                    .get_mut(&(x >> 4, z >> 4))
-                    .and_then(|c| {
-                        let cell = c.dynamic_cell(x & 15, y, z & 15)?;
-                        if c.connection_groups.contains_key(&cell) {
-                            Arc::make_mut(c).connection_groups.remove(&cell)
-                        } else {
-                            None
-                        }
-                    })
-                    .is_some();
-                if cleared
-                    && notify
-                    && let Some(log) = &mut self.connection_group_log
-                {
-                    log.push(((x, y, z), None));
-                }
-            }
             self.block_entities
                 .state_changed((x, y, z), previous, state.0);
             let watches = |id: u32| self.watched.get(id as usize).copied().unwrap_or(false);
@@ -1200,39 +1157,25 @@ mod tests {
     }
 
     #[test]
-    fn connection_groups_preserve_on_same_block_clear_on_replace_and_dirty_only_meshes() {
+    fn connection_groups_dirty_only_meshes_log_changes_and_apply_snapshots() {
         let mut world = World::new(BlockStateId(0), 0);
-        // State 0 = air (block 0), states 1 & 2 = same block (block 1), state 3 = other block (block 2).
-        world.state_blocks = Arc::from([0u32, 1, 1, 2]);
         world.connection_group_log = Some(Vec::new());
-        let mut c00 = Chunk::empty(0, 0);
-        c00.set(15, 64, 15, 1);
-        world.chunks.insert((0, 0), Arc::new(c00));
+        world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         world.chunks.insert((1, 0), Arc::new(Chunk::empty(1, 0)));
         world.chunks.insert((0, 1), Arc::new(Chunk::empty(0, 1)));
         world.chunks.insert((1, 1), Arc::new(Chunk::empty(1, 1)));
 
-        // Unloaded chunk and out-of-height refuse with distinct errors.
-        assert_eq!(
-            world.set_connection_group(32, 64, 0, Some(1), true),
-            Err(true)
-        );
-        assert_eq!(
-            world.set_connection_group(15, 999, 15, Some(1), true),
-            Err(false)
-        );
+        // Unloaded chunk and out-of-height return false without logging or dirtying.
+        assert!(!world.set_connection_group(32, 64, 0, Some(1), true));
+        assert!(!world.set_connection_group(15, 999, 15, Some(1), true));
+        assert!(world.connection_group_log.as_ref().unwrap().is_empty());
+        assert!(world.dirty_sections.is_empty());
 
         // Setting group 0 (valid u64 value) succeeds, logs, and marks remesh across borders without
         // touching dirty_light, light_edits, or modified.
-        assert_eq!(
-            world.set_connection_group(15, 64, 15, Some(0), true),
-            Ok(true)
-        );
+        assert!(world.set_connection_group(15, 64, 15, Some(0), true));
         assert_eq!(world.connection_group(15, 64, 15), Some(0));
-        assert_eq!(
-            world.set_connection_group(15, 64, 15, Some(0), true),
-            Ok(false)
-        );
+        assert!(!world.set_connection_group(15, 64, 15, Some(0), true));
         assert_eq!(
             world.connection_group_log.as_deref(),
             Some(&[((15, 64, 15), Some(0))][..])
@@ -1247,15 +1190,11 @@ mod tests {
         assert!(world.light_edits.is_empty());
         assert!(world.modified.is_empty());
 
-        // Same-block state change (state 1 -> state 2) preserves the connection group.
+        // Clearing logs None and marks remesh; clearing again is a no-op.
         world.connection_group_log.as_mut().unwrap().clear();
-        assert_eq!(world.set(15, 64, 15, BlockStateId(2)), Ok(true));
-        assert_eq!(world.connection_group(15, 64, 15), Some(0));
-        assert!(world.connection_group_log.as_ref().unwrap().is_empty());
-
-        // Replacing with a different block (state 2 -> state 3) clears the group and logs None.
-        assert_eq!(world.set(15, 64, 15, BlockStateId(3)), Ok(true));
+        assert!(world.set_connection_group(15, 64, 15, None, true));
         assert_eq!(world.connection_group(15, 64, 15), None);
+        assert!(!world.set_connection_group(15, 64, 15, None, true));
         assert_eq!(
             world.connection_group_log.as_deref(),
             Some(&[((15, 64, 15), None)][..])

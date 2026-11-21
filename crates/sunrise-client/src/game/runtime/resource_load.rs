@@ -785,12 +785,10 @@ pub(super) fn load_resources_for_mods(
     progress.set(5);
     let suffocation =
         sunrise_client::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation)?;
-    let state_blocks = facts.state_blocks();
     let resources = Resources {
         core: WorldCore {
             item_data,
             facts,
-            state_blocks,
             biomes: biomes.clone(),
             environment,
             collision,

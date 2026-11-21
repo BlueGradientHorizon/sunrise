@@ -119,8 +119,10 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
 - **Derived visual state.** Connection groups are never saved to disk. Republish them when a chunk or block entity
   loads (for example in `BlockEntityPart::block_entity_on_load` or `Hooks::chunk_load`) and whenever your multiblock
   forms, splits, or changes membership.
-- **Automatic lifetime.** Replacing a block with a different block clears its connection group automatically;
-  changing only a block state property of the same block preserves it.
+- **Automatic lifetime.** On the server, replacing a block with one that does not keep block entities clears its
+  connection group automatically and syncs the clear to clients; changing only a block state property of the same
+  block preserves it. Writing to an unloaded chunk, an out-of-height position, or an unchanged group returns
+  `Ok(false)`.
 - **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads and incremental
   updates (skipping vanilla clients) and remeshes affected sections and chunk borders. Writes inside a Host
   transaction are tentative: aborting restores the previous group quietly, and committing publishes it.

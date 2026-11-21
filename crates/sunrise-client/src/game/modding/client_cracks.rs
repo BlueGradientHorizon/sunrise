@@ -66,7 +66,7 @@ impl Game<'_> {
     pub(super) fn reset_client_world(&mut self, seed: i64) {
         self.destroying.clear();
         self.mining = None;
-        self.world = Game::world_for_mods(&self.res, seed);
+        self.world = Game::world_for_mods(self.res.facts().air, seed);
     }
 }
 

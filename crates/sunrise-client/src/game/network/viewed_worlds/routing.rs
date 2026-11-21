@@ -297,7 +297,6 @@ impl Game<'_> {
             std::sync::Arc::new(DimensionFacts::of_builtin_level(key).clone())
         });
         let mut world = World::new(air, spawn.seed);
-        world.state_blocks = self.res.state_blocks();
         world.shape = format.shape;
         world.fast_lava = facts.fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(&facts));

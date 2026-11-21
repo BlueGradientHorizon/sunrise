@@ -3541,19 +3541,6 @@ fn take_resent_column(
         }
     }
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
-    // Carry forward existing connection groups for cells whose block stayed the same (a
-    // server bulk-resend follows with a fresh `sunrise:connection_groups` snapshot if groups
-    // changed, and state-only resends keep their groups without flashing).
-    if !old.connection_groups.is_empty() {
-        for (&cell, &group) in &old.connection_groups {
-            let (lx, y, lz) = old.dynamic_cell_coords(cell);
-            let old_state = old.block(i32::from(lx), y, i32::from(lz)).0;
-            let new_state = chunk.block(i32::from(lx), y, i32::from(lz)).0;
-            if world.same_block(old_state, new_state) {
-                chunk.connection_groups.insert(cell, group);
-            }
-        }
-    }
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
     world.install_light_column(chunk);

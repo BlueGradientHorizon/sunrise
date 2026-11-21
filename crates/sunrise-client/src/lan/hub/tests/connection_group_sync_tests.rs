@@ -176,17 +176,11 @@ fn incremental_updates_dedup_and_filter_by_negotiation_and_sent_chunks() {
 
     // Multiple edits to the same cell collapse to the last value; an unsent chunk (2, 0) is
     // omitted from incremental updates.
-    world
-        .set_connection_group(1, 64, 2, Some(10), true)
-        .unwrap();
-    world
-        .set_connection_group(1, 64, 2, Some(20), true)
-        .unwrap();
-    world.set_connection_group(3, 64, 4, Some(5), true).unwrap();
-    world.set_connection_group(3, 64, 4, None, true).unwrap();
-    world
-        .set_connection_group(33, 64, 1, Some(99), true)
-        .unwrap();
+    assert!(world.set_connection_group(1, 64, 2, Some(10), true));
+    assert!(world.set_connection_group(1, 64, 2, Some(20), true));
+    assert!(world.set_connection_group(3, 64, 4, Some(5), true));
+    assert!(world.set_connection_group(3, 64, 4, None, true));
+    assert!(world.set_connection_group(33, 64, 1, Some(99), true));
 
     hub.broadcast_block_changes(&mut world);
     assert!(world.connection_group_log.as_ref().unwrap().is_empty());
@@ -210,7 +204,7 @@ fn incremental_updates_dedup_and_filter_by_negotiation_and_sent_chunks() {
 
     // Bulk chunk resend: if the chunk now has no connection groups, a queued clear still goes
     // out as an incremental Update so the client drops the cleared entry.
-    world.set_connection_group(1, 64, 2, None, true).unwrap();
+    assert!(world.set_connection_group(1, 64, 2, None, true));
     world.bulk_log.insert((0, 0));
     hub.broadcast_block_changes(&mut world);
     assert_eq!(
