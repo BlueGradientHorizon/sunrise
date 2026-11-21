@@ -473,7 +473,7 @@ pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
 }
-/// The native mods' F3 debug entries (`native_register_debug_entries`), kept once at start.
+/// Freeze the native mods' F3 text callbacks and renderer toggles at client startup.
 pub(super) fn register_debug_entries(role: ExecutionRole) {
     if !role.is_client() {
         return;
@@ -489,19 +489,19 @@ pub(super) fn register_map_decoration_types() {
     Game::native_map_decoration_types(&RegistrationContext::new(), &mut types);
     sunrise_client::map_decoration_types::register(types, Game::is_vanilla_decoration_sprite);
 }
-/// The native mods' HUD layers (`native_register_gui_layers`), placed among vanilla's once at
-/// start.
+/// Install the native mods' HUD draw callbacks among the vanilla anchors once at client startup.
 pub(super) fn register_gui_layers(role: ExecutionRole) {
     if !role.is_client() {
         return;
     }
-    let mut layers = Vec::new();
+    let mut layers = sunrise_client::gui_layers::GuiLayers::default();
     Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
-    sunrise_client::gui_layers::register(layers);
+    sunrise_client::gui_layers::freeze(layers);
 }
-/// The native mods' debug renderers now (`native_register_debug_renderers`), asked at each
-/// refresh of the list (`Game::refresh_debug_renderers`).
-pub(super) fn debug_renderers(role: ExecutionRole) -> Vec<mod_api::DebugRenderer> {
+/// Collect the native mods' owned debug renderers and their owners on each list refresh.
+pub(super) fn debug_renderers(
+    role: ExecutionRole,
+) -> Vec<mod_api::Answered<mod_api::DebugRenderer>> {
     let mut renderers = Vec::new();
     if role.is_client() {
         Game::native_register_debug_renderers(&RegistrationContext::new(), &mut renderers);

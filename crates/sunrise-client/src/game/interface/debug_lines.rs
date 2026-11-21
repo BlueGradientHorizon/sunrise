@@ -228,8 +228,10 @@ impl Game<'_> {
         // A native mod's entries come after vanilla's, in registration order.
         for (group, lines) in debug_entries::mod_lines(
             debug_entries::registered(),
-            |id| self.debug_entries.enabled(id, self.debug, reduced),
-            |id, lines| self.native_debug_entry_lines(id, lines),
+            self,
+            &self.debug_entries,
+            self.debug,
+            reduced,
         ) {
             d.group(debug_entries::group_key(group), lines);
         }

@@ -638,23 +638,11 @@ impl Game<'_> {
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
         self.fire_level_tick_post(level);
     }
-    /// Before one of vanilla's HUD layers is drawn (`RenderGuiLayerEvent.Pre`):
-    /// draw here to put something below the layer, or set `canceled` to hide
-    /// it. `layer` is the layer's id, in the order Sunrise draws them:
-    /// `minecraft:crosshair`, `hotbar`, `effects`, `boss_overlay`,
-    /// `vehicle_health` (only riding a mount), `contextual_info_bar` (the
-    /// mount's jump bar, the locator bar or the experience bar, with the level
-    /// number), `player_health` (the health, armor, food and air rows, drawn in
-    /// one pass), `selected_item_name`, `sleep_overlay`, `overlay_message`
-    /// (the action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. A layer F1 hides fires nothing, and the chat
-    /// screen draws the focused chat itself, so `chat` is only the unfocused
-    /// lines. The camera overlays and the debug screen are not layers here:
-    /// they are not drawn in this pass. Draw with `native_fill`, `native_text`
-    /// and the sprite helpers; `draw.size()` is the GUI
-    /// size. A layer a mod registered (`native_register_gui_layers`) fires this
-    /// and `native_gui_layer_post` too, with its own id, in its place among
-    /// these.
+    /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
+    /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
+    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
+    /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
+    /// draws from the chat screen, and a layer F1 hides fires neither hook.
     pub(in crate::game) fn native_gui_layer_pre(
         &self,
         layer: &str,
@@ -663,9 +651,9 @@ impl Game<'_> {
     ) {
         self.fire_gui_layer_pre(layer, draw, canceled);
     }
-    /// After one of vanilla's HUD layers (or after the layer a mod hid), with
-    /// the ids of `native_gui_layer_pre`: draw here to put something above
-    /// the layer (`RenderGuiLayerEvent.Post`).
+    /// After the entire installed HUD slot body (`RenderGuiLayerEvent.Post`), once
+    /// with the ID from `native_gui_layer_pre`. Does not fire when Pre canceled the slot.
+    /// Paint into `draw` to put something above the layer.
     pub(in crate::game) fn native_gui_layer_post(&self, layer: &str, draw: &mut HudBatch) {
         self.fire_gui_layer_post(layer, draw);
     }

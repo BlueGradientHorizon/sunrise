@@ -5,6 +5,7 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn client_player_reads_answer_from_the_local_players_copy() {
+    use crate::game::remote::RemoteDimensionEntry;
     use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
     use mod_api::{EntityRef, GameMode};
     use sunrise_client::{level_loading::Reason, motion::PlayerMotion};
@@ -30,7 +31,7 @@ fn client_player_reads_answer_from_the_local_players_copy() {
             portal_cooldown: 0,
             sea_level: 63,
         };
-        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        game.enter_remote_dimension(&spawn, RemoteDimensionEntry::Login, Reason::Other);
         let remote = game.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;

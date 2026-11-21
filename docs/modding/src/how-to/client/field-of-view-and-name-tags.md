@@ -34,12 +34,14 @@ and settings would show it.
 
 ## Labels in the world
 
-A world draw hook (`render_level_stage`, `submit_custom_geometry`, a debug renderer) draws a label of its own
-with `draw.name_tag`, as vanilla draws a name tag: half a block above the position, facing the camera.
+A world draw hook (`render_level_stage` or `submit_custom_geometry`) or a [registered debug renderer
+callback](hud-drawing.md#registering-world-space-debug-renderers) can draw a label with `draw.name_tag`,
+as vanilla draws a name tag: half a block above the position, facing the camera. Use the
+callback's `draw` argument, or `event.draw` from a world draw hook.
 
 ```rust,ignore
 let options = NameTagOptions::new(false, true, 0xF0);
-let _ = event.draw.name_tag([x + 0.5, y + 1.0, z + 0.5], &Text::literal("Furnace"), options);
+let _ = draw.name_tag([x + 0.5, y + 1.0, z + 0.5], &Text::literal("Furnace"), options);
 ```
 
 | `NameTagOptions` field | Meaning |

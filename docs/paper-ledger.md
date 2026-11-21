@@ -1035,14 +1035,11 @@ one of these moments has to move that logic into a client native mod.
 | `compute_fov_modifier.rs` | `compute_fov_modifier` |
 | `customize_boss_event_progress.rs` | `customize_boss_event_progress` |
 | `customize_chat_overlay.rs` | `customize_chat_overlay` |
-| `debug_entry_lines.rs` | `debug_entry_lines` |
-| `debug_renderer_draw.rs` | `debug_renderer_draw` |
 | `entity_outline.rs` | `entity_outline` |
 | `flip_frame.rs` | `flip_frame` |
 | `gather_effect_screen_tooltips.rs` | `gather_effect_screen_tooltips` |
 | `gather_skipped_attribute_tooltips.rs` | `gather_skipped_attribute_tooltips` |
 | `get_arm_pose.rs` | `get_arm_pose` |
-| `gui_layer_draw.rs` | `gui_layer_draw` |
 | `gui_render_post.rs` | `gui_render_post` |
 | `hand_drawn.rs` | `hand_drawn` |
 | `input_key.rs` | `input_key` |

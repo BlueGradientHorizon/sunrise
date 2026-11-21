@@ -210,7 +210,7 @@
     {
       "name": "DebugGroup",
       "path": "crate::client::debug_entries::DebugGroup",
-      "hash": "0ed40ec8fd186007",
+      "hash": "71b5301b988d283b",
       "canonical_path": "crate::client::debug_entries::DebugGroup"
     },
     {
