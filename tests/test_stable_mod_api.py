@@ -201,6 +201,36 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, f"sunrise-stage cannot export candidate {HEAD}: unknown key"):
                 nightly.stable_mod_api(HEAD, tag, self.notes)
 
+    def test_the_signed_surface_is_what_the_parents_tool_exports_from_the_candidate(self):
+        # A patch's signed surface.json is that export exactly. A minor's may add records its own exporter knows,
+        # but an exporter that drops or rewrites one of the parent tool's records is refused.
+        newer = {**ADDITIVE, "hash": "newer", "extension_tags": [{"registry": "item", "id": "tag:new"}]}
+        dropped = {**ADDITIVE, "behaviours": [DECLARATION]}
+        rewritten = {**ADDITIVE, "behaviours": [DECLARATION, {**DECLARATION, "id": "behaviour:new", "doc": "x"}]}
+        for tag, signed, error in (
+                ("26.3-0.1.11", SURFACE, None),
+                ("26.3-0.1.11", {**SURFACE, "hash": "other"}, "patch release.*signed surface.json is not what"),
+                ("26.3-0.2.0", newer, None),
+                ("26.3-0.2.0", dropped, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
+                ("26.3-0.2.0", rewritten, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
+                ("26.3-0.2.0", {**newer, "schema": 4}, "minor release.*schema 4")):
+            export = SURFACE if tag == "26.3-0.1.11" else ADDITIVE
+            assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
+            with self.subTest(tag=tag, signed=signed), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}), \
+                    mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
+                    mock.patch.object(nightly, "require_unchanged_content_schema"), \
+                    mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
+                    mock.patch.object(nightly.subprocess, "run",
+                                      side_effect=self.judge(SURFACE, export, "identical" if export is SURFACE
+                                                             else "additive")):
+                if error:
+                    with self.assertRaisesRegex(SystemExit, error):
+                        nightly.stable_mod_api(HEAD, tag, self.notes)
+                else:
+                    nightly.stable_mod_api(HEAD, tag, self.notes)
+
     def test_a_moved_parent_tag_or_a_version_that_skips_a_step_is_refused(self):
         tags = {PREVIOUS: OLD}
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \

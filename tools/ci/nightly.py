@@ -885,6 +885,12 @@ def parent_stage(sha: str, work: Path) -> str:
     return str(work / "judge-target" / "debug" / "sunrise-stage")
 
 
+def surface_records(surface: dict) -> set[tuple[str, str]]:
+    """A surface.json's records, each `(collection, its canonical JSON)`: equal only when every field is."""
+    return {(kind, json.dumps(record, sort_keys=True, separators=(",", ":")))
+            for kind, records in surface.items() if isinstance(records, list) for record in records}
+
+
 def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     """Compare to the latest published stable release (stable_parent, its tag checked against its signed release
     file), not sdk.json's previous SDK or a reserved tag; judged by the parent's own sunrise-stage."""
@@ -950,6 +956,21 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                 problems.append(f"mod API is {verdict} (see the changed records above)")
             if old_content != new_content:
                 problems.append(f"content_api changed from {old_content!r} to {new_content!r}")
+            # The signed surface.json is what modders build against: it must be what the parent's tool exports from
+            # the candidate's tree. A patch's exactly; a minor's may hold more records (its own tool may export kinds
+            # the parent's doesn't know), but every exported one unchanged.
+            signed, export = json.loads(after.read_bytes()), exported["candidate"]
+            if minor:
+                if signed.get("schema") != export.get("schema"):
+                    problems.append(f"its signed surface.json has schema {signed.get('schema')!r}, the export of "
+                                    f"{old_tag}'s sunrise-stage {export.get('schema')!r}")
+                if dropped := sorted(surface_records(export) - surface_records(signed)):
+                    problems.append(f"its signed surface.json changes or lacks {len(dropped)} records {old_tag}'s "
+                                    "sunrise-stage exports from its tree: "
+                                    + ", ".join(f"{kind} {json.loads(record).get('id', '?')}"
+                                                for kind, record in dropped[:5]))
+            elif signed != export:
+                problems.append(f"its signed surface.json is not what {old_tag}'s sunrise-stage exports from its tree")
             if problems:
                 step = "minor" if minor else "patch"
                 raise SystemExit(f"::error::refused: {tag} is a {step} release after {old_tag}: {'; '.join(problems)}")
