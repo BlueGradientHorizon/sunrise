@@ -1674,10 +1674,11 @@ impl Audio {
             self.backend.world = id;
             mixer.worlds.insert(self.backend.owner, id);
         }
-        // The primary listener changed dimension: no stream's place of the old one is heard.
+        // The primary listener changed dimension: stop all mod streams (matching vanilla's
+        // `updateLevelInEngines` -> `SoundEngine.stopAll`).
         // After the mixer's lock is released: the pool is locked before the mixer elsewhere.
         if changed && self.backend.owner == 0 {
-            self.backend.streams.unplace();
+            self.backend.streams.stop_all();
         }
     }
 
@@ -1892,6 +1893,7 @@ impl Audio {
         &self,
         owner: &str,
         spec: &mod_api::StreamSpec,
+        entity_pos: Option<[f64; 3]>,
         source: Box<dyn mod_api::AudioStream>,
     ) -> std::result::Result<Arc<dyn mod_api::AudioStreamSource>, mod_api::AudioRefusal> {
         if !self.backend.live {
@@ -1899,10 +1901,10 @@ impl Audio {
         }
         self.backend
             .streams
-            .open(&self.backend.mixer, owner, spec, source)
+            .open(&self.backend.mixer, owner, spec, entity_pos, source)
     }
     /// Places each entity-placed stream at its entity's position as `resolve` finds it now, or
-    /// leaves it unplaced where it finds none. Called once a frame; it does nothing, and locks
+    /// stops it where it finds none. Called once a frame; it does nothing, and locks
     /// nothing the output callback takes, with no stream open. While mod audio is off it follows
     /// nothing, and the first frame after it is back follows before any stream is heard.
     pub fn follow_stream_entities(
@@ -1922,12 +1924,10 @@ impl Audio {
         self.entities_stale
             .store(mod_gain <= 0.0, std::sync::atomic::Ordering::Relaxed);
     }
-    /// The listener left its level (`updateLevelInEngines(null)`): every vanilla sound stops, and
-    /// every positional mod stream is unplaced until its mod places it again; flat streams play
-    /// on. The one thing every way out of a level calls, so none can forget the streams.
+    /// The listener left its level (`updateLevelInEngines(null)`): every vanilla sound and mod
+    /// stream stops. The one thing every way out of a level calls, so none can forget the streams.
     pub fn leave_level(&mut self) {
         self.stop_all();
-        self.backend.streams.unplace();
     }
     /// `SoundManager.tick(paused)`, once per client tick.
     pub fn tick(&mut self, paused: bool, ctx: &TickContext) {
@@ -2035,6 +2035,9 @@ impl Audio {
     /// `SoundManager.stop()`: every sound.
     pub fn stop_all(&mut self) {
         self.engine.stop_all(&mut self.backend);
+        if self.backend.owner == 0 {
+            self.backend.streams.stop_all();
+        }
     }
     /// `SoundManager.reload` (resource packs changed): stop every sound, then
     /// read sound events and sound files from the new resource root.

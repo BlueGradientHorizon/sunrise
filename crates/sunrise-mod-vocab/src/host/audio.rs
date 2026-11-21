@@ -4,7 +4,7 @@ use crate::*;
 /// sound instances, fire no sound hooks and require a mod call on a live client from setup
 /// onward. The mixer resamples to the output's rate and applies the stream's volume, category
 /// and master gain, `muffle_sounds`, and the position and linear range fade for spatial mono.
-/// Muted and unplaced streams still advance. Keep the returned handle for as long as playback
+/// Muted streams still advance. Keep the returned handle for as long as playback
 /// should continue; dropping it stops the stream.
 #[sunrise_mod_api_macros::host_area]
 pub trait AudioClientHost {

@@ -1,6 +1,6 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
 use super::{Control, Ring};
-use mod_api::{AUDIO_STREAM_RATE_MAX, AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
+use mod_api::{AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
@@ -13,8 +13,7 @@ use std::{
 
 const CAPACITY: usize = AUDIO_STREAMS_TOTAL as usize;
 const ADMIT_CAPACITY: usize = CAPACITY * 2;
-const SCRATCH_SAMPLES: usize =
-    (AUDIO_STREAM_RATE_MAX as u64 * super::RING_MAX_MS / 1000 * 2) as usize;
+const SCRATCH_SAMPLES: usize = 96_000;
 
 /// Pair the thread's park token with a flag: source code runs on this thread and may use
 /// standard synchronization that consumes the token before we get back to the worker loop.
@@ -150,11 +149,12 @@ impl PullJob {
             return true;
         }
         let (tail, queued, free) = self.ring.producer_window();
-        let missing = target.saturating_sub(queued).min(free);
+        let channels = self.ring.channels;
+        let max_frames = scratch.len() / channels;
+        let missing = target.saturating_sub(queued).min(free).min(max_frames);
         if missing == 0 {
             return true;
         }
-        let channels = self.ring.channels;
         let pcm = &mut scratch[..missing * channels];
         pcm.fill(0);
         match catch_unwind(AssertUnwindSafe(|| self.source.read(pcm))) {
@@ -231,7 +231,7 @@ mod tests {
             });
             let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
             let stream = pool
-                .open(&mixer, "mod", &spec, Box::new(Source(read)))
+                .open(&mixer, "mod", &spec, None, Box::new(Source(read)))
                 .unwrap();
             Self {
                 _pool: pool,
@@ -285,7 +285,13 @@ mod tests {
         let mixer = Mutex::new(Mixer::default());
         let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
         let stream = pool
-            .open(&mixer, "mod", &spec, Box::new(Probe { read, dropped }))
+            .open(
+                &mixer,
+                "mod",
+                &spec,
+                None,
+                Box::new(Probe { read, dropped }),
+            )
             .unwrap();
 
         let _pool = pool.state();
@@ -409,13 +415,20 @@ mod tests {
         });
         let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
         let panicker = pool
-            .open(&mixer, "bad_mod", &spec, Box::new(Panicker(panicker_drop)))
+            .open(
+                &mixer,
+                "bad_mod",
+                &spec,
+                None,
+                Box::new(Panicker(panicker_drop)),
+            )
             .unwrap();
         let healthy = pool
             .open(
                 &mixer,
                 "good_mod",
                 &spec,
+                None,
                 Box::new(Source(move |pcm| {
                     pcm[..2].copy_from_slice(&[16_384, -8_192]);
                     let _ = healthy_read.try_send(());
@@ -448,5 +461,20 @@ mod tests {
         assert_eq!(out[..4], [0.5, -0.25, 0.5, -0.25]);
         assert_eq!(healthy.state(), AudioStreamState::Playing);
         healthy.stop();
+    }
+
+    #[test]
+    fn pull_clamps_read_slice_to_scratch_capacity() {
+        let mut rig = Rig::new(|pcm| {
+            // 20 output stereo frames at 48 kHz demand 11 source frames at 24 kHz,
+            // which exceeds Rig's 16-sample (8 stereo frame) scratch buffer.
+            assert_eq!(pcm.len(), 16);
+            pcm.fill(16_384);
+            pcm.len() / 2
+        });
+        assert_eq!(rig.play::<40>(), [0.0; 40]);
+        assert!(rig.refill());
+        assert_eq!(rig.job.as_ref().unwrap().ring.producer_window().1, 8);
+        assert_eq!(rig.play::<4>(), [0.5, 0.5, 0.5, 0.5]);
     }
 }

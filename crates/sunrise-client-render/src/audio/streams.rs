@@ -4,30 +4,28 @@
 //! - A mod thread sets volume, sets placement, reads state, or stops without taking the mixer lock.
 //! - The callback reads PCM and the latest placement (a seqlock) and requests more pull PCM
 //!   for the next buffer. It does not allocate or call the source.
-//! - The main thread opens, caps, follows entities, unplaces and reaps streams. It allocates
+//! - The main thread opens, caps, follows entities, stops and reaps streams. It allocates
 //!   rings before locking the mixer.
 //! - The worker owns, calls and drops admitted native sources without taking either lock.
 mod pull;
 
 use super::{Basis, Mixer, distance_gain};
 use mod_api::{
-    AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RATE_MIN, AUDIO_STREAMS_PER_MOD, AUDIO_STREAMS_TOTAL,
-    AudioRefusal, AudioStream, AudioStreamSource, AudioStreamState, EntityRef, SpecFault,
-    StreamPlacement, StreamSpec,
+    AUDIO_STREAMS_PER_MOD, AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream, AudioStreamSource,
+    AudioStreamState, EntityRef, SpecFault, StreamPlacement, StreamSpec,
 };
 use pull::{Demand, PullJob, Worker};
 use std::sync::{
     Arc, Mutex, MutexGuard,
-    atomic::{
-        AtomicBool, AtomicI16, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence,
-    },
+    atomic::{AtomicBool, AtomicI16, AtomicU32, AtomicU64, AtomicUsize, Ordering::*, fence},
 };
 
 /// Internal capacity of the worker-to-callback PCM ring, in milliseconds of source audio.
-pub(super) const RING_MAX_MS: u64 = 1_000;
-
-/// How far from the origin a position may lie, in blocks (the world border's limit).
-const POSITION_LIMIT: f64 = 30_000_000.0;
+const RING_MAX_MS: u64 = 1_000;
+/// Minimum ring capacity in frames so the resampler has room for a frame and lookahead.
+const MIN_RING_FRAMES: u64 = 2;
+/// Maximum ring capacity in frames so extreme sample rates cannot OOM the ring allocation.
+const MAX_RING_FRAMES: u64 = 384_000;
 
 /// A stream's samples: written by one producer, read by the output callback.
 pub(super) struct Ring {
@@ -79,21 +77,17 @@ enum Held {
     Flat,
     At,
     Entity(EntityRef),
-    /// A dimension or level change took the placement away: silent until the next `set_placement`.
-    Cleared,
 }
 
 /// What the callback needs of a stream's placement, one consistent snapshot.
 #[derive(Clone, Copy, Default)]
 struct View {
     positional: bool,
-    placed: bool,
     at: [f64; 3],
 }
 
 /// A stream's state shared by its handle, the pool and its voice.
 pub(super) struct Control {
-    channels: usize,
     rate: u32,
     /// The stream's `SoundSource` index.
     category: usize,
@@ -102,19 +96,15 @@ pub(super) struct Control {
     volume: AtomicU32,
     closed: AtomicBool,
     pull: Arc<Demand>,
-    /// The placement as set. Writers (a mod's `set_placement`, the frame's entity follow, a
-    /// level change) take it for the whole of a change, so the newest always wins; the callback
-    /// never does.
+    /// The placement as set. Writers (a mod's `set_placement`, the frame's entity follow)
+    /// take it for the whole of a change, so the newest always wins; the callback never does.
     held: Mutex<Held>,
     /// The placement the callback reads, published under `held` as a seqlock: odd while a
     /// writer is in the middle.
     sequence: AtomicU64,
-    flags: AtomicU8,
+    positional: AtomicBool,
     position: [AtomicU64; 3],
 }
-
-const POSITIONAL: u8 = 1;
-const PLACED: u8 = 2;
 
 impl Control {
     fn stop(&self) {
@@ -130,8 +120,7 @@ impl Control {
         for (cell, v) in self.position.iter().zip(view.at) {
             cell.store(v.to_bits(), Relaxed);
         }
-        let flags = (u8::from(view.positional) * POSITIONAL) | (u8::from(view.placed) * PLACED);
-        self.flags.store(flags, Relaxed);
+        self.positional.store(view.positional, Relaxed);
         self.sequence.store(start + 2, Release);
     }
     /// The placement as the last writer left it, or none when a writer was in the middle of a
@@ -143,14 +132,10 @@ impl Control {
                 continue;
             }
             let at = [0, 1, 2].map(|i| f64::from_bits(self.position[i].load(Relaxed)));
-            let flags = self.flags.load(Relaxed);
+            let positional = self.positional.load(Relaxed);
             fence(Acquire);
             if self.sequence.load(Relaxed) == before {
-                return Some(View {
-                    positional: flags & POSITIONAL != 0,
-                    placed: flags & PLACED != 0,
-                    at,
-                });
+                return Some(View { positional, at });
             }
         }
         None
@@ -158,9 +143,8 @@ impl Control {
     fn lock(&self) -> MutexGuard<'_, Held> {
         self.held.lock().unwrap_or_else(|e| e.into_inner())
     }
-    fn place(&self, placement: &StreamPlacement) {
+    fn place(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) {
         let mut held = self.lock();
-        let old = self.view().unwrap_or_default();
         match *placement {
             StreamPlacement::Flat => {
                 *held = Held::Flat;
@@ -172,81 +156,62 @@ impl Control {
                     &held,
                     View {
                         positional: true,
-                        placed: true,
                         at,
                     },
                 );
             }
             StreamPlacement::Entity(entity) => {
-                *held = Held::Entity(entity);
-                self.publish(
-                    &held,
-                    View {
-                        positional: true,
-                        placed: false,
-                        at: old.at,
-                    },
-                );
+                if let Some(at) = entity_pos {
+                    *held = Held::Entity(entity);
+                    self.publish(
+                        &held,
+                        View {
+                            positional: true,
+                            at,
+                        },
+                    );
+                }
             }
         }
     }
     /// Places an entity-following stream at its entity's position as `resolve` finds it now,
     /// under the lock a `set_placement` takes: an older resolution can never overwrite a newer
-    /// placement.
+    /// placement. Stops the stream when the entity is no longer tracked or has a non-finite
+    /// position (matching vanilla `EntityBoundSoundInstance.tick`).
     fn follow(&self, resolve: &mut impl FnMut(EntityRef) -> Option<[f64; 3]>) {
+        if self.closed.load(Acquire) {
+            return;
+        }
         let held = self.lock();
         let Held::Entity(entity) = *held else {
             return;
         };
-        let old = self.view().unwrap_or_default();
         match resolve(entity).filter(|at| at.iter().all(|c| c.is_finite())) {
             Some(at) => self.publish(
                 &held,
                 View {
                     positional: true,
-                    placed: true,
                     at,
                 },
             ),
-            None => self.publish(
-                &held,
-                View {
-                    positional: true,
-                    placed: false,
-                    at: old.at,
-                },
-            ),
-        }
-    }
-    fn unplace(&self) {
-        let mut held = self.lock();
-        if *held != Held::Flat {
-            *held = Held::Cleared;
-            let old = self.view().unwrap_or_default();
-            self.publish(
-                &held,
-                View {
-                    positional: true,
-                    placed: false,
-                    at: old.at,
-                },
-            );
+            None => self.stop(),
         }
     }
 }
 
-fn check_placement(channels: u8, placement: &StreamPlacement) -> Result<(), SpecFault> {
+fn check_placement(
+    placement: &StreamPlacement,
+    entity_pos: Option<[f64; 3]>,
+) -> Result<(), SpecFault> {
     match placement {
         StreamPlacement::Flat => Ok(()),
-        _ if channels != 1 => Err(SpecFault::StereoPositioned),
-        StreamPlacement::At(at)
-            if at
-                .iter()
-                .any(|v| !v.is_finite() || v.abs() > POSITION_LIMIT) =>
+        StreamPlacement::At(at) if at.iter().all(|v| v.is_finite()) => Ok(()),
+        StreamPlacement::Entity(_)
+            if entity_pos.is_some_and(|at| at.iter().all(|v| v.is_finite())) =>
         {
-            Err(SpecFault::Position)
+            Ok(())
         }
-        _ => Ok(()),
+        StreamPlacement::At(_) | StreamPlacement::Entity(_) => Err(SpecFault::Position),
     }
 }
 
@@ -256,31 +221,26 @@ pub(super) struct StreamHandle {
 }
 
 impl AudioStreamSource for StreamHandle {
-    fn set_placement(&self, placement: &StreamPlacement) -> bool {
+    fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool {
         let c = &*self.control;
-        if c.closed.load(Acquire) || check_placement(c.channels as u8, placement).is_err() {
+        if c.closed.load(Acquire) || check_placement(placement, entity_pos).is_err() {
             return false;
         }
-        c.place(placement);
+        c.place(placement, entity_pos);
         true
     }
     fn set_volume(&self, volume: f32) -> bool {
-        if self.control.closed.load(Acquire) || !(0.0..=1.0).contains(&volume) {
+        if self.control.closed.load(Acquire) || volume.is_nan() {
             return false;
         }
-        self.control.volume.store(volume.to_bits(), Relaxed);
+        self.control
+            .volume
+            .store(volume.clamp(0.0, 1.0).to_bits(), Relaxed);
         true
     }
     fn state(&self) -> AudioStreamState {
-        let c = &*self.control;
-        if c.closed.load(Acquire) {
-            return AudioStreamState::Stopped;
-        }
-        // One atomic holds both flags, so what this reads is a whole placement even while a writer
-        // is in the middle of publishing the position: the old one or the new.
-        let flags = c.flags.load(Acquire);
-        if flags & POSITIONAL != 0 && flags & PLACED == 0 {
-            AudioStreamState::Unplaced
+        if self.control.closed.load(Acquire) {
+            AudioStreamState::Stopped
         } else {
             AudioStreamState::Playing
         }
@@ -360,22 +320,23 @@ impl StreamPool {
         mixer: &Mutex<Mixer>,
         owner: &str,
         spec: &StreamSpec,
+        entity_pos: Option<[f64; 3]>,
         source: Box<dyn AudioStream>,
     ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
         let fault = |fault| Err(AudioRefusal::BadSpec(fault));
         if !matches!(spec.channels, 1 | 2) {
             return fault(SpecFault::Channels);
         }
-        if !(AUDIO_STREAM_RATE_MIN..=AUDIO_STREAM_RATE_MAX).contains(&spec.rate) {
+        if spec.rate == 0 {
             return fault(SpecFault::Rate);
         }
-        if !(0.0..=1.0).contains(&spec.volume) {
+        if spec.volume.is_nan() {
             return fault(SpecFault::Volume);
         }
         if !(spec.range.is_finite() && spec.range > 0.0) {
             return fault(SpecFault::Range);
         }
-        if let Err(f) = check_placement(spec.channels, &spec.placement) {
+        if let Err(f) = check_placement(&spec.placement, entity_pos) {
             return fault(f);
         }
         self.reap(mixer);
@@ -396,7 +357,8 @@ impl StreamPool {
             return Err(AudioRefusal::ModStreamLimit);
         }
         let channels = spec.channels as usize;
-        let ring_frames = (u64::from(spec.rate) * RING_MAX_MS / 1000) as usize;
+        let ring_frames = (u64::from(spec.rate) * RING_MAX_MS / 1000)
+            .clamp(MIN_RING_FRAMES, MAX_RING_FRAMES) as usize;
         let ring = Arc::new(Ring::new(ring_frames, channels));
         let worker = match &mut state.worker {
             Some(worker) => worker,
@@ -413,17 +375,16 @@ impl StreamPool {
         };
         let demand = Arc::new(worker.demand());
         let control = Arc::new(Control {
-            channels,
             rate: spec.rate,
             category: spec.category.index(),
             range: spec.range,
             owner: owner.to_owned(),
-            volume: AtomicU32::new(spec.volume.to_bits()),
+            volume: AtomicU32::new(spec.volume.clamp(0.0, 1.0).to_bits()),
             closed: AtomicBool::new(false),
             pull: demand.clone(),
             held: Mutex::new(Held::Flat),
             sequence: AtomicU64::new(0),
-            flags: AtomicU8::new(0),
+            positional: AtomicBool::new(false),
             position: Default::default(),
         });
         if let Err(job) = worker.admit(PullJob {
@@ -439,10 +400,21 @@ impl StreamPool {
             );
             return Err(AudioRefusal::WorkerUnavailable);
         }
-        control.place(&spec.placement);
+        control.place(&spec.placement, entity_pos);
         // If the mixer cannot accept the voice, this handle closes the job on its worker.
         let handle = StreamHandle {
             control: control.clone(),
+        };
+        let initial_view = match spec.placement {
+            StreamPlacement::Flat => View::default(),
+            StreamPlacement::At(at) => View {
+                positional: true,
+                at,
+            },
+            StreamPlacement::Entity(_) => View {
+                positional: true,
+                at: entity_pos.unwrap_or([0.0; 3]),
+            },
         };
         let voice = StreamVoice {
             control: control.clone(),
@@ -452,12 +424,8 @@ impl StreamPool {
             fraction: 0.0,
             // The placement just published: a voice is never heard Flat while its real placement
             // is not in. Should the callback find a writer in the middle of a change before it
-            // has read any, it keeps this, or silence.
-            view: control.view().unwrap_or(View {
-                positional: true,
-                placed: false,
-                at: [0.0; 3],
-            }),
+            // has read any, it keeps this initial placement.
+            view: control.view().unwrap_or(initial_view),
         };
         match mixer.lock() {
             Ok(mut mixer) => mixer.streams.push(voice),
@@ -499,7 +467,7 @@ impl StreamPool {
     }
 
     /// Follows each entity-placed stream's entity: where `resolve` finds it the stream is placed
-    /// there, where it doesn't (untracked, unloaded, removed) the stream is unplaced. Takes no
+    /// there, where it doesn't (untracked, unloaded, removed) the stream stops. Takes no
     /// lock the output callback takes.
     pub(super) fn follow_entities(&self, mut resolve: impl FnMut(EntityRef) -> Option<[f64; 3]>) {
         if self.idle() {
@@ -510,14 +478,15 @@ impl StreamPool {
         }
     }
 
-    /// The listener left its level: every positional stream is silent until its mod places it
-    /// again.
-    pub(super) fn unplace(&self) {
+    /// Stops every open stream (level leave, dimension change, `SoundManager.stop`).
+    pub(super) fn stop_all(&self) {
         if self.idle() {
             return;
         }
-        for control in &self.state().controls {
-            control.unplace();
+        let state = self.state();
+        state.close_all();
+        if let Some(worker) = &state.worker {
+            worker.wake();
         }
     }
 
@@ -625,10 +594,8 @@ pub(super) fn mix(
             if let Some(view) = c.view() {
                 voice.view = view;
             }
-            if !voice.view.positional {
+            if !voice.view.positional || ch > 1 {
                 [volume; 3]
-            } else if !voice.view.placed {
-                [0.0; 3]
             } else {
                 let at = voice.view.at;
                 let away = |camera: &([f64; 3], Basis, u32)| {
@@ -671,7 +638,7 @@ pub(super) fn mix(
         let [left, right, mono] = [left, right, mono].map(|g| if g.is_finite() { g } else { 0.0 });
         let step = f64::from(c.rate) / f64::from(rate);
         if left == 0.0 && right == 0.0 && mono == 0.0 {
-            // Inaudible (muted, no volume, unplaced, out of range): no interpolation or mixing.
+            // Inaudible (muted, no volume, out of range): no interpolation or mixing.
             // Advance the resampler and ring head as far as audible output would have taken them.
             let wanted = (voice.fraction + step * (output_frames - 1) as f64) as u64;
             let advance = wanted.min(avail);
@@ -782,8 +749,18 @@ mod tests {
             owner: &str,
             spec: &StreamSpec,
         ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
+            self.open_at_entity(owner, spec, None)
+        }
+        fn open_at_entity(
+            &self,
+            owner: &str,
+            spec: &StreamSpec,
+            entity_pos: Option<[f64; 3]>,
+        ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
             self.drain_jobs();
-            let stream = self.pool.open(&self.mixer, owner, spec, Box::new(Silent))?;
+            let stream = self
+                .pool
+                .open(&self.mixer, owner, spec, entity_pos, Box::new(Silent))?;
             self.drain_jobs();
             Ok(stream)
         }
@@ -950,23 +927,32 @@ mod tests {
     }
 
     #[test]
-    fn a_stereo_stream_with_a_placement_is_refused() {
+    fn a_stereo_stream_with_a_placement_plays_unspatialized() {
         let rig = Rig::new();
-        let stereo = StreamSpec::new(SoundSource::Voice, 2, 48_000);
-        let at = StreamPlacement::At([1.0, 2.0, 3.0]);
-        assert!(matches!(
-            rig.open("mod", &stereo.clone().with_placement(at)),
-            Err(AudioRefusal::BadSpec(SpecFault::StereoPositioned))
-        ));
-        let flat = rig.open("mod", &stereo).unwrap();
-        assert!(!flat.set_placement(&at));
-        assert!(flat.set_placement(&StreamPlacement::Flat));
+        let stereo = StreamSpec::new(SoundSource::Voice, 2, 48_000)
+            .with_placement(StreamPlacement::At([100.0, 0.0, 0.0]))
+            .with_range(16.0)
+            .with_volume(0.5);
+        let stream = rig.open("mod", &stereo).unwrap();
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+        assert_eq!(
+            rig.feed_last(&[16_384, -8_192, 16_384, -8_192, 16_384, -8_192]),
+            3
+        );
+        // Far beyond range = 16.0, yet stereo plays un-spatialized at full [volume; 3] = 0.5.
+        assert_eq!(rig.play(2), [0.25, -0.125, 0.25, -0.125]);
+        let mut mono = [0.0; 1];
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut mono, 1, 48_000);
+        assert_eq!(mono, [0.0625]);
+        assert!(stream.set_placement(&StreamPlacement::At([1.0, 2.0, 3.0]), None));
+        assert!(stream.set_placement(&StreamPlacement::Flat, None));
+        assert!(!stream.set_placement(&StreamPlacement::At([f64::NAN, 0.0, 0.0]), None));
     }
 
     #[test]
     fn streams_are_capped_per_mod_and_overall() {
         let rig = Rig::new();
-        let low_rate = StreamSpec::new(SoundSource::Voice, 1, AUDIO_STREAM_RATE_MIN);
+        let low_rate = StreamSpec::new(SoundSource::Voice, 1, 1_000);
         let mut open = Vec::new();
         for _ in 0..AUDIO_STREAMS_PER_MOD {
             open.push(rig.open("m0", &low_rate).unwrap());
@@ -1003,7 +989,7 @@ mod tests {
             Some(AudioRefusal::BadSpec(SpecFault::Channels))
         );
         assert_eq!(
-            bad(StreamSpec::new(SoundSource::Voice, 1, 7_999)),
+            bad(StreamSpec::new(SoundSource::Voice, 1, 0)),
             Some(AudioRefusal::BadSpec(SpecFault::Rate))
         );
         assert_eq!(
@@ -1018,37 +1004,112 @@ mod tests {
             bad(spec().with_placement(StreamPlacement::At([f64::NAN, 0.0, 0.0]))),
             Some(AudioRefusal::BadSpec(SpecFault::Position))
         );
+        assert_eq!(
+            bad(spec().with_placement(StreamPlacement::At([0.0, f64::INFINITY, 0.0]))),
+            Some(AudioRefusal::BadSpec(SpecFault::Position))
+        );
+        assert_eq!(rig.voices(), 0);
+
+        // Positive rates outside 8-48 kHz (including extreme u32::MAX) open without overflow/OOM.
+        let low = rig
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 1, 4_000))
+            .unwrap();
+        low.stop();
+        let extreme = rig
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 1, u32::MAX))
+            .unwrap();
+        extreme.stop();
+        rig.reap();
+
+        let high = rig
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 1, 96_000))
+            .unwrap();
+        assert_eq!(rig.feed_last(&[16_384, 16_384]), 2);
+        assert_eq!(rig.play(1), [0.5, 0.5]);
+        high.stop();
+        rig.reap();
+
+        // Finite positions past 30M blocks are accepted.
+        let far = rig
+            .open(
+                "mod",
+                &spec().with_placement(StreamPlacement::At([50_000_000.0, 0.0, 0.0])),
+            )
+            .unwrap();
+        far.stop();
+        rig.reap();
+
+        // Finite out-of-range volumes clamp to 0.0..=1.0 on open.
+        let loud = rig.open("mod", &spec().with_volume(2.5)).unwrap();
+        assert_eq!(rig.feed_last(&[16_384]), 1);
+        assert_eq!(rig.play(1), [0.5, 0.5]);
+        loud.stop();
+        rig.reap();
+
+        let negative = rig.open("mod", &spec().with_volume(-1.0)).unwrap();
+        assert_eq!(rig.feed_last(&[16_384]), 1);
+        assert_eq!(rig.play(1), [0.0, 0.0]);
+        negative.stop();
+        rig.reap();
+
+        // Runtime controls refuse NaN/non-finite and clamp finite out-of-range volumes.
         let stream = rig.open("mod", &spec()).unwrap();
         assert!(!stream.set_volume(f32::NAN));
-        assert!(!stream.set_placement(&StreamPlacement::At([0.0, f64::INFINITY, 0.0])));
+        assert!(!stream.set_placement(&StreamPlacement::At([0.0, f64::INFINITY, 0.0]), None));
+        assert!(stream.set_volume(2.0));
+        assert_eq!(rig.feed_last(&[16_384]), 1);
+        assert_eq!(rig.play(1), [0.5, 0.5]);
+        assert!(stream.set_volume(-0.5));
+        assert_eq!(rig.feed_last(&[16_384]), 1);
+        assert_eq!(rig.play(1), [0.0, 0.0]);
         assert_eq!(rig.voices(), 1);
     }
 
     #[test]
-    fn an_unplaced_stream_is_silent_but_its_audio_is_still_consumed() {
+    fn an_entity_stream_follows_its_entity_and_stops_when_untracked() {
         let rig = Rig::new();
         let entity = mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7);
+        let entity_spec = spec().with_placement(StreamPlacement::Entity(entity));
+        assert_eq!(
+            rig.open_at_entity("mod", &entity_spec, None).err(),
+            Some(AudioRefusal::BadSpec(SpecFault::Position))
+        );
+        assert_eq!(
+            rig.open_at_entity("mod", &entity_spec, Some([f64::NAN, 0.0, 0.0]))
+                .err(),
+            Some(AudioRefusal::BadSpec(SpecFault::Position))
+        );
+
         let stream = rig
-            .open(
-                "mod",
-                &spec().with_placement(StreamPlacement::Entity(entity)),
-            )
+            .open_at_entity("mod", &entity_spec, Some([0.0, 0.0, 8.0]))
             .unwrap();
-        assert_eq!(stream.state(), AudioStreamState::Unplaced);
-        assert_eq!(rig.feed_last(&[8192, 16_384, -16_384, -8192]), 4);
-        rig.pool.follow_entities(|_| None);
-        assert_eq!(rig.play(2), [0.0; 4]);
-        assert_eq!(stream.state(), AudioStreamState::Unplaced);
-        // Tracked again, at a place a NaN spoils: still unplaced; at the listener: heard.
-        rig.pool.follow_entities(|_| Some([f64::NAN, 0.0, 0.0]));
-        assert_eq!(stream.state(), AudioStreamState::Unplaced);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+        assert_eq!(rig.feed_last(&[16_384, 16_384, 16_384]), 3);
+        let mut out = [0.0; 1];
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut out, 1, 48_000);
+        // Half of range 16 blocks -> half of 0.5.
+        assert!((out[0] - 0.25).abs() < 1e-6);
+
+        // Following updates the position to the listener -> unit distance gain.
         rig.pool
             .follow_entities(|e| (e == entity).then_some([0.0; 3]));
         assert_eq!(stream.state(), AudioStreamState::Playing);
-        let mut out = [0.0; 2];
         mix_output(&mut rig.mixer.lock().unwrap(), &mut out, 1, 48_000);
-        // At zero distance, mono output has unit gain. The first two source frames were silent.
-        assert_eq!(out, [-0.5, -0.25]);
+        assert_eq!(out, [0.5]);
+
+        // Losing track of the entity stops the stream.
+        rig.pool.follow_entities(|_| None);
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut out, 1, 48_000);
+        assert_eq!(out, [0.0]);
+
+        // A non-finite coordinate during follow also stops the stream.
+        let stream2 = rig
+            .open_at_entity("mod", &entity_spec, Some([0.0; 3]))
+            .unwrap();
+        assert_eq!(stream2.state(), AudioStreamState::Playing);
+        rig.pool.follow_entities(|_| Some([f64::NAN, 0.0, 0.0]));
+        assert_eq!(stream2.state(), AudioStreamState::Stopped);
     }
 
     #[test]
@@ -1057,15 +1118,16 @@ mod tests {
         let entity = mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7);
         let heard = |follow_after: bool| {
             let stream = rig
-                .open(
+                .open_at_entity(
                     "mod",
                     &spec().with_placement(StreamPlacement::Entity(entity)),
+                    Some([0.0, 0.0, 1.0]),
                 )
                 .unwrap();
             rig.feed_last(&half(2_000));
             // The mod places the stream at a point; the frame's resolution of the entity it
             // followed before then arrives, at another place.
-            assert!(stream.set_placement(&StreamPlacement::At([0.0, 0.0, 8.0])));
+            assert!(stream.set_placement(&StreamPlacement::At([0.0, 0.0, 8.0]), None));
             if follow_after {
                 rig.pool.follow_entities(|_| Some([0.0, 0.0, 1.0]));
             }
@@ -1081,19 +1143,29 @@ mod tests {
     }
 
     #[test]
-    fn a_dimension_change_unplaces_positional_streams_until_they_are_placed_again() {
-        let rig = Rig::new();
-        let at = StreamPlacement::At([0.0, 0.0, 1.0]);
-        let positional = rig.open("mod", &spec().with_placement(at)).unwrap();
-        rig.feed_last(&half(2_000));
-        let flat = rig.open("mod", &spec()).unwrap();
-        rig.feed_last(&half(2_000));
-        rig.play(8);
-        rig.pool.unplace();
-        assert_eq!(positional.state(), AudioStreamState::Unplaced);
-        assert_eq!(flat.state(), AudioStreamState::Playing);
-        assert!(positional.set_placement(&at));
+    fn a_dimension_change_stops_all_streams() {
+        let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
+            std::path::PathBuf::from("/nonexistent/sunrise-test-audio"),
+        ));
+        audio.backend_live_for_bench();
+        audio.set_world("minecraft:overworld");
+        let positional = audio
+            .open_stream(
+                "mod",
+                &spec().with_placement(StreamPlacement::At([0.0, 0.0, 1.0])),
+                None,
+                Box::new(Silent),
+            )
+            .unwrap();
+        let flat = audio
+            .open_stream("mod", &spec(), None, Box::new(Silent))
+            .unwrap();
+        audio.set_world("minecraft:overworld");
         assert_eq!(positional.state(), AudioStreamState::Playing);
+        assert_eq!(flat.state(), AudioStreamState::Playing);
+        audio.set_world("minecraft:the_nether");
+        assert_eq!(positional.state(), AudioStreamState::Stopped);
+        assert_eq!(flat.state(), AudioStreamState::Stopped);
     }
 
     #[test]
@@ -1132,7 +1204,7 @@ mod tests {
     }
 
     #[test]
-    fn leaving_a_level_unplaces_positional_streams_and_leaves_flat_ones_playing() {
+    fn leaving_a_level_stops_all_streams() {
         let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
             std::path::PathBuf::from("/nonexistent/sunrise-test-audio"),
         ));
@@ -1141,10 +1213,13 @@ mod tests {
             .open_stream(
                 "mod",
                 &spec().with_placement(StreamPlacement::At([0.0, 0.0, 1.0])),
+                None,
                 Box::new(Silent),
             )
             .unwrap();
-        let flat = audio.open_stream("mod", &spec(), Box::new(Silent)).unwrap();
+        let flat = audio
+            .open_stream("mod", &spec(), None, Box::new(Silent))
+            .unwrap();
         mix_output(
             &mut audio.backend.mixer.lock().unwrap(),
             &mut [0.0; 16],
@@ -1152,9 +1227,10 @@ mod tests {
             48_000,
         );
         assert_eq!(positional.state(), AudioStreamState::Playing);
-        audio.leave_level();
-        assert_eq!(positional.state(), AudioStreamState::Unplaced);
         assert_eq!(flat.state(), AudioStreamState::Playing);
+        audio.leave_level();
+        assert_eq!(positional.state(), AudioStreamState::Stopped);
+        assert_eq!(flat.state(), AudioStreamState::Stopped);
     }
 
     #[test]
@@ -1168,6 +1244,7 @@ mod tests {
             .open_stream(
                 "mod",
                 &spec().with_placement(StreamPlacement::Entity(entity)),
+                Some([0.0, 0.0, 1.0]),
                 Box::new(Silent),
             )
             .unwrap();
@@ -1264,7 +1341,7 @@ mod tests {
         rig.pool.state().controls[0].sequence.store(1, Relaxed);
         assert!(rig.play(64).iter().all(|s| *s == 0.0));
         let voice = &rig.mixer.lock().unwrap().streams[0];
-        assert!(voice.view.positional && voice.view.placed);
+        assert!(voice.view.positional);
     }
 
     #[test]
@@ -1274,7 +1351,7 @@ mod tests {
         // The callback holds the mixer: with nothing open, nothing here waits for it.
         let _callback = rig.mixer.lock().unwrap();
         rig.pool.reap(&rig.mixer);
-        rig.pool.unplace();
+        rig.pool.stop_all();
         rig.pool.follow_entities(|_| unreachable!());
         drop(_callback);
         let stream = rig.open("mod", &spec()).unwrap();
@@ -1293,7 +1370,7 @@ mod tests {
         let _callback = rig.mixer.lock().unwrap();
         let caller = std::thread::spawn(move || {
             assert!(stream.set_volume(0.5));
-            assert!(stream.set_placement(&StreamPlacement::Flat));
+            assert!(stream.set_placement(&StreamPlacement::Flat, None));
             assert_eq!(stream.state(), AudioStreamState::Playing);
             stream.stop();
             stream.state()

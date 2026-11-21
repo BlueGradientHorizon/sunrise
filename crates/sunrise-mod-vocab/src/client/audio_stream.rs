@@ -1,27 +1,23 @@
 //! A client mod's PCM streams: the mixer's worker pulls from a native [`AudioStream`] on its
 //! own pool, never vanilla's streaming slots.
 use super::types::SoundSource;
-use crate::EntityRef;
+use crate::{ClientHost, EntityRef};
 use std::sync::Arc;
 
 /// The most streams one mod holds open at once ([`AudioRefusal::ModStreamLimit`]).
 pub const AUDIO_STREAMS_PER_MOD: u32 = 256;
 /// The most streams open at once across every mod ([`AudioRefusal::TooManyStreams`]).
 pub const AUDIO_STREAMS_TOTAL: u32 = 1_024;
-/// The lowest sample rate a stream takes, in Hz.
-pub const AUDIO_STREAM_RATE_MIN: u32 = 8_000;
-/// The highest sample rate a stream takes, in Hz.
-pub const AUDIO_STREAM_RATE_MAX: u32 = 48_000;
 
 /// A native source of PCM owned by the mixer. Its worker calls [`read`](Self::read) serially
 /// on demand, never in the device callback or while holding mixer or pool locks.
 ///
 /// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
-/// An async or network producer bridges through its own nonblocking buffer read here. Muting or
-/// unplacing the stream does not pause demand. The worker drops an admitted source at EOF or
-/// after stop, without waiting for another device callback. A panic in [`read`](Self::read)
-/// stops only this stream.
+/// An async or network producer bridges through its own nonblocking buffer read here. Muting the
+/// stream does not pause demand. The worker drops an admitted source at EOF or after stop,
+/// without waiting for another device callback. A panic in [`read`](Self::read) stops only this
+/// stream.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
@@ -46,14 +42,16 @@ pub trait AudioStream: Send + 'static {
 // no wire: placement can contain a client-local entity handle
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StreamPlacement {
-    /// At the listener, wherever they move, with no panning and no fading with distance. The only
-    /// placement a stereo stream takes.
+    /// At the listener, wherever they move, with no panning and no fading with distance.
     Flat,
-    /// At a point, in blocks: panned and faded by `range` as a positioned sound is.
+    /// At a point, in blocks: mono streams are panned and faded by `range` as a positioned sound
+    /// is; stereo streams play un-spatialized without panning or distance attenuation (matching
+    /// OpenAL).
     At([f64; 3]),
-    /// At an entity, followed each frame. While the entity is untracked, unloaded or removed the
-    /// stream reads [`AudioStreamState::Unplaced`] and is silent, its audio still consumed; it
-    /// is heard again if the same entity is tracked again.
+    /// At an entity, followed each frame. The entity must be tracked when opening the stream or
+    /// calling `set_placement`; if the entity becomes untracked, unloaded or removed, the stream
+    /// stops (matching vanilla `EntityBoundSoundInstance.tick`). Stereo streams play
+    /// un-spatialized.
     Entity(EntityRef),
 }
 
@@ -68,14 +66,11 @@ pub enum StreamPlacement {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AudioStreamState {
-    /// Open and placed (or flat), even if silent because it is muted or has no PCM ready.
+    /// Open and playing, even if silent because it is muted or has no PCM ready.
     Playing,
-    /// Open, but at a placement nobody hears: an `Entity` the client doesn't track, or any
-    /// positional stream after the listener changed dimension, until the next `set_placement`.
-    /// The audio is still consumed, so no latency builds up.
-    Unplaced,
-    /// Over: the pull source ended and its PCM drained, it reported an invalid frame count,
-    /// `stop` was called, the handle was dropped, or the game's sound output went away.
+    /// Over: the pull source ended and its PCM drained, it reported an invalid frame count, its
+    /// followed entity became untracked or removed, the listener changed dimension or left the
+    /// level, `stop` was called, the handle was dropped, or the game's sound output went away.
     /// It never plays again.
     #[default]
     Stopped,
@@ -95,18 +90,20 @@ pub struct StreamSpec {
     /// The mixer group, scaled by master times the group, as every sound is. Voice chat plays on
     /// [`SoundSource::Voice`], the "Voice/Speech" slider.
     pub category: SoundSource,
-    /// 1 or 2. Only mono is positioned, as OpenAL does: a stereo stream takes only
-    /// [`StreamPlacement::Flat`].
+    /// 1 or 2. Both mono and stereo streams accept any [`StreamPlacement`]; mono streams are
+    /// spatialized, while stereo streams play un-spatialized without panning or distance
+    /// attenuation (matching OpenAL).
     pub channels: u8,
-    /// The rate of the source PCM, in Hz, from [`AUDIO_STREAM_RATE_MIN`] to
-    /// [`AUDIO_STREAM_RATE_MAX`]. The mixer resamples to the output's.
+    /// The rate of the source PCM, in Hz; any positive rate is accepted. The mixer resamples to
+    /// the output's.
     pub rate: u32,
     /// Where it is heard.
     pub placement: StreamPlacement,
-    /// For a positioned stream, the distance in blocks at which it has faded to silence, in a
-    /// straight line (`AL_LINEAR_DISTANCE`, as a sound's range). Positive and finite.
+    /// For a positioned mono stream, the distance in blocks at which it has faded to silence, in
+    /// a straight line (`AL_LINEAR_DISTANCE`, as a sound's range). Positive and finite.
     pub range: f32,
-    /// The stream's own volume, 0 to 1, before the group's and the master's.
+    /// The stream's own volume, clamped to `0.0..=1.0` (only NaN is refused), before the group's
+    /// and the master's.
     pub volume: f32,
 }
 
@@ -149,16 +146,13 @@ impl StreamSpec {
 pub enum SpecFault {
     /// `channels` is not 1 or 2.
     Channels,
-    /// `rate` is outside [`AUDIO_STREAM_RATE_MIN`] to [`AUDIO_STREAM_RATE_MAX`].
+    /// `rate` is zero.
     Rate,
-    /// `volume` is not a number from 0 to 1.
+    /// `volume` is NaN; finite values outside `0.0..=1.0` are clamped.
     Volume,
     /// `range` is not a positive, finite number of blocks.
     Range,
-    /// A stereo stream with a placement other than [`StreamPlacement::Flat`]: only mono is
-    /// positioned.
-    StereoPositioned,
-    /// A point that is not finite or lies past 30 million blocks.
+    /// A point that is not finite, or an entity that the client does not currently track.
     Position,
 }
 
@@ -215,11 +209,10 @@ impl std::fmt::Display for SpecFault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Channels => "channels is not 1 or 2",
-            Self::Rate => "rate is outside 8000 to 48000 Hz",
-            Self::Volume => "volume is not a number from 0 to 1",
+            Self::Rate => "rate must be greater than zero",
+            Self::Volume => "volume is NaN",
             Self::Range => "range is not a positive, finite number of blocks",
-            Self::StereoPositioned => "only a mono stream is positioned",
-            Self::Position => "the position is not finite or lies past 30 million blocks",
+            Self::Position => "the position is not finite or the entity is not tracked",
         })
     }
 }
@@ -227,14 +220,13 @@ impl std::fmt::Display for SpecFault {
 /// The game's side of one open audio stream. A mod reaches it through [`AudioStreamRef`], not
 /// directly. Every method works from any thread and never waits on the mixer.
 pub trait AudioStreamSource: Send + Sync + 'static {
-    /// Moves the stream; false, changing nothing, for a stereo stream and a placement other than
-    /// `Flat`, for a position that is not finite or lies past 30 million blocks, and once the
-    /// stream is stopped.
-    fn set_placement(&self, placement: &StreamPlacement) -> bool;
-    /// Sets the stream's own volume; false, changing nothing, for a value that is not a number
-    /// from 0 to 1, and once the stream is stopped.
+    /// Moves the stream; false, changing nothing, for a position that is not finite, for an
+    /// `Entity` placement with no finite `entity_pos`, and once the stream is stopped.
+    fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool;
+    /// Sets the stream's own volume (clamped to `0.0..=1.0`); false, changing nothing, for NaN
+    /// and once the stream is stopped.
     fn set_volume(&self, volume: f32) -> bool;
-    /// Whether the stream is open and placed, unplaced or stopped, regardless of queued PCM.
+    /// Whether the stream is playing or stopped, regardless of queued PCM.
     fn state(&self) -> AudioStreamState;
     /// Ends the stream for good: it is silent from the next output buffer and its audio is
     /// dropped. Dropping the last handle does the same.
@@ -244,8 +236,9 @@ pub trait AudioStreamSource: Send + Sync + 'static {
 /// The controls for an open mod audio stream.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
-/// does. Every control works from any thread, including a `Network`-thread payload handler,
-/// without waiting on the mixer or a client tick.
+/// does. `set_volume`, `state` and `stop` work from any thread, including a `Network`-thread
+/// payload handler, without waiting on the mixer or a client tick; `set_placement` takes a
+/// [`ClientHost`] to resolve entity placements eagerly.
 ///
 /// [`stop`]: AudioStreamRef::stop
 // no wire: the handle controls a stream on this client's mixer.
@@ -261,20 +254,31 @@ impl AudioStreamRef {
     pub fn new(source: Arc<dyn AudioStreamSource>) -> Self {
         Self { source }
     }
-    /// Moves the stream. False, changing nothing, for a stereo stream and a placement other than
-    /// [`StreamPlacement::Flat`], for a position that is not finite or lies past 30 million
-    /// blocks, and once the stream has stopped. A stream a dimension change made
-    /// [`AudioStreamState::Unplaced`] is heard again with this call.
-    pub fn set_placement(&self, placement: &StreamPlacement) -> bool {
-        self.source.set_placement(placement)
+    /// Moves the stream. False, changing nothing, for a position that is not finite, for a
+    /// [`StreamPlacement::Entity`] the client does not currently track, and once the stream has
+    /// stopped. Stereo streams accept any valid placement and play un-spatialized.
+    pub fn set_placement(&self, host: &dyn ClientHost, placement: &StreamPlacement) -> bool {
+        let entity_pos = match *placement {
+            StreamPlacement::Entity(entity) => {
+                let Some(at) = host
+                    .backend()
+                    .and_then(|b| b.open().entity_position(entity))
+                else {
+                    return false;
+                };
+                Some(at)
+            }
+            StreamPlacement::Flat | StreamPlacement::At(_) => None,
+        };
+        self.source.set_placement(placement, entity_pos)
     }
-    /// Sets the stream's own volume (0 to 1), from the next output buffer. False, changing
-    /// nothing, for a value that is not a number in that range, and once the stream has stopped.
+    /// Sets the stream's own volume (clamped to `0.0..=1.0`), from the next output buffer. False,
+    /// changing nothing, for NaN and once the stream has stopped.
     pub fn set_volume(&self, volume: f32) -> bool {
         self.source.set_volume(volume)
     }
-    /// Whether the stream is open and placed, unplaced or stopped. A dry or muted stream is
-    /// still [`AudioStreamState::Playing`] if it is open and placed.
+    /// Whether the stream is playing or stopped. A dry or muted stream is still
+    /// [`AudioStreamState::Playing`] while open.
     pub fn state(&self) -> AudioStreamState {
         self.source.state()
     }
