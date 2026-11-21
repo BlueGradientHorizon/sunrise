@@ -1,6 +1,6 @@
 //! `player_changed_dimension` is heard on every logical server: the integrated server that runs
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
-//! All three tests are daily resource tests registered in `daily-sunrise-client.txt`.
+//! These prepared tests also exercise menu retirement during travel.
 use super::Dim;
 use crate::game::{
     Game, execution_role::ExecutionRole, lan::LanSettings, lan_actions::GuestCommand,
@@ -217,6 +217,138 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
                 .collect::<Vec<_>>(),
             [inventory_cursor, open_cursor]
         );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_cross_level_teleport_survives_cursor_overflow_removing_an_earlier_guest() {
+    use mod_api::{EntityJoinLevelEvent, Flow, PlayerRef};
+    use sunrise_client::items::ItemStack;
+
+    struct RemoveFake(Arc<Mutex<Option<PlayerRef>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for RemoveFake {
+        fn entity_join_level(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut EntityJoinLevelEvent<'_>,
+        ) -> Flow {
+            if event.kind == "minecraft:item"
+                && let Some(fake) = self.0.lock().unwrap().take()
+            {
+                assert!(fake.remove_fake(host));
+            }
+            Flow::Continue
+        }
+    }
+
+    let fake = Arc::new(Mutex::new(None));
+    let mods = vec![ModEntry::new(
+        "remove-fake-on-drop",
+        Box::new(RemoveFake(fake.clone())),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_server(ExecutionRole::DedicatedServer, |game| {
+            let traveller = game.lan.as_mut().unwrap().hub.guests.remove(0);
+            let level = game.level(Dim::Overworld.id()).unwrap();
+            *fake.lock().unwrap() = Some(game.fake_player(level, 121, "Automation").unwrap());
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            assert!(hub.guests[0].is_fake());
+            hub.guests.push(traveller);
+            assert_eq!(hub.guests[1].conn, CONN);
+            let queued = ItemStack::new("minecraft:iron_ingot", 3);
+            let carried = ItemStack::new("minecraft:gold_ingot", 5);
+            hub.guests.update(1, |g| {
+                g.inventory
+                    .fill(Some(ItemStack::new("minecraft:stone", 64)));
+            });
+            let title = sunrise_protocol::text::literal("fixture");
+            hub.open_native_menu(CONN, 1, title.clone(), Vec::new())
+                .unwrap();
+            hub.guests.update(1, |g| g.carried = Some(queued.clone()));
+            hub.close_container(CONN); // A cursor waiting to return when travel starts.
+            hub.open_native_menu(CONN, 1, title, Vec::new()).unwrap();
+            hub.guests.update(1, |g| g.carried = Some(carried.clone()));
+
+            run_as_player(
+                game,
+                ExecutionRole::DedicatedServer,
+                "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
+            );
+
+            let guests = &game.lan.as_ref().unwrap().hub.guests;
+            assert_eq!(guests.len(), 1);
+            assert_eq!(guests[0].conn, CONN);
+            assert_eq!(guests[0].dimension, Dim::Nether.id());
+            assert!(guests[0].menu.is_none());
+            assert!(guests[0].carried.is_none());
+            assert_eq!(game.dim, Dim::Overworld);
+            assert_eq!(
+                game.dropped
+                    .iter()
+                    .map(|item| item.stack.clone())
+                    .collect::<Vec<_>>(),
+                [queued, carried]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_failed_cross_level_trip_closes_the_retired_client_window() {
+    use sunrise_client::lan::Out;
+    use sunrise_protocol::{buf::Reader, ids::play::clientbound};
+
+    with_server(ExecutionRole::DedicatedServer, |game| {
+        // Opening an unloaded destination refuses an unreadable saved biome layout.
+        // Set a world path: the constructor-only fixture otherwise reads the process's cwd.
+        let world = tempfile::tempdir().unwrap();
+        game.world_root = world.path().to_path_buf();
+        let record = world.path().join("data/sunrise/biome_regions.dat");
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(record, b"not a biome layout").unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        game.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
+            g.sender = PlayerSender::new(tx, Arc::default());
+        });
+        for via_portal in [false, true] {
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.open_native_menu(
+                CONN,
+                1,
+                sunrise_protocol::text::literal("fixture"),
+                Vec::new(),
+            )
+            .unwrap();
+            let window = hub.guest(CONN).unwrap().menu.as_ref().unwrap().window;
+            while rx.try_recv().is_ok() {}
+            if via_portal {
+                game.start_server_trip(CONN, Dim::Nether, None, false);
+            } else {
+                run_as_player(
+                    game,
+                    ExecutionRole::DedicatedServer,
+                    "execute in minecraft:the_nether run tp @s 8.5 70 8.5",
+                );
+            }
+            let mut closes = Vec::new();
+            for packet in rx.try_iter() {
+                if let Out::Packet(packet) = packet {
+                    let mut reader = Reader::new(&packet);
+                    let id = reader.varint().unwrap();
+                    assert_ne!(id, clientbound::RESPAWN);
+                    if id == clientbound::CONTAINER_CLOSE {
+                        closes.push(reader.varint().unwrap());
+                    }
+                }
+            }
+            assert_eq!(closes, [window], "via portal: {via_portal}");
+            let guest = game.lan.as_ref().unwrap().hub.guest(CONN).unwrap();
+            assert_eq!(guest.dimension, Dim::Overworld.id());
+            assert!(guest.menu.is_none());
+        }
     });
 }
 

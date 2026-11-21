@@ -448,9 +448,16 @@ impl Game<'_> {
 
     /// `Player.remove(CHANGED_DIMENSION)` removes both menus without dropping
     /// a cursor that still fits. Overflow belongs in the level the guest left.
-    pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) {
+    /// Return the old nonzero window in case the trip fails before sending a respawn.
+    pub(in crate::game) fn guest_close_menus_for_travel(&mut self, conn: u32) -> Option<i32> {
+        let window = self
+            .lan
+            .as_ref()
+            .and_then(|host| super::super::native_menus::open_menu_of(host, conn))
+            .map(|(window, _, _)| window);
         self.lan_crafting_closed(conn, Some(0));
         self.guest_close_all(conn);
+        window
     }
 
     pub(in crate::game) fn guest_disconnected(&mut self, conn: u32) {
@@ -484,8 +491,11 @@ impl Game<'_> {
             {
                 self.close_guest_vehicle_menu(conn, key);
             }
-            if let Some(carried) =
-                self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
+            // Returning queued cursors and closing a container can both call
+            // listeners that remove another player, shifting the guest list.
+            if let Some(gi) = self.guest_index(conn)
+                && let Some(carried) =
+                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
             {
                 self.lan_place_back(gi, vec![carried]);
             }
