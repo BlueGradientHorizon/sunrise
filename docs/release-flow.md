@@ -322,9 +322,11 @@ so a signed list can't be reused under another tag.
   needs to read it.
 - The publish job then checks the signature the way launchers do, against the public keys in main's
   `crates/sunrise-release-sign/release-keys.txt`, with the runner's OpenSSL (`nightly.py verify-sums --publishing`
-  in `nightly-build.yml`, `sdk-publish.yml` and `mod-tool.yml`). It builds and runs no code of the checkout, so a
-  release branch's candidate can't change the check. It reads `SHA256SUMS` and its signature as the native verifier
-  does (one signature line that verifies is enough), and also refuses a listed file whose name is a path. While that file lists no key, releases go out with SHA256SUMS
+  in `nightly-build.yml`, `sdk-publish.yml` and `mod-tool.yml`). That is the workflow checkout's Python and nothing
+  compiled: no binary of the release runs, and on a release branch the script is the branch's own, which its
+  ruleset protects (see below). It reads `SHA256SUMS` and its signature as the native verifier
+  does (one signature line that verifies is enough), and also refuses a listed file whose name is a path, and a
+  signed list that names no file. While that file lists no key, releases go out with SHA256SUMS
   alone and a warning (today's releases keep working). Once it lists one, a missing secret or a key it doesn't
   list fails the release before anything is published, instead of publishing something launchers would refuse.
 - Making the key: `tools/ci/new_release_key.sh` pipes a new key from `sunrise-release-sign keygen` straight into
@@ -477,7 +479,7 @@ own folder and target, no inherited compiler wrapper or job token), it exports b
 must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. The
 candidate's signed `surface.json`, which modders build against, must match that tool's export of the candidate's tree:
 exactly for a patch, and for a minor it must hold every exported record unchanged (it may add records its own exporter
-knows). A patch requires an identical mod API; a
+knows), and the parent's tool must read it as the SDK's readers do. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
 minor refuses them too. For content mods, the SDK's `content_api` version string must stay the same within a line.
 Until [#3817](https://github.com/sunrise-org/sunrise/issues/3817) exports the declarations for comparison, the check

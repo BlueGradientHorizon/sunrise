@@ -17,7 +17,7 @@ name: mod tool
 # - `assemble` (no secrets) writes tool.json beside the three archives.
 # - `sign` is the only job with the release key, only for a publishing run on main (the `release` environment): it
 #   checks out nothing but tools/ci/sign_release.sh. Any other run signs with a throwaway key.
-# - `verify` (a read-only token) checks the signature as users' install blocks do (sunrise-release-sign verify) and the
+# - `verify` (a read-only token) checks the signature as users' install blocks do (tools/ci/nightly.py verify-sums) and the
 #   asset set; a dry run ends here.
 # - `publish` exists only for a publishing run on main and is the only job with a write token: it checks that the
 #   published tool is not newer, then replaces the assets. It compiles nothing.
@@ -294,7 +294,8 @@ jobs:
       - name: The signature, checked as an install block checks it
         run: |
           key=(); [[ "$PUBLISH" != true ]] && key=(--key "$(cat key/ephemeral.pub)")
-          # The runner's OpenSSL against main's release keys: no code of the checkout is built or run with this job's token.
+          # The workflow checkout's Python and the runner's OpenSSL against main's release keys: nothing is compiled, and
+          # no binary of the release runs.
           python3 tools/ci/nightly.py verify-sums --tag "$TAG" --publishing "${key[@]}" dist
       - name: Exactly the assets an install block takes
         run: |
