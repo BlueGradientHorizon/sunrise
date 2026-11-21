@@ -593,8 +593,7 @@ def pick_dev() -> None:
     build = dry_run or not gh("release", "view", tag, "--json", "tagName", check=False)
     with open("nightly-notes.md", "w") as f:
         f.write(f"Dev {today} · {sha[:7]}: main at {sha}, built to test it after merge.\n\n"
-                f"With a launcher that supports Dev builds (1.1.3 and later), run `sunrise-launcher install {tag}`. "
-                "Or download the release assets and check them with "
+                "Download the release assets and check them with "
                 f"`sunrise-release-sign verify --tag {tag} --signature SHA256SUMS.v2.sig <folder>`. "
                 f"The matching SDK is `sdk-{sha}`.\n\n{MUSL_NOTE}\n\n{train.DISCLAIMER}\n")
     output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"dev-{today}",
