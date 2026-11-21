@@ -181,10 +181,6 @@ impl Game<'_> {
             return Err(OpenMenuError::PlayerUnavailable);
         }
         let pos = pos.map(|[x, y, z]| (x, y, z));
-        let opener = pos.and_then(|pos| self.menu_opener_block(pos, &id));
-        let Some(hidden) = Self::native_hidden_slots(&id, opener, kind.slots) else {
-            return Ok(None);
-        };
         self.close_for_open(conn, replace);
         let gi = self
             .guest_index(conn)
@@ -203,7 +199,6 @@ impl Game<'_> {
                 )?;
                 lan.hub.guests.update(gi, |g| {
                     let open = g.menu.as_mut().expect("the window was just installed");
-                    open.hidden = hidden.iter().copied().map(usize::from).collect();
                     open.blockless_data = data;
                     g.send_menu_data_snapshot();
                 });
@@ -1375,21 +1370,16 @@ mod tests {
         if super::super::native_entity_refs::tests::run_fresh_cases(
             "game::native_menus::tests::a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu",
             CASE,
-            &["close_first", "in_place", "bad_mask"],
+            &["close_first", "in_place"],
         ) {
             return;
         }
         // What the mods heard, in order.
         static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
-        struct Listen {
-            bad_mask: bool,
-        }
+        struct Listen;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Listen {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-                if self.bad_mask {
-                    r.menu_slot_exclusions(MOD_MENU, None, &[9]).unwrap();
-                }
                 r.register_menu_screen(
                     MOD_MENU,
                     Arc::new(
@@ -1424,12 +1414,7 @@ mod tests {
         }
         let heard = || std::mem::take(&mut *HEARD.lock().unwrap());
         let case = std::env::var(CASE).unwrap();
-        let bad_mask = case == "bad_mask";
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "listen",
-            Box::new(Listen { bad_mask }),
-        )]
-        .into();
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("listen", Box::new(Listen))].into();
         mod_platform::__private::install(mods.clone());
         crate::game::api_values::install_parts(&mods).unwrap();
         let replace = if case == "close_first" {
@@ -1463,17 +1448,8 @@ mod tests {
                     None,
                     replace,
                 )
+                .unwrap()
                 .unwrap();
-            if bad_mask {
-                assert_eq!(window, None);
-                assert!(heard().is_empty());
-                assert!(sent(&rx).is_empty());
-                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
-                assert_eq!(guest.menu.as_ref().map(|menu| menu.window), Some(1));
-                assert_eq!(guest.carried, Some(stone));
-                return;
-            }
-            let window = window.unwrap();
             assert_eq!(window, 2);
             // The old menu's close, heard once before the new one opens, with
             // no layout callback on the server.

@@ -109,7 +109,7 @@ impl OwnedMenuScreen {
         }
     }
 
-    /// The owner used for dispatch and local slot moves.
+    /// The registering mod's id, used for diagnostics and panic attribution.
     pub fn owner(&self) -> &'static str {
         self.owner
     }
@@ -222,15 +222,12 @@ pub struct MenuScreenOpen<'a> {
     pub pos: Option<[i32; 3]>,
     /// The server's title as an API text component, if available.
     pub title: Option<&'a crate::Text>,
-    /// The number of physical container slots, including permanently excluded ones.
+    /// The number of physical container slots.
     pub backing_slots: usize,
     /// The number of appended player inventory slots, including the hotbar.
     pub player_slots: usize,
-    /// The custom menu's live data slot count, or the capacity for dynamic data
-    /// on a stock menu opened by a mod. This does not count opening bytes.
+    /// The custom menu's live data slot count. This does not count opening bytes.
     pub data_slots: usize,
-    /// Permanent container backing indices left empty by the layout. Indices do not move.
-    pub excluded_slots: &'a [u16],
     /// The server's one-time payload for this opening, or an empty slice if no
     /// payload matched. Decode it in the factory and retain only owned values.
     /// Read live updates from [`MenuScreenFrame::data`], not from these bytes.
@@ -243,8 +240,6 @@ pub trait MenuScreenFactory: Send + Sync + 'static {
     /// Build the screen for `open`, or return `None` to decline the opening.
     /// Called on the client before the screen is installed. `host` reads client state;
     /// controls for the new screen (such as local slot moves) are not available yet.
-    /// Only the content menu's owner, or the verified mod opener's owner for a
-    /// stock menu, supplies a factory.
     fn create(&self, host: &dyn crate::ClientHost, open: MenuScreenOpen<'_>) -> Option<MenuScreen>;
 }
 

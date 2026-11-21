@@ -45,8 +45,9 @@ impl Game<'_> {
         } else if let Some(icon) = slot
             .checked_sub(300)
             .and_then(|slot| self.native_screen_slot_icon(slot))
+            && let Some(rect) = self.gui.atlas.gui_sprite_or_missing(icon)
         {
-            batch.sprite_scaled(&self.gui.atlas, icon, x, y, 16.0, 16.0, 0xFFFF_FFFF);
+            batch.rect_uv(x, y, 16.0, 16.0, rect, 0xFFFF_FFFF);
         }
     }
     /// `extractCarriedItem`: the carried stack at the cursor, showing what a

@@ -1020,8 +1020,9 @@ impl ColoredLight {
 /// Layout for a window's [`crate::MenuScreen`]: its size, where
 /// each of the container's slots is (`Slot.x`, `Slot.y`), and the player
 /// inventory's first row (vanilla's is 84; the hotbar is 58 below it) and
-/// left column, from its top left. The screen does not decide which slots
-/// take server clicks; see [`crate::MenusRegistrar::menu_slot_exclusions`].
+/// left column, from its top left. The screen controls client presentation
+/// and per-slot active/visibility state (`Slot.isActive()`); server-side
+/// placement and pickup rules belong to the menu and its `MenuPart`.
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
 pub struct MenuScreenLayout {
@@ -1029,10 +1030,11 @@ pub struct MenuScreenLayout {
     pub width: f32,
     /// Positive finite height in GUI pixels; vanilla's is 166.
     pub height: f32,
-    /// Slot geometry at its original backing index. Every nonexcluded slot
-    /// needs geometry; `None` (including an omitted trailing entry) is valid
-    /// only for a registered exclusion. An excluded slot still has a physical
-    /// index; don't compact this list. There are no entries past the backing.
+    /// Slot geometry at its original backing index. `Some(slot)` shows the slot
+    /// initially; `None` (including omitted trailing entries) marks an initially
+    /// inactive/hidden slot (`Slot.isActive()`) that can be activated later with
+    /// [`crate::prelude::ScreensClientHost::set_screen_slot`]. Don't compact this
+    /// list; there are no entries past the backing.
     pub slots: Vec<Option<ScreenSlot>>,
     /// The y of the player inventory's first row; vanilla's is 84.
     pub inventory_y: f32,
@@ -1077,7 +1079,8 @@ pub struct ScreenSlot {
     pub position: [f32; 2],
     /// GUI sprite identifier, such as `minecraft:container/slot/ingot`.
     /// Drawn at 16 × 16 only when the displayed stack is empty, including
-    /// quick-craft previews. Unknown sprites refuse the client screen at open.
+    /// quick-craft previews. Unknown sprites draw the missing texture,
+    /// matching vanilla's `Slot.getNoItemIcon`.
     pub no_item_icon: Option<String>,
 }
 

@@ -43,17 +43,6 @@ impl RecipeBookLayout {
             .get(menu)
             .map(|binding| binding.owner)
     }
-    /// Check that a permanent exclusion mask leaves every declared role
-    /// available at its backing index. Loading checks the default and every
-    /// opener-specific mask. Local screen hides are not exclusions.
-    pub fn validate_exclusions(&self, excluded: &[u16]) -> Result<(), String> {
-        self.check_roles(|slot, role| {
-            if excluded.contains(&slot) {
-                return Err(format!("{role} slot {slot} is permanently excluded"));
-            }
-            Ok(())
-        })
-    }
     /// Menus with declarations, for content-load validation, never per tick.
     pub fn registered_menus() -> Vec<String> {
         let mut menus = crate::parts::installed()
@@ -78,8 +67,6 @@ impl RecipeBookLayout {
     }
 
     /// Check role indices against the content menu's container slot count.
-    /// The count includes permanently excluded slots. Exclusion masks are
-    /// checked separately with [`Self::validate_exclusions`].
     pub fn validate(&self, slot_count: u16) -> Result<(), String> {
         if slot_count == 0 || slot_count > 256 {
             return Err("container slot count must be in 1..=256".into());

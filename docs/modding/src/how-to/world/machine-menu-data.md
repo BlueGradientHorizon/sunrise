@@ -353,10 +353,11 @@ r.register_menu_screen("mymod:backpack", Arc::new(
 
 `open.menu` names the active type; `open.block` is the verified mod block whose container opened
 it, or `None` without a matching block. This lets one constructor handle different openers
-without retaining the borrowed context. For a stock menu, only the factory registered by the
-actual mod block's owner runs. An ordinary vanilla opener keeps its usual screen. Two mods can
-register for the same stock menu; a second registration by the same mod is refused. A custom
-menu accepts a factory only from its owner.
+without retaining the borrowed context. Factories are keyed directly by menu type, matching
+NeoForge's `RegisterMenuScreensEvent` and vanilla's `MenuScreens.SCREENS`: any mod may register
+a screen for a custom menu type (including another mod's or a non-built-in `minecraft:*` menu
+type), while built-in vanilla menu types that already have screens in `MenuScreens.SCREENS` and
+duplicate registrations for the same menu type are refused.
 
 Add only the callbacks the new screen uses: `with_draw(|host, frame, draw| ...)`,
 `with_click(|host, frame, right| ...)` and `with_tooltip(|host, frame, slot, lines| ...)`.
@@ -364,11 +365,13 @@ The window owns the callbacks until the screen is closed or replaced. Decode `op
 in the factory and move any needed owned values into the callbacks. Live integer updates
 arrive separately in `frame.data`.
 
-### Opening a stock menu from a mod block
+### Custom menu screens and initially inactive slots
 
-Call this from `Hooks::register` for the registered `mymod:machine` block. Using the block
-opens a stock hopper menu over five backing slots. Only this opener excludes the last
-three, so input 0 and output 1 keep their indices. A vanilla hopper still uses its own screen.
+Define a custom menu type for your machine's slots and register its screen factory with
+`r.register_menu_screen(MENU, ...)`. Leave `None` (or omit trailing entries) in
+`MenuScreenLayout::slots` for slots that should start inactive/hidden (`Slot.isActive()`);
+their physical indices stay unchanged, and any mod may activate or hide them later with
+`host.set_screen_slot`.
 
 ```rust,ignore
 use mod_api::{ClientHost, MenuScreen, MenuScreenLayout, MenuScreenOpen, ModContainer, Registrar, ScreenSlot};
@@ -376,7 +379,7 @@ use std::sync::Arc;
 
 fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
     const BLOCK: &str = "mymod:machine";
-    const MENU: &str = "minecraft:hopper";
+    const MENU: &str = "mymod:machine";
     let block = r.block_key(BLOCK);
     r.block_container(&block, ModContainer {
         slots: 5,
@@ -386,7 +389,6 @@ fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
         insert_rules: vec![],
         menu: Some(MENU.into()),
     });
-    r.menu_slot_exclusions(MENU, Some(BLOCK), &[2, 3, 4])?;
     r.register_menu_screen(MENU, Arc::new(
         |_: &dyn ClientHost, open: MenuScreenOpen<'_>| {
             if open.block != Some(BLOCK) {
@@ -408,16 +410,10 @@ fn register_machine(r: &mut dyn Registrar) -> Result<(), String> {
 }
 ```
 
-A stock type requires an explicit opener block you own. For a custom menu type you own,
-use `None` for the default and `Some("namespace:block")` to replace it for that exact
-block when its container opens the type. Use `&[]` for an override with no exclusions.
-If an old layout used `None` or omitted trailing slots to exclude them, move those
-original indices into the registration mask. A permanently excluded slot stays indexed
-but takes no server clicks or quick-move. Give every other slot geometry at its original
-index and leave `None` for each exclusion (trailing exclusions may be omitted from the
-layout). An out-of-range mask or a client layout that disagrees with it refuses the opening.
-If a slot should only be hidden on one tab or at one moment, keep its geometry at open and
-hide it locally instead.
+A `None` entry or omitted trailing slot stays indexed in the container backing and starts
+inactive on the client screen, without changing server-side slot validation. To prevent
+players from placing into or taking from a backing slot on the server, enforce that in
+`MenuPart::menu_slot_rules` or declare only the exposed slots on the menu type.
 
 A click callback returns `None` to leave the press alone or `Some(id)` to consume it and
 send that button to the server. The active menu's server `MenuPart` handles accepted IDs
@@ -425,17 +421,16 @@ in `menu_button` after the normal window and menu checks and `menu_button_valid`
 opening data as authority. A block-backed menu also supplies its backing block entity;
 a menu opened without a block supplies `None` for both `event.entity` and `event.context.pos`.
 A [bound recipe book](../items/recipe-book-categories.md#binding-a-book-to-a-menu) works for
-blockless menus when its recipe slots have native slot backing. The declaring mod supplies the
-screen through its registered factory. Set `MenuScreenLayout::recipe_book` to the bound book;
-a missing or different book, invalid geometry or missing mapped slots refuses that client opening.
-The declaring mod owns its slot controls and presentation callbacks.
+blockless menus when its recipe slots have native slot backing. Register a screen factory
+for the bound menu and set `MenuScreenLayout::recipe_book` to the bound book; a missing or
+different book or invalid geometry refuses that client opening.
 
 ## Laying a screen's slots out again
 
 A screen whose slots move while it is open (Tinkers' tinker station, which lays its input slots out for the
 tool being built) calls `host.set_screen_slot(menu, slot, Some([x, y]))` on the client, or `None` to hide a
 slot ([moving or hiding a mod screen's slots](../client/screens.md#moving-or-hiding-a-mod-screens-slots)). Only
-the screen changes: the server's slot exclusions do not change.
+the screen changes: server-side slot rules do not change.
 
 ## Receiving synchronized data
 

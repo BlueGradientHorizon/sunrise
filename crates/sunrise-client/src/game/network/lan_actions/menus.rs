@@ -209,10 +209,6 @@ impl Game<'_> {
         if !sunrise_client::containers::menu_reaches(brand, menu) {
             return MenuOpen::Refused;
         }
-        let opener = (self.mod_menu_at(pos) == Some(menu)).then_some(block.as_str());
-        let Some(hidden) = Self::native_hidden_slots(menu, opener, items.len()) else {
-            return MenuOpen::Refused;
-        };
         // The mods may stop the menu; the click is spent.
         match self.guest_may_open(conn, menu, Some([pos.0, pos.1, pos.2])) {
             Some(true) => {}
@@ -268,10 +264,6 @@ impl Game<'_> {
         };
         host.hub
             .open_container(conn, menu, title, pos, slots, items, extra);
-        if !hidden.is_empty() {
-            host.hub
-                .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
-        }
         // `ContainerOpenersCounter.incrementOpeners`: a direct handle open
         // starts the lid once, sounding on its first opener. A spectator's
         // `startOpen` does nothing, so its close must have nothing to decrement.
