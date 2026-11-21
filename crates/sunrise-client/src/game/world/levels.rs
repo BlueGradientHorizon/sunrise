@@ -854,13 +854,6 @@ impl Levels {
     }
 
     /// The levels that are not in place, by dimension.
-    /// The forced chunks of every level not in place, released.
-    pub(super) fn release_parked_forced_chunks(&mut self) {
-        for level in self.parked.values_mut() {
-            level.streaming.clear_forced();
-        }
-    }
-
     pub(super) fn parked_dims(&self) -> Vec<Dim> {
         self.parked.keys().copied().collect()
     }
