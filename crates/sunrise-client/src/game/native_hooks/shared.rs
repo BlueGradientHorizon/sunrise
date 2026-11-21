@@ -1482,7 +1482,7 @@ impl Game<'_> {
         Some(LivingRef::new(EntityRef::new(epoch, id)))
     }
     /// Deliver what the batch just ticked recorded, in order: `minecart_pass`
-    /// to the parts, and the writes a landing or a mid-walk `entity_inside`
+    /// to the parts, and the writes a landing, step, or mid-walk `entity_inside`
     /// contact asked for to the level. A write is skipped when the block at
     /// its position is no longer the state it touched, as vanilla never sees
     /// a stale one. The parts' own `entity_inside` contacts fire mid-walk now,
@@ -1840,15 +1840,56 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
         step_listens: |state| {
             crate::game::api_values::block_state::block_listens(mod_api::HookId::StepOn, state)
         },
-        step_on: |level, c, stepping_carefully, movement| {
-            crate::game::native_surface::FrictionView(level).native_step_on(fire::StepOnCall {
+        step_on: |level, step, movement| {
+            use self::bounce_restitution::StepOnView;
+            use sunrise_client::block_contact::{StepLevel, landed};
+            let c = step.contact;
+            let Ok(state) = c.state.try_into_api() else {
+                return Vec::new();
+            };
+            let mut proposed = *movement;
+            use mod_api::LevelRandomSide;
+            let (mut hit, read);
+            let (side, mut writes) = match level {
+                StepLevel::Server(level) => {
+                    hit = HitLevel(level.reborrow());
+                    (
+                        LevelRandomSide::Server(&mut hit),
+                        mod_api::StepOnWrites::server(),
+                    )
+                }
+                StepLevel::Client(level) => {
+                    read = crate::game::native_surface::FrictionView(level);
+                    (
+                        LevelRandomSide::Client(&read),
+                        mod_api::StepOnWrites::default(),
+                    )
+                }
+            };
+            StepOnView(side).native_step_on(mod_api::__private::StepOnCall {
                 entity: c.entity,
                 kind: c.kind,
-                state: c.state,
-                pos: c.position,
-                stepping_carefully,
-                movement,
+                state,
+                pos: mod_api::BlockPos::new(c.position.x, c.position.y, c.position.z),
+                stepping_carefully: step.carefully,
+                bounds: [
+                    step.bounds.min_position().components(),
+                    step.bounds.max_position().components(),
+                ],
+                movement: &mut proposed,
+                writes: &mut writes,
             });
+            let (blocks, entity) = writes.into_writes();
+            let Ok(blocks) = blocks
+                .into_iter()
+                .map(|write| write.try_into_engine(&()))
+                .collect()
+            else {
+                return Vec::new();
+            };
+            landed(c.state, c.position, blocks);
+            *movement = proposed;
+            entity
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),
         inside_listens: |state| {

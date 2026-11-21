@@ -11,7 +11,10 @@ pub(super) struct HostParam {
 /// Whether the hook's host is a level host: a `GameLevel` method, or a hook marked
 /// `"host": "level"` or `"host": "hit"` whose receiver is another level (a hit's `HitLevel`).
 pub(super) fn is_level(hook: &Hook) -> bool {
-    matches!(hook.host, Some(HostAccess::Level | HostAccess::Hit)) || game_level(hook)
+    matches!(
+        hook.host,
+        Some(HostAccess::Level | HostAccess::LevelRandomSide | HostAccess::Hit)
+    ) || game_level(hook)
 }
 
 fn game_level(hook: &Hook) -> bool {
@@ -44,13 +47,21 @@ pub(super) fn validate(
                     && !ticks
                     && (hook.side == Side::Server && mutable.is_some()
                         || hook.side == Side::Both && mutable == Some(false)) => {}
+            HostAccess::LevelRandomSide
+                if !game_level(hook)
+                    && !ticks
+                    && hook.side == Side::Both
+                    && mutable == Some(true) => {}
             // A hit's capability is the server hit's: a both-side hit's host only reads.
             HostAccess::Hit
                 if !game_level(hook)
                     && !ticks
                     && hook.side == Side::Server
                     && mutable == Some(true) => {}
-            HostAccess::Read | HostAccess::Level | HostAccess::Hit => {
+            HostAccess::Read
+            | HostAccess::Level
+            | HostAccess::LevelRandomSide
+            | HostAccess::Hit => {
                 return Err(format!("{name}: this entry takes no host marker"));
             }
         }
@@ -64,7 +75,11 @@ pub(super) fn validate(
             "{name}: a both-side hook with a &self target takes host \"read\""
         ));
     }
-    if is_level && hook.side == Side::Both && (mutable == Some(true) || ticks) {
+    if is_level
+        && hook.side == Side::Both
+        && (mutable == Some(true) || ticks)
+        && hook.host != Some(HostAccess::LevelRandomSide)
+    {
         return Err(format!(
             "{name}: a both-side level hook takes the read kind until a client level seam exists"
         ));
@@ -130,6 +145,12 @@ pub(super) fn host_param(hook: &Hook, mutable: Option<bool>, ticks: bool) -> Opt
             return HostParam {
                 ty: ty.into(),
                 call,
+            };
+        }
+        if hook.host == Some(HostAccess::LevelRandomSide) {
+            return HostParam {
+                ty: "LevelRandomSide".into(),
+                call: "self.level_random_side()",
             };
         }
         if hook.side == Side::Both {

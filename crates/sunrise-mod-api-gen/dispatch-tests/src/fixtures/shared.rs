@@ -109,6 +109,19 @@ impl LevelSide<'_> {
         }
     }
 }
+#[allow(dead_code)]
+enum LevelRandomSide<'a> {
+    Server(&'a mut dyn LevelRandomHost),
+    Client(&'a dyn LevelHost),
+}
+impl LevelRandomSide<'_> {
+    fn reborrow(&mut self) -> LevelRandomSide<'_> {
+        match self {
+            Self::Server(host) => LevelRandomSide::Server(&mut **host),
+            Self::Client(host) => LevelRandomSide::Client(*host),
+        }
+    }
+}
 struct TestHost;
 struct TestLevel;
 impl LevelHost for TestLevel {}

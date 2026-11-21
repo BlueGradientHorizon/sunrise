@@ -1618,7 +1618,7 @@ impl MotionWorld<'_, '_, '_> {
                 self.player.velocity.x *= scale;
                 self.player.velocity.z *= scale;
             }
-            self.part_step_on(state, on);
+            self.part_step_on(state, on)?;
         }
         let mut visited = crate::fast_hash::FxHashSet::default();
         let mut effects = mod_api::InsideEffects::default();

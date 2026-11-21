@@ -260,7 +260,15 @@ impl Game<'_> {
         let side = game_side!(self);
         let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
-        body.step_on(entity, f.position, &f.ground, &mut f.velocity);
+        let _ = self.body_step_on(
+            entity,
+            (
+                f.position,
+                sunrise_client::falling_block::bounds(f.position),
+            ),
+            &f.ground,
+            &mut f.velocity,
+        );
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck
         // (Entity.makeStuckInBlock), BubbleColumnBlock.entityInside lifts or
         // drags it. Entity.move records the move unless it was blocked short

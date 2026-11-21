@@ -157,10 +157,21 @@ but before the entity's inside-block effects. An idle grounded item still steps 
 not move. Each effects pass has its own callback; this is not a landing notification.
 
 Register the Part on the block. `StepOnEvent` carries the contacted `state` and `pos`, the entity id
-and kind, whether it is `stepping_carefully`, and its current `movement` (velocity). Edit `movement`
-to change what the rest of this tick sees. Non-finite edits are ignored; there is no veto. The
-`LevelSide` is read-only. Keep the edit a pure function of the inputs so it agrees on both sides and
-during replay. This replaces `Hooks::block_step_on`, the former server-only notice.
+and kind, whether it is `stepping_carefully`, its world-space `bounds` as `[min, max]` XYZ corners,
+and its current `movement` (velocity). Edit `movement` to change what the rest of this tick sees.
+Non-finite edits are ignored; there is no veto. Keep movement answers consistent on both sides and
+on replay.
+
+`LevelRandomSide::Client` lends a read-only level. Only the server arm accepts writes, and it
+lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { source: None,
+amount })` applies damage to the stepping body through its own damage path, before the inside scan.
+Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
+queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
+only if the block still holds the contacted state. An invalid requested state refuses the batch
+and the callback's other outputs. This replaces `Hooks::block_step_on`, the former server-only notice.
+
+Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
+([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).
 
 ## Landing writes
 

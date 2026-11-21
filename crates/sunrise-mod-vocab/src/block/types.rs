@@ -465,6 +465,54 @@ pub struct BlockClick<'a> {
     pub player_entity_id: i32,
 }
 
+/// The server's staged writes during a step-on Part call.
+#[doc(hidden)]
+// no wire: the engine owns this call-local staging buffer; Parts only borrow it.
+#[derive(Clone, Default)]
+pub struct StepOnWrites {
+    server: bool,
+    block: Vec<LandingWrite>,
+    entity: Vec<EntityWrite>,
+}
+
+impl StepOnWrites {
+    #[doc(hidden)]
+    pub fn server() -> Self {
+        Self {
+            server: true,
+            ..Self::default()
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn into_writes(self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
+        (self.block, self.entity)
+    }
+}
+
+impl StepOnEvent<'_> {
+    /// Queue a write to the contacted block. Returns false on the client.
+    pub fn request(&mut self, write: LandingWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.block.push(write);
+        true
+    }
+
+    /// Queue a write to the stepping entity, before inside-block effects.
+    /// Returns false on the client. As with `entity_inside`, the body applies
+    /// the writes it supports, in request order. Boats and minecarts do not
+    /// take contact Part damage yet (#4177).
+    pub fn write_entity(&mut self, write: EntityWrite) -> bool {
+        if !self.writes.server {
+            return false;
+        }
+        self.writes.entity.push(write);
+        true
+    }
+}
+
 impl FallOnEvent<'_> {
     /// Ask for a write at the block the entity landed on. It is applied once the entity's
     /// batch has ticked, in the order asked, if the block is still the state it landed on.

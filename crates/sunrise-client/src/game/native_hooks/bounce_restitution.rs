@@ -15,10 +15,20 @@ impl FrictionView<'_> {
     ) {
         self.fire_bounce_restitution(entity, kind, state, pos, factor);
     }
+}
 
+pub(super) struct StepOnView<'a>(pub(super) mod_api::LevelRandomSide<'a>);
+
+impl StepOnView<'_> {
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
-    pub(in crate::game) fn native_step_on(&self, call: super::fire::StepOnCall<'_>) {
-        self.fire_step_on(call);
+    pub(super) fn native_step_on(&mut self, call: mod_api::__private::StepOnCall<'_>) {
+        let side = match &mut self.0 {
+            mod_api::LevelRandomSide::Server(level) => {
+                mod_api::LevelRandomSide::Server(&mut **level)
+            }
+            mod_api::LevelRandomSide::Client(level) => mod_api::LevelRandomSide::Client(*level),
+        };
+        mod_api::dispatch_step_on(side, call);
     }
 }
 

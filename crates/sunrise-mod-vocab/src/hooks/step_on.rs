@@ -11,8 +11,15 @@ pub trait Hooks {
     /// `stepping_carefully` is the body's `Entity.isSteppingCarefully` at this contact.
     /// `movement` is its current velocity. Set it to change the velocity before the
     /// inside effects and later drag; a non-finite result is ignored. There is no veto.
-    /// Only Parts on the contacted state run, with a read-only level on the simulating
-    /// side. Keep answers consistent between the two sides and on replay.
+    /// `bounds` is the body's current world-space box, `[min, max]` in XYZ order.
+    /// Only Parts on the contacted state run, after that block's vanilla step behavior.
+    /// The server lends the level random host as `fall_on` does, and accepts
+    /// `event.write_entity(EntityWrite::…)` for the stepping entity before the inside scan.
+    /// Contact Parts cannot hurt boats or minecarts yet (#4177).
+    /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
+    /// drain: requests apply at the batch end if `pos` still holds `state`.
+    /// The client lends a read-only level and accepts only movement edits.
+    /// Keep movement answers consistent between the two sides and on replay.
     #[hook(
         side = "both",
         version = 2,
@@ -20,8 +27,8 @@ pub trait Hooks {
         out = "movement",
         scope = "block",
         key = "state",
-        host = "level",
-        target = "sunrise_client::game::native_hooks::bounce_restitution::FrictionView<'_>::native_step_on",
+        host = "level_random_side",
+        target = "sunrise_client::game::native_hooks::bounce_restitution::StepOnView<'_>::native_step_on",
         neoforge = "none (vanilla Block.stepOn)"
     )]
     fn step_on(
@@ -30,6 +37,8 @@ pub trait Hooks {
         state: BlockState,
         pos: BlockPos,
         stepping_carefully: bool,
+        bounds: [[f64; 3]; 2],
         movement: &mut [f64; 3],
+        writes: &mut StepOnWrites,
     );
 }

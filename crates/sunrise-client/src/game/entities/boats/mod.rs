@@ -1491,11 +1491,11 @@ impl Game<'_> {
             self.boats.update(i, Boat::tick_bubble_wobble);
         }
     }
-    fn boat_step_on(&self, boat: &mut Boat) {
+    fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
-        self.body_motion(&game_side!(self)).step_on(
+        let _ = self.body_step_on(
             (boat.id, boat.entity_type_name()),
-            boat.position,
+            (boat.position, boat.bounds()),
             &boat.ground,
             &mut velocity,
         );
@@ -1506,12 +1506,13 @@ impl Game<'_> {
         let b = &self.boats[i];
         if b.ground.on_ground {
             let mut velocity = b.velocity;
-            self.body_motion(&game_side!(self)).step_on(
-                (b.id, b.entity_type_name()),
-                b.position,
-                &b.ground,
-                &mut velocity,
+            let (id, kind, footprint, ground) = (
+                b.id,
+                b.shared_type_name(),
+                (b.position, b.bounds()),
+                b.ground,
             );
+            let _ = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
             self.boats.update(i, |b| b.velocity = velocity);
         }
     }

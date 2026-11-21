@@ -44,6 +44,8 @@ pub enum HostAccess {
     /// A level host, for a receiver that is a level but not `GameLevel`: read-only on `&self`,
     /// with the random host on `&mut self`.
     Level,
+    /// A mutable random level on the server and a read-only level on the client.
+    LevelRandomSide,
     /// A hit's host: a level host that can also play level sounds and draw from the
     /// random of the entities the hit lends (`HitHost`). Server hooks only.
     Hit,

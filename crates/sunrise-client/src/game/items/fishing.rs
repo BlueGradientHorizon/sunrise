@@ -1398,7 +1398,7 @@ impl Game<'_> {
         let side = game_side!(self);
         let motion = self.body_motion(&side);
         motion.apply_block_speed(position, velocity);
-        motion.step_on(entity, position, ground, velocity);
+        let _ = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.

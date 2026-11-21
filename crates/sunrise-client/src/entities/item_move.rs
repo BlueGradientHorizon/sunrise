@@ -44,7 +44,9 @@ impl ItemEntity {
         if let Some(response) = self.move_restitution(motion, step) {
             self.velocity = response.velocity;
         }
-        self.apply_speed_and_step(motion, no_physics, step);
+        if !no_physics {
+            self.apply_move_and_vanilla_step(motion, step);
+        }
         self.finish_move_block_effects(world, facts, step);
         step
     }
@@ -260,22 +262,19 @@ impl ItemEntity {
         ))
     }
 
-    /// The move's speed factor, then `applyEffectsFromBlocks`' grounded step.
-    pub fn apply_speed_and_step(
-        &mut self,
-        motion: BodyMotion<'_>,
-        no_physics: bool,
-        step: ItemStep,
-    ) {
-        if no_physics {
-            return;
-        }
+    /// The speed factor from `Entity.move`, which an idle item did not run.
+    pub fn apply_move_speed(&mut self, motion: BodyMotion<'_>, step: ItemStep) {
         if step.movement.is_some() {
             motion.apply_block_speed(self.position, &mut self.velocity);
         }
-        motion.step_on(
+    }
+
+    /// `Entity.move`'s speed and the vanilla step in a stand-alone or worker tick.
+    pub fn apply_move_and_vanilla_step(&mut self, motion: BodyMotion<'_>, step: ItemStep) {
+        self.apply_move_speed(motion, step);
+        let _ = motion.step_contact(
             (self.id, "minecraft:item"),
-            self.position,
+            (self.position, self.bounds()),
             &self.ground,
             &mut self.velocity,
         );

@@ -355,7 +355,10 @@ pub(super) fn emit<'a>(
             && (hook.context.is_some()
                 || host.as_ref().is_some_and(|(_, host)| {
                     host.ty.starts_with("&mut ")
-                        || matches!(host.ty.as_str(), "HostSide" | "LevelSide")
+                        || matches!(
+                            host.ty.as_str(),
+                            "HostSide" | "LevelSide" | "LevelRandomSide"
+                        )
                 }))
         {
             return Err(format!(
@@ -498,7 +501,10 @@ pub(super) fn emit<'a>(
         let mut call_args = Vec::new();
         if let Some((name, param)) = &host {
             trait_params.push(format!("{name}: {}", param.ty));
-            let by_side = param.ty == "HostSide" || param.ty == "LevelSide";
+            let by_side = matches!(
+                param.ty.as_str(),
+                "HostSide" | "LevelSide" | "LevelRandomSide"
+            );
             dispatch_params.push(format!(
                 "{}{name}: {}",
                 if by_side { "mut " } else { "" },
@@ -657,7 +663,9 @@ pub(super) fn emit<'a>(
                 }
                 rollback.push((name.clone(), true));
             }
-            let visibility = if event_type == "ApplyEffectTickEvent" && name == "changes" {
+            let visibility = if (event_type == "ApplyEffectTickEvent" && name == "changes")
+                || (event_type == "StepOnEvent" && name == "writes")
+            {
                 "pub(super)"
             } else {
                 "pub"

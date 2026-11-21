@@ -809,7 +809,7 @@ pub struct OrbMove {
 pub struct OrbTickMove {
     pub step: OrbMove,
     pub movement: crate::motion::BodyMove,
-    burnt_out: bool,
+    pub burnt_out: bool,
 }
 
 /// Server-side effects of an orb's contact with lava after a move.
@@ -1018,9 +1018,18 @@ impl ExperienceOrb {
         let tick =
             self.move_before_fall(motion, player, server, next_float, border, fluids, entities);
         self.velocity = self.move_restitution(motion, tick).velocity;
+        motion.apply_block_speed(self.position, &mut self.velocity);
+        if !tick.burnt_out {
+            motion.step_on(
+                (self.id, "minecraft:experience_orb"),
+                (self.position, self.bounds()),
+                &self.ground,
+                &mut self.velocity,
+            );
+        }
         let stays = self.finish_tick(
             &mut &*world,
-            (collision, facts, context, side, blocks),
+            (collision, facts, context, side),
             fluids,
             tick,
             server,
@@ -1210,12 +1219,11 @@ impl ExperienceOrb {
     pub fn finish_tick<W: std::ops::Deref<Target = World>>(
         &mut self,
         world: &mut W,
-        (collision, facts, context, side, blocks): (
+        (collision, facts, context, side): (
             &BlockCollisionRegistry<'_>,
             &BlockFacts,
             &sunrise_world::native_load_context::LoopContext,
             &dyn crate::motion::SideLevel,
-            Option<&BoundMovementProperties>,
         ),
         fluids: &crate::motion::FluidResources,
         tick: OrbTickMove,
@@ -1227,23 +1235,6 @@ impl ExperienceOrb {
             burnt_out,
             ..
         } = tick;
-        let motion = crate::motion::BodyMotion {
-            world,
-            collision,
-            facts,
-            blocks,
-            context,
-            side: Some(side),
-        };
-        motion.apply_block_speed(self.position, &mut self.velocity);
-        if !burnt_out {
-            motion.step_on(
-                (self.id, "minecraft:experience_orb"),
-                self.position,
-                &self.ground,
-                &mut self.velocity,
-            );
-        }
         // ExperienceOrb.tick applies block effects after moving, before drag.
         let discarded = server
             && !burnt_out
@@ -5105,7 +5096,7 @@ mod orb_lava_tests {
             orb.velocity = orb.move_restitution(motion, tick).velocity;
             assert!(orb.finish_tick(
                 &mut &mut *world,
-                (collision, facts, context, side, None),
+                (collision, facts, context, side),
                 fluids,
                 tick,
                 true,

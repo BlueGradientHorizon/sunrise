@@ -1305,10 +1305,10 @@ impl Game<'_> {
     }
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
-    pub(super) fn cart_block_effects(&self, c: &mut Minecart) {
-        self.body_motion(&game_side!(self)).step_on(
+    pub(super) fn cart_block_effects(&mut self, c: &mut Minecart) {
+        let _ = self.body_step_on(
             (c.id, c.kind.id()),
-            c.position,
+            (c.position, c.bounds()),
             &c.ground,
             &mut c.velocity,
         );

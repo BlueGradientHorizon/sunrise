@@ -1214,13 +1214,18 @@ pub(super) fn generate(root: &Path) -> Result<(String, String), String> {
         )
     };
     let sides = format!(
-        "{}{}",
+        "{}{}{}",
         side_enum(
             "HostSide",
             "&'a mut dyn ServerHost",
             "&'a mut dyn ClientHost"
         ),
-        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost")
+        side_enum("LevelSide", "&'a dyn LevelHost", "&'a dyn LevelHost"),
+        side_enum(
+            "LevelRandomSide",
+            "&'a mut dyn LevelRandomHost",
+            "&'a dyn LevelHost"
+        )
     );
     let (host_supers, server_supers, client_supers) = (
         supertraits("Host"),

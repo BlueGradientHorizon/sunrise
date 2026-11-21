@@ -299,12 +299,25 @@ pub struct Contact<'a> {
     pub position: BlockPos,
 }
 
+/// The body and exact retained contact used by `Block.stepOn`.
+#[derive(Clone, Copy)]
+pub struct StepContact<'a> {
+    pub contact: Contact<'a>,
+    pub carefully: bool,
+    pub bounds: sunrise_core::geometry::Aabb,
+}
+
+pub enum StepLevel<'a, 'world> {
+    Server(&'a mut DamageLevel<'world>),
+    Client(crate::motion::FrictionLevel<'a>),
+}
+
 /// Where the contacts are answered: the game binds these to the hooks of the block
 /// parts, and says which block states have a part for each.
 pub struct Hooks {
     pub step_listens: fn(BlockStateId) -> bool,
     /// `Block.stepOn` for a block's subscribed Parts, on the simulating side.
-    pub step_on: fn(crate::motion::FrictionLevel<'_>, Contact<'_>, bool, &mut [f64; 3]),
+    pub step_on: fn(StepLevel<'_, '_>, StepContact<'_>, &mut [f64; 3]) -> Vec<mod_api::EntityWrite>,
     pub any_inside: fn() -> bool,
     pub inside_listens: fn(BlockStateId) -> bool,
     pub pass_listens: fn(BlockStateId) -> bool,
@@ -420,24 +433,27 @@ fn tick_level(read: &'static str) -> Option<&'static str> {
     LEVEL.get()
 }
 
+/// Prefer checking this before lending the level, so an unmodded step doesn't
+/// borrow the random stream or prepare a host.
+pub fn step_listens(state: BlockStateId) -> bool {
+    HOOKS.get().is_some_and(|hooks| (hooks.step_listens)(state))
+}
+
 /// `Block.stepOn`: give the contacted state the simulating body's current movement.
-/// As with `bounce_on`, refuse a non-finite edit without changing the body's velocity.
+/// The body consumes the entity writes before its inside scan, never at the batch drain.
 pub fn step_on(
-    level: crate::motion::FrictionLevel<'_>,
-    contact: Contact<'_>,
-    stepping_carefully: bool,
+    level: StepLevel<'_, '_>,
+    step: StepContact<'_>,
     movement: &mut sunrise_core::geometry::Vec3,
-) {
-    let Some(hooks) = HOOKS
-        .get()
-        .filter(|hooks| (hooks.step_listens)(contact.state))
-    else {
-        return;
+) -> Vec<mod_api::EntityWrite> {
+    let Some(hooks) = HOOKS.get() else {
+        return Vec::new();
     };
     let mut answer = movement.components();
-    (hooks.step_on)(level, contact, stepping_carefully, &mut answer);
+    let writes = (hooks.step_on)(level, step, &mut answer);
     let [x, y, z] = answer;
     *movement = accepted_movement(sunrise_core::geometry::Vec3::new(x, y, z), *movement);
+    writes
 }
 
 /// The dimension the current thread's contacts answer in, as `inside` and the

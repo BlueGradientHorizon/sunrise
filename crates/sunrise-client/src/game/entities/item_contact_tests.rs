@@ -526,10 +526,10 @@ struct StepProbe {
 
 #[mod_api::sunrise_part]
 impl BlockPart for StepProbe {
-    fn step_on(&self, level: mod_api::LevelSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
-        let (client, host) = match level {
-            mod_api::LevelSide::Client(host) => (true, host),
-            mod_api::LevelSide::Server(host) => (false, host),
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        let (client, host): (bool, &dyn mod_api::LevelHost) = match level {
+            mod_api::LevelRandomSide::Client(host) => (true, host),
+            mod_api::LevelRandomSide::Server(host) => (false, host),
         };
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         assert_eq!(host.block_state(pos), Some(event.state));
@@ -684,6 +684,119 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                 };
                 with_game(|game| run(game, false));
                 with_client_game(|game| run(game, true));
+            });
+        },
+    );
+}
+
+#[derive(Clone, Default)]
+struct StepWrites(Arc<Mutex<Vec<[[f64; 3]; 2]>>>);
+
+#[mod_api::sunrise_part]
+impl BlockPart for StepWrites {
+    fn step_on(&self, level: mod_api::LevelRandomSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        self.0.lock().unwrap().push(event.bounds);
+        let hurt = mod_api::EntityWrite::Hurt {
+            source: None,
+            amount: 1.0,
+        };
+        match level {
+            mod_api::LevelRandomSide::Server(level) => {
+                let state = level.block_state_id("minecraft:glass").unwrap();
+                assert!(event.write_entity(hurt));
+                assert!(event.request(mod_api::LandingWrite::SetBlock(state)));
+            }
+            mod_api::LevelRandomSide::Client(_) => {
+                assert!(!event.write_entity(hurt));
+                assert!(!event.request(mod_api::LandingWrite::DestroyBlock { drop: false }));
+            }
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for StepWrites {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        r.block_part(stone, self.clone());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
+        || {
+            use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+            let part = StepWrites::default();
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                "step_writes",
+                Box::new(part.clone()),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                let run = |game: &mut Game<'_>, client, change_first| {
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let glass = registry.default_state("minecraft:glass").unwrap();
+                    let dirt = registry.default_state("minecraft:dirt").unwrap();
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    game.dropped.clear();
+                    game.spawn_item(
+                        ItemStack::new("minecraft:iron_ingot", 2),
+                        [4.5, 64.25, 4.5],
+                        [0.0, -0.96, 0.0],
+                        20,
+                    );
+                    let mut item = game.dropped[0].clone();
+                    let before = item.health;
+                    sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
+                        assert_eq!(
+                            game.tick_item_with_block_contacts(
+                                &mut item,
+                                None,
+                                &[],
+                                client,
+                                &mut |_| {}
+                            ),
+                            (true, false)
+                        );
+                    });
+                    assert_eq!(item.health, before - i32::from(!client));
+                    assert_eq!(
+                        game.world.block(4, 63, 4),
+                        stone,
+                        "block write stays queued"
+                    );
+                    if change_first {
+                        game.world.set(4, 63, 4, dirt).unwrap();
+                    }
+                    game.drain_entity_inside();
+                    let kept = if change_first {
+                        dirt
+                    } else if client {
+                        stone
+                    } else {
+                        glass
+                    };
+                    assert_eq!(game.world.block(4, 63, 4), kept);
+                };
+                with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    run(game, false, false);
+                    run(game, false, true);
+                });
+                with_client_game(|game| run(game, true, false));
+                assert_eq!(
+                    *part.0.lock().unwrap(),
+                    [[[4.375, 64.0, 4.375], [4.625, 64.25, 4.625]]; 3]
+                );
             });
         },
     );

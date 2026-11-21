@@ -20,7 +20,7 @@ use sunrise_world::{
     movement_properties::BoundMovementProperties,
     movement_restitution::{RestitutionInput, RestitutionWorld, restitute_movement},
     movement_support::{LEGACY_SUPPORT_OFFSET, MOVEMENT_SUPPORT_OFFSET},
-    native_load_context::LoopContext,
+    native_load_context::{LoopContext, LoopSide},
     registry::BlockStateId,
 };
 
@@ -157,16 +157,16 @@ impl BodyMotion<'_> {
         }
     }
 
-    /// The grounded part of `Entity.applyEffectsFromBlocks`, before the inside sweep.
-    pub fn step_on(
+    /// `Block.stepOn`'s vanilla motion; return the exact block for Parts.
+    pub fn step_contact<'b>(
         self,
-        entity: (u32, &str),
-        feet: Vec3,
+        entity: (u32, &'b str),
+        (feet, bounds): (Vec3, Aabb),
         ground: &GroundState,
         velocity: &mut Vec3,
-    ) {
+    ) -> Option<block_contact::StepContact<'b>> {
         if !ground.on_ground {
-            return;
+            return None;
         }
         let contact = self.legacy_contact(feet, ground);
         if self.facts.get(contact.state).name.as_ref() == "minecraft:slime_block"
@@ -175,22 +175,41 @@ impl BodyMotion<'_> {
             velocity.x *= scale;
             velocity.z *= scale;
         }
-        if let Some(side) = self.side {
-            block_contact::step_on(
-                FrictionLevel {
+        Some(block_contact::StepContact {
+            contact: Contact {
+                entity: entity.0 as i32,
+                kind: entity.1,
+                state: contact.state,
+                position: contact.position,
+            },
+            carefully: false,
+            bounds,
+        })
+    }
+
+    /// A client body's read-only step before the inside sweep. An isolated
+    /// body without a side, including worker predictions, only runs vanilla.
+    pub fn step_on(
+        self,
+        entity: (u32, &str),
+        footprint: (Vec3, Aabb),
+        ground: &GroundState,
+        velocity: &mut Vec3,
+    ) {
+        let step = self.step_contact(entity, footprint, ground, velocity);
+        if self.context.side() == LoopSide::Client
+            && let (Some(step), Some(side)) = (step, self.side)
+            && block_contact::step_listens(step.contact.state)
+        {
+            let _ = block_contact::step_on(
+                block_contact::StepLevel::Client(FrictionLevel {
                     world: self.world,
                     registry: self.collision.registry(),
                     context: self.context,
                     side,
                     coefficient: &|id| self.facts.states.get(id.0 as usize).map(|p| p.friction),
-                },
-                Contact {
-                    entity: entity.0 as i32,
-                    kind: entity.1,
-                    state: contact.state,
-                    position: contact.position,
-                },
-                false,
+                }),
+                step,
                 velocity,
             );
         }

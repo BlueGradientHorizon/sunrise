@@ -94,7 +94,7 @@ mod inside_walk_tests {
     fn install_walk_hooks() {
         let _ = crate::block_contact::HOOKS.set(crate::block_contact::Hooks {
             step_listens: |_| false,
-            step_on: |_, _, _, _| {},
+            step_on: |_, _, _| Vec::new(),
             any_inside: || ENABLED.load(Ordering::SeqCst),
             inside_listens: |_| ENABLED.load(Ordering::SeqCst),
             pass_listens: |_| false,
@@ -1627,23 +1627,6 @@ pub(crate) fn effects_from_blocks(
             m.velocity.x *= scale;
             m.velocity.z *= scale;
         }
-        crate::block_contact::step_on(
-            crate::motion::FrictionLevel {
-                world: w.world,
-                registry: w.registry,
-                context: w.loop_context,
-                side: w.side,
-                coefficient: &|id| Some(w.movement.get(id).ok()?.coefficients.friction),
-            },
-            crate::block_contact::Contact {
-                entity: m.id as i32,
-                kind: &m.kind.id,
-                state,
-                position: sunrise_core::position::BlockPos::new(x, y, z),
-            },
-            carefully,
-            &mut m.velocity,
-        );
         if !carefully && w.block_name(x, y, z) == "minecraft:magma_block" {
             m.damage(level, 1.0, Damage::of(DamageKind::HotFloor));
             // Enderman.hurtServer finishes before stepOn returns; the scan
@@ -1661,6 +1644,37 @@ pub(crate) fn effects_from_blocks(
             && level.random().next_int_bound(100).unwrap_or(1) == 0
         {
             events.push(MobEvent::CrackTurtleEgg { pos: [x, y, z] });
+        }
+        if crate::block_contact::step_listens(state) {
+            use crate::block_contact::{Contact, StepContact, StepLevel};
+            let step = StepContact {
+                contact: Contact {
+                    entity: m.id as i32,
+                    kind: &m.kind.id,
+                    state,
+                    position: sunrise_core::position::BlockPos::new(x, y, z),
+                },
+                carefully,
+                bounds: m.bounds_at(m.position),
+            };
+            let view =
+                if w.loop_context.side() == sunrise_world::native_load_context::LoopSide::Server {
+                    StepLevel::Server(level)
+                } else {
+                    StepLevel::Client(crate::motion::FrictionLevel {
+                        world: w.world,
+                        registry: w.registry,
+                        context: w.loop_context,
+                        side: w.side,
+                        coefficient: &|id| Some(w.movement.get(id).ok()?.coefficients.friction),
+                    })
+                };
+            for write in crate::block_contact::step_on(view, step, &mut m.velocity) {
+                if !m.alive() {
+                    break;
+                }
+                apply_entity_write(m, w, level, events, write);
+            }
         }
     }
     // `Entity.checkInsideBlocks` itself, the shared walk: each axis of the
