@@ -76,39 +76,39 @@ enum PrepareFailure {
 /// An exact physical writer and protocol incarnation, never a Play/CFG boolean.
 pub struct PreparedPacket {
     writer: Weak<Inner>,
-    generation: u64,
+    incarnation: (u64, u64),
     payload: PreparedPayload,
 }
 impl PreparedPacket {
-    /// Whether this reservation still belongs to the current physical play incarnation.
-    pub fn is_current(&self) -> bool {
-        self.writer.upgrade().is_some_and(|writer| {
-            let phase = writer.phase.lock().unwrap();
-            phase.0 == self.generation
-                && phase.1 == Phase::Play
-                && writer.alive.load(Ordering::Acquire)
-        })
+    /// Physical session serial and play generation this reservation belongs to.
+    pub fn incarnation(&self) -> (u64, u64) {
+        self.incarnation
     }
 
-    pub fn publish(self) {
-        let _ = self.try_publish();
-    }
+    /// Publish using the original credit; never append behind a protocol ACK or terminal send.
     pub fn try_publish(self) -> std::result::Result<(), SendPacketError> {
         let writer = self.writer.upgrade().ok_or(SendPacketError::NotConnected)?;
         let phase = writer.phase.lock().unwrap();
-        if phase.0 != self.generation || phase.1 != Phase::Play {
+        if phase.0 != self.incarnation.1 || phase.1 != Phase::Play {
             return Err(SendPacketError::NotInPlay);
         }
-        self.payload.publish().map_err(|error| match error {
-            PayloadSendError::Backpressure => SendPacketError::Backpressure,
-            _ => SendPacketError::NotConnected,
-        })
+        let sender = writer.sender.lock().unwrap();
+        if sender.is_none() {
+            return Err(SendPacketError::NotConnected);
+        }
+        self.payload
+            .publish()
+            .map_err(|_| SendPacketError::NotConnected)
     }
 }
 impl QueuedWriter {
     pub(crate) fn play_incarnation(&self) -> Option<u64> {
         let phase = self.phase.lock().unwrap();
-        (phase.1 == Phase::Play && self.alive.load(Ordering::Acquire)).then_some(phase.0)
+        (phase.1 == Phase::Play
+            && self.alive.load(Ordering::Acquire)
+            && !self.is_terminal()
+            && !self.retired.load(Ordering::Acquire))
+        .then_some(phase.0)
     }
 
     #[cfg(any(test, feature = "test-payload-probe"))]
@@ -144,6 +144,7 @@ impl QueuedWriter {
     pub(crate) fn prepare_packet(
         &self,
         body: Vec<u8>,
+        session_serial: u64,
         expected_generation: Option<u64>,
     ) -> std::result::Result<PreparedPacket, SendPacketError> {
         let phase = self.phase.lock().unwrap();
@@ -168,7 +169,7 @@ impl QueuedWriter {
         })?;
         Ok(PreparedPacket {
             writer: Arc::downgrade(&self.0),
-            generation,
+            incarnation: (session_serial, generation),
             payload,
         })
     }

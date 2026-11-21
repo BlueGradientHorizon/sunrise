@@ -849,10 +849,7 @@ mod_state::transaction_open
 network::chat_line
 network::container_click
 network::disconnect
-network::drop_held
-network::hold_packets
 network::open_chat
-network::release_held
 network::send_chat
 network::send_packet
 payload_tokens::check_payload_token

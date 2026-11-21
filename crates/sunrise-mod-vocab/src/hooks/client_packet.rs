@@ -29,14 +29,12 @@ handled by the batching path, once each. Configuration packets and the network
 thread's own handling (including keep-alives, chunk batch starts and finishes, and resource pack
 messages) do not fire it. The chunks between a batch's start and finish still fire it.
 
-`ClientHost::hold_packets` retains uncancelled play packets, unmodified and in order, up to 256
-packets or 1,048,576 encoded bytes. Release sends oldest first; drop discards them. Overflow ends
-and flushes the hold; its next release/drop returns `HoldError::Limit` with those configured bounds.
-A failed release reports `HoldError::Send { sent, error }` and discards the unsent tail.
-Starting another hold while one is active returns `HoldError::Limit` with the configured bounds.
-Disconnect, protocol incarnation changes
-and aborted travel invalidate holds. Network-thread keep-alives, chunk batch acknowledgements,
-configuration, cookies and pack answers bypass the queue. Held packets expose no additional inspection or editing API.
+`ClientHost::hold_packets` gives the calling mod its own hold. Overlapping holds share one
+ordered queue; releasing one cannot send past another. Dropping one discards only packets it
+covered, including overlaps, without ending any other hold. Held packets keep their ordinary
+writer credit and are never flushed to make room. Disconnect, protocol incarnation changes and
+aborted travel invalidate holds. Network-thread keep-alives, chunk batch acknowledgements,
+configuration, cookies and pack answers bypass holds. A hold exposes no packet bodies.
 
 `Hooks::client_packet_send` is the other direction: a `ClientPacketSendEvent` with the same
 `ClientPacket` view for each play packet the window's game is about to send (`Connection.send`),

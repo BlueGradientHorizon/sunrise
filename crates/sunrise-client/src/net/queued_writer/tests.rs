@@ -158,10 +158,14 @@ fn terminal_disconnect_drains_even_when_last_handle_drops() {
     peer.reader
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap();
+    queue.transition_protocol(Phase::Play, &[4]).unwrap();
+    let pending = queue.prepare_packet(vec![3, 33], 7, None).unwrap();
     queue.send(&[1, 11]).unwrap();
     queue.disconnect(vec![2, 22]);
+    assert_eq!(pending.try_publish(), Err(SendPacketError::NotConnected));
     assert!(queue.send(&[3]).is_err());
     drop(queue);
+    assert_eq!(peer.recv().unwrap(), (4, vec![]));
     assert_eq!(peer.recv().unwrap(), (1, vec![11]));
     assert_eq!(peer.recv().unwrap(), (2, vec![22]));
     assert!(peer.recv().is_err());

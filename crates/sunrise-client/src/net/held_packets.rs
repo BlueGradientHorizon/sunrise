@@ -44,22 +44,26 @@ impl Session {
             .play_incarnation()
             .map(|generation| (self.serial(), generation))
     }
-    /// Publish an already encoded engine packet, retaining the normal writer's bounds.
-    pub fn send_held_body(
+    /// Reserve an engine send against the same physical writer as other play traffic.
+    pub fn prepare_held_play(
         &self,
-        body: Vec<u8>,
-        incarnation: (u64, u64),
-    ) -> std::result::Result<(), mod_api::SendPacketError> {
-        if self.serial() != incarnation.0 {
-            return Err(mod_api::SendPacketError::NotConnected);
-        }
+        packet: play::Serverbound,
+        generation: u64,
+    ) -> std::result::Result<PreparedPacket, mod_api::SendPacketError> {
+        use mod_api::SendPacketError;
+        let body = packet
+            .try_encode()
+            .map_err(|error| SendPacketError::EncodeFailed {
+                message: error.to_string(),
+            })?;
         let writer = self.writer.lock().unwrap();
-        let writer = writer
-            .as_ref()
-            .ok_or(mod_api::SendPacketError::NotConnected)?;
-        writer
-            .prepare_packet(body, Some(incarnation.1))?
-            .try_publish()
+        let writer = writer.as_ref().ok_or(SendPacketError::NotConnected)?;
+        let prepared = writer.prepare_packet(body, self.serial(), Some(generation));
+        if matches!(prepared, Err(SendPacketError::Backpressure)) {
+            // The same terminal writer-pressure policy as Session::send for engine packets.
+            writer.shutdown();
+        }
+        prepared
     }
 }
 

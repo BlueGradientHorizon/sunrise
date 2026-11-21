@@ -73,9 +73,9 @@ impl Game<'_> {
         if !remote.joined || remote.reconfiguring.is_some() {
             return Err(SendPacketError::NotInPlay);
         }
-        let body = packet.clone();
         let prepared = remote.session.prepare_mod_packet(packet)?;
-        self.after_commit(super::transactions::After::Packet(prepared, body));
+        let owner = mod_api::content::crash::current_native_mod();
+        self.after_commit(super::transactions::After::Packet(prepared, owner));
         Ok(())
     }
 }

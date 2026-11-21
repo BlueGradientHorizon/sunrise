@@ -50,7 +50,8 @@ fn generic_submission_preserves_plugin_bytes_and_rejects_malformed_packets() {
     session
         .prepare_mod_packet(plugin("voicechat:request_secret", &bytes))
         .unwrap()
-        .publish();
+        .try_publish()
+        .unwrap();
     let (id, body) = peer.recv().unwrap();
     let play::Serverbound::CustomPayload(payload) = play::Serverbound::decode(id, &body).unwrap()
     else {
@@ -78,7 +79,8 @@ fn generic_submission_preserves_plugin_bytes_and_rejects_malformed_packets() {
     session
         .prepare_mod_packet(packet(vec![0, 0, 0, 7]))
         .unwrap()
-        .publish();
+        .try_publish()
+        .unwrap();
     assert_eq!(
         peer.recv().unwrap(),
         (
@@ -140,7 +142,8 @@ fn generic_reservations_refuse_pressure_before_publication_and_cancel_refunds() 
     session
         .prepare_mod_packet(plugin("example:unregistered", &bytes))
         .unwrap()
-        .publish();
+        .try_publish()
+        .unwrap();
     let (id, body) = peer.recv().unwrap();
     let play::Serverbound::CustomPayload(payload) = play::Serverbound::decode(id, &body).unwrap()
     else {
@@ -166,7 +169,7 @@ fn generic_prepared_packet_cannot_cross_a_configuration_round_trip() {
     ));
     writer.transition_protocol(Phase::Play, &[10]).unwrap();
     assert_eq!(peer.recv().unwrap(), (10, vec![]));
-    prepared.publish();
+    assert_eq!(prepared.try_publish(), Err(SendPacketError::NotInPlay));
     peer.reader
         .set_read_timeout(Some(Duration::from_millis(20)))
         .unwrap();

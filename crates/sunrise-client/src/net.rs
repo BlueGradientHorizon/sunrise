@@ -491,7 +491,7 @@ impl Session {
             .as_ref()
             .cloned()
             .ok_or(SendPacketError::NotConnected)?;
-        writer.prepare_packet(encoded.data, None)
+        writer.prepare_packet(encoded.data, self.serial(), None)
     }
     /// The frozen receiving turn, retaining every input credit through its actor.
     #[sunrise_mod_api_macros::replaceable]
