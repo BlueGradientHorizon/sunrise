@@ -3,7 +3,7 @@
 //!
 //! - `new <path> [--name "Name"]`: a content mod from the template; with
 //!   `--template native [--sunrise <build>]`, a code mod pinned to the current Nightly's
-//!   SDK unless `--sunrise` names another build (`nightly-<date>` or a sha), with that SDK fetched
+//!   SDK unless `--sunrise` names another build (a release tag such as `nightly-<date>` or `26.3-0.1.0`, or a sha), with that SDK fetched
 //!   into `.sunrise/sdk/` (`sdk_fetch.rs`).
 //! - `update [--sunrise <build>]`: repin a native mod and diff/refresh declared internals.
 //! - `internals sync [--repo <path>]`: sync declarations for native mods.

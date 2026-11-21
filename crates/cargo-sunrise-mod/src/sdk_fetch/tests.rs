@@ -178,21 +178,33 @@ fn base_folder(base: &Base) -> &Path {
 }
 
 #[test]
-fn a_build_is_named_by_sha_short_sha_or_nightly() {
+fn a_build_is_named_by_sha_short_sha_or_a_release_tag() {
     let (base, _) = release(None);
-    let nightly = base.path().join("nightly-2026-11-13");
-    fs::create_dir_all(&nightly).unwrap();
-    fs::write(
-        nightly.join(sdk::INDEX),
-        format!(r#"{{"schema":1,"build":{{"commit":"{BUILD}"}}}}"#),
-    )
-    .unwrap();
+    for tag in [
+        "nightly-2026-11-13",
+        "26.3-0.1.0",
+        "dev-2026-11-21-0123456789",
+    ] {
+        let release = base.path().join(tag);
+        fs::create_dir_all(&release).unwrap();
+        fs::write(
+            release.join(sdk::INDEX),
+            format!(r#"{{"schema":1,"build":{{"commit":"{BUILD}"}}}}"#),
+        )
+        .unwrap();
+    }
     let base = Base::Folder(base.path().to_owned());
     assert_eq!(resolve(&base, BUILD).unwrap(), BUILD);
     assert_eq!(resolve(&base, "0123456").unwrap(), BUILD);
-    assert_eq!(resolve(&base, "nightly-2026-11-13").unwrap(), BUILD);
+    for tag in [
+        "nightly-2026-11-13",
+        "26.3-0.1.0",
+        "dev-2026-11-21-0123456789",
+    ] {
+        assert_eq!(resolve(&base, tag).unwrap(), BUILD, "{tag}");
+    }
     let error = resolve(&base, "nightly").unwrap_err();
-    assert!(error.starts_with("Nightly nightly has no SDK"), "{error}");
+    assert!(error.contains("has no SDK"), "{error}");
     assert!(
         resolve(&base, "89abcde")
             .unwrap_err()
@@ -225,6 +237,11 @@ fn a_nightly_name_is_only_nightly_or_a_dated_one() {
         "nightly-2026/11/13",
         "nightly-2026-11-130",
         "nightly-",
+        "26.3-0.1.0-rc.1",
+        "26.3-0.1",
+        "dev-2026-11-21",
+        "dev-2026-11-21-01234",
+        "dev-2026-11-21-/../../decoy",
     ] {
         let error = resolve(&base, text).unwrap_err();
         assert!(error.contains("is not a build"), "{text}: {error}");

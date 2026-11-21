@@ -27,7 +27,10 @@ with the line to write instead:
 The build a native mod is made for is its pin, a full commit SHA in `[native] sunrise` in
 `sunrise-mod.toml`.
 
-`cargo sunrise-mod new` writes the current Nightly's build, or the one selected with `--sunrise`.
+`cargo sunrise-mod new` writes the current Nightly's build, or the one selected with `--sunrise`. `--sunrise`
+takes a commit SHA (7 hex digits are enough when they name one build) or a game release's tag: `nightly`,
+`nightly-<YYYY-MM-DD>`, a Stable tag such as `26.3-0.1.0`, or a Dev tag `dev-<YYYY-MM-DD>-<short sha>`. A tag is
+read through that release's `sdk.json`, and the pin is always the full SHA it names.
 A native project normally leaves `[native] mixins` out. When a mod uses mixins, builds and discovery use the
 horizon-mixins revision and patch recorded in the pinned SDK's signed `sdk.json`. The mod tool must support that
 exact pair, and any explicit `[native] mixins` revision must match it. If the tool and SDK disagree, install the
@@ -73,8 +76,8 @@ launcher or sent to a registry.
 `SUNRISE_SDK_BASE` replaces the releases' base for the SDK fetches of the tool and the launcher alike:
 
 - a URL: a mirror with the same layout, `<base>/sdk-<build id>/<file>`;
-- anything else: a folder holding `sdk-<build id>/` folders, and `nightly/` or `nightly-<date>/` folders with their
-  `sdk.json` for Nightly names. The launcher also reads game releases' folders there, for their build ids.
+- anything else: a folder holding `sdk-<build id>/` folders, and folders named for game release tags (`nightly/`,
+  `nightly-<date>/`, a Stable or Dev tag) with their `sdk.json`. The launcher also reads game releases' folders there, for their build ids.
 
 Every SDK base is checked the same way, against Sunrise's signature. For a [local SDK built from a
 checkout](../../how-to/native-mods/07-local-developer-builds.md), a debug build of the mod tool can also check

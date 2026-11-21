@@ -141,8 +141,9 @@ pub(crate) fn pin(project: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("{MANIFEST}: a content mod does not pin an SDK"))
 }
 
-/// The build id `text` names: a full sha as written; `nightly` or `nightly-<date>` through that
-/// Nightly's `sdk.json`; a short sha through the releases listed.
+/// The build id `text` names: a full sha as written; a game release's tag (`nightly`,
+/// `nightly-<date>`, a Stable tag such as `26.3-0.1.0`, or `dev-<date>-<short sha>`) through that
+/// release's `sdk.json`; a short sha through the releases listed.
 pub(crate) fn resolve(base: &Base, text: &str) -> Result<String, String> {
     let hex = |s: &str| {
         s.chars()
@@ -151,19 +152,28 @@ pub(crate) fn resolve(base: &Base, text: &str) -> Result<String, String> {
     if sunrise_mod_package::manifest::revision(text) {
         return Ok(text.to_owned());
     }
-    // A Nightly name becomes a release tag, so a path segment: only its exact forms are taken.
-    let nightly = text == "nightly"
-        || text.strip_prefix("nightly-").is_some_and(|date| {
-            date.len() == 10
-                && date.bytes().enumerate().all(|(i, b)| match i {
-                    4 | 7 => b == b'-',
-                    _ => b.is_ascii_digit(),
-                })
+    // A release name becomes a path segment: only its exact forms are taken.
+    let date = |date: &str| {
+        date.len() == 10
+            && date.bytes().enumerate().all(|(i, b)| match i {
+                4 | 7 => b == b'-',
+                _ => b.is_ascii_digit(),
+            })
+    };
+    let release = text == "nightly"
+        || text.strip_prefix("nightly-").is_some_and(date)
+        || sunrise_mod_package::index::stable_tag(text).is_some()
+        || text.strip_prefix("dev-").is_some_and(|rest| {
+            rest.len() > 11
+                && rest.as_bytes()[10] == b'-'
+                && date(&rest[..10])
+                && (7..=40).contains(&rest[11..].len())
+                && hex(&rest[11..])
         });
-    if nightly {
+    if release {
         let bytes = base.read(text, sdk::INDEX, SMALL).map_err(|e| {
             format!(
-                "Nightly {text} has no SDK ({e}). Pin a build that has one: --sunrise <full sha>"
+                "Release {text} has no SDK ({e}). Pin a build that has one: --sunrise <full sha>"
             )
         })?;
         #[derive(serde::Deserialize)]
@@ -176,9 +186,9 @@ pub(crate) fn resolve(base: &Base, text: &str) -> Result<String, String> {
         }
         // Only a pointer: the build it names is verified when it is fetched.
         let named: Named = serde_json::from_slice(&bytes)
-            .map_err(|e| format!("Nightly {text}'s {}: {e}", sdk::INDEX))?;
+            .map_err(|e| format!("Release {text}'s {}: {e}", sdk::INDEX))?;
         if !sunrise_mod_package::manifest::revision(&named.build.commit) {
-            return Err(format!("Nightly {text}'s {} names no build", sdk::INDEX));
+            return Err(format!("Release {text}'s {} names no build", sdk::INDEX));
         }
         return Ok(named.build.commit);
     }
@@ -201,7 +211,7 @@ pub(crate) fn resolve(base: &Base, text: &str) -> Result<String, String> {
         };
     }
     Err(format!(
-        "`{text}` is not a build: write `nightly`, `nightly-<YYYY-MM-DD>`, or a commit sha (7 to 40 hex digits)"
+        "`{text}` is not a build: write `nightly`, `nightly-<YYYY-MM-DD>`, a Stable tag such as `26.3-0.1.0`, `dev-<YYYY-MM-DD>-<short sha>`, or a commit sha (7 to 40 hex digits)"
     ))
 }
 
