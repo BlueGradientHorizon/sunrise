@@ -6561,7 +6561,7 @@ mod tests {
     }
 }
 
-/// `Brain`'s two measured Warden Unit memories, using actual existing slots.
+/// `Brain.Packed`: serialize each owned Warden Unit memory from its live slot.
 fn write_warden_owned_memories(m: &Mob, map: &mut EntityTagWriter) {
     let brain = map
         .entry("Brain".into())
@@ -6577,6 +6577,10 @@ fn write_warden_owned_memories(m: &Mob, map: &mut EntityTagWriter) {
     for (key, slot) in [
         ("minecraft:is_emerging", mem.map(|mem| &mem.is_emerging)),
         ("minecraft:dig_cooldown", mem.map(|mem| &mem.dig_cooldown)),
+        (
+            "minecraft:sonic_boom_cooldown",
+            mem.map(|mem| &mem.sonic_boom_cooldown),
+        ),
     ] {
         if let Some(slot) = slot.filter(|slot| slot.present()) {
             let mut entry = Tag::compound([("value", Tag::Compound(Compound::new()))]);
@@ -6598,6 +6602,10 @@ fn restore_warden_owned_memories(m: &mut Mob, tag: &Tag) {
     for (key, slot) in [
         ("minecraft:is_emerging", &mut st.brain.mem.is_emerging),
         ("minecraft:dig_cooldown", &mut st.brain.mem.dig_cooldown),
+        (
+            "minecraft:sonic_boom_cooldown",
+            &mut st.brain.mem.sonic_boom_cooldown,
+        ),
     ] {
         let Some(entry) = memories.and_then(|memories| memories.get(key)) else {
             // Fresh Java read/load: absent entries do not retain finalize's slot.

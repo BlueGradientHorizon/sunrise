@@ -879,32 +879,39 @@ impl Game<'_> {
                         .iter()
                         .find(|m| m.id == id)
                         .and_then(|m| {
-                            if attacker {
+                            use sunrise_client::mobs::{Species, Who, ai::brain_target};
+                            let warden_target = !attacker && m.species() == Species::Warden;
+                            let who = if attacker {
                                 m.ai.last_hurt_by
                             } else {
                                 // `Mob.getTarget`, as brain-backed mobs override it.
-                                sunrise_client::mobs::ai::brain_target(m).unwrap_or(m.ai.target)
-                            }
-                        })
-                        .and_then(|w| match w {
-                            sunrise_client::mobs::Who::Player => {
-                                // LivingEntity.getLastHurtByMob is the player
-                                // who hit it, not whichever client is reading it.
-                                match self
-                                    .last_hurt_by_player
-                                    .get(&id)
-                                    .and_then(|credit| self.resolve_player_credit(*credit))
-                                {
-                                    Some(Some(conn))
-                                        if attacker && self.lan_acting != Some(conn) =>
-                                    {
-                                        Some(Target::Guest(conn))
-                                    }
-                                    _ => Some(Target::Player),
+                                brain_target(m).unwrap_or(m.ai.target)
+                            }?;
+                            let target = match who {
+                                Who::Player => {
+                                    let conn = if attacker {
+                                        // `getLastHurtByMob`: the player who hit it,
+                                        // not whichever client is reading it.
+                                        self.last_hurt_by_player.get(&id).and_then(|credit| {
+                                            self.resolve_player_credit(*credit).flatten()
+                                        })
+                                    } else if warden_target {
+                                        self.lan
+                                            .as_ref()
+                                            .and_then(|host| host.mob_players.get(&id).copied())
+                                    } else {
+                                        None
+                                    };
+                                    conn.filter(|&conn| self.lan_acting != Some(conn))
+                                        .map_or(Target::Player, Target::Guest)
                                 }
-                            }
-                            sunrise_client::mobs::Who::Mob(i) if attacker => Some(Target::Mob(i)),
-                            sunrise_client::mobs::Who::Mob(i) => self.level_entity(i as i32),
+                                Who::Mob(i) if attacker => Target::Mob(i),
+                                Who::Mob(i) => self.level_entity(i as i32)?,
+                            };
+                            // `Warden.getTarget` uses `Mob.asValidTarget` on
+                            // read; the brain still holds the supplied target.
+                            (!warden_target || self.warden_valid_target(m, target))
+                                .then_some(target)
                         })
                         .into_iter()
                         .collect(),

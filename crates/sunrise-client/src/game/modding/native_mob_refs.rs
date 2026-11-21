@@ -109,7 +109,7 @@ impl Game<'_> {
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
     pub(super) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
         if mob.species() == Species::Warden {
-            return self.native_warden_valid_target(mob, target);
+            return self.warden_valid_target(mob, target);
         }
         match target {
             Target::Mob(id) => {
@@ -159,7 +159,7 @@ impl Game<'_> {
         }
     }
     /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
-    fn native_warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
+    pub(super) fn warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
         use sunrise_core::geometry::Axis;
         let (bounds, team) = match target {
             Target::Mob(id) => {
@@ -170,6 +170,15 @@ impl Game<'_> {
                     return false;
                 }
                 (other.bounds(), self.mob_team(id))
+            }
+            Target::Dragon(id) => {
+                let Some((_, target)) = self
+                    .dragon_target()
+                    .filter(|(target_id, _)| *target_id == id)
+                else {
+                    return false;
+                };
+                (target.bounds, self.mob_team(id))
             }
             Target::Guest(conn) => {
                 let Some(g) = self.command_guest(conn) else {

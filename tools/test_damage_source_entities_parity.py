@@ -11,8 +11,8 @@ the entities vary with the type fixed:
   cooldown refuses.
 - Creaking bound to a real active heart (`home_pos`, the heart's `creaking` protector): the hit's result,
   Health, the bound heart's saved protector and state.
-- Ghast with 2000 max health: Health and result for a player-caused LargeFireball (reflected, 1000 damage,
-  true even when the hurt cooldown refuses it) against every other direct entity.
+- Ghast loaded with an oversized max-health base: actual clamped Health and the hit result for a player-caused
+  LargeFireball (reflected, 1000 damage, true even when the hurt cooldown refuses it) against other direct entities.
 
 The world is frozen (/tick freeze), so nothing ticks between a hit and its reads. Full bodies and the clock
 are raw diagnostics (--full-diagnostic compares them too); every other record is compared bit for bit.
@@ -257,7 +257,8 @@ def program(full=False):
     for i, (case, kind, by, cause, twice) in enumerate(GHAST):
         label, x, g = 'ghast_' + case, 3 + 6 * i, 500 + i
         entity('ghast', g, x + .5, 201, 44.5, sturdy, label)
-        cmd(f'/data get entity {uid(g)} Health', label + '-start-Health', 2000)
+        # Attributes.MAX_HEALTH sanitizes the effective max; LivingEntity's load calls setHealth.
+        cmd(f'/data get entity {uid(g)} Health', label + '-start-Health', 1024)
         read(label + '-before', g, ['Health'], True)
         if twice:
             hit(label + '-first', g, 1, kind, by, cause, refs)

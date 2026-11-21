@@ -1568,6 +1568,30 @@ mod warden_owned_memory_tests {
         }
     }
     #[test]
+    fn a_saved_sonic_boom_cooldown_restores_its_live_expiry() {
+        let mut raw = input(true, 0);
+        put(
+            &mut raw,
+            "Brain",
+            Tag::compound([(
+                "memories",
+                Tag::compound([("minecraft:sonic_boom_cooldown", entry(Some(83)))]),
+            )]),
+        );
+        let mob = mob_from_nbt(&raw, &types(), 91, None).unwrap();
+        let cooldown = &mob
+            .extra
+            .warden
+            .as_ref()
+            .unwrap()
+            .brain
+            .mem
+            .sonic_boom_cooldown;
+        assert!(cooldown.present());
+        assert_eq!(cooldown.ttl(), 83);
+    }
+
+    #[test]
     fn owned_memory_mutations_remove_stale_raw_without_replacing_the_brain() {
         let raw = input(true, 2);
         let mut m = mob_from_nbt(&raw, &types(), 92, None).unwrap();
