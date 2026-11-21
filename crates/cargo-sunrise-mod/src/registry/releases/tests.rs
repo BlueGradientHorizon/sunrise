@@ -52,11 +52,9 @@ fn stable_releases_are_filtered_sorted_and_peeled_across_pages() {
             prerelease["prerelease"] = true.into();
             let mut unpublished = release(5, "26.3-0.2.0");
             unpublished["published_at"] = serde_json::Value::Null;
-            let mut bad_date = release(6, "26.3-0.3.0");
-            bad_date["published_at"] = "2026-11-21".into();
             let mut rows = full_page();
             let fixtures = [
-                release(2, "26.3-0.1.1"), draft, prerelease, unpublished, bad_date,
+                release(2, "26.3-0.1.1"), draft, prerelease, unpublished,
                 release(7, "26.3-01.0.0"), release(8, "26.3-0.1.0-rc.1"),
                 release(9, "26.3-0.1.0+build"), release(10, "26.3-0.1.18446744073709551616"),
                 release(11, "nightly"), release(12, "sdk-abcdef"),
@@ -176,6 +174,29 @@ fn a_full_page_explicitly_marked_last_can_finish() {
     })
     .unwrap();
     assert!(rows.is_empty());
+}
+
+#[test]
+fn malformed_publication_metadata_keeps_the_previous_release_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("releases.json");
+    let previous = b"keep this result\r\n";
+    std::fs::write(&out, previous).unwrap();
+    for timestamp in [
+        json!("2026-11-21"),
+        json!("2026-02-30T03:04:05Z"),
+        json!(42),
+    ] {
+        let mut row = release(1, STABLE);
+        row["published_at"] = timestamp;
+        let error = write_list(&out, |url| {
+            assert_eq!(url, format!("{SDK_RELEASE_LIST}&page=1"));
+            Ok(body(json!([row])))
+        })
+        .unwrap_err();
+        assert!(error.contains("page 1"), "{error}");
+        assert_eq!(std::fs::read(&out).unwrap(), previous);
+    }
 }
 
 #[test]

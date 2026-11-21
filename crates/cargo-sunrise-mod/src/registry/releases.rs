@@ -107,19 +107,13 @@ enum PublishedAt {
 }
 
 impl PublishedAt {
-    fn is_published(&self) -> bool {
-        let Self::At(timestamp) = self else {
-            return false;
-        };
-        let pattern = b"0000-00-00T00:00:00Z";
-        timestamp.len() == pattern.len()
-            && timestamp.bytes().zip(pattern).all(|(byte, expected)| {
-                if *expected == b'0' {
-                    byte.is_ascii_digit()
-                } else {
-                    byte == *expected
-                }
-            })
+    fn is_published(&self) -> Result<bool, &'static str> {
+        match self {
+            Self::At(timestamp) => chrono::DateTime::parse_from_rfc3339(timestamp)
+                .map(|_| true)
+                .map_err(|_| "published_at must be an RFC 3339 timestamp or null"),
+            Self::Unpublished(()) => Ok(false),
+        }
     }
 }
 
@@ -243,6 +237,10 @@ fn discover(
             ));
         }
         for release in rows {
+            let published = release
+                .published_at
+                .is_published()
+                .map_err(|e| at(format!("release {:?}: {e}", release.tag_name)))?;
             if !ids.insert(release.id) {
                 return Err(at(format!(
                     "release {} appeared twice during listing",
@@ -251,7 +249,7 @@ fn discover(
             }
             if !release.draft
                 && !release.prerelease
-                && release.published_at.is_published()
+                && published
                 && stable_tag(&release.tag_name).is_some()
             {
                 tags.insert(release.tag_name);
