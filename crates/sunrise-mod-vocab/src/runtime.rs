@@ -482,6 +482,80 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
         })
 }
 
+/// Like [`entered_parts`], yielding each part's owning `(mod_id, type_name)` so registrars can
+/// attribute callbacks built during dispatch even before a crash-scope backend is installed.
+pub(crate) fn entered_parts_with_owner<'a, P: ?Sized>(
+    parts: &'a [Attached<P>],
+    hook: &'static str,
+) -> impl Iterator<Item = (&'static str, &'static str, &'a P)> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    parts
+        .iter()
+        .filter(|attached| mod_index_on(attached.mod_index))
+        .map(move |attached| {
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook,
+                    part: Some(attached.type_name),
+                },
+            );
+            (attached.mod_id, attached.type_name, &*attached.part)
+        })
+}
+
+/// Like [`entered_parts`], yielding each part's registration slot `(mod_index, order)` so a
+/// paired follow-up hook (`is_shearable` -> `on_sheared`) reaches only the answering part.
+pub(crate) fn entered_parts_with_slot<'a, P: ?Sized>(
+    parts: &'a [Attached<P>],
+    hook: &'static str,
+) -> impl Iterator<Item = ((usize, usize), &'a P)> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    parts
+        .iter()
+        .filter(|attached| mod_index_on(attached.mod_index))
+        .map(move |attached| {
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook,
+                    part: Some(attached.type_name),
+                },
+            );
+            ((attached.mod_index, attached.order), &*attached.part)
+        })
+}
+
+/// Like [`entered_parts`], reaching only the single part at `slot` if it subscribed to `hook`.
+pub(crate) fn entered_part_slot<'a, P: ?Sized>(
+    parts: &'a [Attached<P>],
+    slot: (usize, usize),
+    hook: &'static str,
+) -> impl Iterator<Item = &'a P> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    parts
+        .iter()
+        .filter(move |attached| {
+            (attached.mod_index, attached.order) == slot && mod_index_on(attached.mod_index)
+        })
+        .map(move |attached| {
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook,
+                    part: Some(attached.type_name),
+                },
+            );
+            &*attached.part
+        })
+}
+
 pub(crate) struct Entered<'a> {
     pub(crate) mods: std::slice::Iter<'a, ModEntry>,
     pub(crate) hook: &'static str,

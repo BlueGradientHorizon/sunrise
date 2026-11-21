@@ -2668,14 +2668,14 @@ mod tests {
         fn spawn_cluster_size(
             &self,
             host: &dyn mod_api::Host,
-            mob: mod_api::UnspawnedMobRef,
-            reason: mod_api::SpawnReason,
-            _: Option<mod_api::SpawnSource>,
-            vanilla: u32,
+            event: &mut mod_api::SpawnClusterSizeEvent,
         ) -> Option<u32> {
-            assert_eq!(mob.kind(host).unwrap().to_string(), "minecraft:zombie");
-            Some(if reason == mod_api::SpawnReason::Natural {
-                vanilla * 2
+            assert_eq!(
+                event.mob.kind(host).unwrap().to_string(),
+                "minecraft:zombie"
+            );
+            Some(if event.reason == mod_api::SpawnReason::Natural {
+                event.vanilla * 2
             } else {
                 1
             })
@@ -2688,10 +2688,7 @@ mod tests {
         fn spawn_cluster_size(
             &self,
             _: &dyn mod_api::Host,
-            _: mod_api::UnspawnedMobRef,
-            _: mod_api::SpawnReason,
-            _: Option<mod_api::SpawnSource>,
-            _: u32,
+            _: &mut mod_api::SpawnClusterSizeEvent,
         ) -> Option<u32> {
             Some(9)
         }

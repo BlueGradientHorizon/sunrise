@@ -43,6 +43,11 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
+        pub(in crate::tests) fn entity_type_name(
+            _: super::super::EntityTypeKey,
+        ) -> Option<&'static str> {
+            Some("test:entity")
+        }
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
@@ -231,17 +236,36 @@ impl ModEntry {
     }
 }
 trait Registrar {}
-/// The goal registrar of the generated `EntityPart`, as the fixture sees
-/// it: no methods, its type is all the generated trait asks of the scope.
-#[expect(dead_code)]
+struct EntityTypeKey;
+impl EntityRef {
+    fn kind(self, _: &dyn Host) -> Option<EntityTypeKey> {
+        Some(EntityTypeKey)
+    }
+}
+impl UnspawnedMobRef {
+    fn kind(&self, _: &dyn Host) -> Result<Identifier, ()> {
+        Ok(Identifier)
+    }
+}
+/// The goal registrar of the generated `EntityPart`, as the fixture sees it.
 struct GoalRegistrar<'a> {
     _lifetime: std::marker::PhantomData<&'a ()>,
 }
-/// The behavior registrar of the generated `EntityPart` (#824), as the
-/// fixture sees it: like [`GoalRegistrar`], only its type is asked for.
-#[expect(dead_code)]
+impl GoalRegistrar<'_> {
+    fn route_kind(&self) -> &str {
+        "test:mob"
+    }
+    fn set_owner(&mut self, _: &'static str, _: &'static str) {}
+}
+/// The behavior registrar of the generated `EntityPart` (#824), as the fixture sees it.
 struct BehaviorRegistrar<'a> {
     _lifetime: std::marker::PhantomData<&'a ()>,
+}
+impl BehaviorRegistrar<'_> {
+    fn route_kind(&self) -> &str {
+        "test:mob"
+    }
+    fn set_owner(&mut self, _: &'static str, _: &'static str) {}
 }
 /// Scope fixtures install their own Parts. Block attachments retain their API keys;
 /// other scopes keep their existing single-target fixture tables.
@@ -339,6 +363,9 @@ impl Parts {
     fn entity<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn EntityPart] {
         &self.entities
     }
+    fn entity_id(&self, _: impl FnOnce() -> Option<Identifier>) -> &[&'static dyn EntityPart] {
+        &self.entities
+    }
 }
 struct BlockHookParts<'a> {
     parts: &'a [&'static dyn BlockPart],
@@ -370,6 +397,44 @@ fn entered_parts<'a, P: ?Sized>(
         .iter()
         .copied()
         .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+}
+fn entered_parts_with_owner<'a, P: ?Sized>(
+    parts: &'a [&'a P],
+    _: &'static str,
+) -> impl Iterator<Item = (&'static str, &'static str, &'a P)> {
+    let disabled = DISABLED_BLOCK_PART.get();
+    parts
+        .iter()
+        .copied()
+        .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .map(|part| ("test", "Part", part))
+}
+fn entered_parts_with_slot<'a, P: ?Sized>(
+    parts: &'a [&'a P],
+    _: &'static str,
+) -> impl Iterator<Item = ((usize, usize), &'a P)> {
+    let disabled = DISABLED_BLOCK_PART.get();
+    parts
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(move |(_, part)| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .map(|(order, part)| ((0, order), part))
+}
+fn entered_part_slot<'a, P: ?Sized>(
+    parts: &'a [&'a P],
+    slot: (usize, usize),
+    _: &'static str,
+) -> impl Iterator<Item = &'a P> {
+    let disabled = DISABLED_BLOCK_PART.get();
+    parts
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(move |(order, part)| {
+            (0, *order) == slot && disabled != Some(std::ptr::from_ref(*part).cast())
+        })
+        .map(|(_, part)| part)
 }
 
 #[test]

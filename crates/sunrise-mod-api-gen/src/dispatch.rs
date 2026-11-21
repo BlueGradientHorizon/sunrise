@@ -295,13 +295,22 @@ pub(super) fn emit<'a>(
                     "EntityRef" if table == "entity" => {
                         let host = &host.as_ref().ok_or("entity handle needs a Host")?.0;
                         format!(
-                            "entity(|| {key}.kind({host}).and_then(super::content::registry_keys::entity_type_name))"
+                            "entity(|| {key}.kind(&*{host}).and_then(super::content::registry_keys::entity_type_name))"
                         )
+                    }
+                    "UnspawnedMobRef" if table == "entity" => {
+                        let host = &host.as_ref().ok_or("unspawned mob handle needs a Host")?.0;
+                        format!("entity_id(|| {key}.kind(&*{host}).ok())")
+                    }
+                    "& mut GoalRegistrar < '_ >" | "& mut BehaviorRegistrar < '_ >"
+                        if table == "entity" =>
+                    {
+                        format!("entity(|| Some({key}.route_kind()))")
                     }
                     "BlockEntityRef" if table == "block_entity" => {
                         let host = &host.as_ref().ok_or("block entity handle needs a Host")?.0;
                         format!(
-                            "block_entity_kind(|| {key}.kind({host}).and_then(super::content::registry_keys::block_entity_type_name))"
+                            "block_entity_kind(|| {key}.kind(&*{host}).and_then(super::content::registry_keys::block_entity_type_name))"
                         )
                     }
                     // An entity's type id need not be its block's: its own table.
@@ -502,6 +511,10 @@ pub(super) fn emit<'a>(
             } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
+                    || matches!(
+                        ty_tokens.as_str(),
+                        "& mut GoalRegistrar < '_ >" | "& mut BehaviorRegistrar < '_ >"
+                    )
                 {
                     surfaces.push(name.clone());
                 }
@@ -589,6 +602,12 @@ pub(super) fn emit<'a>(
         }
         if inert_signal {
             dispatch_params.push("inert: &mut bool".into());
+        }
+        let returns_slot = name == "is_shearable";
+        let single_part_slot = name == "on_sheared";
+        let sets_registrar_owner = matches!(name, "register_goals" | "register_behaviors");
+        if single_part_slot {
+            dispatch_params.push("__part_slot: (usize, usize)".into());
         }
         let (generics, elided) = match (lifetimes.a, lifetimes.b) {
             (_, true) => ("<'a, 'b>", "<'_, '_>"),
@@ -1074,8 +1093,13 @@ pub(super) fn emit<'a>(
             "report"
         };
         let run = |expression: &str| {
+            let on_refusal = if single_part_slot {
+                "return Err(());"
+            } else {
+                refused_value
+            };
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.{report}(); {refused_value} }} }}"
+                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.{report}(); {on_refusal} }} }}"
             )
         };
         // One callee's call: a mod's, or a scoped hook's part's.
@@ -1286,23 +1310,30 @@ pub(super) fn emit<'a>(
                 // The parts are looked up first: the key may be moved into the event. A worldgen
                 // Part method runs on the worker threads too: it reads the server's published table.
                 {
+                    let empty_return = if returns_slot {
+                        "return None;"
+                    } else if single_part_slot {
+                        "return Ok(());"
+                    } else {
+                        "return;"
+                    };
                     let table = if hook.context == Some(PhaseContext::Worldgen) {
                         "super::worldgen_parts()".to_owned()
                     } else {
                         format!("super::parts(HookId::{hook_id}, \"{name}\")")
                     };
                     let routing = format!(
-                        "\nif !super::has_part_hook(HookId::{hook_id}) {{ return; }} let {part_table} = {table};"
+                        "\nif !super::has_part_hook(HookId::{hook_id}) {{ {empty_return} }} let {part_table} = {table};"
                     );
                     let table = format!("{part_table}.for_hook(HookId::{hook_id})");
                     if hook.inert.is_some() {
                         let entry = fresh_name("part_entry", &mut used);
                         format!(
-                            "{routing} let Some({entry}) = {table}.and_then(|table| table.{lookup}) else {{ return; }}; let {part_list} = {entry}.parts(); let {inert_owner} = if super::any_mod_disabled() {{ {entry}.disabled_owner_slot() }} else {{ None }};"
+                            "{routing} let Some({entry}) = {table}.and_then(|table| table.{lookup}) else {{ {empty_return} }}; let {part_list} = {entry}.parts(); let {inert_owner} = if super::any_mod_disabled() {{ {entry}.disabled_owner_slot() }} else {{ None }};"
                         )
                     } else {
                         format!(
-                            "{routing} let {part_list} = {table}.map_or(&[][..], |table| table.{lookup}); if {part_list}.is_empty() {{ return; }}"
+                            "{routing} let {part_list} = {table}.map_or(&[][..], |table| table.{lookup}); if {part_list}.is_empty() {{ {empty_return} }}"
                         )
                     }
                 },
@@ -1318,6 +1349,23 @@ pub(super) fn emit<'a>(
                         "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
                         call(&part_item, "break 'dispatch_parts"),
                     )
+                } else if sets_registrar_owner {
+                    let registrar = hook.scope.as_ref().unwrap().key.as_str();
+                    format!(
+                        "for (__mod_id, __part_name, {part_item}) in super::entered_parts_with_owner({part_list}, \"{name}\") {{ {event}.{registrar}.set_owner(__mod_id, __part_name); {} }}",
+                        call(&part_item, "break"),
+                    )
+                } else if returns_slot {
+                    let answer_call = run(&format!("{part_item}.{name}({invoke})"));
+                    let o = out.unwrap();
+                    format!(
+                        "let mut __winner = None; for (__slot, {part_item}) in super::entered_parts_with_slot({part_list}, \"{name}\") {{ if let Some({replacement}) = {answer_call} {{ *{o} = Some({replacement}); __winner = Some(__slot); break; }} }} __winner"
+                    )
+                } else if single_part_slot {
+                    format!(
+                        "for {part_item} in super::entered_part_slot({part_list}, __part_slot, \"{name}\") {{ {} }} Ok(())",
+                        call(&part_item, "break"),
+                    )
                 } else {
                     format!(
                         "for {part_item} in super::entered_parts({part_list}, \"{name}\") {{ {} }}",
@@ -1326,20 +1374,34 @@ pub(super) fn emit<'a>(
                 },
             ),
         };
+        let empty_return = if returns_slot {
+            "return None;"
+        } else if single_part_slot {
+            "return Ok(());"
+        } else {
+            "return;"
+        };
         let body = match contract {
             _ if mod_cancel => format!(
                 "if *{o} && !super::receives_cancelled(HookId::{hook_id}) {{ return; }} {build} {calls} {write_back}",
                 o = cancel_out.unwrap()
             ),
             Contract::Cancel => format!(
-                "if *{o} {{ return; }} {lookup} {build} {calls} {write_back}",
+                "if *{o} {{ {empty_return} }} {lookup} {build} {calls} {write_back}",
                 o = out.unwrap()
             ),
             Contract::Replace => format!(
-                "if {o}.is_some() {{ return; }} {lookup} {build} {calls} {write_back}",
+                "if {o}.is_some() {{ {empty_return} }} {lookup} {build} {calls} {write_back}",
                 o = out.unwrap()
             ),
             _ => format!("{lookup} {build} {calls} {write_back}"),
+        };
+        let dispatch_return = if returns_slot {
+            " -> Option<(usize, usize)>"
+        } else if single_part_slot {
+            " -> Result<(), ()>"
+        } else {
+            ""
         };
         let early_return = if scoped.is_some() {
             String::new()
@@ -1391,7 +1453,7 @@ pub(super) fn emit<'a>(
             ));
         } else {
             dispatch.push_str(&format!(
-                "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ {unpack}{early_return}\n{body} }}\n"
+                "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}){dispatch_return} {{ {unpack}{early_return}\n{body} }}\n"
             ));
         }
     }

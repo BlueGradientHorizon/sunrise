@@ -346,10 +346,7 @@ impl mod_api::EntityPart for GatedCluster {
     fn spawn_cluster_size(
         &self,
         host: &dyn mod_api::Host,
-        _: mod_api::UnspawnedMobRef,
-        _: mod_api::SpawnReason,
-        _: Option<mod_api::SpawnSource>,
-        _: u32,
+        _: &mut mod_api::SpawnClusterSizeEvent,
     ) -> Option<u32> {
         let _ = host.level("minecraft:overworld");
         Some(1)
