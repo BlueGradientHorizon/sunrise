@@ -19,11 +19,10 @@ and returns the argument for `submit`. Submit geometry or nested stacks through
 overlay and outline through the normal item draw path.
 
 An unknown type, decode or bake error, or panic during resource loading refuses that item
-definition without falling back to a lower pack. At draw time a callback error, panic or
-invalid geometry or pose rolls back the whole layer and disables the offending type until
-resources reload. Unreadable input or a nested refusal rolls back the enclosing layer
-without disabling the parent renderer. Only the outermost refused layer draws the missing
-model."#]
+definition without falling back to a lower pack. At draw time a callback error, panic,
+invalid geometry or pose, unreadable input or nested refusal rolls back only that draw's
+special layer without disabling the renderer type for subsequent draws. Only the outermost
+refused layer draws the missing model."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

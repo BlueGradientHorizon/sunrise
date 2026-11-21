@@ -14,21 +14,18 @@ use std::{
     collections::BTreeMap,
     ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::{
-        Arc, Mutex, OnceLock, PoisonError,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, OnceLock},
 };
 use sunrise_assets::{
     DecodeError,
     bake::{ModelQuad, facing},
     item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
     item_model::{
-        ClientItem, Context, FoilType, LayerTransform, RegisteredSpecialModel, StackView,
-        identifier,
+        ClientItem, Context, DisplayContext, FoilType, LayerTransform, RegisteredSpecialModel,
+        StackView, identifier,
     },
     math::Mat4 as AssetMatrix,
-    model::Material,
+    model::{Direction, Material},
 };
 
 pub type SpecialModelFactories = BTreeMap<String, SpecialModelFactory>;
@@ -48,13 +45,11 @@ pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> 
     FACTORIES.set(factories).is_ok()
 }
 
-/// One baked `minecraft:special` node. Every resource load owns its own instances and failures.
+/// One baked `minecraft:special` node. Every resource load owns its own instances.
 pub struct BakedSpecialModel {
     pub kind: Box<str>,
     renderer: BakedSpecialModelRenderer,
     base: SpecialLayerBase,
-    /// A draw failure disables this type in this resource load only.
-    failed: Arc<AtomicBool>,
 }
 
 /// The item geometry and extents retained by an API lease from this bake context.
@@ -96,10 +91,9 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
             if quad.positions.iter().flatten().any(|v| !v.is_finite()) {
                 return Err(format!("quad {index}: non-finite position"));
             }
-            let facing =
-                facing(&quad.positions).ok_or_else(|| format!("quad {index}: invalid facing"))?;
-            if quad.uv.iter().flatten().any(|v| !(0.0..=1.0).contains(v)) {
-                return Err(format!("quad {index}: UV is outside [0, 1]"));
+            let facing = facing(&quad.positions).unwrap_or(Direction::Up);
+            if quad.uv.iter().flatten().any(|v| !v.is_finite()) {
+                return Err(format!("quad {index}: non-finite UV"));
             }
             if quad.light_emission > 15 {
                 return Err(format!("quad {index}: light emission is over 15"));
@@ -110,9 +104,14 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
                 .map_err(|_| format!("quad {index}: tint index is out of range"))?;
             let sprite =
                 identifier(&quad.sprite).map_err(|error| format!("quad {index}: {error}"))?;
-            if sprite != MISSING_SPRITE && self.0.sprites.mask(&sprite).is_none() {
-                return Err(format!("quad {index}: sprite {sprite} is missing"));
-            }
+            let sprite = if sprite != MISSING_SPRITE && self.0.sprites.mask(&sprite).is_none() {
+                log::warn!(
+                    "Sunrise: special model quad {index} references missing sprite {sprite}; using missing texture"
+                );
+                MISSING_SPRITE.to_owned()
+            } else {
+                sprite
+            };
             baked.push(ModelQuad {
                 positions: quad.positions,
                 uv: quad.uv,
@@ -165,11 +164,6 @@ impl ItemRenderer {
                 .map_err(|error| format!("special model {kind}: {error}"))?;
             let base = self.bake(base);
             let particle = Arc::from(sprite_name(&base.particle.sprite));
-            let mut failures = self
-                .special_failures
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            let failed = failures.entry(kind.to_owned()).or_default().clone();
             Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
                 kind: kind.into(),
                 renderer,
@@ -177,13 +171,11 @@ impl ItemRenderer {
                     model: base,
                     particle,
                 },
-                failed,
             }))))
         })
     }
 
     /// Append one registered layer, with no committed writes until its callback succeeds.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn append_registered_special(
         &self,
         layers: &mut Vec<LayerRender>,
@@ -192,14 +184,10 @@ impl ItemRenderer {
         ctx: &Context<'_>,
         env: &dyn ItemDrawEnv,
         ancestor: &StackAncestor<'_>,
-        remaining: &mut usize,
     ) -> ControlFlow<()> {
         let Some(model) = model.0.downcast_ref::<BakedSpecialModel>() else {
             return ControlFlow::Break(());
         };
-        if model.failed.load(Ordering::Relaxed) {
-            return ControlFlow::Break(());
-        }
         let Some(input) = env.special_model_input(model, ancestor.stack, ctx) else {
             return ControlFlow::Break(());
         };
@@ -214,7 +202,6 @@ impl ItemRenderer {
             ctx,
             env,
             ancestor,
-            remaining,
             foil,
             outer_transform,
             display_transform,
@@ -243,12 +230,10 @@ impl ItemRenderer {
         }
         match writer.failure.as_ref() {
             Some(SubmissionFailure::Fault(error)) => {
-                if !model.failed.swap(true, Ordering::Relaxed) {
-                    log::warn!(
-                        "Sunrise: the special model renderer of {} failed ({error}); its models draw the missing model until resources reload",
-                        model.kind
-                    );
-                }
+                log::warn!(
+                    "Sunrise: the special model renderer of {} failed ({error}); this draw falls back to the missing model",
+                    model.kind
+                );
                 ControlFlow::Break(())
             }
             Some(SubmissionFailure::Nested) => ControlFlow::Break(()),
@@ -266,10 +251,19 @@ struct SpecialLayerBase {
     particle: Arc<str>,
 }
 
-/// The active stack path, borrowed from the resolvers and their callers, with no stack copies.
+/// The active `(stack, display)` path, borrowed from the resolvers and their callers, with no
+/// stack copies.
 pub(super) struct StackAncestor<'a> {
     pub(super) stack: &'a StackView,
+    pub(super) display: DisplayContext,
     pub(super) parent: Option<&'a StackAncestor<'a>>,
+}
+
+impl StackAncestor<'_> {
+    fn contains(&self, stack: &StackView, display: DisplayContext) -> bool {
+        std::iter::successors(Some(self), |entry| entry.parent)
+            .any(|entry| entry.display == display && *entry.stack == *stack)
+    }
 }
 
 enum SubmissionFailure {
@@ -287,7 +281,6 @@ struct LayerWriter<'out, 'draw> {
     ctx: &'draw Context<'draw>,
     env: &'draw dyn ItemDrawEnv,
     ancestor: &'draw StackAncestor<'draw>,
-    remaining: &'out mut usize,
     foil: FoilType,
     outer_transform: AssetMatrix,
     display_transform: LayerTransform,
@@ -399,17 +392,18 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             layer.failure = Some(SubmissionFailure::Nested);
             return Err("the nested special model stack or display context is unreadable".into());
         };
-        if *layer.remaining == 0
-            || std::iter::successors(Some(layer.ancestor), |entry| entry.parent)
-                .any(|entry| *entry.stack == stack)
-        {
-            warn_refused_nesting_once(&stack.item);
+        if layer.ancestor.contains(&stack, display) {
+            log::warn!(
+                "Sunrise: a special model renderer's nested stack of {} in {:?} is a cycle; the special layer draws the missing model",
+                stack.item,
+                display,
+            );
             layer.failure = Some(SubmissionFailure::Nested);
-            return Err("the nested special model stack is a cycle or past the budget".into());
+            return Err("the nested special model stack is a cycle".into());
         }
-        *layer.remaining -= 1;
         let ancestor = StackAncestor {
             stack: &stack,
+            display,
             parent: Some(layer.ancestor),
         };
         let ctx = Context {
@@ -419,14 +413,7 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
         let start = layer.layers.len();
         if layer
             .renderer
-            .append_render_layers(
-                layer.layers,
-                &ancestor,
-                &ctx,
-                layer.env,
-                None,
-                layer.remaining,
-            )
+            .append_render_layers(layer.layers, &ancestor, &ctx, layer.env, None)
             .is_break()
         {
             layer.failure = Some(SubmissionFailure::Nested);
@@ -439,20 +426,5 @@ impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
             layer.matrix = matrix * layer.matrix;
         }
         Ok(())
-    }
-}
-
-/// Says once per item that a special model renderer's nested stack was refused as a cycle or past
-/// the budget.
-fn warn_refused_nesting_once(item: &str) {
-    static SEEN: Mutex<std::collections::BTreeSet<String>> =
-        Mutex::new(std::collections::BTreeSet::new());
-    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
-    if !seen.contains(item) {
-        seen.insert(item.to_owned());
-        drop(seen);
-        log::warn!(
-            "Sunrise: a special model renderer's nested stack of {item} is a cycle or past the nesting budget; the special layer draws the missing model"
-        );
     }
 }

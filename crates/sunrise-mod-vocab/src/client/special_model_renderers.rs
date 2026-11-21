@@ -95,8 +95,11 @@ pub trait SpecialModelBakeContext {
     /// and GUI light. Bake new leases on reload rather than reusing an old one.
     fn bake_model(&self, model: &str) -> Result<SpecialModelGeometry, String>;
 
-    /// Bake custom quads against the selected packs' item and block atlas sprites. A missing
-    /// sprite, non-finite coordinate, invalid facing, tint index or light level rejects the bake.
+    /// Bake custom quads against the selected packs' item and block atlas sprites. Matching
+    /// vanilla's `FaceBakery` and `MaterialBaker`, degenerate quads default to `Up` facing, any
+    /// finite UV is accepted, and an unknown sprite falls back to the missing texture sprite while
+    /// preserving `force_translucent`. Non-finite coordinates or UVs, an invalid sprite
+    /// identifier, or an out-of-range tint index or light emission reject the bake.
     fn bake_geometry(&self, quads: &[SpecialModelQuad]) -> Result<SpecialModelGeometry, String>;
 }
 
@@ -106,11 +109,12 @@ pub trait SpecialModelBakeContext {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpecialModelQuad {
     /// Corners in block units, relative to the model's corner. The first three determine facing
-    /// by their winding and must not be collinear.
+    /// by their winding, falling back to `Up` for degenerate quads as in vanilla's `FaceBakery`.
     pub positions: [[f32; 3]; 4],
-    /// Sprite-local UVs for the same four corners, in `[0, 1]`.
+    /// Finite sprite-local UVs for the same four corners.
     pub uv: [[f32; 2]; 4],
-    /// The sprite's resource ID in an item or block atlas.
+    /// The sprite's resource ID in an item or block atlas; unknown sprites fall back to the
+    /// missing texture sprite.
     pub sprite: String,
     /// Index into the submission's indexed palette, if any.
     pub tint_index: Option<u32>,
@@ -217,10 +221,6 @@ pub enum SpecialModelTints {
     Indexed(Arc<[u32]>),
 }
 
-/// The most nested stacks one item draw may expand, counting all special layers and their
-/// descendants. A cycle or an exhausted budget refuses the enclosing special layer.
-pub const MAX_NESTED_STACK_PARTS: usize = 64;
-
 // no wire: timing and display state for a single local draw callback.
 /// The actual display context and frame time for this draw, even when the stack has not changed.
 #[derive(Clone, Debug, PartialEq)]
@@ -295,8 +295,8 @@ impl<'a> SpecialModelCollector<'a> {
 
     /// Draw another stack under the current pose, which places its centre. The nested item
     /// uses its own display transform, tints and foil. A nested refusal (including unreadable
-    /// input, cycles and the shared [`MAX_NESTED_STACK_PARTS`] budget) discards the whole layer
-    /// even if the returned error is ignored.
+    /// input or a `(stack, display)` cycle) discards the whole layer even if the returned error
+    /// is ignored.
     pub fn submit_stack(
         &mut self,
         stack: &ItemStack,
@@ -373,12 +373,11 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
         stack: &SpecialModelStack<'_>,
     ) -> Self::Argument;
 
-    /// Submit the geometry and stacks for this draw in order. A submission fault, including a
-    /// callback error, panic in either callback or invalid geometry or pose, discards the layer
-    /// and disables the offending type until resources reload. Unreadable input or a nested
-    /// refusal discards the enclosing layer without disabling it. Use `?` to propagate the
-    /// collector's errors. Only the outermost refused layer draws a missing model; unrelated
-    /// layers are left intact.
+    /// Submit the geometry and stacks for this draw in order. A submission fault (including a
+    /// callback error, panic in either callback, invalid geometry or pose, unreadable input, or a
+    /// nested refusal) rolls back only this draw's special layer without disabling the renderer
+    /// type for subsequent draws. Use `?` to propagate the collector's errors. Only the outermost
+    /// refused layer draws a missing model; unrelated layers are left intact.
     fn submit(
         &self,
         argument: &Self::Argument,

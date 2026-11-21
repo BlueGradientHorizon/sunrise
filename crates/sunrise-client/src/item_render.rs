@@ -38,7 +38,7 @@ use std::{
     num::NonZeroU32,
     ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{Arc, Mutex},
 };
 use sunrise_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
@@ -743,7 +743,6 @@ pub struct ItemRenderer {
     sprites: FileSprites,
     baked: Mutex<HashMap<String, Arc<BakedItemModel>>>,
     extents: Mutex<HashMap<String, Arc<Vec<Vec3>>>>,
-    special_failures: Mutex<HashMap<String, Arc<AtomicBool>>>,
     special_generation: Arc<()>,
     /// GUI items already drawn: the HUD vertices of a static item at a GUI position
     /// (`gui::draw`), which are the same every frame it stays there.
@@ -943,7 +942,6 @@ impl ItemRenderer {
             sprites: FileSprites::new(root.source().clone()),
             baked: Mutex::default(),
             extents: Mutex::default(),
-            special_failures: Mutex::default(),
             special_generation: Arc::new(()),
             gui_drawn: Mutex::default(),
             parts,
@@ -1054,18 +1052,17 @@ impl ItemRenderer {
             seed,
         };
         let mut layers = Vec::new();
-        let mut remaining = mod_api::MAX_NESTED_STACK_PARTS;
         let flags = self
             .append_render_layers(
                 &mut layers,
                 &StackAncestor {
                     stack,
+                    display,
                     parent: None,
                 },
                 &ctx,
                 env,
                 rule,
-                &mut remaining,
             )
             .continue_value()
             .unwrap_or_default();
@@ -1090,7 +1087,6 @@ impl ItemRenderer {
         ctx: &Context<'_>,
         env: &dyn ItemDrawEnv,
         rule: Option<usize>,
-        remaining: &mut usize,
     ) -> ControlFlow<(), RenderLayerFlags> {
         let stack = ancestor.stack;
         let mut flags = RenderLayerFlags::default();
@@ -1139,6 +1135,7 @@ impl ItemRenderer {
                     // Vanilla's bundle model can produce a layer for its selected stack.
                     let selected = StackAncestor {
                         stack: layer_stack,
+                        display,
                         parent: Some(ancestor),
                     };
                     let source = if std::ptr::eq(stack, layer_stack) {
@@ -1154,7 +1151,6 @@ impl ItemRenderer {
                             ctx,
                             env,
                             source,
-                            remaining,
                         )
                         .is_continue()
                     {
