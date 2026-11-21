@@ -85,7 +85,7 @@ pub struct Flight {
     started: Instant,
     seconds: f64,
     /// Reply with every frame time too (`fly ... PITCH raw`).
-    raw: bool,
+    pub(super) raw: bool,
     upload_queue_work: [usize; 2],
     reply: Sender<String>,
     /// The world's smoothed tick time each frame (the F3 server line): the
@@ -100,13 +100,17 @@ impl Flight {
 }
 
 impl Game<'_> {
-    pub(super) fn record_streaming_work(&mut self, rendered: bool) {
+    pub(super) fn record_streaming_work(
+        &mut self,
+        rendered: bool,
+        spans: &[sunrise_client::spans::Span],
+    ) {
         if let Some(flight) = self.flight.as_mut().filter(|flight| flight.raw) {
             let visited = self.world.block_entities.take_column_unload_entries();
             let [sorted, merged] = std::mem::take(&mut flight.upload_queue_work);
             if rendered {
                 self.frame_stats
-                    .record_streaming_work(visited, sorted, merged);
+                    .record_streaming_work(visited, sorted, merged, spans);
             }
         }
     }
@@ -147,6 +151,7 @@ impl Game<'_> {
             summary["tick_ms_max"] = flight.tick_ms.iter().copied().fold(0.0, f32::max).into();
             if flight.raw {
                 self.add_raw_series(&mut summary);
+                self.frame_stats.add_flight_series(&mut summary);
             }
             let _ = flight.reply.send(summary.to_string());
         }

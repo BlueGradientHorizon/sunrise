@@ -10578,6 +10578,11 @@ impl Game<'_> {
                     self.mapped_key_event(key, event.state == ElementState::Pressed, event.repeat)?;
                 }
                 WindowEvent::RedrawRequested => {
+                    let flight_spans = self
+                        .flight
+                        .as_ref()
+                        .filter(|flight| flight.raw)
+                        .map(|_| sunrise_client::spans::record_frame());
                     sunrise_client::spans::time("recover_device", || self.recover_device())?;
                     self.observe_fullscreen();
                     self.sync_ime();
@@ -10636,13 +10641,13 @@ impl Game<'_> {
                     let ticked = Instant::now();
                     let rendered = self.render_and_flip(elapsed)?;
                     self.native_frame_end()?;
-                    // The frame's spans, taken every frame they are recorded so they never
-                    // pile up: the slow-frame line's.
+                    // Drain once for both the raw flight and the slow-frame/capture route.
                     let frame_spans = if sunrise_client::spans::recording_here() {
                         sunrise_client::spans::take_raw()
                     } else {
                         Vec::new()
                     };
+                    drop(flight_spans);
                     let mut perf_times = None;
                     if let Some(r) = self.renderer.as_mut() {
                         let cpu = now.elapsed().saturating_sub(r.last_wait);
@@ -10749,7 +10754,7 @@ impl Game<'_> {
                     if !consumed && let Some(Err(error)) = finished {
                         log::warn!("Sunrise: couldn't save the world icon: {error}");
                     }
-                    self.record_streaming_work(rendered);
+                    self.record_streaming_work(rendered, &frame_spans);
                     if rendered {
                         self.frame_stats.record(elapsed.as_secs_f32() * 1000.0);
                         if let Some((cpu, gpu)) = perf_times {

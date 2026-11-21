@@ -255,12 +255,13 @@ impl Game<'_> {
         }
         sunrise_client::spans::time("unload_entities", || self.unload_entities(&unloaded));
         if !unloaded.is_empty() {
-            let _span = sunrise_client::spans::guard("unload_block_entities");
             let gone: sunrise_client::fast_hash::FxHashSet<(i32, i32)> =
                 unloaded.iter().map(|c| (c.x, c.z)).collect();
-            for &column in &gone {
-                self.world.block_entities.unload_column(column);
-            }
+            sunrise_client::spans::time("unload_block_entities", || {
+                for &column in &gone {
+                    self.world.block_entities.unload_column(column);
+                }
+            });
             self.world
                 .block_names
                 .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
@@ -317,6 +318,7 @@ impl Game<'_> {
                 // mesh of a waiting section replaces it, and sections of
                 // chunks no longer loaded are dropped.
                 let pending = &mut self.pending_uploads;
+                let order_span = sunrise_client::spans::guard("order_uploads");
                 let fresh: sunrise_client::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
                 let current = |upload: &sunrise_client::streaming::MeshUpload| {
@@ -352,6 +354,7 @@ impl Game<'_> {
                     priority,
                 );
                 self.pending_uploads_order = order;
+                drop(order_span);
                 if let Some(flight) = &mut self.flight {
                     flight.note_upload_queue_work(work);
                 }
