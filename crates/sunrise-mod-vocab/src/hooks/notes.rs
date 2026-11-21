@@ -40,8 +40,9 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   Each executable usage keeps its own permission: an operator-only `foo` remains unavailable to ordinary players
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
   `foo` itself. Optional arguments make their preceding prefixes executable at that usage's level; if several
-  accepted usages execute at the same node, each later accepted registration overwrites that node's execution
-  permission and executor, matching Brigadier's `CommandNode.addChild`. A rejected usage does not change the permissions of accepted usages.
+  accepted usages execute at the same node, each later accepted registration overwrites that node's executor
+  (matching Brigadier's `CommandNode.addChild`) together with Sunrise's paired execution permission level
+  for that node. A rejected usage does not change the permissions of accepted usages.
   Clients receive the accepted command tree, never its executor bindings. When argument alternatives consume the same input without errors, an
   executable alternative takes precedence over a denied one; equally valid alternatives keep registration order.
   A name vanilla has, or a usage that doesn't parse, is left out with a warning in the log.

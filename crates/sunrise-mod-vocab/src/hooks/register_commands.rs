@@ -13,8 +13,9 @@ pub trait Hooks {
     /// root vanilla owns is left out. A lower-level child opens traversal through a
     /// prefix without changing that prefix's own execution permission. When accepted usages
     /// execute at the same node (including optional prefixes), each later accepted registration
-    /// overwrites that node's execution permission and executor, matching Brigadier's
-    /// `CommandNode.addChild`. Only that node's executor runs, attributed to its mod; if the
+    /// overwrites that node's executor (matching Brigadier's `CommandNode.addChild`, which sets
+    /// `child.command = node.getCommand()`) together with Sunrise's paired execution permission
+    /// level for that node. Only that node's executor runs, attributed to its mod; if the
     /// owner is disabled, execution is refused rather than handed to another mod.
     /// Clients get the command tree, not executors. An argument's kind is one
     /// of `word`, `text`, `integer`, `number`, `boolean`, `player`, `item`,
@@ -34,7 +35,7 @@ pub trait Hooks {
         answered_by = "mod",
         owned_answer_batch = true,
         neoforge = "RegisterCommandsEvent",
-        version = 3
+        version = 4
     )]
     fn register_commands(commands: &mut Vec<mod_api::Answered<mod_api::CommandRegistration>>);
 }

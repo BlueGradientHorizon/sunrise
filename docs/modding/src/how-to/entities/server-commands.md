@@ -26,8 +26,9 @@ never executors. A parsed invocation belongs to the server dispatcher that parse
 if the tree is rebuilt, the server must parse the command again before it can run.
 
 When accepted usages execute at the same node, each later accepted registration
-overwrites that node's execution permission and executor, matching Brigadier's
-`CommandNode.addChild`. A usage with optional arguments also executes where those
+overwrites that node's executor (matching Brigadier's `CommandNode.addChild`, which
+replaces `child.command`) together with Sunrise's paired execution permission level
+for that node. A usage with optional arguments also executes where those
 arguments begin, so `status` and `status [player:player]` overlap at `status`. By
 contrast, a public `status detail` allows traversal through `status`, but does not
 make an operator-only `status` executable. Use distinct paths to keep distinct
