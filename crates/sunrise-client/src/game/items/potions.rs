@@ -17,9 +17,7 @@ use sunrise_client::health::{Attack, DamageLevel};
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
-    effects::{
-        EffectAction, EffectInstance, EffectModifier, OmenTick, PlayerEffects, effect_modifier,
-    },
+    effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects, effect_modifier},
     hud::HudBatch,
     hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
@@ -612,11 +610,10 @@ pub(super) fn thrown_projectile(stack: ItemStack, position: Vec3, by_player: boo
 /// a guest keeps their own while the host's are in `PotionState`.
 #[derive(Default)]
 pub(super) struct BodyPotions {
-    pub(super) applied: Vec<EffectModifier>,
     protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
     enchant_modifiers: Vec<(String, String, f64, String)>,
 }
-/// Effects, thrown potions and the attribute modifiers last applied.
+/// Effects, thrown potions and the cached armor and enchantment modifiers.
 #[derive(Default)]
 pub(super) struct PotionState {
     pub(super) effects: PlayerEffects,
@@ -625,7 +622,6 @@ pub(super) struct PotionState {
     pub(super) thrown: Vec<ThrownPotion>,
     /// The area effect clouds a server tracks (game/network/remote_projectiles.rs).
     pub(super) clouds: Vec<super::remote_projectiles::RemoteCloud>,
-    pub(super) applied: Vec<EffectModifier>,
     /// Armor the protection table was computed for.
     protection_for: Option<(u64, Vec<Option<ItemStack>>)>,
 
@@ -638,7 +634,6 @@ impl PotionState {
     /// with a guest's, around `as_guest`. Potions in flight stay.
     pub(super) fn swap_player(&mut self, effects: &mut PlayerEffects, body: &mut BodyPotions) {
         std::mem::swap(&mut self.effects, effects);
-        std::mem::swap(&mut self.applied, &mut body.applied);
         std::mem::swap(&mut self.protection_for, &mut body.protection_for);
         std::mem::swap(&mut self.enchant_modifiers, &mut body.enchant_modifiers);
     }
@@ -1203,6 +1198,10 @@ impl Game<'_> {
                 food.saturation = (food.saturation + nutrition as f32 * saturation * 2.0)
                     .clamp(0.0, food.food as f32);
             }
+            EffectAction::Update(id, amplifier) => {
+                self.update_player_effect_attributes(id, amplifier, true)
+            }
+            EffectAction::Remove(id) => self.remove_player_effect_attributes(&[id]),
         }
     }
     /// The local player's effects (`tick_mob_effects`), then the potions
@@ -1243,6 +1242,7 @@ impl Game<'_> {
             let ids: Vec<&'static str> = self.potions.effects.list.iter().map(|e| e.id).collect();
             self.potions.effects.clear();
             if !ids.is_empty() {
+                self.remove_player_effect_attributes(&ids);
                 self.effects_on_death(&ids, bounds, self.player_silent(), None, None);
             }
         }
@@ -1378,7 +1378,7 @@ impl Game<'_> {
         {
             let mut effect = EffectInstance::new("water_breathing", 200, 0);
             effect.visible = false;
-            self.potions.effects.add(effect);
+            self.apply_player_effect(effect);
         }
     }
     /// A client's own effects (`LivingEntity.tickEffects` on the client,
@@ -1440,8 +1440,7 @@ impl Game<'_> {
         let id = effect.id;
         let amp = effect.amplifier;
         let new = self.potions.effects.get(id).is_none();
-        let changed = self.potions.effects.add(effect);
-        self.apply_effect_status_after_update((changed && !new).then_some(id));
+        let changed = self.apply_player_effect(effect);
         // MobEffect.onEffectAdded: an omen's sound when it is new, at the
         // player's feet (#11373).
         if new
@@ -1464,9 +1463,23 @@ impl Game<'_> {
         }
         changed
     }
+    /// Store an admitted effect. Only a real update replaces its modifier and
+    /// refreshes pending attributes; an add writes the modifier but defers refresh.
+    pub(in crate::game) fn apply_player_effect(&mut self, effect: EffectInstance) -> bool {
+        let id = effect.id;
+        let new = self.potions.effects.get(id).is_none();
+        let changed = self.potions.effects.add(effect);
+        if changed {
+            let amplifier = self.potions.effects.get(id).unwrap().amplifier;
+            self.update_player_effect_attributes(id, amplifier, !new);
+            self.apply_effect_status();
+        }
+        changed
+    }
+
     /// Removes one effect, or all effects, and refreshes the player's derived state.
     pub(super) fn remove_player_effects(&mut self, effect: Option<usize>) -> bool {
-        let before = self.potions.effects.list.len();
+        let mut removed = Vec::new();
         let mut index = 0;
         while index < self.potions.effects.list.len() {
             let current = &self.potions.effects.list[index];
@@ -1495,14 +1508,14 @@ impl Game<'_> {
             if cancel {
                 index += 1;
             } else {
-                self.potions.effects.list.remove(index);
+                removed.push(self.potions.effects.list.remove(index).id);
             }
         }
-        let changed = self.potions.effects.list.len() != before;
-        if changed {
+        if !removed.is_empty() {
+            self.remove_player_effect_attributes(&removed);
             self.apply_effect_status();
         }
-        changed
+        !removed.is_empty()
     }
     /// `LivingEntity.addEffect` for a content mod's effect: its
     /// `onEffectAdded` when it is new, then its `onEffectStarted`, on a
@@ -1597,25 +1610,8 @@ impl Game<'_> {
         );
         (keep, changes)
     }
-    /// The effects' attribute modifiers, armor protection and status flags
-    /// on `self.player`.
+    /// Effects' armor protection and status flags on the current player.
     pub(super) fn apply_effect_status(&mut self) {
-        self.apply_effect_status_after_update(None);
-    }
-
-    fn apply_effect_status_after_update(&mut self, updated: Option<&str>) {
-        // LivingEntity.onEffectAdded, onEffectUpdated and onEffectsRemoved
-        // change the attributes on a server only. A server's client has the
-        // modifiers its ClientboundUpdateAttributesPacket sends (#12040).
-        if self.remote.is_some() {
-            self.potions.applied.clear();
-        } else if self.player.is_some() {
-            let updated_id = updated.and_then(effect_modifier).map(|(_, id, _, _)| id);
-            let modifiers = self.potions.effects.modifiers();
-            if updated_id.is_some() || modifiers != self.potions.applied {
-                self.apply_effect_modifiers(modifiers, updated_id);
-            }
-        }
         self.refresh_armor_protection();
         let mut status = self.potions.effects.status();
         if let Some(p) = self.player.as_mut() {
@@ -1624,49 +1620,47 @@ impl Game<'_> {
         }
     }
 
-    fn apply_effect_modifiers(&mut self, modifiers: Vec<EffectModifier>, updated_id: Option<&str>) {
-        let unchanged = |rows: &[EffectModifier], row: &EffectModifier| {
-            updated_id != Some(row.1) && rows.contains(row)
-        };
-        let mut refresh = false;
-        let mut waypoint_changed = false;
-        const TRANSMIT_RANGE: &str = "minecraft:waypoint_transmit_range";
-        let previous = std::mem::take(&mut self.potions.applied);
-        for row @ (attr, id, _, _) in &previous {
-            if !unchanged(&modifiers, row) {
-                let write = AttributeWrite::Remove((*id).to_owned());
-                if self.write_attribute(Target::Player, attr, write) == Some(true) {
-                    refresh = true;
-                    waypoint_changed |= *attr == TRANSMIT_RANGE;
-                }
+    /// `LivingEntity.onEffectAdded` and `onEffectUpdated`: only a server
+    /// writes the modifier. The client receives it with its attributes.
+    fn update_player_effect_attributes(&mut self, effect: &str, amplifier: i32, refresh: bool) {
+        if self.remote.is_some() {
+            return;
+        }
+        if let Some((attribute, id, amount, operation)) = effect_modifier(effect) {
+            let amount = amount * f64::from(amplifier.wrapping_add(1));
+            // MobEffect.addAttributeModifiers replaces by id and stores permanently.
+            if let Some(write) = AttributeWrite::add(id, amount, operation, true, true) {
+                self.write_attribute(Target::Player, attribute, write);
             }
         }
-        // MobEffect.addAttributeModifiers uses permanent modifiers, so
-        // the attributes saved with the entity preserve them on load.
-        for row @ (attr, id, amount, op) in &modifiers {
-            if !unchanged(&previous, row)
-                && let Some(write) = AttributeWrite::add(id, *amount, *op, true, true)
-                && self.write_attribute(Target::Player, attr, write) == Some(true)
-            {
-                refresh |= previous.iter().any(|row| row.1 == *id);
-                waypoint_changed |= *attr == TRANSMIT_RANGE;
+        if refresh {
+            self.refresh_effect_attributes();
+        }
+    }
+
+    /// `LivingEntity.onEffectsRemoved`: refresh even if there was no modifier
+    /// to remove; other writes can still have attributes pending.
+    fn remove_player_effect_attributes(&mut self, effects: &[&str]) {
+        if self.remote.is_some() {
+            return;
+        }
+        for effect in effects {
+            if let Some((attribute, id, _, _)) = effect_modifier(effect) {
+                self.write_attribute(
+                    Target::Player,
+                    attribute,
+                    AttributeWrite::Remove(id.to_owned()),
+                );
             }
         }
-        self.potions.applied = modifiers;
-        // An update or removal runs refreshDirtyAttributes immediately,
-        // including the health and absorption clamps to the new maxima.
-        if refresh && let Some(p) = self.player.as_mut() {
-            let _ = p.refresh_attributes();
+        self.refresh_effect_attributes();
+    }
+
+    fn refresh_effect_attributes(&mut self) {
+        if let Some(player) = self.player.as_mut() {
+            let _ = player.refresh_attributes();
         }
-        if waypoint_changed {
-            if refresh {
-                self.update_waypoint_transmitter(self.waypoint_target(Target::Player));
-            } else {
-                self.cmds
-                    .waypoint_dirty
-                    .push(self.waypoint_target(Target::Player));
-            }
-        }
+        self.apply_player_waypoint_updates();
     }
     /// `EnchantmentHelper.getDamageProtection` after equipment changes. This
     /// does not tick effects or clear absorption while a hit is in progress.
@@ -2768,9 +2762,6 @@ impl Game<'_> {
     pub(super) fn restore_effects(&mut self) {
         self.potions = PotionState::default();
         self.potions.effects = PlayerEffects::from_saved(&self.level.active_effects);
-        // LivingEntity.readAdditionalSaveData adds no modifiers for the
-        // effect list; the saved attributes already carry any that exist.
-        self.potions.applied = self.potions.effects.modifiers();
     }
     pub(super) fn effects_json(&self) -> serde_json::Value {
         serde_json::json!({

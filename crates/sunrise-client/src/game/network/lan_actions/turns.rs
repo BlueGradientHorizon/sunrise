@@ -464,9 +464,6 @@ impl Game<'_> {
         // (the movement that brought it, a landing): vanilla keeps the same
         // entity through a level change, with its attributes and effects.
         if fresh {
-            // The loaded or carried attributes already own the saved effect
-            // modifiers (`LivingEntity.readAdditionalSaveData`).
-            self.potions.applied = self.potions.effects.modifiers();
             self.apply_effect_status();
         }
         self.update_totem_ready();

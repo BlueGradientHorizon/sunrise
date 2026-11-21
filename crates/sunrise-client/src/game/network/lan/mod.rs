@@ -3130,6 +3130,12 @@ impl Game<'_> {
         };
         host.hub.place_new_player(conn, &mut ctx);
         self.bind_player_attachments(conn, false);
+        // PlayerList.placeNewPlayer -> ServerWaypointManager.addPlayer:
+        // register before the first command can change the effective range.
+        self.as_guest(conn, |game| {
+            game.update_waypoint_transmitter(super::commands::Target::Guest(conn));
+        });
+        self.lan_update_waypoints();
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }

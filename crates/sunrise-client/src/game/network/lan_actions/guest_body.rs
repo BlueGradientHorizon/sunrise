@@ -387,7 +387,8 @@ impl Game<'_> {
             } else {
                 w.server_player_pose_tick()
             };
-            let mut events = std::mem::take(&mut w.player.events);
+            game.apply_player_waypoint_updates();
+            let mut events = std::mem::take(&mut game.player.as_mut().unwrap().events);
             // Powder snow and cauldrons put the fire out along those moves.
             game.block_extinguish_player(&events);
             // Entity.baseTick: rain puts out a burning player.

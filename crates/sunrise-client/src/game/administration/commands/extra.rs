@@ -357,7 +357,7 @@ impl Game<'_> {
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     fn waypoint_transmitters(&mut self) -> Vec<Target> {
         if self.cmds.waypoints.is_none() {
-            let tracked = if self.transmit_range(Target::Player) > 0.0 {
+            let tracked = if self.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()
@@ -372,6 +372,7 @@ impl Game<'_> {
         self.cmds.waypoints = Some(alive.clone());
         alive
             .into_iter()
+            .filter(|t| self.target_level(*t) == self.dim)
             .map(|t| match t {
                 Target::Guest(conn) if self.lan_acting == Some(conn) => Target::Player,
                 _ => t,
@@ -392,15 +393,18 @@ impl Game<'_> {
     }
     /// `LivingEntity.onAttributeUpdated`: change the manager's tracked set.
     pub(in crate::game) fn update_waypoint_transmitter(&mut self, target: Target) {
-        if self.cmds.waypoints.is_none() {
-            self.waypoint_transmitters();
-        }
         let on = self.transmit_range(target) > 0.0;
-        if let Some(tracked) = self.cmds.waypoints.as_mut() {
-            tracked.retain(|t| *t != target);
-            if on {
-                tracked.push(target);
-            }
+        self.set_waypoint_transmitter(target, on);
+    }
+
+    pub(in crate::game) fn set_waypoint_transmitter(&mut self, target: Target, on: bool) {
+        let tracked = self.cmds.waypoints.get_or_insert_default();
+        tracked.retain(|t| *t != target);
+        if on {
+            tracked.push(target);
+        }
+        if let Target::Guest(conn) = target {
+            self.lan_set_waypoint_transmitting(conn, on);
         }
     }
     pub(in crate::game) fn waypoint_icon(&self, t: Target) -> Icon {

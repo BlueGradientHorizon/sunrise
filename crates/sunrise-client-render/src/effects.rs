@@ -143,7 +143,7 @@ impl EffectInstance {
             self.duration = self.duration.wrapping_sub(1);
         }
     }
-    fn downgrade(&mut self) {
+    fn downgrade(&mut self) -> bool {
         if self.duration == 0
             && let Some(h) = self.hidden.take()
         {
@@ -154,6 +154,9 @@ impl EffectInstance {
             self.visible = h.visible;
             self.show_icon = h.show_icon;
             self.hidden = h.hidden;
+            true
+        } else {
+            false
         }
     }
 }
@@ -168,6 +171,10 @@ pub enum EffectAction {
     Exhaust(f32),
     /// FoodData.eat(nutrition, saturation modifier).
     Eat(i32, f32),
+    /// The active instance promoted its hidden effect, or updated in place.
+    Update(&'static str, i32),
+    /// The active instance expired or its tick returned false.
+    Remove(&'static str),
 }
 /// `shouldApplyEffectTickThisTick` + `applyEffectTick` for the periodic effects.
 fn periodic(id: &str, tick: i32, amp: i32) -> Option<EffectAction> {
@@ -460,7 +467,7 @@ impl PlayerEffects {
                 if keep_expired.contains(&e.id) {
                     i += 1;
                 } else {
-                    self.list.remove(i);
+                    actions.push(EffectAction::Remove(self.list.remove(i).id));
                 }
                 continue;
             }
@@ -483,13 +490,15 @@ impl PlayerEffects {
             match answer {
                 OmenTick::Continue => {}
                 OmenTick::Remove => {
-                    self.list.remove(i);
+                    actions.push(EffectAction::Remove(self.list.remove(i).id));
                     continue;
                 }
                 OmenTick::Add(effect) => {
                     if let Some(existing) = self.list.iter_mut().find(|x| x.id == effect.id) {
-                        existing.update(&effect);
-                        self.list.remove(i);
+                        if existing.update(&effect) {
+                            actions.push(EffectAction::Update(existing.id, existing.amplifier));
+                        }
+                        actions.push(EffectAction::Remove(self.list.remove(i).id));
                         continue;
                     }
                     self.list.push(effect);
@@ -499,13 +508,15 @@ impl PlayerEffects {
             }
             let e = &mut self.list[i];
             e.tick_down();
-            e.downgrade();
+            if e.downgrade() {
+                actions.push(EffectAction::Update(e.id, e.amplifier));
+            }
             // `MobEffectEvent.Expired`: a kept expiry leaves the effect at
             // no ticks instead of removing it here.
             if e.infinite() || e.duration > 0 || keep_expired.contains(&e.id) {
                 i += 1;
             } else {
-                self.list.remove(i);
+                actions.push(EffectAction::Remove(self.list.remove(i).id));
             }
         }
         (actions, added)
@@ -1011,7 +1022,7 @@ mod tests {
                 "minecraft:max_absorption",
                 "minecraft:effect.absorption",
                 4.0,
-                "add_value",
+                Operation::AddValue,
             )]
         );
         fx.add(EffectInstance::new("absorption", 2400, 3));
@@ -1021,7 +1032,7 @@ mod tests {
                 "minecraft:max_absorption",
                 "minecraft:effect.absorption",
                 16.0,
-                "add_value",
+                Operation::AddValue,
             )]
         );
     }
