@@ -123,6 +123,8 @@ pub trait MenusRegistrar {
     /// or a non-built-in `minecraft:*` menu type). Built-in vanilla menu types that
     /// already have a screen in `MenuScreens.SCREENS` and duplicate registrations for
     /// the same menu type refuse installation, even if the error is ignored.
+    /// To customize a stock layout (such as a hopper), declare a distinct mod
+    /// menu type with the same slots and open it from your block.
     /// The factory builds a fresh screen on the client for each opening. The
     /// window owns its callbacks and local slot moves until close or replacement.
     /// A package with a factory cannot declare `side = "server"`.

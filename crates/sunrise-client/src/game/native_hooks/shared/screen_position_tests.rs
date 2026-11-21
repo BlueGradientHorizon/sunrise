@@ -541,8 +541,15 @@ impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
             mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
                 width: 176.0,
                 height: 133.0,
+                inventory_x: 8.0,
+                inventory_y: 51.0,
                 slots: (0..5)
-                    .map(|i| (i != HIDDEN).then(mod_api::ScreenSlot::default))
+                    .map(|i| {
+                        (i != HIDDEN).then(|| mod_api::ScreenSlot {
+                            position: [44.0 + 18.0 * i as f32, 20.0],
+                            no_item_icon: None,
+                        })
+                    })
                     .collect(),
                 own_labels: true,
                 own_background: true,
@@ -551,7 +558,10 @@ impl<const HIDDEN: usize> mod_api::MenuScreenFactory for HopperScreen<HIDDEN> {
             .with_draw(move |host, _, _| {
                 assert_eq!(mod_api::content::crash::current_native_mod(), Some(owner));
                 let slot = usize::from(HIDDEN == 0);
-                assert_eq!(host.screen_slot(menu, slot), Some([0.0, 0.0]));
+                assert_eq!(
+                    host.screen_slot(menu, slot),
+                    Some([44.0 + 18.0 * slot as f32, 20.0])
+                );
                 draw.lock().unwrap().push((owner, "draw"));
             })
             .with_click(move |_, _, _| {
@@ -765,6 +775,149 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                         );
                         assert_eq!(game.menu_opener_block(pos, "minecraft:hopper"), None);
                         assert!(heard.lock().unwrap().is_empty());
+                    },
+                );
+            },
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
+    use crate::game::{
+        execution_role::ExecutionRole,
+        native_guest_turn_tests::register_test_menu,
+        native_item_places::tests::{guest, open_to_lan},
+    };
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{
+        buf::Reader, connection::Pipe, menu_extra, packets::play::Clientbound as C,
+    };
+    const MENU: &str = "hopper_fixture:menu";
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        "game::native_hooks::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets",
+        "SUNRISE_HOPPER_LAYOUT_CHILD",
+        &["block"],
+    ) {
+        return;
+    }
+    let heard = Heard::default();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "hopper_fixture",
+        Box::new(HopperMod {
+            block_menu: MENU,
+            screen: HopperScreen::<5> {
+                owner: "hopper_fixture",
+                menu: MENU,
+                heard: heard.clone(),
+            },
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_api::__private::mark_game_thread();
+        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
+        let pos = (1, 64, 1);
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                MENU.into(),
+                "hopper_fixture".into(),
+                5,
+                0,
+                vec![],
+                vec![],
+                None,
+                None,
+                true,
+            )],
+            || {
+                let mut sent = None;
+                crate::game::native_entity_refs::tests::with_game_role(
+                    root.prepared().to_owned(),
+                    ExecutionRole::IntegratedServer,
+                    |game| {
+                        open_to_lan(game);
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        let mut player = guest(1);
+                        player.brand = "sunrise".into();
+                        player.sender = PlayerSender::new(tx, Arc::default());
+                        player.sender.menu_extra_rev = menu_extra::LIVE_DATA_REVISION;
+                        game.lan.as_mut().unwrap().hub.guests.push(player);
+                        register_test_menu(game, MENU);
+                        rx.try_iter().for_each(drop);
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        let state = game
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("hopper_fixture:machine")
+                            .unwrap();
+                        game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+                        game.world
+                            .block_entities
+                            .insert(pos, BlockEntity::Chest(vec![None; 5]));
+                        assert!(game.lan_open_container(1, pos));
+                        let hub = &game.lan.as_ref().unwrap().hub;
+                        let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
+                        assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));
+                        let packets: Vec<_> = rx
+                            .try_iter()
+                            .flat_map(|out| match out {
+                                Out::Packet(body) => vec![body],
+                                Out::Packets(bodies) => bodies,
+                                _ => vec![],
+                            })
+                            .filter_map(|body| {
+                                let mut reader = Reader::new(&body);
+                                let id = reader.varint().unwrap();
+                                match C::decode(id, reader.rest()).unwrap() {
+                                    C::CustomPayload(p) if p.channel == menu_extra::CHANNEL => {
+                                        Some(C::CustomPayload(p))
+                                    }
+                                    C::OpenScreen(p) => Some(C::OpenScreen(p)),
+                                    _ => None,
+                                }
+                            })
+                            .collect();
+                        sent = Some((packets, hub.sync_data().builtin.clone(), state));
+                    },
+                );
+                let (packets, builtin, state) = sent.unwrap();
+                crate::game::native_entity_refs::tests::with_game_role(
+                    root.prepared().to_owned(),
+                    ExecutionRole::Client,
+                    |game| {
+                        let (client, _server) = Pipe::pair();
+                        game.connect_local(client, "Hopper layout").unwrap();
+                        let remote = game.remote.as_mut().unwrap();
+                        remote.builtin = Arc::new(builtin);
+                        Arc::make_mut(&mut remote.registries).menu_extra_revision =
+                            menu_extra::LIVE_DATA_REVISION;
+                        game.world
+                            .chunks
+                            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                        game.world.set(pos.0, pos.1, pos.2, state).unwrap();
+                        assert_eq!(packets.len(), 2);
+                        for packet in packets {
+                            game.handle_packet(packet).unwrap();
+                        }
+                        assert_eq!(game.screen, Screen::Inventory);
+                        let open = game
+                            .mod_screen
+                            .as_ref()
+                            .expect("registered screen for the mod menu");
+                        assert_eq!(open.menu.name, MENU);
+                        assert_eq!(open.menu.block.as_deref(), Some("hopper_fixture:machine"));
+                        assert_eq!(open.layout().slots.len(), 5);
+                        for (slot, x) in [44.0, 62.0, 80.0, 98.0, 116.0].into_iter().enumerate() {
+                            assert_eq!(game.screen_slot(MENU, slot), Some([x, 20.0]));
+                        }
+                        assert_eq!(*heard.lock().unwrap(), [("hopper_fixture", "create")]);
                     },
                 );
             },

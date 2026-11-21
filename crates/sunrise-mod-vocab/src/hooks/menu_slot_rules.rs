@@ -7,7 +7,9 @@ pub trait Hooks {
     /// the creative picker have no registered type. `slot` is the backing index,
     /// including player inventory slots. The slot's own answers arrive first;
     /// the maximum is bounded to 1–99 and the item limit. Refusal also prevents
-    /// quick-move top-ups. Runs on server and client prediction with the read
+    /// quick-move top-ups, including for `ItemPlace`-backed mod menus. These
+    /// answers govern clicks, not direct transfers through an `ItemPlace` handle.
+    /// Runs on server and client prediction with the read
     /// `Host`: it is a query, so it can neither write nor cancel. A click asks
     /// once for each slot and stack it consults while it plans, and never again
     /// when it validates or applies. Answer from the stack and the host alone,

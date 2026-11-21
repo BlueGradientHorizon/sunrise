@@ -1,0 +1,2 @@
+sunrise-client game::native_menu_places::tests::a_code_opened_backed_menu_respects_its_display_only_slot lib daily child-process
+sunrise-client game::native_hooks::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets lib daily child-process

@@ -9,6 +9,11 @@ in the menu type itself, and enforce server-side placement or pickup restriction
 `MenuScreenLayout::slots` corresponds to its backing index; `None` (including omitted trailing
 entries) marks a slot that starts inactive/hidden (`Slot.isActive()`).
 
+For a mod menu backed by `ItemPlace`, pickup and quick move use these same
+rules. A display-only backing slot should refuse both `may_place` and
+`may_pickup`; a direct write to the backing `ItemPlace` still works. Hiding a
+slot in the client layout does not change what the server allows.
+
 Any mod can move, activate, or hide a slot of the open screen for `menu` through
 [`ClientHost::set_screen_slot`](../../how-to/client/screens.md#moving-or-hiding-a-mod-screens-slots)
 while this opening is shown. That change affects only the client; the server can still

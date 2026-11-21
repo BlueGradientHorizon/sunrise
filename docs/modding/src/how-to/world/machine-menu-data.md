@@ -326,6 +326,15 @@ slots are known and before the window is shown. It returns a fresh `MenuScreen`.
 without a factory closes again. When a selected factory returns `None` or produces an invalid
 layout, the client refuses that opening.
 
+Stock menu types already have a screen. To put your own screen over a hopper-like
+menu, declare a distinct `[[menus]]` type (for example `mymod:hopper_menu`) with
+`slots = 5` and the player inventory enabled. Set `ModContainer.menu` on your
+block to `Some("mymod:hopper_menu".into())`, with the same five backing slots, and
+register your factory with `r.register_menu_screen("mymod:hopper_menu", factory)`.
+In the factory, place the five slots at `[44 + 18 * i, 20]` in GUI pixels and the
+player inventory at `[8, 51]` to match the hopper layout. The vanilla hopper
+continues to open its built-in screen.
+
 ```rust,ignore
 use mod_api::{ClientHost, MenuScreen, MenuScreenLayout, MenuScreenOpen, ScreenSlot};
 use std::sync::Arc;
