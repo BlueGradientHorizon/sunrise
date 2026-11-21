@@ -273,8 +273,10 @@ pub(crate) struct BoxCellSweep {
 
 impl BoxCellSweep {
     pub(crate) fn new(area: Aabb, at: Vec3) -> Self {
-        let lo = BlockPos::containing(area.min_position());
-        let hi = BlockPos::containing(area.max_position());
+        let at_cell =
+            |p: Vec3| BlockPos::new(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+        let lo = at_cell(area.min_position());
+        let hi = at_cell(area.max_position());
         let next = (lo.x <= hi.x && lo.y <= hi.y && lo.z <= hi.z).then_some(lo);
         Self { lo, hi, at, next }
     }

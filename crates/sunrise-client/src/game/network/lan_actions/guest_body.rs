@@ -162,6 +162,10 @@ impl Game<'_> {
                     &game.health_resources,
                     rules,
                 );
+                game.finish_guest_damage();
+                let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                    return;
+                };
                 let events = std::mem::take(&mut player.events);
                 game.record_combat(&events);
             });
