@@ -131,7 +131,7 @@ impl Game<'_> {
         let state = &self.native_commands;
         if state.registered.is_none() {
             if force_resend {
-                self.resend_commands_filtered();
+                self.send_placed_command_trees(false);
             }
             return;
         }
@@ -149,7 +149,7 @@ impl Game<'_> {
         } else if !force_resend {
             return;
         }
-        self.resend_commands_filtered();
+        self.send_placed_command_trees(false);
     }
 
     /// Restore mod nodes (and rebind their executors) after vanilla replaces the tree.

@@ -3121,16 +3121,19 @@ impl Game<'_> {
                 }
             }};
         }
-        let index = {
+        let joining = {
             let ctx = join_ctx!();
             self.lan
                 .as_mut()
                 .and_then(|host| host.hub.begin_player_join(conn, &ctx))
+                .is_some()
         };
-        if let Some(i) = index {
+        if joining {
             self.send_player_command_tree(conn);
             let ctx = join_ctx!();
-            if let Some(host) = self.lan.as_mut() {
+            if let Some(host) = self.lan.as_mut()
+                && let Some(i) = host.hub.guests.connection_index(conn)
+            {
                 host.hub.finish_player_join(i, &ctx);
             }
         }

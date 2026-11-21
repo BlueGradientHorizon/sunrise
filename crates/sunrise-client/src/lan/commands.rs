@@ -10,7 +10,7 @@
 use super::{command_order::ORDER, command_suggestions::SUGGESTIONS};
 use serde_json::Value;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     path::Path,
     sync::OnceLock,
 };
@@ -67,7 +67,8 @@ pub(super) fn with_session_tools(extra: &Value) -> Value {
     root
 }
 
-/// A node of the filtered tree.
+/// A node of the permission-filtered tree, before wire numbering.
+#[derive(Default)]
 struct Node {
     name: String,
     kind: u8,
@@ -138,22 +139,27 @@ impl CommandTree {
         features: &[String],
         registry: &crate::gamerules::RuleRegistry,
     ) -> Commands {
+        self.graph_with_features(level, dedicated, extra, features, registry)
+            .packet(builtin, &[])
+    }
+
+    /// Build the usable graph without assigning wire IDs yet.
+    pub(super) fn graph_with_features(
+        &self,
+        level: u8,
+        dedicated: bool,
+        extra: &Value,
+        features: &[String],
+        registry: &crate::gamerules::RuleRegistry,
+    ) -> CommandGraph {
         let minecart_improvements = features
             .iter()
             .any(|f| f == crate::gamerules::MINECART_IMPROVEMENTS);
-        let mut nodes = vec![Node {
-            name: String::new(),
-            kind: 0,
-            executable: false,
-            restricted: false,
-            children: Vec::new(),
-            redirect: None,
-            parser: None,
-            suggestions: None,
-        }];
+        let CommandGraph {
+            mut nodes,
+            mut paths,
+        } = CommandGraph::default();
         let suggestions: HashMap<&str, &'static str> = SUGGESTIONS.iter().copied().collect();
-        let mut paths: HashMap<Vec<String>, usize> = HashMap::new();
-        paths.insert(Vec::new(), 0);
         let sunrise = if crate::command::vanilla::game_dispatcher()
             .find("pregen")
             .is_some()
@@ -207,114 +213,100 @@ impl CommandTree {
                 &mut paths,
             );
         }
-        // enumerateNodes: breadth first from the root, each node's children
-        // (in registration order) then its redirect target.
+        CommandGraph { nodes, paths }
+    }
+}
+
+/// One recipient's usable command nodes, in registration order and without wire indices.
+pub struct CommandGraph {
+    nodes: Vec<Node>,
+    paths: HashMap<Vec<String>, usize>,
+}
+
+impl Default for CommandGraph {
+    fn default() -> Self {
+        Self {
+            nodes: vec![Node::default()],
+            paths: HashMap::from([(Vec::new(), 0)]),
+        }
+    }
+}
+
+impl CommandGraph {
+    /// Names of the usable root children, indexed in registration order.
+    pub fn roots(&self) -> impl ExactSizeIterator<Item = &str> + Clone {
+        self.nodes[0]
+            .children
+            .iter()
+            .map(|&i| self.nodes[i].name.as_str())
+    }
+
+    /// Apply root indexes collected from this graph, then number and construct the packet once.
+    pub(super) fn packet(self, builtin: &Builtin, hidden: &[usize]) -> Commands {
+        let Self { mut nodes, paths } = self;
+        let redirects: Vec<_> = nodes
+            .iter_mut()
+            .map(|node| {
+                node.redirect
+                    .take()
+                    .and_then(|path| paths.get(&path).copied())
+            })
+            .collect();
+        let mut omit = Vec::new();
+        if !hidden.is_empty() {
+            // Follow incoming redirects as well as children so no surviving alias
+            // reaches a hidden branch (including aliases to descendants or aliases).
+            let mut aliases = vec![Vec::new(); nodes.len()];
+            for (index, &target) in redirects.iter().enumerate() {
+                if let Some(target) = target {
+                    aliases[target].push(index);
+                }
+            }
+            omit.resize(nodes.len(), false);
+            let mut pending: Vec<_> = hidden.iter().map(|&i| nodes[0].children[i]).collect();
+            while let Some(index) = pending.pop() {
+                if !std::mem::replace(&mut omit[index], true) {
+                    pending.extend(aliases[index].iter().copied());
+                    pending.extend(nodes[index].children.iter().copied());
+                }
+            }
+        }
+
+        // ClientboundCommandsPacket.enumerateNodes: children in registration order, then redirect.
         let mut ids = vec![None; nodes.len()];
         let mut order = Vec::new();
         let mut queue = VecDeque::from([0usize]);
         while let Some(n) = queue.pop_front() {
-            if ids[n].is_some() {
+            if (!omit.is_empty() && omit[n]) || ids[n].is_some() {
                 continue;
             }
             ids[n] = Some(order.len() as i32);
             order.push(n);
             queue.extend(nodes[n].children.iter().copied());
-            if let Some(target) = nodes[n].redirect.as_ref().and_then(|p| paths.get(p)) {
-                queue.push_back(*target);
-            }
+            queue.extend(redirects[n]);
         }
         let argument_types = builtin.get("minecraft:command_argument_type");
-        let out = order
-            .iter()
-            .map(|&n| {
-                let node = &nodes[n];
+        let nodes = order
+            .into_iter()
+            .map(|n| {
+                let node = std::mem::take(&mut nodes[n]);
                 CommandNode {
                     kind: node.kind,
                     executable: node.executable,
                     restricted: node.restricted,
-                    children: node.children.iter().filter_map(|c| ids[*c]).collect(),
-                    redirect: node
-                        .redirect
-                        .as_ref()
-                        .and_then(|p| paths.get(p))
-                        .and_then(|t| ids[*t]),
-                    name: node.name.clone(),
-                    parser: node.parser.as_ref().map(|(parser, props)| {
-                        let id = argument_types.and_then(|t| t.id(parser)).unwrap_or(0);
-                        (id, properties(parser, props))
+                    children: node.children.into_iter().filter_map(|c| ids[c]).collect(),
+                    redirect: redirects[n].and_then(|target| ids[target]),
+                    name: node.name,
+                    parser: node.parser.map(|(parser, props)| {
+                        let id = argument_types.and_then(|t| t.id(&parser)).unwrap_or(0);
+                        (id, properties(&parser, &props))
                     }),
-                    suggestions: node.suggestions.clone(),
+                    suggestions: node.suggestions,
                 }
             })
             .collect();
-        Commands {
-            nodes: out,
-            root: 0,
-        }
+        Commands { nodes, root: 0 }
     }
-}
-
-/// Omit selected root branches and aliases to them, then enumerate the remaining graph as
-/// ClientboundCommandsPacket does: breadth first, each node's children before its redirect.
-pub fn filter_command_roots(packet: &mut Commands, hidden: &HashSet<String>) {
-    let root = packet.root as usize;
-    let mut removed: Vec<_> = packet.nodes[root]
-        .children
-        .iter()
-        .map(|&index| index as usize)
-        .filter(|&index| hidden.contains(&packet.nodes[index].name))
-        .collect();
-    if removed.is_empty() {
-        return;
-    }
-
-    // Follow incoming redirect edges from the removed roots. Removing the aliases too
-    // leaves neither a dangling redirect nor a second root leading to the removed one.
-    let mut aliases = vec![Vec::new(); packet.nodes.len()];
-    for (index, node) in packet.nodes.iter().enumerate() {
-        if let Some(target) = node.redirect {
-            aliases[target as usize].push(index);
-        }
-    }
-    let mut omit = vec![false; packet.nodes.len()];
-    while let Some(index) = removed.pop() {
-        if !std::mem::replace(&mut omit[index], true) {
-            removed.extend(aliases[index].iter().copied());
-            removed.extend(
-                packet.nodes[index]
-                    .children
-                    .iter()
-                    .map(|&child| child as usize),
-            );
-        }
-    }
-
-    let mut ids = vec![-1; packet.nodes.len()];
-    let mut order = Vec::new();
-    let mut queue = VecDeque::from([root]);
-    while let Some(index) = queue.pop_front() {
-        if omit[index] || ids[index] >= 0 {
-            continue;
-        }
-        ids[index] = order.len() as i32;
-        order.push(index);
-        let node = &packet.nodes[index];
-        queue.extend(node.children.iter().map(|&child| child as usize));
-        queue.extend(node.redirect.map(|target| target as usize));
-    }
-    let mut old: Vec<_> = packet.nodes.drain(..).map(Some).collect();
-    for index in order {
-        let mut node = old[index]
-            .take()
-            .expect("each reachable command node is visited once");
-        node.children.retain_mut(|child| {
-            *child = ids[*child as usize];
-            *child >= 0
-        });
-        node.redirect = node.redirect.map(|target| ids[target as usize]);
-        packet.nodes.push(node);
-    }
-    packet.root = 0;
 }
 
 /// Commands.fillUsableCommands over the report: the children the source may use.
@@ -505,21 +497,25 @@ mod tests {
             parser: None,
             suggestions: None,
         };
-        let mut packet = Commands {
-            root: 0,
-            nodes: vec![
-                node("", vec![1, 2, 3, 4, 5, 6], None),
-                node("hide", vec![7], None),
-                node("keep", vec![8], None),
-                node("hidden_alias", vec![], Some(1)),
-                node("indirect_alias", vec![], Some(3)),
-                node("child_alias", vec![], Some(7)),
-                node("kept_alias", vec![], Some(2)),
-                node("hidden_child", vec![], None),
-                node("kept_child", vec![], None),
-            ],
+        let tree = CommandTree {
+            root: serde_json::json!({"type": "root", "children": {
+                "a_hide": {"type": "literal", "children": {"hidden_child": {"type": "literal", "executable": true}}},
+                "b_keep": {"type": "literal", "children": {"kept_child": {"type": "literal", "executable": true}}},
+                "c_hidden_alias": {"type": "literal", "redirect": ["a_hide"]},
+                "d_indirect_alias": {"type": "literal", "redirect": ["c_hidden_alias"]},
+                "e_child_alias": {"type": "literal", "redirect": ["a_hide", "hidden_child"]},
+                "f_kept_alias": {"type": "literal", "redirect": ["b_keep"]}
+            }}),
         };
-        filter_command_roots(&mut packet, &HashSet::from(["hide".to_owned()]));
+        let graph = tree.graph_with_features(
+            0,
+            true,
+            &Value::Null,
+            &[],
+            &crate::gamerules::rule_registry(),
+        );
+        assert_eq!(graph.roots().next(), Some("a_hide"));
+        let packet = graph.packet(&Builtin::default(), &[0]);
 
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
         let encoded = Clientbound::Commands(packet).encode();
@@ -534,8 +530,8 @@ mod tests {
                 root: 0,
                 nodes: vec![
                     node("", vec![1, 2], None),
-                    node("keep", vec![3], None),
-                    node("kept_alias", vec![], Some(1)),
+                    node("b_keep", vec![3], None),
+                    node("f_kept_alias", vec![], Some(1)),
                     node("kept_child", vec![], None),
                 ],
             },

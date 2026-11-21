@@ -1,3 +1,19 @@
-ids = ["hook:player_commands_sent", "type:PlayerCommandsSentEvent", "method:Hooks::player_commands_sent", "type:CommandTreeFilter", "method:CommandTreeFilter::root_names", "method:CommandTreeFilter::hide_where", "type:CommandTreeSelection", "fn:sunrise_client_lib::lan::hub::Hub::set_mod_commands", "fn:sunrise_client_lib::lan::hub::Hub::send_permission_level"]
-why = "Vanilla Commands.sendCommands and fillUsableCommands build the usable tree from the live ServerPlayer just before sending it; ClientboundCommandsPacket.enumerateNodes numbers the outgoing graph. NeoForge Commands.sendCommands uses CommandHelper.mergeCommandNode for redirects, not a filter event. Sunrise now lends the recipient and the actual permission-filtered tree on every send, rather than retaining last-send names. It omits selected branches and aliases to them without changing the executable dispatcher."
-migrate = "Change Hooks::player_commands_sent to take &dyn Host and &mut PlayerCommandsSentEvent<'_> and return Option<CommandTreeSelection>. Use event.player.uuid() instead of the old UUID and event.player.name(host) instead of event.name. Replace event.names.retain(|name| keep(name)) with returning event.tree.hide_where(|name| !keep(name)); return None for no exclusions. Use event.tree.root_names() to inspect the ordered permitted roots. Do not cache a previous answer: every send is filtered independently. Installs targeting the unstable Hub::set_mod_commands must move to the operation they intend to observe: use Hub::send_permission_level for the permission event; use game::native_hooks::base::Game::native_player_commands_sent for the per-player tree filter. Report installation no longer sends packets and is not a replacement point."
+ids = [
+    "hook:player_commands_sent",
+    "hook:player_commands_sent.player",
+    "hook:player_commands_sent.name",
+    "hook:player_commands_sent.names",
+    "hook:player_commands_sent.tree",
+    "method:Hooks::player_commands_sent",
+    "type:PlayerCommandsSentEvent",
+    "type:PlayerCommandsSentEvent.player",
+    "type:PlayerCommandsSentEvent.name",
+    "type:PlayerCommandsSentEvent.names",
+    "type:PlayerCommandsSentEvent.tree",
+    "type:CommandTreeFilter",
+    "handle:CommandTreeFilter::root_names",
+    "handle:CommandTreeFilter::hide_where",
+    "type:CommandTreeSelection",
+]
+why = "Vanilla Commands.sendCommands and fillUsableCommands build the usable tree from the live ServerPlayer just before sending it, and ClientboundCommandsPacket.enumerateNodes numbers that graph. NeoForge uses CommandHelper.mergeCommandNode for redirect consistency, not a send-time filter event. Sunrise lends the actual recipient and usable roots, then applies all selections and removes aliases into hidden branches before numbering the packet. As in PlayerList.placeNewPlayer, the joining connection is available before online enumeration. PlayerList.deop applies the new permission before the tree is sent, and ServerPlayer.teleport sends the tree before moving the recipient. Installing a display report follows Commands.sendCommands without the permission event from PlayerList.sendPlayerPermissionLevel. None of these display changes restricts execution."
+migrate = "Implement Hooks::player_commands_sent(&self, host: &dyn Host, event: &mut PlayerCommandsSentEvent<'_>) -> Option<CommandTreeSelection>. Replace the old UUID field with event.player.uuid(). PlayerRef::name(host) returns Option<&str>, not &str: replace a direct event.name read with `let Some(name) = event.player.name(host) else { return None; };` or compare it with `Some(\"Alex\")`. Read the former names list through event.tree.root_names(); replace event.names.retain(|name| keep(name)) with `event.tree.hide_where(|name| !keep(name))` as the return value. Return None to leave the tree unchanged; never reuse an exclusion from another send. For an unstable mixin that targeted Hub::set_mod_commands to intercept outgoing names, use Hooks::player_commands_sent instead. For intercepting the permission EntityEvent only, use Hub::send_permission_level. Hub::set_mod_commands now installs display data only."

@@ -363,9 +363,12 @@ if event.player.name(host) == Some("Alex") {
 }
 ```
 
-Each send asks again: there is no saved answer from a previous join, refresh,
-respawn or dimension. Successful selections combine; another listener cannot
-restore a root. Redirects into a removed branch disappear with that branch.
+Each send asks again: return the selection from the callback that created it.
+Successful selections combine; another listener cannot restore a root. Redirects
+into a removed branch disappear with that branch. On join, the recipient's
+address, brand and announced channels are already available, but the recipient
+is not yet in the online list. A permission update exposes the new permission;
+during cross-dimension travel, the recipient is still at the source.
 This filters client highlighting and suggestions, not permission to execute a
 typed command. Keep execution checks in the dispatcher.
 

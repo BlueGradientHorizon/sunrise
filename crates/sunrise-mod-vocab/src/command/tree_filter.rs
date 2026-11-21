@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 /// The roots of a player's outgoing command tree, after permission checks and
 /// before any listener selections are applied. Root names are borrowed in send order.
 // no wire: borrows the outgoing server command tree for this send.
@@ -5,11 +7,16 @@
 pub struct CommandTreeFilter<'a> {
     len: usize,
     name_at: &'a dyn Fn(usize) -> &'a str,
+    send: &'a Arc<()>,
 }
 
-/// A listener's requested exclusions from an outgoing command tree.
+/// A listener's requested exclusions for this send only. Return it from the
+/// callback that created it; it does not select commands in any other tree.
 // no wire: returned directly by an in-process command tree callback.
-pub struct CommandTreeSelection(Vec<String>);
+pub struct CommandTreeSelection {
+    send: Arc<()>,
+    roots: Vec<usize>,
+}
 
 impl<'a> CommandTreeFilter<'a> {
     /// The permission-filtered root names, in the order the client would receive them.
@@ -20,12 +27,15 @@ impl<'a> CommandTreeFilter<'a> {
     /// Select the roots to hide this send. Return the selection from the hook
     /// to apply it. Other listeners may hide more roots, but cannot restore any.
     pub fn hide_where(&self, mut hide: impl FnMut(&str) -> bool) -> Option<CommandTreeSelection> {
-        let names: Vec<_> = self
+        let roots: Vec<_> = self
             .root_names()
-            .filter(|name| hide(name))
-            .map(str::to_owned)
+            .enumerate()
+            .filter_map(|(index, name)| hide(name).then_some(index))
             .collect();
-        (!names.is_empty()).then_some(CommandTreeSelection(names))
+        (!roots.is_empty()).then(|| CommandTreeSelection {
+            send: Arc::clone(self.send),
+            roots,
+        })
     }
 }
 
@@ -33,11 +43,36 @@ impl<'a> CommandTreeFilter<'a> {
 pub fn command_tree_filter<'a>(
     len: usize,
     name_at: &'a dyn Fn(usize) -> &'a str,
+    send: &'a Arc<()>,
 ) -> CommandTreeFilter<'a> {
-    CommandTreeFilter { len, name_at }
+    CommandTreeFilter { len, name_at, send }
 }
 
-/// Return the selection to the engine without exposing its storage to mods.
-pub fn selected_command_roots(selection: CommandTreeSelection) -> Vec<String> {
-    selection.0
+/// Only this send's selections index this send's graph.
+pub fn selected_command_roots(
+    send: &Arc<()>,
+    selection: CommandTreeSelection,
+) -> Option<Vec<usize>> {
+    Arc::ptr_eq(send, &selection.send).then_some(selection.roots)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_selections_apply_only_to_the_send_that_created_them() {
+        let send = Arc::new(());
+        let another_send = Arc::new(());
+        let name_at = |i: usize| ["first", "second"][i];
+        let view = command_tree_filter(2, &name_at, &send);
+        assert_eq!(
+            selected_command_roots(&send, view.hide_where(|name| name == "second").unwrap()),
+            Some(vec![1])
+        );
+        assert_eq!(
+            selected_command_roots(&another_send, view.hide_where(|_| true).unwrap()),
+            None
+        );
+    }
 }

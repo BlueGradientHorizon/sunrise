@@ -8,6 +8,9 @@ pub trait Hooks {
     /// to select roots to omit from the permission-filtered tree. Aliases that
     /// redirect to removed commands are omitted too. This only changes command
     /// highlighting and completion on that client; it does not prevent execution.
+    /// At join the handle has connection data before appearing in online player lists.
+    /// A permission update exposes the new level; cross-dimension travel exposes the
+    /// source dimension and position until the command tree has been sent.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_commands_sent",
         dispatch = "api_carrier",

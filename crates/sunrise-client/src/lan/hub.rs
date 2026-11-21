@@ -1924,34 +1924,34 @@ impl Hub {
         changed
     }
 
-    /// The command tree a player of this permission level gets.
+    /// The command tree a player of this permission level gets without listener selections.
     pub fn commands_packet(&self, permission: u8) -> play::Commands {
-        match &self.sync.commands {
-            Some(tree) => {
-                let dedicated = !self.config.integrated;
-                tree.packet_with_features(
+        self.encode_command_graph(self.command_graph(permission), &[])
+    }
+
+    /// The recipient's usable graph before the command-tree hook and wire numbering.
+    pub fn command_graph(&self, permission: u8) -> super::commands::CommandGraph {
+        self.sync
+            .commands
+            .as_ref()
+            .map_or_else(Default::default, |tree| {
+                tree.graph_with_features(
                     permission,
-                    dedicated,
-                    &self.sync.builtin,
+                    !self.config.integrated,
                     &super::commands::with_session_tools(&self.mod_commands.0),
                     &self.sync.features,
                     &self.rule_registry,
                 )
-            }
-            None => play::Commands {
-                nodes: vec![play::CommandNode {
-                    kind: 0,
-                    executable: false,
-                    restricted: false,
-                    children: Vec::new(),
-                    redirect: None,
-                    name: String::new(),
-                    parser: None,
-                    suggestions: None,
-                }],
-                root: 0,
-            },
-        }
+            })
+    }
+
+    /// Finish the graph using this connection's command argument registry.
+    pub fn encode_command_graph(
+        &self,
+        graph: super::commands::CommandGraph,
+        hidden: &[usize],
+    ) -> play::Commands {
+        graph.packet(&self.sync.builtin, hidden)
     }
 
     /// ServerGamePacketListenerImpl.teleport: move the client and wait for its confirmation.
