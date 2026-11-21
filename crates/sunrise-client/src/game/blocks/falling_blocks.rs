@@ -72,7 +72,7 @@ impl Game<'_> {
         if moved.y < 0.0 {
             f.fall_distance -= f64::from(moved.y as f32);
         }
-        if f.on_ground {
+        if f.ground.on_ground {
             self.falling_block_impact(&mut f);
             if f.fall_distance > 0.0 {
                 let bounds = sunrise_client::falling_block::bounds(f.position);
@@ -199,34 +199,37 @@ impl Game<'_> {
             f.position.y + movement.y,
             f.position.z + movement.z,
         );
-        let on_ground = wanted.y < 0.0 && movement.y != wanted.y;
-        f.on_ground = on_ground;
         if movement.y < 0.0 {
             f.fall_distance -= f64::from(movement.y as f32);
         }
         let from = f.position;
         f.position = next;
-        let effect = sunrise_client::motion::BodyMotion {
+        let body = sunrise_client::motion::BodyMotion {
             world: &self.world,
             collision: self.collision,
             facts: self.res.facts(),
             blocks: Some(&self.res.motion().blocks),
             context: &self.loop_context,
             side: None,
+        };
+        if !gate.skipped() {
+            body.record_move(
+                f.position,
+                sunrise_client::falling_block::bounds(f.position),
+                wanted,
+                movement,
+                !self.options.execution_role.is_client(),
+                context,
+                Some(collisions::PowderSnowSubject {
+                    fall_distance: f.fall_distance,
+                    falling_block: true,
+                    ..Default::default()
+                }),
+                &mut f.ground,
+            );
         }
-        .effect_block(
-            f.position,
-            sunrise_client::falling_block::bounds(f.position),
-            on_ground,
-            movement,
-            context,
-            Some(collisions::PowderSnowSubject {
-                fall_distance: f.fall_distance,
-                falling_block: true,
-                ..Default::default()
-            }),
-        );
-        if on_ground {
+        let effect = body.legacy_contact(f.position, &f.ground);
+        if f.ground.on_ground {
             self.falling_block_impact(f);
             if f.fall_distance > 0.0 {
                 self.post_landing_event(
@@ -349,14 +352,14 @@ impl Game<'_> {
         }
         let y = next.y.floor() as i32;
         let outside = y <= self.world.bottom_y() || y >= self.world.top_y();
-        if !on_ground && (f.age > 100 && outside || f.age > 600) {
+        if !f.ground.on_ground && (f.age > 100 && outside || f.age > 600) {
             return Ok(if f.drop_item && entity_drops {
                 FallStep::Dropped(next)
             } else {
                 FallStep::Gone
             });
         }
-        if on_ground {
+        if f.ground.on_ground {
             return Ok(FallStep::Landed([
                 f.position.x.floor() as i32,
                 f.position.y.floor() as i32,

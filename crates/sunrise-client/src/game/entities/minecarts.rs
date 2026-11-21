@@ -130,8 +130,7 @@ pub(super) struct Minecart {
     pub flipped: bool,
     /// `AbstractMinecart.onRails`: transitions into rails need a position snap.
     pub(super) on_rails: bool,
-    pub(super) on_ground: bool,
-    pub(super) horizontal_collision: bool,
+    pub(super) ground: sunrise_world::ground_support::GroundState,
     pub(super) fall_distance: f64,
     /// The squared speed `MinecartTNT.causeFallDamage` blows up with, set by
     /// a landing of three blocks or more and taken by the cart's next tick
@@ -494,7 +493,7 @@ impl Minecart {
     }
     /// `Entity.onGround`.
     pub(super) fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
         Self {
@@ -515,8 +514,7 @@ impl Minecart {
             lerp_steps: Vec::new(),
             flipped: false,
             on_rails: false,
-            on_ground: false,
-            horizontal_collision: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             fall_blast: None,
             stuck: Vec3::ZERO,
@@ -985,7 +983,7 @@ impl Game<'_> {
             if delta.horizontal_distance_squared() > f64::from(1.0e-5_f32) {
                 let yaw = 180.0 - java_degrees(delta.z, delta.x) as f32
                     + if c.flipped { 180.0 } else { 0.0 };
-                let pitch = if c.on_ground && !c.on_rails {
+                let pitch = if c.ground.on_ground && !c.on_rails {
                     0.0
                 } else {
                     (90.0 - java_degrees(delta.horizontal_distance(), delta.y) as f32)
@@ -993,7 +991,7 @@ impl Game<'_> {
                 };
                 Self::set_cart_rotation(c, yaw, pitch);
             } else if !c.on_rails {
-                c.pitch = if c.on_ground {
+                c.pitch = if c.ground.on_ground {
                     0.0
                 } else {
                     c.pitch + 0.2 * ((-c.pitch + 180.0).rem_euclid(360.0) - 180.0)
@@ -1279,7 +1277,7 @@ impl Game<'_> {
         let max = self.cart_max_speed(c);
         c.velocity.x = c.velocity.x.clamp(-max, max);
         c.velocity.z = c.velocity.z.clamp(-max, max);
-        if c.on_ground {
+        if c.ground.on_ground {
             c.velocity = Vec3::new(c.velocity.x * 0.5, c.velocity.y * 0.5, c.velocity.z * 0.5);
         }
         let v = c.velocity;
@@ -1295,7 +1293,7 @@ impl Game<'_> {
             None,
         );
         c.velocity = sunrise_world::entity_move::scale_by_block_speed(c.velocity, factor);
-        if !c.on_ground {
+        if !c.ground.on_ground {
             // scale(getAirDrag()): 0.95F, widened.
             let drag = f64::from(0.95_f32);
             c.velocity = Vec3::new(
@@ -1501,7 +1499,7 @@ impl Game<'_> {
                 // them back: a head-on stop leaves nothing, a diagonal one keeps
                 // the free axis (#11380).
                 let speed = c.velocity.horizontal_distance_squared();
-                if tnt_ignites_by_collision(c.horizontal_collision, speed)
+                if tnt_ignites_by_collision(c.ground.horizontal_collision, speed)
                     && self.explode_cart(c, speed)
                 {
                     return false;
@@ -2797,11 +2795,15 @@ impl Minecart {
             self.position,
             self.velocity,
             [self.yaw, self.pitch],
-            (self.on_ground, self.fall_distance),
+            (self.ground.on_ground, self.fall_distance),
             uuid,
             raw,
         );
-        sunrise_client::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
+        sunrise_client::entity_nbt::write_saved_flags(
+            &mut tag,
+            self.ground.on_ground,
+            self.no_gravity,
+        );
         if let Tag::Compound(map) = &mut tag {
             // ContainerEntity.addChestVehicleSaveData belongs only to the
             // container subclasses, never to a plain or specialized cart.
@@ -2922,7 +2924,7 @@ impl Minecart {
         c.yaw = yaw;
         c.previous_yaw = yaw;
         c.no_gravity = sunrise_client::entity_nbt::flag(tag, "NoGravity");
-        c.on_ground = sunrise_client::entity_nbt::flag(tag, "OnGround");
+        c.ground.on_ground = sunrise_client::entity_nbt::flag(tag, "OnGround");
         c.pitch = sunrise_client::entity_nbt::rotation(tag)[1];
         c.previous_pitch = c.pitch;
         // ValueInput's numeric getters take any NumericTag: getIntOr is its
@@ -2943,7 +2945,7 @@ impl Minecart {
             _ => 0.0,
         };
         // Entity.load: OnGround and fall_distance, as saved.
-        (c.on_ground, c.fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
+        (c.ground.on_ground, c.fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
         c.ticks_frozen = super::boats::saved_ticks_frozen(tag);
         c.flipped = flag("FlippedRotation", false);
         c.first_tick = flag("HasTicked", false);

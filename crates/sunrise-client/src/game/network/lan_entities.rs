@@ -303,7 +303,7 @@ impl Game<'_> {
                 &b.entity_type(),
                 [p.x, p.y, p.z],
                 b.yaw,
-                b.on_ground,
+                b.ground.on_ground,
             );
             // Leashable.setLeashedTo / dropLeash: who holds the boat's lead.
             e.leash = leash;
@@ -865,14 +865,21 @@ impl Game<'_> {
             add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
         }
         for t in self.tnts.iter().filter(|t| t.id > after) {
-            let e = add_state(out, t.id, "minecraft:tnt", at(t.position), 0.0, t.on_ground);
+            let e = add_state(
+                out,
+                t.id,
+                "minecraft:tnt",
+                at(t.position),
+                0.0,
+                t.ground.on_ground,
+            );
             e.velocity = at(t.velocity);
             // PrimedTnt.DATA_FUSE_ID, 80 by default; requiresPrecisePosition
             // while it touches a block.
             if t.fuse != 80 {
                 e.meta.push((8, serializer::INT, Value::Int(t.fuse)));
             }
-            e.precise = t.on_ground;
+            e.precise = t.ground.on_ground;
         }
         for f in self.falling.iter().filter(|f| f.id > after) {
             let e = add_state(
@@ -881,7 +888,7 @@ impl Game<'_> {
                 "minecraft:falling_block",
                 at(f.position),
                 0.0,
-                f.on_ground,
+                f.ground.on_ground,
             );
             e.velocity = at(f.velocity);
             e.sync_velocity = f.sync_velocity;
@@ -1091,7 +1098,7 @@ impl Game<'_> {
                 "minecraft:firework_rocket",
                 at(r.position),
                 0.0,
-                r.on_ground,
+                r.ground.on_ground,
             );
             e.velocity = at(r.velocity);
             // DATA_ID_FIREWORKS_ITEM once set from a stack, DATA_ATTACHED_TO_TARGET,

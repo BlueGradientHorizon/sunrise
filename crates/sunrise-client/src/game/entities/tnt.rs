@@ -30,7 +30,7 @@ pub(super) struct PrimedTnt {
     pub fuse: i32,
     /// `Entity.tickCount`: starts at 0, +1 each entity tick, not saved.
     pub ticks: u32,
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.fallDistance` (`fall_distance` in its save).
     pub fall_distance: f64,
     /// `Entity.stuckSpeedMultiplier`: set by powder snow or a cobweb it is
@@ -116,8 +116,8 @@ impl PrimedTnt {
         if !self.in_water && moved_y < 0.0 {
             self.fall_distance -= f64::from(moved_y as f32);
         }
-        let landed = self.on_ground && self.fall_distance > 0.0;
-        if self.on_ground {
+        let landed = self.ground.on_ground && self.fall_distance > 0.0;
+        if self.ground.on_ground {
             self.fall_distance = 0.0;
         }
         landed
@@ -136,7 +136,7 @@ impl PrimedTnt {
         from: Vec3,
         original: Option<Vec3>,
     ) -> Vec<BlockPos> {
-        if self.on_ground {
+        if self.ground.on_ground {
             // SlimeBlock.stepOn, before the blocks it is inside.
             let under = world.block(
                 self.position.x.floor() as i32,
@@ -255,7 +255,7 @@ impl PrimedTnt {
             self.bounds(),
             wanted,
             0.0,
-            self.on_ground,
+            self.ground.on_ground,
             self.collision_context(),
         )
         .unwrap_or(Vec3::ZERO);
@@ -268,7 +268,6 @@ impl PrimedTnt {
                 self.position.z + moved.z,
             );
         }
-        self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
         let motion = sunrise_client::motion::BodyMotion {
             world,
             collision,
@@ -277,14 +276,20 @@ impl PrimedTnt {
             context,
             side,
         };
-        let effect = motion.effect_block(
-            self.position,
-            self.bounds(),
-            self.on_ground,
-            moved,
-            self.collision_context(),
-            Some(self.powder_snow_subject()),
-        );
+        let authoritative = context.side() == sunrise_world::native_load_context::LoopSide::Server;
+        if !gate.skipped() {
+            motion.record_move(
+                self.position,
+                self.bounds(),
+                wanted,
+                moved,
+                authoritative,
+                self.collision_context(),
+                Some(self.powder_snow_subject()),
+                &mut self.ground,
+            );
+        }
+        let effect = motion.legacy_contact(self.position, &self.ground);
         let landed = self.check_fall_damage(moved.y);
         motion.restitute(
             (self.id, "minecraft:tnt"),
@@ -318,7 +323,7 @@ impl PrimedTnt {
         );
         // Entity.scale(getAirDrag()): 0.98F, widened before it scales motion.
         self.velocity = sunrise_client::entity_rules::scale_air_drag(self.velocity);
-        if self.on_ground {
+        if self.ground.on_ground {
             self.velocity = Vec3::new(
                 self.velocity.x * 0.7,
                 self.velocity.y * -0.5,
@@ -434,7 +439,7 @@ impl Game<'_> {
             velocity: Vec3::new(-rot.sin() * 0.02, f64::from(0.2f32), -rot.cos() * 0.02),
             fuse,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -589,7 +594,7 @@ impl Game<'_> {
         sunrise_client::entity_nbt::tnt_to_nbt(
             t.position,
             t.velocity,
-            t.on_ground,
+            t.ground.on_ground,
             t.fall_distance,
             t.fuse,
             t.power,
@@ -1030,7 +1035,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 400,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -1051,7 +1056,7 @@ mod tests {
             let saved = sunrise_client::entity_nbt::tnt_to_nbt(
                 tnt.position,
                 tnt.velocity,
-                tnt.on_ground,
+                tnt.ground.on_ground,
                 tnt.fall_distance,
                 tnt.fuse,
                 tnt.power,
@@ -1102,7 +1107,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 80,
             ticks: 0,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -1113,9 +1118,9 @@ mod tests {
             block_state: None,
         };
         tnt.velocity = bounce_velocity(Direction::Up, tnt.velocity);
-        tnt.on_ground = false;
+        tnt.ground.on_ground = false;
         assert_eq!(tnt.velocity.y, 1.0);
-        assert!(!tnt.on_ground);
+        assert!(!tnt.ground.on_ground);
     }
 
     /// `Entity.collectColliders` (#7080): the world border's wall stops primed
@@ -1155,7 +1160,7 @@ mod tests {
                 velocity: Vec3::new(1.5, 0.0, 0.0),
                 fuse: 80,
                 ticks: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 fall_distance: 0.0,
                 stuck: Vec3::ZERO,
                 in_water: false,
@@ -1237,7 +1242,7 @@ mod tests {
                 velocity: Vec3::new(0.2, 0.0, 0.0),
                 fuse: 80,
                 ticks: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 fall_distance: 0.0,
                 stuck: Vec3::ZERO,
                 in_water: false,
@@ -1315,7 +1320,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 80,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -1360,7 +1365,7 @@ mod tests {
         )
         .unwrap();
         assert!((tnt.position.x - at.x - 0.014).abs() < 1e-12);
-        assert!(tnt.on_ground);
+        assert!(tnt.ground.on_ground);
         tnt.position = at;
         tnt.velocity = Vec3::ZERO;
         tnt.fuse = 1;
@@ -1409,7 +1414,7 @@ mod tests {
                 assets.registry.default_state("minecraft:air").unwrap(),
             )
             .unwrap();
-        tnt.on_ground = false;
+        tnt.ground.on_ground = false;
         tnt.velocity = Vec3::ZERO;
         tnt.tick(
             &world,
@@ -1480,7 +1485,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 80,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -1520,7 +1525,7 @@ mod tests {
         }
         tnt.position = at;
         tnt.velocity = Vec3::ZERO;
-        tnt.on_ground = false;
+        tnt.ground.on_ground = false;
         for _ in 0..4 {
             tnt.tick(
                 &world,
@@ -1591,7 +1596,7 @@ mod tests {
             velocity: Vec3::ZERO,
             fuse: 80,
             ticks: 0,
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             in_water: false,
@@ -1895,7 +1900,7 @@ mod tests {
             let saved = crate::entity_nbt::tnt_to_nbt(
                 t.position,
                 t.velocity,
-                t.on_ground,
+                t.ground.on_ground,
                 t.fall_distance,
                 t.fuse,
                 t.power,

@@ -402,7 +402,7 @@ mod tests {
             position: at,
             previous: at,
             velocity: Vec3::new(0.2, -0.04, 0.0),
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             fall_distance: 0.0,
             age: 0,
             pickup_delay: 0,
@@ -413,7 +413,6 @@ mod tests {
             was_touching_water: false,
             no_gravity: false,
             vertical_collision: false,
-            horizontal_collision: false,
             random: sunrise_core::random::LegacyRandom::new(0),
         };
         let step = item.tick_move(
@@ -427,7 +426,7 @@ mod tests {
             None,
             &game.loop_context,
         );
-        assert!(item.on_ground);
+        assert!(item.ground.on_ground);
         assert!(item.tick_settle(
             &game.world,
             game.pack.assets.registry,
@@ -438,7 +437,7 @@ mod tests {
             game,
         ));
         let mut orb = ExperienceOrb::new(9, at, Vec3::new(0.2, 0.0, 0.0), 1);
-        orb.on_ground = true;
+        orb.ground.on_ground = true;
         let (alive, _) = orb.tick_among(
             &game.world,
             game.res.facts(),
@@ -455,7 +454,7 @@ mod tests {
             &[],
         );
         assert!(alive);
-        assert!(orb.on_ground);
+        assert!(orb.ground.on_ground);
         (item.velocity.x, orb.velocity.x)
     }
 
@@ -986,7 +985,7 @@ mod tests {
                     assert_eq!(calls.load(Ordering::SeqCst), listens);
                 }
                 let mut boat = Boat::new(11, "oak".into(), at, 0.0);
-                boat.on_ground = true;
+                boat.ground.on_ground = true;
                 boat.leash_spin = 2.0;
                 boat.leash = Some(leash::Holder::Mob(99));
                 calls.store(0, Ordering::SeqCst);

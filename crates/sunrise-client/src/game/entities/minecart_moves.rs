@@ -50,7 +50,7 @@ impl Game<'_> {
             c.bounds(),
             delta,
             0.0,
-            c.on_ground,
+            c.ground.on_ground,
         ) {
             c.fall_distance = self.vehicle_fall_reset(c.fall_distance, c.position, moved);
             c.position = Vec3::new(
@@ -58,9 +58,6 @@ impl Game<'_> {
                 c.position.y + moved.y,
                 c.position.z + moved.z,
             );
-            c.on_ground = delta.y < 0.0 && moved.y > delta.y;
-            let differs = sunrise_world::entity_move::different;
-            c.horizontal_collision = differs(moved.x, delta.x) || differs(moved.z, delta.z);
             let side = game_side!(self);
             let motion = sunrise_client::motion::BodyMotion {
                 world: &self.world,
@@ -70,14 +67,19 @@ impl Game<'_> {
                 context: &self.loop_context,
                 side: Some(&side),
             };
-            let effect = motion.effect_block(
-                c.position,
-                c.bounds(),
-                c.on_ground,
-                moved,
-                sunrise_world::collision_context::CollisionContext::empty(false),
-                None,
-            );
+            if !gate.skipped() {
+                motion.record_move(
+                    c.position,
+                    c.bounds(),
+                    delta,
+                    moved,
+                    true,
+                    sunrise_world::collision_context::CollisionContext::empty(false),
+                    None,
+                    &mut c.ground,
+                );
+            }
+            let effect = motion.legacy_contact(c.position, &c.ground);
             // Entity.checkFallDamage: the move's drop counts (not in water, as of
             // the tick before: `isInWater` is `wasTouchingWater`),
             // and a landing hands the whole fall to causeFallDamage, which
@@ -86,7 +88,7 @@ impl Game<'_> {
                 c.fall_distance -= f64::from(moved.y as f32);
             }
             // A move up or none leaves the fall as it is (a saved one too).
-            if c.on_ground {
+            if c.ground.on_ground {
                 if c.kind == CartKind::Tnt && c.fall_distance >= 3.0 {
                     let power = c.fall_distance / 10.0;
                     c.fall_blast = Some(power * power);

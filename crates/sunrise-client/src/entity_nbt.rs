@@ -2764,7 +2764,7 @@ pub fn item_entity_to_nbt(
         position: e.position,
         motion: e.velocity,
         rotation: e.rotation,
-        on_ground: e.on_ground,
+        on_ground: e.ground.on_ground,
         fall_distance: e.fall_distance,
     };
     let mut tag = base.non_mob_tag(raw);
@@ -2939,9 +2939,8 @@ pub fn item_entity_from_nbt(tag: &Tag, id: u32, bob_offset: f32) -> Option<ItemE
         position,
         previous: position,
         velocity: motion(tag),
-        on_ground: flag(tag, "OnGround"),
+        ground: sunrise_world::ground_support::GroundState::from_ground_flag(flag(tag, "OnGround")),
         vertical_collision: false,
-        horizontal_collision: false,
         // Entity.load: getDoubleOr, any number widened.
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
         age: i32::from(short("Age", 0)),
@@ -3014,7 +3013,7 @@ pub fn orb_to_nbt(o: &ExperienceOrb, uuid: [i32; 4]) -> Tag {
         position: o.position,
         motion: o.velocity,
         rotation: o.rotation,
-        on_ground: o.on_ground,
+        on_ground: o.ground.on_ground,
         fall_distance: o.fall_distance,
     };
     let mut tag = base.tag(None);
@@ -3056,7 +3055,7 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
         value: tag.get("Value").and_then(int_value).unwrap_or(0) as i16 as i32,
         // `getShortOr("Age", 0)`: a signed short, unclamped.
         age: tag.get("Age").and_then(int_value).unwrap_or(0) as i16 as i32,
-        on_ground: flag(tag, "OnGround"),
+        ground: sunrise_world::ground_support::GroundState::from_ground_flag(flag(tag, "OnGround")),
         count,
         ticks: 0,
         health: number(tag.get("Health")).unwrap_or(5) as i32,
@@ -5838,7 +5837,7 @@ mod tests {
             fire_ticks: 73,
             thrower: Some([5, 6, 7, 8]),
             previous: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             age: 120,
             pickup_delay: 10,
             ..ItemEntity::new(
@@ -5861,7 +5860,7 @@ mod tests {
         assert_eq!(back.stack.damage, 5);
         assert_eq!((back.health, back.fire_ticks), (2, 73));
         assert_eq!(
-            (back.age, back.pickup_delay, back.on_ground),
+            (back.age, back.pickup_delay, back.ground.on_ground),
             (120, 10, true)
         );
         assert_eq!(back.position.x, 100.5);
@@ -6537,7 +6536,7 @@ mod tests {
             velocity: Vec3::ZERO,
             value: 7,
             age: 3,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,

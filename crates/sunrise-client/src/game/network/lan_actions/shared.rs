@@ -2511,7 +2511,7 @@ mod pickup_xp_tests {
                 velocity: Vec3::ZERO,
                 value: 7,
                 age: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 fire_ticks: 0,
                 ticks: 0,

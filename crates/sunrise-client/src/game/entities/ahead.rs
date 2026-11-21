@@ -454,7 +454,7 @@ mod tests {
             }
             let landed = game.dropped.iter().find(|i| i.id == landing).unwrap();
             assert_eq!(landed.position.y, boat_top);
-            assert!(landed.on_ground);
+            assert!(landed.ground.on_ground);
             assert_eq!(format!("{:?}", game.world.random), format!("{random:?}"));
             let left: Vec<String> = game.dropped.iter().map(|i| format!("{i:?}")).collect();
             runs.push((

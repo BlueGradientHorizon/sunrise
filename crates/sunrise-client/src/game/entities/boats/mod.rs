@@ -104,7 +104,7 @@ pub(super) struct Boat {
     pub paddle_controller: bool,
     /// left, right, up, down
     pub input: [bool; 4],
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.fallDistance`: counted by `AbstractBoat.checkFallDamage`, saved
     /// and loaded (`fall_distance`).
     pub fall_distance: f64,
@@ -275,7 +275,7 @@ impl Boat {
             paddling: [false; 2],
             paddle_controller: false,
             input: [false; 4],
-            on_ground: false,
+            ground: Default::default(),
             fall_distance: 0.0,
             stuck: Vec3::ZERO,
             chest: false,
@@ -359,13 +359,17 @@ impl Boat {
             self.position,
             self.velocity,
             [self.yaw, self.pitch],
-            (self.on_ground, self.fall_distance),
+            (self.ground.on_ground, self.fall_distance),
             uuid,
             raw,
             self.chest.then_some(&self.items[..]),
             items,
         );
-        sunrise_client::entity_nbt::write_saved_flags(&mut tag, self.on_ground, self.no_gravity);
+        sunrise_client::entity_nbt::write_saved_flags(
+            &mut tag,
+            self.ground.on_ground,
+            self.no_gravity,
+        );
         if let Tag::Compound(map) = &mut tag {
             map.insert("Fire".into(), Tag::Short(self.fire_ticks as i16));
             put_ticks_frozen(map, self.ticks_frozen);
@@ -829,7 +833,7 @@ impl Game<'_> {
     /// down over anything but water (the block under its `blockPosition`)
     /// adds to it.
     pub(super) fn boat_fall(&self, b: &Boat, moved_y: f64) -> f64 {
-        if b.on_ground {
+        if b.ground.on_ground {
             return 0.0;
         }
         if moved_y < 0.0 {
@@ -1048,7 +1052,7 @@ impl Game<'_> {
             b.bounds(),
             movement,
             0.0,
-            b.on_ground,
+            b.ground.on_ground,
         ) {
             b.fall_distance = self.vehicle_fall_reset(b.fall_distance, b.position, moved);
             b.position = Vec3::new(
@@ -1056,8 +1060,6 @@ impl Game<'_> {
                 b.position.y + moved.y,
                 b.position.z + moved.z,
             );
-            b.on_ground = movement.y < 0.0 && moved.y > movement.y;
-            b.fall_distance = self.boat_fall(&b, moved.y);
             let side = game_side!(self);
             let motion = sunrise_client::motion::BodyMotion {
                 world: &self.world,
@@ -1067,14 +1069,20 @@ impl Game<'_> {
                 context: &self.loop_context,
                 side: Some(&side),
             };
-            let effect = motion.effect_block(
-                b.position,
-                b.bounds(),
-                b.on_ground,
-                moved,
-                sunrise_world::collision_context::CollisionContext::empty(false),
-                None,
-            );
+            if !gate.skipped() {
+                motion.record_move(
+                    b.position,
+                    b.bounds(),
+                    movement,
+                    moved,
+                    true,
+                    sunrise_world::collision_context::CollisionContext::empty(false),
+                    None,
+                    &mut b.ground,
+                );
+            }
+            let effect = motion.legacy_contact(b.position, &b.ground);
+            b.fall_distance = self.boat_fall(&b, moved.y);
             // Damage and the later block effects still belong to AbstractBoat.tick.
             let mut velocity = b.velocity;
             motion.restitute(

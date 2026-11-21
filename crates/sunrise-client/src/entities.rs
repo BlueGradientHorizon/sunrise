@@ -193,7 +193,7 @@ pub struct ItemEntity {
     pub position: Vec3,
     pub previous: Vec3,
     pub velocity: Vec3,
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `Entity.fallDistance`: grown by each move down outside water, handed to the block's
     /// `fallOn` on landing ([`ItemStep::landed`]), then reset.
     pub fall_distance: f64,
@@ -219,8 +219,6 @@ pub struct ItemEntity {
     /// `ServerEntity.isFullPrecisionEncodingRequired` reads it for items, whose
     /// resting position is exact while a 1/4096 delta is not.
     pub vertical_collision: bool,
-    /// `Entity.horizontalCollision`: the last move was stopped on x or z.
-    pub horizontal_collision: bool,
     /// `Entity.random`, after the constructor's draws: `moveTowardsClosestSpace`
     /// takes an item's escape speed from it.
     pub random: sunrise_core::random::LegacyRandom,
@@ -583,7 +581,7 @@ impl ItemEntity {
             // `float friction = getAirDrag()` (0.98F); on the ground, times
             // the block's friction as a float, then widened for the scale.
             let mut friction = 0.98_f32;
-            if self.on_ground {
+            if self.ground.on_ground {
                 let below =
                     BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
                 friction *= block_friction(
@@ -603,7 +601,7 @@ impl ItemEntity {
                 self.velocity.y * air,
                 self.velocity.z * friction,
             );
-            if self.on_ground && self.velocity.y < 0.0 {
+            if self.ground.on_ground && self.velocity.y < 0.0 {
                 self.velocity.y *= -0.5;
             }
         }
@@ -612,7 +610,7 @@ impl ItemEntity {
             // The block sweep itself runs at the batch that ticks the item
             // (Game::sweep_item_inside), where the level host for a part's
             // contact is: the item's own tick sees the world read-only.
-            if self.on_ground {
+            if self.ground.on_ground {
                 let p = BlockPos::containing(self.position.add_vector(Vec3::new(
                     0.0,
                     -f64::from(0.2_f32),
@@ -663,7 +661,7 @@ impl ItemEntity {
     /// `SlimeBlock.stepOn` for an item on the ground: slow vertical speed
     /// drags the horizontal speed, on idle ticks too.
     fn slime_step_on(&mut self, world: &World, facts: &BlockFacts) {
-        if !self.on_ground {
+        if !self.ground.on_ground {
             return;
         }
         let p = BlockPos::containing(self.position.add_vector(Vec3::new(
@@ -686,7 +684,8 @@ impl ItemEntity {
     /// while `onGround` with no horizontal speed and gravity eats the bounce.
     pub fn piston_slime_bounce(&mut self, movement: Direction) {
         self.velocity = sunrise_world::piston_push::bounce_velocity(movement, self.velocity);
-        self.on_ground = false;
+        self.ground.on_ground = false;
+        self.ground.clear_support();
         self.needs_sync = true;
     }
     /// `HoneyBlock.entityInside` for the honey blocks this item's box is in
@@ -709,7 +708,7 @@ impl ItemEntity {
         let old_delta_y = |dy: f64| dy / f64::from(0.98_f32) + 0.08;
         let new_delta_y = |dy: f64| (dy - 0.08) * f64::from(0.98_f32);
         let [x, y, z] = pos.map(f64::from);
-        if self.on_ground
+        if self.ground.on_ground
             || self.position.y > y + 0.9375 - 1.0e-7
             || old_delta_y(self.velocity.y) >= -0.08
         {
@@ -826,7 +825,7 @@ pub struct ExperienceOrb {
     /// `ExperienceOrb.age`: ticks lived, signed (a save can start it below 0);
     /// the orb is discarded at 6000.
     pub age: i32,
-    pub on_ground: bool,
+    pub ground: sunrise_world::ground_support::GroundState,
     /// `ExperienceOrb.count`: orbs merged into this one; each pickup gives
     /// `value` once and takes one off.
     pub count: u32,
@@ -870,7 +869,7 @@ impl ExperienceOrb {
             velocity,
             value,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -1220,7 +1219,7 @@ impl ExperienceOrb {
             bounds,
             wanted,
             0.0,
-            self.on_ground,
+            self.ground.on_ground,
             border,
             entities,
         )
@@ -1231,7 +1230,6 @@ impl ExperienceOrb {
             self.position.y + moved.y,
             self.position.z + moved.z,
         );
-        self.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
         let motion = crate::motion::BodyMotion {
             world,
             collision,
@@ -1240,14 +1238,19 @@ impl ExperienceOrb {
             context,
             side: Some(side),
         };
-        let effect = motion.effect_block(
-            self.position,
-            self.bounds(),
-            self.on_ground,
-            moved,
-            sunrise_world::collision_context::CollisionContext::empty(false),
-            None,
-        );
+        if !gate.skipped() {
+            motion.record_move(
+                self.position,
+                self.bounds(),
+                wanted,
+                moved,
+                server,
+                sunrise_world::collision_context::CollisionContext::empty(false),
+                None,
+                &mut self.ground,
+            );
+        }
+        let effect = motion.legacy_contact(self.position, &self.ground);
         motion.restitute(
             (self.id, "minecraft:experience_orb"),
             false,
@@ -1272,7 +1275,7 @@ impl ExperienceOrb {
         // `float friction = getAirDrag()` (0.98F), the ground's block
         // friction multiplied in as a float, widened once for the scale.
         let mut friction = 0.98_f32;
-        if self.on_ground {
+        if self.ground.on_ground {
             let below =
                 BlockPos::containing(self.position.subtract(Vec3::new(0.0, 0.999_999, 0.0)));
             let kind = "minecraft:experience_orb";
@@ -1297,7 +1300,7 @@ impl ExperienceOrb {
         // `if (verticalCollisionBelow && fallSpeed < -getGravity())`: the
         // landing bounce is 0.4 of the pre-move speed, not a fixed
         // restitution.
-        if self.on_ground && wanted.y < -0.03 {
+        if self.ground.on_ground && wanted.y < -0.03 {
             self.velocity.y = -wanted.y * 0.4;
         }
         // `++age` on a Java int.
@@ -2657,9 +2660,8 @@ mod fire_environment_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -2851,9 +2853,8 @@ mod destroyed_bundle_environment_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3065,9 +3066,8 @@ mod merge_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
-            horizontal_collision: false,
             age,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3314,7 +3314,7 @@ mod world_border_tests {
                 }
             }
             let mut item = super::honey_slide_tests::falling_item(19.5, top, 20.5, 0.2, 0.0, 0.0);
-            item.on_ground = true;
+            item.ground.on_ground = true;
             item.tick(
                 &world,
                 assets.registry,
@@ -3381,7 +3381,7 @@ mod world_border_tests {
                 velocity: Vec3::new(1.5, 0.0, 0.0),
                 value: 1,
                 age: 0,
-                on_ground: true,
+                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
                 count: 1,
                 ticks: 0,
                 health: 5,
@@ -3444,7 +3444,7 @@ mod honey_slide_tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut item = falling_item(at.x, at.y, at.z, 0.0, 0.0, 0.0);
-        item.on_ground = true;
+        item.ground.on_ground = true;
         item.age = 0;
         item.ticks = 0;
         item.id = 0;
@@ -3507,7 +3507,7 @@ mod honey_slide_tests {
         }
         let at = Vec3::new(20.5, 4.0, 20.5);
         let mut item = falling_item(at.x, at.y, at.z, 0.0, 0.0, 0.0);
-        item.on_ground = true;
+        item.ground.on_ground = true;
         item.age = 0;
         item.id = 1;
         let before = item.position.y;
@@ -3598,9 +3598,8 @@ mod honey_slide_tests {
             position: at,
             previous: at,
             velocity: Vec3::new(vx, vy, vz),
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 10,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3646,7 +3645,7 @@ mod honey_slide_tests {
     #[test]
     fn an_item_on_the_ground_or_on_top_does_not_slide() {
         let mut grounded = falling_item(-0.0625, 10.4, 0.5, 0.0, -0.20, 0.0);
-        grounded.on_ground = true;
+        grounded.ground.on_ground = true;
         grounded.honey_block_inside([0, 10, 0]);
         assert_eq!(grounded.velocity.y, -0.20);
 
@@ -3702,9 +3701,8 @@ mod slime_bounce_tests {
             position: at,
             previous: at,
             velocity: Vec3::ZERO,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 10,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -3720,12 +3718,12 @@ mod slime_bounce_tests {
         let mut item = grounded_item();
         item.piston_slime_bounce(Direction::Up);
         assert_eq!(item.velocity, Vec3::new(0.0, 1.0, 0.0));
-        assert!(!item.on_ground);
+        assert!(!item.ground.on_ground);
         assert!(item.needs_sync);
         item.needs_sync = false;
         item.piston_slime_bounce(Direction::East);
         assert_eq!(item.velocity, Vec3::new(1.0, 1.0, 0.0));
-        assert!(!item.on_ground);
+        assert!(!item.ground.on_ground);
         assert!(item.needs_sync);
     }
 
@@ -3802,7 +3800,7 @@ mod slime_bounce_tests {
         falling.position = Vec3::new(20.5, 4.2, 20.5);
         falling.previous = falling.position;
         falling.velocity = Vec3::new(0.0, -0.5, 0.0);
-        falling.on_ground = false;
+        falling.ground.on_ground = false;
         falling.age = 0;
         falling.id = 1;
         falling.tick(
@@ -3818,7 +3816,7 @@ mod slime_bounce_tests {
         );
         assert_eq!(falling.position.y, 4.0);
         assert!(falling.velocity.y > 0.0);
-        assert!(falling.on_ground);
+        assert!(falling.ground.on_ground);
         assert!(falling.needs_sync);
 
         // An idle tick where velocity only steps by -0.04 (0.04^2 = 0.0016 <= 0.01)
@@ -4573,9 +4571,8 @@ mod item_destroyed_tests {
             position: Vec3::new(8.5, 64.0, 8.5),
             previous: Vec3::new(8.5, 64.0, 8.5),
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -4721,7 +4718,7 @@ mod orb_underwater_tests {
                     velocity: Vec3::new(v[0], v[1], v[2]),
                     value: 1,
                     age: 0,
-                    on_ground: false,
+                    ground: Default::default(),
                     count: 1,
                     ticks: 0,
                     health: 5,
@@ -4759,7 +4756,7 @@ mod render_light_tests {
             velocity: Vec3::new(0.0, 0.0, 0.0),
             value: 3,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health: 5,
@@ -4846,9 +4843,8 @@ mod dropped_item_light_tests {
             position: Vec3::new(0.5, y, 0.5),
             previous: Vec3::new(0.5, previous_y, 0.5),
             velocity: Vec3::ZERO,
-            on_ground: false,
+            ground: Default::default(),
             vertical_collision: false,
-            horizontal_collision: false,
             age: 0,
             pickup_delay: 0,
             bob_offset: 0.0,
@@ -4976,7 +4972,7 @@ mod orb_lava_tests {
             velocity: Vec3::ZERO,
             value: 1,
             age: 0,
-            on_ground: false,
+            ground: Default::default(),
             count: 1,
             ticks: 0,
             health,

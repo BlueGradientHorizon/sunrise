@@ -369,7 +369,7 @@ impl Game<'_> {
         if !step.in_water && step.moved.y < 0.0 {
             fall -= f64::from(step.moved.y as f32);
         }
-        if o.on_ground {
+        if o.ground.on_ground {
             if fall > 0.0 {
                 let (position, bounds) = (o.position, o.bounds());
                 self.post_landing_event(position, bounds, false);
