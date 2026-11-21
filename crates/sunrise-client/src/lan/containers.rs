@@ -1196,10 +1196,12 @@ impl Hub {
                 // `ContainerData` has as many as it declares, all sent on open
                 // (`sendInitialData`), 0 where the tick set none.
                 Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
+                    let limit = usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS);
                     let mut data = e.data.clone();
                     if let Some(t) = m.mod_type {
-                        data.resize(t.data_slots, 0);
+                        data.resize(t.data_slots.min(limit), 0);
                     }
+                    data.truncate(limit);
                     data
                 }
                 _ => return,

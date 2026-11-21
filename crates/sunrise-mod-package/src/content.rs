@@ -1047,10 +1047,18 @@ impl MenuCrafting {
     }
 }
 
-/// The most container or data slots a mod menu type has: `i16::MAX` (32,767),
-/// the non-negative 16-bit signed index range of vanilla's
-/// `ClientboundContainerSetDataPacket` and container slot packets.
-pub const MAX_MENU_SLOTS: u16 = i16::MAX as u16;
+/// The most total item slots a mod menu type may carry (container backing slots plus
+/// the 36 appended player inventory slots when `player_inventory` is true): `32,768`,
+/// matching vanilla's signed 16-bit slot index range `0..=32,767` (`i16::MAX`).
+pub const MAX_MENU_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over vanilla's signed 16-bit `ClientboundContainerSetDataPacket`
+/// (`0..=32,767`, count `32,768`).
+pub const MAX_SIGNED_DATA_SLOTS: u16 = (i16::MAX as u16) + 1;
+
+/// The most data slots carried over the unsigned 16-bit `sunrise:menu_data` payload
+/// (`0..=65,535`, count `65,536`).
+pub const MAX_BLOCKLESS_DATA_SLOTS: usize = usize::from(u16::MAX) + 1;
 
 #[derive(Debug, Clone)]
 enum Source {
@@ -1709,10 +1717,10 @@ impl Content {
             let source = format!("{name} ({menu})");
             let file: MenuType =
                 serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
-            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
+            let total_slots = usize::from(file.slots) + if file.player_inventory { 36 } else { 0 };
+            if total_slots > usize::from(MAX_MENU_SLOTS) {
                 return Err(format!(
-                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
-                    file.slots, file.data_slots
+                    "{source}: total menu slots ({total_slots}) exceed {MAX_MENU_SLOTS}"
                 ));
             }
             let mut seen = BTreeSet::new();
@@ -2864,26 +2872,37 @@ capabilities = ["registries"]
         let big_menu = smod(
             "menu-wide",
             MANIFEST_TEXT,
-            &[(
-                "data/ruby/sunrise/menu/wide.json",
-                br#"{"slots": 257, "data_slots": 257}"#,
-            )],
+            &[
+                (
+                    "data/ruby/sunrise/menu/wide.json",
+                    br#"{"slots": 32732, "data_slots": 32768}"#,
+                ),
+                (
+                    "data/ruby/sunrise/menu/wide_no_inv.json",
+                    br#"{"slots": 32768, "player_inventory": false, "data_slots": 65535}"#,
+                ),
+            ],
         )
         .unwrap();
-        assert_eq!(big_menu.menu_types.len(), 1);
-        assert_eq!(
-            (
-                big_menu.menu_types[0].slots,
-                big_menu.menu_types[0].data_slots
-            ),
-            (257, 257)
-        );
+        assert_eq!(big_menu.menu_types.len(), 2);
+        let wide = big_menu
+            .menu_types
+            .iter()
+            .find(|m| m.id == "ruby:wide")
+            .unwrap();
+        assert_eq!((wide.slots, wide.data_slots), (32732, 32768));
+        let wide_no_inv = big_menu
+            .menu_types
+            .iter()
+            .find(|m| m.id == "ruby:wide_no_inv")
+            .unwrap();
+        assert_eq!((wide_no_inv.slots, wide_no_inv.data_slots), (32768, 65535));
         for (case, file, details) in [
-            ("menu-large", r#"{"slots": 32768}"#, &["32768"][..]),
+            ("menu-large-with-inv", r#"{"slots": 32733}"#, &["32769"][..]),
             (
-                "menu-data",
-                r#"{"slots": 1, "data_slots": 32768}"#,
-                &["32768"][..],
+                "menu-large-no-inv",
+                r#"{"slots": 32769, "player_inventory": false}"#,
+                &["32769"][..],
             ),
             (
                 "menu-result",

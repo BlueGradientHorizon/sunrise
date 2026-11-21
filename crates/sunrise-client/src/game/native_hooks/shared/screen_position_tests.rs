@@ -690,12 +690,15 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             game.container = Some(pos);
                             game.set_screen(Screen::Inventory);
                             let open = game.mod_screen.as_ref().expect("the machine's screen");
-                            let (menu, open_block) =
-                                (open.menu.name.clone(), open.menu.block.clone().unwrap());
+                            let (menu, open_block, base) = (
+                                open.menu.name.clone(),
+                                open.menu.block.clone().unwrap(),
+                                open.container_slot_base(),
+                            );
                             assert_eq!(menu, menu_name);
                             assert_eq!(open_block, block);
                             let shown: Vec<_> = (0..5).filter(|&i| i != hidden).collect();
-                            let ids: Vec<_> = shown.iter().map(|i| 300 + i).collect();
+                            let ids: Vec<_> = shown.iter().map(|i| base + i).collect();
                             assert_eq!(game.native_screen_slots(), Some(ids));
                             let mut batch = HudBatch::scratch([512, 512]);
                             let (ox, oy) = game.inventory_origin(&batch);

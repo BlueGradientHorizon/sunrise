@@ -1024,3 +1024,46 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
         );
     });
 }
+
+#[test]
+fn open_native_screen_set_data_accepts_full_signed_and_mod_data_ranges() {
+    let mut stock = OpenNativeScreen {
+        menu: OpenNativeMenu {
+            key: (0, 0, 0),
+            window: 7,
+            generation: 1,
+            name: "minecraft:hopper".into(),
+            block: None,
+            pos: None,
+            mod_type: None,
+            data: Vec::new(),
+        },
+        slot_moves: Default::default(),
+        layout_revision: 0,
+        shown: true,
+        screen: mod_api::__private::OwnedMenuScreen::new(
+            "data-range",
+            0,
+            mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                width: 176.0,
+                height: 166.0,
+                slots: Vec::new(),
+                inventory_y: 84.0,
+                inventory_x: 8.0,
+                title_label: None,
+                inventory_label: None,
+                recipe_book: None,
+                title_color: None,
+                inventory_label_color: None,
+                big_result: false,
+            }),
+        ),
+    };
+    assert!(stock.set_data(7, 0, 11));
+    assert!(stock.set_data(7, 32_767, 22));
+    assert_eq!(stock.menu.data[0], 11);
+    assert_eq!(stock.menu.data[32_767], 22);
+    assert_eq!(stock.menu.data.len(), 32_768);
+    assert!(stock.set_data(7, 32_768, 33));
+    assert_eq!(stock.menu.data.len(), 32_768);
+}

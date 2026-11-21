@@ -3328,14 +3328,20 @@ impl Game<'_> {
                     _ => None,
                 }
             }
-            // A content mod's menu type: its container, then the inventory.
-            // A workstation: its inputs, its result, then the inventory.
+            // A content mod's menu type: its container (in the disjoint mod-menu slot
+            // range so large menus never alias armor, station, or mount slots), then the
+            // player inventory. A workstation: its inputs, its result, then the inventory.
             m => {
                 if let Some(t) = mod_type() {
-                    return if t.player_inventory {
-                        slots(t.slots)
+                    let n = t.slots;
+                    return if s < n {
+                        Some(crate::game::inventory_slots::MOD_MENU_SLOT_BASE + s)
+                    } else if t.player_inventory && s < n + 27 {
+                        Some(9 + s - n)
+                    } else if t.player_inventory && s < n + 36 {
+                        Some(s - n - 27)
                     } else {
-                        (s < t.slots).then_some(300 + s)
+                        None
                     };
                 }
                 let kind = Self::remote_station_kind(m)?;
@@ -3412,7 +3418,10 @@ impl Game<'_> {
         } else if internal == 504 {
             self.remote_hand_slot_set(super::shield::OFFHAND_SLOT, changed);
         }
-        if internal >= super::stations::INPUT && self.station.is_some() {
+        if internal >= super::stations::INPUT
+            && internal < crate::game::inventory_slots::MOD_MENU_SLOT_BASE
+            && self.station.is_some()
+        {
             self.remote_station_slot_changed(internal);
         }
     }

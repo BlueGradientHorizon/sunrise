@@ -846,7 +846,7 @@ impl OpenNativeScreen {
             return false;
         }
         let count = self.menu.mod_type.map_or(
-            usize::from(sunrise_mod_package::content::MAX_MENU_SLOTS),
+            usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS),
             |kind| kind.data_slots,
         );
         if index < count {
@@ -858,6 +858,14 @@ impl OpenNativeScreen {
         true
     }
 
+    pub(super) fn container_slot_base(&self) -> usize {
+        if self.menu.mod_type.is_some() {
+            super::inventory_slots::MOD_MENU_SLOT_BASE
+        } else {
+            300
+        }
+    }
+
     fn player_slots(&self) -> usize {
         self.menu
             .mod_type
@@ -865,14 +873,15 @@ impl OpenNativeScreen {
     }
 
     fn visible_container_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        let base = self.container_slot_base();
         self.layout()
             .slots
             .iter()
             .enumerate()
-            .filter_map(|(i, slot)| {
+            .filter_map(move |(i, slot)| {
                 self.slot_moves
                     .position(i, slot.as_ref().map(|slot| slot.position))?;
-                Some(300 + i)
+                Some(base + i)
             })
     }
 
@@ -2827,7 +2836,13 @@ impl Game<'_> {
             .ok_or(mod_api::ScreenSlotRefusal::NoScreen)?;
         s.slot_moves.set(&s.layout().slots, slot, pos)
     }
-    /// The container slots the open mod screen shows this frame (300.. ids).
+    /// The internal container slot base of the open mod screen (`MOD_MENU_SLOT_BASE`
+    /// for a `ModMenuType`, `300` for a stock menu).
+    pub(in crate::game) fn native_screen_container_slot_base(&self) -> usize {
+        self.shown_native_screen()
+            .map_or(300, OpenNativeScreen::container_slot_base)
+    }
+    /// The container slots the open mod screen shows this frame.
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
         Some(
             self.shown_native_screen()?
