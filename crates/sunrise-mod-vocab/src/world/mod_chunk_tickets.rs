@@ -1,6 +1,7 @@
 //! Moved here from the game so mods can name it.
 #[allow(unused_imports)]
 use crate::*;
+use std::collections::BTreeMap;
 // no wire: encoded by the existing manual Wire implementation on TicketOwner.
 /// What a ticket belongs to: a block (a machine) or an entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -48,17 +49,23 @@ impl TicketSet {
 }
 /// The saved tickets lent to one controller's [`LoadingValidationCallback`](crate::LoadingValidationCallback)
 /// (NeoForge's `TicketHelper`). The view contains only that controller's
-/// staged rows, with block and entity owners apart. Removals take effect
-/// immediately on those rows; a removed ticket never forces its chunk.
+/// staged rows, with block and entity owners apart. [`block_tickets`](Self::block_tickets)
+/// and [`entity_tickets`](Self::entity_tickets) lend read-only maps of the
+/// original saved tickets for the whole invocation and stay unchanged after
+/// removals during the callback. Removals take effect immediately on those
+/// staged rows; a removed ticket never forces its chunk.
 pub trait TicketValidation {
-    /// The controller's block tickets: each block position with the chunks it
-    /// holds without and with natural spawning (`TicketHelper.getBlockTickets`'
-    /// `TicketSet`: `nonNaturalSpawning`, `naturalSpawning`), in position order.
-    fn block_tickets(&self) -> Vec<([i32; 3], TicketSet)>;
-    /// The controller's entity tickets: each entity UUID with the chunks it
-    /// holds without and with natural spawning (`TicketHelper.getEntityTickets`),
-    /// in UUID order.
-    fn entity_tickets(&self) -> Vec<(u128, TicketSet)>;
+    /// The controller's original saved block tickets: each block position with
+    /// the chunks it held without and with natural spawning
+    /// (`TicketHelper.getBlockTickets`' `TicketSet`: `nonNaturalSpawning`,
+    /// `naturalSpawning`), in position order. Read-only and unchanged by
+    /// removals during this validation call.
+    fn block_tickets(&self) -> &BTreeMap<[i32; 3], TicketSet>;
+    /// The controller's original saved entity tickets: each entity UUID with
+    /// the chunks it held without and with natural spawning
+    /// (`TicketHelper.getEntityTickets`), in UUID order. Read-only and
+    /// unchanged by removals during this validation call.
+    fn entity_tickets(&self) -> &BTreeMap<u128, TicketSet>;
     /// Remove every ticket the block holds, of both kinds
     /// (`removeAllTickets(BlockPos)`): how many went.
     fn remove_block_tickets(&mut self, pos: [i32; 3]) -> usize;
@@ -84,9 +91,11 @@ pub trait TicketValidation {
 /// The game's [`TicketValidation`]: one controller's staged tickets.
 // hidden: a game-side helper; mods receive the TicketValidation trait.
 #[doc(hidden)]
-// exhaustive: its field is private, so mods cannot build or destructure it
+// exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ControllerTickets<'a> {
     loaded: &'a mut Vec<ModTicket>,
+    block_tickets: BTreeMap<[i32; 3], TicketSet>,
+    entity_tickets: BTreeMap<u128, TicketSet>,
 }
 impl std::fmt::Debug for ControllerTickets<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,33 +109,34 @@ impl<'a> ControllerTickets<'a> {
     // hidden: a game-side helper, not part of the mod surface
     #[doc(hidden)]
     pub fn new(loaded: &'a mut Vec<ModTicket>) -> Self {
-        Self { loaded }
+        let mut block_tickets = BTreeMap::<[i32; 3], TicketSet>::new();
+        let mut entity_tickets = BTreeMap::<u128, TicketSet>::new();
+        for row in loaded.iter() {
+            let chunk = [row.chunk.0, row.chunk.1];
+            match row.owner {
+                TicketOwner::Block(pos) => block_tickets
+                    .entry(pos)
+                    .or_default()
+                    .push(chunk, row.natural_spawning),
+                TicketOwner::Entity(uuid) => entity_tickets
+                    .entry(uuid)
+                    .or_default()
+                    .push(chunk, row.natural_spawning),
+            }
+        }
+        Self {
+            loaded,
+            block_tickets,
+            entity_tickets,
+        }
     }
 }
 impl TicketValidation for ControllerTickets<'_> {
-    fn block_tickets(&self) -> Vec<([i32; 3], TicketSet)> {
-        let mut grouped = std::collections::BTreeMap::<[i32; 3], TicketSet>::new();
-        for row in &*self.loaded {
-            if let TicketOwner::Block(pos) = row.owner {
-                grouped
-                    .entry(pos)
-                    .or_default()
-                    .push([row.chunk.0, row.chunk.1], row.natural_spawning);
-            }
-        }
-        grouped.into_iter().collect()
+    fn block_tickets(&self) -> &BTreeMap<[i32; 3], TicketSet> {
+        &self.block_tickets
     }
-    fn entity_tickets(&self) -> Vec<(u128, TicketSet)> {
-        let mut grouped = std::collections::BTreeMap::<u128, TicketSet>::new();
-        for row in &*self.loaded {
-            if let TicketOwner::Entity(uuid) = row.owner {
-                grouped
-                    .entry(uuid)
-                    .or_default()
-                    .push([row.chunk.0, row.chunk.1], row.natural_spawning);
-            }
-        }
-        grouped.into_iter().collect()
+    fn entity_tickets(&self) -> &BTreeMap<u128, TicketSet> {
+        &self.entity_tickets
     }
     fn remove_block_tickets(&mut self, pos: [i32; 3]) -> usize {
         self.remove(TicketOwner::Block(pos), None)

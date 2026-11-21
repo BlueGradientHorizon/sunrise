@@ -2203,11 +2203,7 @@ mod tests {
     }
 
     fn record_validation(controller: &'static str, validation: &dyn TicketValidation) {
-        let blocks = validation
-            .block_tickets()
-            .into_iter()
-            .map(|(pos, _)| pos)
-            .collect();
+        let blocks = validation.block_tickets().keys().copied().collect();
         SEEN.with_borrow_mut(|seen| seen.push((controller, blocks)));
     }
 

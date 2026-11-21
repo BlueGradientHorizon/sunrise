@@ -727,11 +727,14 @@ handle, an entity the client doesn't track and a level it doesn't show:
   and queues an error toast naming the mod and disables only that controller's validator for the session. A phase
   refusal is reported each time without disabling the validator. Neither undoes removals already made; after all
   validators finish, surviving tickets force their chunks, including tickets without an enabled validator.
-  `block_tickets()` gives each block position and `entity_tickets()` each entity UUID with a `TicketSet`, the chunks it
-  holds apart by kind (`non_natural_spawning` and `natural_spawning`, as NeoForge's `TicketSet`). A plain and a
-  natural-spawning ticket on one chunk are two tickets. `remove_block_tickets(pos)` and `remove_entity_tickets(uuid)`
-  remove everything an owner holds, both kinds (and return how many); `remove_block_ticket(pos, chunk, natural_spawning)`
-  and `remove_entity_ticket(uuid, chunk, natural_spawning)` remove the one kind they name and leave the other. A removed
+  `block_tickets()` and `entity_tickets()` lend read-only `BTreeMap` views of the controller's original saved tickets
+  (`&BTreeMap<[i32; 3], TicketSet>` and `&BTreeMap<u128, TicketSet>`), with each owner's chunks apart by kind
+  (`non_natural_spawning` and `natural_spawning`, as NeoForge's `TicketSet`). As in NeoForge's
+  `TicketHelper.getBlockTickets`/`getEntityTickets`, those maps stay unchanged after removals during the callback, while
+  removals update the controller's staged rows immediately. A plain and a natural-spawning ticket on one chunk are two
+  tickets. `remove_block_tickets(pos)` and `remove_entity_tickets(uuid)` remove everything an owner holds, both kinds
+  (and return how many); `remove_block_ticket(pos, chunk, natural_spawning)` and
+  `remove_entity_ticket(uuid, chunk, natural_spawning)` remove the one kind they name and leave the other. A removed
   ticket never forces its chunk and is left out of the next save.
 - `host.living(entity)` gives a `LivingRef` for a mob, a player, an armor stand or the dragon (vanilla's
   `LivingEntity`); `living.entity()` goes back. `living.with_equipment(host, EquipmentSlot::Head, read)` and

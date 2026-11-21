@@ -73,7 +73,10 @@ hold chunks independently of validation.
 A validator runs only when its controller has saved tickets in the opening level. `level` is
 the actual opened `LevelRef`, including when the level is parked; `level.dimension().id(host)`
 returns its id. `tickets` shows only that controller's saved block and entity tickets, not live
-tickets added in `level_load`. The server activates surviving tickets after all validators run.
+tickets added in `level_load`. `tickets.block_tickets()` and `tickets.entity_tickets()` borrow
+read-only `BTreeMap` views of the original saved tickets for the whole call and stay unchanged
+after removals, while removals update the staged rows immediately. The server activates surviving
+tickets after all validators run.
 If a validator panics, the server reports the mod and skips only that validator for the rest of
 the session. Removals it already made still apply, and other controllers continue restoring and
 validating their tickets.
