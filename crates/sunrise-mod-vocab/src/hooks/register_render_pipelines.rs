@@ -54,7 +54,9 @@ place in the file reads `<file>:<line>:<column>: <reason>`.
 
 Resolve the pipeline with `host.render_assets().render_pipeline(&id)` in `client_setup` and again
 in `client_resources_reloaded`, then draw with `WorldDrawContext::pipeline_quads` from
-`submit_custom_geometry` or `render_level_stage`. A resource reload builds every registered
+`submit_custom_geometry` (or a debug renderer) or `WorldPassDrawContext::pipeline_quads` from
+standard pass stages of `render_level_stage` (`StagePass::World`; `AfterSky`, `AfterLevel`, and
+`OitTranslucent` do not accept pipeline quads). A resource reload builds every registered
 pipeline again, so a resource pack can replace a shader; a handle from before the reload is
 `Stale`.
 

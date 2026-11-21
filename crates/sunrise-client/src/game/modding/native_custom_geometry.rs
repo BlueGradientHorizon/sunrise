@@ -442,8 +442,8 @@ mod tests {
     use super::*;
     use glam::{DVec3, Mat4, Quat, Vec3};
     use mod_api::{
-        ClientHost, Hooks, Identifier, InstanceError, LightCoords, ModEntry, ModelInstance,
-        ModelRef, Overlay, SubmitCustomGeometryEvent, WorldDrawContext,
+        ClientHost, Hooks, Identifier, LightCoords, ModEntry, ModelInstance, ModelRef, Overlay,
+        SubmitCustomGeometryEvent, WorldDrawContext,
     };
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -1452,11 +1452,26 @@ mod tests {
         )
     }
 
-    /// Draws in `submit_custom_geometry`, standard pass stages, and OIT sub-passes while checking
-    /// that `AfterSky` and `AfterLevel` provide `StagePass::None`.
+    /// Draws in `submit_custom_geometry`, `DebugRenderer`, standard pass stages, and OIT
+    /// sub-passes while checking that `AfterSky` and `AfterLevel` provide `StagePass::None`.
     struct Staged;
     #[mod_api::__subscriptions]
     impl Hooks for Staged {
+        fn register_debug_renderers(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterDebugRenderersEvent<'_>,
+        ) {
+            event.renderers.push(mod_api::DebugRenderer::new(
+                "staged:guide".into(),
+                |_, _, draw| {
+                    if STAGES_ARMED.load(Ordering::Relaxed) {
+                        STAGE_ORDER.lock().unwrap().push("debug_renderer");
+                        draw.lines(&[marker(35.0)]).unwrap();
+                    }
+                },
+            ));
+        }
         fn prepare_render_buffers(
             &self,
             _: &dyn ClientHost,
@@ -1571,6 +1586,14 @@ mod tests {
             mod_platform::__private::install(
                 vec![ModEntry::new("staged", Box::new(Staged))].into(),
             );
+            let mut renderers = Vec::new();
+            Game::native_register_debug_renderers(
+                &mod_api::RegistrationContext::new(),
+                &mut renderers,
+            );
+            assert_eq!(renderers.len(), 1);
+            game.debug_renderers = renderers;
+            game.debug_renderers_version = Some(game.debug_entries.enabled_version());
             let mut draw = WorldGeometry::default();
             let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
             let sections = [mod_api::RenderableSection::new(
@@ -1579,7 +1602,8 @@ mod tests {
                 false,
             )];
 
-            // Classic transparency mode: all 8 classic stages + submit + prepare.
+            // Classic transparency mode: submit -> DebugRenderer -> AfterSky -> prepare ->
+            // 6 classic pass stages -> AfterLevel, with zero OIT calls.
             STAGE_ORDER.lock().unwrap().clear();
             STAGES_ARMED.store(true, Ordering::Relaxed);
             game.fill_world_geometry(
@@ -1598,6 +1622,7 @@ mod tests {
                 *STAGE_ORDER.lock().unwrap(),
                 [
                     "submit",
+                    "debug_renderer",
                     "after_sky",
                     "prepare",
                     "after_opaque_blocks",
@@ -1614,8 +1639,8 @@ mod tests {
             let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
             assert_eq!(
                 starts,
-                [10.0, 15.0, 20.0, 30.0],
-                "pass stages in frame order, custom geometry appended at STAGE_CUSTOM_GEOMETRY"
+                [10.0, 15.0, 20.0, 30.0, 35.0],
+                "pass stages in frame order, custom geometry and debug renderers appended at STAGE_CUSTOM_GEOMETRY"
             );
             assert_eq!(
                 batch.stage_ends,
@@ -1649,6 +1674,7 @@ mod tests {
                 *STAGE_ORDER.lock().unwrap(),
                 [
                     "submit",
+                    "debug_renderer",
                     "after_sky",
                     "prepare",
                     "after_opaque_blocks",
@@ -1662,7 +1688,7 @@ mod tests {
             );
             let batch = draw.batch();
             let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
-            assert_eq!(starts, [10.0, 15.0, 30.0]);
+            assert_eq!(starts, [10.0, 15.0, 30.0, 35.0]);
             assert_eq!(
                 batch.stage_ends,
                 [
@@ -1693,6 +1719,265 @@ mod tests {
             assert!(draw.batch().is_empty());
             assert_eq!(draw.batch().stage_ends, [[0; 4]; 6]);
             assert_eq!(draw.batch().oit.stage_ends, [[0; 4]; 2]);
+            game.debug_renderers.clear();
+            game.debug_renderers_version = None;
+        });
+    }
+
+    static VIEW_CHECK_ARMED: AtomicBool = AtomicBool::new(false);
+    static VIEW_EXPECT_OIT: AtomicBool = AtomicBool::new(false);
+    static VIEW_CHECK_HITS: AtomicUsize = AtomicUsize::new(0);
+    static PREPARE_MODEL: Mutex<Option<ModelRef>> = Mutex::new(None);
+    static PREPARE_GROUP: Mutex<Option<mod_api::InstanceGroupRef>> = Mutex::new(None);
+    static PREPARE_EVENTS: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+    fn assert_expected_world_view(view: &mod_api::WorldRenderView<'_>) {
+        let expected_view = Mat4::from_translation(Vec3::new(1.0, -2.0, 3.0)).to_cols_array();
+        let expected_proj = Mat4::from_scale(Vec3::new(0.5, 0.75, 1.25)).to_cols_array();
+        assert_eq!(view.camera.position, [12.5, 71.25, -44.75]);
+        assert_eq!(view.camera_position(), [12.5, 71.25, -44.75]);
+        assert_eq!(view.camera.eye_height, 1.62);
+        assert_eq!(view.camera.partial_tick, 0.25);
+        assert_eq!(view.camera.yaw, 33.5);
+        assert_eq!(view.camera.pitch, -12.0);
+        assert_eq!(view.camera.fov_degrees, 85.0);
+        assert_eq!(view.camera.near, 0.05);
+        assert_eq!(view.camera.far, 256.0);
+        assert_eq!(view.camera.view, expected_view);
+        assert_eq!(view.model_view_matrix(), expected_view);
+        assert_eq!(view.camera.projection, expected_proj);
+        assert_eq!(view.projection_matrix(), expected_proj);
+        assert_eq!(view.camera.dimension, "minecraft:the_nether");
+        assert_eq!(view.partial_tick, 0.75);
+        assert_eq!(view.game_time, 12_345);
+        assert_eq!(
+            view.improved_transparency,
+            VIEW_EXPECT_OIT.load(Ordering::Relaxed)
+        );
+        assert_eq!(
+            view.sections,
+            [
+                mod_api::RenderableSection::new(
+                    [16, 64, -32],
+                    [[16.0, 64.0, -32.0], [32.0, 80.0, -16.0]],
+                    false,
+                ),
+                mod_api::RenderableSection::new(
+                    [32, 64, -32],
+                    [[32.0, 64.0, -32.0], [48.0, 80.0, -16.0]],
+                    true,
+                ),
+            ]
+        );
+        VIEW_CHECK_HITS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    struct PrepareViewMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for PrepareViewMod {
+        fn register_debug_renderers(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterDebugRenderersEvent<'_>,
+        ) {
+            event.renderers.push(mod_api::DebugRenderer::new(
+                "prepare_view:check".into(),
+                |_, view, _| {
+                    if VIEW_CHECK_ARMED.load(Ordering::Relaxed) {
+                        assert_expected_world_view(view);
+                    }
+                },
+            ));
+        }
+        fn submit_custom_geometry(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut SubmitCustomGeometryEvent<'_>,
+        ) {
+            if !VIEW_CHECK_ARMED.load(Ordering::Relaxed) {
+                return;
+            }
+            assert_expected_world_view(event.view);
+            if let Some(group) = *PREPARE_GROUP.lock().unwrap() {
+                event.draw.draw_instance_group(group).unwrap();
+            }
+        }
+        fn prepare_render_buffers(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
+        ) {
+            if !VIEW_CHECK_ARMED.load(Ordering::Relaxed) {
+                return;
+            }
+            assert_expected_world_view(event.view);
+            PREPARE_EVENTS.lock().unwrap().push("prepare");
+            let mut slot = PREPARE_GROUP.lock().unwrap();
+            let group = match *slot {
+                Some(group) => group,
+                None => {
+                    let model = PREPARE_MODEL.lock().unwrap().unwrap();
+                    let created = host.instance_groups().create_group(model, 4).unwrap();
+                    *slot = Some(created);
+                    created
+                }
+            };
+            let copy = ModelInstance::at([13.0, 71.0, -45.0], 0xFF80_C040);
+            group.write(host, 0, &[copy]).unwrap();
+            group
+                .set_group_transform(
+                    host,
+                    [1.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                )
+                .unwrap();
+            group.set_len(host, 1).unwrap();
+        }
+        fn render_level_stage(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut mod_api::RenderLevelStageEvent<'_>,
+        ) {
+            if !VIEW_CHECK_ARMED.load(Ordering::Relaxed) {
+                return;
+            }
+            assert_expected_world_view(event.view);
+            if event.stage == RenderLevelStage::AfterOpaqueBlocks {
+                PREPARE_EVENTS.lock().unwrap().push("after_opaque_blocks");
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn world_render_view_lends_frame_state_and_prepare_updates_instance_groups() {
+        let _fixture =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let model = grass(game);
+            sunrise_client::gfx::cap_prepared_instance_slots(16);
+            game.view_frustum = None;
+            game.world.game_time = 12_345;
+            *PREPARE_MODEL.lock().unwrap() = Some(model);
+            *PREPARE_GROUP.lock().unwrap() = None;
+            PREPARE_EVENTS.lock().unwrap().clear();
+
+            mod_platform::__private::install(
+                vec![ModEntry::new("prepare_view", Box::new(PrepareViewMod))].into(),
+            );
+            let mut renderers = Vec::new();
+            Game::native_register_debug_renderers(
+                &mod_api::RegistrationContext::new(),
+                &mut renderers,
+            );
+            assert_eq!(renderers.len(), 1);
+            game.debug_renderers = renderers;
+            game.debug_renderers_version = Some(game.debug_entries.enabled_version());
+
+            let camera_view = Mat4::from_translation(Vec3::new(1.0, -2.0, 3.0));
+            let camera_proj = Mat4::from_scale(Vec3::new(0.5, 0.75, 1.25));
+            let frame_camera = mod_api::Camera {
+                position: [12.5, 71.25, -44.75],
+                eye_height: 1.62,
+                partial_tick: 0.25,
+                yaw: 33.5,
+                pitch: -12.0,
+                fov_degrees: 85.0,
+                near: 0.05,
+                far: 256.0,
+                view: camera_view.to_cols_array(),
+                projection: camera_proj.to_cols_array(),
+                dimension: "minecraft:the_nether".into(),
+            };
+            let sections = [
+                mod_api::RenderableSection::new(
+                    [16, 64, -32],
+                    [[16.0, 64.0, -32.0], [32.0, 80.0, -16.0]],
+                    false,
+                ),
+                mod_api::RenderableSection::new(
+                    [32, 64, -32],
+                    [[32.0, 64.0, -32.0], [48.0, 80.0, -16.0]],
+                    true,
+                ),
+            ];
+            let mut draw = WorldGeometry::default();
+
+            // Frame 1 (classic): verifies every WorldRenderView field across all hooks and creates
+            // + updates the retained InstanceGroup inside prepare_render_buffers before pass stages.
+            VIEW_EXPECT_OIT.store(false, Ordering::Relaxed);
+            VIEW_CHECK_HITS.store(0, Ordering::Relaxed);
+            VIEW_CHECK_ARMED.store(true, Ordering::Relaxed);
+            game.fill_world_geometry(
+                false,
+                Some(&frame_camera),
+                frame_camera.position,
+                camera_view,
+                0.75,
+                false,
+                &sections,
+                &mut draw,
+                &mut Vec::new(),
+            );
+            VIEW_CHECK_ARMED.store(false, Ordering::Relaxed);
+            assert_eq!(
+                *PREPARE_EVENTS.lock().unwrap(),
+                ["prepare", "after_opaque_blocks"],
+                "prepare_render_buffers must run before pass-bearing stages"
+            );
+            // 1 submit + 1 debug_renderer + 1 prepare + 8 classic render_level_stage callbacks.
+            assert_eq!(VIEW_CHECK_HITS.load(Ordering::Relaxed), 11);
+            assert!(
+                PREPARE_GROUP.lock().unwrap().is_some(),
+                "prepare_render_buffers created and populated the retained group"
+            );
+
+            // Frame 2 (OIT): submits the group prepared in prepare_render_buffers and verifies the
+            // staged instance carries the updated origin and group transform.
+            game.prepared_model_draws.borrow_mut().clear();
+            PREPARE_EVENTS.lock().unwrap().clear();
+            VIEW_EXPECT_OIT.store(true, Ordering::Relaxed);
+            VIEW_CHECK_HITS.store(0, Ordering::Relaxed);
+            VIEW_CHECK_ARMED.store(true, Ordering::Relaxed);
+            game.fill_world_geometry(
+                false,
+                Some(&frame_camera),
+                frame_camera.position,
+                camera_view,
+                0.75,
+                true,
+                &sections,
+                &mut draw,
+                &mut Vec::new(),
+            );
+            VIEW_CHECK_ARMED.store(false, Ordering::Relaxed);
+            assert_eq!(
+                *PREPARE_EVENTS.lock().unwrap(),
+                ["prepare", "after_opaque_blocks"]
+            );
+            // 1 submit + 1 debug_renderer + 1 prepare + 7 OIT render_level_stage callbacks.
+            assert_eq!(VIEW_CHECK_HITS.load(Ordering::Relaxed), 10);
+            {
+                let staged = game.prepared_model_draws.borrow();
+                assert_eq!(staged.len(), 1);
+                // (origin [13.0, 71.0, -45.0] - camera [12.5, 71.25, -44.75]) + group translate [0.5, 0.0, 0.0]
+                assert_eq!(staged[0].instance.model[3], [1.0, -0.25, -0.25, 1.0]);
+            }
+
+            if let Some(group) = PREPARE_GROUP.lock().unwrap().take() {
+                let _owner = mod_platform::content::crash::enter_native_mod(
+                    mod_api::content::crash::ModCall {
+                        id: "prepare_view",
+                        hook: "test",
+                        part: None,
+                    },
+                );
+                group.destroy(game).unwrap();
+            }
+            *PREPARE_MODEL.lock().unwrap() = None;
+            game.debug_renderers.clear();
+            game.debug_renderers_version = None;
         });
     }
 

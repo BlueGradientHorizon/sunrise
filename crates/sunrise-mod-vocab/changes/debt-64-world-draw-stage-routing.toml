@@ -1,0 +1,121 @@
+ids = [
+  "type:WorldDrawUsage",
+  "handle:WorldDrawUsage::new",
+  "trait:WorldDrawContext",
+  "method:WorldDrawContext::usage",
+  "type:DrawError",
+  "type:DrawError.CapacityExceeded",
+  "type:DrawError.TextTooDeep",
+  "type:PipelineDrawError",
+  "type:PipelineDrawError.CapacityExceeded",
+  "type:InstanceError",
+  "type:InstanceError.CapacityExceeded",
+  "type:GroupError",
+  "type:GroupError.CapacityExceeded",
+  "type:text::Text",
+  "handle:text::Text::validate_payloads",
+  "type:RenderableSection",
+  "handle:RenderableSection::new",
+  "type:WorldRenderView",
+  "type:WorldRenderView.camera",
+  "type:WorldRenderView.improved_transparency",
+  "type:WorldRenderView.sections",
+  "handle:WorldRenderView::new",
+  "handle:WorldRenderView::camera_position",
+  "handle:WorldRenderView::model_view_matrix",
+  "handle:WorldRenderView::projection_matrix",
+  "handle:DebugRenderer::new",
+  "handle:DebugRenderer::draw",
+  "hook:prepare_render_buffers",
+  "method:Hooks::prepare_render_buffers",
+  "type:PrepareRenderBuffersEvent",
+  "hook:submit_custom_geometry",
+  "hook:submit_custom_geometry.view",
+  "method:Hooks::submit_custom_geometry",
+  "type:SubmitCustomGeometryEvent.view",
+  "hook:render_level_stage",
+  "hook:render_level_stage.view",
+  "hook:render_level_stage.draw",
+  "hook:render_level_stage.context",
+  "method:Hooks::render_level_stage",
+  "type:RenderLevelStageEvent.view",
+  "type:RenderLevelStageEvent.draw",
+  "type:RenderLevelStageEvent.context",
+  "type:OitStage",
+  "type:RenderLevelStage",
+  "type:RenderLevelStage.AfterOpaqueFeatures",
+  "type:RenderLevelStage.AfterTranslucentFeatures",
+  "type:RenderLevelStage.AfterTranslucentParticles",
+  "type:RenderLevelStage.OitTranslucent",
+  "handle:RenderLevelStage::ALL",
+  "handle:RenderLevelStage::CLASSIC_ORDER",
+  "handle:RenderLevelStage::OIT_ORDER",
+  "handle:RenderLevelStage::frame_order",
+  "handle:RenderLevelStage::has_render_pass",
+  "handle:RenderLevelStage::oit_stage",
+  "type:StagePass",
+  "trait:WorldPassDrawContext",
+  "method:WorldPassDrawContext::lines",
+  "method:WorldPassDrawContext::quads",
+  "method:WorldPassDrawContext::pipeline_quads",
+  "trait:WorldOitPassDrawContext",
+  "method:WorldOitPassDrawContext::oit_stage",
+  "method:WorldOitPassDrawContext::lines",
+  "method:WorldOitPassDrawContext::quads",
+  "trait:RenderLevelStageContext",
+  "method:RenderLevelStageContext::pass",
+  "method:RenderLevelStageContext::has_render_pass",
+  "method:RenderLevelStageContext::world_pass",
+  "method:RenderLevelStageContext::oit_pass",
+]
+why = """
+Align world geometry submission, buffer preparation, and stage rendering with vanilla 26.3
+(`LevelRenderer`, `LevelRenderState`, `SubmitNodeStorage`, `OitStage`, `NbtAccounter.MAX_STACK_DEPTH`)
+and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRenderableSection`,
+`PrepareRenderBuffersEvent`), and resolve audits [89] and [90]:
+
+- Borrow live frame state via `WorldRenderView<'a>` (`&'a Camera`, world `partial_tick`,
+  `game_time`, `improved_transparency`, and visible `&'a [RenderableSection]`) instead of copying a
+  3-field summary.
+- Add `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`) firing after `AfterSky` and
+  before pass-bearing stages so mods can update retained GPU buffers (`InstanceGroups`, dynamic
+  textures) before passes read them.
+- Expand `RenderLevelStage` to all 9 NeoForge 26.3 stages (`AfterSky`, `AfterOpaqueBlocks`,
+  `AfterOpaqueFeatures`, `AfterTranslucentFeatures`, `AfterTranslucentBlocks`,
+  `AfterTranslucentParticles`, `AfterWeather`, `OitTranslucent(OitStage)`, `AfterLevel`) with
+  `RenderLevelStage::frame_order` (`CLASSIC_ORDER` / `OIT_ORDER`) and stage-scoped pass capability
+  via `RenderLevelStageContext` and `StagePass` (`None` on `AfterSky`/`AfterLevel`, `World` ->
+  `WorldPassDrawContext` on standard passes, `Oit` -> `WorldOitPassDrawContext` on OIT sub-passes).
+  Route `submit_custom_geometry` and debug renderers into the deferred `STAGE_CUSTOM_GEOMETRY` tail.
+- Audit [89]: remove fixed per-view caps (4,096 lines/quads, 16,384 instances/groups, 65,536
+  per-mod group copies), `WorldDrawUsage`, `WorldDrawContext::usage`, `CapacityExceeded` across
+  `DrawError`/`PipelineDrawError`/`InstanceError`/`GroupError`, and `DrawError::TextTooDeep` on
+  in-memory `Text` name-tag rendering (retaining the 512-container limit only on NBT codec
+  boundaries via `Text::validate_payloads` and iterative `Drop`).
+- Audit [90]: replace whole-batch pre-cull validation and rollback in `draw_model_instances` with
+  frustum-first culling and per-copy skipping of invalid visible instances, matching vanilla's
+  `SubmitNodeStorage`.
+- Bump `submit_custom_geometry` and `render_level_stage` to version 2.
+"""
+migrate = """
+- Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and match arms for
+  `DrawError::CapacityExceeded`, `DrawError::TextTooDeep`, `PipelineDrawError::CapacityExceeded`,
+  `InstanceError::CapacityExceeded`, and `GroupError::CapacityExceeded`.
+- For `draw_model_instances`, handle `Err(InstanceError::Model(_))` for stale/unknown model handles;
+  invalid visible copies are skipped individually without rolling back valid copies.
+- Because `Text` now implements `Drop`, replace by-value moves out of `Text` fields with `.take()`,
+  `std::mem::take`, `.clone()`, or borrowing.
+- Update `WorldRenderView` reads: replace `event.view.camera` (`[f64; 3]`) with
+  `event.view.camera_position()` or `event.view.camera.position`, and update explicit annotations or
+  `DebugRenderer` callbacks to `&WorldRenderView<'_>`.
+- Implement `Hooks::prepare_render_buffers` to update retained `InstanceGroups` or dynamic textures
+  before pass-bearing stages run.
+- Replace `RenderLevelStage::ALL` with `RenderLevelStage::frame_order(view.improved_transparency)`
+  (`CLASSIC_ORDER` or `OIT_ORDER`).
+- In `Hooks::render_level_stage`, replace `event.draw` with `event.context`: draw standard-pass
+  lines, quads, and pipeline quads via `event.context.world_pass()` (or `StagePass::World(pass)`),
+  draw OIT sub-pass lines and quads via `event.context.oit_pass()` (or `StagePass::Oit(stage, pass)`),
+  and move submission-only calls (`name_tag`, `draw_model_instances`, `draw_instance_group`) and any
+  drawing previously done in `AfterSky` or `AfterLevel` (now `StagePass::None`) into
+  `Hooks::submit_custom_geometry` or a pass-bearing `RenderLevelStage`.
+"""

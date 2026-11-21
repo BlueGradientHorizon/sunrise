@@ -1,10 +1,11 @@
 # Drawing resolved models
 
 Register standalone models during `standalone_models`, then resolve their `ModelRef`
-through `RenderAssets::model` after resources are published. World render hooks receive
-`WorldDrawContext`: submit transient copies with `draw_model_instances`, or retain
-copies in a group. GUI scenes, mobs and kept/spinning renderers use their
-CPU routes; groups are a world-drawing facility, not another renderer.
+through `RenderAssets::model` after resources are published. `submit_custom_geometry`
+(and registered debug renderers) receive `WorldDrawContext`: submit transient copies
+with `draw_model_instances`, or retain copies in a group. Update retained groups before
+render passes execute in `prepare_render_buffers`. GUI scenes, mobs and kept/spinning
+renderers use their CPU routes; groups are a world-drawing facility, not another renderer.
 
 ## Local player skins
 
@@ -270,6 +271,11 @@ draw.terrain_model(self.belt, options)?;
   submissions in that view are ignored. Culling uses the composed pose.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
+- `Hooks::prepare_render_buffers` runs once per world view after `RenderLevelStage::AfterSky`
+  and before any pass-bearing render stage, lending `&WorldRenderView<'_>` (camera, world
+  partial tick, game time, improved-transparency state, and visible `RenderableSection`s) and
+  `&dyn ClientHost` so mods can update retained `InstanceGroups` or dynamic textures before the
+  render passes execute.
 
 Per-view draw storage grows dynamically without fixed per-view or per-mod copy caps,
 and copies past GPU instance buffer room fall back to CPU baking. Culled copies are

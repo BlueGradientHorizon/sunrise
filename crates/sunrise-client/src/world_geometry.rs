@@ -764,6 +764,178 @@ mod tests {
         assert_eq!(draw.batch().stage_ends, [[0, 0, 1, 0]; STAGES - 1]);
         assert!(draw.batch().oit.is_empty());
     }
+
+    #[test]
+    fn custom_geometry_finalizes_into_tail_stage_without_mixing_into_pass_stages() {
+        use RenderLevelStage::*;
+        let mut draw = WorldGeometry::default();
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
+        let line =
+            |x: f64, depth| WorldLine::new([x, 0.0, -1.0], [x + 1.0, 0.0, -1.0], !0, 1.0, depth);
+        let quad = |x: f64, depth| WorldQuad::new([[x, 0.0, -1.0]; 4], !0, depth);
+        let pquad = |x: f64| PipelineQuad::spanning([[x, 0.0, -1.0]; 4], !0);
+
+        // Submit deferred custom geometry before any pass stage runs.
+        draw.begin_custom_geometry();
+        draw.lines(&[line(90.0, WorldDepth::Tested)]).unwrap();
+        draw.lines(&[line(91.0, WorldDepth::ThroughWalls)]).unwrap();
+        draw.quads(&[quad(92.0, WorldDepth::Tested)]).unwrap();
+        draw.quads(&[quad(93.0, WorldDepth::ThroughWalls)]).unwrap();
+        draw.pipeline_quads(7, &[pquad(94.0)]).unwrap();
+
+        // Deferred custom geometry stays isolated until finalize.
+        assert!(draw.batch().is_empty());
+
+        // Standard pass stages 0..=5 populate primary buffers without seeing deferred geometry.
+        draw.begin_pass_stage(AfterOpaqueBlocks);
+        draw.lines(&[line(10.0, WorldDepth::Tested)]).unwrap();
+        draw.quads(&[quad(11.0, WorldDepth::Tested)]).unwrap();
+        draw.pipeline_quads(2, &[pquad(12.0)]).unwrap();
+
+        draw.begin_pass_stage(AfterWeather);
+        draw.lines(&[line(20.0, WorldDepth::ThroughWalls)]).unwrap();
+        draw.quads(&[quad(21.0, WorldDepth::ThroughWalls)]).unwrap();
+        draw.pipeline_quads(3, &[pquad(22.0)]).unwrap();
+
+        draw.finalize();
+        // Calling finalize again is a no-op.
+        draw.finalize();
+
+        let batch = draw.batch();
+        assert_eq!(
+            batch.stage_ends,
+            [
+                [1, 0, 1, 0],
+                [1, 0, 1, 0],
+                [1, 0, 1, 0],
+                [1, 0, 1, 0],
+                [1, 0, 1, 0],
+                [1, 1, 1, 1],
+            ],
+            "pass stages 0..=5 hold only pass-stage writes; custom geometry starts after stage 5"
+        );
+        assert_eq!(
+            batch.lines.iter().map(|l| l[0]).collect::<Vec<_>>(),
+            [10.0, 90.0]
+        );
+        assert_eq!(
+            batch.lines_through.iter().map(|l| l[0]).collect::<Vec<_>>(),
+            [20.0, 91.0]
+        );
+        assert_eq!(batch.quads.len(), 8);
+        assert_eq!(batch.quads[0].pos[0], 11.0);
+        assert_eq!(batch.quads[4].pos[0], 92.0);
+        assert_eq!(batch.quads_through.len(), 8);
+        assert_eq!(batch.quads_through[0].pos[0], 21.0);
+        assert_eq!(batch.quads_through[4].pos[0], 93.0);
+        assert_eq!(
+            batch.pipelines.runs,
+            [
+                PipelineRun {
+                    slot: 2,
+                    stage: STAGE_AFTER_OPAQUE_BLOCKS as u32,
+                    quads: 1,
+                },
+                PipelineRun {
+                    slot: 3,
+                    stage: STAGE_AFTER_WEATHER as u32,
+                    quads: 1,
+                },
+                PipelineRun {
+                    slot: 7,
+                    stage: STAGE_CUSTOM_GEOMETRY as u32,
+                    quads: 1,
+                },
+            ]
+        );
+        assert_eq!(batch.pipelines.vertices.len(), 12);
+        assert!(batch.oit.is_empty());
+    }
+
+    #[test]
+    fn oit_stages_populate_oit_batch_and_leave_standard_batch_untouched() {
+        use RenderLevelStage::*;
+        let mut draw = WorldGeometry::default();
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
+        let line =
+            |x: f64, depth| WorldLine::new([x, 0.0, -1.0], [x + 1.0, 0.0, -1.0], !0, 1.0, depth);
+        let quad = |x: f64, depth| WorldQuad::new([[x, 0.0, -1.0]; 4], !0, depth);
+        let pquad = |x: f64| PipelineQuad::spanning([[x, 0.0, -1.0]; 4], !0);
+
+        draw.begin_pass_stage(AfterSky);
+        draw.begin_pass_stage(AfterOpaqueBlocks);
+        draw.lines(&[line(5.0, WorldDepth::Tested)]).unwrap();
+        draw.quads(&[quad(6.0, WorldDepth::Tested)]).unwrap();
+        draw.pipeline_quads(1, &[pquad(7.0)]).unwrap();
+
+        draw.begin_pass_stage(OitTranslucent(OitStage::DepthBounds));
+        draw.quads(&[quad(1.0, WorldDepth::Tested)]).unwrap();
+        draw.lines(&[line(11.0, WorldDepth::Tested)]).unwrap();
+
+        draw.begin_pass_stage(OitTranslucent(OitStage::Transmittance));
+        draw.quads(&[quad(2.0, WorldDepth::ThroughWalls)]).unwrap();
+        draw.lines(&[
+            line(12.0, WorldDepth::ThroughWalls),
+            line(13.0, WorldDepth::Tested),
+        ])
+        .unwrap();
+
+        draw.begin_pass_stage(OitTranslucent(OitStage::Accumulate));
+        draw.quads(&[quad(3.0, WorldDepth::Tested), quad(4.0, WorldDepth::Tested)])
+            .unwrap();
+        draw.lines(&[line(14.0, WorldDepth::ThroughWalls)]).unwrap();
+        // Pipeline quads are unavailable in OIT sub-passes and leave standard pipeline runs alone.
+        draw.pipeline_quads(9, &[pquad(99.0)]).unwrap();
+
+        draw.begin_pass_stage(AfterLevel);
+        draw.finalize();
+
+        let batch = draw.batch();
+        // Standard batch spans and pipeline runs are completely untouched by OIT writes.
+        assert_eq!(batch.stage_ends, [[1, 0, 1, 0]; STAGES - 1]);
+        assert_eq!(batch.quads.len(), 4);
+        assert_eq!(batch.quads[0].pos[0], 6.0);
+        assert!(batch.quads_through.is_empty());
+        assert_eq!(batch.lines.len(), 1);
+        assert_eq!(batch.lines[0][0], 5.0);
+        assert!(batch.lines_through.is_empty());
+        assert_eq!(
+            batch.pipelines.runs,
+            [PipelineRun {
+                slot: 1,
+                stage: STAGE_AFTER_OPAQUE_BLOCKS as u32,
+                quads: 1,
+            }]
+        );
+
+        // OIT batch has exact per-OIT-stage ends and primitive order.
+        assert!(!batch.oit.is_empty());
+        assert_eq!(batch.oit.stage_ends, [[1, 0, 1, 0], [1, 1, 2, 1]]);
+        assert_eq!(batch.oit.quads.len(), 12);
+        assert_eq!(
+            [
+                batch.oit.quads[0].pos[0],
+                batch.oit.quads[4].pos[0],
+                batch.oit.quads[8].pos[0],
+            ],
+            [1.0, 3.0, 4.0]
+        );
+        assert_eq!(batch.oit.quads_through.len(), 4);
+        assert_eq!(batch.oit.quads_through[0].pos[0], 2.0);
+        assert_eq!(
+            batch.oit.lines.iter().map(|l| l[0]).collect::<Vec<_>>(),
+            [11.0, 13.0]
+        );
+        assert_eq!(
+            batch
+                .oit
+                .lines_through
+                .iter()
+                .map(|l| l[0])
+                .collect::<Vec<_>>(),
+            [12.0, 14.0]
+        );
+    }
     #[test]
     fn world_geometry_batches_are_atomic_and_reset_per_view() {
         let mut draw = WorldGeometry::default();
