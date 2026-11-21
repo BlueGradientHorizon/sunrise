@@ -261,9 +261,32 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
 
 #[test]
 #[ignore = "daily"]
-fn a_refused_gui_layer_does_not_leave_partial_paint() {
+fn failed_gui_layer_keeps_completed_paint_and_isolates_following_layers() {
+    use mod_api::{
+        __private::game::take_callback_panic_notices,
+        GuiClipRefusal, GuiPaintError,
+        client::hud_layout::{GuiDraw, PoseOp},
+    };
+    use sunrise_client::hud::rgba;
+
+    fn color_bounds(batch: &HudBatch, color: u32) -> Option<[f32; 4]> {
+        batch
+            .vertices
+            .iter()
+            .filter(|v| v.color == color)
+            .fold(None, |acc, v| {
+                let [x0, y0, x1, y1] = acc.unwrap_or([v.pos[0], v.pos[1], v.pos[0], v.pos[1]]);
+                Some([
+                    x0.min(v.pos[0]),
+                    y0.min(v.pos[1]),
+                    x1.max(v.pos[0]),
+                    y1.max(v.pos[1]),
+                ])
+            })
+    }
+
     crate::game::in_own_process(
-        "game::gui_layer_tests::a_refused_gui_layer_does_not_leave_partial_paint",
+        "game::gui_layer_tests::failed_gui_layer_keeps_completed_paint_and_isolates_following_layers",
         || {
             struct RefusedLayer;
             #[mod_api::__subscriptions]
@@ -277,7 +300,31 @@ fn a_refused_gui_layer_does_not_leave_partial_paint() {
                         "hud_test:refused".into(),
                         GuiLayerPlacement::AboveAll,
                         Box::new(|_, draw| {
-                            draw.fill([0.0, 0.0, 4.0, 4.0], 0xFFFF_0000);
+                            // Unpopped pose stays lexical to gui_paint; malformed draw/clip checks
+                            // stay independent of layer containment.
+                            assert_eq!(
+                                draw.gui_paint(&[GuiDraw::Push(vec![PoseOp::Translate(
+                                    50.0, 50.0
+                                )])]),
+                                Ok(())
+                            );
+                            assert_eq!(
+                                draw.gui_paint(&[GuiDraw::Item {
+                                    slot: 99,
+                                    x: 0,
+                                    y: 0,
+                                    seed: 0,
+                                    scale: [1.0, 1.0],
+                                    pivot: [0.0, 0.0],
+                                }]),
+                                Err(GuiPaintError::ItemSlot { index: 0, slot: 99 })
+                            );
+                            assert_eq!(
+                                draw.push_clip([f32::NAN, 0.0, 1.0, 1.0]),
+                                Err(GuiClipRefusal::NotFinite)
+                            );
+                            draw.push_clip([10.0, 10.0, 5.0, 5.0]).unwrap();
+                            draw.fill([0.0, 0.0, 100.0, 100.0], 0xFFFF_0000);
                             log("refused");
                             mod_api::__private::refuse(
                                 "test layer refusal",
@@ -287,18 +334,111 @@ fn a_refused_gui_layer_does_not_leave_partial_paint() {
                     ));
                 }
             }
+
+            struct PanickingLayer;
+            #[mod_api::__subscriptions]
+            impl Hooks for PanickingLayer {
+                fn register_gui_layers(
+                    &self,
+                    _: &RegistrationContext,
+                    event: &mut RegisterGuiLayersEvent<'_>,
+                ) {
+                    assert!(event.layers.register(
+                        "hud_test:panicking".into(),
+                        GuiLayerPlacement::AboveAll,
+                        Box::new(|_, draw| {
+                            draw.push_clip([20.0, 20.0, 4.0, 4.0]).unwrap();
+                            draw.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_00FF);
+                            log("panicking");
+                            panic!("broken layer");
+                        }),
+                    ));
+                }
+            }
+
+            struct NextLayer;
+            #[mod_api::__subscriptions]
+            impl Hooks for NextLayer {
+                fn register_gui_layers(
+                    &self,
+                    _: &RegistrationContext,
+                    event: &mut RegisterGuiLayersEvent<'_>,
+                ) {
+                    assert!(event.layers.register(
+                        "hud_test:next".into(),
+                        GuiLayerPlacement::AboveAll,
+                        Box::new(|_, draw| {
+                            draw.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_FF00);
+                            log("next");
+                        }),
+                    ));
+                }
+                fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+                    log(format!("post {}", event.layer));
+                }
+            }
+
             with_client_game(|game| {
                 mod_platform::__private::install(
-                    vec![ModEntry::new("refused_layer", Box::new(RefusedLayer))].into(),
+                    vec![
+                        ModEntry::new("refused_layer", Box::new(RefusedLayer)),
+                        ModEntry::new("panicking_layer", Box::new(PanickingLayer)),
+                        ModEntry::new("next_layer", Box::new(NextLayer)),
+                    ]
+                    .into(),
                 );
                 mods::register_gui_layers(ExecutionRole::Client);
-                for _ in 0..2 {
-                    let mut batch = HudBatch::scratch([320, 240]);
-                    game.hud_layer_next = Some(0);
-                    game.draw_mod_gui_layers(None, &mut batch);
-                    assert!(batch.vertices.is_empty());
-                }
-                assert_eq!(take(), ["refused", "refused"]);
+                let _ = take_callback_panic_notices();
+                let red = rgba(255, 0, 0, 255);
+                let blue = rgba(0, 0, 255, 255);
+                let green = rgba(0, 255, 0, 255);
+
+                let mut batch = HudBatch::scratch([320, 240]);
+                game.hud_layer_next = Some(0);
+                game.draw_mod_gui_layers(None, &mut batch);
+                assert_eq!(
+                    take(),
+                    [
+                        "refused",
+                        "post hud_test:refused",
+                        "panicking",
+                        "post hud_test:panicking",
+                        "next",
+                        "post hud_test:next",
+                    ]
+                );
+                assert_eq!(color_bounds(&batch, red), Some([10.0, 10.0, 15.0, 15.0]));
+                assert_eq!(color_bounds(&batch, blue), Some([20.0, 20.0, 24.0, 24.0]));
+                assert_eq!(color_bounds(&batch, green), Some([0.0, 0.0, 100.0, 100.0]));
+                let notices = take_callback_panic_notices();
+                assert_eq!(notices.len(), 1);
+                assert_eq!(notices[0].mod_id, "panicking_layer");
+                assert_eq!(notices[0].kind, "HUD layer");
+                assert_eq!(notices[0].operation, "gui_layer_draw");
+                assert!(
+                    notices[0].message.contains("broken layer"),
+                    "{:?}",
+                    notices[0]
+                );
+
+                // Next frame: refusal is not latched; the panicking layer stays disabled.
+                let mut batch = HudBatch::scratch([320, 240]);
+                game.hud_layer_next = Some(0);
+                game.draw_mod_gui_layers(None, &mut batch);
+                assert_eq!(
+                    take(),
+                    [
+                        "refused",
+                        "post hud_test:refused",
+                        "post hud_test:panicking",
+                        "next",
+                        "post hud_test:next",
+                    ]
+                );
+                assert_eq!(color_bounds(&batch, red), Some([10.0, 10.0, 15.0, 15.0]));
+                assert_eq!(color_bounds(&batch, blue), None);
+                assert_eq!(color_bounds(&batch, green), Some([0.0, 0.0, 100.0, 100.0]));
+                assert!(take_callback_panic_notices().is_empty());
             });
         },
     );
@@ -307,6 +447,7 @@ fn a_refused_gui_layer_does_not_leave_partial_paint() {
 #[test]
 #[ignore = "daily"]
 fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
+    use mod_api::__private::game::take_callback_panic_notices;
     use sunrise_client::hud::{Blend, rgba};
 
     let test = "game::gui_layer_tests::a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal";
@@ -330,8 +471,12 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                             ctx.draw_previous();
                             ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFF00_00FF));
                             ctx.draw_previous();
-                            ctx.with_draw(&mut |draw| draw.fill([0.0, 0.0, 4.0, 4.0], 0xFFFF_0000));
-                            panic!("broken wrapper");
+                            ctx.with_draw(&mut |draw| {
+                                draw.push_clip([0.0, 0.0, 4.0, 4.0]).unwrap();
+                                draw.fill([0.0, 0.0, 20.0, 20.0], 0xFFFF_0000);
+                                panic!("broken wrapper");
+                            });
+                            return;
                         }
                         if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             ctx.draw_previous();
@@ -355,8 +500,11 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 .into(),
             );
             mods::register_gui_layers(ExecutionRole::Client);
+            let _ = take_callback_panic_notices();
             let mut batch = HudBatch::scratch([320, 240]);
             let white = rgba(255, 255, 255, 255);
+            let red = rgba(255, 0, 0, 255);
+            let blue = rgba(0, 0, 255, 255);
             let green = rgba(0, 255, 0, 255);
             let yellow = rgba(255, 255, 0, 255);
             let mut paint_calls = 0;
@@ -382,11 +530,34 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
             );
             assert_eq!(
                 batch.vertices.iter().map(|v| v.color).collect::<Vec<_>>(),
-                [[white; 6], [green; 6], [yellow; 6]].concat()
+                [
+                    [white; 6],
+                    [red; 6],
+                    [green; 6],
+                    [blue; 6],
+                    [yellow; 6],
+                    [red; 6],
+                ]
+                .concat()
+            );
+            assert!(
+                batch.vertices[30..36]
+                    .iter()
+                    .all(|v| (0.0..=4.0).contains(&v.pos[0]) && (0.0..=4.0).contains(&v.pos[1]))
             );
             assert_eq!(
                 batch.blends,
-                [(6..12, Blend::Invert), (12..18, Blend::Invert)]
+                [(12..18, Blend::Invert), (24..30, Blend::Invert)]
+            );
+            let notices = take_callback_panic_notices();
+            assert_eq!(notices.len(), 1);
+            assert_eq!(notices[0].mod_id, "broken");
+            assert_eq!(notices[0].kind, "HUD layer");
+            assert_eq!(notices[0].operation, "gui_layer_wrapper");
+            assert!(
+                notices[0].message.contains("broken wrapper"),
+                "{:?}",
+                notices[0]
             );
 
             let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -403,6 +574,7 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 ["outer", "inner", "caught by inner", "caught by outer"]
             );
             assert_eq!(current_native_mod(), None);
+            assert!(take_callback_panic_notices().is_empty());
 
             game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |_, _| {
                 log("vanilla paint");

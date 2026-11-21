@@ -50,12 +50,13 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 ```
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
-wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, its
-paint is discarded. A wrapper's completed `draw_previous()` calls keep their paint in order,
-without being called again. A panic disables just the offending callback for this session; a
-disabled wrapper leaves the previous body to draw directly. If Pre cancels the slot, neither the
-installed body nor Post runs. For work that must happen even when the HUD is hidden, use the independent foreground
-`gui_render_post` hook.
+wrapper omitted the previous body. If a retained painter or wrapper panics or is refused, any open
+clips from that draw scope are closed, completed primitives stay in the batch without rolling back
+or replaying earlier bodies, the failure is reported, and later layers still draw. A panic disables
+just the offending callback for this session; a disabled wrapper leaves the previous body to draw
+directly. A refusal is reported each time without disabling the callback. If Pre cancels the slot,
+neither the installed body nor Post runs. For work that must happen even when the HUD is hidden,
+use the independent foreground `gui_render_post` hook.
 
 ## Status rows and fixed text positions
 
