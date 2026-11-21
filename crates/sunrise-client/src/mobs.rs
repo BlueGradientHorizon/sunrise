@@ -5371,13 +5371,14 @@ mod teams_tests {
         }
     }
 }
-#[cfg(test)]
-pub(crate) mod sensor_scan_tests {
+#[cfg(any(test, feature = "test-mob-kind"))]
+#[cfg_attr(not(test), allow(dead_code))] // only kind() is used by the gameplay crates' tests
+pub mod sensor_scan_tests {
     use super::*;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
 
-    pub(crate) fn kind() -> Arc<MobType> {
+    pub fn kind() -> Arc<MobType> {
         Arc::new(MobType {
             shadow: None,
             id: "minecraft:cow".into(),
