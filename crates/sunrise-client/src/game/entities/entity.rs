@@ -1334,6 +1334,12 @@ struct DrawExtras<'a> {
 /// entity cached, so the existing body walk only compares its join with that one head.
 fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<DrawRun>) {
     use DrawFamily as F;
+    enum Head {
+        LocalPlayer,
+        Dragon,
+        Crystal(usize),
+        General(usize),
+    }
     let mut crystals = extra.crystals.iter().enumerate().peekable();
     let mut general = extra
         .general
@@ -1343,29 +1349,34 @@ fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<D
         .filter(|(_, row)| row.shown)
         .peekable();
     let mut next_extra = || {
-        let head @ (_, family, _) = [
-            extra.local_player.map(|seq| (seq, F::LocalPlayer, 0)),
-            extra.dragon.map(|seq| (seq, F::Dragon, 0)),
-            crystals.peek().map(|&(i, c)| (c.join, F::Crystal, i)),
-            general
-                .peek()
-                .map(|&(i, row)| (row.join, F::RemoteGeneral, i)),
+        let (join, head) = [
+            extra.local_player.map(|seq| (seq, Head::LocalPlayer)),
+            extra.dragon.map(|seq| (seq, Head::Dragon)),
+            crystals.peek().map(|&(i, c)| (c.join, Head::Crystal(i))),
+            general.peek().map(|&(i, row)| (row.join, Head::General(i))),
         ]
         .into_iter()
         .flatten()
-        .min_by_key(|&(seq, _, _)| seq)?;
-        match family {
-            F::LocalPlayer => extra.local_player = None,
-            F::Dragon => extra.dragon = None,
-            F::Crystal => {
+        .min_by_key(|&(seq, _)| seq)?;
+        let (family, index) = match head {
+            Head::LocalPlayer => {
+                extra.local_player = None;
+                (F::LocalPlayer, 0)
+            }
+            Head::Dragon => {
+                extra.dragon = None;
+                (F::Dragon, 0)
+            }
+            Head::Crystal(index) => {
                 crystals.next();
+                (F::Crystal, index)
             }
-            F::RemoteGeneral => {
+            Head::General(index) => {
                 general.next();
+                (F::RemoteGeneral, index)
             }
-            _ => unreachable!("not a draw-only family"),
-        }
-        Some(head)
+        };
+        Some((join, family, index))
     };
     runs.clear();
     let mut push = |family, index| match runs.last_mut() {
