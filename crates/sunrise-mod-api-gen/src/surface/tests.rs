@@ -256,11 +256,20 @@ pub fn sunrise_mod(_: TokenStream, input: TokenStream) -> TokenStream { input }
 "#,
     ),
     (
+        "crates/sunrise-mod-vocab/extension-tags/items.json",
+        r#""crates/sunrise-mod-package/src/fixture.extension-tags.json""#,
+    ),
+    (
+        "crates/sunrise-mod-vocab/extension-tags/blocks.json",
+        r#"[{"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}]"#,
+    ),
+    (
+        "crates/unlisted/src/ignored.extension-tags.json",
+        "invalid JSON: the export must not read unrelated declarations",
+    ),
+    (
         "crates/sunrise-mod-package/src/fixture.extension-tags.json",
-        r#"[
-    {"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."},
-    {"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}
-]"#,
+        r#"[{"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."}]"#,
     ),
     (
         "crates/sunrise-mod-package/src/manifest.rs",

@@ -881,8 +881,7 @@ pub(crate) fn build(
     let hooks = hook_records(hooks, &types, &mut notes);
     let parts = part_records(&hooks, &traits, &mut notes);
     capabilities.extend(manifest_capabilities(root, &mut notes));
-    let behaviours = behaviours::read(root, &root.join("crates/sunrise-mod-vocab/behaviours"))
-        .map_err(|e| e.to_string())?;
+    let behaviours = behaviours::read(root).map_err(|e| e.to_string())?;
     notes.sort();
     notes.dedup();
     Ok(Export {
