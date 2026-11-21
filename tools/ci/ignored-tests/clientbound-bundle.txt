@@ -1,0 +1,1 @@
+sunrise-client game::remote::tests::play_bundle_tests::a_bundle_applies_its_column_and_orders_main_network_and_close lib daily resources

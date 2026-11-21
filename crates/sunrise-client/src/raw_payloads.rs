@@ -23,7 +23,7 @@ mod raw_channel_tests;
 pub mod staging_probe;
 #[cfg(test)]
 mod typed_schema_tests;
-pub(crate) use executor::stage_client_bundle;
+pub(crate) use executor::dispatch_bundle;
 pub use executor::{dispatch, dispatch_pending, mod_of};
 mod main_queue;
 pub use main_queue::MainQueue;

@@ -45,23 +45,9 @@ impl<T> fmt::Display for Refused<T> {
     }
 }
 impl<T> std::error::Error for Refused<T> {}
-pub struct Prepared<T, V = T> {
-    value: V,
+pub struct Prepared<T> {
+    value: T,
     permit: byte_channel::Permit<T>,
-}
-impl<T, V> Prepared<T, V> {
-    /// Consume a staged value without publishing a standalone queue item.
-    pub fn into_value(self) -> V {
-        self.value
-    }
-    /// Use a staged value while retaining its original queue credit.
-    pub fn consume<R>(self, consume: impl FnOnce(V) -> R) -> R {
-        let Self {
-            value,
-            permit: _permit,
-        } = self;
-        consume(value)
-    }
 }
 impl<T> Prepared<T> {
     /// Failure returns the owned value, so its resources can be dropped after
@@ -90,16 +76,17 @@ impl<T> Producer<T> {
     /// Reserve before reporting acceptance. Allocation traversal occurs before
     /// taking the channel lock, and all failure values leave that lock intact.
     pub fn prepare(&self, value: T) -> Result<Prepared<T>, Refused<T>> {
-        let charge = (self.charge)(&value);
-        self.prepare_value(value, charge)
+        self.prepare_with(value, false)
     }
-    /// Stage a typed member under the same credit as a standalone event.
-    pub(super) fn prepare_value<V>(
-        &self,
-        value: V,
-        charge: usize,
-    ) -> Result<Prepared<T, V>, Refused<V>> {
-        match self.sender.reserve(charge) {
+
+    fn prepare_with(&self, value: T, ordered: bool) -> Result<Prepared<T>, Refused<T>> {
+        let charge = (self.charge)(&value);
+        let permit = if ordered {
+            self.sender.reserve_ordered(charge)
+        } else {
+            self.sender.reserve(charge)
+        };
+        match permit {
             Ok(permit) => Ok(Prepared { value, permit }),
             Err(error) => Err(Refused {
                 reason: match error {
@@ -113,6 +100,12 @@ impl<T> Producer<T> {
     pub fn send(&self, value: T) -> Result<(), Refused<T>> {
         self.prepare(value)?.publish()
     }
+    /// A terminal notice or the one in-flight bundle, in the same FIFO and
+    /// with full accounting even beyond the ordinary watermark.
+    pub(crate) fn send_ordered(&self, value: T) -> Result<(), Refused<T>> {
+        self.prepare_with(value, true)?.publish()
+    }
+
     pub fn stats(&self) -> Stats {
         self.sender.stats()
     }
