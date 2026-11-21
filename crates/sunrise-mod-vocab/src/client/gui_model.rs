@@ -61,7 +61,7 @@ pub enum Gui3dError {
     /// `at`, `size` or a transform component is not finite, or `size` is not positive, or the
     /// transform sends a corner of the subject somewhere that is not finite.
     NotFinite,
-    /// The item stack is empty, or its item is unknown.
+    /// The item is unknown.
     UnknownItem,
     /// The model handle is stale or names no model.
     Model(ModelError),
@@ -72,7 +72,7 @@ impl std::fmt::Display for Gui3dError {
         match self {
             Self::Unavailable => f.write_str("no game to draw the model in"),
             Self::NotFinite => f.write_str("the view or transform is not finite"),
-            Self::UnknownItem => f.write_str("the stack is empty or its item is unknown"),
+            Self::UnknownItem => f.write_str("the item is unknown"),
             Self::Model(error) => write!(f, "the model cannot be drawn: {error:?}"),
         }
     }

@@ -44,7 +44,10 @@ impl Game<'_> {
                     .map_err(|_| Gui3dError::UnknownItem)?;
                 // GuiGraphicsExtractor.item draws nothing for an empty stack; ItemStack already
                 // guarantees a nonzero count.
-                if &*stack.item == "minecraft:air" || self.res.items().get(&stack.item).is_none() {
+                if &*stack.item == "minecraft:air" {
+                    return Ok(());
+                }
+                if self.res.items().get(&stack.item).is_none() {
                     return Err(Gui3dError::UnknownItem);
                 }
                 if !self.draw_item_model_posed(batch, &stack, pose) {
@@ -187,6 +190,35 @@ mod tests {
                 (draw.surface.vertices.len(), draw.surface.blends.len()),
                 (vertices, blends)
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn air_stack_is_noop_and_unknown_item_is_refused() {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let mut batch = HudBatch::scratch([320, 240]);
+            let mut draw = GameDrawContext::new(game, &mut batch);
+            let view = Gui3dView::new([40.0, 30.0], 16.0, IDENTITY_TRANSFORM);
+
+            let air =
+                mod_api::ItemStack::new(mod_api::__private::item_key("minecraft:air").unwrap(), 1)
+                    .unwrap();
+            assert_eq!(draw.model_3d(Gui3dSubject::Item(&air), view), Ok(()));
+            assert!(draw.surface.vertices.is_empty());
+            assert!(draw.surface.blends.is_empty());
+
+            let unknown = mod_api::ItemStack::new(
+                mod_api::__private::parts_installation::item_key(u32::MAX),
+                1,
+            )
+            .unwrap();
+            assert_eq!(
+                draw.model_3d(Gui3dSubject::Item(&unknown), view),
+                Err(Gui3dError::UnknownItem)
+            );
+            assert!(draw.surface.vertices.is_empty());
+            assert!(draw.surface.blends.is_empty());
         });
     }
 }

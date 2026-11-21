@@ -344,6 +344,7 @@ draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40
   OptiFine CIT glint layers of a stack are not drawn on this path yet
   ([#3555](https://github.com/sunrise-org/sunrise/issues/3555)). There is no z input. `push_clip` cuts both
   as it cuts `fill`.
-- Refusals draw nothing: `Gui3dError::Unavailable` (no game, or a server), `NotFinite` (a value,
-  or a corner the turn sends, that is not finite, or a size that is not positive), `UnknownItem`
-  (an empty stack or unknown item) and `Model(ModelError)` (a stale or unknown handle).
+- A `minecraft:air` stack is a no-op (`Ok(())`), matching `GuiGraphicsExtractor.item`. Refusals
+  draw nothing: `Gui3dError::Unavailable` (no game, or a server), `NotFinite` (a value, or a
+  corner the turn sends, that is not finite, or a size that is not positive), `UnknownItem` (an
+  unknown item id) and `Model(ModelError)` (a stale or unknown handle).
