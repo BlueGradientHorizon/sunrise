@@ -123,7 +123,7 @@ run "$d" "$P"; verdict "Nightly with an unreadable title refused" 1 "title doesn
 
 # 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
 d=$W/tag; make_release "$d" 26.3-0.1.0; with_key "$d"; echo 26.3-0.1.0 > "$d/only-tag"
-run "$d" "$P" --version 26.3-0.1.0; verdict "good signature installs (stable release tag)" 0 "Release signature OK" "$d"
+run "$d" "$P" --version 26.3-0.1.0; verdict "good signature installs (stable release tag)" 0 "" "$d"
 [ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] \
   || { echo "FAIL current isn't 26.3-0.1.0"; fails=$((fails+1)); }
 

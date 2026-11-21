@@ -770,25 +770,7 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
                 return Ok(());
             }
             if check {
-                if let Some(asked) = version.as_deref().filter(|_| release.tag != current) {
-                    // The tag asked for, not the version it installs as: `nightly` resolves to
-                    // `nightly-<date>-<commit>`, which is no tag on GitHub.
-                    println!(
-                        "Sunrise {} is on GitHub; this server runs {current}. `sunrise-server update --version {asked}` \
-                         installs it.",
-                        release.tag
-                    );
-                } else if update_available(&release.tag, &current) {
-                    println!(
-                        "Sunrise {} is out; this server runs {current}. `sunrise-server update` installs it.",
-                        release.tag
-                    );
-                } else {
-                    println!(
-                        "Up to date: {current} (the newest release is {}).",
-                        release.tag
-                    );
-                }
+                println!("{}", check_line(version.as_deref(), &release.tag, &current));
                 return Ok(());
             }
             if version.is_none() && !update_available(&release.tag, &current) {
@@ -817,6 +799,22 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
     }
     unpacked?;
     switch_to(dir, &install, &tag, timeout)
+}
+
+/// What `update --check` says about `newest` for a server running `current`. With `--version`
+/// (`asked`), the command it suggests names the tag asked for, not the version that tag installs
+/// as: `nightly` resolves to `nightly-<date>-<commit>`, which is no tag on GitHub.
+fn check_line(asked: Option<&str>, newest: &str, current: &str) -> String {
+    match asked {
+        Some(asked) if newest != current => format!(
+            "Sunrise {newest} is on GitHub; this server runs {current}. `sunrise-server update --version {asked}` \
+             installs it."
+        ),
+        _ if update_available(newest, current) => format!(
+            "Sunrise {newest} is out; this server runs {current}. `sunrise-server update` installs it."
+        ),
+        _ => format!("Up to date: {current} (the newest release is {newest})."),
+    }
 }
 
 /// `rollback [--timeout SECONDS]`: back to the release used before the current one.
@@ -1288,6 +1286,26 @@ mod tests {
         };
         let err = newest_on_line("26.3-0.1.0", swapped, &[key.public()]).unwrap_err();
         assert!(err.contains("names another tag"), "{err}");
+    }
+
+    #[test]
+    fn an_explicit_check_suggests_the_tag_asked_for() {
+        let line = check_line(Some("nightly"), "nightly-2026-11-21-0c02067", "26.3-0.1.0");
+        assert!(
+            line.contains("`sunrise-server update --version nightly`"),
+            "{line}"
+        );
+        assert!(
+            line.contains("nightly-2026-11-21-0c02067 is on GitHub"),
+            "{line}"
+        );
+        // Without --version, the update the server's own channel offers.
+        let line = check_line(None, "26.3-0.2.0", "26.3-0.1.0");
+        assert!(
+            line.contains("`sunrise-server update` installs it"),
+            "{line}"
+        );
+        assert!(check_line(None, "26.3-0.1.0", "26.3-0.1.0").starts_with("Up to date"));
     }
 
     #[test]

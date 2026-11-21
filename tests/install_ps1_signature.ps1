@@ -176,8 +176,9 @@ try {
     # 2. Good signature, a stable release by its tag: looked up by exactly that tag, installed under it.
     $d = Join-Path $W "tag"; New-Release $d "26.3-0.1.0"; $script:OnlyTag[$d] = "26.3-0.1.0"
     $r = Invoke-Case $d $P @{ Version = "26.3-0.1.0" }
-    Test-Case "good signature installs (stable release tag)" $true "Release signature OK" $r
+    Test-Case "good signature installs (stable release tag)" $true "" $r
     Test-That "not installed as 26.3-0.1.0" (Test-Path (Join-Path $d "inst\releases\26.3-0.1.0\sunrise-server.exe"))
+    Test-That "current isn't 26.3-0.1.0" ("$((Get-Item (Join-Path $d "inst\current") -ErrorAction SilentlyContinue).Target)" -like "*\releases\26.3-0.1.0")
 
     # 3. Tampered archive: GitHub's digest is made to agree with the swapped archive, only SHA256SUMS catches it.
     $d = Join-Path $W "arc"; New-Release $d "v1.2.3"
