@@ -53,8 +53,8 @@ irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/
 ```
 
 The script picks the machine's x64 or ARM64 archive, including when PowerShell runs under x64 emulation. It downloads
-the current Sunrise Nightly from GitHub (the only build Sunrise ships;
-`--version` picks another), checks it against the release's signature when OpenSSL 3 is installed (on Windows, Git
+the current Sunrise Nightly from GitHub, or the release `--version <tag>` names (Windows: `-Version <tag>`): a stable
+release's tag, such as `26.3-0.1.0`, puts the server on that stable line, which its updates then follow. It checks it against the release's signature when OpenSSL 3 is installed (on Windows, Git
 for Windows includes it), else against the SHA-256 GitHub publishes, and never asks for sudo or administrator rights. It installs:
 
 - the release in `~/.local/share/sunrise/releases/<version>` (Windows: `%LOCALAPPDATA%\Sunrise`), with
@@ -62,7 +62,7 @@ for Windows includes it), else against the SHA-256 GitHub publishes, and never a
 - `sunrise-server` and `sunrise-prepare` in `~/.local/bin` (Windows: added to your PATH);
 - a `game-files` folder for the files you prepare, kept across updates.
 
-Options: `--version vX.Y.Z`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
+Options: `--version <tag>`, `--dir FOLDER`, `--bin FOLDER` (Windows: `-Version`, `-Dir`). Other systems,
 such as Linux on ARM, build from source: `cargo build --release -p sunrise-game --bin sunrise-client -p
 sunrise-server` and keep both programs in one folder.
 
@@ -265,7 +265,7 @@ with `CapReached`. Set another number under `[properties]` in `server.toml`:
 sunrise-max-runtime-levels = 128
 ```
 
-A level frees its place when its mod unloads or deletes it (a delete also removes its folder from `dimensions/`). After 300 ticks with nobody in it, it leaves memory, as any level does, but keeps its place: it opens again when someone enters it.
+A level frees its place when its mod unloads or deletes it (a delete also removes its folder from `dimensions/`). After 300 ticks with nobody in it, it leaves memory, as any custom level does, but keeps its place: it opens again when someone enters it.
 
 Already have a vanilla server? Run `sunrise-server init` in its folder, or `sunrise-server import
 server.properties` to write `server.toml` from it. The world, `ops.json`, `whitelist.json` and the ban lists
@@ -407,7 +407,9 @@ minutes. It keeps the crash report and gives up after 5 crashes in 10 minutes, a
 after it starts and every 6 hours after, and says so in its log, in `status` and in the panel; it never
 updates by itself. `sunrise-server update --check` (add `--json` for machine output) asks once. `sunrise-server update`:
 
-1. downloads the current Nightly and checks it against its signed SHA-256;
+1. downloads the newest build of the server's channel and checks it against its signed SHA-256: on a stable release
+   (`26.3-0.1.0`), the newest stable release of its line (the same Minecraft version and major, `26.3-0.x`),
+   never a Nightly or the next major; on any other build, the current Nightly;
 2. stops the game, backs up the world (`backups/<time>-before-<release>.zip`) and switches to the new
    release;
 3. starts the game on it and waits up to 5 minutes (`--timeout SECONDS`) for it to come up.
@@ -415,11 +417,25 @@ updates by itself. `sunrise-server update --check` (add `--json` for machine out
 If the new game crashes or doesn't come up in time, the server goes back to the release it was on by itself
 and puts the world back as it was just before the switch (the world the new game left is kept in
 `backups/`). `sunrise-server rollback` goes back to the release before by hand, keeping the world as it is
-(it backs it up first). `--version vX.Y.Z` installs a given release, and `--archive FILE --version NAME` an
+(it backs it up first). `--version <tag>` installs a given release (moving to another line or channel too), and `--archive FILE --version NAME` an
 archive you have, such as your own build. A server still on a release from before the last dated one doesn't know
 that 0.2 comes after the dated releases and says it is up to date: run `sunrise-server update --version v0.2.0`
 once ([versioning](versioning.md)). A stopped server is switched and starts on the new release next
 time. Set `SUNRISE_NO_UPDATE_CHECK=1` in the server's environment to turn the check off.
+
+Release checks and downloads, and the Discord webhook, use the first nonblank setting in this order:
+`HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` for HTTPS, or `HTTP_PROXY`, `http_proxy`,
+`ALL_PROXY`, `all_proxy` for HTTP. A proxy address without a scheme means HTTP. Supported schemes are
+`http://`, `socks4://`, `socks4a://`, `socks5://`, `socks5h://` and `socks://` (an alias for SOCKS5).
+An `https://` proxy address is not supported, even for HTTPS downloads. HTTP proxy credentials are sent
+only on HTTPS CONNECT, not for plain HTTP requests.
+
+Local addresses bypass the proxy. `NO_PROXY` (or `no_proxy` if `NO_PROXY` is unset) is a comma-separated
+list: `*` bypasses all hosts; a host or domain (`example.org`, `.example.org`, `*.example.org`) matches
+that name and its subdomains. The list accepts IP literals, including bare or bracketed IPv6, but not CIDR.
+An entry with a port (`example.org:8443` or `[2001:db8::1]:8443`) matches only that destination port,
+including the URL scheme's default port when no port is written. Release checks and downloads
+select the route again at each redirect.
 
 ## 6. Web panel
 

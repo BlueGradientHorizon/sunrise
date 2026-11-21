@@ -86,47 +86,56 @@ SDK. Only names and outcomes are public; raw harness output and retry details st
 `.github/workflows/release.yml` is the batch train: it decides when a new Nightly goes out and starts
 `nightly build` (`.github/workflows/nightly-build.yml`, [Nightly channel](#nightly-channel)) on the commit it
 decided, which builds, signs and publishes it. On the fork it runs only when the [daily run](#daily-run) calls it
-with a fully green commit, or by hand (`kind`: `nightly` or `snapshot`); it has no schedule and no `workflow_run`
+with a fully green commit, or by hand (`kind`: `nightly` or `dev`); it has no schedule and no `workflow_run`
 trigger since 2026-11-13.
 
-Three kinds of game build (CI tiers, owner 2026-11-13):
-
-| Build | Who starts it | What it needs | Published as |
+| | [Dev](#dev) | [Nightly](#nightly-channel) | [Stable](#release-branches) |
 |---|---|---|---|
-| [Snapshot](#snapshot) | root, by dispatching `release.yml -f kind=snapshot -f dry_run=false` on main | the gate (`lint`, `verify`, `verify-static`) green on that commit | pre-release `snapshot-<date>-<short>`; no launcher offers it |
-| Nightly | dispatch, or the [daily run](#daily-run) | main’s head or an explicit commit of main, with its dyna-checks gate green and its SDK published first | pre-release `nightly`, every launcher's update |
-| [Stable release](#release-branches) | root, by dispatching `nightly-build.yml -f kind=stable` on `release/26.3` | that branch's head, with a green real daily run and its SDK published first | the full release `26.3-<semver>` (`26.3-0.1.0` first), never GitHub's latest |
+| Started by | Root: `release.yml -f kind=dev -f dry_run=false` on `main` | The [daily run](#daily-run), or a dispatch | Root: `nightly-build.yml -f kind=stable` on `release/26.3` |
+| Built from | A commit on `main` with Dev version support and the gate (`lint`, `verify`, `verify-static`) green | The head of `nightly/26.3`, which the daily fast-forwards to each fully green commit; `daily-green` while that branch doesn't exist | The approved head of `release/26.3`, with a fully green daily run on that commit |
+| SDK | `release.yml` publishes `sdk-<sha>` first | The daily publishes `sdk-<sha>` first | A daily on the approved commit publishes `sdk-<sha>` first |
+| Tag / title | `dev-<date>-<short>` / `Dev <date> · <short>` | Rolling `nightly` / `Nightly <date> · <short>` | `26.3-<semver>` / `Sunrise 26.3-<semver>` |
+| Signed for (`.sig` / `.v2.sig`) | `dev` / `dev-<date>-<short>` | `nightly` / `nightly-<date>-<short>` | The release tag for both |
+| GitHub release kind | Pre-release, not latest | Pre-release, not latest | Full release, `--latest=false` |
+| Retention | Seven days; the newest is always kept (`nightly.py prune-dev`) | Current `nightly` stays; dated copies are kept for seven days, with at most one per date | Kept permanently |
+| Launcher | From 1.1.3, install by exact tag (`sunrise-launcher install <tag>`); until then, download and verify by hand | Nightly profiles follow `nightly` | Stable profiles read full releases with stable tags |
+| `sunrise-server` | Refuses Dev builds | Uses `nightly` by default | Can install by explicit stable tag |
 
-### Snapshot
+### Dev
 
-A snapshot is how a change to packages or platform legs is tested after it merges: none of those jobs runs on a pull
-request. Root dispatches `release.yml` with `kind=snapshot` on main, for main's head or `-f commit=<sha>` of a
+A Dev build is how a change to packages or platform legs is tested after it merges: none of those jobs runs on a pull
+request. Root dispatches `release.yml` with `kind=dev` on main, for main's head or `-f commit=<sha>` of a
 commit on main. In order:
 
-1. `decide` (`tools/release_train.py decide --channel snapshot`) refuses a commit that is not on main, or whose
-   newest dyna-checks main-push run did not pass every gate job (a pending job is not passed). Nothing else holds
-   it: no daily tests, no `daily-green`, no batch rules, no daily cap, no pause, no release-blocker.
-2. `snapshot-sdk` builds the commit's prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when
+1. `decide` (`tools/release_train.py decide --channel dev`) refuses a commit that is not on main, or whose
+   newest dyna-checks main-push run did not pass every gate job (a pending job is not passed). It also refuses
+   commits whose source predates the Dev version label. It does not wait for daily tests, `daily-green`,
+   batch rules, a daily cap, a pause or a release-blocker.
+2. `dev-sdk` builds the commit's prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when
    `sdk-<sha>` already exists). A build it makes runs the SDK's own checks too, as the daily run's does: the native
    linkage probe on the Linux and Windows client legs, and the API-source check and the source stage
    (`tools/ci/test_stage_catalog.py`) on Linux; an `sdk-<sha>` that already exists is reused as it is, and no check
-   runs again. `snapshot-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
+   runs again. `dev-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
    artifacts through `sdk-publish.yml`, the one workflow that publishes an SDK (the daily run and `prebuilt-game.yml` call it too).
-3. `snapshot` starts `nightly build` with `kind=snapshot` and that commit. It re-checks the gate and the SDK, builds
+3. `dev` starts `nightly build` with `kind=dev` and that commit. It re-checks the gate and the SDK, builds
    the commit alone (no picked pull requests, no build branch, no nightly-state), as `SUNRISE_VERSION`
-   `snapshot-<date>` so the game calls itself "Snapshot <date> · <short>", signs it for the `snapshot` channel and
-   for `snapshot-<date>-<short>` (`SHA256SUMS.sig`, `SHA256SUMS.v2.sig`, the Nightly's key), checks the smoke test
-   and publishes the pre-release `snapshot-<date>-<short>` titled "Snapshot <date> · <short>". A snapshot of a
-   commit already published that day is skipped. Snapshots older than 7 days are deleted, never the newest one,
-   and never an `sdk-<sha>` SDK. The snapshot carries its SDK's `sdk.json` in its signed sums, as the Nightly does,
+   `dev-<date>` so the game calls itself "Dev <date> · <short>", signs it for the `dev` channel and
+   for `dev-<date>-<short>` (`SHA256SUMS.sig`, `SHA256SUMS.v2.sig`, the Nightly's key), checks the smoke test
+   and publishes the pre-release `dev-<date>-<short>` titled "Dev <date> · <short>". A commit already published
+   that day is skipped. Dev builds older than 7 days are deleted, never the newest one,
+   and never an `sdk-<sha>` SDK. The Dev build carries its SDK's `sdk.json` in its signed sums, as the Nightly does,
    so the launcher reads its build id from it and builds native mods against `sdk-<sha>`.
 
 It never touches the `nightly` tag or channel, its rotation, its `nightly-source/` tags or `daily-green`. A dry run
 (the default for a dispatch, and any run off main) builds, indexes and signs the SDK with a throwaway key
 (`sdk-publish.yml` with `publish: false`, run only when `sdk-<sha>` does not exist yet), builds the game (a
-`nightly build` dry run, signed with a throwaway key) and publishes nothing; its summary names what a real run would publish. No launcher lists a
-snapshot or updates to one; a developer installs one with `sunrise-launcher install snapshot-<date>-<short>`, which
-looks the tag up on its own and checks its signature for exactly that version.
+`nightly build` dry run, signed with a throwaway key) and publishes nothing; its summary names what a real run would
+publish. Starting with Sunrise Launcher 1.1.3, install Dev builds by exact tag (`sunrise-launcher install <tag>`);
+until then, download the assets from GitHub and verify the files for the exact tag:
+
+```sh
+sunrise-release-sign verify --tag dev-<date>-<short> --signature SHA256SUMS.v2.sig <folder>
+```
 
 ### Daily run
 
@@ -172,7 +181,7 @@ The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: 
 Only a run on `main` with `dry_run` false moves the tag, files issues or publishes; a real run on `release/26.3`
 publishes only its SDK ([Release branches](#release-branches)); any other run prints what it would do. On Sunrise a Nightly ships a commit of main with its dyna-checks gate green and its SDK, `sdk-<sha>`, published
 first on the same commit: a game build without its SDK is never published (owner, 2026-11-17).
-A [snapshot](#snapshot) (`release.yml -f kind=snapshot`) needs only dyna-checks' gate on its commit of main.
+A [Dev build](#dev) (`release.yml -f kind=dev`) needs only dyna-checks' gate on its commit of main.
 
 ```mermaid
 flowchart LR
@@ -225,7 +234,9 @@ keep a working build until they update themselves. `.github/release-line.txt` st
   instance stays. Worlds are in the game's folder, never in a version's, so nothing touches them. The "Nightly
   builds" setting is gone. The last week's Nightlies (`nightly-<date>`) and the old releases stay on the Versions
   page.
-- **Servers** (#3331): `sunrise-server update`, `install.sh` and `install.ps1` follow the Nightly the same way.
+- **Servers** (#3331): `sunrise-server update`, `install.sh` and `install.ps1` follow the Nightly the same way. A
+  server installed on a stable release (`install.sh --version 26.3-0.1.0`) follows that release's line instead
+  ([server.md](server.md), section 7).
 - **Kira** posts each Nightly in #releases; the bug template asks for the version the game shows.
 - **Everyone gets the reviewers' picks.** A Nightly is main plus the pull requests the trusted reviewers picked
   ([below](#trusted-reviewers-pick-the-nightlys-pull-requests)), so a pick reaches every player with the next
@@ -264,7 +275,7 @@ publishes) is `linux-smoke`'s, on Dyna's runner with the prepared files, from th
 
 The musl archive is an optional manual download for musl-based Linux desktops; see
 [installation and updates](native-client.md#musl-linux-manual-installation). The launcher still selects the
-standard glibc archive. Nightlies and snapshots publish without waiting for the musl build. The release notes
+standard glibc archive. Nightlies and Dev builds publish without waiting for the musl build. The release notes
 say that the archive follows separately. After publication, `musl-attach` signs and verifies `SHA256SUMS-musl`
 with `SHA256SUMS-musl.sig` for the channel and `SHA256SUMS-musl.v2.sig` for its exact build. It adds those files
 and then the archive without replacing the launcher's `SHA256SUMS` or its signatures. It writes to the release
@@ -396,7 +407,7 @@ Why it exists: the tool shipped only inside each `sdk-<commit>`, so a tool fix r
   a pull request. `decide` builds only when a file of the tool changed
   since the commit `mod-tool` holds (`tools/ci/mod_tool.py crates` lists the folders: the workspace crates
   `cargo-sunrise-mod` depends on, from `cargo metadata`, plus the lock, the compiler pin and the files that build and sign
-  it) and dyna-checks' gate is green on the commit, as for a snapshot. It refuses a commit not on main and one that does
+  it) and dyna-checks' gate is green on the commit, as for a Dev build. It refuses a commit not on main and one that does
   not contain what `mod-tool` holds, so an older commit never replaces a newer tool.
 - Who signs: the `sign` job alone, in the `release` environment, on main with publishing on; it checks out only
   `tools/ci/sign_release.sh`. Any other run, a dry run included, signs with a throwaway key and publishes nothing.
@@ -417,7 +428,7 @@ Until an owner creates them, everything above runs as it did: the Nightly follow
 
 | Branch | Moves | Publishes |
 | --- | --- | --- |
-| `main` | merges, as before | snapshots, `sdk-<sha>`, and the Nightly while `nightly/26.3` doesn't exist |
+| `main` | merges, as before | Dev builds, `sdk-<sha>`, and the Nightly while `nightly/26.3` doesn't exist |
 | `nightly/26.3` | fast-forwarded by the [daily run](#daily-run) to each fully green commit of main (job `nightly-branch`, the `sunrise-sunny` App's token); only ever forward | the Nightly: its head, under the `nightly` tag and channel as before |
 | `release/26.3` | cut by an owner from a green daily's commit; later commits by pull request (a fix, or a Nightly merged in) | `26.3-<semver>`, by hand, and the `sdk-<sha>` of its own daily runs |
 
@@ -498,27 +509,29 @@ The first release of a line has no API restriction. No label, change note or dis
 The mod API surface comparison judges declarations, not behaviour: a vanilla parity fix that leaves the surface
 alone can ship in a patch.
 
-**Content declarations are held by review and tests in 0.1.x, not by the release check.** A content mod's manifest
-and declarations that loaded in one release of a line load the same in every later patch and minor. What shows a
-change:
+**Content declarations are held by review and tests in the 26.3-0.x line, not by the release check.** A content
+mod's manifest and declarations that loaded in one release of a line load the same in every later patch and minor.
+What shows a change:
 
-- `crates/sunrise-mod-package/tests/content-corpus/` holds manifests and declarations, one mod folder per entry,
-  including ones that must be refused. `crates/sunrise-mod-package/tests/content-golden/<entry>.txt` holds what the
-  readers make of each: the loaded manifest and content, or the refusal text.
-- The `content_golden` test (in `verify`) re-reads the corpus, reads each entry twice and requires the same bytes,
-  and fails when a golden file differs. So a change in reading is a changed golden file in the pull request that
-  makes it, and never arrives unseen.
-- The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key
-  appears in no entry: a pull request that adds a key adds its entry.
+- `crates/sunrise-mod-package/tests/content-corpus/` holds manifests and declarations, one mod per entry, as a
+  folder or a packed `.smod`, including ones that must be refused.
+  `crates/sunrise-mod-package/tests/content-golden/<entry>.txt` holds what the readers make of each: the loaded
+  manifest, the icon's bytes and the content, or the refusal text.
+- The `content_golden` test (in `verify`) re-reads the corpus and fails when a dump differs from its committed golden.
+  `content_golden_is_deterministic` reads each entry twice and requires the same bytes.
+- The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key it
+  can enumerate appears in no entry: a pull request that adds a key adds its entry. Its source guard lists every
+  Serde construct the probe can't see into, each with the entries that cover it, and audits the files that define
+  the declaration types other crates own.
 
 Both tests also run in the daily run (`tools/ci/ignored-tests/daily-sunrise-mod-package-content.txt`), so the green
-daily a stable release needs on its exact commit includes them.
+daily a stable release needs on its exact commit includes them. `sunrise-mod-package` turns on `serde_json`'s
+`float_roundtrip` itself, so the tests read numbers as every build of the game and the tools does.
 
 The rule on `release/26.3`, enforced by review: every pull request needs an ok from umceko's side at its exact head.
-Within a line, entries and golden files are only added. The one exception is a deliberate parity fix that changes
-how an existing declaration loads: a reviewed edit of that entry's golden file, with umceko's side's ok at the
-exact head and a line in the release's notes. The release workflow does not compare content declarations and
-refuses nothing on their account.
+Within a line, entries and golden files are only added: an inherited entry keeps its input, and its golden file
+never changes. A parity fix that would change what an existing declaration loads as, or whether it loads, waits
+for the next line. The release workflow does not compare content declarations and refuses nothing on their account.
 
 Known limits: the corpus covers what `sunrise-mod-package` reads (the manifest and the typed declarations: blocks,
 items, effects, creative tabs, fluids, fluid interactions, entity types, menus). What the game reads from a content
@@ -543,8 +556,7 @@ stable release of the same Minecraft version (including across a major bump). Th
 and source hashes from `functions.json`, not offsets or other lookup metadata. If the list doesn't fit in the notes,
 they link to the full list on the release.
 
-No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nightly), so a stable release is a
-download for now.
+Launchers without Stable profiles can only use a `26.3-<semver>` release as a manual download.
 
 ```sh
 gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=true -f base=<sha>   # check first
@@ -633,12 +645,12 @@ the pick, before it pushes a build branch; a dry run goes on without `sdk.json`.
 `nightly.py sdk-assets` names: `sdk.json`, `SHA256SUMS` signed for `sdk-<sha>` (`SHA256SUMS.sig`), `surface.json`,
 `build-data.tar.xz` and the `runtime`, `api` and `engine` slices of the four packages (Linux client, Linux server,
 Windows GNU and macOS ARM64); its `sdk.json` must match those sums and name that build and this package format. The
-Nightly carries that `sdk.json` in its own signed sums. Every Nightly and snapshot also carries
+Nightly carries that `sdk.json` in its own signed sums. Every Nightly and Dev build also carries
 `sunrise-release.json` in them, the facts a launcher reads before it runs anything in the build
 ([api/release-file.md](api/release-file.md)). The SDK signature's message names `sdk-<sha>`, so it never
 passes for a game release, nor a game release's for an SDK (`sunrise-release-sign`: `signed_digest`, `sdk_digest`).
 One publish step ([sdk-publish.yml](../.github/workflows/sdk-publish.yml)), called by the daily run (`sdk-publish`
-in [daily.yml](../.github/workflows/daily.yml)), by a [snapshot](#snapshot) and by the [SDK workflow](../.github/workflows/prebuilt-game.yml)'s
+in [daily.yml](../.github/workflows/daily.yml)), by a [Dev build](#dev) and by the [SDK workflow](../.github/workflows/prebuilt-game.yml)'s
 hand dispatch, publishes those exact-SHA releases without pruning; it signs through the `release` environment on
 main only, and any other run signs with a throwaway key and publishes nothing. Older `prebuilt-<sha>` releases are
 outside it and are removed by hand.
@@ -661,27 +673,27 @@ building against it needs the compiled assets back.
 
 ### Keep set and bound
 
-At one UTC instant T, let R be **all actually existing** current and dated Nightly releases, including drafts,
-plus matching Nightly tags without a release. Protect each one's resolved full source SHA, regardless of age.
-Do not assume a dated Nightly is gone just because its date is outside the usual seven-day window. A failed or
-stalled Nightly cleanup must not turn a still-downloadable game into an unpaired game.
+Protect the exact-SHA SDK of each of these game builds, regardless of its age:
 
-Keep every exact-SHA SDK referenced by R, and the **10 newest unreferenced exact-SHA SDK releases**, ordered by
+- Every Stable release's `sdk-<sha>` is kept forever. `stable-mod-api` judges each later release against its
+  parent's signed SDK.
+- A Dev build's `sdk-<sha>` is kept while its `dev-*` release exists.
+- Keep the SDK of every existing current and dated Nightly release, including drafts, and of every matching
+  Nightly tag without a release. A failed cleanup must not turn a still-downloadable game into an unpaired game.
+
+Keep every exact-SHA SDK referenced by those roots, and the **10 newest unreferenced exact-SHA SDK releases**, ordered by
 publication time (`published_at`) descending, then release ID descending as a deterministic tie-breaker.
 For drafts without `published_at`, use draft `created_at` as the provisional ordering timestamp;
 publication replaces that timestamp. Never use a published release's `created_at` for publication order:
 GitHub derives it from the target commit's date. Delete only the
 remaining unreferenced SDK releases. Count incomplete and draft SDK releases toward those 10 too: neither is
 an excuse to delete a referenced release. There is no age exemption or accumulating grace-period queue.
-The reserve covers SDKs published since the last Nightly pick that no Nightly references yet.
+The reserve covers recently published SDKs that no game release references yet.
 Never delete unrelated tags, release families, permanent source tags or build branches in this operation.
 
-After a successful complete sweep the SDK release count is at most `distinct protected SHAs + 10` (assuming
-one exact-SHA release per SHA). Under normal dated-Nightly cleanup this is at most 19: eight inclusive UTC
-date buckets and one current Nightly, often fewer because pins overlap. This is a count bound, not a byte
-quota. If older Nightlies remain, the bound grows with their distinct pins; a hard global cap cannot coexist
-with preserving every retained Nightly. Report excess retained Nightlies for repair rather than overriding
-their protection. API failures likewise favor availability over the target bound.
+The bound is the distinct protected SHAs plus the reserve, not a byte quota. It grows as Stable releases
+accumulate, or if failed cleanup leaves older Nightly or Dev releases downloadable. Report failed cleanup
+rather than overriding the protection. API failures likewise favor availability over the target bound.
 
 Installed games whose Nightly release has already expired are not additional server-side roots: their source
 tag stays, but their SDK may eventually be evicted. Keeping their SDK indefinitely would require an additional
@@ -693,23 +705,23 @@ reference-registration contract and would defeat this bound. Do not delete a pla
    following every pagination link to normal exhaustion, and enumerate every matching Git tag. A fixed limit
    such as the existing Nightly pruner's `--limit 200`, the latest release, workflow run history, or a cached
    release list is not sufficient. Record release IDs, names, draft status, timestamps and tag identities.
-2. For each `nightly` or valid `nightly-YYYY-MM-DD` root, resolve its actual Git tag to a commit. Recursively
-   peel annotated tags; require a full 40-digit lowercase commit SHA. Never interpret `target_commitish`
-   as the source pin: it can be a branch name, not the commit the built game used.
+2. For each protected root, resolve its actual Git tag to a commit. Recursively peel annotated tags; require
+   a full 40-digit lowercase commit SHA. Never interpret `target_commitish` as the source pin: it can be a
+   branch name, not the commit the built game used.
 3. For each Nightly release, require its notes' full `Source: commit <SHA>` pin and require equality with the
    resolved tag commit. Cross-check any named permanent source tag against that same commit. A short SHA in
    the title, today's main head, a date or the suffix of a source tag cannot substitute for the full pin.
    A tag-only root is conservatively protected by its resolved commit; a release whose tag is missing or whose
    pin is missing, ambiguous or inconsistent aborts the sweep, rather than guessing that it is obsolete.
 4. Build a deduplicated protected set and a reverse map of SHA to all roots for the review summary. Discover
-   SDK candidates only by the exact `prebuilt-[0-9a-f]{40}` release tag-name pattern. Resolve each candidate's tag
+   SDK candidates only by the exact `sdk-[0-9a-f]{40}` release tag-name pattern. Resolve each candidate's tag
    and require it to agree with the SHA in its name. An unreferenced draft whose exact-SHA tag is absent
    (for example, a failed upload) still counts toward the reserve and is eligible for release-only deletion
    outside it; do not invent or delete a tag for that draft. A referenced draft or missing tag still fails
    closed. Other malformed SDK-family names or mismatches abort the sweep
    for manual review. For every protected SHA require the corresponding SDK to exist and be complete under
    the publication contract above. A missing pair is an availability incident: delete nothing and report it;
-   pruning neither rebuilds it nor silently removes its Nightly.
+   pruning neither rebuilds it nor silently removes its game release.
 5. Finish all discovery and validation before the first destructive request. Any missing page, truncated or
    malformed response, permission/rate-limit/network error, unresolved tag (except the unreferenced SDK draft
    exception above) or incomplete asset listing means
@@ -725,8 +737,8 @@ On apply, acquire the shared lock and repeat complete discovery and validation t
 not replay the earlier dry-run inventory. Keep the lock through deletion.
 
 Before enabling pruning, replace the independent workflow concurrency groups with one repository-wide,
-non-cancelling group, `nightly-sdk-publication`, used by the **entire** real Nightly workflow, SDK workflow and
-retention workflow. Acquire it before Nightly source selection and SDK readiness checks, not just before
+non-cancelling group, `nightly-sdk-publication`, used by the **entire** real game, SDK and retention workflows.
+Acquire it before source selection and SDK readiness checks, not just before
 `gh release create`, and retain it through rotation, publication and cleanup. Entire-workflow serialization
 deliberately trades throughput for a simple invariant; do not nest a job lock inside that workflow lock.
 All dispatch, scheduled, retry and recovery paths that mutate these releases/tags must honor this exclusion.

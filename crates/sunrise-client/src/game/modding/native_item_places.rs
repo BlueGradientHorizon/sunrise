@@ -2379,11 +2379,10 @@ pub(super) mod tests {
                 game.level_set_block(level, [0, 64, 0], chest.unwrap(), flags),
                 Ok(true)
             );
-            let mut player = guest(1);
-            player.carried = Some(ItemStack::new("minecraft:emerald", 9));
-            game.lan.as_mut().unwrap().hub.guests.push(player);
+            let host = game.lan.as_mut().unwrap();
+            host.hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("chest".into());
-            game.lan.as_mut().unwrap().hub.open_container(
+            host.hub.open_container(
                 1,
                 "minecraft:generic_9x3",
                 title,
@@ -2392,6 +2391,10 @@ pub(super) mod tests {
                 vec![None; 27],
                 None,
             );
+            // Opening a window leaves the inventory's cursor parked; seed the chest menu's.
+            host.hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:emerald", 9));
+            });
             let menu = menu_of(game);
             // Slot 0 is the chest's first, 27 the inventory's 9 and 54 the hotbar's first.
             let (chest, inventory, hotbar) = (
