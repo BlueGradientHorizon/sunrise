@@ -34,10 +34,14 @@ pub(super) fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool
         return false;
     };
     let mut motion = motion;
-    if guest.saved.is_some() {
-        // Entity.load initializes the living body's yaw from the saved view angle.
-        motion.body_yaw = guest.yaw;
-    }
+    motion.body_yaw = guest.carried_body_yaw.take().unwrap_or_else(|| {
+        // Entity.load initializes the joining player's body yaw from its saved view.
+        if guest.saved.is_some() {
+            guest.yaw
+        } else {
+            0.0
+        }
+    });
     if let Some(tick_count) = guest.carried_tick_count.take() {
         motion.health.tick_count = tick_count;
     }

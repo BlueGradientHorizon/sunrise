@@ -159,15 +159,17 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
             assert!(insect.body_yaw(game).unwrap().is_nan());
             assert_eq!(insect.rotation(game), Some([405.5, 0.0]));
         }
+        use sunrise_client::entity_nbt::{armor_stand_from_nbt, armor_stand_to_nbt};
+        let stand = sunrise_client::entities::ArmorStand::new(50, Vec3::ZERO, 12.0);
+        let saved = armor_stand_to_nbt(&stand, [0; 4], None, game.items());
         game.armor_stands
-            .push(sunrise_client::entities::ArmorStand::new(
-                50,
-                Vec3::ZERO,
-                12.0,
-            ));
+            .push(armor_stand_from_nbt(&saved, 50).unwrap());
         let stand = game.entity(50).unwrap();
+        assert_eq!(stand.body_yaw(game), Some(0.0));
+        assert_eq!(stand.head_yaw(game), Some(12.0));
+        assert_eq!(game.armor_stands[0].previous_yaw, 12.0);
         assert_eq!(stand.set_body_yaw(game, -405.5), Ok(true));
-        assert_eq!(stand.body_yaw(game), Some(12.0));
+        assert_eq!(stand.body_yaw(game), Some(0.0));
         assert_eq!(stand.rotation(game), Some([12.0, 0.0]));
         assert_eq!(stand.head_yaw(game), Some(-405.5));
         assert_eq!(game.armor_stands[0].previous_yaw, -405.5);
@@ -196,6 +198,17 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
         .unwrap();
         game.guest_server_tick(12, true);
         assert_eq!(guest.body_yaw(game), Some(50.0));
+        game.boats.push(crate::game::boats::Boat::new(
+            51,
+            "oak".into(),
+            Vec3::ZERO,
+            385.0,
+        ));
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        hub.update_guest(12, |g| g.vehicle = Some(51)).unwrap();
+        game.guest_vehicle_tick(12);
+        assert_eq!(guest.body_yaw(game), Some(385.0));
+
         game.others.push(crate::game::commands::OtherEntity {
             attachment_lifetime: Default::default(),
             knot_check: None,

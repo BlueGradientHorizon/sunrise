@@ -139,9 +139,9 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn frame_body_yaw_writes_feed_local_living_render_state() {
+    fn client_tick_body_yaw_writes_feed_local_living_render_state() {
         if run_fresh_cases(
-            "game::native_local_player_writes::tests::frame_body_yaw_writes_feed_local_living_render_state",
+            "game::native_local_player_writes::tests::client_tick_body_yaw_writes_feed_local_living_render_state",
             "SUNRISE_CLIENT_BODY_YAW_CASE",
             &["frame"],
         ) {
@@ -150,10 +150,10 @@ mod tests {
         struct Turns(Arc<Mutex<Vec<f32>>>);
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Turns {
-            fn render_frame_pre(
+            fn client_tick_post(
                 &self,
                 host: &mut dyn ClientHost,
-                _: &mut mod_api::RenderFramePreEvent,
+                _: &mut mod_api::ClientTickPostEvent,
             ) {
                 let player = host.local_player().unwrap();
                 let stale = mod_api::__private::game::player_ref(
@@ -165,7 +165,7 @@ mod tests {
                 );
                 assert_eq!(stale.set_body_yaw(host, -100.0), Ok(false));
                 assert_eq!(stale.entity().body_yaw(host), None);
-                assert_eq!(player.entity().body_yaw(host), Some(15.0));
+                assert_eq!(player.entity().body_yaw(host), Some(0.0));
                 assert_eq!(player.set_body_yaw(host, 75.0), Ok(true));
                 assert_eq!(player.entity().body_yaw(host), Some(75.0));
             }
@@ -188,19 +188,53 @@ mod tests {
             with_client_game(|game| {
                 loaded_client(game);
                 game.camera_type = sunrise_client::camera::CameraType::ThirdPersonBack;
-                game.yaw = 15.0;
+                game.player = None;
+                game.remote_teleport(&sunrise_protocol::packets::play::PlayerPosition {
+                    teleport: 1,
+                    position: [0.5, 64.0, 0.5],
+                    delta: [0.0; 3],
+                    yaw: 15.0,
+                    pitch: 0.0,
+                    relatives: 0,
+                })
+                .unwrap();
+                let old = game.local_player().unwrap();
+                assert_eq!(old.entity().body_yaw(game), Some(0.0));
+                assert_eq!(game.player_model.as_ref().unwrap().previous_body_yaw, 0.0);
                 game.previous_position = game.player.as_ref().unwrap().position;
                 game.tick_player_model();
-                game.native_render_frame_pre(Duration::ZERO, 0.5, 0.5);
+                game.native_client_tick_post();
                 game.prepare_entity_culling();
-                game.player_model_geometry(glam::DVec3::new(0.5, 64.0, -4.5), 0.5, &mut Vec::new());
-                assert_eq!(*turns.lock().unwrap(), [45.0]);
+                let camera = glam::DVec3::new(0.5, 64.0, -4.5);
+                game.player_model_geometry(camera, 0.5, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [37.5]);
                 let model = game.player_model.as_ref().unwrap();
                 assert_eq!(
                     (game.yaw, model.yaw, model.head_yaw, model.previous_body_yaw),
-                    (15.0, 15.0, 15.0, 15.0)
+                    (15.0, 15.0, 15.0, 0.0)
                 );
-                let old = game.local_player().unwrap();
+
+                let at = game.player.as_ref().unwrap().position;
+                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                let mut mount = sunrise_client::mobs::Mob::new(43, kind, at, 55.0);
+                mount.previous_body_yaw = 35.0;
+                game.mobs.push(mount);
+                game.riding = Some(43);
+                game.tick_player_model();
+                assert_eq!(old.entity().body_yaw(game), Some(65.0));
+                game.player_model_geometry(camera, 0.5, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0]);
+
+                game.boats
+                    .push(crate::game::boats::Boat::new(44, "oak".into(), at, 385.0));
+                game.riding = Some(44);
+                game.tick_player_model();
+                assert_eq!(old.entity().body_yaw(game), Some(385.0));
+                game.player_model_geometry(camera, 1.0, &mut Vec::new());
+                assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 25.0]);
+                assert_eq!(old.set_body_yaw(game, 50.0), Ok(true));
+                game.turn_player(1.0, 0.0);
+                assert_eq!(old.entity().body_yaw(game), Some(385.0));
                 game.remove_local_player_body();
                 assert_eq!(old.entity().body_yaw(game), None);
                 assert_eq!(old.set_body_yaw(game, 90.0), Ok(false));

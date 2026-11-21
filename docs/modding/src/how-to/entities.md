@@ -15,7 +15,9 @@ neither normalizes the angle nor sends a packet. The dragon's body turn does not
 Vanilla's overrides still apply: silverfish and endermites also turn their view for a finite angle;
 armor stands update the previous view angle and both head angles instead of assigning current body yaw.
 On the client, use `PlayerRef::set_body_yaw(client_host, degrees)` on the local player. It changes the
-same live avatar state that feeds pose interpolation, not a pose already extracted for rendering.
+live avatar's stored angle, not a pose already extracted for rendering. For a player riding a living
+mount, pose extraction uses the mount's interpolated body and the rider's head instead. A boat assigns
+its own yaw directly to its passenger when positioning them.
 Both setters return `Ok(false)` for an inapplicable or stale handle and a typed refusal from a host
 that cannot write living state.
 

@@ -772,6 +772,50 @@ fn credits_configured_respawn_keeps_permanent_player_attributes() {
 
 #[test]
 #[ignore = "daily"]
+fn dimension_arrival_observes_the_same_players_raw_body_yaw() {
+    struct Arrival(Arc<Mutex<Vec<f32>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Arrival {
+        fn player_changed_dimension(
+            &self,
+            host: &mut dyn ServerHost,
+            _: &mut PlayerChangedDimensionEvent<'_>,
+        ) {
+            let player = host.players().acting_player().unwrap();
+            self.0
+                .lock()
+                .unwrap()
+                .push(player.entity().body_yaw(host).unwrap());
+        }
+    }
+
+    let recorded = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "arrival-yaw",
+        Box::new(Arrival(recorded.clone())),
+    )]
+    .into();
+    let role = ExecutionRole::DedicatedServer;
+    mod_platform::testing::with_mods(mods, || {
+        with_server(role, |game| {
+            game.build_registries();
+            let entity = game.entity(CONN).unwrap();
+            assert_eq!(entity.set_body_yaw(game, -725.0), Ok(true));
+            run_as_player(
+                game,
+                role,
+                "execute in minecraft:the_nether run tp @s 8.5 70 8.5 30 0",
+            );
+            if game.on_server_trip(CONN) {
+                finish_trip(game, Dim::Nether);
+            }
+            assert_eq!(*recorded.lock().unwrap(), [-725.0]);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn death_respawn_starts_a_new_player_tick_count() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
@@ -779,6 +823,7 @@ fn death_respawn_starts_a_new_player_tick_count() {
             game.player.as_mut().unwrap().health.tick_count = 41;
         })
         .unwrap();
+        assert_eq!(entity.set_body_yaw(game, 650.0), Ok(true));
         game.lan
             .as_mut()
             .unwrap()
@@ -786,6 +831,10 @@ fn death_respawn_starts_a_new_player_tick_count() {
             .update_guest(CONN, |guest| guest.dead = true);
         game.guest_respawn(CONN);
         assert_eq!(entity.tick_count(game), Some(0));
+        assert_eq!(
+            game.as_guest(CONN, |game| entity.body_yaw(game)),
+            Some(Some(0.0))
+        );
     });
 }
 

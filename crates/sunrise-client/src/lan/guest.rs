@@ -379,6 +379,9 @@ pub struct Guest {
     /// `Entity.tickCount` carried while the same player is between bodies.
     /// A respawn clears it; a teleport or level change restores it to the new body.
     pub carried_tick_count: Option<i32>,
+    /// The same ServerPlayer keeps its body yaw across level travel. A
+    /// replacement body, including one after death, starts at zero.
+    pub carried_body_yaw: Option<f32>,
     /// The accepted hit follows the same living body through a full teleport restore.
     pub carried_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
     /// The vehicle the player's file names (`ServerPlayer.saveParentVehicle`'s
@@ -835,6 +838,7 @@ impl Guest {
             loaded_body: None,
             carried_attributes: None,
             carried_tick_count: None,
+            carried_body_yaw: None,
             carried_hit: None,
             saved_vehicle: None,
             logs_kept: None,
@@ -1133,6 +1137,7 @@ impl Guest {
         self.travel_vetoed = false;
         if !restore_all {
             self.carried_tick_count = None;
+            self.carried_body_yaw = Some(0.0);
             self.carried_hit = None;
             self.death_canceled = false;
             self.death_time = 0;
@@ -1141,6 +1146,7 @@ impl Guest {
         self.carried_attributes = Some(m.carried_attributes(restore_all));
         if restore_all {
             self.carried_tick_count = Some(m.health.tick_count);
+            self.carried_body_yaw = Some(m.body_yaw);
             self.carried_hit = m.health.accepted_hit.take();
         } else {
             self.carried_tick_count = None;

@@ -250,15 +250,6 @@ fn load_player_type(models: &sunrise_client::mobs::EntityModelDocument) -> Optio
         })
     })
 }
-/// What sets the body's yaw of a player riding something (`Game::ridden_body`).
-#[derive(Clone, Copy)]
-enum RiddenBody {
-    /// The boat's yaw.
-    Boat(f32),
-    /// The living vehicle's body yaw.
-    Living(f32),
-}
-
 /// Whether a shadow pass that draws the player (`shadow_draws_player`: shadowPlayer, or a
 /// native pack's shadow) takes the player's own model in first person. A shader pack's shadow
 /// pass does, except for a spectator: in our probe packs' readings of Iris 1.11.7's shadow map
@@ -496,6 +487,9 @@ impl Game<'_> {
             && let (Some(p), Some(kind)) = (&self.player, self.res.player_type().clone())
         {
             let mut model = Mob::new(0, kind, p.position, self.yaw);
+            // The first position packet sets the look, not LivingEntity.yBodyRot.
+            model.body_yaw = 0.0;
+            model.previous_body_yaw = 0.0;
             model.head_pitch = self.pitch;
             model.previous_head_pitch = self.pitch;
             self.player_model = Some(model);
@@ -566,8 +560,14 @@ impl Game<'_> {
         // another player's does (`villager::sleep_pose`).
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
         let spectator = self.spectator();
-        let ridden = self.ridden_body();
-        let blocking = ridden.is_none() && self.player_blocking_component().is_some();
+        let boat_yaw = self
+            .riding
+            .and_then(|id| self.boats.iter().find(|b| b.id == id).map(|b| b.yaw));
+        let vehicle_body = self.riding.and_then(|id| {
+            let mount = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+            Some((id, mount.previous_body_yaw, mount.body_yaw))
+        });
+        let blocking = boat_yaw.is_none() && self.player_blocking_component().is_some();
         let Some(m) = self.player_model.as_mut() else {
             return;
         };
@@ -588,28 +588,20 @@ impl Game<'_> {
         m.yaw = yaw;
         m.head_yaw = yaw;
         m.head_pitch = pitch;
-        match ridden {
-            // AbstractBoat.positionRider (clampRotation): the passenger's body
-            // is set to the boat's yaw each tick.
-            Some(RiddenBody::Boat(boat)) => m.body_yaw += wrap(boat - m.body_yaw),
-            // A living vehicle's rider is drawn from its body
-            // (`LivingEntityRenderer.solveBodyRot`).
-            Some(RiddenBody::Living(body)) => {
-                m.body_yaw +=
-                    wrap(sunrise_client::mobs::riders::solve_body_rot(yaw, body) - m.body_yaw);
-            }
-            // A minecart's, a cushion's: the body turns as on foot.
-            None => {
-                m.body_yaw = sunrise_client::mobs::living::player_body_yaw(
-                    m.body_yaw,
-                    yaw,
-                    dx,
-                    dz,
-                    attack.1 > 0.0,
-                    blocking,
-                );
-            }
-        }
+        // AbstractBoat.positionRider follows the rider tick and directly assigns
+        // the boat's yaw. A living vehicle affects only the extracted pose.
+        m.body_yaw = boat_yaw.unwrap_or_else(|| {
+            sunrise_client::mobs::living::player_body_yaw(
+                m.body_yaw,
+                yaw,
+                dx,
+                dz,
+                attack.1 > 0.0,
+                blocking,
+            )
+        });
+        m.extra.mount = self.riding;
+        m.extra.vehicle_body = vehicle_body;
         if riding {
             // LivingEntity.calculateEntityAnimation: a passenger stops the
             // walk animation (WalkAnimationState.stop), so the seat moving with
@@ -719,20 +711,12 @@ impl Game<'_> {
         {
             let (yaw, clamped) = sunrise_client::camera::clamp_boat_rotation(self.yaw, b.yaw);
             self.yaw = yaw;
+            if let Some(m) = self.player_model.as_mut() {
+                m.body_yaw = b.yaw;
+            }
             // clampRotation moves `yRotO` with the view.
             self.rope_rot_old.0 += clamped;
         }
-    }
-    /// What the player rides that sets their body's yaw: a boat's yaw, or a
-    /// living vehicle's body yaw. Minecarts and cushions leave it to the
-    /// player's own turn.
-    fn ridden_body(&self) -> Option<RiddenBody> {
-        let id = self.riding?;
-        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            return Some(RiddenBody::Boat(b.yaw));
-        }
-        let m = self.mobs.iter().find(|m| m.id == id)?;
-        Some(RiddenBody::Living(m.body_yaw))
     }
     /// `Entity.setOldRot` after a server sets the player's rotation
     /// (`handleRotatePlayer`): the model's head snaps to it instead of easing

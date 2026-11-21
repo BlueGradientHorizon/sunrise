@@ -259,6 +259,7 @@ impl Game<'_> {
     fn finish_credits_body(guest: &mut Guest) {
         guest.new_body(true);
         guest.carried_tick_count = None;
+        guest.carried_body_yaw = Some(0.0);
     }
     pub(super) fn gateway_source_chunks(&self) -> Vec<(i32, i32)> {
         self.server_trips
