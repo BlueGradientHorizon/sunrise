@@ -65,40 +65,109 @@ impl ClientModifiers {
     }
 }
 
-/// A vanilla key mapping as the client holds it (`ClientHost::mapping`).
-#[derive(Clone, Debug)]
-// exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct KeyMapping {
-    /// Whether it is held (`KeyMapping.isDown`).
-    pub down: bool,
-    /// The name of the key it is bound to, as Controls shows it (`KeyMapping.getTranslatedKeyMessage`).
-    pub label: Text,
+/// A resolved vanilla key mapping for one running client.
+///
+/// Resolve it with [`vanilla_key_mapping`](crate::prelude::ClientInputClientHost::vanilla_key_mapping)
+/// in `client_setup`. Keep it across rebinding, options replacement, and screen or world changes.
+/// A different client refuses it with [`MappingError::Stale`]; resolve the saved mapping name
+/// against that client. Persist the name, not this handle.
+// no wire: process-local client mapping handle
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct VanillaKeyMappingRef {
+    pub(super) client_generation: std::num::NonZeroU64,
+    pub(super) slot: usize,
 }
 
-/// Why `ClientHost::set_mapping_down` or `ClientHost::click_mapping` refused a mapping.
+/// A resolved mod key mapping in the current client's registration roster.
+///
+/// Resolve it with [`mod_key_mapping`](crate::prelude::ClientInputClientHost::mod_key_mapping)
+/// after registration, usually in `client_setup`. Rebinding, resetting and changing screens do not
+/// invalidate it. If the client or its ordered registration roster is replaced, discard the stale
+/// handle and resolve again. Persist the owner and id, not this handle.
+// no wire: process-local registered key mapping handle
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModKeyMappingRef {
+    pub(super) registry_generation: std::num::NonZeroU64,
+    pub(super) slot: usize,
+}
+
+/// Why resolving or using a vanilla key mapping, or reading a translated mod key label, was refused.
+// no wire: refusal of a process-local client mapping operation
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum MappingError {
-    /// No player is in a world.
+    /// A gameplay write needs a player in a world.
     NoWorld,
-    /// No vanilla mapping has this name.
+    /// Resolution found no vanilla mapping with the given name.
     Unknown {
         /// The name asked for.
         key: String,
     },
-    /// A vanilla mapping a player does not play with: one outside the movement, gameplay and
-    /// inventory categories (`key.screenshot`, `key.fullscreen`, `key.chat`...).
+    /// The resolved mapping cannot be pressed as a movement, gameplay or inventory mapping
+    /// (`key.screenshot`, `key.fullscreen`, `key.chat`...).
     NotGameplay {
-        /// The name asked for.
+        /// The mapping's canonical name.
         key: String,
     },
     /// The mapping accepts a click but has no held state (`key.pickItem`).
     ClickOnly {
-        /// The name asked for.
+        /// The mapping's canonical name.
         key: String,
     },
+    /// The handle does not belong to the current client or no longer identifies a mapping.
+    Stale,
+    /// No client mapping backend is available in this host or phase.
+    Unavailable,
+    /// The mapping exists, but the client does not track a readable logical held state for it.
+    NoLogicalState,
+    /// The translated binding label could not be represented as API text.
+    Label(TextFormError),
+}
+
+impl AccessRefusal for MappingError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl NoBackend for MappingError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl From<TextFormError> for MappingError {
+    fn from(error: TextFormError) -> Self {
+        Self::Label(error)
+    }
+}
+
+impl std::fmt::Display for MappingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoWorld => f.write_str("no player is in a world"),
+            Self::Unknown { key } => write!(f, "unknown vanilla mapping {key:?}"),
+            Self::NotGameplay { key } => write!(f, "{key:?} is not a gameplay mapping"),
+            Self::ClickOnly { key } => write!(f, "{key:?} accepts clicks only"),
+            Self::Stale => f.write_str("stale vanilla mapping handle"),
+            Self::Unavailable => f.write_str("client mappings are unavailable"),
+            Self::NoLogicalState => {
+                f.write_str("the client does not track this mapping's held state")
+            }
+            Self::Label(error) => write!(f, "invalid mapping label: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for MappingError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Label(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 /// The metadata of a server play packet observed by `Hooks::client_packet`.

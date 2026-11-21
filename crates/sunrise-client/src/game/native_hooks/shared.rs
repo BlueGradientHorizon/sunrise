@@ -958,20 +958,6 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
-/// The mappings `mapping` answers for, with the key their default
-/// binding is (none: a mouse button, attack or use).
-const MAPPINGS: [(&str, Option<KeyCode>); 9] = [
-    ("key.forward", Some(KeyCode::KeyW)),
-    ("key.left", Some(KeyCode::KeyA)),
-    ("key.back", Some(KeyCode::KeyS)),
-    ("key.right", Some(KeyCode::KeyD)),
-    ("key.jump", Some(KeyCode::Space)),
-    ("key.sneak", Some(KeyCode::ShiftLeft)),
-    ("key.sprint", Some(KeyCode::ControlLeft)),
-    ("key.attack", None),
-    ("key.use", None),
-];
-
 /// The Post a mouse input owes once the screen has handled it, built when
 /// its Pre let the input through (`Game::screen_mouse_post`).
 pub(super) enum ScreenMousePost {
