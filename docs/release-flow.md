@@ -502,23 +502,26 @@ alone can ship in a patch.
 and declarations that loaded in one release of a line load the same in every later patch and minor. What shows a
 change:
 
-- `crates/sunrise-mod-package/tests/content-corpus/` holds manifests and declarations, one mod folder per entry,
-  including ones that must be refused. `crates/sunrise-mod-package/tests/content-golden/<entry>.txt` holds what the
-  readers make of each: the loaded manifest and content, or the refusal text.
-- The `content_golden` test (in `verify`) re-reads the corpus, reads each entry twice and requires the same bytes,
-  and fails when a golden file differs. So a change in reading is a changed golden file in the pull request that
-  makes it, and never arrives unseen.
-- The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key
-  appears in no entry: a pull request that adds a key adds its entry.
+- `crates/sunrise-mod-package/tests/content-corpus/` holds manifests and declarations, one mod per entry, as a
+  folder or a packed `.smod`, including ones that must be refused.
+  `crates/sunrise-mod-package/tests/content-golden/<entry>.txt` holds what the readers make of each: the loaded
+  manifest, the icon's bytes and the content, or the refusal text.
+- The `content_golden` test (in `verify`) re-reads the corpus and fails when a golden file differs, so a change in
+  reading is a changed golden file in the pull request that makes it, and never arrives unseen.
+  `content_golden_is_deterministic` reads each entry twice and requires the same bytes.
+- The `content_keys` test (in `verify`) takes the declaration keys from the reader types and fails when a key it
+  can enumerate appears in no entry: a pull request that adds a key adds its entry. Its source guard lists every
+  Serde construct the probe can't see into, each with the entries that cover it, and audits the files that define
+  the declaration types other crates own.
 
 Both tests also run in the daily run (`tools/ci/ignored-tests/daily-sunrise-mod-package-content.txt`), so the green
-daily a stable release needs on its exact commit includes them.
+daily a stable release needs on its exact commit includes them. `sunrise-mod-package` turns on `serde_json`'s
+`float_roundtrip` itself, so the tests read numbers as every build of the game and the tools does.
 
 The rule on `release/26.3`, enforced by review: every pull request needs an ok from umceko's side at its exact head.
-Within a line, entries and golden files are only added. The one exception is a deliberate parity fix that changes
-how an existing declaration loads: a reviewed edit of that entry's golden file, with umceko's side's ok at the
-exact head and a line in the release's notes. The release workflow does not compare content declarations and
-refuses nothing on their account.
+Within a line, entries and golden files are only added: an inherited entry keeps its input, and its golden file
+never changes. A parity fix that would change what an existing declaration loads as, or whether it loads, waits
+for the next line. The release workflow does not compare content declarations and refuses nothing on their account.
 
 Known limits: the corpus covers what `sunrise-mod-package` reads (the manifest and the typed declarations: blocks,
 items, effects, creative tabs, fluids, fluid interactions, entity types, menus). What the game reads from a content
