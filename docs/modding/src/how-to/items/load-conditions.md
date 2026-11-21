@@ -8,8 +8,10 @@ Registration happens once per mod load, with one handler per id and a read-only
 `RegistrationContext`. Any mod may register an unused ID in any namespace:
 mod B can register `a:x` while mod A registers `a:y`. Built-in IDs such as
 `neoforge:always`, `neoforge:never` and `neoforge:mod_loaded` cannot be replaced.
-A duplicate ID names both mods in the error. A registration error refuses
-admission even if you ignore it.
+A duplicate ID names both mods in the error. A completed listener's registration error
+refuses admission even if the listener ignores it. If the registration listener panics or
+makes a call refused by the load phase, the game discards its handlers and preparation errors.
+Later listeners can still register those IDs.
 
 ```rust,ignore
 struct Flag;

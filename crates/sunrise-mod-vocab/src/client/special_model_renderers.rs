@@ -6,6 +6,8 @@
 //! load decodes and bakes every `minecraft:special` model node that names that type. On each draw,
 //! the baked renderer extracts an argument from the selected stack and submits geometry or nested
 //! stacks through a [`SpecialModelCollector`]. The game owns the surrounding draw state.
+use crate::generated::HookId;
+use crate::runtime::discard_registration;
 use crate::{ClientHost, Component, ItemDisplayContext, ItemKey, ItemStack};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
@@ -404,7 +406,7 @@ pub trait SpecialModelRenderers {
 pub struct ReplacedSpecialModelRenderer {
     /// The type.
     pub kind: String,
-    /// The mod that registered it first, when a mod's dispatch did.
+    /// The mod whose registration was replaced, when a mod's dispatch made it.
     pub earlier: Option<&'static str>,
     /// The mod whose registration stays.
     pub later: Option<&'static str>,
@@ -420,23 +422,66 @@ pub struct SpecialModelRendererRegistry {
     initial: Vec<(String, Option<&'static str>)>,
 }
 
+const REGISTRATION: (HookId, &str) = (
+    HookId::RegisterSpecialModelRenderer,
+    "register_special_model_renderer",
+);
+
+#[derive(Default)]
+struct RendererEdits(Vec<(String, SpecialModelFactory)>);
+
+impl SpecialModelRenderers for RendererEdits {
+    fn register(&mut self, kind: String, factory: SpecialModelFactory) {
+        self.0.push((kind, factory));
+    }
+}
+
 impl SpecialModelRenderers for SpecialModelRendererRegistry {
     fn register(&mut self, kind: String, factory: SpecialModelFactory) {
-        let later = crate::content::crash::current_native_mod();
-        if let Some((earlier, _)) = self.factories.insert(kind.clone(), (later, factory)) {
-            self.replaced.push(ReplacedSpecialModelRenderer {
-                kind,
-                earlier,
-                later,
-            });
-        } else {
-            self.initial.push((kind, later));
-        }
+        self.publish([(kind, factory)]);
     }
 }
 
 impl SpecialModelRendererRegistry {
-    /// The first mod registration of each type. The engine uses its own builtin decoder
+    /// Publish one completed listener's factories and replacement reports together.
+    #[doc(hidden)]
+    pub fn register_listener(
+        &mut self,
+        listen: &mut dyn FnMut(&mut dyn SpecialModelRenderers) -> bool,
+    ) {
+        let mut edits = RendererEdits::default();
+        if listen(&mut edits) {
+            self.publish(edits.0);
+        } else {
+            let owner = crate::content::crash::current_native_mod();
+            for (_, factory) in edits.0 {
+                discard_registration(REGISTRATION, owner, factory);
+            }
+        }
+    }
+
+    fn publish(&mut self, edits: impl IntoIterator<Item = (String, SpecialModelFactory)>) {
+        let later = crate::content::crash::current_native_mod();
+        let mut retired = Vec::new();
+        for (kind, factory) in edits {
+            if let Some((earlier, previous)) = self.factories.insert(kind.clone(), (later, factory))
+            {
+                self.replaced.push(ReplacedSpecialModelRenderer {
+                    kind,
+                    earlier,
+                    later,
+                });
+                retired.push((earlier, previous));
+            } else {
+                self.initial.push((kind, later));
+            }
+        }
+        for (earlier, previous) in retired {
+            discard_registration(REGISTRATION, earlier, previous);
+        }
+    }
+
+    /// The first published mod registration of each type. The engine uses its own builtin decoder
     /// to distinguish replacement of a game type from a new type, irrespective of namespace.
     pub fn initial_owners(&self) -> impl Iterator<Item = (&str, Option<&'static str>)> {
         self.initial

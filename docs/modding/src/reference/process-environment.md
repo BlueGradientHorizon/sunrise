@@ -31,7 +31,9 @@ not a remote server's version or an older save's version.
 Game tests are off by default. Turn them on with `--game-tests` on the game's command line (before or after
 `--dedicated`), or with `SUNRISE_GAME_TESTS=1` or `SUNRISE_GAME_TESTS=true` in the environment; other values
 leave them off. With the mode on, a mod may declare content meant only for tests. `register_game_tests` runs on
-every world open whatever the mode, and `/test` is always available.
+every world open whatever the mode, and `/test` is always available. If a registration listener
+panics or makes a call refused by the load phase, its test definitions and functions are both
+discarded. Other listeners can still register those identifiers.
 
 The switch counts only where an option is expected: `--dedicated --world --game-tests` opens the world named
 `--game-tests` and leaves test mode off. The dedicated server's `--universe`, `--port`, `--serverId` and

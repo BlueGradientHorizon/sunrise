@@ -4,7 +4,9 @@ Use `register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererE
 ordinary item model cannot describe the drawing. Register a factory for a `minecraft:special`
 type. For each node of that type, the factory decodes its configuration and bakes a renderer
 at client resource load. The renderer implements vanilla's `SpecialModelRenderer` split: extract
-an argument from the item being drawn, then submit geometry.
+an argument from the item being drawn, then submit geometry. The last published registration
+for a type wins. If a registration listener panics or is refused by the load phase, none of
+its factories or replacement reports take effect.
 
 ## Decode, bake, then draw
 
