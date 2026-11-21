@@ -2,67 +2,14 @@
 
 use crate::{
     AttributeModifier, EquipmentSlot, Identifier, ItemStack, Text, UnspawnedMobError,
-    UnspawnedMobRef, UnspawnedMobView, WorldEpoch,
+    UnspawnedMobView,
 };
 
-/// A listener-scoped lease of an ordered child collection, acquired with
-/// [`PendingChildrenEdits::children`]. Retaining this value does not extend its lifetime: the
-/// next listener, a nested dispatch or the callback's return expires it. Acquire it again in each
-/// callback.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct PendingChildrenRef {
-    pub(crate) epoch: WorldEpoch,
-    pub(crate) action: u64,
-    pub(crate) lease: u64,
-}
-
-impl PendingChildrenRef {
-    /// Engine transport constructor. Every operation validates the complete lease.
-    // hidden: engine transport only; arena validation grants authority
-    #[doc(hidden)]
-    pub fn new(epoch: WorldEpoch, action: u64, lease: u64) -> Self {
-        Self {
-            epoch,
-            action,
-            lease,
-        }
-    }
-
-    /// Engine transport components.
-    // hidden: engine transport only; arena validation grants authority
-    #[doc(hidden)]
-    pub fn parts(self) -> (WorldEpoch, u64, u64) {
-        (self.epoch, self.action, self.lease)
-    }
-}
-
-/// A detached, action-owned child. Append or replacement consumes its ownership exactly
-/// once, even if a mod retained a copy of this token. It cannot name a resident entity.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct UnattachedMob {
-    pub(crate) mob: UnspawnedMobRef,
-}
-
-impl UnattachedMob {
-    /// Engine transport constructor; the arena checks that the child is detached.
-    // hidden: engine transport only; arena validation grants authority
-    #[doc(hidden)]
-    pub fn new(mob: UnspawnedMobRef) -> Self {
-        Self { mob }
-    }
-
-    /// Borrow the child for reads or edits. This never transfers its ownership.
-    pub fn mob(self) -> UnspawnedMobRef {
-        self.mob
-    }
-}
-
 /// Initial values for a new child. Construction runs no spawn finalization or insertion.
-/// The engine checks every field before constructing anything or consuming an arena slot.
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+/// The engine checks every field before constructing anything.
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
+// no wire: passed only to native child construction, not a payload.
 pub struct PendingMobSpec {
     /// A registered mob type.
     pub kind: Identifier,
@@ -98,60 +45,6 @@ impl PendingMobSpec {
     }
 }
 
-/// An editor lent beside a collection. Reads and rejected operations leave the collection
-/// unchanged. Accepted edits are visible to the next listener; unattached children die
-/// when this lease ends.
-/// This edits only nonresident objects; the action's transaction controls eventual insertion.
-pub trait PendingChildrenEdits {
-    /// The collection for this listener. Call it in every callback: a lease from an earlier
-    /// listener, or from before a nested dispatch, answers `Expired`.
-    fn children(&self) -> Result<PendingChildrenRef, UnspawnedMobError>;
-    /// Number of attached children, in insertion order.
-    fn len(&self, children: PendingChildrenRef) -> Result<u32, UnspawnedMobError>;
-    /// Whether the collection is empty.
-    fn is_empty(&self, children: PendingChildrenRef) -> Result<bool, UnspawnedMobError>;
-    /// Reacquire a callback-scoped editor borrow of the child at `index`.
-    fn child(
-        &self,
-        children: PendingChildrenRef,
-        index: u32,
-    ) -> Result<UnspawnedMobRef, UnspawnedMobError>;
-    /// Construct a detached child; this does not add it to the ordered list.
-    fn construct(
-        &self,
-        children: PendingChildrenRef,
-        spec: PendingMobSpec,
-    ) -> Result<UnattachedMob, UnspawnedMobError>;
-    /// Append a detached child, consuming its ownership. Split lists hold at most 64
-    /// children and breeding lists at most one; exceeding that limit is an error.
-    fn append(
-        &self,
-        children: PendingChildrenRef,
-        child: UnattachedMob,
-    ) -> Result<(), UnspawnedMobError>;
-    /// Replace one child in place, consuming the replacement and destroying the former child.
-    fn replace(
-        &self,
-        children: PendingChildrenRef,
-        index: u32,
-        child: UnattachedMob,
-    ) -> Result<(), UnspawnedMobError>;
-    /// Destroy one child and expire all its borrows; later children retain their order.
-    fn remove(&self, children: PendingChildrenRef, index: u32) -> Result<(), UnspawnedMobError>;
-    /// Move an attached or detached child within the action's dimension.
-    fn set_position(
-        &self,
-        mob: UnspawnedMobRef,
-        position: [f64; 3],
-    ) -> Result<(), UnspawnedMobError>;
-    /// Set all initial yaw fields in degrees.
-    fn set_yaw(&self, mob: UnspawnedMobRef, yaw: f32) -> Result<(), UnspawnedMobError>;
-    /// Set a supported species' baby state. A breeding child must remain a baby.
-    fn set_baby(&self, mob: UnspawnedMobRef, baby: bool) -> Result<(), UnspawnedMobError>;
-    /// Set a sized species' size within its own bounds, without silently clamping it.
-    fn set_size(&self, mob: UnspawnedMobRef, size: u32) -> Result<(), UnspawnedMobError>;
-}
-
 /// Engine backing for mutable access to a pending child, adding spatial and form writes beyond
 /// [`UnspawnedMobWrite`](crate::UnspawnedMobWrite).
 // hidden: the engine owns pending-child mutable access; listeners use [`UnspawnedMob`] and [`PendingChildEditor`].
@@ -164,11 +57,11 @@ pub trait PendingChildWrite: crate::UnspawnedMobWrite {
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any>;
 }
 
-/// An owned, engine-backed mob constructed for a pending-child hook (such as breeding) and not yet
-/// added to a level.
+/// An owned, engine-backed mob constructed for a pending-child hook (breeding or mob splitting)
+/// and not yet added to a level.
 ///
-/// Dropping an `UnspawnedMob` without attaching it to a slot cleanly discards it with no arena
-/// entry or world state left behind.
+/// Dropping an `UnspawnedMob` without attaching it to a slot or list cleanly discards it with no
+/// arena entry or world state left behind.
 // exhaustive: only the engine constructs an unspawned mob.
 // no wire: an owned engine-backed unspawned mob, not a payload.
 pub struct UnspawnedMob {
@@ -529,5 +422,115 @@ impl<'a> BabyEntitySpawnChild<'a> {
     /// Remove and discard the current breeding child, leaving the slot empty.
     pub fn clear(&mut self) {
         let _ = self.inner.take();
+    }
+}
+
+/// Engine backing for the unbounded ordered child list of `mob_split`.
+// hidden: the engine owns the split-child list; listeners use [`MobSplitChildren`].
+#[doc(hidden)]
+pub trait MobSplitChildList {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn get(&self, index: usize) -> Option<UnspawnedMobView<'_>>;
+    fn get_mut(&mut self, index: usize) -> Option<PendingChildEditor<'_>>;
+    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError>;
+    fn push(&mut self, child: UnspawnedMob) -> Result<(), UnspawnedMobError>;
+    fn insert(&mut self, index: usize, child: UnspawnedMob) -> Result<(), UnspawnedMobError>;
+    fn replace(
+        &mut self,
+        index: usize,
+        child: UnspawnedMob,
+    ) -> Result<UnspawnedMob, UnspawnedMobError>;
+    fn remove(&mut self, index: usize) -> Option<UnspawnedMob>;
+    fn clear(&mut self);
+}
+
+/// A scoped editor for the unbounded ordered child list of `mob_split`
+/// (NeoForge's `MobSplitEvent.getChildren`).
+///
+/// The list starts holding the vanilla-constructed split children in order. Listeners may inspect
+/// any child ([`Self::get`]), edit one in place ([`Self::get_mut`]), construct a new child
+/// ([`Self::construct`]) and add or swap it in ([`Self::push`], [`Self::insert`],
+/// [`Self::replace`]), or remove children ([`Self::remove`], [`Self::clear`]). Any
+/// [`UnspawnedMob`] not left in the list is cleanly discarded when dropped.
+// exhaustive: only the engine constructs a split-child list editor.
+// no wire: an exclusive scoped loan, not a payload.
+pub struct MobSplitChildren<'a> {
+    inner: &'a mut dyn MobSplitChildList,
+}
+
+impl<'a> MobSplitChildren<'a> {
+    // hidden: the engine constructs a split-child list editor around its scoped list loan.
+    #[doc(hidden)]
+    pub fn new(inner: &'a mut dyn MobSplitChildList) -> Self {
+        Self { inner }
+    }
+
+    /// Number of children currently in the split list, in insertion order.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Whether the split list is currently empty.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Read-only view of the child at `index`, or `None` if out of bounds.
+    pub fn get(&self, index: usize) -> Option<UnspawnedMobView<'_>> {
+        self.inner.get(index)
+    }
+
+    /// Mutable editor for the child at `index`, or `None` if out of bounds.
+    pub fn get_mut(&mut self, index: usize) -> Option<PendingChildEditor<'_>> {
+        self.inner.get_mut(index)
+    }
+
+    /// Construct a detached split child from `spec` without adding it to the list.
+    ///
+    /// Runs no spawn finalization or level insertion. Dropping the returned [`UnspawnedMob`]
+    /// without attaching it cleanly discards it.
+    pub fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
+        self.inner.construct(spec)
+    }
+
+    /// Append `child` to the end of the list.
+    ///
+    /// Validates `child` against the split invariants before mutating the list.
+    pub fn push(&mut self, child: UnspawnedMob) -> Result<(), UnspawnedMobError> {
+        self.inner.push(child)
+    }
+
+    /// Insert `child` at `index`, shifting later children right.
+    ///
+    /// Refuses an out-of-bounds `index` (`index > len`) or an invalid child with
+    /// [`UnspawnedMobError::Invalid`] without mutating the list.
+    pub fn insert(&mut self, index: usize, child: UnspawnedMob) -> Result<(), UnspawnedMobError> {
+        self.inner.insert(index, child)
+    }
+
+    /// Replace the child at `index` with `child`, returning the previous child.
+    ///
+    /// Refuses an out-of-bounds `index` (`index >= len`) or an invalid child with
+    /// [`UnspawnedMobError::Invalid`] without mutating the list.
+    pub fn replace(
+        &mut self,
+        index: usize,
+        child: UnspawnedMob,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
+        self.inner.replace(index, child)
+    }
+
+    /// Remove and return the child at `index`, preserving the order of later children, or `None`
+    /// if `index` is out of bounds.
+    pub fn remove(&mut self, index: usize) -> Option<UnspawnedMob> {
+        self.inner.remove(index)
+    }
+
+    /// Remove and discard every child in the list.
+    pub fn clear(&mut self) {
+        self.inner.clear();
     }
 }

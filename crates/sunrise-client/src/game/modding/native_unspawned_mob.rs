@@ -1,108 +1,27 @@
 //! A mob the game has made but not yet added to a level, lent to one hook call
-//! (`finalize_spawn`'s `mob`, docs/modding/src/how-to/world/spawning.md): the lend,
-//! the handle's reads (`UnspawnedMobRef`), the scoped editor handed out with it
-//! (`UnspawnedMobEdits`), and the spawn group data at the API boundary
-//! (`SpawnGroup`).
-//!
-//! Standalone lends move a mob into `Game::lent_mobs` and restore it afterward.
-//! Pending-child lends resolve the action arena's actual object instead. Both
-//! paths share the editor below; neither writes a resident mob. Kind/position
-//! metadata is subject to the same lease checks as all other reads and writes.
+//! (`finalize_spawn`'s `mob`, `mob_spawn_position_check`'s `mob`, `spawn_cluster_size`'s `mob`):
+//! the scoped read-only view ([`BorrowedUnspawnedMob`]) and mutable editor
+//! ([`BorrowedUnspawnedMobMut`]), the shared read/write helpers used by pending children, and
+//! the spawn group data at the API boundary (`SpawnGroup`).
 
 use super::Game;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::living_attributes::{AttributeWrite, collect_equipment, write_unspawned_attribute};
-#[cfg(test)]
-use mod_api::UnspawnedMobEdits;
 use mod_api::{
     AgeableGroup, AttributeModifier, AttributeOperation, EntityRef, EquipmentSlot, Identifier,
-    ItemStack, SpawnGroup, TropicalVariant, UnspawnedMobError, UnspawnedMobRead, UnspawnedMobRef,
-    UnspawnedMobWrite, WorldEpoch,
+    ItemStack, SpawnGroup, TropicalVariant, UnspawnedMobError, UnspawnedMobRead, UnspawnedMobWrite,
+    WorldEpoch,
 };
-#[cfg(test)]
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::sync::Arc;
 use sunrise_client::items::Items;
 use sunrise_client::mobs::finalize::{Ageable, Group};
 use sunrise_client::mobs::{Mob, equine, llama, render, tame};
 use sunrise_client::text::Text;
-use sunrise_mod_runtime::pending_children::PendingChildren;
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::attributes::{Operation, entity::Catalog};
 
 /// The most tags an entity holds (`Entity.addTag`).
 const MAX_TAGS: usize = 1024;
-
-/// Lends are numbered across every `Game` of the process, so no two calls'
-/// handles are ever equal.
-#[cfg(test)]
-static NEXT_LEND: AtomicU64 = AtomicU64::new(1);
-
-/// The mobs lent to the hook calls running now, the latest last.
-#[derive(Default)]
-pub(in crate::game) struct LentMobs {
-    #[cfg(test)]
-    lends: Vec<Lent>,
-    pub(super) pending: Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
-    /// The hook whose listeners the innermost pending action is dispatching to, if any.
-    pub(super) hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
-}
-
-#[cfg(test)]
-impl LentMobs {
-    /// Whether no lend is open.
-    pub(in crate::game) fn is_empty(&self) -> bool {
-        self.lends.is_empty()
-    }
-}
-
-/// One lend: the handle's numbers, what every lend answers, and the copy of the
-/// mob when the game keeps one (not for the ender dragon).
-#[cfg(test)]
-struct Lent {
-    handle: UnspawnedMobRef,
-    kind: String,
-    position: [f64; 3],
-    mob: Option<Mob>,
-    valid: bool,
-}
-
-/// Ends a lend when it drops, after the call or while a listener's panic
-/// unwinds: the lend is withdrawn, so its handle answers `Expired`, and the
-/// lent mob moves back into the caller's slot.
-#[cfg(test)]
-struct Withdraw<'a, 'g, 'm> {
-    game: &'a Game<'g>,
-    handle: UnspawnedMobRef,
-    slot: Option<&'m mut Mob>,
-}
-
-#[cfg(test)]
-impl Drop for Withdraw<'_, '_, '_> {
-    fn drop(&mut self) {
-        let lent = {
-            let mut lent = self.game.lent_mobs.borrow_mut();
-            let at = lent.lends.iter().rposition(|l| l.handle == self.handle);
-            at.map(|at| lent.lends.remove(at))
-        };
-        if let (
-            Some(slot),
-            Some(Lent {
-                mob: Some(back), ..
-            }),
-        ) = (self.slot.take(), lent)
-        {
-            *slot = back;
-        }
-    }
-}
-
-/// The editor a lend hands out: it reaches only the lent copies, through the
-/// game it was made from.
-#[cfg(test)]
-pub(super) struct Edits<'a, 'g> {
-    pub(super) game: &'a Game<'g>,
-}
 
 /// Read-only scoped borrow of an unspawned mob (or metadata-only when `mob` is `None`).
 pub(in crate::game) struct BorrowedUnspawnedMob<'a> {
@@ -524,220 +443,10 @@ impl Game<'_> {
         }
     }
 
-    /// A nested pending action must expire standalone lends too, including their metadata.
-    pub(super) fn expire_standalone_lends(&self) {
-        #[cfg(test)]
-        for previous in &mut self.lent_mobs.borrow_mut().lends {
-            previous.valid = false;
-        }
-    }
-
-    /// Lends `mob` (or, with `None`, only its `kind` and `position`) to `call`,
-    /// then takes it back with whatever the call changed. `call` gets the
-    /// handle and the editor; both are dead once it returns.
-    ///
-    /// The mob itself moves into the lend and back, so state a copy leaves
-    /// out (a mod goal's own object) is kept; the caller's slot holds a copy
-    /// meanwhile, which nothing reads. A listener that panics still ends the
-    /// lend and puts the mob back ([`Withdraw`]).
-    #[cfg(test)]
-    pub(in crate::game) fn lend_unspawned<R>(
-        &self,
-        kind: &str,
-        position: [f64; 3],
-        mob: Option<&mut Mob>,
-        call: impl FnOnce(UnspawnedMobRef, &dyn UnspawnedMobEdits) -> R,
-    ) -> R {
-        self.expire_standalone_lends();
-        {
-            let lent = self.lent_mobs.borrow();
-            lent.pending
-                .borrow_mut()
-                .suspend()
-                .expect("pending lease budget exhausted");
-        }
-        let handle =
-            UnspawnedMobRef::new(self.lend_epoch(), NEXT_LEND.fetch_add(1, Ordering::Relaxed));
-        let mob = mob.map(|slot| {
-            let stand_in = slot.clone();
-            (std::mem::replace(slot, stand_in), slot)
-        });
-        let (lent, slot) = match mob {
-            Some((lent, slot)) => (Some(lent), Some(slot)),
-            None => (None, None),
-        };
-        self.lent_mobs.borrow_mut().lends.push(Lent {
-            handle,
-            kind: kind.to_owned(),
-            position,
-            mob: lent,
-            valid: true,
-        });
-        let _withdraw = Withdraw {
-            game: self,
-            handle,
-            slot,
-        };
-        call(handle, &Edits { game: self })
-    }
-
     /// The world a lend's handles belong to; a game with none open lends
     /// under epoch 0, which no open world has.
     pub(in crate::game) fn lend_epoch(&self) -> WorldEpoch {
         self.native_lifecycle.epoch().unwrap_or(WorldEpoch::new(0))
-    }
-
-    /// Runs `read` on the lend `handle` names.
-    #[cfg(test)]
-    fn with_lent<T>(
-        &self,
-        handle: UnspawnedMobRef,
-        read: impl FnOnce(&Lent) -> Result<T, UnspawnedMobError>,
-    ) -> Result<T, UnspawnedMobError> {
-        let lent = self.lent_mobs.borrow();
-        read(
-            lent.lends
-                .last()
-                .filter(|l| l.valid && l.handle == handle && handle.epoch() == self.lend_epoch())
-                .ok_or(UnspawnedMobError::Expired)?,
-        )
-    }
-
-    /// Runs `read` on the mob the lend `handle` names.
-    pub(super) fn with_lent_mob<T>(
-        &self,
-        handle: UnspawnedMobRef,
-        read: impl FnOnce(&Mob) -> Result<T, UnspawnedMobError>,
-    ) -> Result<T, UnspawnedMobError> {
-        if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
-            let arena = self.lent_mobs.borrow().pending.clone();
-            let borrowed = arena.borrow();
-            let child = borrowed
-                .get(key)
-                .map_err(super::native_pending_children::pending_error)?;
-            if child.dimension != self.dim {
-                return Err(UnspawnedMobError::Expired);
-            }
-            return read(&child.mob);
-        }
-        #[cfg(test)]
-        {
-            self.with_lent(handle, |l| {
-                read(l.mob.as_ref().ok_or(UnspawnedMobError::Unsupported)?)
-            })
-        }
-        #[cfg(not(test))]
-        Err(UnspawnedMobError::Expired)
-    }
-
-    /// Runs `edit` on the mob the lend `handle` names.
-    #[cfg(test)]
-    pub(super) fn edit_lent_mob<T>(
-        &self,
-        handle: UnspawnedMobRef,
-        edit: impl FnOnce(&Game<'_>, &mut Mob) -> Result<T, UnspawnedMobError>,
-    ) -> Result<T, UnspawnedMobError> {
-        if let Some(key) = super::native_pending_children::pending_key(self, handle)? {
-            let arena = self.lent_mobs.borrow().pending.clone();
-            let mut borrowed = arena.borrow_mut();
-            let child = borrowed
-                .get_mut(key)
-                .map_err(super::native_pending_children::pending_error)?;
-            if child.dimension != self.dim {
-                return Err(UnspawnedMobError::Expired);
-            }
-            return edit(self, &mut child.mob);
-        }
-        let mut lent = self.lent_mobs.borrow_mut();
-        let l = lent
-            .lends
-            .last_mut()
-            .filter(|l| l.valid && l.handle == handle && handle.epoch() == self.lend_epoch())
-            .ok_or(UnspawnedMobError::Expired)?;
-        edit(self, l.mob.as_mut().ok_or(UnspawnedMobError::Unsupported)?)
-    }
-
-    /// The mob's entity type (`minecraft:zombie`).
-    pub(super) fn unspawned_mob_kind(
-        &self,
-        mob: UnspawnedMobRef,
-    ) -> Result<Identifier, UnspawnedMobError> {
-        if mob.pending_parts().is_some() {
-            return self.with_lent_mob(mob, read_mob_kind);
-        }
-        #[cfg(test)]
-        {
-            self.with_lent(mob, |l| {
-                Identifier::parse(&l.kind).map_err(|_| UnspawnedMobError::Unsupported)
-            })
-        }
-        #[cfg(not(test))]
-        Err(UnspawnedMobError::Expired)
-    }
-
-    /// Where the mob will join the level.
-    pub(super) fn unspawned_mob_position(
-        &self,
-        mob: UnspawnedMobRef,
-    ) -> Result<[f64; 3], UnspawnedMobError> {
-        if mob.pending_parts().is_some() {
-            return self.with_lent_mob(mob, read_mob_position);
-        }
-        #[cfg(test)]
-        {
-            self.with_lent(mob, |l| Ok(l.position))
-        }
-        #[cfg(not(test))]
-        Err(UnspawnedMobError::Expired)
-    }
-
-    /// The stack in `slot` (`LivingEntity.getItemBySlot`) and its count; `None`
-    /// for an empty slot.
-    pub(super) fn unspawned_mob_equipment(
-        &self,
-        mob: UnspawnedMobRef,
-        slot: EquipmentSlot,
-    ) -> Result<Option<sunrise_client::items::ItemStack>, UnspawnedMobError> {
-        self.with_lent_mob(mob, |m| Ok(m.equipment_stacks()[slot as usize].clone()))
-    }
-
-    /// An attribute's base value, before modifiers (`AttributeMap.getBaseValue`).
-    /// `Unsupported` for an attribute the mob's type does not have.
-    pub(super) fn unspawned_mob_attribute_base(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-    ) -> Result<f64, UnspawnedMobError> {
-        let catalog = &self.motion.attributes;
-        self.with_lent_mob(mob, |m| read_mob_attribute_base(m, catalog, attribute))
-    }
-
-    /// An attribute's value with its modifiers, its equipment's included
-    /// (`AttributeMap.getValue`). `Unsupported` for an attribute the mob's type
-    /// does not have.
-    pub(super) fn unspawned_mob_attribute_value(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-    ) -> Result<f64, UnspawnedMobError> {
-        let catalog = &self.motion.attributes;
-        self.with_lent_mob(mob, |m| read_mob_attribute_value(m, catalog, attribute))
-    }
-
-    /// The tags a mod gave the mob so far (`Entity.getTags`).
-    pub(super) fn unspawned_mob_tags(
-        &self,
-        mob: UnspawnedMobRef,
-    ) -> Result<Vec<String>, UnspawnedMobError> {
-        self.with_lent_mob(mob, read_mob_tags)
-    }
-
-    /// The mob's custom name, if it has one.
-    pub(super) fn unspawned_mob_custom_name(
-        &self,
-        mob: UnspawnedMobRef,
-    ) -> Result<Option<Text>, UnspawnedMobError> {
-        self.with_lent_mob(mob, |m| Ok(m.custom_name_text.clone()))
     }
 
     /// The tags a mod gave the mobs from index `from` on before they joined
@@ -925,90 +634,6 @@ fn ageable(a: &AgeableGroup) -> Ageable {
         size: a.size,
         should_spawn_baby: a.should_spawn_baby,
         baby_chance: a.baby_chance,
-    }
-}
-
-#[cfg(test)]
-impl UnspawnedMobEdits for Edits<'_, '_> {
-    fn set_equipment(
-        &self,
-        mob: UnspawnedMobRef,
-        slot: EquipmentSlot,
-        item: Option<ItemStack>,
-    ) -> Result<(), UnspawnedMobError> {
-        self.game.edit_lent_mob(mob, |game, m| {
-            write_mob_equipment(m, world_items!(game), &game.motion.attributes, slot, item)
-        })
-    }
-
-    fn set_attribute_base(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-        base: f64,
-    ) -> Result<(), UnspawnedMobError> {
-        self.game.edit_lent_mob(mob, |game, m| {
-            write_mob_attribute_base(
-                m,
-                world_items!(game),
-                &game.motion.attributes,
-                attribute,
-                base,
-            )
-        })
-    }
-
-    fn add_attribute_modifier(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-        modifier: AttributeModifier,
-    ) -> Result<(), UnspawnedMobError> {
-        self.game.edit_lent_mob(mob, |game, m| {
-            write_mob_add_attribute_modifier(
-                m,
-                world_items!(game),
-                &game.motion.attributes,
-                attribute,
-                modifier,
-            )
-        })
-    }
-
-    fn remove_attribute_modifier(
-        &self,
-        mob: UnspawnedMobRef,
-        attribute: &Identifier,
-        id: &Identifier,
-    ) -> Result<bool, UnspawnedMobError> {
-        self.game.edit_lent_mob(mob, |game, m| {
-            write_mob_remove_attribute_modifier(
-                m,
-                world_items!(game),
-                &game.motion.attributes,
-                attribute,
-                id,
-            )
-        })
-    }
-
-    fn add_tag(&self, mob: UnspawnedMobRef, tag: &str) -> Result<bool, UnspawnedMobError> {
-        self.game
-            .edit_lent_mob(mob, |_, m| write_mob_add_tag(m, tag))
-    }
-
-    fn remove_tag(&self, mob: UnspawnedMobRef, tag: &str) -> Result<bool, UnspawnedMobError> {
-        self.game
-            .edit_lent_mob(mob, |_, m| write_mob_remove_tag(m, tag))
-    }
-
-    fn set_custom_name(
-        &self,
-        mob: UnspawnedMobRef,
-        name: Option<mod_api::Text>,
-    ) -> Result<(), UnspawnedMobError> {
-        self.game
-            .edit_lent_mob(mob, |_, m| write_mob_set_custom_name(m, name))
     }
 }
 

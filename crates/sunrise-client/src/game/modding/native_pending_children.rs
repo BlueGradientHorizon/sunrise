@@ -1,20 +1,18 @@
-//! The pending-child collection adapter. The existing unspawned editor resolves the same
-//! arena objects. No resident entity ID, attachment holder or join is published here.
+//! Scoped editors for pending children in `baby_entity_spawn` and `mob_split`.
+//! No resident entity ID, attachment holder, or join is published here: children live on the
+//! dispatch stack or inside owned [`mod_api::UnspawnedMob`] values and drop cleanly via RAII if
+//! left unattached.
 
-use super::{Game, native_unspawned_mob};
+use super::native_unspawned_mob;
 use mod_api::{
     AttributeModifier, BabyEntitySpawnSlot, EquipmentSlot, Identifier, ItemStack,
-    PendingChildEditor, PendingChildWrite, PendingChildrenEdits, PendingChildrenRef,
-    PendingMobSpec, UnattachedMob, UnspawnedMob, UnspawnedMobError, UnspawnedMobRead,
-    UnspawnedMobRef, UnspawnedMobView, UnspawnedMobWrite, WorldEpoch,
+    MobSplitChildList, PendingChildEditor, PendingChildWrite, PendingMobSpec, UnspawnedMob,
+    UnspawnedMobError, UnspawnedMobRead, UnspawnedMobView, UnspawnedMobWrite,
 };
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::sync::Arc;
 use sunrise_client::mobs::{Mob, Species, finalize};
 use sunrise_core::geometry::Vec3;
-use sunrise_mod_runtime::{
-    attachments::Attachments,
-    pending_children::{Action, Borrow, Error, Owned, PendingChildren},
-};
+use sunrise_mod_runtime::attachments::Attachments;
 use sunrise_world::attributes::entity::Catalog;
 
 /// All unpublished per-object data travels with its actual Mob. A route must move its
@@ -277,295 +275,106 @@ impl BabyEntitySpawnSlot for BabyChildSlot<'_> {
     }
 }
 
-pub(super) fn pending_error(error: Error) -> UnspawnedMobError {
-    match error {
-        Error::Expired => UnspawnedMobError::Expired,
-        Error::Ownership => UnspawnedMobError::Ownership,
-        Error::Capacity => UnspawnedMobError::Capacity,
-        Error::Budget => UnspawnedMobError::Budget,
-        Error::Invalid | Error::Stale => UnspawnedMobError::Invalid,
-    }
+/// Scoped unbounded list editor backing [`mod_api::MobSplitChildren`] for `mob_split`.
+pub(super) struct SplitChildList<'a> {
+    pub(super) children: &'a mut Vec<PendingMob>,
+    pub(super) resources: Arc<super::Resources>,
+    pub(super) attributes: Arc<Catalog>,
+    pub(super) dimension: super::Dim,
 }
 
-/// Ends the previous listener's leases when any new listener has begun.
-pub(super) fn sync_listener(
-    arena: &RefCell<PendingChildren<PendingMob>>,
-    hook: &std::cell::Cell<Option<mod_api::HookId>>,
-) {
-    if hook.get().is_some() {
-        let _ = arena
-            .borrow_mut()
-            .sync_listener(mod_api::__private::listener_serial());
-    }
-}
-
-pub(super) fn pending_key(
-    game: &Game<'_>,
-    mob: UnspawnedMobRef,
-) -> Result<Option<Borrow>, UnspawnedMobError> {
-    sync_listener(
-        &game.lent_mobs.borrow().pending,
-        &game.lent_mobs.borrow().hook,
-    );
-    if game.native_lifecycle.epoch() != Some(mob.epoch()) {
-        return Err(UnspawnedMobError::Expired);
-    }
-    Ok(mob
-        .pending_parts()
-        .map(|(action, lease, slot)| Borrow::from_parts(mob.epoch().get(), action, lease, slot)))
-}
-
-fn handle(key: Borrow) -> UnspawnedMobRef {
-    let (world, action, lease, slot) = key.parts();
-    UnspawnedMobRef::pending(WorldEpoch::new(world), action, lease, slot)
-}
-
-/// One callback's collection editor. It takes short arena borrows per operation; the
-/// dispatcher must never keep a RefMut across guest code. Renew before each listener.
-pub(super) struct Children {
-    resources: Arc<super::Resources>,
-    attributes: Arc<Catalog>,
-    arena: Rc<RefCell<PendingChildren<PendingMob>>>,
-    action: Action,
-    epoch: WorldEpoch,
-    dimension: super::Dim,
-    breeding: bool,
-    hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
-}
-
-impl Children {
-    /// Capture only shared resources and action ownership, leaving Game available as a
-    /// mutable ServerHost during dispatch. The caller must still recheck the live world,
-    /// parent and read-set versions before accepting the frozen output.
-    pub(super) fn new(game: &Game<'_>, action: Action, breeding: bool) -> Self {
-        game.expire_standalone_lends();
-        Self {
-            resources: game.res.clone(),
-            attributes: game.motion.attributes.clone(),
-            arena: game.lent_mobs.borrow().pending.clone(),
-            action,
-            epoch: game.lend_epoch(),
-            dimension: game.dim,
-            breeding,
-            hook: game.lent_mobs.borrow().hook.clone(),
-        }
+impl MobSplitChildList for SplitChildList<'_> {
+    fn len(&self) -> usize {
+        self.children.len()
     }
 
-    pub(super) fn receiver(&self) -> Result<PendingChildrenRef, UnspawnedMobError> {
-        sync_listener(&self.arena, &self.hook);
-        let (world, lease) = self
-            .arena
-            .borrow()
-            .lease(self.action)
-            .map_err(pending_error)?;
-        Ok(PendingChildrenRef::new(
-            WorldEpoch::new(world),
-            self.action.id(),
-            lease,
-        ))
+    fn get(&self, index: usize) -> Option<UnspawnedMobView<'_>> {
+        self.children.get(index).map(|p| UnspawnedMobView::new(p))
     }
 
-    fn check(&self, receiver: PendingChildrenRef) -> Result<(), UnspawnedMobError> {
-        sync_listener(&self.arena, &self.hook);
-        let (world, action, lease) = receiver.parts();
-        if world != self.epoch || action != self.action.id() {
-            return Err(UnspawnedMobError::Expired);
-        }
-        self.arena
-            .borrow()
-            .check_lease(world.get(), self.action, lease)
-            .map_err(pending_error)
+    fn get_mut(&mut self, index: usize) -> Option<PendingChildEditor<'_>> {
+        self.children
+            .get_mut(index)
+            .map(|p| PendingChildEditor::new(p))
     }
 
-    fn key(&self, mob: UnspawnedMobRef) -> Result<Borrow, UnspawnedMobError> {
-        let (action, lease, slot) = mob.pending_parts().ok_or(UnspawnedMobError::Ownership)?;
-        self.check(PendingChildrenRef::new(mob.epoch(), action, lease))?;
-        let key = Borrow::from_parts(mob.epoch().get(), action, lease, slot);
-        if self
-            .arena
-            .borrow()
-            .get(key)
-            .map_err(pending_error)?
-            .dimension
-            != self.dimension
-        {
-            return Err(UnspawnedMobError::Expired);
-        }
-        Ok(key)
-    }
-
-    /// Object invariants in addition to the caller's authoritative parent/read-set check.
-    /// In particular this validates the complete list before any insertion consumer runs.
-    #[cfg(test)]
-    pub(super) fn valid_child(&self, child: &PendingMob) -> bool {
-        valid_child(&self.resources, self.dimension, self.breeding, child)
-    }
-
-    fn edit(
-        &self,
-        mob: UnspawnedMobRef,
-        edit: impl FnOnce(&mut Mob) -> Result<(), UnspawnedMobError>,
-    ) -> Result<(), UnspawnedMobError> {
-        let key = self.key(mob)?;
-        edit(
-            &mut self
-                .arena
-                .borrow_mut()
-                .get_mut(key)
-                .map_err(pending_error)?
-                .mob,
-        )
-    }
-}
-
-impl PendingChildrenEdits for Children {
-    fn children(&self) -> Result<PendingChildrenRef, UnspawnedMobError> {
-        self.receiver()
-    }
-
-    fn len(&self, children: PendingChildrenRef) -> Result<u32, UnspawnedMobError> {
-        self.check(children)?;
-        self.arena
-            .borrow()
-            .len(self.action)
-            .map(|n| n as u32)
-            .map_err(pending_error)
-    }
-
-    fn is_empty(&self, children: PendingChildrenRef) -> Result<bool, UnspawnedMobError> {
-        self.len(children).map(|n| n == 0)
-    }
-
-    fn child(
-        &self,
-        children: PendingChildrenRef,
-        index: u32,
-    ) -> Result<UnspawnedMobRef, UnspawnedMobError> {
-        self.check(children)?;
-        self.arena
-            .borrow()
-            .borrow(self.action, index as usize)
-            .map(handle)
-            .map_err(pending_error)
-    }
-
-    fn construct(
-        &self,
-        children: PendingChildrenRef,
-        spec: PendingMobSpec,
-    ) -> Result<UnattachedMob, UnspawnedMobError> {
-        self.check(children)?;
-        self.arena
-            .borrow()
-            .can_construct(self.action)
-            .map_err(pending_error)?;
-        let child = construct_pending_mob(
+    fn construct(&self, spec: PendingMobSpec) -> Result<UnspawnedMob, UnspawnedMobError> {
+        let pending = construct_pending_mob(
             &self.resources,
             &self.attributes,
             self.dimension,
-            self.breeding,
+            false,
             spec,
         )?;
-        let mut arena = self.arena.borrow_mut();
-        let owned = arena.construct(self.action, child).map_err(pending_error)?;
-        Ok(UnattachedMob::new(handle(
-            arena.borrow_owned(owned).map_err(pending_error)?,
-        )))
+        Ok(UnspawnedMob::new(Box::new(pending)))
     }
 
-    fn append(
-        &self,
-        children: PendingChildrenRef,
-        child: UnattachedMob,
-    ) -> Result<(), UnspawnedMobError> {
-        self.check(children)?;
-        let key = self.key(child.mob())?;
-        self.arena
-            .borrow_mut()
-            .append(self.action, Owned::from_borrow(key))
-            .map_err(pending_error)
+    fn push(&mut self, child: UnspawnedMob) -> Result<(), UnspawnedMobError> {
+        let mut pending = child
+            .into_any()
+            .downcast::<PendingMob>()
+            .map_err(|_| UnspawnedMobError::Invalid)?;
+        if !valid_child(&self.resources, self.dimension, false, &pending) {
+            return Err(UnspawnedMobError::Invalid);
+        }
+        pending.breeding = false;
+        self.children.push(*pending);
+        Ok(())
+    }
+
+    fn insert(&mut self, index: usize, child: UnspawnedMob) -> Result<(), UnspawnedMobError> {
+        if index > self.children.len() {
+            return Err(UnspawnedMobError::Invalid);
+        }
+        let mut pending = child
+            .into_any()
+            .downcast::<PendingMob>()
+            .map_err(|_| UnspawnedMobError::Invalid)?;
+        if !valid_child(&self.resources, self.dimension, false, &pending) {
+            return Err(UnspawnedMobError::Invalid);
+        }
+        pending.breeding = false;
+        self.children.insert(index, *pending);
+        Ok(())
     }
 
     fn replace(
-        &self,
-        children: PendingChildrenRef,
-        index: u32,
-        child: UnattachedMob,
-    ) -> Result<(), UnspawnedMobError> {
-        self.check(children)?;
-        let key = self.key(child.mob())?;
-        self.arena
-            .borrow_mut()
-            .replace(self.action, index as usize, Owned::from_borrow(key))
-            .map_err(pending_error)
-    }
-
-    fn remove(&self, children: PendingChildrenRef, index: u32) -> Result<(), UnspawnedMobError> {
-        self.check(children)?;
-        self.arena
-            .borrow_mut()
-            .remove(self.action, index as usize)
-            .map_err(pending_error)
-    }
-
-    fn set_position(
-        &self,
-        mob: UnspawnedMobRef,
-        position: [f64; 3],
-    ) -> Result<(), UnspawnedMobError> {
-        if !super::native_mobs::spawnable(position) {
+        &mut self,
+        index: usize,
+        child: UnspawnedMob,
+    ) -> Result<UnspawnedMob, UnspawnedMobError> {
+        if index >= self.children.len() {
             return Err(UnspawnedMobError::Invalid);
         }
-        self.edit(mob, |m| {
-            m.position = Vec3::new(position[0], position[1], position[2]);
-            m.previous = m.position;
-            Ok(())
-        })
-    }
-
-    fn set_yaw(&self, mob: UnspawnedMobRef, yaw: f32) -> Result<(), UnspawnedMobError> {
-        if !yaw.is_finite() {
+        let mut pending = child
+            .into_any()
+            .downcast::<PendingMob>()
+            .map_err(|_| UnspawnedMobError::Invalid)?;
+        if !valid_child(&self.resources, self.dimension, false, &pending) {
             return Err(UnspawnedMobError::Invalid);
         }
-        self.edit(mob, |m| {
-            m.yaw = yaw;
-            m.previous_yaw = yaw;
-            m.body_yaw = yaw;
-            m.previous_body_yaw = yaw;
-            m.head_yaw = yaw;
-            m.previous_head_yaw = yaw;
-            Ok(())
-        })
+        pending.breeding = false;
+        let prev = std::mem::replace(&mut self.children[index], *pending);
+        Ok(UnspawnedMob::new(Box::new(prev)))
     }
 
-    fn set_baby(&self, mob: UnspawnedMobRef, baby: bool) -> Result<(), UnspawnedMobError> {
-        if self.breeding && !baby {
-            return Err(UnspawnedMobError::Invalid);
+    fn remove(&mut self, index: usize) -> Option<UnspawnedMob> {
+        if index < self.children.len() {
+            Some(UnspawnedMob::new(Box::new(self.children.remove(index))))
+        } else {
+            None
         }
-        self.edit(mob, |m| {
-            if baby && !finalize::supports_baby(m.species()) {
-                return Err(UnspawnedMobError::Invalid);
-            }
-            finalize::set_baby(m, baby);
-            Ok(())
-        })
     }
 
-    fn set_size(&self, mob: UnspawnedMobRef, size: u32) -> Result<(), UnspawnedMobError> {
-        self.edit(mob, |m| {
-            if !size_ok(m.species(), Some(size)) {
-                return Err(UnspawnedMobError::Invalid);
-            }
-            apply_size(m, size);
-            Ok(())
-        })
+    fn clear(&mut self) {
+        self.children.clear();
     }
 }
 
 /// Whether a final child satisfies every object invariant: a registered kind, the action's
 /// dimension, a finite spawnable position and yaw, baby state the species supports (a
 /// breeding child must be one) and a size the species allows.
-pub(super) fn valid_child(
+fn valid_child(
     resources: &super::Resources,
     dimension: super::Dim,
     breeding: bool,

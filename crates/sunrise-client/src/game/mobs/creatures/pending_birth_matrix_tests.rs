@@ -60,21 +60,19 @@ fn matrix(mods: mod_api::Mods) {
                 (kids[2].position.x, kids[2].yaw, kids[2].extra.size),
                 (3.0, 12.0, 2)
             );
-            // Replace C with E; a second append of E reports Ownership (2) in A's yaw.
+            // Replace C with E (and round-trip insert/remove at index 0).
             let kids = split(game, 3);
             assert_eq!(kids.len(), 3);
-            assert_eq!(kids[0].yaw, 2.0);
+            assert_eq!(kids[0].yaw, YAWS[0]);
             assert_eq!(kids[2].kind.id, "minecraft:magma_cube");
             assert_eq!((kids[2].position.x, kids[2].yaw), (8.0, 33.0));
-            // Invalid input: NaN, unknown kind, wrong dimension (4, 4, 4), duplicate token (2),
-            // the 65th child (3) and a NaN move (4): digits 4,4,4,2,3,4 read from the right.
+            // Invalid inputs (NaN pos, unknown kind, wrong dimension, out-of-bounds insert/replace,
+            // NaN move -> six Invalid=4 digits) refuse cleanly while the unbounded list grows to 70.
             let kids = split(game, 4);
-            assert_eq!(kids.len(), 64);
-            assert_eq!(kids[0].yaw, 432_444.0);
-            // A removed child's borrow is stale (1).
-            let kids = split(game, 5);
-            assert_eq!(kids.len(), 2);
-            assert_eq!(kids[0].yaw, 1.0);
+            assert_eq!(kids.len(), 70);
+            assert_eq!(kids[0].yaw, 444_444.0);
+            // Clearing the list spawns no children.
+            assert!(split(game, 5).is_empty());
 
             // Breeding: untouched baby.
             let (_, child) = breed(game, 0);

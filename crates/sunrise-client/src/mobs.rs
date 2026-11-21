@@ -1054,7 +1054,7 @@ pub struct Extra {
     /// Saved fish/axolotl bucket flag; tadpoles save a constant true value.
     pub from_bucket: bool,
     /// Tags a mod gave the mob before it joined a level (`finalize_spawn`'s
-    /// `UnspawnedMobEdits`): the level keeps a joined entity's tags with its
+    /// `UnspawnedMobEditor`): the level keeps a joined entity's tags with its
     /// saved data, so they move there when the mob joins.
     pub spawn_tags: Vec<String>,
     /// Command-created armor instances, shared by commands and runtime damage.

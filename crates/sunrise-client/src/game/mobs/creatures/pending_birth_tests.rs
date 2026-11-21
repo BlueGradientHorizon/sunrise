@@ -129,7 +129,7 @@ fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
         let record = seen.clone();
         with_split(
             move |_, event| {
-                let len = event.edits.len(event.edits.children().unwrap()).unwrap();
+                let len = event.children.len();
                 record.lock().unwrap().push((
                     event.dimension.to_owned(),
                     event.kind.to_owned(),
@@ -239,39 +239,55 @@ fn spec(kind: &str, at: [f64; 3], yaw: f32, size: Option<u32>, dimension: &str) 
 
 #[test]
 #[ignore = "daily"]
-fn edit_remove_append_commits_a_c_d_once_and_b_goes_stale() {
-    let stale = Arc::new(Mutex::new(None));
-    let record = stale.clone();
-    with_split(
-        move |host, event| {
-            let (edits, children) = (event.edits, event.edits.children().unwrap());
-            let a = edits.child(children, 0).unwrap();
-            let b = edits.child(children, 1).unwrap();
-            edits.set_yaw(a, 90.0).unwrap();
-            edits.remove(children, 1).unwrap();
-            *record.lock().unwrap() = Some(b.kind(&*host));
-            let d = edits
-                .construct(
-                    children,
-                    spec(
+fn edit_remove_push_commits_a_c_d_once() {
+    let second_saw = Arc::new(Mutex::new(None));
+    let record = second_saw.clone();
+    with_splits(
+        vec![
+            Box::new(move |_, event| {
+                event.children.get_mut(0).unwrap().set_yaw(90.0).unwrap();
+                let removed = event.children.remove(1).unwrap();
+                assert_eq!(removed.kind().unwrap().to_string(), "minecraft:slime");
+                drop(removed);
+                let d = event
+                    .children
+                    .construct(spec(
                         "minecraft:slime",
                         [3.0, 70.0, 4.0],
                         12.0,
                         Some(2),
                         event.dimension,
-                    ),
-                )
-                .unwrap();
-            edits.append(children, d).unwrap();
-            assert_eq!(edits.len(children), Ok(3));
-            Flow::Continue
-        },
+                    ))
+                    .unwrap();
+                event.children.push(d).unwrap();
+                // A detached child dropped without attaching never joins.
+                let _dropped = event
+                    .children
+                    .construct(spec(
+                        "minecraft:slime",
+                        [9.0, 70.0, 9.0],
+                        0.0,
+                        Some(2),
+                        event.dimension,
+                    ))
+                    .unwrap();
+                assert_eq!(event.children.len(), 3);
+                Flow::Continue
+            }),
+            Box::new(move |_, event| {
+                *record.lock().unwrap() = Some((
+                    event.children.len(),
+                    event.children.get(2).unwrap().position(),
+                ));
+                Flow::Continue
+            }),
+        ],
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let first = game.next_entity + 1;
             game.split_cube_children(&mut dying);
             let kids = spawned(game);
-            // [A, C, D]: A with yaw 90, C the vanilla third child, D appended.
+            // [A, C, D]: A with yaw 90, C the vanilla third child, D pushed.
             assert_eq!(kids.len(), 3);
             assert_eq!(kids[0].yaw, 90.0);
             assert_eq!(kids[0].id, first);
@@ -287,36 +303,32 @@ fn edit_remove_append_commits_a_c_d_once_and_b_goes_stale() {
         },
     );
     assert_eq!(
-        stale.lock().unwrap().clone(),
-        Some(Err(UnspawnedMobError::Expired)),
-        "the removed child's borrow is stale"
+        *second_saw.lock().unwrap(),
+        Some((3, Ok([3.0, 70.0, 4.0]))),
+        "later listeners see earlier listeners' edits"
     );
 }
 
 #[test]
 #[ignore = "daily"]
-fn replace_c_with_e_commits_a_b_e_and_a_second_append_of_e_is_an_ownership_error() {
-    let outcome = Arc::new(Mutex::new(None));
-    let record = outcome.clone();
+fn replace_c_with_e_commits_a_b_e() {
+    let replaced_kind = Arc::new(Mutex::new(None));
+    let record = replaced_kind.clone();
     with_split(
-        move |host, event| {
-            let (edits, children) = (event.edits, event.edits.children().unwrap());
-            let c = edits.child(children, 2).unwrap();
-            let e = edits
-                .construct(
-                    children,
-                    spec(
-                        "minecraft:magma_cube",
-                        [8.0, 65.0, 9.0],
-                        33.0,
-                        Some(2),
-                        event.dimension,
-                    ),
-                )
+        move |_, event| {
+            let e = event
+                .children
+                .construct(spec(
+                    "minecraft:magma_cube",
+                    [8.0, 65.0, 9.0],
+                    33.0,
+                    Some(2),
+                    event.dimension,
+                ))
                 .unwrap();
-            edits.replace(children, 2, e).unwrap();
-            let again = edits.append(children, e);
-            *record.lock().unwrap() = Some((c.kind(&*host), again));
+            let prev = event.children.replace(2, e).unwrap();
+            *record.lock().unwrap() = Some(prev.kind().unwrap().to_string());
+            drop(prev);
             Flow::Continue
         },
         |game| {
@@ -331,12 +343,10 @@ fn replace_c_with_e_commits_a_b_e_and_a_second_append_of_e_is_an_ownership_error
             assert_eq!(kids[2].yaw, 33.0);
         },
     );
-    let (replaced, again) = outcome.lock().unwrap().clone().unwrap();
-    assert_eq!(replaced, Err(UnspawnedMobError::Expired), "C is invalid");
     assert_eq!(
-        again,
-        Err(UnspawnedMobError::Ownership),
-        "E is consumed once"
+        replaced_kind.lock().unwrap().as_deref(),
+        Some("minecraft:slime"),
+        "replace returns the previous child"
     );
 }
 
@@ -347,66 +357,65 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
     let record = errors.clone();
     with_split(
         move |_, event| {
-            let (edits, children) = (event.edits, event.edits.children().unwrap());
             let dim = event.dimension;
-            let mut out = Vec::new();
-            out.push(
-                edits
-                    .construct(
-                        children,
-                        spec("minecraft:slime", [f64::NAN, 64.0, 0.0], 0.0, Some(2), dim),
-                    )
+            let mut out = vec![
+                event
+                    .children
+                    .construct(spec(
+                        "minecraft:slime",
+                        [f64::NAN, 64.0, 0.0],
+                        0.0,
+                        Some(2),
+                        dim,
+                    ))
                     .map(|_| ()),
-            );
-            out.push(
-                edits
-                    .construct(
-                        children,
-                        spec("minecraft:not_a_mob", [0.0, 64.0, 0.0], 0.0, None, dim),
-                    )
+                event
+                    .children
+                    .construct(spec(
+                        "minecraft:not_a_mob",
+                        [0.0, 64.0, 0.0],
+                        0.0,
+                        None,
+                        dim,
+                    ))
                     .map(|_| ()),
-            );
-            out.push(
-                edits
-                    .construct(
-                        children,
-                        spec(
-                            "minecraft:slime",
-                            [0.0, 64.0, 0.0],
-                            0.0,
-                            Some(2),
-                            "minecraft:the_end",
-                        ),
-                    )
+                event
+                    .children
+                    .construct(spec(
+                        "minecraft:slime",
+                        [0.0, 64.0, 0.0],
+                        0.0,
+                        Some(2),
+                        "minecraft:the_end",
+                    ))
                     .map(|_| ()),
-            );
-            // A duplicate token: the second append is refused.
-            let d = edits
-                .construct(
-                    children,
-                    spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
-                )
+            ];
+            // Out-of-bounds insert and replace refuse without mutating the list.
+            let oob_insert = event
+                .children
+                .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
                 .unwrap();
-            edits.append(children, d).unwrap();
-            out.push(edits.append(children, d));
-            // Up to 64, then the 65th child is a capacity error.
-            while edits.len(children).unwrap() < 64 {
-                let more = edits
-                    .construct(
-                        children,
-                        spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
-                    )
+            out.push(event.children.insert(99, oob_insert));
+            let oob_replace = event
+                .children
+                .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
+                .unwrap();
+            out.push(event.children.replace(99, oob_replace).map(|_| ()));
+            // Unbounded list grows past the former 64-child cap (Audit [69]).
+            while event.children.len() < 70 {
+                let more = event
+                    .children
+                    .construct(spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim))
                     .unwrap();
-                edits.append(children, more).unwrap();
+                event.children.push(more).unwrap();
             }
-            let extra = edits
-                .construct(
-                    children,
-                    spec("minecraft:slime", [0.0, 64.0, 0.0], 0.0, Some(2), dim),
-                )
-                .unwrap();
-            out.push(edits.append(children, extra));
-            out.push(edits.set_position(edits.child(children, 0).unwrap(), [f64::NAN, 0.0, 0.0]));
+            out.push(
+                event
+                    .children
+                    .get_mut(0)
+                    .unwrap()
+                    .set_position([f64::NAN, 0.0, 0.0]),
+            );
             *record.lock().unwrap() = out;
             Flow::Continue
         },
@@ -415,8 +424,8 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
             game.split_cube_children(&mut dying);
             assert_eq!(
                 game.mobs.len(),
-                64,
-                "the valid list stands, nothing truncated"
+                70,
+                "unbounded list grows past 64 and stands intact after refused operations"
             );
             assert!(game.mobs[0].position.x.is_finite());
         },
@@ -427,44 +436,10 @@ fn invalid_input_fails_before_mutation_and_the_valid_list_stands() {
             Err(UnspawnedMobError::Invalid),
             Err(UnspawnedMobError::Invalid),
             Err(UnspawnedMobError::Invalid),
-            Err(UnspawnedMobError::Ownership),
-            Err(UnspawnedMobError::Capacity),
+            Err(UnspawnedMobError::Invalid),
+            Err(UnspawnedMobError::Invalid),
             Err(UnspawnedMobError::Invalid),
         ]
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn retained_native_tokens_fail_after_the_callback_returns() {
-    let kept = Arc::new(Mutex::new(None));
-    let record = kept.clone();
-    with_split(
-        move |_, event| {
-            let child = event
-                .edits
-                .child(event.edits.children().unwrap(), 0)
-                .unwrap();
-            *record.lock().unwrap() = Some((event.edits.children().unwrap(), child));
-            Flow::Continue
-        },
-        |game| {
-            let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            game.split_cube_children(&mut dying);
-            let (_, child) = kept.lock().unwrap().unwrap();
-            // Reads and writes through the retained borrow change nothing and are refused.
-            assert_eq!(
-                game.unspawned_mob_kind(child),
-                Err(UnspawnedMobError::Expired)
-            );
-            assert_eq!(
-                game.unspawned_mob_position(child),
-                Err(UnspawnedMobError::Expired)
-            );
-            // The children that joined were not retargeted by the stale handle.
-            assert_eq!(game.mobs.len(), 3);
-            assert_eq!(game.mobs[0].yaw, YAWS[0]);
-        },
     );
 }
 
@@ -475,11 +450,17 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
     let flag = panic_now.clone();
     with_split(
         move |_, event| {
-            let child = event
-                .edits
-                .child(event.edits.children().unwrap(), 0)
+            event.children.get_mut(0).unwrap().set_yaw(1.0).unwrap();
+            let _detached = event
+                .children
+                .construct(spec(
+                    "minecraft:slime",
+                    [1.0, 64.0, 1.0],
+                    0.0,
+                    Some(2),
+                    event.dimension,
+                ))
                 .unwrap();
-            event.edits.set_yaw(child, 1.0).unwrap();
             if *flag.lock().unwrap() {
                 panic!("a listener fails before commit");
             }
@@ -496,7 +477,7 @@ fn a_panicking_listener_spawns_nothing_and_leaves_the_arena_usable() {
             assert_eq!(game.next_entity, next_id, "no entity number was issued");
             // Pre-callback effects stay: the construction draws were spent.
             assert_eq!(dying.random.next_int(), NEXT_INT);
-            // The arena is reusable: the next split works from a fresh action.
+            // Subsequent splits work cleanly from a fresh stack frame.
             *panic_now.lock().unwrap() = false;
             let mut again = cube(game, "minecraft:slime", 4, SEED);
             game.split_cube_children(&mut again);
@@ -773,72 +754,6 @@ fn with_splits(listeners: Vec<SplitFn>, run: impl FnOnce(&mut Game<'_>)) {
         })
         .collect();
     mod_platform::testing::with_mods(entries.into(), || with_game(run));
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_token_kept_from_one_listener_is_expired_in_the_next() {
-    type Kept = (
-        mod_api::PendingChildrenRef,
-        mod_api::UnspawnedMobRef,
-        mod_api::UnattachedMob,
-    );
-    let kept: Arc<Mutex<Option<Kept>>> = Arc::default();
-    let results = Arc::new(Mutex::new(Vec::new()));
-    let (first, second, out) = (kept.clone(), kept.clone(), results.clone());
-    with_splits(
-        vec![
-            Box::new(move |_, event| {
-                let edits = event.edits;
-                let children = edits.children().unwrap();
-                let child = edits.child(children, 0).unwrap();
-                let token = edits
-                    .construct(
-                        children,
-                        spec(
-                            "minecraft:slime",
-                            [1.0, 64.0, 1.0],
-                            0.0,
-                            Some(2),
-                            event.dimension,
-                        ),
-                    )
-                    .unwrap();
-                *first.lock().unwrap() = Some((children, child, token));
-                Flow::Continue
-            }),
-            Box::new(move |host, event| {
-                let edits = event.edits;
-                let (old_children, old_child, old_token) = second.lock().unwrap().unwrap();
-                let fresh = edits.children().unwrap();
-                *out.lock().unwrap() = vec![
-                    edits.len(old_children).map(|_| ()),
-                    edits.set_yaw(old_child, 1.0),
-                    edits.append(fresh, old_token),
-                    old_child.kind(&*host).map(|_| ()),
-                    edits.len(fresh).map(|_| ()),
-                ];
-                Flow::Continue
-            }),
-        ],
-        |game| {
-            let mut dying = cube(game, "minecraft:slime", 4, SEED);
-            game.split_cube_children(&mut dying);
-            // Nothing the first listener kept reached the list: the vanilla three.
-            assert_eq!(game.mobs.len(), 3);
-            assert_eq!(game.mobs[0].yaw, YAWS[0]);
-        },
-    );
-    assert_eq!(
-        *results.lock().unwrap(),
-        [
-            Err(UnspawnedMobError::Expired),
-            Err(UnspawnedMobError::Expired),
-            Err(UnspawnedMobError::Expired),
-            Err(UnspawnedMobError::Expired),
-            Ok(()),
-        ]
-    );
 }
 
 fn animals_bred(game: &Game<'_>) -> i32 {

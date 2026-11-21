@@ -1,6 +1,5 @@
 //! The mode is the last decimal digit of the parent entity id. Refusals are written into
-//! the first child's yaw as digits: 0 ok, 1 Expired, 2 Ownership, 3 Capacity, 4 Invalid,
-//! 5 Budget, 9 anything else.
+//! the first child's yaw as digits: 0 ok, 1 Unsupported, 4 Invalid, 9 anything else.
 
 use mod_api::{
     BabyEntitySpawnEvent, Flow, Identifier, MobSplitEvent, PendingMobSpec, ServerHost,
@@ -10,11 +9,8 @@ use mod_api::{
 fn code<T>(result: Result<T, UnspawnedMobError>) -> f32 {
     match result {
         Ok(_) => 0.0,
-        Err(UnspawnedMobError::Expired) => 1.0,
-        Err(UnspawnedMobError::Ownership) => 2.0,
-        Err(UnspawnedMobError::Capacity) => 3.0,
+        Err(UnspawnedMobError::Unsupported) => 1.0,
         Err(UnspawnedMobError::Invalid) => 4.0,
-        Err(UnspawnedMobError::Budget) => 5.0,
         Err(_) => 9.0,
     }
 }
@@ -38,97 +34,117 @@ fn spec(
     spec
 }
 
-/// `mob_split`: mode 0 changes nothing, 1 cancels, 2 edits A, removes B and appends D, 3 replaces C
-/// with E and reports a second append of E in A's yaw, 4 tries invalid input, 5 reads a removed child.
-pub fn mob_split(host: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
-    let (edits, children, dim) = (
-        event.edits,
-        event.edits.children().unwrap(),
-        event.dimension,
-    );
+/// `mob_split`: mode 0 changes nothing, 1 cancels, 2 edits A, removes B, pushes D and drops an
+/// unattached child, 3 replaces C with E (also exercising `insert` + `remove`), 4 tests invalid
+/// inputs and grows the list past 64 children (to 70), 5 clears all children.
+pub fn mob_split(_: &mut dyn ServerHost, event: &mut MobSplitEvent<'_>) -> Flow {
+    let dim = event.dimension;
     match event.parent % 10 {
         1 => return Flow::Cancel,
         2 => {
-            let a = edits.child(children, 0).unwrap();
-            edits.set_yaw(a, 90.0).unwrap();
-            edits.remove(children, 1).unwrap();
-            let d = edits
-                .construct(
-                    children,
-                    spec(
-                        "minecraft:slime",
-                        dim,
-                        [3.0, 70.0, 4.0],
-                        12.0,
-                        Some(2),
-                        false,
-                    ),
-                )
+            event.children.get_mut(0).unwrap().set_yaw(90.0).unwrap();
+            let removed = event.children.remove(1).unwrap();
+            assert_eq!(removed.kind().unwrap().to_string(), "minecraft:slime");
+            drop(removed);
+            let d = event
+                .children
+                .construct(spec(
+                    "minecraft:slime",
+                    dim,
+                    [3.0, 70.0, 4.0],
+                    12.0,
+                    Some(2),
+                    false,
+                ))
                 .unwrap();
-            edits.append(children, d).unwrap();
+            event.children.push(d).unwrap();
+            let _dropped = event
+                .children
+                .construct(spec(
+                    "minecraft:slime",
+                    dim,
+                    [9.0, 70.0, 9.0],
+                    0.0,
+                    Some(2),
+                    false,
+                ))
+                .unwrap();
         }
         3 => {
-            let a = edits.child(children, 0).unwrap();
-            let e = edits
-                .construct(
-                    children,
-                    spec(
-                        "minecraft:magma_cube",
-                        dim,
-                        [8.0, 65.0, 9.0],
-                        33.0,
-                        Some(2),
-                        false,
-                    ),
-                )
+            let e = event
+                .children
+                .construct(spec(
+                    "minecraft:magma_cube",
+                    dim,
+                    [8.0, 65.0, 9.0],
+                    33.0,
+                    Some(2),
+                    false,
+                ))
                 .unwrap();
-            edits.replace(children, 2, e).unwrap();
-            edits.set_yaw(a, code(edits.append(children, e))).unwrap();
+            let prev = event.children.replace(2, e).unwrap();
+            assert_eq!(prev.kind().unwrap().to_string(), "minecraft:slime");
+            drop(prev);
+            let temp = event
+                .children
+                .construct(spec(
+                    "minecraft:slime",
+                    dim,
+                    [1.0, 65.0, 1.0],
+                    5.0,
+                    Some(2),
+                    false,
+                ))
+                .unwrap();
+            event.children.insert(0, temp).unwrap();
+            let back = event.children.remove(0).unwrap();
+            assert_eq!(back.position(), Ok([1.0, 65.0, 1.0]));
+            drop(back);
         }
         4 => {
-            let a = edits.child(children, 0).unwrap();
             let slime = |at: [f64; 3], d: &str| spec("minecraft:slime", d, at, 0.0, Some(2), false);
             let mut digits = vec![
-                code(edits.construct(children, slime([f64::NAN, 64.0, 0.0], dim))),
-                code(edits.construct(
-                    children,
-                    spec(
-                        "minecraft:not_a_mob",
-                        dim,
-                        [0.0, 64.0, 0.0],
-                        0.0,
-                        None,
-                        false,
-                    ),
-                )),
-                code(edits.construct(children, slime([0.0, 64.0, 0.0], "minecraft:the_end"))),
+                code(event.children.construct(slime([f64::NAN, 64.0, 0.0], dim))),
+                code(event.children.construct(spec(
+                    "minecraft:not_a_mob",
+                    dim,
+                    [0.0, 64.0, 0.0],
+                    0.0,
+                    None,
+                    false,
+                ))),
+                code(
+                    event
+                        .children
+                        .construct(slime([0.0, 64.0, 0.0], "minecraft:the_end")),
+                ),
             ];
-            let d = edits
-                .construct(children, slime([0.0, 64.0, 0.0], dim))
+            let oob_insert = event
+                .children
+                .construct(slime([0.0, 64.0, 0.0], dim))
                 .unwrap();
-            edits.append(children, d).unwrap();
-            digits.push(code(edits.append(children, d)));
-            while edits.len(children).unwrap() < 64 {
-                let more = edits
-                    .construct(children, slime([0.0, 64.0, 0.0], dim))
+            digits.push(code(event.children.insert(99, oob_insert)));
+            let oob_replace = event
+                .children
+                .construct(slime([0.0, 64.0, 0.0], dim))
+                .unwrap();
+            digits.push(code(event.children.replace(99, oob_replace)));
+            while event.children.len() < 70 {
+                let more = event
+                    .children
+                    .construct(slime([0.0, 64.0, 0.0], dim))
                     .unwrap();
-                edits.append(children, more).unwrap();
+                event.children.push(more).unwrap();
             }
-            let extra = edits
-                .construct(children, slime([0.0, 64.0, 0.0], dim))
-                .unwrap();
-            digits.push(code(edits.append(children, extra)));
-            digits.push(code(edits.set_position(a, [f64::NAN, 0.0, 0.0])));
+            digits.push(code(event.children.get_mut(0).unwrap().set_position([
+                f64::NAN,
+                0.0,
+                0.0,
+            ])));
             let packed = digits.iter().rev().fold(0.0, |acc, d| acc * 10.0 + d);
-            edits.set_yaw(a, packed).unwrap();
+            event.children.get_mut(0).unwrap().set_yaw(packed).unwrap();
         }
-        5 => {
-            let a = edits.child(children, 0).unwrap();
-            let b = edits.child(children, 1).unwrap();
-            edits.remove(children, 1).unwrap();
-            let read = b.kind(&*host).map(|_| ());
-            edits.set_yaw(a, code(read)).unwrap();
-        }
+        5 => event.children.clear(),
         _ => {}
     }
     Flow::Continue
