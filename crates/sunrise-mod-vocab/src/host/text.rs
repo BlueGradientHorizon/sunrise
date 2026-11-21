@@ -18,7 +18,6 @@ pub trait TextHost {
     /// arguments and fallback.
     /// Available outside drawing, including setup on a game-backed host.
     /// Pack discovery before game resources are available returns `TextFormError::Unavailable`.
-    #[access(Metadata)]
     fn text_string(&self, text: &Text) -> Result<String, TextFormError>;
     /// Side: both.
     /// Reads a text component as `/tellraw` and `ComponentSerialization.CODEC` take it: one
@@ -34,7 +33,6 @@ pub trait TextHost {
     /// `show_item` refuses `minecraft:air`; a component removal (`!id`) requires an object value.
     /// An object whose only content key is `index` is refused,
     /// as in vanilla's codec; Sunrise follows vanilla there.
-    #[access(Metadata)]
     fn text_from_json(&self, json: &str) -> Result<Option<Text>, TextFormError>;
     /// Side: both.
     /// Reads legacy formatting codes (`§a`, `§l`, `§r`...) as the font draws them
@@ -42,6 +40,5 @@ pub trait TextHost {
     /// decorations, `§r` resets everything, an unknown code is dropped. `&` codes are not
     /// read; a mod that takes them replaces `&` with `§` first, as
     /// `ChatColor.translateAlternateColorCodes` does.
-    #[access(Metadata)]
     fn text_from_legacy(&self, legacy: &str) -> Result<Text, TextFormError>;
 }

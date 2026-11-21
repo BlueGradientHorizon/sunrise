@@ -5,23 +5,18 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait ServicesServerHost {
     /// The commands service.
-    #[access(WorldOnly)]
     #[service]
     fn commands(&mut self) -> &mut dyn Commands;
     /// The levels service.
-    #[access(WorldOnly)]
     #[service]
     fn levels(&self) -> &dyn Levels;
     /// The messages service.
-    #[access(WorldOnly)]
     #[service]
     fn messages(&self) -> &dyn Messages;
     /// The players service.
-    #[access(WorldOnly)]
     #[service]
     fn players(&self) -> &dyn Players;
     /// The runtime_levels service.
-    #[access(WorldOnly)]
     #[service]
     fn runtime_levels(&mut self) -> &mut dyn RuntimeLevels;
 }
@@ -29,15 +24,12 @@ pub trait ServicesServerHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ServicesClientHost {
     /// Persistent model groups.
-    #[access(PublishedResources)]
     #[service]
     fn instance_groups(&self) -> &dyn InstanceGroups;
     /// The client_session service.
-    #[access(WorldOnly)]
     #[service]
     fn client_session(&self) -> &dyn ClientSession;
     /// The render_assets service.
-    #[access(PublishedResources)]
     #[service]
     fn render_assets(&self) -> &dyn RenderAssets;
 }

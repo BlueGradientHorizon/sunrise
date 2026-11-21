@@ -5,22 +5,18 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait ScreensClientHost {
     /// The world-preset editor currently open over Create World, or none.
-    #[access(ClientSetup)]
     fn preset_editor(&self) -> Option<PresetEditor>;
     /// A copy of the open preset editor's working dimension stems.
-    #[access(ClientSetup)]
     fn preset_editor_dimensions(&self) -> Option<Compound>;
     /// Replace the open editor's working dimension stems. Requires an overworld,
     /// valid dimension ids and type/generator declarations. Returns false outside
     /// the editor or for malformed data; Done commits, Cancel discards the copy.
     /// Interior screen state permits use from the read-only screen input hooks.
-    #[access(ClientSetup)]
     fn set_preset_editor_dimensions(&self, dimensions: Compound) -> bool;
     /// Side: client.
     /// The position of the currently shown mod menu opening. Use
     /// [`crate::MenuScreenOpen::pos`] while constructing its screen instead.
     /// An explicit absent position from the server stays `None`.
-    #[access(ClientSetup)]
     fn screen_pos(&self) -> Option<[i32; 3]>;
     /// Side: client.
     /// Where the open screen draws outside its `rect`, and where mods draw
@@ -30,12 +26,10 @@ pub trait ScreensClientHost {
     /// non-finite one is dropped. A mod that lays out its own panels
     /// (a recipe viewer) keeps them clear of these. Client-side; empty with
     /// no screen up.
-    #[access(ClientSetup)]
     fn screen_exclusion(&self) -> Vec<[f32; 4]>;
     /// Side: client.
     /// The id of the item in the slot under the pointer on the open container screen
     /// (`AbstractContainerScreen.getHoveredSlot().getItem()`), None over no slot or an empty one.
-    #[access(ClientSetup)]
     fn screen_hovered_item(&self) -> Option<ItemKey>;
     /// Side: client.
     /// Where this mod's shown menu screen puts backing slot `slot` from the next
@@ -43,7 +37,6 @@ pub trait ScreensClientHost {
     /// corner): where `set_screen_slot` last put it, else where the screen declared it. None
     /// for an excluded or locally hidden slot, another menu type's or another mod's screen,
     /// or no shown mod screen.
-    #[access(ClientSetup)]
     fn screen_slot(&self, menu: &str, slot: usize) -> Option<[f32; 2]>;
     /// Side: client.
     /// Moves container slot `slot` of the open screen of mod menu type `menu` to `pos`, or hides
@@ -60,7 +53,6 @@ pub trait ScreensClientHost {
     /// shown. It takes `&self`, so a screen callback may call it every frame; repeating
     /// a slot's current place changes nothing and costs no layout work. Each
     /// [`ScreenSlotRefusal`] leaves the layout unchanged.
-    #[access(ClientSetup)]
     fn set_screen_slot(
         &self,
         menu: &str,
@@ -72,12 +64,10 @@ pub trait ScreensClientHost {
     /// so blur is applied at most once per frame. Returns true if blur was newly
     /// requested this frame, or false if it was already applied/requested this frame.
     /// API @API:screen_transparent_background@.
-    #[access(ClientSetup)]
     fn apply_screen_blur(&self) -> bool;
     /// Side: client.
     /// The user's configured menu background blur radius (`menuBackgroundBlurriness` in options.txt,
     /// usually 0.0 to 10.0; default 5.0). 0.0 means blur is turned off. API @API:screen_transparent_background@.
-    #[access(ClientSetup)]
     fn menu_blur_radius(&self) -> f32;
     /// Side: client.
     /// Opens a screen of mod `mod_id`'s own over the world: the screen hooks
@@ -92,11 +82,9 @@ pub trait ScreensClientHost {
     /// loads, and anywhere but the window's own client (the server thread, a
     /// dedicated server). A gamepad can close it (B, Start) but not click on
     /// it: its clicks don't reach the mouse hooks.
-    #[access(WorldOnly)]
     fn mod_screen_open(&mut self, mod_id: &str) -> bool;
     /// Side: client.
     /// Closes mod `mod_id`'s own screen, if it is open.
-    #[access(WorldOnly)]
     fn mod_screen_close(&mut self, mod_id: &str);
     /// Side: client.
     /// Closes the open screen as its Escape key does: a container screen
@@ -112,7 +100,6 @@ pub trait ScreensClientHost {
     /// The death screen, the code of conduct and a dialog Escape cannot
     /// close do not close this way. False when no screen is open (or,
     /// outside a world, when it cannot act).
-    #[access(WorldOnly)]
     fn close_screen(&mut self) -> bool;
     /// Side: client.
     /// Opens the player's inventory as the inventory key does: locally, with
@@ -121,41 +108,33 @@ pub trait ScreensClientHost {
     /// (`ServerboundPlayerCommandPacket`), as the key does. False with a
     /// screen already open, for a spectator, in a portal transition, or with
     /// no world.
-    #[access(WorldOnly)]
     fn open_inventory(&mut self) -> bool;
     /// Side: client.
     /// The sign the sign editor is on, its block position and side; None when
     /// no sign editor is open or outside a world.
-    #[access(ClientSetup)]
     fn sign_editor(&self) -> Option<SignEditView>;
     /// Side: client.
     /// The mod whose own screen is open, if one is (Escape, or another screen
     /// replacing it, closes it).
-    #[access(ClientSetup)]
     fn mod_screen(&self) -> Option<&str>;
     /// Side: client.
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text.
-    #[access(ClientSetup)]
     fn screen_title(&self) -> Option<String>;
     /// Side: client.
     /// The last window focus state reported by the window system.
-    #[access(ClientSetup)]
     fn window_focused(&self) -> bool;
     /// Side: client.
     /// The same screen identifier provided to screen hooks.
-    #[access(ClientSetup)]
     fn observed_screen_id(&self) -> Option<ScreenId>;
     /// Side: client.
     /// Whether the client draws its debug overlay this frame. Always-on debug entries can
     /// make it visible with F3 off. F1 hides the overlay unless a screen is open.
-    #[access(ClientSetup)]
     fn debug_overlay_visible(&self) -> bool;
     /// Side: client.
     /// Whether a specific key is currently held down.
     /// `key` is the vanilla physical key or mouse button name (`key.keyboard.left.shift`,
     /// `key.mouse.left`, `key.mouse.4`, for example).
     /// Unknown names are not down. Modifier combinations use `ClientHost::modifiers`.
-    #[access(ClientSetup)]
     fn is_key_down(&self, key: &str) -> bool;
 }

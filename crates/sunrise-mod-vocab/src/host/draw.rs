@@ -7,7 +7,6 @@ pub trait DrawClientHost {
     /// Side: client.
     /// Fluid `fluid`'s name as the lang names it (`fluid_type.<mod>.<name>`, vanilla's by its block),
     /// else its path in words.
-    #[access(ClientSetup)]
     fn fluid_name(&self, fluid: &str) -> String;
     /// Side: client.
     /// Entity model layer `layer` baked into its `ModelPart` tree, each part
@@ -19,7 +18,6 @@ pub trait DrawClientHost {
     /// for a layer neither has. A vanilla layer no mob has (a player's, a
     /// chest's) is read from the resources each call, so slow. API
     /// @API:model_layers@.
-    #[access(ClientSetup)]
     fn bake_layer(&self, layer: &str) -> Option<ModelPart>;
 }
 /// What the HUD, screen and tooltip hooks draw with, in GUI pixels: one per hook call.

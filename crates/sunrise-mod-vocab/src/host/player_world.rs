@@ -10,25 +10,21 @@ pub trait PlayerWorldBackend {
     /// The level the online player is in (`ServerPlayer.level`): on an integrated
     /// server or dedicated server, the player's current dimension; on a client,
     /// the client's level. None for a stale or unavailable player.
-    #[access(WorldOnly)]
     fn player_level(&self, player: PlayerRef) -> Option<LevelRef>;
     /// Side: both.
     /// The dimension the online player is in (`ServerPlayer.level().dimension()`):
     /// `minecraft:overworld`, `minecraft:the_nether`, ... None for a stale
     /// or unavailable player.
-    #[access(WorldOnly)]
     fn player_dimension(&self, player: PlayerRef) -> Option<Identifier>;
     /// Side: both.
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
-    #[access(WorldOnly)]
     fn player_last_death_location(&self, player: PlayerRef) -> Option<GlobalPos>;
     /// Side: server.
     /// `ServerPlayer.getRespawnConfig`: where the player comes back after dying: a bed, a
     /// respawn anchor or a `/spawnpoint`, with the yaw they face and whether it is forced.
     /// `Some(None)` when they have none and respawn at the world spawn. None for a stale or
     /// unavailable player.
-    #[access(WorldOnly)]
     fn player_respawn_config(&self, player: PlayerRef) -> Option<Option<PlayerRespawnConfig>>;
 }
 /// The handles' writes of the `player_world` area, implemented by the game and reached through [`BackendMut`].
@@ -43,7 +39,6 @@ pub trait PlayerWorldBackendMut {
     /// change, which refuses it. Kept with the player's record. False for a stale or unavailable
     /// player, a dead one, a dimension the game doesn't have, a yaw that is not finite and a
     /// canceled change.
-    #[access(WorldOnly)]
     fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -53,7 +48,6 @@ pub trait PlayerWorldBackendMut {
     /// `Player.setLastDeathLocation`: stores where the player died, or
     /// forgets it for None. The client hears of it with the player's next
     /// respawn, as in vanilla. False in the cases a read gives None.
-    #[access(WorldOnly)]
     fn player_set_last_death_location(
         &mut self,
         player: PlayerRef,
@@ -67,7 +61,6 @@ pub trait PlayerWorldBackendMut {
     /// that can view it. A chunk no area covers any more is forgotten 52 ticks later. An area
     /// counts as no player for spawning, sleeping, raids or any other rule. Areas are never saved
     /// and end when the player leaves. A call that breaks a limit changes nothing and names it.
-    #[access(WorldOnly)]
     fn player_set_chunk_areas(
         &mut self,
         player: PlayerRef,
@@ -75,7 +68,6 @@ pub trait PlayerWorldBackendMut {
     ) -> Result<(), ChunkAreaRefusal>;
     /// Side: both.
     /// Simulate one client movement tick for this server player without changing the player. Refuses stale, absent, dead, spectator or riding players and invalid input.
-    #[access(WorldOnly)]
     fn player_simulate_move(
         &mut self,
         player: PlayerRef,
@@ -93,6 +85,5 @@ pub trait PlayerWorldBackendMut {
     /// world) and `Alive` (health above 0 and the game not won: the Respawn button
     /// ignores exactly that player; one who has won the game and is watching the End poem is
     /// respawned even alive, on the server's next tick, as the button does).
-    #[access(WorldOnly)]
     fn player_respawn(&mut self, player: PlayerRef) -> Result<(), RespawnRefusal>;
 }

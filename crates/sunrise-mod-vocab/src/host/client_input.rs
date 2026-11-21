@@ -6,7 +6,6 @@ use crate::*;
 pub trait ClientInputClientHost {
     /// Side: client.
     /// Where the mouse is, in GUI pixels.
-    #[access(ClientSetup)]
     fn cursor(&self) -> [f32; 2];
     /// Side: client.
     /// Resolve `owner`'s registered mapping `id` once after registration, usually in `client_setup`.
@@ -14,29 +13,24 @@ pub trait ClientInputClientHost {
     /// mappings can be resolved and read, but only the owner can rebind or reset them.
     /// Returns [`ModKeyRefusal::NotRegistered`] for an unknown owner or id and
     /// [`ModKeyRefusal::Unavailable`] when there is no client backend in this host or phase.
-    #[access(ClientSetup)]
     fn mod_key_mapping(&self, owner: &str, id: &str) -> Result<ModKeyMappingRef, ModKeyRefusal>;
     /// Side: client.
     /// Playing, with nothing over the world: keys and zoom apply.
-    #[access(ClientSetup)]
     fn playing(&self) -> bool;
     /// Side: client.
     /// Resolve a vanilla mapping name such as `key.jump`, not a binding name such as
     /// `key.keyboard.space`. Keep the handle for subsequent reads and writes. An unknown name returns
     /// [`MappingError::Unknown`]; a host or phase without client input returns
     /// [`MappingError::Unavailable`].
-    #[access(ClientSetup)]
     fn vanilla_key_mapping(&self, name: &str) -> Result<VanillaKeyMappingRef, MappingError>;
     /// Side: client.
     /// Milliseconds on the game's own clock (`Util.getMillis`), counting from the game's start:
     /// what a text field's cursor blinks by and what tells a double click from two clicks.
     /// Only differences between two readings mean anything.
-    #[access(ClientSetup)]
     fn millis(&self) -> u64;
     /// Side: client.
     /// The current window modifier keys in the same GLFW encoding as input hooks.
     /// Cleared when the window loses focus; available even outside a world.
-    #[access(ClientSetup)]
     fn modifiers(&self) -> ClientModifiers;
     /// Side: client.
     /// The clipboard's text (`KeyboardHandler.getClipboard`), empty when it holds none,
@@ -44,13 +38,11 @@ pub trait ClientInputClientHost {
     /// pasting into its own field. None at any other moment (a tick, a frame, a packet),
     /// so no mod reads the clipboard without the player doing something, and None on a
     /// server.
-    #[access(ClientSetup)]
     fn clipboard_text(&self) -> Option<String>;
     /// Side: client.
     /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
     /// `native_clipboard_text` reads it. False, with nothing copied, at any other moment or
     /// on a server; empty text copies nothing, as vanilla's.
-    #[access(ClientSetup)]
     fn set_clipboard_text(&self, text: &str) -> bool;
 }
 
@@ -64,7 +56,6 @@ pub trait ClientInputClientBackend {
     /// `key.keyboard.unknown` when unbound), borrowed for the life of the host borrow.
     /// Reads through a foreign client return [`MappingError::Stale`]; an unavailable
     /// backend or phase returns [`MappingError::Unavailable`].
-    #[access(ClientSetup)]
     fn vanilla_key_mapping_binding(
         &self,
         mapping: VanillaKeyMappingRef,
@@ -74,7 +65,6 @@ pub trait ClientInputClientBackend {
     /// controller input, toggles and logical overrides. Other vanilla mappings resolve but
     /// return [`MappingError::NoLogicalState`]; this never substitutes a physical read.
     /// Stale and unavailable handles are refused as for [`VanillaKeyMappingRef::binding`].
-    #[access(ClientSetup)]
     fn vanilla_key_mapping_is_down(
         &self,
         mapping: VanillaKeyMappingRef,
@@ -84,7 +74,6 @@ pub trait ClientInputClientBackend {
     /// toggles, conflict context, modifiers and logical overrides. False when the binding
     /// has no physical key or button. Stale and unavailable handles are refused as for
     /// [`VanillaKeyMappingRef::binding`].
-    #[access(ClientSetup)]
     fn vanilla_key_mapping_physical_down(
         &self,
         mapping: VanillaKeyMappingRef,
@@ -93,7 +82,6 @@ pub trait ClientInputClientBackend {
     /// Builds the current binding's Controls label on demand (`KeyMapping.getTranslatedKeyMessage`).
     /// An invalid component returns [`MappingError::Label`]; stale and unavailable handles
     /// are refused as for [`VanillaKeyMappingRef::binding`].
-    #[access(ClientSetup)]
     fn vanilla_key_mapping_translated_key_message(
         &self,
         mapping: VanillaKeyMappingRef,
@@ -102,7 +90,6 @@ pub trait ClientInputClientBackend {
     /// Lends the current binding name and returns its saved or default modifiers. The name is
     /// borrowed for the host borrow. A replaced client or roster returns [`ModKeyRefusal::Stale`];
     /// an unavailable backend or phase returns [`ModKeyRefusal::Unavailable`].
-    #[access(ClientSetup)]
     fn mod_key_mapping_binding(
         &self,
         mapping: ModKeyMappingRef,
@@ -111,13 +98,11 @@ pub trait ClientInputClientBackend {
     /// Whether the mapping is held (`KeyMapping.isDown`): its key or mouse button is down,
     /// no screen or overlay is open, and its context and modifiers are active.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
-    #[access(ClientSetup)]
     fn mod_key_mapping_is_down(&self, mapping: ModKeyMappingRef) -> Result<bool, ModKeyRefusal>;
     /// Side: client.
     /// Builds the current Controls label on demand, with the bound modifiers in Controls order.
     /// Returns [`MappingError::Stale`] for a replaced client or roster, [`MappingError::Unavailable`]
     /// for an unavailable backend or phase, or [`MappingError::Label`] for an invalid component.
-    #[access(ClientSetup)]
     fn mod_key_mapping_translated_key_message(
         &self,
         mapping: ModKeyMappingRef,
@@ -145,7 +130,6 @@ pub trait ClientInputClientBackendMut {
     /// `key.pickItem` is click-only ([`MappingError::ClickOnly`]); use [`VanillaKeyMappingRef::click`].
     /// An unavailable backend or phase returns [`MappingError::Unavailable`], a handle from
     /// another client returns [`MappingError::Stale`], and no player returns [`MappingError::NoWorld`].
-    #[access(WorldOnly)]
     fn vanilla_key_mapping_set_down(
         &mut self,
         mapping: VanillaKeyMappingRef,
@@ -169,7 +153,6 @@ pub trait ClientInputClientBackendMut {
     /// also apply to physical input queued through the same routes.
     ///
     /// Refusals are as for [`VanillaKeyMappingRef::set_down`], except that `key.pickItem` can be clicked.
-    #[access(WorldOnly)]
     fn vanilla_key_mapping_click(
         &mut self,
         mapping: VanillaKeyMappingRef,
@@ -180,7 +163,6 @@ pub trait ClientInputClientBackendMut {
     /// and the mapping's context and modifiers active. Window and control-socket input count
     /// alike. Opening a screen or overlay drops all pending clicks.
     /// Refusals are as for [`ModKeyMappingRef::binding`].
-    #[access(ClientSetup)]
     fn mod_key_mapping_consume_click(
         &mut self,
         mapping: ModKeyMappingRef,
@@ -193,7 +175,6 @@ pub trait ClientInputClientBackendMut {
     /// Only the owning mod can change it. In addition to the refusals of
     /// [`ModKeyMappingRef::binding`], returns [`ModKeyRefusal::NotOwner`],
     /// [`ModKeyRefusal::UnknownKey`] or [`ModKeyRefusal::UnknownModifiers`]. No refusal changes it.
-    #[access(ClientSetup)]
     fn mod_key_mapping_set_binding(
         &mut self,
         mapping: ModKeyMappingRef,
@@ -204,7 +185,6 @@ pub trait ClientInputClientBackendMut {
     /// Restores the declared default key and modifiers as Controls' Reset does and saves
     /// `sunrise-mods.txt`. Refusals are as for [`ModKeyMappingRef::set_binding`], except this
     /// operation has no key or modifier arguments to validate.
-    #[access(ClientSetup)]
     fn mod_key_mapping_reset_binding(
         &mut self,
         mapping: ModKeyMappingRef,

@@ -9,31 +9,26 @@ pub trait LevelSavedDataBackend {
     /// Side: server.
     /// `Raids.get(id)`: the raid saved under `id` in the requested level, if
     /// `Raids` still holds it (a stopped raid goes at its next tick).
-    #[access(WorldOnly)]
     fn level_raid(&self, level: LevelRef, id: i32) -> Option<RaidRef>;
     /// Side: server.
     /// `ServerLevel.getRaidAt(pos)`: the closest active raid whose centre is
     /// less than 96 blocks away (`Raids.getNearbyRaid`, 9216 squared).
-    #[access(WorldOnly)]
     fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef>;
     /// Side: server.
     /// Every raid `Raids` holds, in its iteration order, stopped ones
     /// included until their next tick. None for a closed or stale level.
-    #[access(WorldOnly)]
     fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>>;
     /// Side: server.
     /// The world's respawn data (`LevelData.getRespawnData`): the world spawn, the level it is
     /// in and the way a player appearing there faces, as `/setworldspawn` sets them. The world
     /// has one, so every level of a world answers the same. None on a client, for a stale
     /// handle, and before the world has chosen its spawn.
-    #[access(WorldOnly)]
     fn level_respawn_data(&self, level: LevelRef) -> Option<RespawnData>;
     /// Side: server.
     /// Map `id`'s saved data (`ServerLevel.getMapData(new MapId(id))`): read from memory, or
     /// from `data/minecraft/maps/<id>.dat` when nothing has loaded it yet, without keeping it.
     /// Maps belong to the world, not to a level. None on a client, for a stale handle and for
     /// a map id nothing ever made.
-    #[access(WorldOnly)]
     fn level_map_data(&self, level: LevelRef, id: i32) -> Option<MapState>;
 }
 /// The handles' writes of the `level_saved_data` area, implemented by the game and reached through [`BackendMut`].
@@ -47,7 +42,6 @@ pub trait LevelSavedDataBackendMut {
     /// to -180..180) and `pitch` (clamped to -90..90), a player whose own respawn point was the
     /// old world spawn follows it, and `spawn_change` fires. False for a stale handle, a client,
     /// a non-finite angle and a position outside the spawnable bounds.
-    #[access(WorldOnly)]
     fn level_set_respawn_data(
         &mut self,
         level: LevelRef,
@@ -60,7 +54,6 @@ pub trait LevelSavedDataBackendMut {
     /// `MapItemSavedData.setColor` does: each changed pixel marks the map to save, to redraw and
     /// to send to the players carrying or framing it. True when a pixel changed. False for
     /// another length, a stale handle, a client and a map id nothing made.
-    #[access(WorldOnly)]
     fn level_set_map_data(&mut self, level: LevelRef, id: i32, colors: &[u8]) -> bool;
     /// Side: server.
     /// Ask for the level to be saved: its level data, chunks and entities, as the autosave and
@@ -70,6 +63,5 @@ pub trait LevelSavedDataBackendMut {
     /// taken: the call cannot tell whether the save worked. `level_save` fires with the level's
     /// dimension once it was written; a save that fails fires nothing and is logged. False for a
     /// stale handle and on a client.
-    #[access(WorldOnly)]
     fn level_request_save(&mut self, level: LevelRef) -> bool;
 }

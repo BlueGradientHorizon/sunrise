@@ -9,24 +9,20 @@ pub trait EntityPositionBackend {
     /// Side: both.
     /// The entity's position (`Entity.position`): its feet, the middle of
     /// its box for a painting or an item frame.
-    #[access(WorldOnly)]
     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
     /// Side: server.
     /// The block the entity's position is in (`Entity.blockPosition`). API
     /// 373.
-    #[access(WorldOnly)]
     fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]>;
     /// Side: both.
     /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
     /// for the kinds that don't turn. API 373.
-    #[access(WorldOnly)]
     fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
     /// Side: both.
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
     /// On a client, the local player's own predicted flag (the one it sends); for another
     /// kept entity, including a tracked player, its client copy's flag. Neither is server
     /// authority. None for a stale handle or an entity whose body the client doesn't keep.
-    #[access(WorldOnly)]
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
     /// The block the entity stands on (`Entity.getOnPos`): the supporting block
@@ -34,29 +30,24 @@ pub trait EntityPositionBackend {
     /// block under its box nearest its position), else the block just under
     /// its feet. A dragon part, which never stands, has the block under its
     /// feet. None for a stale handle.
-    #[access(WorldOnly)]
     fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]>;
     /// Side: server.
     /// The square of the distance from the entity's feet to `pos`
     /// (`Entity.distanceToSqr`). API 379.
-    #[access(WorldOnly)]
     fn entity_distance_to_sqr(&self, entity: EntityRef, pos: [f64; 3]) -> Option<f64>;
     /// Side: server.
     /// The yaw of the entity's head (`Entity.getYHeadRot`): a mob's or a
     /// player's own, zero for the kinds without a head.
-    #[access(WorldOnly)]
     fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32>;
     /// Side: server.
     /// The yaw of the entity's body (`LivingEntity.yBodyRot`) in degrees as
     /// vanilla keeps it, not normalized: the direction its drawn body faces,
     /// which its head turns against. Mobs only: None for players and every
     /// other kind, and for a stale handle.
-    #[access(WorldOnly)]
     fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32>;
     /// Side: server.
     /// The horizontal direction the entity faces (`Entity.getDirection`):
     /// `north`, `south`, `east` or `west`.
-    #[access(WorldOnly)]
     fn entity_direction(&self, entity: EntityRef) -> Option<&'static str>;
 }
 /// The handles' writes of the `entity_position` area, implemented by the game and reached through [`BackendMut`].
@@ -71,7 +62,6 @@ pub trait EntityPositionBackendMut {
     /// `rotation` (yaw, pitch in degrees) it also turns. False for a position
     /// outside the world's bounds, for wall-mounted entities or dragon parts, or when the
     /// requested rotation cannot be stored.
-    #[access(WorldOnly)]
     fn entity_teleport_to(
         &mut self,
         entity: EntityRef,
@@ -107,7 +97,6 @@ pub trait EntityPositionBackendMut {
     /// target is still over the collider. `None` for a player who is a rider (its vehicle moves
     /// it), a sleeper, one without a connection, a target outside the world's bounds or a move
     /// the collision query cannot answer; nothing moves then.
-    #[access(WorldOnly)]
     fn entity_move_by(
         &mut self,
         entity: EntityRef,
@@ -140,7 +129,6 @@ pub trait EntityPositionBackendMut {
     /// entities Sunrise doesn't simulate). A fake player stays where it is, and
     /// so does an entity whose travel a mod cancels (`entity_travel_to_dimension`);
     /// the call is still true. Nothing builds ground at the destination.
-    #[access(WorldOnly)]
     fn entity_teleport_to_level(
         &mut self,
         entity: EntityRef,
@@ -154,13 +142,11 @@ pub trait EntityPositionBackendMut {
     /// whose rotation Sunrise does not fully store, or an unavailable player.
     /// Works for general entities; the new angles are tracked to clients.
     /// Does not teleport or dismount.
-    #[access(WorldOnly)]
     fn entity_set_rotation(&mut self, entity: EntityRef, yaw: f32, pitch: f32) -> bool;
     /// Side: server.
     /// Turns a mob's head to `yaw` (`Entity.setYHeadRot`); its body follows
     /// as its AI turns it. Players' heads can turn too; false for other kinds
     /// or an unavailable player.
-    #[access(WorldOnly)]
     fn entity_set_head_yaw(&mut self, entity: EntityRef, yaw: f32) -> bool;
     /// Side: server.
     /// Turns a painting, item frame or glow item frame in place to face `direction`
@@ -170,12 +156,10 @@ pub trait EntityPositionBackendMut {
     /// horizontal direction (vanilla's `Painting.setDirection` refuses up and down). Clients are
     /// told through the entity's data. False for another kind, a vertical direction for a
     /// painting, or a stale handle.
-    #[access(WorldOnly)]
     fn entity_set_hanging_direction(&mut self, entity: EntityRef, direction: Direction) -> bool;
     /// Side: server.
     /// Turns the item in an item frame or glow item frame (`ItemFrame.setRotation`): `rotation`
     /// in eighths of a turn, wrapped to 0..=7 as vanilla's `rotation % 8`; the comparators reading
     /// the frame take its new signal. False for another kind or a stale handle.
-    #[access(WorldOnly)]
     fn entity_set_item_frame_rotation(&mut self, entity: EntityRef, rotation: u8) -> bool;
 }

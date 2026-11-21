@@ -13,7 +13,6 @@ pub trait ClientTextClientHost {
     /// UTF-16 offsets, not offsets into the input component tree.
     /// Action keybinds resolve to their assigned keys as in `text_string`.
     /// No NeoForge hook counterpart is documented.
-    #[access(ClientSetup)]
     fn text_visual_order(&self, text: &Text) -> Result<Vec<VisualTextCharacter>, TextFormError>;
 
     /// Side: client.
@@ -24,7 +23,6 @@ pub trait ClientTextClientHost {
     /// the rendering client's active font, not a font chosen by the mod.
     /// Build a [`Text`] component directly and lend it to this read. Invalid
     /// components return the same boundary errors as `text_string`.
-    #[access(ClientSetup)]
     fn text_width(&self, text: &Text) -> Result<i32, TextFormError>;
 
     /// Side: client.
@@ -33,6 +31,5 @@ pub trait ClientTextClientHost {
     /// the same active font as tooltip layout. Newlines force breaks; a width
     /// below one follows vanilla's one-pixel minimum, without rejecting input.
     /// Available outside drawing.
-    #[access(ClientSetup)]
     fn text_split(&self, text: &Text, width: i32) -> Result<Vec<Text>, TextFormError>;
 }

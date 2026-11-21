@@ -40,7 +40,6 @@ pub trait AudioClientHost {
     /// host.open_audio_stream(&spec, Box::new(Clip(samples.into_iter())))
     /// # }
     /// ```
-    #[access(ClientSetup)]
     fn open_audio_stream(
         &self,
         _spec: &StreamSpec,
@@ -70,6 +69,5 @@ pub trait AudioClientHost {
     ///     &stereo_pcm[frames * 2..]
     /// }
     /// ```
-    #[access(ClientSetup)]
     fn open_push_audio_stream(&self, _spec: &StreamSpec) -> Result<AudioStreamRef, AudioRefusal>;
 }
