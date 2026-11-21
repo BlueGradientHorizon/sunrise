@@ -359,7 +359,9 @@ fn load_conditions_registration_allows_shared_namespaces() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let entries = registrar.finish().unwrap();
             assert_eq!(entries.len(), 2);
             for (name, owner, value) in [("a:y", "a", true), ("a:x", "b", false)] {
@@ -384,7 +386,9 @@ fn load_conditions_registration_refuses_duplicate_ids_even_if_ignored() {
             let mut registrar = mod_api::LoadConditionDeclarations::new(
                 sunrise_world::conditions::is_builtin_condition,
             );
-            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), &mut registrar);
+            mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), |listen| {
+                registrar.register_listener(listen)
+            });
             let error = registrar.finish().err().unwrap().message;
             assert!(error.contains("condition a:x"), "{error}");
             assert!(error.contains("both a and b"), "{error}");

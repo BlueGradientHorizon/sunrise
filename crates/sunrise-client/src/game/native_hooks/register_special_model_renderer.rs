@@ -9,6 +9,8 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         renderers: &mut mod_api::SpecialModelRendererRegistry,
     ) {
-        Self::fire_register_special_model_renderer(context, renderers);
+        Self::fire_register_special_model_renderer(context, |listen| {
+            renderers.register_listener(listen)
+        });
     }
 }

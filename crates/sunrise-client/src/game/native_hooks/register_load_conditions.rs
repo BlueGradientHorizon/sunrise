@@ -4,6 +4,6 @@ impl Game<'_> {
         context: &mod_api::RegistrationContext,
         conditions: &mut mod_api::LoadConditionDeclarations,
     ) {
-        Self::fire_register_load_conditions(context, conditions);
+        Self::fire_register_load_conditions(context, |listen| conditions.register_listener(listen));
     }
 }

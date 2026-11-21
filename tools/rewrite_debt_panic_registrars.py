@@ -9,7 +9,8 @@ import argparse
 from pathlib import Path
 
 
-NATIVE = Path(__file__).resolve().parents[1] / "crates/sunrise-client/src/game/native_hooks"
+GAME = Path(__file__).resolve().parents[1] / "crates/sunrise-client/src/game"
+NATIVE = GAME / "native_hooks"
 # hook suffix -> (argument, registrar trait, concrete owner)
 REGISTRARS = {
     "block_tint_sources": ("sources", "BlockTintSources", "BlockTintRegistry"),
@@ -25,14 +26,14 @@ REGISTRARS = {
 }
 
 
-def replace(source, old, new, path, *formatted):
+def replace(source, old, new, path, *formatted, count=1):
     before = source.count(old)
     after = sum(source.count(pattern) for pattern in (new, *formatted))
-    if (before, after) == (1, 0):
+    if (before, after) == (count, 0):
         return source.replace(old, new)
-    if (before, after) == (0, 1):
+    if (before, after) == (0, count):
         return source
-    raise SystemExit(f"{path}: expected exactly one crossing: {old!r} or {new!r}")
+    raise SystemExit(f"{path}: expected exactly {count} crossing(s): {old!r} or {new!r}")
 
 
 def main():
@@ -69,6 +70,17 @@ def main():
                 f"{prefix}|listen| {{\n            {argument}.register_listener(listen)\n        }});",
             )
         pending[path] = replace(source, old, new, path, *formatted)
+
+    if args.command == "bridge" and "load_conditions" in args.hooks:
+        path = GAME / "modding/load_conditions/tests.rs"
+        call = "mod_api::dispatch_register_load_conditions(&RegistrationContext::new(), "
+        pending[path] = replace(
+            path.read_text(),
+            call + "&mut registrar);",
+            call + "|listen| {\n                registrar.register_listener(listen)\n            });",
+            path,
+            count=2,
+        )
 
     for path, source in pending.items():
         if source != path.read_text():
