@@ -184,8 +184,9 @@ fn register(r: &mut dyn Registrar) {
   `EncodeFailed` for a value the peer could not decode (a bound or the allocation budget),
   before anything is queued; `WrongProtocol` for a send in a phase the id is not declared in. A
   received body that is not one value of the type closes the session, naming the mod, and the
-  handler does not run. A handler that panics is disabled: its transaction rolls back, nothing it
-  staged is sent, the session closes, and it is not called again.
+  handler does not run. A handler that panics is disabled for the session: the game logs the
+  owning mod and shows an error toast. Work in the handler’s transaction journal or staged
+  send queue is discarded. Other handlers and the rest of the bundle still run.
 - **Raw channel failures stay local.** A raw channel (`play_raw`) carries bytes from any client,
   so a declaring mod's handler that returns `Failed` does not close the session: the game logs the mod and the channel, rolls back that delivery's staged
   work (a staged disconnect included), and still delivers the other declaring mods' copies. A

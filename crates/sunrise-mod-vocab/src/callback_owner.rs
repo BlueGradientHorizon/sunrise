@@ -1,4 +1,5 @@
 //! Owner enablement, attribution and panic containment for retained resources.
+use crate::runtime::{DispatchOutcome, invoke_guarded, log_and_queue_panic};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Owner identity and poison state for one retained mod callback.
@@ -44,22 +45,58 @@ pub(crate) fn call<T>(
     operation: &'static str,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    if !enabled(index, poisoned) {
-        return Err(format!("{kind} owner is disabled"));
+    call_typed(owner, index, poisoned, kind, operation, invoke).map_err(|error| match error {
+        CallbackFailure::Refused(reason) => reason,
+        CallbackFailure::Panicked => format!("{kind} callback panicked; it is disabled"),
+        CallbackFailure::Poisoned => format!("{kind} owner is disabled"),
+    })
+}
+
+/// Failure of a retained callback, distinct from the result returned by the mod itself.
+// no wire: an in-process dispatch outcome; never sent to the peer.
+// exhaustive: engine-only dispatch result.
+#[derive(Debug)]
+pub enum CallbackFailure {
+    /// A refusal, not a panic.
+    Refused(String),
+    /// The callback just panicked and the shared boundary reported it.
+    Panicked,
+    /// A previous panic disabled the callback; it did not run.
+    Poisoned,
+}
+
+pub(crate) fn call_typed<T>(
+    owner: &'static str,
+    index: usize,
+    poisoned: &AtomicBool,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, CallbackFailure> {
+    if poisoned.load(Ordering::Acquire) {
+        return Err(CallbackFailure::Poisoned);
+    }
+    if !crate::mod_index_on(index) {
+        return Err(CallbackFailure::Refused(format!(
+            "{kind} owner is disabled"
+        )));
     }
     let _guard = crate::mark_mod(owner, operation);
-    // A refusal by the phase gate refuses this call and nothing more; a real panic disables the owner.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::world::phase_refusal::contain_refusal(owner, invoke)
-    })) {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(refusal)) => {
+    match invoke_guarded(
+        || crate::world::phase_refusal::contain_refusal(owner, invoke),
+        |payload| {
+            if !poisoned.swap(true, Ordering::AcqRel) {
+                log_and_queue_panic(operation, owner, payload);
+            }
+        },
+    ) {
+        DispatchOutcome::Ok(value) => Ok(value),
+        DispatchOutcome::Refused(refusal) => {
             refusal.report();
-            Err(format!("{kind} callback refused: {refusal}"))
+            Err(CallbackFailure::Refused(format!(
+                "{kind} callback refused: {refusal}"
+            )))
         }
-        Err(_) => {
-            poisoned.store(true, Ordering::Release);
-            Err(format!("{kind} callback panicked; it is disabled"))
-        }
+        DispatchOutcome::Panicked => Err(CallbackFailure::Panicked),
     }
 }

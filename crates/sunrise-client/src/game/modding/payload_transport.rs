@@ -1,9 +1,9 @@
 //! Sole-owner main execution and root-commit raw publication.
 use super::Game;
 use mod_api::{
-    ConfigurationTaskError, ConfigurationTaskRef, HandlerThread, IPayloadContext, PayloadAccepted,
-    PayloadBytes, PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol,
-    PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
+    __private::game::CallbackFailure, ConfigurationTaskError, ConfigurationTaskRef, HandlerThread,
+    IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadDirection,
+    PayloadId, PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
 };
 use std::sync::Arc;
 use sunrise_client::raw_payloads::{Body, Endpoint, Incoming, Prepared, Side, connection::Epoch};
@@ -104,24 +104,33 @@ impl Game<'_> {
             failure: None,
         };
         let result = match incoming.body {
-            Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
-                .receiver
-                .handle(bytes, &mut context)
-                .map_err(|mod_api::PayloadHandleError::Failed(error)| error),
-            Body::Payload(_) => {
-                Err("payload was not dispatched on its declared network executor".into())
+            Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => {
+                incoming.receiver.handle(bytes, &mut context)
             }
+            Body::Payload(_) => Err(CallbackFailure::Refused(
+                "payload was not dispatched on its declared network executor".into(),
+            )),
             Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
         };
         let reason = context.disconnect.take();
-        let failure = context.failure.take().or_else(|| result.err());
+        let failure = match result {
+            Err(error @ (CallbackFailure::Panicked | CallbackFailure::Poisoned)) => Some(error),
+            result => context.failure.take().or_else(|| result.err()),
+        };
         if reason.is_some() {
             // An explicit disconnect still commits ordinary work on success, but cannot
             // advance configuration in the gap before the physical connection closes.
             context.game.discard_configuration_completions(&seal);
         }
         context.game.transaction_close(&seal, failure.is_none());
-        if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
+        if matches!(
+            failure,
+            Some(CallbackFailure::Panicked | CallbackFailure::Poisoned)
+        ) {
+            // The shared boundary already reported the panic; keep the epoch alive.
+            return;
+        }
+        if let Some(CallbackFailure::Refused(error)) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
             // refusal rolls back its own work only, and the next mod still runs.
             log::warn!(
@@ -129,7 +138,7 @@ impl Game<'_> {
                 incoming.receiver.owner(),
                 incoming.id.0
             );
-        } else if let Some(error) = failure {
+        } else if let Some(CallbackFailure::Refused(error)) = failure {
             // The reason goes to the log; the player is told only which mod's handler failed.
             log::warn!("payload {} failed: {error}", incoming.id.0);
             endpoint.disconnect(Text::translate(
@@ -151,7 +160,7 @@ struct MainContext<'a, 'resources> {
     endpoint: Endpoint,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
-    failure: Option<String>,
+    failure: Option<CallbackFailure>,
 }
 impl IPayloadContext for MainContext<'_, '_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -271,7 +280,14 @@ impl IPayloadContext for MainContext<'_, '_> {
         }
         let receiver = self.receiver.clone();
         if let Err(error) = receiver.run_work(work.as_ref(), self) {
-            self.failure = Some(error);
+            // Preserve the first panic even if the caller catches or overwrites its
+            // error by attempting more work on the now-disabled callback.
+            if !matches!(
+                self.failure,
+                Some(CallbackFailure::Panicked | CallbackFailure::Poisoned)
+            ) {
+                self.failure = Some(error);
+            }
             return Err(PayloadContextError::Disconnected);
         }
         Ok(PayloadWorkStatus::Complete)

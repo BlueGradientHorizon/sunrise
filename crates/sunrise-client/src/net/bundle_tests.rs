@@ -313,6 +313,8 @@ fn a_memory_only_snapshot_fits_ingress_despite_its_expanded_empty_compounds() {
 
 const MAIN: &str = "bundle_order_probe:main";
 const NETWORK: &str = "bundle_order_probe:network";
+const PANIC_MAIN: &str = "bundle_order_probe:panic_main";
+const PANIC_NETWORK: &str = "bundle_order_probe:panic_network";
 struct Probe(Arc<Mutex<Vec<(u8, std::thread::ThreadId)>>>);
 impl IPayloadHandler for Probe {
     fn handle(
@@ -325,6 +327,13 @@ impl IPayloadHandler for Probe {
             .lock()
             .unwrap()
             .push((step, std::thread::current().id()));
+        if step == 6 || step == 7 {
+            if step == 7 {
+                ctx.reply(&PayloadId(PANIC_NETWORK.into()), bytes).unwrap();
+                ctx.disconnect(mod_api::Text::literal("discarded disconnect"));
+            }
+            panic!("bundle handler panic {step}");
+        }
         if step == 4 {
             ctx.disconnect(mod_api::Text::literal("bundle disconnect"));
         } else {
@@ -346,14 +355,19 @@ impl Hooks for Registration {
     fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         let mut handlers = registrar.payload_handlers();
         let mut payloads = handlers.registrar("1");
-        payloads.play_bidirectional(PayloadId(MAIN.into()), self.0.clone(), Some(self.0.clone()));
-        payloads
-            .executes_on(HandlerThread::Network)
-            .play_bidirectional(
-                PayloadId(NETWORK.into()),
-                self.0.clone(),
-                Some(self.0.clone()),
-            );
+        for (thread, channels) in [
+            (HandlerThread::Main, [MAIN, PANIC_MAIN]),
+            (HandlerThread::Network, [NETWORK, PANIC_NETWORK]),
+        ] {
+            let mut view = payloads.executes_on(thread);
+            for channel in channels {
+                view.play_bidirectional(
+                    PayloadId(channel.into()),
+                    self.0.clone(),
+                    Some(self.0.clone()),
+                );
+            }
+        }
     }
 }
 
@@ -517,7 +531,11 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
             let subpackets = [
                 play::Clientbound::Ping(cfg::Ping { id: 0 }),
                 custom(MAIN, 1, 8 * 1024),
+                custom(PANIC_MAIN, 6, 1),
+                custom(PANIC_MAIN, 6, 1),
                 play::Clientbound::Ping(cfg::Ping { id: 2 }),
+                custom(PANIC_NETWORK, 7, 1),
+                custom(PANIC_NETWORK, 7, 1),
                 custom(NETWORK, 3, 1),
                 custom(NETWORK, 4, 1),
                 play::Clientbound::Ping(cfg::Ping { id: 5 }),
@@ -579,10 +597,19 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                                 else {
                                     panic!("expected Main payload");
                                 };
-                                incoming
+                                use mod_api::__private::game::CallbackFailure;
+                                let channel = incoming.id.0;
+                                let result = incoming
                                     .receiver
-                                    .handle(bytes, &mut MainReply(&endpoint, &incoming.epoch))
-                                    .unwrap();
+                                    .handle(bytes, &mut MainReply(&endpoint, &incoming.epoch));
+                                match channel.as_str() {
+                                    MAIN => result.unwrap(),
+                                    PANIC_MAIN => assert!(matches!(
+                                        result,
+                                        Err(CallbackFailure::Panicked | CallbackFailure::Poisoned)
+                                    )),
+                                    _ => panic!("unexpected Main channel"),
+                                }
                             }
                             _ => panic!("unexpected bundle step"),
                         }
@@ -599,9 +626,24 @@ fn mixed_bundle_executes_main_and_network_in_order_before_disconnect() {
                 [
                     (0, main_thread),
                     (1, main_thread),
+                    (6, main_thread),
                     (2, main_thread),
+                    (7, network_thread),
                     (3, network_thread),
                     (4, network_thread)
+                ]
+            );
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [
+                    mod_api::__private::HookPanicReport {
+                        mod_id: "bundle_order_probe",
+                        hook: "payload"
+                    },
+                    mod_api::__private::HookPanicReport {
+                        mod_id: "bundle_order_probe",
+                        hook: "payload"
+                    },
                 ]
             );
             for (channel, marker, bytes) in [(MAIN, 1, 8 * 1024), (NETWORK, 3, 1)] {

@@ -281,7 +281,7 @@ pub(crate) fn record_hook_panic(
     }
 }
 
-fn log_and_queue_panic(
+pub(crate) fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
@@ -328,12 +328,26 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_guarded(
+        || refusable(contained, call),
+        |payload| {
+            record_hook_panic(hook_id, hook, mod_id, payload);
+        },
+    )
+}
+
+/// The single panic boundary for listeners and retained callbacks. The owner of the
+/// dispatch key supplies its disablement, while the runtime owns the diagnostic path.
+pub(crate) fn invoke_guarded<T>(
+    call: impl FnOnce() -> Result<T, crate::world::phase_refusal::PhaseRefusal>,
+    on_panic: impl FnOnce(&(dyn std::any::Any + Send)),
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            on_panic(&*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }

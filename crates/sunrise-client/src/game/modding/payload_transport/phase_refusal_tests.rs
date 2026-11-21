@@ -139,7 +139,10 @@ fn a_payload_handler_outside_the_world_is_refused_not_a_panic() {
                     .handle(PayloadBytes(vec![]), &mut Context(game))
                     .unwrap_err();
                 assert!(
-                    matches!(refused, mod_api::PayloadHandleError::Failed(_)),
+                    matches!(
+                        refused,
+                        mod_api::__private::game::CallbackFailure::Refused(_)
+                    ),
                     "{refused:?}"
                 );
                 assert_eq!(reads.completed.load(Ordering::Relaxed), 0);

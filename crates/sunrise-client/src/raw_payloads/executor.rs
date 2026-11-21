@@ -4,9 +4,9 @@ use super::{
     main_queue::{FailedMain, PreparedMain},
 };
 use mod_api::{
-    HandlerThread, IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError,
-    PayloadDirection, PayloadId, PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus,
-    PlayerRef, Text,
+    __private::game::CallbackFailure, HandlerThread, IPayloadContext, PayloadAccepted,
+    PayloadBytes, PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol,
+    PayloadSendError, PayloadWork, PayloadWorkStatus, PlayerRef, Text,
 };
 use std::sync::Arc;
 
@@ -141,12 +141,15 @@ fn execute(
         disconnect: None,
     };
     match incoming.receiver.handle(bytes, &mut context) {
-        Err(mod_api::PayloadHandleError::Failed(error)) => {
+        Err(CallbackFailure::Refused(error)) => {
             // Drop reservations and staged work before reporting failure; publish no partial actions.
             drop(context);
             if let Some(reason) = handler_failed(&incoming, &error) {
                 disconnect(reason);
             }
+        }
+        Err(CallbackFailure::Panicked | CallbackFailure::Poisoned) => {
+            // Already reported by the shared boundary. Drop only this callback's staged work.
         }
         Ok(()) => {
             let reason = context.disconnect.take();
