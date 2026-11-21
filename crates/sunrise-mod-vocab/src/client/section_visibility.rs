@@ -44,6 +44,7 @@ pub struct SectionVisibilityInput {
 
 impl SectionVisibilityInput {
     /// The game captures one raw state, packed light and stored biome per position in the halo.
+    // hidden: engine-only snapshot construction; listeners borrow the capture supplied by the game.
     #[doc(hidden)]
     pub fn capture(
         origin: [i32; 3],
