@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, sdk_assets
+from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, digest, sdk_assets
 from tools.ci import nightly
 
 PARENT = nightly.train.Release(PREVIOUS, OLD, nightly.train.github_time("2026-11-01T00:00:00Z"))
@@ -107,6 +107,9 @@ class StableModApiIntegration(unittest.TestCase):
         unknown_field = {**ADDITIVE,
                          "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
         bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
+        entries = [(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + [("later:x", "h")]
+        counted = {**ADDITIVE, "later": [{"id": "later:x", "hash": "h"}],
+                   "hash": digest("".join(f"{id} {hash}\n" for id, hash in sorted(entries)))}
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
                 ("unknown collection", {**ADDITIVE, "later": [{"id": "later:x"}]}, False),
@@ -121,7 +124,9 @@ class StableModApiIntegration(unittest.TestCase):
                 # A stored hash its contract doesn't give, and a document hash its records don't.
                 ("unsealed record", {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0],
                                                                {**ADDITIVE["behaviours"][1], "hash": "0" * 32}]}, True),
-                ("unsealed document", {**ADDITIVE, "hash": "0" * 32}, True)):
+                ("unsealed document", {**ADDITIVE, "hash": "0" * 32}, True),
+                # A newer writer's collection counted in its document hash, which this reader can't recompute.
+                ("unknown collection in the hash", counted, False)):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             notes.write_text("Release notes.\n")
             with self.subTest(fixture), mock.patch.dict(os.environ, {"BREAK_GLASS": "false"}), \

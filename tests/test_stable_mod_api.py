@@ -38,6 +38,15 @@ CONDITIONAL = sealed({**SURFACE, "behaviours": [{**DECLARATION, "version": 2}]})
 BREAKING = sealed({**SURFACE, "behaviours": []})
 # The parent tool's runs on a same-line release: both exports, their diff, the signed surface read and diffed.
 JUDGED = ["surface", "surface", "surface-diff", "surface-read", "surface-diff"]
+# Two types, each with fields.
+TWO_TYPES = {**ADDITIVE, "types": [
+    {"id": "type:A", "hash": "a", "kind": "struct", "fields": [{"id": "type:A.a", "hash": "f", "type": "u8"},
+                                                               {"id": "type:A.b", "hash": "f", "type": "u8"}]},
+    {"id": "type:B", "hash": "b", "kind": "struct", "fields": [{"id": "type:B.a", "hash": "f", "type": "u8"}]}]}
+# `type:A.b` moved to type:B, every id, body and hash kept.
+A, B = TWO_TYPES["types"]
+MOVED_FIELD = {**TWO_TYPES,
+               "types": [{**A, "fields": A["fields"][:1]}, {**B, "fields": [*B["fields"], A["fields"][1]]}]}
 # A trait mods call, its `refs` outside its hash.
 CALLED = {**ADDITIVE, "traits": [{"id": "trait:T", "hash": "t", "role": "call", "refs": ["trait:Host"],
                                   "methods": [{"id": "method:T::a", "hash": "a", "signature": "fn a(&self)"}]}]}
@@ -282,15 +291,21 @@ class StableModApiTests(unittest.TestCase):
                  "identical", None),
                 ("26.3-0.2.0", ADDITIVE,
                  {**ADDITIVE, "behaviours": [DECLARATION, {**ADDITIVE["behaviours"][1], "doc": "x"}]}, "identical",
-                 "minor release.*changes or lacks 1 records .*: behaviour:new"),
+                 "minor release.*changes or lacks 1 records .*: behaviours:behaviour:new"),
                 ("26.3-0.2.0", CALLED, {**CALLED, "traits": [{**CALLED["traits"][0], "refs": []}]}, "identical",
-                 "minor release.*changes or lacks 1 records .*: trait:T"),
+                 "minor release.*changes or lacks 1 records .*: traits:trait:T$"),
                 ("26.3-0.2.0", CALLED, {**CALLED, "traits": [{**CALLED["traits"][0], "methods": [
                     {**CALLED["traits"][0]["methods"][0], "signature": "fn a(&self, b: u8)"}]}]}, "identical",
-                 "minor release.*changes or lacks 1 records .*: method:T::a"),
+                 "minor release.*changes or lacks 1 records .*: traits:trait:T/methods:method:T::a"),
                 ("26.3-0.2.0", CALLED, {**CALLED, "traits": [{**CALLED["traits"][0], "methods": [
                     *CALLED["traits"][0]["methods"], {"id": "method:T::b", "hash": "b", "signature": "fn b(&self)"}]}]},
                  "additive", None),
+                # A member is judged under its owner: one moved to another type is a change, a first one added is
+                # not.
+                ("26.3-0.2.0", TWO_TYPES, MOVED_FIELD,
+                 "identical", "minor release.*changes or lacks 1 records .*: types:type:A/fields:type:A.b"),
+                ("26.3-0.2.0", {**CALLED, "traits": [{**CALLED["traits"][0], "methods": []}]}, CALLED, "additive",
+                 None),
                 ("26.3-0.2.0", ADDITIVE, {**ADDITIVE, "unsealed": True}, None,
                  "cannot read the signed surface.json for 26.3-0.2.0: these hashes"),
                 # Whatever it holds, a file the parent's reader refuses is refused.

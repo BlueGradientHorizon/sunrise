@@ -934,26 +934,25 @@ def json_text(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
+# The member lists of each collection of a surface.json, by its schema: a member is a record of its own, under its
+# owner.
+SURFACE_MEMBERS = {"hooks": ("fields",), "traits": ("methods", "associated"), "types": ("fields", "variants")}
+
+
 def surface_entries(surface: dict) -> dict[str, str]:
-    """Each record of a surface.json by id (an extension tag by `extension_tag:<registry>/<id>`), as canonical JSON
-    of its own fields: a member list (a trait's methods, a type's fields and variants, a hook's argument records:
-    any list of records with ids) is left out of its owner and its records are entries of their own."""
+    """Each record of a surface.json as canonical JSON of its own fields, by where it is: `<collection>:<id>` (an
+    extension tag's id is `<registry>/<id>`), and a member by its owner's place, its list and its id. An owner's
+    member lists (SURFACE_MEMBERS) are left out of it, empty or not."""
     entries = {}
-
-    def add(key, record):
-        own = {}
-        for name, value in record.items():
-            if isinstance(value, list) and value and all(isinstance(item, dict) and "id" in item for item in value):
-                for member in value:
-                    add(member["id"], member)
-            else:
-                own[name] = value
-        entries[key] = json_text(own)
-
     for collection, records in surface.items():
         for record in records if isinstance(records, list) else ():
-            tag = collection == "extension_tags"
-            add(f"extension_tag:{record['registry']}/{record['id']}" if tag else record["id"], record)
+            lists = SURFACE_MEMBERS.get(collection, ())
+            place = f"{collection}:" + (f"{record['registry']}/{record['id']}" if collection == "extension_tags"
+                                        else record["id"])
+            entries[place] = json_text({name: value for name, value in record.items() if name not in lists})
+            for name in lists:
+                for member in record.get(name, []):
+                    entries[f"{place}/{name}:{member['id']}"] = json_text(member)
     return entries
 
 

@@ -484,7 +484,7 @@ parent's tool reads it as the SDK's readers do (`sunrise-stage surface-read`, wh
 contract doesn't give) and diffs it against its own export of the candidate's tree: that diff, too, must be
 identical for a patch and at most additive for a minor. A minor's exporter may add records, fields and collections
 the parent's reader doesn't know, but every record the parent's tool exports, each member of a trait, type or hook
-on its own, must read back with every field that reader knows equal, since the diff trusts an unchanged hash and
+on its own under the same owner, must read back with every field that reader knows equal, since the diff trusts an unchanged hash and
 some fields (a called trait's references) are outside it. A patch's file must also be that export exactly, with every key it has and its lists in any order, the same
 comparison as the parent's export against the parent's signed file. A file the
 reader refuses, one with another schema, or one listing native internals is refused. A patch requires an identical mod API; a
@@ -501,7 +501,9 @@ Within a line, the candidate must descend from its previous stable tag and may n
 `main`'s first-parent history that are absent from that tag. Backport fixes by cherry-pick; merging a backport PR
 or merging the release branch back into main is fine. Bringing in new mainline history starts a new major.
 The workflow runs from the dispatch ref, so backport the check to the release branch before cutting a patch or
-minor there.
+minor there. The judge is the parent release's own `sunrise-stage`, built from its tag, so a line's first release
+must already ship `sunrise-stage surface-read`: a backport after that tag can't change the parent's binary, and
+every later patch or minor of the line is refused without it.
 
 The check runs in `pick`, before anything is built or signed (a dry run only warns), and again before tag
 reservation, on publish-only retries and in dry runs. Comparing against a previous
