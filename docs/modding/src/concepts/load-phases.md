@@ -63,8 +63,9 @@ replacing or wrapping an existing layer. It stages those edits along with insert
 later calls in the same listener use its newly added anchors. If the phase gate refuses a listener,
 its edits are discarded and earlier registrations stand. This includes a refusal when a listener
 replaces a callback it staged earlier in the same call. Callbacks from earlier listeners are retired
-only after a successful commit; a refusal during that cleanup does not undo the accepted edits.
-Do not call the Host from a callback capture's `Drop`.
+only after a successful commit, in the order the listener first replaced their layers. A refusal
+during that cleanup does not undo the accepted edits. Do not call the Host from a callback
+capture's `Drop`.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;

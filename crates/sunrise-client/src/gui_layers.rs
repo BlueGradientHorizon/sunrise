@@ -180,12 +180,15 @@ struct StagedLayer {
     id: StagedLayerId,
     // A Vanilla tail on an existing slot stands for its original body, still in `existing`.
     body: GuiLayerBody,
+    // The position of that original body in `retired`, assigned on the first replacement.
+    retirement: Option<usize>,
 }
 
 struct GuiLayerEdits<'a> {
     existing: &'a [GuiLayerSlot],
     slots: Vec<StagedLayer>,
     obsolete: Vec<GuiLayerBody>,
+    retired: Vec<GuiLayerBody>,
 }
 
 impl GuiLayerEdits<'_> {
@@ -245,6 +248,7 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             StagedLayer {
                 id: StagedLayerId::Native(id),
                 body: GuiLayerBody::Native { owner, draw },
+                retirement: None,
             },
         );
         true
@@ -255,10 +259,12 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         let Some(at) = self.edit_position(id, owner, "replace") else {
             return false;
         };
-        let old = std::mem::replace(
-            &mut self.slots[at].body,
-            GuiLayerBody::Native { owner, draw },
-        );
+        let slot = &mut self.slots[at];
+        if matches!(slot.id, StagedLayerId::Existing(_)) && slot.retirement.is_none() {
+            slot.retirement = Some(self.retired.len());
+            self.retired.push(GuiLayerBody::Vanilla);
+        }
+        let old = std::mem::replace(&mut slot.body, GuiLayerBody::Native { owner, draw });
         if !matches!(old, GuiLayerBody::Vanilla) {
             self.obsolete.push(old);
         }
@@ -302,48 +308,55 @@ impl GuiLayers {
                 .map(|at| StagedLayer {
                     id: StagedLayerId::Existing(at),
                     body: GuiLayerBody::Vanilla,
+                    retirement: None,
                 })
                 .collect(),
             obsolete: Vec::new(),
+            retired: Vec::new(),
         };
         let accepted = listen(&mut pending);
         let GuiLayerEdits {
             slots,
-            mut obsolete,
+            obsolete,
+            mut retired,
             ..
         } = pending;
         if accepted {
-            // Insertions never reorder existing slots. Splice in their bodies before disposing
-            // of replacements, so no mod destructor runs while the order is being published.
+            // Insertions never reorder existing slots. Publish the slots without destructors,
+            // then retire their old bodies in the order of the listener's first replacements.
             let mut existing = std::mem::take(&mut self.slots).into_iter();
-            self.slots = slots
-                .into_iter()
-                .map(|StagedLayer { id, mut body }| match id {
-                    StagedLayerId::Native(id) => GuiLayerSlot {
-                        id: GuiLayerId::Native(id),
-                        body,
-                    },
+            let mut published = Vec::with_capacity(slots.len());
+            for StagedLayer {
+                id,
+                mut body,
+                retirement,
+            } in slots
+            {
+                let id = match id {
+                    StagedLayerId::Native(id) => GuiLayerId::Native(id),
                     StagedLayerId::Existing(_) => {
                         let slot = existing.next().expect("staged existing HUD slot");
-                        let mut tail = &mut body;
-                        while let GuiLayerBody::Wrapped { previous, .. } = tail {
-                            tail = previous;
-                        }
-                        if matches!(tail, GuiLayerBody::Vanilla) {
-                            *tail = slot.body;
+                        if let Some(retirement) = retirement {
+                            retired[retirement] = slot.body;
                         } else {
-                            obsolete.push(slot.body);
+                            let mut tail = &mut body;
+                            while let GuiLayerBody::Wrapped { previous, .. } = tail {
+                                tail = previous;
+                            }
+                            *tail = slot.body;
                         }
-                        GuiLayerSlot { id: slot.id, body }
+                        slot.id
                     }
-                })
-                .collect();
+                };
+                published.push(GuiLayerSlot { id, body });
+            }
+            self.slots = published;
         } else {
             for mut slot in slots {
                 slot.body.dispose(false);
             }
         }
-        for mut body in obsolete {
+        for mut body in obsolete.into_iter().chain(retired) {
             body.dispose(false);
         }
     }
@@ -753,6 +766,48 @@ mod tests {
                 "native refusal: refusing_drop hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
                 "native refusal: original hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
             ]
+        );
+    }
+
+    #[test]
+    fn earlier_hud_bodies_retire_in_first_replacement_order() {
+        use std::sync::{Arc, Mutex};
+
+        struct RecordDrop(&'static str, Arc<Mutex<Vec<&'static str>>>);
+        impl Drop for RecordDrop {
+            fn drop(&mut self) {
+                self.1.lock().unwrap().push(self.0);
+            }
+        }
+
+        let drops = Arc::new(Mutex::new(Vec::new()));
+        let mut layers = GuiLayers::default();
+        layers.register_listener(|layers| {
+            for id in ["hud:a", "hud:b"] {
+                let capture = RecordDrop(id, Arc::clone(&drops));
+                assert!(layers.register(
+                    id.into(),
+                    GuiLayerPlacement::AboveAll,
+                    Box::new(move |_, _| {
+                        std::hint::black_box(&capture);
+                    }),
+                ));
+            }
+            true
+        });
+        layers.register_listener(|layers| {
+            for id in ["hud:b", "hud:a", "hud:b"] {
+                assert!(layers.replace_layer(id, Box::new(|_, _| {})));
+            }
+            assert!(drops.lock().unwrap().is_empty());
+            true
+        });
+        assert_eq!(*drops.lock().unwrap(), ["hud:b", "hud:a"]);
+        let order = layers.into_order();
+        let slots = &order.slots()[VanillaGuiLayer::ALL.len()..];
+        assert_eq!(
+            slots.iter().map(GuiLayerSlot::id).collect::<Vec<_>>(),
+            ["hud:a", "hud:b"]
         );
     }
 

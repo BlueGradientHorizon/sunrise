@@ -8,7 +8,8 @@ pub trait Hooks {
     /// or `replace_layer` and `wrap_layer` to change an existing slot's body.
     /// Each listener sees its own staged edits. If a load-phase refusal occurs, including when
     /// a replacement drops a callback staged by the same listener, the game discards that
-    /// listener's edits without changing earlier listeners' layers.
+    /// listener's edits without changing earlier listeners' layers. After a successful commit,
+    /// earlier bodies are dropped in the order the listener first replaced their layers.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -28,7 +29,9 @@ Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
 position and draw conditions. A wrapper uses `ctx.with_draw` to paint with the current
 scoped drawing context and `ctx.draw_previous()` to draw the previous body at that point.
-It can omit that call to skip the previous body. Both methods refuse an unknown ID.
+It can omit that call to skip the previous body. Both methods refuse an unknown ID. After a
+successful listener commits, bodies from earlier listeners are dropped in the order the listener
+first replaced their layers, regardless of HUD draw order.
 
 A layer fires `Hooks::gui_layer_pre` with its ID, runs its installed body, and fires
 `Hooks::gui_layer_post` once. No body or Post runs if Pre cancels. Drawing a previous
