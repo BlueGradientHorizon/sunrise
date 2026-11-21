@@ -11,13 +11,16 @@ use std::collections::BTreeMap;
 use std::mem::size_of;
 use std::sync::{
     Arc,
-    mpsc::{Receiver, TryRecvError, sync_channel},
+    atomic::{AtomicBool, Ordering},
+    mpsc::{Receiver, Sender, channel, sync_channel},
 };
 use std::task::Poll;
+use std::thread::{Builder, JoinHandle};
 use sunrise_client::chunk::{Chunk, ColumnCensus, Section};
 use sunrise_client::fast_hash::FxHashSet;
 use sunrise_client::lan::hub::Hub;
 use sunrise_client::server_perf::MemoryCost;
+use sunrise_client_render::gfx::RendererMemorySnapshot;
 
 const MB: f64 = 1048576.0;
 /// Entity types and players listed apart; the rest only count in the totals.
@@ -89,16 +92,17 @@ impl Columns {
     }
 }
 
-/// The sections of `worlds` that are also in `others` (by address), and
-/// their heap bytes: what one copy of them costs.
-fn shared(chunks: &[Arc<Chunk>], mut others: FxHashSet<*const Section>) -> SharedSections {
+/// The sections that are also in `others` (by address), and their heap
+/// bytes: what one copy of them costs.
+fn shared<'a>(
+    entries: impl IntoIterator<Item = &'a Arc<Section>>,
+    mut others: FxHashSet<*const Section>,
+) -> SharedSections {
     let (mut sections, mut bytes) = (0, 0);
-    for chunk in chunks {
-        for section in &chunk.sections {
-            if others.remove(&Arc::as_ptr(section)) {
-                sections += 1;
-                bytes += section.heap_bytes();
-            }
+    for section in entries {
+        if others.remove(&Arc::as_ptr(section)) {
+            sections += 1;
+            bytes += section.heap_bytes();
         }
     }
     SharedSections {
@@ -310,34 +314,76 @@ pub(super) struct MemoryReport {
     unattributed_mb: Option<f64>,
 }
 
-/// Values that must be read on the window thread. The copy-on-write chunks can be
-/// counted elsewhere, and keep shared section identities alive until the comparison.
+/// Values owned by the game or renderer. Count the shared sections while the
+/// copy-on-write handles still keep their identities alive.
 struct MemoryInputs {
-    resident: Option<u64>,
-    process: Process,
-    allocator: Allocator,
     render_distance: i32,
     client: Option<Vec<Arc<Chunk>>>,
-    renderer: Option<(Renderer, usize)>,
+    renderer: Option<RendererMemorySnapshot>,
     far: Option<(FarTiles, usize)>,
-    heap_by_tag_mb: Option<Vec<(String, f64)>>,
 }
 
 impl MemoryInputs {
-    fn report(self, server: Option<ServerSide>) -> MemoryReport {
+    fn report(self, server: Option<ServerSide>, active: impl Fn() -> bool) -> Option<MemoryReport> {
+        let (commit, peak_commit) = sunrise_threads::allocator_commit();
+        let live = sunrise_threads::allocator_stats::live_bytes();
+        let resident = sunrise_threads::process_memory::resident_bytes();
+        if !active() {
+            return None;
+        }
+        let renderer = self.renderer.map(|r| {
+            let [arenas, vertices] = r.section_vertex_bytes();
+            let cpu = r.cpu_census();
+            let cpu_bytes: usize = cpu.iter().map(|(_, v)| *v).sum();
+            let gpu = r
+                .gpu_memory_by_label()
+                .map(|(allocated, reserved, labels)| Gpu {
+                    allocated_mb: mb(allocated),
+                    reserved_mb: mb(reserved),
+                    by_label_mb: labels
+                        .into_iter()
+                        .take(40)
+                        .map(|(label, bytes)| (label, mb(bytes)))
+                        .collect(),
+                });
+            (
+                Renderer {
+                    section_arenas_mb: mb(arenas),
+                    section_vertices_mb: mb(vertices),
+                    cpu: cpu
+                        .into_iter()
+                        .map(|(k, v)| (format!("{k}_mb"), mb(v)))
+                        .collect(),
+                    gpu,
+                },
+                cpu_bytes,
+            )
+        });
+        if !active() {
+            return None;
+        }
         let window = self
             .client
             .as_ref()
             .map(|chunks| Columns::new(&census(chunks).0));
+        if !active() {
+            return None;
+        }
         let (server_columns, shared_with_server) = server.as_ref().map_or((None, None), |s| {
             let (columns, sections) = census(&s.chunks);
-            let shared = self.client.as_ref().map(|chunks| shared(chunks, sections));
+            let shared = self
+                .client
+                .as_ref()
+                .map(|chunks| shared(chunks.iter().flat_map(|c| &c.sections), sections));
             (Some(Columns::new(&columns)), shared)
         });
+        if !active() {
+            return None;
+        }
         let named = window.as_ref().map_or(0, |c| c.bytes)
             + server_columns.as_ref().map_or(0, |c| c.bytes)
             + server.as_ref().map_or(0, ServerSide::bytes)
-            + self.renderer.as_ref().map_or(0, |r| r.1)
+            + renderer.as_ref().map_or(0, |r| r.1)
             + self.far.as_ref().map_or(0, |f| f.1);
         let named = named.saturating_sub(shared_with_server.as_ref().map_or(0, |s| s.bytes));
         let (columns, server_columns) = if window.is_some() {
@@ -346,8 +392,17 @@ impl MemoryInputs {
             (server_columns, None)
         };
         let mut report = MemoryReport {
-            process: self.process,
-            allocator: self.allocator,
+            process: Process {
+                resident_mb: resident.map(mb),
+                allocator_commit_mb: mb(commit),
+                allocator_peak_commit_mb: mb(peak_commit),
+            },
+            allocator: Allocator {
+                live_heap_mb: live.map(mb),
+                commit_mb: mb(commit),
+                peak_commit_mb: mb(peak_commit),
+                overhead_mb: live.map(|live| mb(commit.saturating_sub(live))),
+            },
             render_distance: self.render_distance,
             client_columns: window,
             columns,
@@ -360,10 +415,16 @@ impl MemoryInputs {
             light_queue: None,
             generation_queue: None,
             far_tiles: self.far.map(|f| f.0),
-            renderer: self.renderer.map(|r| r.0),
-            heap_by_tag_mb: self.heap_by_tag_mb,
+            renderer: renderer.map(|r| r.0),
+            heap_by_tag_mb: sunrise_threads::HEAP_CENSUS.then(|| {
+                sunrise_threads::heap_census::census()
+                    .into_iter()
+                    .take(60)
+                    .map(|(tag, bytes)| (tag.to_string(), mb(bytes.max(0) as u64)))
+                    .collect()
+            }),
             named_mb: mb(named),
-            unattributed_mb: unattributed(self.resident, named),
+            unattributed_mb: unattributed(resident, named),
         };
         if let Some(s) = server {
             report.server_generation = Some(s.generation);
@@ -373,7 +434,7 @@ impl MemoryInputs {
             report.light_queue = Some(s.light_queue);
             report.generation_queue = Some(s.generation_queue);
         }
-        report
+        Some(report)
     }
 }
 
@@ -599,35 +660,6 @@ impl Game<'_> {
     }
 
     fn memory_inputs(&self) -> MemoryInputs {
-        let (commit, peak_commit) = sunrise_threads::allocator_commit();
-        let live = sunrise_threads::allocator_stats::live_bytes();
-        let resident = sunrise_threads::process_memory::resident_bytes();
-        let renderer = self.renderer.as_ref().map(|r| {
-            let [arenas, vertices] = r.section_vertex_bytes();
-            let cpu = r.cpu_census();
-            let cpu_bytes: usize = cpu.iter().map(|(_, v)| *v).sum();
-            let gpu = r
-                .gpu_memory_by_label()
-                .map(|(allocated, reserved, labels)| Gpu {
-                    allocated_mb: mb(allocated),
-                    reserved_mb: mb(reserved),
-                    by_label_mb: labels
-                        .iter()
-                        .take(40)
-                        .map(|(label, bytes)| (label.to_string(), mb(*bytes)))
-                        .collect(),
-                });
-            let renderer = Renderer {
-                section_arenas_mb: mb(arenas),
-                section_vertices_mb: mb(vertices),
-                cpu: cpu
-                    .into_iter()
-                    .map(|(k, v)| (format!("{k}_mb"), mb(v)))
-                    .collect(),
-                gpu,
-            };
-            (renderer, cpu_bytes)
-        });
         let far = self.lod.as_ref().map(|lod| {
             let ((active, cached), (kept, kept_bytes)) = (lod.stats(), lod.kept());
             let tiles = FarTiles {
@@ -639,33 +671,14 @@ impl Game<'_> {
             (tiles, kept_bytes)
         });
         MemoryInputs {
-            resident,
-            process: Process {
-                resident_mb: resident.map(mb),
-                allocator_commit_mb: mb(commit),
-                allocator_peak_commit_mb: mb(peak_commit),
-            },
-            allocator: Allocator {
-                live_heap_mb: live.map(mb),
-                commit_mb: mb(commit),
-                peak_commit_mb: mb(peak_commit),
-                overhead_mb: live.map(|live| mb(commit.saturating_sub(live))),
-            },
             render_distance: self.streaming.radius,
             client: self
                 .options
                 .dedicated
                 .is_none()
                 .then(|| self.census_chunks()),
-            renderer,
+            renderer: self.renderer.as_ref().map(|r| r.memory_snapshot()),
             far,
-            heap_by_tag_mb: sunrise_threads::HEAP_CENSUS.then(|| {
-                sunrise_threads::heap_census::census()
-                    .into_iter()
-                    .take(60)
-                    .map(|(tag, bytes)| (tag.to_string(), mb(bytes.max(0) as u64)))
-                    .collect()
-            }),
         }
     }
 
@@ -675,12 +688,12 @@ impl Game<'_> {
             Some(self.server_side())
         } else {
             self.integrated.as_ref().and_then(|i| {
-                i.ask(|reply| {
-                    OwnerRequest::Control(ControlRequest::ServerSide { reply, cost: None })
-                })
+                i.ask(|reply| OwnerRequest::Control(ControlRequest::ServerSide(reply)))
             })
         };
-        inputs.report(server)
+        inputs
+            .report(server, || true)
+            .expect("a manual census cannot be canceled")
     }
 
     /// The report as JSON, for a manual control-socket request or a dedicated capture.
@@ -691,116 +704,216 @@ impl Game<'_> {
 
 type MemoryRows = Vec<(String, f64)>;
 
-/// Each capture owns its own receiver. Dropping it abandons the result without
-/// joining the worker or making a reply available to the next capture.
-pub(super) struct PendingMemory {
+/// The integrated owner answers directly to the worker, never to the window.
+/// A stopped capture's queued request does not collect a server snapshot.
+pub(super) struct ServerMemoryRequest {
+    reply: Option<Sender<Option<ServerSide>>>,
+    cancelled: Arc<AtomicBool>,
     cost: MemoryCost,
-    phase: MemoryPhase,
 }
 
-enum MemoryPhase {
-    Server(Receiver<ServerSide>),
-    Worker(Receiver<MemoryRows>),
+impl ServerMemoryRequest {
+    pub(super) fn collect(mut self, collect: impl FnOnce() -> ServerSide) {
+        if self.cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        let snapshot = self.cost.measure(collect);
+        if !self.cancelled.load(Ordering::Acquire) {
+            let _ = self.reply.take().unwrap().send(Some(snapshot));
+        }
+    }
+}
+
+impl Drop for ServerMemoryRequest {
+    fn drop(&mut self) {
+        // The server may discard the request on shutdown without handling it.
+        if let Some(reply) = self.reply.take() {
+            let _ = reply.send(None);
+        }
+    }
+}
+
+struct MemoryCancellation {
+    cancelled: Arc<AtomicBool>,
+    wake_worker: Option<Sender<Option<ServerSide>>>,
+}
+
+impl MemoryCancellation {
+    fn cancel(&mut self) {
+        self.cancelled.store(true, Ordering::Release);
+        if let Some(wake) = self.wake_worker.take() {
+            let _ = wake.send(None);
+        }
+    }
+}
+
+impl Drop for MemoryCancellation {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+/// One slot across captures: stop cancels the sample but does not release the
+/// slot until the worker is finished, including dropping its snapshots.
+pub(super) struct PendingMemory {
+    cancel: MemoryCancellation,
+    worker: JoinHandle<()>,
+    rows: Receiver<MemoryRows>,
 }
 
 impl PendingMemory {
     pub(super) fn start(game: &Game<'_>, cost: MemoryCost) -> Option<Self> {
-        let phase = if let Some(server) = &game.integrated {
-            let (reply, rx) = sync_channel(1);
-            if !cost.measure(|| {
-                server.tell(OwnerRequest::Control(ControlRequest::ServerSide {
-                    reply,
-                    cost: Some(cost.clone()),
-                }))
-            }) {
-                return None;
-            }
-            MemoryPhase::Server(rx)
-        } else {
-            MemoryPhase::Worker(Self::worker(game, None, &cost)?)
-        };
-        Some(Self { cost, phase })
-    }
-
-    pub(super) fn poll(&mut self, game: &Game<'_>) -> Poll<Option<MemoryRows>> {
-        match &self.phase {
-            MemoryPhase::Server(rx) => match rx.try_recv() {
-                Ok(server) => {
-                    let Some(rx) = Self::worker(game, Some(server), &self.cost) else {
-                        return Poll::Ready(None);
-                    };
-                    self.phase = MemoryPhase::Worker(rx);
-                    Poll::Pending
-                }
-                Err(TryRecvError::Empty) => Poll::Pending,
-                Err(TryRecvError::Disconnected) => Poll::Ready(None),
-            },
-            MemoryPhase::Worker(rx) => match rx.try_recv() {
-                Ok(rows) => Poll::Ready(Some(rows)),
-                Err(TryRecvError::Empty) => Poll::Pending,
-                Err(TryRecvError::Disconnected) => Poll::Ready(None),
-            },
-        }
-    }
-
-    fn worker(
-        game: &Game<'_>,
-        server: Option<ServerSide>,
-        cost: &MemoryCost,
-    ) -> Option<Receiver<MemoryRows>> {
         cost.measure(|| {
             let inputs = game.memory_inputs();
-            let cost = cost.clone();
-            let (send, receive) = sync_channel(1);
-            match std::thread::Builder::new()
-                .name("perf-memory".into())
-                .spawn(move || {
-                    sunrise_client::server_perf::profiler_thread();
-                    let rows = cost.measure(|| {
-                        let report =
-                            serde_json::to_value(inputs.report(server)).unwrap_or(Value::Null);
-                        flatten_report(&report)
-                    });
-                    let _ = send.send(rows);
-                }) {
-                Ok(_) => Some(receive),
+            let (job, request) = match Self::spawn(
+                cost.clone(),
+                game.integrated.is_some(),
+                move |server, cancelled| {
+                    let report = inputs.report(server, || !cancelled.load(Ordering::Acquire))?;
+                    Some(flatten_report(
+                        &serde_json::to_value(report).unwrap_or(Value::Null),
+                    ))
+                },
+            ) {
+                Ok(job) => job,
                 Err(error) => {
                     log::warn!("Sunrise: could not start the memory census: {error}");
+                    return None;
+                }
+            };
+            if let Some((server, request)) = game.integrated.as_ref().zip(request) {
+                server.tell(OwnerRequest::Control(ControlRequest::MemorySample(request)));
+            }
+            Some(job)
+        })
+    }
+
+    pub(super) fn cancel(&mut self) {
+        self.cancel.cancel();
+    }
+
+    pub(super) fn poll(&self) -> Poll<Option<MemoryRows>> {
+        // The worker and the queued owner request each hold the cancellation
+        // bit until done. Do not queue more work while either still owns it.
+        if !self.worker.is_finished() || Arc::strong_count(&self.cancel.cancelled) != 1 {
+            return Poll::Pending;
+        }
+        if self.cancel.cancelled.load(Ordering::Acquire) {
+            return Poll::Ready(None);
+        }
+        Poll::Ready(self.rows.try_recv().ok())
+    }
+
+    fn spawn(
+        cost: MemoryCost,
+        from_server: bool,
+        report: impl FnOnce(Option<ServerSide>, &AtomicBool) -> Option<MemoryRows> + Send + 'static,
+    ) -> std::io::Result<(Self, Option<ServerMemoryRequest>)> {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let (reply, snapshot) = channel();
+        let request = from_server.then(|| ServerMemoryRequest {
+            reply: Some(reply.clone()),
+            cancelled: cancelled.clone(),
+            cost: cost.clone(),
+        });
+        let (publish, rows) = sync_channel(1);
+        let worker = Builder::new().name("perf-memory".into()).spawn({
+            let cancelled = cancelled.clone();
+            move || {
+                let server = if from_server {
+                    let Ok(Some(snapshot)) = snapshot.recv() else {
+                        return;
+                    };
+                    Some(snapshot)
+                } else {
                     None
+                };
+                if cancelled.load(Ordering::Acquire) {
+                    return;
+                }
+                sunrise_client::server_perf::profiler_thread();
+                let completed = cost.measure(|| report(server, &cancelled));
+                if let Some(rows) = completed.filter(|_| !cancelled.load(Ordering::Acquire)) {
+                    let _ = publish.send(rows);
                 }
             }
-        })
+        })?;
+        let cancel = MemoryCancellation {
+            cancelled,
+            wake_worker: from_server.then_some(reply),
+        };
+        Ok((
+            Self {
+                cancel,
+                worker,
+                rows,
+            },
+            request,
+        ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{biggest, census, flatten_report, shared, unattributed};
+    use super::{MemoryCost, PendingMemory, biggest, flatten_report, shared, unattributed};
     use serde_json::json;
-    use std::sync::Arc;
-    use sunrise_client::chunk::{Chunk, Light, Section};
+    use std::sync::{Arc, mpsc::channel};
+    use std::task::Poll;
+    use sunrise_client::chunk::{Light, Section};
 
     #[test]
     fn sharing_counts_a_section_only_once_across_both_censuses() {
-        let mut chunk = Chunk::empty(0, 0);
-        let a = Arc::make_mut(&mut chunk.sections[0]);
-        a.light = Light::Sky(Box::new([0; 2048]), 0);
-        let section = Arc::clone(&chunk.sections[0]);
-        let bytes = section.heap_bytes();
-        let chunk = Arc::new(chunk);
-        let mut other = Chunk::empty(1, 0);
-        other.sections.fill(Arc::new(Section::default()));
-        other.sections[0] = section.clone();
-        other.sections[1] = section;
+        let mut section = Section::default();
+        section.light = Light::Sky(Box::new([0; 2048]), 0);
+        let section = Arc::new(section);
         // An equal, independently held section isn't shared.
-        other.sections[2] = Arc::new((*other.sections[1]).clone());
-        let client = [Arc::new(other)];
-        let (server, sections) = census(&[chunk]);
-        assert_eq!(server.columns, 1);
-        assert_eq!(server.light_arrays, 1);
-        let counted = shared(&client, sections);
+        let independent = Arc::new((*section).clone());
+        let counted = shared(
+            [&section, &section, &independent],
+            [Arc::as_ptr(&section)].into_iter().collect(),
+        );
         assert_eq!(counted.sections, 1);
-        assert_eq!(counted.bytes, bytes);
+        assert_eq!(counted.bytes, 2048);
+    }
+
+    #[test]
+    fn stopping_before_the_server_replies_releases_the_worker_without_collecting() {
+        let (mut sample, request) = PendingMemory::spawn(MemoryCost::default(), true, |_, _| {
+            panic!("a canceled request reached the worker's census");
+        })
+        .unwrap();
+        sample.cancel();
+        // It must finish even while the owner request is still queued.
+        sample.worker.join().unwrap();
+        request
+            .unwrap()
+            .collect(|| panic!("the stopped capture collected server memory"));
+        assert!(sample.rows.try_recv().is_err());
+    }
+
+    #[test]
+    fn a_restart_waits_for_the_old_worker_to_release_its_slot_and_never_gets_its_rows() {
+        let (entered, entered_rx) = channel();
+        let (release, release_rx) = channel();
+        let (mut old, _) = PendingMemory::spawn(MemoryCost::default(), false, move |_, _| {
+            entered.send(()).unwrap();
+            release_rx.recv().unwrap();
+            Some(vec![("old".into(), 1.0)])
+        })
+        .unwrap();
+        entered_rx.recv().unwrap();
+        old.cancel();
+        // Polling a new capture before the old work exits cannot start a new census.
+        assert_eq!(old.poll(), Poll::Pending);
+        release.send(()).unwrap();
+        old.worker.join().unwrap();
+        assert!(old.rows.try_recv().is_err());
+        let (new, _) = PendingMemory::spawn(MemoryCost::default(), false, |_, _| {
+            Some(vec![("new".into(), 2.0)])
+        })
+        .unwrap();
+        new.worker.join().unwrap();
+        assert_eq!(new.rows.try_recv().unwrap(), [("new".into(), 2.0)]);
     }
 
     #[test]

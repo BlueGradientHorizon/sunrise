@@ -492,8 +492,9 @@ Notes on fields:
   `set` are relaxed atomics. Names are dotted. Labels are part of a counter's identity from day one (`CounterDef.labels`),
   so a Prometheus exporter is one small PR later: it would map `CounterDef` straight onto metric names and labels.
   Counters are the one place where ad-hoc instrumentation goes, instead of new log lines like the `s3:` lines.
-- **Memory:** `sunrise-ctl memory`'s reply (`game/memory.rs:153-170`), flattened to paths, at start, every 10 s and
-  at stop. Spec D's `flatten`/`diff` logic becomes `sunrise-perf query memory --diff`.
+- **Memory:** the same categories as `sunrise-ctl memory`, flattened to paths. Clients record their start and
+  periodic samples if they finish before the capture stops. Dedicated servers also record a final `stop` sample.
+  `sunrise-perf query memory` without a label selects the last available sample.
 
 ### 3.7 Files and lifecycle
 

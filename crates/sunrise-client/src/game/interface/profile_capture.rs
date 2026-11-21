@@ -118,6 +118,23 @@ enum Job {
     Share,
 }
 
+#[derive(Default)]
+struct MemorySchedule {
+    /// When the next periodic sample is due and its elapsed period number.
+    due: Option<(f64, u32)>,
+    /// The labeled sample, including canceled work that has not yet released its snapshots.
+    pending: Option<(String, f64, PendingMemory)>,
+}
+
+impl MemorySchedule {
+    fn cancel(&mut self) {
+        self.due = None;
+        if let Some((_, _, pending)) = &mut self.pending {
+            pending.cancel();
+        }
+    }
+}
+
 /// The game's capture state: the health history, the running capture and who is waiting on it.
 pub(super) struct Profile {
     /// The server thread's health history and its side of a capture; set on its own Game only.
@@ -128,10 +145,7 @@ pub(super) struct Profile {
     server_only: Option<ServerOnly>,
     pub(super) perf: ClientPerf,
     started_by: Trigger,
-    /// When the next periodic memory sample is due and its elapsed period number.
-    memory_due: Option<(f64, u32)>,
-    /// The request's label and clock reading, and the still-pending result.
-    memory_pending: Option<(String, f64, PendingMemory)>,
+    memory: MemorySchedule,
     /// Where the answer to a `/profiler` request that finishes later arrives.
     chat_answer: Option<Receiver<String>>,
     jobs: VecDeque<(PathBuf, Job)>,
@@ -173,8 +187,7 @@ impl Profile {
             server_only: None,
             perf: ClientPerf::new(slow_ms),
             started_by: Trigger::Unspecified,
-            memory_due: None,
-            memory_pending: None,
+            memory: MemorySchedule::default(),
             chat_answer: None,
             jobs: VecDeque::new(),
             job: None,
@@ -688,8 +701,7 @@ impl Game<'_> {
 
     fn stop_profile_with(&mut self, reason: StopReason, bench: Vec<BenchResult>) -> Result<()> {
         // Ending a capture never requests or waits for a final memory sample.
-        self.profile.memory_pending = None;
-        self.profile.memory_due = None;
+        self.profile.memory.cancel();
         let t = self.profile.perf.now();
         if self.profile.stopped_after.is_none() {
             self.profile.stopped_after = self.profile.perf.status(t).map(|s| s.elapsed_s);
@@ -934,10 +946,10 @@ impl Game<'_> {
 
     /// Start a memory census on schedule; publish it only if it finishes in this capture.
     fn poll_memory_snapshot(&mut self) {
-        if let Some((label, t, mut pending)) = self.profile.memory_pending.take() {
-            match pending.poll(self) {
+        if let Some((label, t, pending)) = self.profile.memory.pending.take() {
+            match pending.poll() {
                 Poll::Pending => {
-                    self.profile.memory_pending = Some((label, t, pending));
+                    self.profile.memory.pending = Some((label, t, pending));
                     return;
                 }
                 Poll::Ready(Some(rows)) => {
@@ -950,22 +962,22 @@ impl Game<'_> {
             return;
         };
         let now = self.profile.perf.now();
-        let label = match self.profile.memory_due {
+        let label = match self.profile.memory.due {
             None => {
-                self.profile.memory_due = Some((now + MEMORY_EVERY_S, 1));
+                self.profile.memory.due = Some((now + MEMORY_EVERY_S, 1));
                 "start".to_owned()
             }
             Some((due, period)) if now >= due => {
                 // A slow reply is not a reason to build a queue of stale samples.
                 let elapsed = ((now - due) / MEMORY_EVERY_S) as u32;
                 let period = period + elapsed;
-                self.profile.memory_due =
+                self.profile.memory.due =
                     Some((due + f64::from(elapsed + 1) * MEMORY_EVERY_S, period + 1));
                 format!("{}s", u64::from(period) * MEMORY_EVERY_S as u64)
             }
             Some(_) => return,
         };
-        self.profile.memory_pending = PendingMemory::start(self, cost).map(|job| (label, now, job));
+        self.profile.memory.pending = PendingMemory::start(self, cost).map(|job| (label, now, job));
     }
 
     fn poll_chat_answer(&mut self) {
@@ -1021,6 +1033,7 @@ impl Game<'_> {
         self.profile.perf.set_connection(connection);
         let (wanted, renderer) = (self.profile.gpu, self.renderer.as_ref());
         let entities = self.perf_entity_count() as u32;
+        let memory = &mut self.profile.memory;
         self.profile.perf.frame_with_gpu(
             t,
             wall_ms,
@@ -1038,12 +1051,14 @@ impl Game<'_> {
                 chunks: self.world.chunks.len() as u32,
                 entities,
             },
-            || gpu_readout(wanted, renderer),
+            || {
+                // This callback runs just before the timed capture stops.
+                memory.cancel();
+                gpu_readout(wanted, renderer)
+            },
         );
         if !self.profile.perf.capturing() {
             self.profile.gpu = GpuSwitch::Off;
-            self.profile.memory_pending = None;
-            self.profile.memory_due = None;
         }
         if matches!(self.profile.link, ServerLink::Pending) {
             self.join_server_capture();

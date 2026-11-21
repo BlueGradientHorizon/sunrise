@@ -7,7 +7,7 @@ use super::{
     },
     lan::LanSettings,
     lan_screen::Snapshot,
-    memory::ServerSide,
+    memory::{ServerMemoryRequest, ServerSide},
     mods::ModsReload,
 };
 use serde_json::{Value, json};
@@ -18,7 +18,6 @@ use std::{
         mpsc::{Receiver, Sender, SyncSender},
     },
 };
-use sunrise_client::server_perf::MemoryCost;
 use sunrise_core::geometry::Vec3;
 use sunrise_perf_format::v1::StopReason;
 
@@ -113,11 +112,10 @@ pub(super) enum ControlRequest {
         words: Vec<String>,
         reply: Reply<Result<Option<Value>, String>>,
     },
-    /// The memory report: the server's own parts.
-    ServerSide {
-        reply: Reply<ServerSide>,
-        cost: Option<MemoryCost>,
-    },
+    /// The explicit memory report: the server's own parts.
+    ServerSide(Reply<ServerSide>),
+    /// A profiling sample, delivered directly to the worker while it is wanted.
+    MemorySample(ServerMemoryRequest),
     /// `lan op NAME LEVEL`: whether a guest of that name was found.
     SetOp {
         name: String,
@@ -246,14 +244,10 @@ impl Game<'_> {
                     self.in_owner_level(|g| g.block_command(&words).map_err(|e| e.to_string()));
                 let _ = reply.send(out);
             }
-            ControlRequest::ServerSide { reply, cost } => {
-                let collect = || self.server_side();
-                let side = match cost {
-                    Some(cost) => cost.measure(collect),
-                    None => collect(),
-                };
-                let _ = reply.send(side);
+            ControlRequest::ServerSide(reply) => {
+                let _ = reply.send(self.server_side());
             }
+            ControlRequest::MemorySample(request) => request.collect(|| self.server_side()),
             ControlRequest::SetOp { name, level, reply } => {
                 let _ = reply.send(self.lan_set_op(&name, level));
             }
