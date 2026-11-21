@@ -1,6 +1,7 @@
 //! The game's side of the mod API: the installed tables, the reload machinery, the structs the
 //! game fills for its hooks (`built`) and what it reads of handles and the API's own types
 //! (`game`). None of it is part of the API a mod is written against.
+pub use crate::entity::types::valid_mod_move_delta;
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
@@ -118,6 +119,12 @@ pub fn hook_dispatch_depth() -> u32 {
 /// Run one mod's startup `Hooks::register` callback under the unified hook-dispatch failure rule.
 pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     crate::runtime::invoke_registration(mod_id, call)
+}
+
+/// Dispose of one detached startup value under the register callback's panic fence.
+pub fn discard_startup_registration<T>(owner: &'static str, value: T, already_reported: &mut bool) {
+    *already_reported |=
+        !crate::runtime::invoke_registration_reporting(owner, || drop(value), !*already_reported);
 }
 
 /// Revision of the enabled mod set, for engine caches of hook answers.

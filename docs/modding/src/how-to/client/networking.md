@@ -41,7 +41,9 @@ Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
 Replace the old `ConfigurationTask.id` field with your own field and return it
 from `task_type(&self) -> &Identifier`. Registration is infallible and appends tasks
 to the connection's FIFO queue with no uniqueness or non-empty rejection
-(matching NeoForge's `RegisterConfigurationTasksEvent.register`).
+(matching NeoForge's `RegisterConfigurationTasksEvent.register`). If a listener
+panics, its tasks and journaled writes are discarded. Other listeners still
+configure the same peer; only the panicking callback is skipped on later peers.
 
 Move `configuration_task_start` and `configuration_task_tick` into your task's
 `start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,

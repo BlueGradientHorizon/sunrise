@@ -42,7 +42,7 @@ impl Game<'_> {
     ) -> Result<Option<[f64; 3]>, LevelWriteError> {
         if self.player.is_none()
             || !self.can_move_local_player()
-            || !sunrise_client::move_gate::valid_mod_move_delta(delta)
+            || !mod_api::__private::valid_mod_move_delta(delta)
         {
             return Ok(None);
         }

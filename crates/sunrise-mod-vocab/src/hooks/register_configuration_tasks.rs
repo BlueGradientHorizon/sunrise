@@ -4,7 +4,9 @@ pub trait Hooks {
     /// built-in configuration steps. Runs for every peer, including vanilla.
     /// The profile has no player handle yet. Use `event.connection.has_channel`
     /// to check what the peer negotiated and `event.register(task)` to give this
-    /// connection an owned task in FIFO order.
+    /// connection an owned task in FIFO order. A panicking listener discards its
+    /// tasks and journaled writes; other listeners still configure the same peer.
+    /// Only that registration callback is disabled for later peers.
     /// Tasks start in registration order and can finish, wait or fail this peer.
     /// Delayed tasks complete via `IPayloadContext::finish_configuration_task`
     /// with their task type from either a server main-thread or network-thread

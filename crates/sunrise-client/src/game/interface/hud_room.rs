@@ -82,14 +82,15 @@ impl Game<'_> {
     pub(super) fn draw_every_toast(
         &mut self,
         batch: &mut HudBatch,
-        presentation_hidden: bool,
+        replay_playing: bool,
         gui_canceled: bool,
     ) {
-        let presentation_hidden = presentation_hidden || self.overlay_holds_view();
-        let hidden = presentation_hidden || gui_canceled;
+        let overlay_or_replay = replay_playing || self.overlay_holds_view();
+        let diagnostic_hidden = overlay_or_replay || self.ui.player_hides_gui;
+        let hidden = overlay_or_replay || self.ui.hide_gui || gui_canceled;
         self.draw_toasts(batch, hidden);
         self.draw_tutorial_toasts(batch, hidden);
-        self.draw_pack_toasts(batch, hidden, presentation_hidden);
+        self.draw_pack_toasts(batch, hidden, diagnostic_hidden);
         self.draw_music_toast(batch, hidden);
     }
 

@@ -13,6 +13,7 @@ enum Answer {
     Replace([f64; 3]),
     Panic,
     Refuse,
+    Invalid,
     Cancel,
     Continue,
 }
@@ -37,6 +38,11 @@ impl Hooks for Mover {
                 std::panic::resume_unwind(Box::new(runtime::Refusal(
                     "unavailable fixture operation",
                 )))
+            }
+            Answer::Invalid => {
+                *event.delta = [f64::NAN, 0.0, 0.0];
+                event.cancelled = true;
+                return Flow::Cancel;
             }
             Answer::Cancel => return Flow::Cancel,
             Answer::Continue => {}
@@ -136,6 +142,28 @@ fn a_move_phase_refusal_restores_the_proposal_and_is_reported_on_each_call() {
         runtime::REFUSALS.with(|reports| std::mem::take(&mut *reports.borrow_mut())),
         ["unavailable fixture operation"; 2]
     );
+}
+
+#[test]
+fn an_invalid_move_discards_its_delta_and_veto_and_reports_each_invocation() {
+    let delta = [3.0, 4.0, 5.0];
+    let (_, first) = mover("accepted", Answer::Replace(delta));
+    let (invalid_heard, invalid) = mover("invalid", Answer::Invalid);
+    let (later_heard, later) = mover("later", Answer::Continue);
+    install(vec![first, invalid, later].into());
+
+    let warnings = capture_warnings(|| {
+        assert_eq!(dispatch([1.0; 3]), (delta, false));
+        assert_eq!(dispatch([2.0; 3]), (delta, false));
+    });
+    assert_eq!(
+        warnings,
+        ["mod invalid hook entity_move output delta refused: its outputs are dropped and the preceding ones stand";
+            2]
+    );
+    assert_eq!(*invalid_heard.lock().unwrap(), [(delta, false); 2]);
+    assert_eq!(*later_heard.lock().unwrap(), [(delta, false); 2]);
+    assert!(!runtime::poisoned(HookId::EntityMove, "invalid"));
 }
 
 mod root {

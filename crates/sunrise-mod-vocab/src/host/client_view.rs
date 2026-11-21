@@ -24,6 +24,7 @@ pub trait ClientViewClientHost {
     /// Side: client.
     /// Select HUD and hand visibility, including after vanilla F1 input handling.
     /// Other first-person hand restrictions and render cancellation still apply.
+    /// This does not change the player's F1 preference for mandatory mod-error diagnostics.
     #[access(ClientSetup)]
     fn set_hud_mode(&mut self, mode: HudMode);
     /// Side: client.

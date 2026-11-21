@@ -7,7 +7,8 @@ pub trait Hooks {
     /// submitting package and works like `data/<id>/sunrise/item/<path>.json` in a
     /// content mod. A block's item is declared with its block, not here.
     /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
-    /// The game records the refusal and stops startup even if you ignore the error.
+    /// The game records the refusal and stops startup even if a returning listener ignores it.
+    /// A panic discards this listener's declarations and diagnostics without rejecting startup.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_items",
         receiver = "associated",
@@ -17,7 +18,7 @@ pub trait Hooks {
         out = "items",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn items(
         items: &mut dyn FnMut(

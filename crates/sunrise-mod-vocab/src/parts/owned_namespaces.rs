@@ -114,6 +114,44 @@ pub(crate) fn submit_declaration<D: Declaration>(
     })
 }
 
+/// Decide whether a listener's staged diagnostics and engine declarations may publish.
+pub(crate) fn declaration_listener<D: Declaration>(
+    context: &crate::RegistrationContext,
+    owner: &'static str,
+    run: impl FnOnce() -> bool,
+) {
+    let checkpoint = context
+        .declaration_refusals
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .len();
+    if !run() {
+        context
+            .declaration_refusals
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .truncate(checkpoint);
+        context
+            .discarded_declarations
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push((owner, D::KIND));
+    }
+}
+
+/// The declaration batches that must not enter the cached startup/reload declarations.
+#[doc(hidden)]
+pub fn take_discarded_declarations(
+    context: &crate::RegistrationContext,
+) -> Vec<(&'static str, DeclarationKind)> {
+    std::mem::take(
+        &mut *context
+            .discarded_declarations
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()),
+    )
+}
+
 /// The engine consumes block/item declaration ownership refusals before loading
 /// resources.
 // hidden: engine admission plumbing, re-exported through __private for the loader.

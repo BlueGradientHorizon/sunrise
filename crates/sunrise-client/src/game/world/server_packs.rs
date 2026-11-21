@@ -799,9 +799,19 @@ mod tests {
                     "the message draws too"
                 );
 
-                game.ui.hide_gui = true;
+                game.set_hud_mode(mod_api::HudMode::NoHud);
+                assert!(game.ui.hide_gui);
+                let mut mod_hidden = HudBatch::scratch([640, 480]);
+                game.draw_every_toast(&mut mod_hidden, false, false);
+                assert!(
+                    !mod_hidden.vertices.is_empty(),
+                    "NoHud does not hide diagnostics"
+                );
+
+                game.toggle_hide_gui();
+                game.set_hud_mode(mod_api::HudMode::AllVisible);
                 let mut player_hidden = HudBatch::scratch([640, 480]);
-                game.draw_every_toast(&mut player_hidden, game.ui.hide_gui, false);
+                game.draw_every_toast(&mut player_hidden, false, false);
                 assert!(
                     player_hidden.vertices.is_empty(),
                     "player F1 hides the same toast"

@@ -53,7 +53,8 @@ impl ConfigurationTaskRegistration {
     }
 
     pub(crate) fn rollback(&mut self, checkpoint: usize) {
-        for task in self.tasks.drain(checkpoint..) {
+        let discarded = self.tasks.split_off(checkpoint);
+        for task in discarded {
             crate::runtime::discard_registration(
                 (
                     crate::HookId::RegisterConfigurationTasks,

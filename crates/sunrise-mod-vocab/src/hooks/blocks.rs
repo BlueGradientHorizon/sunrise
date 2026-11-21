@@ -7,7 +7,8 @@ pub trait Hooks {
     /// submitting package and works like `data/<id>/sunrise/block/<path>.json` in a
     /// content mod, including a block item unless disabled with `Block::with_item(false)`.
     /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
-    /// The game records the refusal and stops startup even if you ignore the error.
+    /// The game records the refusal and stops startup even if a returning listener ignores it.
+    /// A panic discards this listener's declarations and diagnostics without rejecting startup.
     #[notes = r#"## Villager farming
 
 Farmers recognize mod blocks made from farmland and `CropBlock` templates, including declarations from
@@ -26,7 +27,7 @@ requires a farmer at work and `mob_griefing` enabled."#]
         out = "blocks",
         context = "registration",
         neoforge = "RegisterEvent",
-        version = 2
+        version = 3
     )]
     fn blocks(
         blocks: &mut dyn FnMut(

@@ -2,8 +2,9 @@
 use super::*;
 
 impl PartRegistrar {
-    pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self) + use<> {
+    pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self, bool) + use<> {
         let parts = self.parts.clone();
+        let part_states = self.part_states.clone();
         let attachment_types = self.attachment_types.clone();
         let tags = self.tags.clone();
         let keys = self.registry_keys.borrow().clone();
@@ -21,14 +22,15 @@ impl PartRegistrar {
         macro_rules! checkpoint {
             ($($field:ident),* $(,)?) => {{
                 $(let $field = self.$field.len();)*
-                move |registrar: &mut Self| {
-                    $(registrar.$field.truncate($field);)*
-                    registrar.block_entity_transforms = block_entity_transforms;
-                    registrar.parts = parts;
+                move |registrar: &mut Self, mut reported| {
+                    $(let $field = registrar.$field.split_off($field);)*
+                    let retired_transforms = std::mem::replace(&mut registrar.block_entity_transforms, block_entity_transforms);
+                    let retired_parts = std::mem::replace(&mut registrar.parts, parts);
+                    let retired_tags = std::mem::replace(&mut registrar.tags, tags);
+                    let retired_screens = std::mem::replace(&mut registrar.menu_screen_factories, menu_screen_factories);
+                    registrar.part_states = part_states;
                     registrar.attachment_types = attachment_types;
-                    registrar.tags = tags;
                     *registrar.registry_keys.borrow_mut() = keys;
-                    registrar.menu_screen_factories = menu_screen_factories;
                     registrar.menu_recipe_books = menu_recipe_books;
                     registrar.menu_slot_exclusions = menu_slot_exclusions;
                     registrar.recipe_book_types = recipe_book_types;
@@ -36,10 +38,61 @@ impl PartRegistrar {
                     registrar.recipe_book_filters = recipe_book_filters;
                     registrar.registered = registered;
                     registrar.entity_selector_bytes = entity_selector_bytes;
+
+                    // The checkpoint is fully restored before destroying even one value.
+                    // Drop individual owned entries, never a collection containing multiple
+                    // mod destructors that could panic while unwinding the first destructor.
+                    let owner = registrar.mod_id;
+                    macro_rules! discard {
+                        ($value:expr) => {
+                            mod_vocab::__private::discard_startup_registration(
+                                owner, $value, &mut reported,
+                            )
+                        };
+                    }
+                    $(for entry in $field { discard!(entry); })*
+                    for entry in retired_transforms.into_values() { discard!(entry); }
+                    for entry in retired_screens.into_values().flat_map(HashMap::into_values) {
+                        discard!(entry);
+                    }
+                    for (_, part) in retired_tags.blocks { discard!(part); }
+                    for (_, part) in retired_tags.items { discard!(part); }
+                    for part in retired_parts.blocks.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.block_entities.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.block_entity_kinds.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.items.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.client_item_uses.into_values() { discard!(part); }
+                    for part in retired_parts.menus.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.effects.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.fluids.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.entities.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.capabilities.into_values().flat_map(HashMap::into_values).flatten() { discard!(part); }
+                    for part in retired_parts.block_capabilities.into_values().flat_map(HashMap::into_values).flatten() { discard!(part); }
+                    for part in retired_parts.item_capabilities.into_values().flat_map(HashMap::into_values).flatten() { discard!(part); }
+                    for part in retired_parts.entity_capabilities.into_values().flat_map(HashMap::into_values).flatten() { discard!(part); }
+                    for part in retired_parts.default_item_containers.into_values().flatten() { discard!(part); }
+                    for part in retired_parts.place_providers.into_values() { discard!(part); }
+                    for part in retired_parts.tooltip_appenders { discard!(part); }
+                    for part in retired_parts.crash_sections { discard!(part); }
+                    for part in retired_parts.command_arguments { discard!(part); }
+                    for part in retired_parts.recipe_serializers.into_values() { discard!(part); }
+                    for part in retired_parts.entity_selectors { discard!(part); }
+                    if let Some(payloads) = retired_parts.payloads.and_then(Arc::into_inner) {
+                        for payload in payloads.phases.into_iter().flat_map(HashMap::into_values) {
+                            discard!(payload.server);
+                            discard!(payload.client);
+                        }
+                        for payload in payloads.raw.into_values().flatten() {
+                            discard!(payload.server);
+                        }
+                    }
                 }
             }};
         }
         checkpoint!(
+            biome_modifiers,
+            datapack_registries,
+            attribute_widenings,
             game_rule_categories,
             game_rules,
             custom_stats,

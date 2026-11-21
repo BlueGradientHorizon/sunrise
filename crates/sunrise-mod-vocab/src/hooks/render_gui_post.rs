@@ -6,12 +6,15 @@ pub trait Hooks {
     /// `corners.place` (boxes stack away from their edge) and draw it with
     /// `native_fill` and `native_text`.
     /// Use `ClientHost::debug_overlay_visible()` to avoid drawing over the debug overlay.
-    /// Not heard when a mod canceled `render_gui_pre`. Client-side.
+    /// Not heard when a mod canceled `render_gui_pre`. A panicking listener's
+    /// drawing and corner placement are both discarded. Client-side.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
         contract = "listen",
+        staged_surface = "draw",
+        version = 2,
         neoforge = "RenderGuiEvent.Post"
     )]
     fn render_gui_post(draw: &mut dyn DrawContext, corners: &mut Corners);

@@ -16,6 +16,14 @@ mod stubs {
                 &mut self.id
             }
         }
+        pub(in crate::tests) fn declaration_listener<T: Declaration>(
+            _: &RegistrationContext,
+            _: &'static str,
+            run: impl FnOnce() -> bool,
+        ) {
+            let _: std::marker::PhantomData<T> = std::marker::PhantomData;
+            assert!(run());
+        }
         pub(in crate::tests) fn submit_declaration<T: Declaration>(
             context: &RegistrationContext,
             mod_id: &'static str,

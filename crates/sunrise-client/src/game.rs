@@ -7591,7 +7591,7 @@ impl Game<'_> {
         // after this point and so over what a mod drew.
         self.draw_screen_with_post_hook(&mut batch);
         self.draw_saving_indicator(&mut batch);
-        self.draw_every_toast(&mut batch, presentation_hidden, gui_canceled);
+        self.draw_every_toast(&mut batch, self.replay.playing(), gui_canceled);
         if self.server_packs.prompt.is_none() {
             self.remote_hud(&mut batch);
             self.draw_sign_editor(&mut batch);

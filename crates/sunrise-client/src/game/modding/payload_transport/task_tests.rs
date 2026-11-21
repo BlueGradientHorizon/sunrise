@@ -622,6 +622,127 @@ fn serving_game_drives_configuration_tasks() {
 
 #[test]
 #[ignore = "daily"]
+fn a_panicking_registration_does_not_fail_the_peer_or_leave_its_task() {
+    use mod_api::RegisterConfigurationTasksEvent;
+    use sunrise_protocol::packets::{Empty, configuration as cfg, play};
+    const NAME: &str = "game::payload_transport::task_tests::a_panicking_registration_does_not_fail_the_peer_or_leave_its_task";
+    super::tests::require_resources();
+    if super::super::native_entity_refs::tests::run_fresh_cases(
+        NAME,
+        "SUNRISE_TASK_REGISTRATION_PANIC_CHILD",
+        &["panic"],
+    ) {
+        return;
+    }
+
+    struct Listener {
+        panics: bool,
+        calls: Arc<AtomicUsize>,
+        started: Arc<AtomicUsize>,
+    }
+    struct RegistrationTask(Identifier, Arc<AtomicUsize>, bool);
+    impl ConfigurationTask for RegistrationTask {
+        fn task_type(&self) -> &Identifier {
+            &self.0
+        }
+        fn start(&mut self, _: &mut dyn ServerHost, ctx: &mut ConfigurationTaskContext<'_>) {
+            self.1.fetch_add(1, Ordering::Relaxed);
+            ctx.finish();
+        }
+    }
+    impl Drop for RegistrationTask {
+        fn drop(&mut self) {
+            assert!(!self.2, "failed task also panics on disposal");
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn register_configuration_tasks(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut RegisterConfigurationTasksEvent<'_>,
+        ) {
+            if !PEER_NAMES.contains(&event.name) {
+                return;
+            }
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            event.register(RegistrationTask(
+                kind("shared"),
+                self.started.clone(),
+                self.panics,
+            ));
+            assert!(!self.panics, "registration fails after appending a task");
+        }
+    }
+
+    let scratch = tempfile::tempdir().unwrap();
+    sunrise_client::crash::install(scratch.path().to_path_buf(), "client");
+    let failed = Arc::new(AtomicUsize::new(0));
+    let healthy = Arc::new(AtomicUsize::new(0));
+    let started = Arc::new(AtomicUsize::new(0));
+    let mods = vec![
+        ModEntry::new(
+            "broken_tasks",
+            Box::new(Listener {
+                panics: true,
+                calls: failed.clone(),
+                started: started.clone(),
+            }),
+        ),
+        ModEntry::new(
+            "healthy_tasks",
+            Box::new(Listener {
+                panics: false,
+                calls: healthy.clone(),
+                started: started.clone(),
+            }),
+        ),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let port = publish_task_server(game);
+            for name in PEER_NAMES {
+                let (mut peer, _, packs) = super::config_tests::configuration_peer(port, name);
+                peer.send(&cfg::Serverbound::SelectKnownPacks(packs).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match cfg::Clientbound::decode(id, &body).unwrap() {
+                        cfg::Clientbound::KeepAlive(p) => {
+                            peer.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
+                        }
+                        cfg::Clientbound::FinishConfiguration(_) => break,
+                        cfg::Clientbound::Disconnect(p) => {
+                            panic!("healthy tasks could not finish admission: {p:?}")
+                        }
+                        _ => {}
+                    }
+                }
+                peer.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match play::Clientbound::decode(id, &body).unwrap() {
+                        play::Clientbound::Login(_) => break,
+                        play::Clientbound::Disconnect(p) => {
+                            panic!("disconnected before Play: {p:?}")
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            assert_eq!(failed.load(Ordering::Relaxed), 1);
+            assert_eq!(healthy.load(Ordering::Relaxed), 2);
+            assert_eq!(started.load(Ordering::Relaxed), 2);
+            assert!(!sunrise_client::crash::server_crashed());
+            game.leave_server(None).unwrap();
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn peer_completion_rejects_other_connections() {
     use sunrise_protocol::{
         connection::Connection,

@@ -68,7 +68,7 @@ pub fn mover_of(cause: MoveCause) -> Option<MoverType> {
 /// movement is recorded unchanged and the tick cost is the subscriber branch.
 /// A listener that cancels skips the invocation; a replacement outside ±64
 /// blocks per axis, or not a finite number, is refused whole — the movement
-/// stands as the requested delta would. If a listener unwinds, the dispatch
+/// keeps the preceding accepted delta. If a listener unwinds, the dispatch
 /// drops only its edits and disables that callback for this hook. Earlier
 /// results stand and later eligible listeners still get the move.
 ///
@@ -109,24 +109,15 @@ pub fn arm_with<'k>(
     );
     if canceled {
         gate.skip();
-        return;
-    }
-    // Design #2308: replacement components lie in ±64 blocks and are finite;
-    // a malformed result is rejected whole — like the requested delta would
-    // be — never clamped.
-    if valid_mod_move_delta(replaced) {
+    } else {
         gate.decide(Vec3::new(replaced[0], replaced[1], replaced[2]));
     }
-}
-
-/// The finite, per-axis range shared by a mod's move request and a move hook's replacement.
-pub fn valid_mod_move_delta(delta: [f64; 3]) -> bool {
-    delta.iter().all(|v| v.is_finite() && v.abs() <= 64.0)
 }
 
 #[cfg(test)]
 #[test]
 fn mod_move_deltas_use_an_inclusive_finite_bound_on_every_axis() {
+    use mod_api::__private::valid_mod_move_delta;
     assert!(valid_mod_move_delta([-64.0, 0.0, 64.0]));
     for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -64.5, 64.5] {
         for axis in 0..3 {
