@@ -45,13 +45,54 @@ def replace(source, old, new, path, *formatted, count=1):
     raise SystemExit(f"{path}: expected exactly {count} crossing(s): {old!r} or {new!r}")
 
 
+def reload_hud_and_tickets(bridge):
+    for hook, argument, trait, owner, prefix in (
+        ("add_client_reload_listeners", "listeners", "ClientReloadListeners", "mod_api::ClientListenerRegistry", ""),
+        ("add_server_reload_listeners", "listeners", "ServerReloadListeners", "mod_api::ServerListenerRegistry", ""),
+        ("register_gui_layers", "layers", "GuiLayerRegistrar", "sunrise_client::gui_layers::GuiLayers", "context, "),
+        ("validate_tickets", "validation", "mod_api::TicketValidation", "mod_api::world::mod_chunk_tickets::ControllerTickets", "dimension, controller, "),
+    ):
+        path = NATIVE / f"{hook}.rs"
+        source = replace(path.read_text(), f"{argument}: &mut dyn {trait}", f"{argument}: &mut {owner}", path)
+        if bridge:
+            call = f"fire_{hook}({prefix}"
+            source = replace(source, f"{call}{argument});", f"{call}|listen| {argument}.register_listener(listen));", path,
+                f"{call}|listen| {{\n            {argument}.register_listener(listen)\n        }});",
+                f"{call}\n            |listen| {argument}.register_listener(listen),\n        );")
+        path.write_text(source)
+
+    if not bridge:
+        return
+
+    path = GAME / "interface/client_reload/mod.rs"
+    path.write_text(replace(
+        path.read_text(),
+        "mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, &mut listeners);",
+        "mod_api::dispatch_add_client_reload_listeners(&StartupClientHost, |listen| {\n            listeners.register_listener(listen);\n        });",
+        path,
+    ))
+    path = GAME.parents[2] / "sunrise-mod-api/src/load_state.rs"
+    path.write_text(replace(
+        path.read_text(),
+        "dispatch_add_server_reload_listeners(&host, &mut ServerListenerRegistry::new());",
+        "let mut listeners = ServerListenerRegistry::new();\n                dispatch_add_server_reload_listeners(&host, |listen| listeners.register_listener(listen));",
+        path,
+        "let mut listeners = ServerListenerRegistry::new();\n                dispatch_add_server_reload_listeners(&host, |listen| {\n                    listeners.register_listener(listen)\n                });",
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("ingress")
+    reload_hud_tickets = commands.add_parser("reload-hud-tickets")
+    reload_hud_tickets.add_argument("--bridge", action="store_true")
     bridge = commands.add_parser("bridge")
     bridge.add_argument("hooks", nargs="+", choices=REGISTRARS)
     args = parser.parse_args()
+    if args.command == "reload-hud-tickets":
+        reload_hud_and_tickets(args.bridge)
+        return
 
     pending = {}
     for suffix in REGISTRARS if args.command == "ingress" else args.hooks:
