@@ -3580,7 +3580,6 @@ impl Game<'_> {
                 if let Some(r) = self.remote.as_mut() {
                     r.attachments
                         .retain(|holder, _| matches!(holder, Holder::Player(_)));
-                    r.general.snapshots_before_spawn.clear();
                 }
                 self.using = None;
                 // After a death (no KEEP_ENTITY_DATA) the new LocalPlayer
@@ -10551,7 +10550,7 @@ impl Remote {
     /// (`minecraft:text_display`) and its position as last sent.
     pub(super) fn tracked_entity(&self, id: i32) -> Option<(&str, [f64; 3])> {
         if let Some(row) = self.general.rows.get(&id) {
-            return row.shown.then(|| (row.kind(), row.position));
+            return Some((row.kind(), row.position));
         }
         self.entities
             .get(&id)

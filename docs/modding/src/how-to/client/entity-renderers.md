@@ -82,13 +82,16 @@ impl EntityRenderer for Missile {
 }
 ```
 
-A row is eligible for extraction after its first whole attachment snapshot arrives, even if
-that snapshot is empty. The engine publishes a generation at spawn or sync, and a frame keeps
-that generation even if another update replaces or removes its values. Use a draw default when
-`get` returns `Ok(None)` for a missing key. The first typed read of an undecoded binding can
-allocate to decode the value; already-decoded bindings are shared directly without re-running the
-codec. Two snapshots compare by key and canonical NBT value, not by their identity, compound
-iteration order, or decode cache.
+A row is eligible for extraction immediately upon spawn (starting with an empty attachment
+snapshot when the entity has no synced attachments). When the entity has synced attachments at
+pairing time, the server bundles the initial attachment sync atomically with the entity spawn
+packet (`ServerEntity.addPairing` / `ClientPacketListener.handleBundlePacket`, matching NeoForge
+`AttachmentSync`), so the first rendered frame already sees them. The engine publishes a new
+generation at spawn and on each attachment sync, and a frame keeps that generation even if a
+later update replaces or removes values. Use a draw default when `get` returns `Ok(None)` for a
+missing key. The first typed read of an undecoded binding can allocate to decode the value;
+already-decoded bindings are shared directly without re-running the codec. Two snapshots compare
+by key and canonical NBT value, not by their identity, compound iteration order, or decode cache.
 
 `EntityRenderState`, its family-specific state types, and `EntityRenderAttachments` are native
 render input, not `Wire` payloads. The attachment's save and sync codecs still apply. `yaw`,

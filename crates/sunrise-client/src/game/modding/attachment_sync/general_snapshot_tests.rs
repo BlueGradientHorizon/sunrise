@@ -100,3 +100,47 @@ fn a_general_row_always_has_a_first_snapshot_holding_what_it_holds_now() {
         );
     });
 }
+
+/// Matching NeoForge `ClientPayloadHandler.handleSyncAttachments`: an attachment sync for an
+/// unknown entity logs a warning and does not mutate `remote.attachments`.
+#[test]
+#[ignore = "daily"]
+fn remote_attachment_sync_ignores_unknown_entity() {
+    use sunrise_mod_runtime::attachments::AttachmentSync;
+    use sunrise_protocol::attachment_sync::{Message, encode};
+
+    crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+        let holder = Holder::Entity(77);
+        let payload = encode(&Message {
+            holder,
+            replace: true,
+            changes: vec![AttachmentSync {
+                namespace: "sync_route".into(),
+                name: "value".into(),
+                value: Some([("n".into(), Tag::Int(99))].into()),
+            }],
+        })
+        .unwrap();
+        game.remote_attachment_sync(&payload);
+        assert!(
+            !game
+                .remote
+                .as_ref()
+                .unwrap()
+                .attachments
+                .contains_key(&holder),
+            "unknown entity attachment sync must be ignored without mutating remote.attachments"
+        );
+        // Once the entity exists in the client level, attachment sync stores its values.
+        game.spawn_entity(77, "minecraft:pig", [0.5, 64.0, 0.5], [0.0; 3]);
+        game.remote_attachment_sync(&payload);
+        assert!(
+            game.remote
+                .as_ref()
+                .unwrap()
+                .attachments
+                .contains_key(&holder),
+            "known entity attachment sync must populate remote.attachments"
+        );
+    });
+}

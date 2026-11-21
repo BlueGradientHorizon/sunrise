@@ -275,6 +275,20 @@ impl Game<'_> {
             Ok(message) => message,
             Err(e) => return log::debug!("Sunrise: a bad attachment sync: {e}"),
         };
+        if let Holder::Entity(id) = message.holder {
+            let Some(remote) = self.remote.as_ref() else {
+                return;
+            };
+            let id_i32 = id as i32;
+            let known = id_i32 == remote.entity_id
+                || remote.tracked(id_i32).is_some()
+                || remote.tracked_entity(id_i32).is_some()
+                || self.level_dragon_part(id).is_some();
+            if !known {
+                log::warn!("Sunrise: received attachment sync for unknown entity {id}");
+                return;
+            }
+        }
         let Some(remote) = self.remote.as_mut() else {
             return;
         };
@@ -286,9 +300,7 @@ impl Game<'_> {
             map.apply_sync(change);
         }
         if let Holder::Entity(id) = message.holder {
-            remote
-                .general
-                .attachments_arrived(id as i32, message.replace, map);
+            remote.general.attachments_arrived(id as i32, map);
         }
         self.bind_remote_attachment(message.holder);
     }
