@@ -118,6 +118,7 @@ fn a_teleport_in_the_level_is_not_a_first_tick_and_the_first_report_after_it_is_
 fn a_respawn_is_a_teleport_not_a_first_tick_and_the_first_report_after_it_is_heard() {
     let mut hub = standing(true, vec![]);
     let conn = hub.guests[0].conn;
+    hub.remove_player_for_respawn(0);
     with_input_context(|ctx| hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), false, ctx));
     assert_eq!(hub.guests[0].level_entered, 0, "the same level");
     hub.guests.update(0, |g| g.load_timeout = 0);
@@ -269,6 +270,7 @@ fn the_baseline_is_the_destination_of_every_server_side_teleport() {
     );
     hub.resend_teleport(0, Some([11.5, 71.0, 11.5]));
     assert_eq!(baseline(&hub), ([11.5, 71.0, 11.5], [0.0, 0.0]), "a resend");
+    hub.remove_player_for_respawn(0);
     with_input_context(|ctx| hub.respawn(0, [0.5, 64.0, 0.5], Some([30.0, 5.0]), false, ctx));
     assert_eq!(baseline(&hub), ([0.5, 64.0, 0.5], [30.0, 5.0]), "a respawn");
     with_input_context(|ctx| hub.change_level(0, [100.5, 49.0, 0.5], 90.0, None, false, 0, ctx));

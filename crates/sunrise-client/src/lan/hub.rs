@@ -5520,6 +5520,7 @@ mod tests {
         hub.guests.update(0, |g| g.sneaking = true);
         hub.sync_player_state(0);
         drain(&rx);
+        hub.remove_player_for_respawn(0);
         hub.respawn(0, [0.5, 64.0, 0.5], Some([0.0; 2]), false, &ctx);
         assert_eq!(drain(&rx).1, [0]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Standing);
@@ -6266,6 +6267,7 @@ mod tests {
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
         open(&mut hub);
+        hub.remove_player_for_respawn(0);
         hub.respawn(0, [0.5, 64.0, 0.5], None, false, &ctx);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
