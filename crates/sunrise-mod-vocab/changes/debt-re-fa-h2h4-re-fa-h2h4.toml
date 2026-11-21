@@ -1,0 +1,10 @@
+ids = [
+    "trait:Registrar",
+    "hook:consume_effect",
+    "trait:ConsumeEffectsRegistrar",
+    "method:ConsumeEffectsRegistrar::register_consume_effect_type",
+    "type:ConsumeEffectType",
+    "handle:ConsumeEffectType::new",
+]
+why = "Vanilla 26.3 ConsumeEffect.CODEC dispatches to the registered map codec during admission; Consumable and DeathProtection both use ConsumeEffect.STREAM_CODEC for the registry ID and typed stream value. NeoForge registers types via RegisterEvent, syncs this registry in NeoForgeRegistriesSetup, and installs the server's ID map by name in RegistryManager.applySnapshot. Sunrise keeps the admitted Wire value and exact saved NBT and uses the configured IDs for stack reads, writes and hashes. Gameplay enablement does not change the negotiated registry, and a map codec panic uses shared dispatch diagnostics without disabling structural reads."
+migrate = "For each custom kind used in a synchronized stack, derive Wire on a struct for its values. In Hooks::register, call register_consume_effect_type(id, ConsumeEffectType::new::<T>(load, save)) on the engine's Registrar. Any direct implementation of Registrar must also implement ConsumeEffectsRegistrar. Use your package ID as the effect namespace so the existing consume_effect listener receives it. load is fn(&Compound) -> Result<T, String> and validates the saved fields at admission; save is fn(&T) -> Result<Compound, String> and returns canonical NBT with its exact tag types. Do not handle the type dispatch key in either function. Install the mod on both sides; use the same identifier and fields in on_consume_effects or death_effects. Return Err for invalid values rather than panicking. Do not send another payload to mirror the effect."

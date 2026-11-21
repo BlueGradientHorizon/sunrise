@@ -328,12 +328,58 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
+    invoke_contained(
+        || refusable(contained, call),
+        |payload| record_hook_panic(hook_id, hook, mod_id, payload),
+    )
+}
+
+/// Registered codecs are installed independently of the gameplay switch. Each
+/// invocation site owns its panic disablement, but uses the ordinary dispatch
+/// fence and its attributed diagnostic queue.
+pub(crate) fn invoke_registered_codec<T>(
+    mod_id: &'static str,
+    operation: &'static str,
+    poisoned: &std::sync::atomic::AtomicBool,
+    call: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    use std::sync::atomic::Ordering;
+    if poisoned.load(Ordering::Acquire) {
+        return Err(format!("mod {mod_id}: {operation} disabled after a panic"));
+    }
+    let _owner = mark_mod(mod_id, operation);
+    match invoke_contained(
+        || crate::world::phase_refusal::contain_refusal(mod_id, call),
+        |payload| {
+            if !poisoned.swap(true, Ordering::AcqRel) {
+                log_and_queue_panic(operation, mod_id, payload);
+            }
+        },
+    ) {
+        DispatchOutcome::Ok(result) => result.map_err(|reason| {
+            let reason = format!("mod {mod_id}: {operation} refused: {reason}");
+            log::warn!("{reason}");
+            reason
+        }),
+        DispatchOutcome::Refused(refusal) => {
+            refusal.report();
+            Err(format!("mod {mod_id}: {operation} refused: {refusal}"))
+        }
+        DispatchOutcome::Panicked => Err(format!("mod {mod_id}: {operation} panicked")),
+    }
+}
+
+#[inline]
+fn invoke_contained<T>(
+    call: impl FnOnce() -> Result<T, crate::world::phase_refusal::PhaseRefusal>,
+    on_panic: impl FnOnce(&(dyn std::any::Any + Send)),
+) -> DispatchOutcome<T> {
     let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
         Ok(Ok(value)) => DispatchOutcome::Ok(value),
         Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
         Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
+            on_panic(&*payload);
             dispose_panic_payload(payload);
             DispatchOutcome::Panicked
         }

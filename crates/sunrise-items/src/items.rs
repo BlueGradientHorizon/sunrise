@@ -246,10 +246,11 @@ pub(crate) fn stack_effects(
                 *entry = (*effect.saved).clone();
                 effect.saved.clone()
             } else {
-                // Existing server-only hook kinds still carry opaque fields.
-                // Preserve the admission rule for types without a map codec.
-                sunrise_core::json_nbt::tag_to_json(entry).map_err(|error| error.to_string())?;
-                Arc::new(entry.clone())
+                // Unregistered gameplay-only effects retain their existing JSON projection.
+                let json = sunrise_client_core::scoreboard::tag_to_json(entry);
+                let data = sunrise_core::json_nbt::json_to_tag(&json)
+                    .map_err(|error| error.to_string())?;
+                Arc::new(data)
             };
             effects.push(ConsumeEffect::Native {
                 kind,

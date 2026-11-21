@@ -2686,157 +2686,166 @@ mod tests {
 
         let mods: mod_api::Mods =
             vec![mod_api::ModEntry::new("effect_test", Box::new(Effects))].into();
-        mod_platform::testing::with_mods(mods.clone(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-            crate::item_sync::install_consume_effect_codecs().unwrap();
+        sunrise_world::component_value::consume_effects::with_test_registry(|| {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+                crate::item_sync::install_consume_effect_codecs().unwrap();
 
-            let (root, resources) = empty_item_data("consume-effects");
-            let (client, server) = sunrise_protocol::connection::Pipe::pair();
-            let (mut reader, writer) = Connection::local(client).split();
-            let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-            let (send, _events) = event_channel();
-            let mut server = Connection::local(server);
-            let mut entries: Vec<_> = consume_effects::configuration()
-                .map(|(id, schema)| cfg::RegistryEntry {
-                    id: id.into(),
-                    data: Some(Tag::Long(schema as i64)),
-                })
-                .collect();
-            assert_eq!(entries[5].id, "effect_test:charge");
-            // The server uses different IDs, including a built-in ID occupied by a native type.
-            entries.swap(0, 5);
-            entries.swap(5, 6);
-            server
-                .send(
-                    &cfg::Clientbound::RegistryData(cfg::RegistryData {
-                        registry: consume_effects::REGISTRY.into(),
-                        entries,
+                let (root, resources) = empty_item_data("consume-effects");
+                let (client, server) = sunrise_protocol::connection::Pipe::pair();
+                let (mut reader, writer) = Connection::local(client).split();
+                let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+                let (send, _events) = event_channel();
+                let mut server = Connection::local(server);
+                let mut entries: Vec<_> = consume_effects::configuration()
+                    .map(|(id, schema)| cfg::RegistryEntry {
+                        id: id.into(),
+                        data: Some(Tag::Long(schema as i64)),
                     })
-                    .encode(),
+                    .collect();
+                assert_eq!(entries[5].id, "effect_test:charge");
+                // The server uses different IDs, including a built-in ID occupied by a native type.
+                entries.swap(0, 5);
+                entries.swap(5, 6);
+                server
+                    .send(
+                        &cfg::Clientbound::RegistryData(cfg::RegistryData {
+                            registry: consume_effects::REGISTRY.into(),
+                            entries,
+                        })
+                        .encode(),
+                    )
+                    .unwrap();
+                server
+                    .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
+                    .unwrap();
+                let registries = configure(
+                    &mut reader,
+                    &writer,
+                    &Arc::new(AtomicBool::new(true)),
+                    &Language::new(),
+                    &send,
+                    &Cookies::default(),
+                    &resources,
+                    &crate::raw_payloads::Transport::empty(),
                 )
                 .unwrap();
-            server
-                .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
-                .unwrap();
-            let registries = configure(
-                &mut reader,
-                &writer,
-                &Arc::new(AtomicBool::new(true)),
-                &Language::new(),
-                &send,
-                &Cookies::default(),
-                &resources,
-                &crate::raw_payloads::Transport::empty(),
-            )
-            .unwrap();
-            assert_eq!(registries.consume_effect_id("effect_test:charge"), Some(0));
-            assert_eq!(
-                registries.consume_effect_id("minecraft:apply_effects"),
-                Some(6)
-            );
-
-            let mut components = vec![String::new(); component::DEATH_PROTECTION as usize + 1];
-            components[component::CONSUMABLE as usize] = "minecraft:consumable".into();
-            components[component::DEATH_PROTECTION as usize] = "minecraft:death_protection".into();
-            let builtin = Builtin {
-                registries: [
-                    (
-                        "minecraft:item".into(),
-                        Ids::from_names(vec!["minecraft:air".into(), "minecraft:stone".into()]),
-                    ),
-                    (
-                        "minecraft:data_component_type".into(),
-                        Ids::from_names(components),
-                    ),
-                    (
-                        "minecraft:sound_event".into(),
-                        Ids::from_names(vec![String::new(), "minecraft:entity.generic.eat".into()]),
-                    ),
-                ]
-                .into(),
-            };
-            let effect = Tag::compound([
-                ("type", Tag::String("effect_test:charge".into())),
-                ("points", Tag::Int(0x1234)),
-            ]);
-            let mut item = crate::items::ItemStack::new("minecraft:stone", 1);
-            for (name, field) in [
-                ("minecraft:consumable", "on_consume_effects"),
-                ("minecraft:death_protection", "death_effects"),
-            ] {
-                item.data_mut().set_other(
-                    name,
-                    Some(Tag::compound([(field, Tag::List(vec![effect.clone()]))])),
+                assert_eq!(registries.consume_effect_id("effect_test:charge"), Some(0));
+                assert_eq!(
+                    registries.consume_effect_id("minecraft:apply_effects"),
+                    Some(6)
                 );
-            }
-            let encode = |item| {
-                crate::lan::guest::stack_to_network(
-                    |_| 1,
-                    |registry, name| {
-                        if registry == consume_effects::REGISTRY {
-                            registries.consume_effect_id(name)
-                        } else {
-                            builtin.get(registry)?.id(name)
-                        }
-                    },
-                    &Some(item),
-                )
-                .unwrap()
-            };
-            let stack = encode(item);
-            let Some(sunrise_protocol::item::Component::Raw(death)) =
-                stack.component(component::DEATH_PROTECTION)
-            else {
-                panic!("expected a death protection stream");
-            };
-            assert_eq!(death, &[1, 0, 0x34, 0x12]); // one effect, server ID 0, Wire u16
-            let body = play::Clientbound::ContainerSetContent(play::ContainerSetContent {
-                container: 0,
-                state: 1,
-                items: vec![Some(Stack::new(1, 3)), Some(stack.clone())],
-                carried: None,
-            })
-            .encode();
 
-            // This layout is fixed for the connection, even when the gameplay listener is off.
-            assert!(mod_api::__private::set_mod_enabled("effect_test", false));
-            let mut reader = Reader::new(&body).with_names(&registries);
-            let id = reader.varint().unwrap();
-            let play::Clientbound::ContainerSetContent(update) =
-                play::Clientbound::decode_reader(id, reader).unwrap()
-            else {
-                panic!("expected full container update");
-            };
-            assert_eq!(
-                update.items[0]
-                    .as_ref()
-                    .map(|stack| (stack.item, stack.count)),
-                Some((1, 3))
-            );
-            let received = update.items[1].as_ref().unwrap();
-            let client = crate::item_sync::from_network(received, &builtin, &registries);
-            for effects in [
-                &client.consumable(None).unwrap().effects[..],
-                client.death_protection(None).unwrap(),
-            ] {
-                let [crate::items::ConsumeEffect::Native { kind, data, .. }] = effects else {
-                    panic!("expected custom effect: {effects:?}");
+                let mut components = vec![String::new(); component::DEATH_PROTECTION as usize + 1];
+                components[component::CONSUMABLE as usize] = "minecraft:consumable".into();
+                components[component::DEATH_PROTECTION as usize] =
+                    "minecraft:death_protection".into();
+                let builtin = Builtin {
+                    registries: [
+                        (
+                            "minecraft:item".into(),
+                            Ids::from_names(vec!["minecraft:air".into(), "minecraft:stone".into()]),
+                        ),
+                        (
+                            "minecraft:data_component_type".into(),
+                            Ids::from_names(components),
+                        ),
+                        (
+                            "minecraft:sound_event".into(),
+                            Ids::from_names(vec![
+                                String::new(),
+                                "minecraft:entity.generic.eat".into(),
+                            ]),
+                        ),
+                    ]
+                    .into(),
                 };
-                assert_eq!(kind, "effect_test:charge");
-                assert_eq!(data.get("points"), Some(&Tag::Int(0x1234)));
-                assert_eq!(data.get("samples"), Some(&Tag::IntArray(vec![3, 4])));
-                assert_eq!(data.get("flag"), Some(&Tag::Byte(7)));
-            }
-            let names = SyncedNames {
-                builtin: &builtin,
-                dynamic: &registries,
-            };
-            let before = Hashed::create(&stack, &names).unwrap();
-            assert_eq!(Hashed::create(received, &names).unwrap(), before);
-            assert_eq!(Hashed::create(&encode(client), &names).unwrap(), before);
-            // The same process's local codec is not negotiated on another, vanilla connection.
-            assert!(play::Clientbound::decode(id, &body[1..]).is_err());
-            std::fs::remove_dir_all(root).unwrap();
+                let effect = Tag::compound([
+                    ("type", Tag::String("effect_test:charge".into())),
+                    ("points", Tag::Int(0x1234)),
+                ]);
+                let mut item = crate::items::ItemStack::new("minecraft:stone", 1);
+                for (name, field) in [
+                    ("minecraft:consumable", "on_consume_effects"),
+                    ("minecraft:death_protection", "death_effects"),
+                ] {
+                    item.data_mut().set_other(
+                        name,
+                        Some(Tag::compound([(field, Tag::List(vec![effect.clone()]))])),
+                    );
+                }
+                let encode = |item| {
+                    crate::lan::guest::stack_to_network(
+                        |_| 1,
+                        |registry, name| {
+                            if registry == consume_effects::REGISTRY {
+                                registries.consume_effect_id(name)
+                            } else {
+                                builtin.get(registry)?.id(name)
+                            }
+                        },
+                        &Some(item),
+                    )
+                    .unwrap()
+                };
+                let stack = encode(item);
+                let Some(sunrise_protocol::item::Component::Raw(death)) =
+                    stack.component(component::DEATH_PROTECTION)
+                else {
+                    panic!("expected a death protection stream");
+                };
+                assert_eq!(death, &[1, 0, 0x34, 0x12]); // one effect, server ID 0, Wire u16
+                let body = play::Clientbound::ContainerSetContent(play::ContainerSetContent {
+                    container: 0,
+                    state: 1,
+                    items: vec![Some(Stack::new(1, 3)), Some(stack.clone())],
+                    carried: None,
+                })
+                .encode();
+
+                // This layout is fixed for the connection, even when the gameplay listener is off.
+                assert!(mod_api::__private::set_mod_enabled("effect_test", false));
+                let mut reader = Reader::new(&body).with_names(&registries);
+                let id = reader.varint().unwrap();
+                let play::Clientbound::ContainerSetContent(update) =
+                    play::Clientbound::decode_reader(id, reader).unwrap()
+                else {
+                    panic!("expected full container update");
+                };
+                assert_eq!(
+                    update.items[0]
+                        .as_ref()
+                        .map(|stack| (stack.item, stack.count)),
+                    Some((1, 3))
+                );
+                let received = update.items[1].as_ref().unwrap();
+                let client = crate::item_sync::from_network(received, &builtin, &registries);
+                for effects in [
+                    &client.consumable(None).unwrap().effects[..],
+                    client.death_protection(None).unwrap(),
+                ] {
+                    let [crate::items::ConsumeEffect::Native { kind, data, .. }] = effects else {
+                        panic!("expected custom effect: {effects:?}");
+                    };
+                    assert_eq!(kind, "effect_test:charge");
+                    assert_eq!(data.get("points"), Some(&Tag::Int(0x1234)));
+                    assert_eq!(data.get("samples"), Some(&Tag::IntArray(vec![3, 4])));
+                    assert_eq!(data.get("flag"), Some(&Tag::Byte(7)));
+                }
+                let names = SyncedNames {
+                    builtin: &builtin,
+                    dynamic: &registries,
+                };
+                let before = Hashed::create(&stack, &names).unwrap();
+                assert_eq!(Hashed::create(received, &names).unwrap(), before);
+                assert_eq!(Hashed::create(&encode(client), &names).unwrap(), before);
+                // A connection without this registry never exposes local custom codecs.
+                let vanilla = Dynamic::default();
+                assert_eq!(vanilla.consume_effect_id("effect_test:charge"), None);
+                let mut reader = Reader::new(&[5, 0x34, 0x12]).with_names(&vanilla);
+                assert!(consume_effects::read_kind(&mut reader).is_err());
+                std::fs::remove_dir_all(root).unwrap();
+            })
         });
     }
 

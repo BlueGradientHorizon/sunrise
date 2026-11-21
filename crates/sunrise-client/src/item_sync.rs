@@ -19,7 +19,7 @@ pub type ItemConsumable = Consumable<String, ConsumeEffect>;
 /// Publish native consume-effect codecs to the persistent and protocol layers.
 pub fn install_consume_effect_codecs() -> Result<(), String> {
     use sunrise_world::component_value::consume_effects::{self, Type};
-    let codecs = mod_api::__private::consume_effect_codecs()?;
+    let codecs = mod_api::__private::consume_effect_codecs();
     if codecs.is_empty() {
         return Ok(());
     }

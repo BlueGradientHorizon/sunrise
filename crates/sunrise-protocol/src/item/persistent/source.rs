@@ -367,28 +367,26 @@ fn consume_list(w: &mut Writer, effects: &[Value], ids: &dyn Ids) -> Result<()> 
     let mut wire = Writer::new();
     let mut count = 0;
     for value in effects {
-        let (name, registered) = match value {
-            Value::RegisteredConsumeEffect(effect) => (effect.name.to_string(), Some(effect)),
-            _ => (string(need(value, "type")?)?, None),
-        };
-        let builtin = builtin_id(&name);
-        let Some(id) = ids.id(REGISTRY, &name).or(builtin) else {
-            // A server-only hook kind or a type missing from the peer snapshot has
-            // no stream form here. Keep the other effects and other components.
-            log::warn!("Cannot synchronize consume effect {name}: no peer registry ID");
+        if let Value::RegisteredConsumeEffect(effect) = value {
+            if let Some(id) = ids.id(REGISTRY, &effect.name) {
+                wire.varint(id);
+                wire.bytes(&effect.wire);
+                count += 1;
+            } else {
+                log::warn!(
+                    "Cannot synchronize consume effect {}: no peer registry ID",
+                    effect.name
+                );
+            }
+            continue;
+        }
+        let name = string(need(value, "type")?)?;
+        let Some(kind) = builtin_id(&name) else {
+            // Gameplay-only hook kinds have no stream form. Keep their siblings.
+            log::warn!("Cannot synchronize consume effect {name}: no admitted Wire value");
             continue;
         };
-        let Some(kind) = builtin else {
-            let Some(effect) = registered else {
-                log::warn!("Cannot synchronize consume effect {name}: no admitted Wire value");
-                continue;
-            };
-            wire.varint(id);
-            wire.bytes(&effect.wire);
-            count += 1;
-            continue;
-        };
-        wire.varint(id);
+        wire.varint(ids.id(REGISTRY, &name).unwrap_or(kind));
         match kind {
             0 => {
                 sequence(&mut wire, list(need(value, "effects")?)?, |w, v| {
@@ -1181,7 +1179,7 @@ mod tests {
         let value = component_value(
             16,
             &Component::Raw(w.data.clone()),
-            &NameLookup(&registry_name),
+            &NameLookup::new(&registry_name),
         )
         .unwrap();
         assert_eq!(value.to_tag().unwrap(), expected);
@@ -1210,21 +1208,18 @@ mod tests {
             w.varint(display);
             w.data
         };
+        let names = NameLookup::new(&registry_name);
         for bytes in [
             one(3, 0, 0, 0),
             one(0, 3, 0, 0),
             one(0, 0, 11, 0),
             one(0, 0, 0, 3),
         ] {
-            assert!(
-                component_value(16, &Component::Raw(bytes), &NameLookup(&registry_name)).is_err()
-            );
+            assert!(component_value(16, &Component::Raw(bytes), &names).is_err());
         }
         let mut trailing = one(0, 0, 0, 0);
         trailing.push(0);
-        assert!(
-            component_value(16, &Component::Raw(trailing), &NameLookup(&registry_name)).is_err()
-        );
+        assert!(component_value(16, &Component::Raw(trailing), &names).is_err());
         assert!(component_value(16, &Component::Raw(one(0, 0, 0, 0)), &NoNames).is_err());
         for source in [
             r#"[{type:"gravity",id:"test:x",amount:1d,operation:"add_value",slot:"any"}]"#,

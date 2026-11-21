@@ -11,10 +11,12 @@ impl ConsumeEffectsRegistrar for PartRegistrar {
             .is_some_and(|package| package.side() != crate::Side::Both)
         {
             "consume effect types require a package on both sides"
-        } else if matches!(id.namespace(), "minecraft" | "sunrise" | "c")
-            || !owns_namespace(self.mod_id, id.namespace())
+        // Runtime consume_effect dispatch indexes the subscriber by package ID,
+        // not by any extra asset namespaces the package claims.
+        } else if id.namespace() != self.mod_id
+            || matches!(id.namespace(), "minecraft" | "sunrise" | "c")
         {
-            "consume effect type must use an owned, non-reserved namespace"
+            "consume effect type must use the registering package's ID as its namespace"
         } else if self.consume_effects.iter().any(|effect| effect.id == id) {
             "duplicate consume effect type"
         } else {
@@ -48,15 +50,20 @@ mod tests {
             )
         };
         let mut registrar = PartRegistrar::new("owner");
-        for key in [
-            "other:new_effect",
-            "minecraft:new_effect",
-            "sunrise:new_effect",
-            "c:new_effect",
-        ] {
+        assert!(
+            registrar
+                .register_consume_effect_type(
+                    crate::Identifier::parse("other:new_effect").unwrap(),
+                    codec()
+                )
+                .is_err()
+        );
+        for namespace in ["minecraft", "sunrise", "c"] {
+            let mut reserved = PartRegistrar::new(namespace);
+            let key = format!("{namespace}:new_effect");
             assert!(
-                registrar
-                    .register_consume_effect_type(crate::Identifier::parse(key).unwrap(), codec())
+                reserved
+                    .register_consume_effect_type(crate::Identifier::parse(&key).unwrap(), codec())
                     .is_err(),
                 "accepted {key}"
             );

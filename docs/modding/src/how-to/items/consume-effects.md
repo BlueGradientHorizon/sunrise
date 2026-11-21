@@ -2,8 +2,9 @@
 
 In `Hooks::register`, call `register_consume_effect_type` on the engine's
 `Registrar`. If you implement `Registrar` yourself, also implement
-`ConsumeEffectsRegistrar`. Use a type ID in an owned, non-reserved
-namespace. The two functions in `ConsumeEffectType::new` read and write the
+`ConsumeEffectsRegistrar`. Use your package ID as the type's namespace;
+this is how the game finds your `consume_effect` listener. The two functions
+in `ConsumeEffectType::new` read and write the
 saved map; the game handles the `type` field. `load` validates the fields
 before a stack edit or load is admitted. `save` supplies the canonical fields
 with exact NBT types, including when the value arrives over the network.
@@ -12,7 +13,11 @@ Derive `Wire` on the value itself. Its bytes follow the server's registry ID,
 just as a built-in effect's stream fields do. Install the registering mod on
 both sides: normal configuration sync resolves the server's IDs by key and
 checks the Wire schemas. Switching off a live effect listener does not remove
-its registered codec from the connection.
+its registered codec from the connection. Return `Err` for invalid data: an
+error refuses that value without disabling the codec. A panicking codec
+callback is reported with the mod's name and disabled for the session. A save
+failure on receipt leaves out that effect, not the rest of the stack or the
+other slots in the update.
 
 ```rust
 use mod_api::{Compound, ConsumeEffectType, Identifier, Registrar, Tag, Wire};

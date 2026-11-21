@@ -84,7 +84,7 @@ impl SyncedNames<'_> {
         if names(crate::item::consume_effects::REGISTRY, registry) {
             return self
                 .dynamic
-                .consume_effect_id_matching(|key| names(key, name));
+                .consume_effect_id_parts(name.namespace(), name.path());
         }
         let index = |i: usize| i32::try_from(i).ok();
         self.builtin
@@ -184,7 +184,7 @@ pub struct Dynamic {
     pub tags: HashMap<String, HashMap<String, Vec<i32>>>,
     /// RegistryData's effect IDs resolved to the local codecs during configuration.
     #[doc(hidden)]
-    pub consume_effect_codecs: Option<Vec<crate::item::consume_effects::Kind>>,
+    pub consume_effect_codecs: Option<crate::item::consume_effects::Snapshot>,
     /// The peer confirmed the native component registry identity.
     pub custom_components: bool,
     /// The `sunrise:menu_extra` payload layout the peer serves: the revision its
@@ -204,7 +204,7 @@ impl crate::item::Names for Dynamic {
     fn consume_effect_kind(&self, id: i32) -> Option<crate::item::consume_effects::Kind> {
         use crate::item::consume_effects::{Kind, builtin_name};
         match &self.consume_effect_codecs {
-            Some(kinds) => kinds.get(usize::try_from(id).ok()?).copied(),
+            Some(snapshot) => snapshot.kind(id),
             None => builtin_name(id).map(|_| Kind::Builtin(id)),
         }
     }
@@ -213,7 +213,7 @@ impl crate::item::Names for Dynamic {
 impl Dynamic {
     /// Admit the server snapshot using the local codecs, but keep its ID order.
     pub fn add_consume_effects(&mut self, packet: RegistryData) -> crate::Result<()> {
-        self.consume_effect_codecs = Some(crate::item::consume_effects::resolve_configuration(
+        self.consume_effect_codecs = Some(crate::item::consume_effects::Snapshot::resolve(
             &packet.entries,
         )?);
         self.add(packet);
@@ -221,16 +221,15 @@ impl Dynamic {
     }
 
     pub fn consume_effect_id(&self, name: &str) -> Option<i32> {
-        self.consume_effect_id_matching(|key| key == name)
+        let (namespace, path) = name.split_once(':')?;
+        self.consume_effect_id_parts(namespace, path)
     }
 
-    fn consume_effect_id_matching(&self, matches: impl Fn(&str) -> bool) -> Option<i32> {
-        use crate::item::consume_effects::{REGISTRY, builtin_names};
-        let index = match self.registries.get(REGISTRY) {
-            Some(entries) => entries.iter().position(|(key, _)| matches(key)),
-            None => builtin_names().iter().position(|key| matches(key)),
-        }?;
-        i32::try_from(index).ok()
+    fn consume_effect_id_parts(&self, namespace: &str, path: &str) -> Option<i32> {
+        match &self.consume_effect_codecs {
+            Some(snapshot) => snapshot.id(namespace, path),
+            None => crate::item::consume_effects::builtin_id_parts(namespace, path),
+        }
     }
 
     /// Retained heap charge for a frozen configuration snapshot built by
@@ -260,11 +259,11 @@ impl Dynamic {
         );
         tags.iter().fold(
             registry_bytes
-                .saturating_add(consume_effect_codecs.as_ref().map_or(0, |kinds| {
-                    kinds
-                        .capacity()
-                        .saturating_mul(std::mem::size_of::<crate::item::consume_effects::Kind>())
-                }))
+                .saturating_add(
+                    consume_effect_codecs
+                        .as_ref()
+                        .map_or(0, |snapshot| snapshot.owned_heap_bytes()),
+                )
                 .saturating_add(
                     fresh_hash_table_bytes::<(String, HashMap<String, Vec<i32>>)>(tags.capacity()),
                 ),

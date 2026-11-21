@@ -191,64 +191,69 @@ mod tests {
         use std::sync::Arc;
         use sunrise_world::component_value::consume_effects::{self, Type};
 
-        consume_effects::install(
-            [(
-                Arc::from("effect_edit:charge"),
-                Type {
-                    schema: 0,
-                    load: Box::new(|fields| {
-                        if !matches!(fields.get(&"points".into()), Some(Tag::Int(_))) {
-                            return Err("points must be an int".into());
-                        }
-                        Ok((fields.clone(), Vec::new()))
-                    }),
-                    read: Box::new(|_, _| unreachable!("no stream used in this test")),
-                },
-            )]
-            .into(),
-        )
-        .unwrap();
-        let items = super::super::stack_limit_tests::catalog();
-        let component = |points| {
-            Tag::compound([(
-                "on_consume_effects",
-                Tag::List(vec![
-                    Tag::compound([
-                        ("type", Tag::String("effect_edit:charge".into())),
-                        ("points", points),
+        consume_effects::with_test_registry(|| {
+            consume_effects::install(
+                [(
+                    Arc::from("effect_edit:charge"),
+                    Type {
+                        schema: 0,
+                        load: Box::new(|fields| {
+                            if !matches!(fields.get(&"points".into()), Some(Tag::Int(_))) {
+                                return Err("points must be an int".into());
+                            }
+                            Ok((fields.clone(), Vec::new()))
+                        }),
+                        read: Box::new(|_, _| unreachable!("no stream used in this test")),
+                    },
+                )]
+                .into(),
+            )
+            .unwrap();
+            let items = super::super::stack_limit_tests::catalog();
+            let component = |points| {
+                Tag::compound([(
+                    "on_consume_effects",
+                    Tag::List(vec![
+                        Tag::compound([
+                            ("type", Tag::String("effect_edit:charge".into())),
+                            ("points", points),
+                        ]),
+                        Tag::compound([(
+                            "type",
+                            Tag::String("minecraft:clear_all_effects".into()),
+                        )]),
                     ]),
-                    Tag::compound([("type", Tag::String("minecraft:clear_all_effects".into()))]),
-                ]),
-            )])
-        };
-        let original = component(Tag::Int(7));
-        let mut resident = EngineStack::new("minecraft:stick", 1);
-        resident
-            .data_mut()
-            .set_other("minecraft:consumable", Some(original.clone()));
-        assert_eq!(resident.consumable(None).unwrap().effects.len(), 2);
+                )])
+            };
+            let original = component(Tag::Int(7));
+            let mut resident = EngineStack::new("minecraft:stick", 1);
+            resident
+                .data_mut()
+                .set_other("minecraft:consumable", Some(original.clone()));
+            assert_eq!(resident.consumable(None).unwrap().effects.len(), 2);
 
-        let change =
-            prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
-                editor
-                    .apply_components(
-                        &[(
-                            JavaString::from("minecraft:consumable"),
-                            component(Tag::String("bad".into())),
-                        )]
-                        .into(),
-                    )
-                    .unwrap();
-            });
-        assert!(matches!(
-            change,
-            Err(ItemPlaceEditError::Stack(
-                StackWriteError::InvalidEffectPayload
-            ))
-        ));
-        assert_eq!(
-            resident.data().unwrap().other("minecraft:consumable"),
-            Some(&original)
-        );
+            let change =
+                prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
+                    editor
+                        .apply_components(
+                            &[(
+                                JavaString::from("minecraft:consumable"),
+                                component(Tag::String("bad".into())),
+                            )]
+                            .into(),
+                        )
+                        .unwrap();
+                });
+            assert!(matches!(
+                change,
+                Err(ItemPlaceEditError::Stack(
+                    StackWriteError::InvalidEffectPayload
+                ))
+            ));
+            assert_eq!(
+                resident.data().unwrap().other("minecraft:consumable"),
+                Some(&original)
+            );
+        });
     }
 }

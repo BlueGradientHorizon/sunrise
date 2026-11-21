@@ -23,20 +23,56 @@ pub struct Type {
     pub read: Box<Read>,
 }
 
-static TYPES: OnceLock<BTreeMap<Arc<str>, Type>> = OnceLock::new();
+type Types = BTreeMap<Arc<str>, Type>;
+static TYPES: OnceLock<Types> = OnceLock::new();
 
-pub fn install(types: BTreeMap<Arc<str>, Type>) -> Result<(), String> {
+#[cfg(feature = "test-support")]
+thread_local! {
+    static TEST_TYPES: std::cell::Cell<Option<Option<&'static Types>>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run fixture installation and its consumers with a thread-local registry.
+/// Resolved one-shot fixtures leak their codec table like the test mod snapshot.
+#[cfg(feature = "test-support")]
+pub fn with_test_registry<T>(run: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Option<&'static Types>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TEST_TYPES.set(self.0);
+        }
+    }
+    let _restore = Restore(TEST_TYPES.replace(Some(None)));
+    run()
+}
+
+pub fn install(types: Types) -> Result<(), String> {
+    #[cfg(feature = "test-support")]
+    if let Some(installed) = TEST_TYPES.get() {
+        if installed.is_some() {
+            return Err("test consume effect types already installed".into());
+        }
+        TEST_TYPES.set(Some(Some(Box::leak(Box::new(types)))));
+        return Ok(());
+    }
     TYPES
         .set(types)
         .map_err(|_| "consume effect types already installed".into())
 }
 
+fn installed() -> Option<&'static Types> {
+    #[cfg(feature = "test-support")]
+    if let Some(types) = TEST_TYPES.get() {
+        return types;
+    }
+    TYPES.get()
+}
+
 pub fn entries() -> impl Iterator<Item = (&'static Arc<str>, &'static Type)> {
-    TYPES.get().into_iter().flatten()
+    installed().into_iter().flatten()
 }
 
 pub fn by_name(name: &str) -> Option<(&'static Arc<str>, &'static Type)> {
-    TYPES.get()?.get_key_value(name)
+    installed()?.get_key_value(name)
 }
 
 impl Admitted {
