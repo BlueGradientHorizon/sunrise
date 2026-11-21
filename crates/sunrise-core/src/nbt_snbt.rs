@@ -1,5 +1,6 @@
 //! `SnbtGrammar`/`TagParser` over NbtOps, shared by commands and persistent codecs.
 use super::{Compound, JavaString, Tag};
+use std::ops::Range;
 
 /// A grammar failure, with an input-relative cursor and its completion suppliers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +26,7 @@ enum Input<'a> {
     Utf8(&'a str),
     Utf16(&'a [u16]),
 }
-impl Input<'_> {
+impl<'a> Input<'a> {
     fn at(self, cursor: usize) -> Option<u32> {
         match self {
             Self::Utf8(text) => text.get(cursor..)?.chars().next().map(u32::from),
@@ -37,6 +38,18 @@ impl Input<'_> {
             Self::Utf8(_) => char::from_u32(value).expect("UTF-8 scalar").len_utf8(),
             Self::Utf16(_) => 1,
         }
+    }
+    /// The scanner has already restricted every unit in the span to ASCII digits or underscores.
+    fn clean_digits(self, span: Range<usize>) -> impl Iterator<Item = u8> + use<'a> {
+        let (bytes, units) = match self {
+            Self::Utf8(text) => (&text.as_bytes()[span], &[][..]),
+            Self::Utf16(text) => (&[][..], &text[span]),
+        };
+        bytes
+            .iter()
+            .copied()
+            .chain(units.iter().map(|&unit| unit as u8))
+            .filter(|&byte| byte != b'_')
     }
 }
 
@@ -93,6 +106,11 @@ enum Reason {
         arg: Option<String>,
         suggestions: &'static [&'static str],
     },
+    IntegerRange {
+        literal: IntegerLiteral,
+        kind: u8,
+        magnitude: Option<u64>,
+    },
 }
 
 impl Reason {
@@ -100,6 +118,7 @@ impl Reason {
         let (literal, words) = match self {
             Self::Literal(chars) => (*chars, &[][..]),
             Self::Key { suggestions, .. } => ("", *suggestions),
+            Self::IntegerRange { .. } => ("", &[][..]),
         };
         (0..literal.len())
             .map(move |i| &literal[i..i + 1])
@@ -108,7 +127,7 @@ impl Reason {
 }
 
 struct IntegerLiteral {
-    digits: String,
+    digits: Range<usize>,
     radix: u32,
     minus: bool,
     signed: bool,
@@ -142,7 +161,7 @@ impl<'a> Parser<'a> {
         match self.value() {
             Ok(value) => Ok((value, self.cursor)),
             Err(error) => {
-                let Failure { cursor, reason } = match self.deferred {
+                let Failure { cursor, reason } = match self.deferred.take() {
                     Some(kept) if kept.cursor >= error.cursor => kept,
                     _ => error,
                 };
@@ -152,6 +171,14 @@ impl<'a> Parser<'a> {
                         ("argument.literal.incorrect", Some(suggestions.join("|")))
                     }
                     Reason::Key { key, arg, .. } => (key, arg),
+                    Reason::IntegerRange {
+                        literal,
+                        kind,
+                        magnitude,
+                    } => (
+                        "snbt.parser.number_parse_failure",
+                        Some(self.integer_range_message(literal, kind, magnitude)),
+                    ),
                 };
                 Err(SnbtError {
                     key,
@@ -192,21 +219,25 @@ impl<'a> Parser<'a> {
             },
         }
     }
-    fn integer_error(
+    fn integer_range_message(
         &self,
-        digits: &str,
-        minus: bool,
+        literal: IntegerLiteral,
         kind: u8,
-        signed: bool,
-        radix: u32,
         magnitude: Option<u64>,
-    ) -> Failure {
-        // The IntegerLiteral factories expose the Java numeric parser's detail.
-        let text = if minus {
-            format!("-{digits}")
-        } else {
-            digits.to_owned()
-        };
+    ) -> String {
+        // Only the selected diagnostic needs the text Java's number parser reports.
+        let IntegerLiteral {
+            digits,
+            radix,
+            minus,
+            signed,
+            ..
+        } = literal;
+        let mut text = String::new();
+        if minus {
+            text.push('-');
+        }
+        text.extend(self.input.clean_digits(digits).map(char::from));
         let for_input = || {
             if radix == 10 {
                 format!("For input string: \"{text}\"")
@@ -214,7 +245,7 @@ impl<'a> Parser<'a> {
                 format!("For input string: \"{text}\" under radix {radix}")
             }
         };
-        let message = match magnitude {
+        match magnitude {
             Some(value) if kind < 2 && value <= i32::MAX as u64 + u64::from(minus) => {
                 if signed {
                     format!("Value out of range. Value:\"{text}\" Radix:{radix}")
@@ -229,8 +260,7 @@ impl<'a> Parser<'a> {
                 format!("String value {text} exceeds range of unsigned long.")
             }
             _ => for_input(),
-        };
-        self.diagnostic("snbt.parser.number_parse_failure", Some(message), &[])
+        }
     }
     fn record<'v>(&mut self, cursor: usize, values: impl Iterator<Item = &'v str>) {
         if cursor < self.suggestion_cursor {
@@ -538,32 +568,32 @@ impl<'a> Parser<'a> {
         !self.eat("+") && self.eat("-")
     }
     /// `NumberRunParseRule.parse`: a rejected run is reported at its start.
-    fn digits(&mut self, radix: u32) -> Result<String, Failure> {
+    fn digits(&mut self, radix: u32) -> Result<Range<usize>, Failure> {
         self.skip();
         let start = self.cursor;
-        let mut text = String::new();
+        let mut last = None;
         while let Some(c) = self.peek().and_then(char::from_u32) {
             if c != '_' && !c.is_digit(radix) {
                 break;
             }
             self.bump();
-            text.push(c);
+            last = Some(c);
         }
-        if text.starts_with('_') || text.ends_with('_') {
+        if last == Some('_') || self.input.at(start) == Some(u32::from(b'_')) {
             self.cursor = start;
             return Err(self.error("snbt.parser.underscore_not_allowed"));
         }
-        if text.is_empty() {
+        if last.is_none() {
             Err(self.error(match radix {
                 2 => "snbt.parser.expected_binary_numeral",
                 16 => "snbt.parser.expected_hex_numeral",
                 _ => "snbt.parser.expected_decimal_numeral",
             }))
         } else {
-            Ok(text)
+            Ok(start..self.cursor)
         }
     }
-    fn exponent(&mut self) -> Result<(bool, String), Failure> {
+    fn exponent(&mut self) -> Result<(bool, Range<usize>), Failure> {
         self.expect("eE")?;
         let minus = self.sign();
         Ok((minus, self.digits(10)?))
@@ -596,22 +626,21 @@ impl<'a> Parser<'a> {
             text.push('-');
         }
         if let Some(whole) = whole {
-            text.push_str(&whole);
+            text.extend(self.input.clean_digits(whole).map(char::from));
         }
         if dot {
             text.push('.');
         }
         if let Some(fraction) = fraction {
-            text.push_str(&fraction);
+            text.extend(self.input.clean_digits(fraction).map(char::from));
         }
         if let Some((minus, digits)) = exponent {
             text.push('e');
             if minus {
                 text.push('-');
             }
-            text.push_str(&digits);
+            text.extend(self.input.clean_digits(digits).map(char::from));
         }
-        text.retain(|c| c != '_');
         if is_float {
             let value = text
                 .parse::<f32>()
@@ -635,6 +664,7 @@ impl<'a> Parser<'a> {
     fn integer(&mut self) -> Result<IntegerLiteral, Failure> {
         let minus = self.sign();
         let (digits, radix) = if self.eat("0") {
+            let zero = self.cursor - 1..self.cursor;
             if self.eat("xX") {
                 (self.digits(16)?, 16)
             } else if let Some(binary) = self.optional(|parser| {
@@ -645,7 +675,7 @@ impl<'a> Parser<'a> {
             } else if self.optional(|parser| parser.digits(10)).is_some() {
                 return Err(self.error("snbt.parser.leading_zero_not_allowed"));
             } else {
-                ("0".to_owned(), 10)
+                (zero, 10)
             }
         } else {
             (self.digits(10)?, 10)
@@ -685,11 +715,11 @@ impl<'a> Parser<'a> {
     }
     fn convert_integer(&self, literal: IntegerLiteral, array: Option<u8>) -> Result<Tag, Failure> {
         let IntegerLiteral {
-            mut digits,
             radix,
             minus,
             signed,
             kind,
+            ..
         } = literal;
         let kind = kind.unwrap_or(array.unwrap_or(2));
         if array.is_some_and(|array| kind > array) {
@@ -698,10 +728,16 @@ impl<'a> Parser<'a> {
         if minus && !signed {
             return Err(self.error("snbt.parser.expected_non_negative_number"));
         }
-        digits.retain(|c| c != '_');
+        let magnitude =
+            self.input
+                .clean_digits(literal.digits.clone())
+                .try_fold(0u64, |value, byte| {
+                    let digit = char::from(byte).to_digit(radix).expect("scanned digit");
+                    value
+                        .checked_mul(u64::from(radix))?
+                        .checked_add(u64::from(digit))
+                });
         let bits = [8, 16, 32, 64][usize::from(kind)];
-        let magnitude = u64::from_str_radix(&digits, radix)
-            .map_err(|_| self.integer_error(&digits, minus, kind, signed, radix, None))?;
         let max = if signed {
             (1u64 << (bits - 1)) - 1 + u64::from(minus)
         } else if bits == 64 {
@@ -709,13 +745,20 @@ impl<'a> Parser<'a> {
         } else {
             (1u64 << bits) - 1
         };
-        if magnitude > max {
-            return Err(self.integer_error(&digits, minus, kind, signed, radix, Some(magnitude)));
-        }
+        let Some(magnitude_in_range) = magnitude.filter(|&value| value <= max) else {
+            return Err(Failure {
+                cursor: self.cursor,
+                reason: Reason::IntegerRange {
+                    literal,
+                    kind,
+                    magnitude,
+                },
+            });
+        };
         let value = if minus {
-            magnitude.wrapping_neg() as i64
+            magnitude_in_range.wrapping_neg() as i64
         } else {
-            magnitude as i64
+            magnitude_in_range as i64
         };
         Ok(match kind {
             0 => Tag::Byte(value as i8),
@@ -955,9 +998,22 @@ mod tests {
     }
 
     #[test]
+    fn typed_array_converts_radix_spans_after_the_closer() {
+        let source = "[I;1_2i,0xFFui,0b1_1]";
+        let expected = Tag::IntArray(vec![12, 255, 3]);
+        assert_eq!(parse_snbt_argument(source), Ok((expected.clone(), 21)));
+        let units: Vec<_> = source.encode_utf16().collect();
+        assert_eq!(parse_snbt_utf16(&units), Ok((expected, 21)));
+    }
+
+    #[test]
     fn unsigned_int_overflow_reports_the_unsigned_range_error() {
-        for (digits, cursor) in [("9223372036854775808", 21), ("18446744073709551616", 22)] {
-            let error = parse_snbt_argument(&format!("{digits}ui")).unwrap_err();
+        for (source, digits, cursor) in [
+            ("9223372036854775808ui", "9223372036854775808", 21),
+            ("18446744073709551616ui", "18446744073709551616", 22),
+            ("[I;18446744073709551616ui]", "18446744073709551616", 26),
+        ] {
+            let error = parse_snbt_argument(source).unwrap_err();
             assert_eq!(error.key, "snbt.parser.number_parse_failure");
             assert_eq!(error.cursor, cursor);
             assert_eq!(
