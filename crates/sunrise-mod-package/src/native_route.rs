@@ -9,6 +9,17 @@ pub const INTERNALS_PACKAGE: &str = "sunrise-internals";
 pub const PACKAGES: [(&str, &str); 2] =
     [(API_PACKAGE, "mod_api"), (INTERNALS_PACKAGE, "internals")];
 
+/// Whether selecting `candidate` for the same registry crate would move the game's pin.
+/// Cargo unifies versions on the same major line, `0.minor` line, or exact `0.0.patch` line.
+/// An advisory without Cargo resolution can call this with a candidate its requirement accepts.
+pub fn game_registry_pin_conflicts(game: &semver::Version, candidate: &semver::Version) -> bool {
+    game != candidate
+        && game.major == candidate.major
+        && (game.major != 0
+            || (game.minor == candidate.minor
+                && (game.minor != 0 || game.patch == candidate.patch)))
+}
+
 /// How one mod must be compiled, from least to most demanding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Requirement<'a> {
