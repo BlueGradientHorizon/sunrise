@@ -16,5 +16,4 @@ Remove the `AudioStreamState::Buffering` branch; `Playing` now includes a muted 
 and placed. If a network producer needs a jitter buffer, keep it with the producer and push whole frames \
 when ready. The async queue still holds a fixed one second of source PCM (`AUDIO_STREAM_RING_MAX_MS`), \
 which is a capacity, not a playback threshold. Drop or retry the suffix that `push` did not accept. \
-For PCM your mod generates on demand, supply an `AudioStream` instead of scheduling pushes. Do not reuse \
-encoded bytes written with the old `StreamSpec`, `SpecFault` or `AudioStreamState` layout."""
+For PCM your mod generates on demand, supply an `AudioStream` instead of scheduling pushes."""

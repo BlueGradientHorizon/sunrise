@@ -643,6 +643,17 @@ mod tests {
             .unwrap();
         assert!(scoped.scope.is_some());
         assert_eq!(scoped.version, 2);
+        for (name, version) in [
+            ("add_client_reload_listeners", 2),
+            ("add_server_reload_listeners", 2),
+            ("register_entity_layers", 4),
+            ("register_entity_renderers", 4),
+            ("section_visibility", 2),
+            ("movement_input_update", 1),
+        ] {
+            let hook = points.iter().find(|hook| hook.name == name).unwrap();
+            assert_eq!(hook.version, version, "{name}");
+        }
     }
 
     #[test]

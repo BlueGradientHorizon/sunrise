@@ -1046,7 +1046,7 @@ one of these moments has to move that logic into a client native mod.
 | `item_tooltip.rs` | `item_tooltip` |
 | `key_mapping_pre.rs` | `key_mapping_pre` |
 | `left_click_empty.rs` | `left_click_empty` |
-| `movement_input.rs` | `movement_input_update` |
+| `movement_input_update.rs` | `movement_input_update` |
 | `player_heart_type.rs` | `player_heart_type` |
 | `register_block_tint_sources.rs` | `register_block_tint_sources` |
 | `register_color_resolvers.rs` | `register_color_resolvers` |

@@ -119,7 +119,6 @@ ids = [
   "type:MouseButtonPostEvent",
   "type:MouseButtonPreEvent",
   "type:MouseScrollingEvent",
-  "type:MovementInputEvent",
   "type:NbtUpgradeError",
   "type:NeighborChangedEvent",
   "type:NeighborNotifyEvent",

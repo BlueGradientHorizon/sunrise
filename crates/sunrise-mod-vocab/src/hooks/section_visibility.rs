@@ -3,9 +3,10 @@
 pub trait Hooks {
     /// A chunk section in the player's current level is about to mesh: return one
     /// `SectionVisibility` or `None`. `input` is the raw section with its one-block border, read
-    /// before any mod hid a state. Asked on the client world thread before the section goes to a
-    /// meshing worker, including remeshes after a neighbouring column arrives or unloads, a
-    /// resource reload, or `ClientHost::refresh_render_visibility`. A first all-air compile is
+    /// before any mod hid a state. `SectionCell::State` gives the canonical `BlockState`.
+    /// Asked on the client world thread before the section goes to a meshing worker, including
+    /// remeshes after a neighbouring column arrives or unloads, a resource reload, or
+    /// `ClientHost::refresh_render_visibility`. A first all-air compile is
     /// skipped if no mod contributes section geometry. Other levels drawn through level views
     /// do not call this hook. Answers
     /// only take away, and every mod's are combined, so no mod brings back what another hid. An
@@ -71,6 +72,7 @@ it may read the `ClientHost`; it changes when the section meshes again, which a 
         out = "answers",
         answered_by = "mod",
         isolate = true,
+        version = 2,
         neoforge = "none verified"
     )]
     fn section_visibility(
