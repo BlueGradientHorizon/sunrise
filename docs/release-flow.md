@@ -452,9 +452,11 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
 The stable workflow compares the signed SDK surfaces against the previous published stable release of the same
 Minecraft version and Sunrise major version (`26.3-0.x` is one line). A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
-minor refuses them too. For content manifest declarations, the check only compares the SDK's `content_api` version
-string until [#3817](https://github.com/sunrise-org/sunrise/issues/3817) exports the declarations themselves. That
-version must stay the same within a line. The first release of a line has no API restriction. No label, change
+minor refuses them too. For content mods, this check only compares the SDK's `content_api` version string, which
+must stay the same within a line. It does not check the manifest or content schema declarations: removing an
+accepted key without changing `content_api`, for example, passes the check.
+[#3817](https://github.com/sunrise-org/sunrise/issues/3817) closes this gap by exporting those declarations for
+comparison. The first release of a line has no API restriction. No label, change
 note or dispatch option overrides the check. This compares declarations, not behaviour: a vanilla parity fix is
 allowed in a patch even when a mod can observe it.
 
