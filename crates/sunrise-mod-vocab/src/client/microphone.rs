@@ -23,7 +23,8 @@ pub const MIC_RING_MAX_MS: u32 = 500;
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct MicDevice {
-    /// Opaque, distinct input selector to pass to [`MicSpec::with_device`].
+    /// Opaque, distinct input selector to pass to [`MicSpec::with_device`]. Refresh the list
+    /// if the OS changes the device inventory; do not construct or parse this string.
     pub id: String,
     /// Human-readable display label for this input device.
     pub label: String,
@@ -78,7 +79,8 @@ impl MicSpec {
     }
 
     /// The same specification targeting an input [`MicDevice::id`] from `microphone_devices()`.
-    /// A disappeared endpoint is not replaced by a device with a matching display label.
+    /// A disappeared endpoint is not replaced by a device with a matching display label. If OS
+    /// permissions prevent checking the targeted endpoint, opening can return [`MicRefusal::OsDenied`].
     pub fn with_device(self, device: impl Into<String>) -> Self {
         Self {
             device: Some(MicTarget::DeviceId(device.into())),
@@ -143,11 +145,11 @@ pub enum MicRefusal {
     /// More than one input device matches the requested selection; select a specific
     /// [`MicDevice::id`] from `microphone_devices()`.
     AmbiguousDevice,
-    /// The operating system denied microphone permission.
+    /// The operating system denied microphone access or prevented checking the requested input.
     OsDenied,
     /// The input device is busy or held in exclusive use.
     Busy,
-    /// The input device or capture worker failed to open or start.
+    /// Audio input discovery failed, or the input device or capture worker failed to open or start.
     DeviceFailed,
 }
 

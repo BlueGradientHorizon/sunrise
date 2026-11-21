@@ -483,18 +483,17 @@ trait BackendDevice: Clone + Send + 'static {
 #[cfg(any(feature = "audio", test))]
 struct DeviceInventory<D> {
     devices: Vec<D>,
-    // Partial discovery can still return independently usable endpoints.
+    // Partial discovery can still return independently usable endpoints. When asked for an
+    // explicit target, this error concerns only the part of discovery needed for that target.
     discovery_error: Option<mod_api::MicRefusal>,
 }
 
 #[cfg(any(feature = "audio", test))]
-fn record_probe_error(error: &mut Option<mod_api::MicRefusal>, refusal: mod_api::MicRefusal) {
-    match refusal {
-        mod_api::MicRefusal::NoDevice => {}
-        mod_api::MicRefusal::OsDenied => *error = Some(refusal),
-        _ => {
-            error.get_or_insert(refusal);
-        }
+fn record_input_error(error: &mut Option<mod_api::MicRefusal>, refusal: mod_api::MicRefusal) {
+    use mod_api::MicRefusal::{NoDevice, OsDenied};
+
+    if refusal == OsDenied || matches!(*error, None | Some(NoDevice)) {
+        *error = Some(refusal);
     }
 }
 
@@ -503,10 +502,23 @@ trait CaptureBackend: Send + Sync + 'static {
     type Device: BackendDevice;
     type Stream;
 
-    /// Enumerates all backend devices without an error-erasing `supports_input()` filter.
-    fn devices(&self) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal>;
+    /// Enumerates backend devices without an error-erasing `supports_input()` filter.
+    fn devices(
+        &self,
+        target: Option<&mod_api::MicTarget>,
+    ) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal>;
 
     fn default_input_device(&self) -> Result<Option<Self::Device>, mod_api::MicRefusal>;
+
+    /// Runs capture startup, including input probing, after any OS authorization required
+    /// by this backend. Resolving device metadata alone must not request access.
+    fn with_input_authorization(
+        &self,
+        open: impl FnOnce() -> Result<Self::Stream, mod_api::MicRefusal>,
+    ) -> Result<Self::Stream, mod_api::MicRefusal> {
+        open()
+    }
+
     fn open_stream(
         &self,
         device: &Self::Device,
@@ -570,7 +582,7 @@ fn list_devices_with<B: CaptureBackend>(
     let DeviceInventory {
         devices,
         mut discovery_error,
-    } = backend.devices()?;
+    } = backend.devices(None)?;
     let mut found = Vec::new();
     let mut reg = registry.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -584,8 +596,8 @@ fn list_devices_with<B: CaptureBackend>(
                     found.push(mod_api::MicDevice::new(id, label));
                 }
             }
-            Ok(None) => {}
-            Err(err) => record_probe_error(&mut discovery_error, err),
+            Ok(None) | Err(mod_api::MicRefusal::NoDevice) => {}
+            Err(err) => record_input_error(&mut discovery_error, err),
         }
     }
     if found.is_empty()
@@ -606,57 +618,82 @@ fn resolve_and_open_stream<B: CaptureBackend>(
 ) -> Result<B::Stream, mod_api::MicRefusal> {
     use mod_api::{MicRefusal, MicTarget};
 
-    let (device, probed) = match &spec.device {
-        None => (
-            backend
-                .default_input_device()?
-                .ok_or(MicRefusal::NoDevice)?,
-            None,
-        ),
-        Some(MicTarget::DeviceId(id)) => {
+    let device = match &spec.device {
+        None => backend
+            .default_input_device()?
+            .ok_or(MicRefusal::NoDevice)?,
+        Some(target @ MicTarget::DeviceId(id)) => {
             let remembered = registry
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .lookup(id);
-            let mut matching = backend.devices()?.devices.into_iter().filter(|dev| {
+            let DeviceInventory {
+                devices,
+                discovery_error,
+            } = backend.devices(Some(target))?;
+            let mut matching = devices.into_iter().filter(|dev| {
                 if let Some(remembered) = &remembered {
                     dev.same_endpoint(remembered)
                 } else {
                     dev.stable_selector().as_deref() == Some(id.as_str())
                 }
             });
-            let device = matching.next().ok_or(MicRefusal::NoDevice)?;
+            let device = matching
+                .next()
+                .ok_or(discovery_error.unwrap_or(MicRefusal::NoDevice))?;
             if matching.next().is_some() {
                 return Err(MicRefusal::AmbiguousDevice);
             }
-            (device, None)
+            device
         }
-        Some(MicTarget::Label(label)) => {
-            let mut candidate = None;
-            let mut probe_error = None;
-            for dev in backend.devices()?.devices {
-                if dev.label().as_deref() != Some(label.as_str()) {
-                    continue;
-                }
-                match dev.input_configs() {
-                    Ok(Some(configs)) => {
-                        if candidate.is_some() {
-                            return Err(MicRefusal::AmbiguousDevice);
+        Some(target @ MicTarget::Label(label)) => {
+            let DeviceInventory {
+                devices,
+                discovery_error,
+            } = backend.devices(Some(target))?;
+            let mut matching = devices
+                .into_iter()
+                .filter(|dev| dev.label().as_deref() == Some(label.as_str()))
+                .peekable();
+            // CoreAudio enumerates names without opening an AudioUnit, but queries
+            // input configurations through one. Do not ask for access to an absent
+            // name, and do not let a probe skip the OS permission request.
+            if matching.peek().is_none() {
+                return Err(discovery_error.unwrap_or(MicRefusal::NoDevice));
+            }
+            return backend.with_input_authorization(|| {
+                let mut candidate = None;
+                let mut probe_error = None;
+                for dev in matching {
+                    match dev.input_configs() {
+                        Ok(Some(configs)) => {
+                            if candidate.is_some() {
+                                return Err(MicRefusal::AmbiguousDevice);
+                            }
+                            candidate = Some((dev, configs));
                         }
-                        candidate = Some((dev, Some(configs)));
+                        Ok(None) | Err(MicRefusal::NoDevice) => {}
+                        Err(err) => record_input_error(&mut probe_error, err),
                     }
-                    Ok(None) => {}
-                    Err(err) => record_probe_error(&mut probe_error, err),
                 }
-            }
-            if probe_error == Some(MicRefusal::OsDenied) {
-                return Err(MicRefusal::OsDenied);
-            }
-            candidate.ok_or_else(|| probe_error.unwrap_or(MicRefusal::NoDevice))?
+                if probe_error == Some(MicRefusal::OsDenied) {
+                    return Err(MicRefusal::OsDenied);
+                }
+                let (device, configs) = match candidate {
+                    Some(candidate) => candidate,
+                    None => {
+                        if let Some(err) = discovery_error {
+                            record_input_error(&mut probe_error, err);
+                        }
+                        return Err(probe_error.unwrap_or(MicRefusal::NoDevice));
+                    }
+                };
+                backend.open_stream(&device, Some(configs), spec, ring, events)
+            });
         }
     };
 
-    backend.open_stream(&device, probed, spec, ring, events)
+    backend.with_input_authorization(|| backend.open_stream(&device, None, spec, ring, events))
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -972,6 +1009,7 @@ mod tests {
         expose_selector: bool,
         label: String,
         supported: Result<Vec<InputConfigRange>, MicRefusal>,
+        probed: Option<Arc<AtomicBool>>,
         default_cfg: Result<InputConfig, MicRefusal>,
     }
 
@@ -987,6 +1025,7 @@ mod tests {
                     max_rate: 48_000,
                     format,
                 }]),
+                probed: None,
                 default_cfg: Ok(InputConfig {
                     channels: 1,
                     rate,
@@ -1012,6 +1051,9 @@ mod tests {
         }
 
         fn input_configs(&self) -> Result<Option<Self::InputConfigs>, MicRefusal> {
+            if let Some(probed) = &self.probed {
+                probed.store(true, Ordering::Relaxed);
+            }
             match &self.supported {
                 Ok(ranges) if ranges.is_empty() => Ok(None),
                 Ok(ranges) => Ok(Some(ranges.clone())),
@@ -1042,6 +1084,9 @@ mod tests {
         devices: Vec<FakeDevice>,
         default_device: Option<FakeDevice>,
         devices_error: Option<MicRefusal>,
+        // The first native request and its result, if this fake needs OS authorization.
+        authorization_request: Option<Result<(), MicRefusal>>,
+        authorization_requests: usize,
         preserve_hardware_rate: bool,
         startup_error: Option<MicRefusal>,
         opened: Vec<OpenedStreamRecord>,
@@ -1059,6 +1104,8 @@ mod tests {
                     devices,
                     default_device,
                     devices_error: None,
+                    authorization_request: None,
+                    authorization_requests: 0,
                     preserve_hardware_rate: false,
                     startup_error: None,
                     opened: Vec::new(),
@@ -1072,7 +1119,10 @@ mod tests {
         type Device = FakeDevice;
         type Stream = FakeStream;
 
-        fn devices(&self) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
+        fn devices(
+            &self,
+            _target: Option<&mod_api::MicTarget>,
+        ) -> Result<DeviceInventory<Self::Device>, MicRefusal> {
             let barrier = self.state.lock().unwrap().devices_barrier.clone();
             if let Some(barrier) = barrier {
                 barrier.wait();
@@ -1090,6 +1140,20 @@ mod tests {
 
         fn default_input_device(&self) -> Result<Option<Self::Device>, MicRefusal> {
             Ok(self.state.lock().unwrap().default_device.clone())
+        }
+
+        fn with_input_authorization(
+            &self,
+            open: impl FnOnce() -> Result<Self::Stream, MicRefusal>,
+        ) -> Result<Self::Stream, MicRefusal> {
+            {
+                let mut state = self.state.lock().unwrap();
+                if let Some(decision) = state.authorization_request {
+                    state.authorization_requests += 1;
+                    decision?;
+                }
+            }
+            open()
         }
 
         fn open_stream(
@@ -1569,6 +1633,32 @@ mod tests {
             "coreaudio:75"
         );
         mic.close();
+    }
+
+    #[test]
+    fn label_open_requests_native_permission_before_a_failing_input_probe() {
+        let mut device = FakeDevice::input("coreaudio:42", "Desk Mic", 48_000, PcmFormat::F32);
+        device.supported = Err(MicRefusal::NoDevice);
+        let probed = Arc::new(AtomicBool::new(false));
+        device.probed = Some(Arc::clone(&probed));
+        let backend = Arc::new(FakeBackend::new(vec![device], None));
+        backend.state.lock().unwrap().authorization_request = Some(Err(MicRefusal::OsDenied));
+        let pool = MicPoolInner::new(true, Arc::clone(&backend));
+        let spec = MicSpec::new(1, 48_000);
+
+        assert_eq!(
+            pool.open(&spec.clone().with_label("Absent Mic")).err(),
+            Some(MicRefusal::NoDevice)
+        );
+        assert_eq!(backend.state.lock().unwrap().authorization_requests, 0);
+        assert_eq!(
+            pool.open(&spec.with_label("Desk Mic")).err(),
+            Some(MicRefusal::OsDenied)
+        );
+        assert!(!probed.load(Ordering::Relaxed));
+        let state = backend.state.lock().unwrap();
+        assert_eq!(state.authorization_requests, 1);
+        assert!(state.opened.is_empty());
     }
 
     #[test]

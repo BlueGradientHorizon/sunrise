@@ -171,7 +171,10 @@ impl CaptureBackend for CpalBackend {
     type Device = CpalDevice;
     type Stream = cpal::Stream;
 
-    fn devices(&self) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal> {
+    fn devices(
+        &self,
+        _target: Option<&mod_api::MicTarget>,
+    ) -> Result<DeviceInventory<Self::Device>, mod_api::MicRefusal> {
         Ok(DeviceInventory {
             devices: cpal::default_host()
                 .devices()
@@ -191,10 +194,18 @@ impl CaptureBackend for CpalBackend {
         {
             // Only enumerated CPAL devices register a removal listener. Open the same
             // CoreAudio endpoint via that route even when the OS selected it by default.
-            Ok(enumerated_default(&device, self.devices()?.devices))
+            Ok(enumerated_default(&device, self.devices(None)?.devices))
         }
         #[cfg(not(target_os = "macos"))]
         Ok(Some(device))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn with_input_authorization(
+        &self,
+        open: impl FnOnce() -> Result<Self::Stream, mod_api::MicRefusal>,
+    ) -> Result<Self::Stream, mod_api::MicRefusal> {
+        macos_permission::open(open)
     }
 
     fn open_stream(
@@ -205,32 +216,16 @@ impl CaptureBackend for CpalBackend {
         ring: Arc<CaptureRing>,
         events: Arc<StreamEvents>,
     ) -> Result<Self::Stream, mod_api::MicRefusal> {
-        let open = || device.start_capture(probed, spec, ring, events);
-        #[cfg(target_os = "macos")]
-        {
-            macos_permission::open(open)
-        }
-        #[cfg(not(target_os = "macos"))]
-        open()
-    }
-}
-
-impl CpalDevice {
-    fn start_capture(
-        &self,
-        probed: Option<Vec<InputConfigRange>>,
-        spec: &mod_api::MicSpec,
-        ring: Arc<CaptureRing>,
-        events: Arc<StreamEvents>,
-    ) -> Result<cpal::Stream, mod_api::MicRefusal> {
         let config = if cfg!(target_os = "macos") {
             // Changing the nominal rate on CoreAudio mutates the hardware clock for
             // all streams. Keep its current rate and resample through InputConverter.
-            self.default_input_config()?
+            device.default_input_config()?
         } else {
             let configs = match probed {
                 Some(configs) => configs,
-                None => self.input_configs()?.ok_or(mod_api::MicRefusal::NoDevice)?,
+                None => device
+                    .input_configs()?
+                    .ok_or(mod_api::MicRefusal::NoDevice)?,
             };
             choose_best_config(&configs, spec).ok_or(mod_api::MicRefusal::DeviceFailed)?
         };
@@ -239,7 +234,7 @@ impl CpalDevice {
             sample_rate: cpal::SampleRate(config.rate),
             buffer_size: cpal::BufferSize::Default,
         };
-        let device = &self.device;
+        let device = &device.device;
         let stream = match config.format {
             PcmFormat::I16 => build_i16_stream(device, &stream_config, spec, ring, events),
             PcmFormat::I8 => build_typed_stream::<i8>(device, &stream_config, spec, ring, events),

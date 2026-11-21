@@ -4188,6 +4188,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-audio-input"
+version = "0.1.0"
+dependencies = [
+ "alsa",
+ "alsa-sys",
+ "block2 0.6.2",
+ "libc",
+ "objc2 0.6.5",
+ "objc2-av-foundation",
+]
+
+[[package]]
 name = "sunrise-bench"
 version = "0.1.0"
 dependencies = [
@@ -4394,7 +4406,6 @@ dependencies = [
  "ab_glyph",
  "alsa",
  "base64 0.22.1",
- "block2 0.6.2",
  "bytemuck",
  "chrono",
  "cpal",
@@ -4407,8 +4418,6 @@ dependencies = [
  "lz4_flex",
  "miniz_oxide 0.8.9",
  "naga",
- "objc2 0.6.5",
- "objc2-av-foundation",
  "png",
  "pollster",
  "rustix 1.1.5",
@@ -4418,6 +4427,7 @@ dependencies = [
  "sha2",
  "smallvec",
  "sunrise-assets",
+ "sunrise-audio-input",
  "sunrise-border",
  "sunrise-client-core",
  "sunrise-client-input",

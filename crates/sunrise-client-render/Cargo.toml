@@ -15,6 +15,7 @@ sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 # The GUI atlas's pixels, kept compressed once uploaded (hud.rs `pack_pixels`).
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode", "checked-decode"] }
 sunrise-assets = { path = "../sunrise-assets" }
+sunrise-audio-input = { path = "../sunrise-audio-input", optional = true }
 sunrise-client-core = { path = "../sunrise-client-core" }
 sunrise-client-input = { path = "../sunrise-client-input" }
 sunrise-command = { path = "../sunrise-command" }
@@ -77,12 +78,6 @@ rustix = { version = "1", default-features = false, features = ["std", "time"] }
 alsa = { version = "0.9", optional = true }
 libc = { version = "0.2", optional = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-# AVFoundation exposes microphone authorization separately from CPAL's stream errors.
-block2 = { version = "0.6.2", optional = true }
-objc2 = { version = "0.6.5", optional = true }
-objc2-av-foundation = { version = "0.3.2", default-features = false, features = ["std", "AVCaptureDevice", "AVMediaFormat", "block2"], optional = true }
-
 [target.'cfg(windows)'.dependencies]
 wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }
 
@@ -91,7 +86,7 @@ wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 
 [features]
 # Sound output and input: sunrise-client's `audio` feature.
-audio = ["dep:cpal", "dep:alsa", "dep:libc", "dep:block2", "dep:objc2", "dep:objc2-av-foundation"]
+audio = ["dep:cpal", "dep:alsa", "dep:libc", "dep:sunrise-audio-input"]
 # Helpers sunrise-client's tests build their fixtures with.
 test-support = []
 

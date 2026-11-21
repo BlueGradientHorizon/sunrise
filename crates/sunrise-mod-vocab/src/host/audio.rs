@@ -77,7 +77,8 @@ pub trait AudioClientHost {
     /// Lists the client's available audio input devices, each with a distinct opaque selector
     /// ([`MicDevice::id`]) and a human-readable display label ([`MicDevice::label`]). Returns an
     /// empty list when no input devices exist or client audio capture is disabled. An individual
-    /// inaccessible endpoint does not hide other available inputs.
+    /// inaccessible endpoint does not hide other available inputs. On macOS, listing does not
+    /// request microphone permission.
     ///
     /// Refuses with [`MicRefusal::OnServer`] on a server, [`MicRefusal::OsDenied`] if OS permissions
     /// block enumeration or leave no listable inputs, [`MicRefusal::Unavailable`] outside client
@@ -103,12 +104,14 @@ pub trait AudioClientHost {
     /// contention. Calling [`MicRef::close`] or dropping the handle stops capture and waits for
     /// the stream's teardown thread to release the OS input device before returning; a backend
     /// device error also releases the OS stream promptly without waiting for `close`, drop, or a
-    /// tick. The engine never records or transmits captured audio. On macOS, the first open can
-    /// wait for the operating system's microphone permission decision.
+    /// tick. The engine never records or transmits captured audio. On macOS, opening a matching
+    /// endpoint can wait for the operating system's first microphone permission decision, before
+    /// probing the input configuration.
     ///
     /// Refuses with [`MicRefusal`] when called on a server, outside client setup or later, with
-    /// an invalid [`MicSpec`], when the OS denies permission, when a selected device vanished or
-    /// is ambiguous, or when no matching device can be opened.
+    /// an invalid [`MicSpec`], when the OS denies permission or prevents checking the selected
+    /// endpoint, when a selected device vanished or is ambiguous, or when no matching device can
+    /// be opened.
     ///
     /// ```
     /// use mod_api::{ClientHost, MicRef, MicRefusal, MicSpec};
