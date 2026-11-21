@@ -97,7 +97,8 @@ pub trait DrawContext {
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         unimplemented!("DrawContext::gui_nine_slice")
     }
-    /// A vanilla tooltip at the cursor, in GUI pixels.
+    /// A vanilla tooltip at the cursor, in GUI pixels. This local draw has no serialization
+    /// depth cap, but unrepresentable component metadata refuses the tooltip before drawing.
     fn gui_tooltip(&mut self, lines: &[Text], at: [f32; 2]) -> Result<(), TextFormError> {
         unimplemented!("DrawContext::gui_tooltip")
     }
@@ -478,7 +479,8 @@ pub trait BlockEntityDrawContext {
     /// drawn, in font pixels (`Font.width`): centre a line by starting it at minus half its
     /// width. Obfuscated glyphs change only when the block is drawn again: kept text stands
     /// still. Clamp text read from NBT, and widen `block_entity_render_bounding_box`
-    /// for a long line. API @API:draw_text@.
+    /// for a long line. Unrepresentable component metadata returns `TextFormError` before
+    /// drawing; the local component has no serialization depth cap. API @API:draw_text@.
     fn text(
         &mut self,
         text: &Text,

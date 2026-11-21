@@ -120,9 +120,13 @@ impl From<crate::TextFormError> for PackFinderError {
     }
 }
 
-/// Local text services during pack repository discovery. A repository does not lend a world.
-// no wire: borrows live text services for the callback.
+/// Local text services and any available host during pack repository discovery.
+// no wire: borrows services for the callback.
 pub trait PackDiscoveryContext: crate::prelude::TextHost {
+    /// The logical side's host when a game is rediscovering packs, or `None` before
+    /// the game exists. World queries still return `None` if no world is open.
+    fn live_host(&mut self) -> Option<crate::HostSide<'_>>;
+
     /// Client font measurement and visual order, when discovery runs on a client with a font.
     /// `None` on startup before a font is loaded and on a logical server.
     fn client_text(&self) -> Option<&dyn crate::prelude::ClientTextClientHost> {

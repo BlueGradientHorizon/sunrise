@@ -32,7 +32,7 @@ struct Meter {
 }
 
 struct TrackedBar {
-    owner: Option<&'static str>,
+    owner: &'static str,
     bar: Arc<Mutex<Bar>>,
 }
 
@@ -126,10 +126,10 @@ impl ModProgress {
 impl mod_api::StartupScreen for ModProgress {
     fn open(
         self: Arc<Self>,
+        owner: &'static str,
         label: &str,
         steps: u32,
     ) -> Result<Box<dyn mod_api::ProgressMeter>, mod_api::StartupProgressError> {
-        let owner = mod_api::content::crash::current_native_mod();
         let mut state = self.state();
         let open_for_owner = state
             .bars
@@ -139,8 +139,7 @@ impl mod_api::StartupScreen for ModProgress {
         if open_for_owner >= MAX_BARS_PER_MOD {
             drop(state);
             log::warn!(
-                "Sunrise: mod {} exceeded the {MAX_BARS_PER_MOD}-bar startup progress limit",
-                owner.unwrap_or("unknown")
+                "Sunrise: mod {owner} exceeded the {MAX_BARS_PER_MOD}-bar startup progress limit"
             );
             return Err(mod_api::StartupProgressError::TooManyBars);
         }
@@ -237,7 +236,7 @@ mod tests {
     fn multibyte_labels_are_stored_verbatim_and_messages_stop_at_char_boundary() {
         let screen = Arc::new(ModProgress::new(false));
         let initial = format!("{}界", "é".repeat(127));
-        let bar = screen.clone().open(&initial, 1).unwrap();
+        let bar = screen.clone().open("test", &initial, 1).unwrap();
         assert_eq!(screen.shown(Instant::now()).0[0].0, initial);
         let updated = "é".repeat(129);
         bar.label(&updated);
@@ -247,58 +246,62 @@ mod tests {
     }
 
     #[test]
-    fn sixty_fifth_bar_is_refused_per_mod_without_blocking_other_mods() {
-        use mod_api::content::crash::{ModCall, enter_native_mod};
+    fn sixty_fifth_bar_is_refused_per_mod_even_from_a_scoped_worker() {
+        use mod_api::{
+            ComponentTypesEvent, Hooks, ModEntry, RegistrationContext, StartupProgress,
+            StartupProgressError,
+        };
+
+        struct OpensBars(&'static str, Arc<Mutex<Vec<StartupProgress>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for OpensBars {
+            fn component_types(
+                &self,
+                context: &RegistrationContext,
+                _: &mut ComponentTypesEvent<'_>,
+            ) {
+                let mut bars: Vec<_> = (0..32)
+                    .map(|_| context.progress(self.0, 1).unwrap())
+                    .collect();
+                std::thread::scope(|scope| {
+                    scope
+                        .spawn(|| {
+                            bars.extend((0..32).map(|_| context.progress(self.0, 1).unwrap()));
+                            assert!(matches!(
+                                context.progress("worker refused", 1),
+                                Err(StartupProgressError::TooManyBars)
+                            ));
+                        })
+                        .join()
+                        .unwrap();
+                });
+                assert!(matches!(
+                    context.progress("listener refused", 1),
+                    Err(StartupProgressError::TooManyBars)
+                ));
+                drop(bars.pop());
+                bars.push(context.progress(self.0, 1).unwrap());
+                self.1.lock().unwrap().extend(bars);
+            }
+        }
 
         let screen = Arc::new(ModProgress::new(false));
-        let alpha_call = ModCall {
-            id: "alpha",
-            hook: "register",
-            part: None,
-        };
-        let beta_call = ModCall {
-            id: "beta",
-            hook: "register",
-            part: None,
-        };
-
-        let mut alpha_meters = {
-            let _guard = enter_native_mod(alpha_call);
-            let meters: Vec<_> = (0..64)
-                .map(|_| screen.clone().open("alpha kept", 1).unwrap())
-                .collect();
-            assert!(matches!(
-                screen.clone().open("alpha refused", 1),
-                Err(mod_api::StartupProgressError::TooManyBars)
-            ));
-            meters
-        };
-
-        // Another mod still has its full 64-bar budget while alpha holds 64 bars.
-        let beta_meter = {
-            let _guard = enter_native_mod(beta_call);
-            screen.clone().open("beta allowed", 1).unwrap()
-        };
-        assert_eq!(screen.shown(Instant::now()).0[0].0, "beta allowed");
-
-        // Dropping one of alpha's bars reopens one slot for alpha only.
-        drop(alpha_meters.pop());
-        {
-            let _guard = enter_native_mod(alpha_call);
-            alpha_meters.push(screen.clone().open("alpha replacement", 1).unwrap());
-            assert!(matches!(
-                screen.clone().open("alpha refused again", 1),
-                Err(mod_api::StartupProgressError::TooManyBars)
-            ));
-        }
-        drop(beta_meter);
-        drop(alpha_meters);
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let context = mod_api::testing::registration_context_with_startup_screen(screen.clone());
+        let mods =
+            ["alpha", "beta"].map(|id| ModEntry::new(id, Box::new(OpensBars(id, opened.clone()))));
+        mod_api::testing::with_dispatch(Vec::from(mods).into(), || {
+            mod_api::dispatch_component_types(&context, &mut Vec::new());
+        });
+        assert_eq!(opened.lock().unwrap().len(), 128);
+        opened.lock().unwrap().clear();
+        assert!(screen.shown(Instant::now()).0.is_empty());
     }
 
     #[test]
     fn zero_step_bar_remains_finite_and_clamped() {
         let screen = Arc::new(ModProgress::new(false));
-        let bar = screen.clone().open("empty", 0).unwrap();
+        let bar = screen.clone().open("test", "empty", 0).unwrap();
         bar.step();
         bar.set(u32::MAX);
         assert_eq!(screen.shown(Instant::now()).0, [("empty".into(), 0.0)]);
@@ -322,7 +325,7 @@ mod tests {
     #[test]
     fn bars_read_their_steps_newest_first_and_leave_when_dropped() {
         let screen = Arc::new(ModProgress::new(false));
-        let first = screen.clone().open("Baking\nmodels", 10).unwrap();
+        let first = screen.clone().open("test", "Baking\nmodels", 10).unwrap();
         std::thread::scope(|scope| {
             for _ in 0..2 {
                 scope.spawn(|| {
@@ -340,7 +343,7 @@ mod tests {
         assert_eq!(screen.shown(now()).0[0].1, 1.0);
         // Other bars with the same label still refer to distinct meters.
         let mut more: Vec<_> = (0..4)
-            .map(|_| screen.clone().open("Models", 2).unwrap())
+            .map(|_| screen.clone().open("test", "Models", 2).unwrap())
             .collect();
         more[2].step();
         assert_eq!(

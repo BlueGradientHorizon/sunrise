@@ -573,9 +573,12 @@ mod tests {
             }
             fn config_reloading(
                 &self,
-                context: &dyn mod_api::ConfigContext,
+                host: mod_api::HostSide<'_>,
                 event: &mut ConfigReloadingEvent<'_>,
             ) {
+                let mod_api::HostSide::Server(context) = host else {
+                    panic!("expected the server polling host");
+                };
                 assert!(
                     context
                         .config_files()

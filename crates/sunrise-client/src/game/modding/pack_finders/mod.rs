@@ -103,9 +103,13 @@ impl PackFinders for Registry {
 }
 
 /// A repository may be discovered before Game exists. As with startup reload
-/// listeners, registration has no world reads; only the supplied builder is live.
+/// listeners, this path does not have a game host to lend.
 struct StartupDiscovery;
-impl PackDiscoveryContext for StartupDiscovery {}
+impl PackDiscoveryContext for StartupDiscovery {
+    fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
+        None
+    }
+}
 impl mod_api::prelude::TextHost for StartupDiscovery {
     fn text_string(&self, text: &mod_api::Text) -> String {
         sunrise_client::lang::scoped(sunrise_client::lang::Language::default(), || {
@@ -131,7 +135,7 @@ pub(super) fn discover(kind: PackType, mods: &ModsState) -> Vec<Pack> {
     }
     let mut registry = Registry::new(kind, mods.clone());
     if matches!(kind, PackType::ClientResources | PackType::ServerData) {
-        mod_api::dispatch_add_pack_finders(&StartupDiscovery, &mut registry);
+        mod_api::dispatch_add_pack_finders(&mut StartupDiscovery, &mut registry);
     }
     registry.packs
 }

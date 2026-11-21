@@ -44,7 +44,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
         fn config_unloading(
             &self,
-            _: &dyn mod_api::ConfigContext,
+            _: &mut dyn ServerHost,
             _: &mut mod_api::ConfigUnloadingEvent<'_>,
         ) {
             self.0.lock().unwrap().push("config-unloading");

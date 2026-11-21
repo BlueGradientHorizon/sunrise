@@ -61,6 +61,42 @@ fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
                 indices
             );
         }
+        // Independent equal styles form one UTF-16 run; a color or click change starts
+        // another. The sidecar must still return each character's own opaque metadata.
+        let mut dialog = mod_api::Tag::compound([("leaf", mod_api::Tag::Int(7))]);
+        for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+            dialog = mod_api::Tag::compound([("next", dialog)]);
+        }
+        let mut separate = Text::literal("");
+        for (letter, color, marker) in [
+            ("A", "red", 1),
+            ("B", "#FF5555", 2),
+            ("C", "gold", 3),
+            ("D", "gold", 4),
+        ] {
+            let mut child = Text::literal(letter);
+            child.style.color = Some(color.into());
+            child.style.metadata = mod_api::Tag::compound([("marker", mod_api::Tag::Int(marker))]);
+            child.style.click = Some(if marker == 4 {
+                mod_api::text::TextClick::CopyToClipboard("different".into())
+            } else {
+                mod_api::text::TextClick::ShowDialog(sunrise_core::nbt::clone_tag(&dialog))
+            });
+            separate.children.push(child);
+        }
+        let output = host.text_visual_order(&separate);
+        assert_eq!(
+            output.iter().map(|v| v.source_index).collect::<Vec<_>>(),
+            [0, 1, 0, 0]
+        );
+        for (i, output) in output.iter().enumerate() {
+            assert_eq!(
+                output.style.metadata.get("marker"),
+                Some(&mod_api::Tag::Int(i as i32 + 1))
+            );
+        }
+        sunrise_core::nbt::discard_tag(dialog);
+
         let mut styled = Text::literal("X");
         styled.style.color = Some("#123456".into());
         styled.style.bold = Some(false);

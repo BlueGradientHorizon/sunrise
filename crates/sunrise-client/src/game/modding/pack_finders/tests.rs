@@ -122,7 +122,7 @@ struct Finder {
 impl Hooks for Finder {
     fn add_pack_finders(
         &self,
-        _context: &dyn PackDiscoveryContext,
+        _context: &mut dyn PackDiscoveryContext,
         event: &mut AddPackFindersEvent<'_>,
     ) {
         for (kind, path) in [
@@ -175,7 +175,7 @@ fn both_startup_repositories_lend_only_available_text_services() {
     impl Hooks for Observe {
         fn add_pack_finders(
             &self,
-            context: &dyn PackDiscoveryContext,
+            context: &mut dyn PackDiscoveryContext,
             event: &mut AddPackFindersEvent<'_>,
         ) {
             let component = mod_api::Text::literal("Startup");
@@ -196,6 +196,7 @@ fn both_startup_repositories_lend_only_available_text_services() {
                 Err(mod_api::text::TextFormError::Unavailable)
             );
             assert!(context.client_text().is_none());
+            assert!(context.live_host().is_none());
             self.0.lock().unwrap().push(event.packs.pack_type());
         }
     }
@@ -215,6 +216,66 @@ fn both_startup_repositories_lend_only_available_text_services() {
     assert_eq!(
         *seen.lock().unwrap(),
         [PackType::ClientResources, PackType::ServerData]
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn live_pack_rediscovery_can_read_a_registered_client_setting() {
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
+
+    if run_fresh_cases(
+        "game::pack_finders::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
+        "SUNRISE_PACK_DISCOVERY_CHILD",
+        &["client"],
+    ) {
+        return;
+    }
+
+    struct SettingFinder;
+    #[mod_api::__subscriptions]
+    impl Hooks for SettingFinder {
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            registrar
+                .register_setting(SettingSpec::toggle("offer", "packmod.offer", false))
+                .unwrap();
+        }
+
+        fn add_pack_finders(
+            &self,
+            context: &mut dyn PackDiscoveryContext,
+            event: &mut AddPackFindersEvent<'_>,
+        ) {
+            if let Some(HostSide::Client(host)) = context.live_host()
+                && host.setting("packmod", "offer").as_deref() == Some("true")
+            {
+                event
+                    .packs
+                    .add_pack_finders(PackRegistration::new(
+                        Identifier::parse(&format!("packmod:{ASSET_PACK}")).unwrap(),
+                        PackType::ClientResources,
+                        mod_api::Text::literal("Setting-selected pack"),
+                    ))
+                    .unwrap();
+            }
+        }
+    }
+
+    let fixture = Fixture::new(false);
+    with_mods(
+        vec![ModEntry::new("packmod", Box::new(SettingFinder))].into(),
+        || {
+            with_client_game(|game| {
+                game.mods = fixture.sources();
+                let ty = PackType::ClientResources;
+                assert!(game.discover_mod_packs(ty).is_empty());
+                game.set_setting("packmod", "offer", "true");
+                let packs = game.discover_mod_packs(ty);
+                assert_eq!(packs.len(), 1);
+                assert_eq!(packs[0].id, fixture.asset_id());
+            });
+        },
     );
 }
 

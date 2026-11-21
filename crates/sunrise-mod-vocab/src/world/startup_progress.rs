@@ -29,10 +29,12 @@ impl std::error::Error for StartupProgressError {}
 /// [`RegistrationContext::message`](crate::RegistrationContext::message), not directly.
 pub trait StartupScreen: Send + Sync + 'static {
     /// Open a bar of `steps` steps under the stage bar and return its owned meter.
+    /// `mod_id` identifies the registration listener, even on a scoped worker.
     /// The screen borrows `label` for the call; the meter does not borrow it.
     /// Returns `StartupProgressError::TooManyBars` if the calling mod already has 64 open bars.
     fn open(
         self: Arc<Self>,
+        mod_id: &'static str,
         label: &str,
         steps: u32,
     ) -> Result<Box<dyn ProgressMeter>, StartupProgressError>;
@@ -117,7 +119,8 @@ impl StartupProgress {
 impl crate::RegistrationContext {
     /// Open an owned bar of `steps` steps labelled `label` on the startup loading screen,
     /// under the game's own stage bar, newest first (NeoForge's `addProgressBar`). The bar
-    /// may be updated from any thread and is removed when dropped. On a dedicated server,
+    /// may be opened on a scoped worker, updated from any thread, and is removed when dropped.
+    /// On a dedicated server,
     /// the label and progress in 10% increments are logged instead.
     /// Returns `TooManyBars` when the calling mod already has 64 open bars; no bar is created.
     pub fn progress(
@@ -125,9 +128,9 @@ impl crate::RegistrationContext {
         label: &str,
         steps: u32,
     ) -> Result<StartupProgress, StartupProgressError> {
-        let meter = match &self.startup {
-            Some(screen) => Some(screen.clone().open(label, steps)?),
-            None => None,
+        let meter = match (self.listener, &self.startup) {
+            (Some(id), Some(screen)) => Some(screen.clone().open(id, label, steps)?),
+            _ => None,
         };
         Ok(StartupProgress { meter })
     }
@@ -156,10 +159,11 @@ mod tests {
     impl StartupScreen for Record {
         fn open(
             self: Arc<Self>,
+            mod_id: &'static str,
             label: &str,
             steps: u32,
         ) -> Result<Box<dyn ProgressMeter>, StartupProgressError> {
-            self.push(format!("open {label} {steps}"));
+            self.push(format!("open {mod_id} {label} {steps}"));
             Ok(Box::new(RecordingMeter(self)))
         }
         fn message(&self, text: &str) {
@@ -191,7 +195,7 @@ mod tests {
     #[test]
     fn registration_returns_a_meter_that_outlives_the_context() {
         let screen = Arc::new(Record::default());
-        let mut context = crate::RegistrationContext::new();
+        let mut context = crate::RegistrationContext::new().for_mod("test");
         context.startup = Some(screen.clone());
         context.message("starting");
         let bar = context.progress("Baking", 10).unwrap();
@@ -212,7 +216,7 @@ mod tests {
             *screen.0.lock().unwrap(),
             [
                 "screen message starting",
-                "open Baking 10",
+                "open test Baking 10",
                 "step",
                 "label Baked",
                 "set 10",

@@ -32,11 +32,9 @@ impl crate::ConfigFiles for EmptyConfigFiles {
 
 const EMPTY_CONFIG_FILES: EmptyConfigFiles = EmptyConfigFiles;
 
-/// Read-only context for configuration hooks (`register_configs`, `config_loading`,
-/// `config_reloading`, `config_unloading`).
-///
-/// Exposes only mod settings and the calling mod's `config/` files so configuration hooks
-/// cannot reach world, level, entity, or client rendering state at compile time.
+/// Context for config registration and initial loading (`register_configs`, `config_loading`).
+/// Exposes mod settings and the calling mod's `config/` files, not a game host.
+/// Config reloading and unloading instead lend the polling or stopping game's host.
 pub trait ConfigContext {
     /// A mod's registered setting `key`. Returns `None` for another mod's id or an
     /// unregistered key.
@@ -970,7 +968,9 @@ impl LoadedMods {
 pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
-    pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
+    pub(crate) declaration_refusals:
+        Arc<std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>>,
+    pub(crate) listener: Option<&'static str>,
     /// The game's startup screen, for [`progress`](Self::progress) and
     /// [`message`](Self::message); none without a game.
     pub(crate) startup: Option<Arc<dyn crate::StartupScreen>>,
@@ -985,8 +985,20 @@ impl RegistrationContext {
             mods: LoadedMods::new(),
             data,
             declaration_refusals: Default::default(),
+            listener: None,
             startup: crate::world::startup_progress::installed(),
             runtime,
+        }
+    }
+
+    pub(crate) fn for_mod(&self, mod_id: &'static str) -> Self {
+        Self {
+            mods: self.mods.clone(),
+            data: self.data.clone(),
+            declaration_refusals: Arc::clone(&self.declaration_refusals),
+            listener: Some(mod_id),
+            startup: self.startup.clone(),
+            runtime: self.runtime.clone(),
         }
     }
 

@@ -24,7 +24,9 @@ add an ordered child, then pass `&text` to the host read. In-process text reads
 512-node serialization depth cap or `ExtraCodecs` profile/property bounds;
 those checks apply at serialization boundaries (Wire, JSON/SNBT codecs such as
 `text_from_json`, and NBT/network writes). There is no intermediate form to
-build or validate.
+build or validate. `DrawContext::gui_tooltip` and `BlockEntityDrawContext::text` also
+accept deep local text, but still return `TextFormError` without drawing if a
+component cannot be represented (for example, non-finite metadata).
 
 To inspect the immediate nested components, use `text.visit_children(|child| …)`.
 It lends appended children first, then any translation arguments, selector or NBT
@@ -97,8 +99,10 @@ pipeline, is available outside drawing, including client setup.
 Sink indices are UTF-16 offsets local to a constant-style substring within a
 directional run, not global component positions. For example, `A😀B` yields
 indices `0, 1, 3`; Hebrew `שלום` yields `3, 2, 1, 0`. A style or bidi run boundary
-restarts the index. Shaping can shorten the string, so these are not guaranteed
-to identify original input scalars. Use the records to re-layout existing tooltip
+restarts the index, but adjacent components with equal effective styles stay
+in the same run. A resolved color is returned as uppercase `#RRGGBB`, even
+if the input used a named color. Shaping can shorten the string, so these
+indices are not guaranteed to identify original input scalars. Use the records to re-layout existing tooltip
 lines without losing click, hover, font or other style information.
 
 Action keybind IDs such as `key.jump` resolve through the client's current key

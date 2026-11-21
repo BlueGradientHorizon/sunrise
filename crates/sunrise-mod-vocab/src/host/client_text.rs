@@ -8,8 +8,10 @@ pub trait ClientTextClientHost {
     /// Side: client.
     /// `Component.getVisualOrderText()`: current-language, styled characters in
     /// visual order, including bidi shaping and mirroring. Available outside
-    /// drawing, including client setup. Sink indices are local UTF-16 offsets,
-    /// not offsets into the input component tree.
+    /// drawing, including client setup. Sink indices are UTF-16 offsets within
+    /// the current directional and effective-style run, not within the input
+    /// component tree. Independently set equal styles do not restart a run.
+    /// A resolved color is returned as uppercase `#RRGGBB`.
     /// Action keybinds resolve to their assigned keys as in `text_string`.
     /// In-memory text reads do not enforce the 512-node serialization depth cap
     /// or `ExtraCodecs` profile/property bounds.

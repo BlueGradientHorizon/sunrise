@@ -10,12 +10,12 @@ impl Game<'_> {
     ) -> Vec<mod_api::VisualTextCharacter> {
         let local = sunrise_client_lib::api_text::to_local_engine(text);
         let resolved = local.engine().resolved();
-        sunrise_client::bidi::visual_characters(&resolved)
+        sunrise_client::bidi::visual_characters(&resolved, |a, b| local.visual_styles_match(a, b))
             .into_iter()
             .map(
                 |(scalar, style, source_index)| mod_api::VisualTextCharacter {
                     scalar: scalar as u32,
-                    style: local.style_to_api(&style),
+                    style: local.style_to_api(style),
                     source_index,
                 },
             )

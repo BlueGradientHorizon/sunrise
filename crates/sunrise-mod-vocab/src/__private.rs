@@ -573,6 +573,14 @@ pub mod game {
         }
     }
 
+    /// Lend a registration snapshot to the named listener, including on scoped workers.
+    pub fn bind_registration_context(
+        context: &RegistrationContext,
+        mod_id: &'static str,
+    ) -> RegistrationContext {
+        context.for_mod(mod_id)
+    }
+
     pub trait ReloadContextNew {
         fn new(files: crate::world::reload::ReloadFiles) -> Self;
     }

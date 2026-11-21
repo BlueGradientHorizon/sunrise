@@ -401,8 +401,10 @@ index makes `hide` return `false` without changing anything. Neither refuses the
 `BlockEntityDrawContext::text` draws a component under the current pose in font pixels,
 with its styles and the frame's light. Its RGB colour is opaque. Glowing text uses full
 light; `Some(0)` is a black outline, not an absent outline. `text` and `text_width`
-return the styled advance rounded up, as vanilla `Font.width` does. Use half that width
-to centre a line. Kept text retains its glyphs, including obfuscated glyph choices,
+report the styled advance, as vanilla `Font.width` does. Use half that width
+to centre a line. `text` returns `TextFormError` without drawing if the component
+has unrepresentable metadata; deep local text has no serialization depth cap.
+Kept text retains its glyphs, including obfuscated glyph choices,
 until it is drawn again. Resource reload invalidates kept geometry.
 
 Spinning parts use the client's animation clock: level-running texture ticks plus the

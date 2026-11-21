@@ -1,25 +1,27 @@
 # Load phases and access
 
-A mod's code runs in phases. What a hook may touch depends on the phase it runs in: there is no `Host` while
-the mod registers, and no world until the World phase.
+A hook's signature determines what it can access. Registration callbacks receive declarations and startup
+facts, not a `Host`. An ordinary game hook receives its side's host, whether or not a world is open.
 
-![Each game thread goes through Packages, Registration, Setup, Config and World, in order; a data or asset reload
-enters Reloading and returns to the phase it came from.](../images/load-phases.svg)
+## Callback order
+
+![Client startup order: discover packages, collect registrations, apply initial assets, run client setup,
+load configs, then show the title.](../images/load-phases.svg)
 
 Registration, config loading and reload-listener registration all use the installed dependency order.
 The resolver keeps bundle-order ties, checks present optional dependencies and refuses cycles. Content-only
 packages stay after code in the loaded-mod inventory; listener-specific edges use `ReloadOrder`.
+Data or asset reloads run their own callbacks on first load or when resources change. They do not switch the
+game into a different access mode.
 
-Each owning thread progresses through `Packages → Registration → Setup → Config → World`.
-
-| Phase | Available access |
+| Callback | What it lends |
 | --- | --- |
-| Packages | Package discovery; no game Host operations. |
-| Registration | Declarations through `RegistrationContext`, with its mod-list, registry and settings reads; no Host. |
-| Setup | `ClientSetupContext`: client setup reads, published asset/data queries, and registry/settings/mod-list reads; no world handles or transactions. |
-| Config | `ConfigContext`: settings reads and the mod-scoped `ConfigFiles` service; no world handles, transactions or other game operations. |
-| Reloading | `ReloadContext` (server/shared data reload and tag/data-map/component notices), `ClientReloadListenerContext` (`add_client_reload_listeners`, with `published() -> Option<&dyn ClientReloadHost>` returning `None` on initial startup and `Some` on later reloads), `ClientReloadHost` (`client_resources_reloaded`), and `DataLoadContext` callbacks: published asset/data queries, registry facts, settings and mod-list reads; no world handles or transactions. |
-| World | The owning game's side-typed `ServerHost` or `ClientHost`. |
+| Registration (`register`, `blocks`, `items`, and others) | `&RegistrationContext` for the mod list, built-in registry and captured settings. Write declarations through the hook's registrar or event. |
+| `client_setup` | `&mut dyn ClientSetupContext` for client setup operations and published assets and data. No world handles or transactions. |
+| Config registration and initial loading | `&dyn ConfigContext` for settings reads and mod-scoped `ConfigFiles`. |
+| `config_reloading`, `config_unloading` | `HostSide<'_>` for the polling game and `&mut dyn ServerHost` for the stopping server, respectively. |
+| Data and asset reload callbacks | The callback's `ReloadContext`, `ClientReloadListenerContext`, `ClientReloadHost` or `DataLoadContext`, as described below. |
+| Ordinary game callbacks | `ServerHost` or `ClientHost` (or a `HostSide` selecting between them). World and session queries return `None` when no corresponding world or session is open. |
 
 `RegistrationContext::instance_dir()` borrows the instance directory captured before
 registration begins, as `Option<&InstanceDirectory>`: `Unix(Vec<u8>)` preserves raw Unix
@@ -30,7 +32,8 @@ constructing a filesystem path. A context with no engine snapshot returns `None`
 A mod that does slow work while the game starts shows it on the startup loading screen
 (NeoForge's `StartupNotificationManager` and `ProgressMeter`). `RegistrationContext::progress(label,
 steps)` opens a bar under the game's stage bar and returns `Result<StartupProgress, StartupProgressError>`.
-It returns `TooManyBars` when the calling mod already has 64 open bars. The returned bar is owned and `Send + Sync`:
+It returns `TooManyBars` when that listener's mod already has 64 open bars. Opening bars from a scoped
+worker with the same context counts toward the same quota. The returned bar is owned and `Send + Sync`:
 call `step()`, `set(n)` and `label(text)` to update it, and drop it to remove it. A mod can keep the bar
 after registration and update it or call `bar.message(text)` from a worker thread or from `client_setup`.
 
@@ -76,16 +79,16 @@ one view captured before the first of them runs, so every registration step sees
 whatever the dispatch order: the loaded packages (`&LoadedMods`), the built-in registries as
 `registries.json` lists them (`Option<&[String]>`, without what mods declare during registration),
 and the settings on disk when the snapshot is captured (`Option<&str>`). An unknown registry,
-an unset key, or a context with no engine snapshot returns `None`. Client setup
-runs once after the initial asset apply. The window's Client/Common configs load once immediately after client setup and before title,
-connection, input, render or ordinary tick callbacks. This includes pack-error recovery: the failed
-selection is cleared and saved during initialization, but its options screen opens only after Config
-completes. A title-screen callback is already in World: world-handle constructors can return `None`,
-rather than being forbidden in Setup. A dedicated
-server loads Common once before its first world; Server configs load and unload per world.
-A second world does not repeat registration or client setup. Config hooks (`register_configs` and
-`config_loading`) receive `&dyn ConfigContext`, which exposes settings reads and the scoped
-`ConfigFiles` service; world handles, transactions and other game operations are absent at compile time.
+an unset key, or a context with no engine snapshot returns `None`.
+
+`client_setup` runs once after initial assets are applied, with `&mut dyn ClientSetupContext` and
+`&mut ClientSetupEvent`. Afterward the window loads its Client and Common configs, before title,
+connection, input, render or ordinary tick callbacks. If pack selection fails during initialization,
+the recovery options screen opens only after config loading. A title-screen listener may receive a
+`ClientHost`; world-handle queries then return `None` because no world is open. A dedicated server
+loads Common configs once before its first world. Server configs load before `server_about_to_start`
+and unload after `server_stopping` for each world. A second world does not repeat startup registration
+or client setup.
 
 Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` asks, from a both-side package's
 `register`, join the attribute catalog once when it grows: after the attributes mods declare with
@@ -95,15 +98,17 @@ the union of every mod's asks, so the result does not depend on the dispatch ord
 
 ## Pack repository discovery
 
-`add_pack_finders` takes `&dyn PackDiscoveryContext` and `&mut AddPackFindersEvent` at startup
+`add_pack_finders` takes `&mut dyn PackDiscoveryContext` and `&mut AddPackFindersEvent` at startup
 and on rediscovery. Register through `event.packs`; use `event.packs.pack_type()` to distinguish
 client resource and server data repositories. `context.text_string(&text)` resolves local text,
 using fallbacks before assets are loaded. `context.client_text()` lends font measurements only
-when the client is ready. Neither repository lends a world or a full `Host`.
+when the client is ready. `context.live_host()` returns `None` before the game exists, and lends
+a `HostSide<'_>` during live rediscovery. For example, match `Some(HostSide::Client(host))` to read
+a registered client setting via `host.setting(mod_id, key)` while rediscovering resource packs.
 
 ## Reloading
 
-Data and asset reload hooks receive phase-scoped contexts instead of a full `Host`:
+Data and asset reload hooks lend their own contexts instead of a full `Host`:
 `add_server_reload_listeners`, `tags_updated`, `data_maps_updated` and `default_components_bound`
 receive `&dyn ReloadContext`, `add_client_reload_listeners` receives
 `&dyn ClientReloadListenerContext` (whose `published()` method returns `None` on initial startup
@@ -142,7 +147,7 @@ resource generation retained by their worker.
 
 ### Ordinary Host reads
 
-In World, both client and server hosts expose `registry_entry(registry, id)`,
+Both client and server hosts expose `registry_entry(registry, id)`,
 `registry_entries(registry)` and `registry_entry_in_tag(&entry, tag)`. These read the
 current side's live registry and merged tags, not pending reload data. Unknown or
 unavailable registries and entries return `None`; an absent tag or a tag that does
@@ -174,15 +179,9 @@ validate membership before activating a snapshot.
 On clients, generic reads never fall back to prepared server-only datapack files:
 built-ins and the connection's currently synchronized registries are the entire view.
 
-Phase boundaries are enforced at compile time by the context trait passed to each hook:
-registration hooks take `RegistrationContext`, config hooks (`register_configs`, `config_loading`,
-`config_reloading`, `config_unloading`) take `ConfigContext`, server/shared reload hooks take
-`ReloadContext`, `add_client_reload_listeners` takes `ClientReloadListenerContext`,
-`client_resources_reloaded` takes `ClientReloadHost`, and client setup takes `ClientSetupContext`.
-There is no separate common-setup, load-complete or intermod event: registration and the first server
-reload cover common setup, client setup is `client_setup`, dedicated setup is `server_about_to_start`,
-and dependencies express intermod ordering. Load complete is the edge after initial Config and before
-`server_about_to_start`, not a hook.
+There is no separate common-setup, load-complete or intermod event. Registration and the first server
+reload cover common setup, `client_setup` covers client setup, and `server_about_to_start` covers
+dedicated server setup. Dependencies express intermod ordering.
 
 `DataLoadOrigin` and `LoopSide` describe the local load or loop, not data to encode. Read them
 through `DataLoadContext::origin()` and `LoopContext::side()` as before; if a payload needs such

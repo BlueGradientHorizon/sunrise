@@ -80,6 +80,16 @@ pub fn with_dispatch<R>(mods: Mods, f: impl FnOnce() -> R) -> R {
     f()
 }
 
+/// Create a test registration snapshot with its own startup screen instead of the game's.
+#[doc(hidden)]
+pub fn registration_context_with_startup_screen(
+    screen: std::sync::Arc<dyn crate::StartupScreen>,
+) -> crate::RegistrationContext {
+    let mut context = crate::RegistrationContext::new();
+    context.startup = Some(screen);
+    context
+}
+
 struct RestoreParts {
     previous: Option<&'static crate::parts::Installed>,
     committed: bool,

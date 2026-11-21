@@ -246,13 +246,14 @@ pub(crate) fn register_all(
     // (a general entity type) is refused once it closes.
     let _registration = crate::__private::RegistrationGuard::open();
     let _scope = RestoreKeys(REGISTERING_KEYS.replace(Some(registrar.registry_keys.clone())));
+    let context = RegistrationContext::new();
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
         registrar.current_refusals.clear();
         registrar.current_warnings.clear();
         let rollback = registrar.registration_checkpoint();
-        let cx = RegistrationContext::new();
+        let cx = mod_vocab::__private::game::bind_registration_context(&context, registrar.mod_id);
         hooks.register(&mut registrar, &cx);
         let warnings = std::mem::take(&mut registrar.current_warnings);
         if !warnings.is_empty() {

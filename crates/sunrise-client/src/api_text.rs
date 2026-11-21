@@ -1,3 +1,5 @@
+#[path = "api_text/style_eq.rs"]
+mod style_eq;
 #[path = "api_text/text_style_capture.rs"]
 mod text_style_capture;
 use mod_api::text::{
@@ -1454,7 +1456,6 @@ pub fn to_engine_inprocess(text: &Text) -> engine::Text {
 }
 #[derive(Clone, Copy, Default)]
 struct LocalStyle<'a> {
-    color: Option<&'a str>,
     font: Option<&'a str>,
     insertion: Option<&'a str>,
     click: Option<&'a TextClick>,
@@ -1484,7 +1485,6 @@ fn assign_local_styles(root: &Text) -> (HashMap<usize, usize>, Vec<StyleEntry<'_
                 .then_some((&child.metadata, parent.metadata));
             styles.push(StyleEntry {
                 style: LocalStyle {
-                    color: child.color.as_deref().or(parent.color),
                     font: child.font.as_deref().or(parent.font),
                     insertion: child.insertion.as_deref().or(parent.insertion),
                     click: child.click.as_ref().or(parent.click),
@@ -1539,17 +1539,33 @@ impl LocalText<'_> {
     pub fn engine(&self) -> &engine::Text {
         &self.engine
     }
+    /// Compare the effective style at a visual run boundary, not its recovery index.
+    pub fn visual_styles_match(&self, a: &engine::Style, b: &engine::Style) -> bool {
+        let local = |style: &engine::Style| {
+            style
+                .opaque_style_id
+                .and_then(|id| self.styles.get(id))
+                .map_or_else(LocalStyle::default, |entry| entry.style)
+        };
+        a.color == b.color
+            && a.shadow_color == b.shadow_color
+            && a.bold == b.bold
+            && a.italic == b.italic
+            && a.underlined == b.underlined
+            && a.strikethrough == b.strikethrough
+            && a.obfuscated == b.obfuscated
+            && a.font == b.font
+            && a.insertion == b.insertion
+            && (a.opaque_style_id == b.opaque_style_id || style_eq::same_events(local(a), local(b)))
+    }
+
     pub fn style_to_api(&self, style: &engine::Style) -> TextStyle {
         let Some(orig) = style.opaque_style_id.and_then(|id| self.styles.get(id)) else {
             return style_to_api_inprocess(style);
         };
         let orig = orig.style;
         let mut out = TextStyle::default();
-        out.color = if style.color == orig.color.and_then(component::parse_color) {
-            orig.color.map(str::to_owned)
-        } else {
-            style.color.map(|v| format!("#{v:06X}"))
-        };
+        out.color = style.color.map(|v| format!("#{v:06X}"));
         out.shadow_color = style.shadow_color;
         out.bold = style.bold;
         out.italic = style.italic;

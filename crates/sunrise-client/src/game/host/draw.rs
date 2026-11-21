@@ -87,8 +87,8 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<(), mod_api::text::TextFormError> {
         let lines: Vec<_> = lines
             .iter()
-            .map(sunrise_client_lib::api_text::to_engine_inprocess)
-            .collect();
+            .map(sunrise_client_lib::api_text::to_engine)
+            .collect::<Result<_, _>>()?;
         self.game.native_gui_tooltip(&mut *self.surface, &lines, at);
         Ok(())
     }
@@ -366,7 +366,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
+        let text = sunrise_client_lib::api_text::to_engine(text)?;
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -1021,6 +1021,29 @@ mod tests {
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);
         assert_eq!(doubled.lines[1].at[1], plain_size.lines[1].at[1] * 2.0);
         assert_eq!(doubled.height, plain_size.height * 2.0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn local_tooltip_draws_deep_text_but_refuses_unrepresentable_metadata() {
+        crate::game::native_entity_refs::tests::with_client_game(|game| {
+            let mut deep = mod_api::Text::literal("Tooltip");
+            for _ in 0..mod_api::text::MAX_TEXT_DEPTH {
+                deep = mod_api::Text::literal("").append(deep);
+            }
+            let mut invalid = mod_api::Text::literal("Unrepresentable");
+            invalid.metadata = Tag::compound([("test:nonfinite", Tag::Double(f64::NAN.to_bits()))]);
+
+            let mut batch = crate::hud::HudBatch::scratch([400, 200]);
+            let mut draw = GameDrawContext::new(game, &mut batch);
+            assert_eq!(
+                draw.gui_tooltip(&[deep.clone(), invalid], [16.0, 16.0]),
+                Err(TextFormError::NonFinite)
+            );
+            assert!(draw.surface.vertices.is_empty());
+            draw.gui_tooltip(&[deep], [16.0, 16.0]).unwrap();
+            assert!(!draw.surface.vertices.is_empty());
+        });
     }
 
     #[test]

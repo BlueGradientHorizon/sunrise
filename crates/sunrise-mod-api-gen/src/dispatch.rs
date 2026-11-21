@@ -347,6 +347,7 @@ pub(super) fn emit<'a>(
         if mod_cancel && !is_render {
             cancel_hooks.push_str(&format!("pub const {name}: () = ();\n"));
         }
+        let registration = hook.context == Some(PhaseContext::Registration);
         let mut trait_params = vec!["&self".to_owned()];
         let mut dispatch_params = Vec::new();
         let mut call_args = Vec::new();
@@ -358,7 +359,9 @@ pub(super) fn emit<'a>(
                 if by_side { "mut " } else { "" },
                 param.ty
             ));
-            call_args.push(if by_side {
+            call_args.push(if registration {
+                format!("&{name}.for_mod(mod_id)")
+            } else if by_side {
                 format!("{name}.reborrow()")
             } else if param.ty.starts_with("&mut ") {
                 format!("&mut *{name}")
@@ -903,7 +906,7 @@ pub(super) fn emit<'a>(
         // A trait mod's call is marked with the mod for a panic to name.
         let each = match &hook.owner {
             Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
-            None if answered || hook.collect_validator.is_some() => {
+            None if registration || answered || hook.collect_validator.is_some() => {
                 format!("super::entered_with_id(HookId::{hook_id}, \"{name}\")")
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
@@ -946,7 +949,7 @@ pub(super) fn emit<'a>(
             };
             format!("{local_event} {invocation} {local_write_back} {stack_after}")
         };
-        let binding = if answered || hook.collect_validator.is_some() {
+        let binding = if registration || answered || hook.collect_validator.is_some() {
             format!("(mod_id, {mod_item})")
         } else {
             mod_item.clone()
@@ -1053,7 +1056,7 @@ pub(super) fn emit<'a>(
             None if declaration.is_some() => (
                 String::new(),
                 format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id, context, {name} }}; {mod_item}.{name}(context, &mut {event}); }}"
+                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let listener_context = context.for_mod(mod_id); let mut {event} = {event_type} {{ mod_id, context: &listener_context, {name} }}; {mod_item}.{name}(&listener_context, &mut {event}); }}"
                 ),
             ),
             None if hook.context == Some(PhaseContext::ChunkDisk) => (

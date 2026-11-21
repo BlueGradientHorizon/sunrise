@@ -42,33 +42,29 @@ pub trait Hooks {
     /// its new text. The game looks at the files' modification times once a
     /// second, on the window and on the server's tick; a file saved with the
     /// same text, removed or unreadable fires nothing and keeps its last
-    /// text. Receives a [`ConfigContext`] with settings reads and the scoped
-    /// `ConfigFiles` service.
+    /// text. Receives the polling game's [`HostSide`]; world queries return
+    /// `None` if no world is open.
     #[hook(
-        receiver = "associated",
-        context = "config",
         dispatch = "flat",
         side = "both",
         contract = "listen",
         neoforge = "ModConfigEvent.Reloading",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn config_reloading(config: &ConfigFile);
     /// A `Server` config is dropped as its server stops
     /// (`ModConfigEvent.Unloading`), after `server_stopping`; the next
     /// world reads it again. `Client` and `Common` configs stay until the
-    /// game quits. Receives a [`ConfigContext`] with settings reads and the
-    /// scoped `ConfigFiles` service.
+    /// game quits. Receives the stopping game's [`ServerHost`], before the
+    /// final save and teardown.
     #[hook(
-        receiver = "associated",
-        context = "config",
         dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "ModConfigEvent.Unloading",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn config_unloading(config: &ConfigFile);
 }
