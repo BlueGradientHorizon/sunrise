@@ -1,4 +1,5 @@
 use super::*;
+
 pub(crate) type Capabilities<P> = HashMap<&'static str, HashMap<Box<str>, Vec<CapabilityPart<P>>>>;
 
 /// A capability provider a mod registered: a [`BlockProviderOf`], [`ItemProviderOf`] or
@@ -14,6 +15,8 @@ pub(crate) struct CapabilityPart<P> {
     /// Its place among every mod's registrations, which orders a block's providers and those of
     /// the block entity type standing there as one list.
     pub(crate) order: usize,
+    /// Panic containment state, shared by the installed snapshots of this registration.
+    pub(crate) poisoned: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) provider: P,
 }
 
@@ -46,25 +49,17 @@ pub(crate) fn next<P: Clone>(
 /// already ordered with `before_game` first, then by registration order.
 pub(crate) fn next_merged<'a>(
     [first, second]: &mut [&'a [CapabilityPart<BlockProviderOf>]; 2],
-) -> Option<(&'a BlockProviderOf, &'static str, bool)> {
+) -> Option<(&'a CapabilityPart<BlockProviderOf>, &'static str, bool)> {
     let rank = |part: &CapabilityPart<BlockProviderOf>| (!part.before_game, part.order);
-    loop {
-        let take_second = match (first.first(), second.first()) {
-            (Some(a), Some(b)) => rank(b) < rank(a),
-            (None, _) => true,
-            _ => false,
-        };
-        let source = if take_second {
-            &mut *second
-        } else {
-            &mut *first
-        };
-        let (part, rest) = source.split_first()?;
-        *source = rest;
-        if crate::mod_index_on(part.mod_index) {
-            return Some((&part.provider, part.mod_id, part.before_game));
-        }
-    }
+    let take_second = match (first.first(), second.first()) {
+        (Some(a), Some(b)) => rank(b) < rank(a),
+        (None, _) => true,
+        _ => false,
+    };
+    let source = if take_second { second } else { first };
+    let (part, rest) = source.split_first()?;
+    *source = rest;
+    Some((part, part.mod_id, part.before_game))
 }
 
 /// A provider by its handler type: one case for each handler type `mod_api`'s keys name
@@ -109,14 +104,12 @@ pub(crate) fn answered<T: ?Sized>(
 /// Asks the providers `next` gives (advancing a registration cursor in dispatch order: those
 /// registered `before_game`, then the others), and the game's own (`game`: whether it answers) between the
 /// two, in the fork's chosen order (NeoForge's javadoc doesn't state one between mods'
-/// providers and the game's); the first to answer wins. `get` takes a provider of this
-/// capability's handler type out of its case: a provider of a mod's own type the asker isn't
-/// linked with is passed over.
-pub(crate) fn ask_providers<C: ?Sized, O, P: ?Sized + 'static, T>(
+/// providers and the game's); the first to answer wins. `call` also resolves the
+/// provider's handler type; a type the asker isn't linked with is passed over.
+pub(crate) fn ask_providers<C: ?Sized, O, T>(
     context: &mut C,
     mut next: impl FnMut() -> Option<(O, &'static str, bool)>,
-    get: impl Fn(&O) -> Option<&Arc<P>>,
-    mut call: impl FnMut(&P, &mut C) -> Option<T>,
+    mut call: impl FnMut(O, &mut C) -> Option<T>,
     game: impl FnOnce(&mut C) -> bool,
 ) -> Answer<T> {
     let mut game = Some(game);
@@ -127,7 +120,7 @@ pub(crate) fn ask_providers<C: ?Sized, O, P: ?Sized + 'static, T>(
         {
             return Answer::Game;
         }
-        if let Some(handler) = get(&provider).and_then(|provider| call(provider, context)) {
+        if let Some(handler) = call(provider, context) {
             return Answer::Mod(handler, owner);
         }
     }

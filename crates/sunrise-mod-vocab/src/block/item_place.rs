@@ -980,8 +980,7 @@ impl ItemPlace {
                         .then(|| table.item_provider(key.name, stack.item(), &mut index))
                         .flatten()
                 },
-                crate::ItemProviderOf::get::<T>,
-                |provider, host| provider.provide(host, self),
+                |provider, host| provider.get::<T>()?.provide(host, self),
                 |host| {
                     game = key.default.and_then(|default| default(host, self, &stack));
                     game.is_some()

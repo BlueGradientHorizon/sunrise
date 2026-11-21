@@ -924,7 +924,7 @@ impl Game<'_> {
                 .is_some_and(|tag| tag.get("LootTable").is_some())
             {
                 self.journal_saved_pot(pos);
-                self.journal_level_random();
+                self.journal_block_loot_random();
                 if let Some(tag) = self.pot_tag(at) {
                     spill::put_saved_entity(&mut self.world, at, tag);
                     self.after_commit(super::transactions::After::Changed(pos));

@@ -122,8 +122,7 @@ impl<T: ?Sized + 'static, C: Copy + 'static> EntityProviders<T, C> {
         match ask_providers(
             host,
             || next_provider(self.parts, &mut index),
-            EntityProviderOf::get::<T, C>,
-            |provider, host| provider.provide(host, entity, context),
+            |provider, host| provider.get::<T, C>()?.provide(host, entity, context),
             |_| game,
         ) {
             Answer::Mod(handler, owner) => Some(Capability {

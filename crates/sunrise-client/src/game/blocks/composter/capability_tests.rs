@@ -274,7 +274,6 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                         .any(|s| s.event == "minecraft:block.composter.ready")
                 );
                 assert_eq!(input.amount(game, 0), 0);
-                assert_eq!(input.amount(game, 0), 0);
                 assert_eq!(output.amount(game, 0), 1);
                 assert_eq!(output.resource(game, 0), Some(bone.clone()));
                 assert_eq!(storage_input.amount(game, &bone), Ok(0));

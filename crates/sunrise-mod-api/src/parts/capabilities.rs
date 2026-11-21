@@ -87,6 +87,7 @@ impl PartRegistrar {
                 type_name: handler,
                 before_game,
                 order,
+                poisoned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 provider,
             },
         );

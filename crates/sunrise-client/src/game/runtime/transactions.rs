@@ -230,6 +230,8 @@ pub(super) struct Level {
     connection_groups: HashMap<(Dim, Pos), Option<u64>>,
     /// Level.random before the first transactional level write drew from it.
     level_random: Option<sunrise_core::random::LegacyRandom>,
+    /// Named loot streams before tentative block loot.
+    loot_sequences: Option<sunrise_items::random_sequences::RandomSequences>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -735,6 +737,9 @@ impl Game<'_> {
                 if outer.level_random.is_none() {
                     outer.level_random = level.level_random;
                 }
+                if outer.loot_sequences.is_none() {
+                    outer.loot_sequences = level.loot_sequences;
+                }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
                     for (pos, random) in randoms {
@@ -935,6 +940,16 @@ impl Game<'_> {
             level
                 .save_gate
                 .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
+        }
+    }
+
+    /// An unseeded pot loot table may draw from either the level or a named stream.
+    pub(super) fn journal_block_loot_random(&mut self) {
+        self.journal_level_random();
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .loot_sequences
+                .get_or_insert_with(|| self.rand_sequences.clone());
         }
     }
 
@@ -1970,6 +1985,9 @@ impl Game<'_> {
         }
         if let Some(random) = level.level_random {
             *self.world.random = random;
+        }
+        if let Some(sequences) = level.loot_sequences {
+            self.rand_sequences = sequences;
         }
         // The shapes are back: the neighbours that read them (a fluid beside it) are told, as
         // the publish told them.

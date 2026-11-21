@@ -549,6 +549,250 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
 
 #[test]
 #[ignore = "daily"]
+fn block_capabilities_contain_panics_under_the_provider_owner() {
+    use crate::game::{
+        execution_role::ExecutionRole,
+        native_entity_refs::tests::{fixture_root, with_game_role},
+    };
+    use mod_api::content::crash::current_native_mod;
+
+    const FLAG: &str = "SUNRISE_CAPABILITY_PROVIDER_OWNER_CHILD";
+    const DISCOVERY: [i32; 3] = [1, 64, 0];
+    const CONSTRUCTION: [i32; 3] = [2, 64, 0];
+    if run_fresh_cases(
+        "game::machines::native_items::storage_attempt_tests::block_capabilities_contain_panics_under_the_provider_owner",
+        FLAG,
+        &["client", "server"],
+    ) {
+        return;
+    }
+
+    type Calls = Arc<Mutex<Vec<(&'static str, Option<&'static str>)>>>;
+    struct Providers {
+        fail: bool,
+        calls: Calls,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Providers {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            for (name, discovery) in [("minecraft:barrel", true), ("minecraft:chest", false)] {
+                let key = r.block_key(name);
+                let calls = self.calls.clone();
+                let fail = self.fail;
+                r.block_capability_before_game(&ITEMS, &key, move |_, at, _, _, offer| {
+                    let step = if discovery {
+                        "discover barrel"
+                    } else {
+                        "discover chest"
+                    };
+                    calls.lock().unwrap().push((step, current_native_mod()));
+                    if fail && discovery {
+                        panic!("provider discovery panic");
+                    }
+                    offer.offer(|| {
+                        calls
+                            .lock()
+                            .unwrap()
+                            .push(("construct", current_native_mod()));
+                        if fail {
+                            panic!("provider construction panic");
+                        }
+                        Box::new(Storage {
+                            probe: Probe {
+                                trace: Arc::default(),
+                                rules: Arc::default(),
+                            },
+                            at,
+                        })
+                    });
+                });
+            }
+        }
+    }
+
+    let client = std::env::var(FLAG).unwrap() == "client";
+    let role = if client {
+        ExecutionRole::Client
+    } else {
+        ExecutionRole::IntegratedServer
+    };
+    let calls: Calls = Arc::default();
+    let mods: Mods = [("bad_provider", true), ("healthy_provider", false)]
+        .into_iter()
+        .map(|(id, fail)| {
+            ModEntry::new(
+                id,
+                Box::new(Providers {
+                    fail,
+                    calls: calls.clone(),
+                }),
+            )
+        })
+        .collect::<Vec<_>>()
+        .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game_role(fixture_root(), role, |game| {
+            if client {
+                let (pipe, _peer) = sunrise_protocol::connection::Pipe::pair();
+                game.connect_local(pipe, "ProviderOwner").unwrap();
+                game.remote.as_mut().unwrap().logged_in = true;
+            } else {
+                game.options.dedicated = Some(Vec::new());
+            }
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            place(game, (1, 64, 0), "minecraft:barrel");
+            place(game, (2, 64, 0), "minecraft:chest");
+
+            let outer = current_native_mod();
+            let query = mod_api::__private::enter("querying_mod", "test");
+            let bad = Some("bad_provider");
+            let healthy = Some("healthy_provider");
+            game.with_level(|_, world, ticks| {
+                let view = world.view(ticks);
+                assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                assert_eq!(view.has_item_capability(DISCOVERY, None), Some(true));
+                assert_eq!(view.has_item_capability(CONSTRUCTION, None), Some(true));
+            });
+            assert_eq!(current_native_mod(), Some("querying_mod"));
+            assert_eq!(
+                std::mem::take(&mut *calls.lock().unwrap()),
+                [
+                    ("discover barrel", bad),
+                    ("discover barrel", healthy),
+                    ("discover barrel", healthy),
+                    ("discover chest", bad),
+                ],
+                "discovery poisons only one registration; presence never constructs",
+            );
+
+            if !client {
+                let level = game.level(game.dim.id()).unwrap();
+                for pos in [CONSTRUCTION, CONSTRUCTION, DISCOVERY] {
+                    let capability = level.capability(game, &ITEMS, pos, None).unwrap();
+                    assert_eq!(capability.owner(), "healthy_provider");
+                    assert_eq!(current_native_mod(), Some("querying_mod"));
+                }
+                assert_eq!(
+                    *calls.lock().unwrap(),
+                    [
+                        ("discover chest", bad),
+                        ("construct", bad),
+                        ("discover chest", healthy),
+                        ("construct", healthy),
+                        ("discover chest", healthy),
+                        ("construct", healthy),
+                        ("discover barrel", healthy),
+                        ("construct", healthy),
+                    ],
+                );
+            }
+            drop(query);
+            assert_eq!(current_native_mod(), outer);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
+    use crate::game::spill;
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::loot::{LootData, PackOverlay};
+
+    default_fixture(
+        "game::machines::native_items::storage_attempt_tests::aborting_a_pot_insert_restores_its_named_loot_sequence",
+        |game| {
+            const TABLE: &str = "test:pot";
+            const SEQUENCE: &str = "test:pot_storage";
+            let files = [(
+                format!("loot_table/{TABLE}"),
+                vec![
+                    serde_json::to_vec(&serde_json::json!({
+                        "random_sequence": SEQUENCE,
+                        "pools": [{
+                            "rolls": 1,
+                            "entries": [{
+                                "type": "minecraft:item",
+                                "name": "minecraft:stick",
+                                "modifier": {
+                                    "type": "minecraft:set_count",
+                                    "count": {"type": "minecraft:uniform", "min": 2, "max": 9}
+                                }
+                            }]
+                        }]
+                    }))
+                    .unwrap(),
+                ],
+            )];
+            let loot = LootData::load(
+                &game.options.resources,
+                &PackOverlay {
+                    files: &files,
+                    ..PackOverlay::default()
+                },
+                game.res.item_defaults(),
+            )
+            .unwrap();
+            assert_eq!(loot.random_sequence(TABLE), Some(SEQUENCE));
+            game.server_loot.set(Some(Arc::new(loot)));
+
+            let pos = [4, 64, 0];
+            place(game, (4, 64, 0), "minecraft:decorated_pot");
+            let tag = Tag::compound([
+                ("id", Tag::String("minecraft:decorated_pot".into())),
+                ("x", Tag::Int(pos[0])),
+                ("y", Tag::Int(pos[1])),
+                ("z", Tag::Int(pos[2])),
+                ("LootTable", Tag::String(TABLE.into())),
+            ]);
+            spill::put_saved_entity(&mut game.world, pos, tag.clone());
+            // The named sequence already exists: this tests restoration of its actual
+            // position, not merely removal of a newly created sequence.
+            game.rand_sequences.get(SEQUENCE, game.level.seed);
+            let before = game.rand_sequences.to_nbt();
+            let level_before = game.world.random.state();
+            let level = game.level(game.dim.id()).unwrap();
+            let items = level.capability(game, &ITEMS, pos, None).unwrap();
+            use crate::game::api_values::TryIntoApi;
+            let stick =
+                ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
+            let insert = |game: &mut Game<'_>, tx: &Transaction| {
+                assert_eq!(items.insert_at(game, tx, 0, &stick, 1), 1);
+                let amount = items.amount(game, 0);
+                assert!(
+                    (3..=10).contains(&amount),
+                    "rolled loot plus insertion: {amount}"
+                );
+                let materialized = spill::saved_entity(&game.world, pos).unwrap();
+                assert!(materialized.get("LootTable").is_none());
+                assert_eq!(game.world.random.state(), level_before);
+                let after = game.rand_sequences.to_nbt();
+                assert_ne!(after, before);
+                (materialized, after)
+            };
+            let tentative = run_transaction(game, |game, _| {
+                let tentative =
+                    run_transaction(game, |game, tx| Ok::<_, ()>(insert(game, tx))).unwrap();
+                Err::<(), _>(tentative)
+            })
+            .unwrap_err();
+            assert_eq!(spill::saved_entity(&game.world, pos), Some(tag));
+            assert_eq!(game.rand_sequences.to_nbt(), before);
+            assert_eq!(game.world.random.state(), level_before);
+
+            assert_eq!(
+                run_transaction(game, |game, tx| Ok::<_, ()>(insert(game, tx))),
+                Ok(tentative)
+            );
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn hopper_respects_a_mod_container_only_when_empty_rule() {
     default_fixture(
         "game::machines::native_items::storage_attempt_tests::hopper_respects_a_mod_container_only_when_empty_rule",

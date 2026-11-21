@@ -118,8 +118,7 @@ impl EntityRef {
             crate::ask_providers(
                 host,
                 || table.entity_provider(key.name, kind.as_deref()?, &mut index),
-                crate::EntityProviderOf::get::<T, C>,
-                |provider, host| provider.provide(host, self, context),
+                |provider, host| provider.get::<T, C>()?.provide(host, self, context),
                 |host| {
                     game = key.default.and_then(|default| default(host, self, context));
                     game.is_some()

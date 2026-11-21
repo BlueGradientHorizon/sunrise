@@ -3,7 +3,7 @@
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
 use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
-use crate::game::transactions::After;
+use crate::game::{decorated_pot::DECORATED_POT, transactions::After};
 use mod_api::{BlockCapabilitySite, BlockSide, LevelRef, Transaction};
 use sunrise_client::{containers::BlockEntity, items::ItemStack, save};
 use sunrise_core::geometry::Direction;
@@ -58,7 +58,7 @@ impl super::Containers<'_> {
             }
             // The pot's implicit entity and saved slot use the block's resident state, not
             // `world.block_entities`. A new empty pot need not have a saved tag yet.
-            "minecraft:decorated_pot" => Some(ItemTarget::Pot),
+            DECORATED_POT => Some(ItemTarget::Pot),
             _ => match entity? {
                 BlockEntity::Mod(_) => self
                     .world

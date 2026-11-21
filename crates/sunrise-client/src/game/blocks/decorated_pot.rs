@@ -16,6 +16,8 @@ use {
     sunrise_world::loot::{ContainerLootContext, LootData},
 };
 
+pub(super) const DECORATED_POT: &str = "minecraft:decorated_pot";
+
 /// `DecoratedPotBlockEntity.WobbleStyle` ordinals.
 const WOBBLE_POSITIVE: i32 = 0;
 const WOBBLE_NEGATIVE: i32 = 1;
