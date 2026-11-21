@@ -302,6 +302,9 @@ impl QueuedWriter {
     pub(crate) fn is_terminal(&self) -> bool {
         self.terminal.load(Ordering::Acquire)
     }
+    pub(crate) fn accepts_packets(&self) -> bool {
+        !self.is_terminal() && self.alive.load(Ordering::Acquire)
+    }
     pub(crate) fn framing(&self) -> Framing {
         self.framing
     }

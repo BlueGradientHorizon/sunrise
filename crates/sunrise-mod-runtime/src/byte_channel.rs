@@ -2,7 +2,8 @@
 //!
 //! Charge each value's owned heap allocations (for a `Vec`, its capacity, not length).
 //! The channel adds inline value and queue-node storage to that charge. Allocator
-//! metadata is not included, but both allocated bytes and node count are bounded.
+//! metadata is not included. Protocol records can opt out of ordinary pressure,
+//! but still contribute to the same retained-byte statistics and FIFO.
 //! Values held before sending or after ordinary receiving are outside the budget.
 //! Owned receiving transfers the original charge to a lease retained by the consumer.
 use std::collections::LinkedList;
@@ -61,20 +62,31 @@ impl<T> OwnedReceipt<T> {
 /// Opaque retained receive credit. Drop refunds even after endpoint closure.
 pub struct ReceiveLease<T> {
     shared: Arc<Shared<T>>,
-    charge: usize,
+    charge: Charge,
 }
 impl<T> Drop for ReceiveLease<T> {
     fn drop(&mut self) {
         let mut state = self.shared.lock();
-        state.held_bytes -= self.charge;
-        state.stats.reserved_bytes -= self.charge;
+        state.held_bytes -= self.charge.bytes;
+        state.stats.reserved_bytes -= self.charge.bytes;
+        if self.charge.ordered {
+            state.ordered_bytes -= self.charge.bytes;
+            state.held_ordered_bytes -= self.charge.bytes;
+        }
     }
+}
+
+struct Charge {
+    bytes: usize,
+    ordered: bool,
 }
 
 struct State<T> {
     pending_bytes: usize,
     held_bytes: usize,
-    queue: LinkedList<(T, usize)>,
+    ordered_bytes: usize,
+    held_ordered_bytes: usize,
+    queue: LinkedList<(T, Charge)>,
     stats: Stats,
     senders: usize,
     receiver_alive: bool,
@@ -98,7 +110,7 @@ pub struct Receiver<T>(Arc<Shared<T>>);
 /// Fixed per-message charge, including list links, inline value and byte charge.
 /// This is nonzero even for zero-sized values and empty payloads.
 pub const fn message_overhead<T>() -> usize {
-    size_of::<((T, usize), [usize; 2])>()
+    size_of::<((T, Charge), [usize; 2])>()
 }
 
 /// Creates a channel. Capacity is connection pressure, not a per-body protocol cap.
@@ -111,6 +123,8 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
         state: Mutex::new(State {
             pending_bytes: 0,
             held_bytes: 0,
+            ordered_bytes: 0,
+            held_ordered_bytes: 0,
             queue: LinkedList::new(),
             stats: Stats {
                 reserved_bytes: 0,
@@ -138,17 +152,6 @@ impl<T> Sender<T> {
     /// Charges owned heap bytes plus inline value and node overhead immediately.
     /// Never waits for capacity. The future value must fit this declared charge.
     pub fn reserve(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
-        self.reserve_with(owned_bytes, false)
-    }
-
-    /// Reserve a protocol-ordered record independently of the watermark, while
-    /// accounting for all its bytes. The caller must bound outstanding records
-    /// separately (for example, one terminal notice or one rendezvous).
-    pub fn reserve_ordered(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
-        self.reserve_with(owned_bytes, true)
-    }
-
-    fn reserve_with(&self, owned_bytes: usize, ordered: bool) -> Result<Permit<T>, ReserveError> {
         let mut state = self.0.lock();
         if !state.receiver_alive {
             return Err(ReserveError::Disconnected);
@@ -161,19 +164,46 @@ impl<T> Sender<T> {
             .reserved_bytes
             .checked_add(charge)
             .ok_or(ReserveError::Full)?;
-        if !ordered && reserved > self.0.capacity {
+        if reserved - state.ordered_bytes > self.0.capacity {
             return Err(ReserveError::Full);
         }
         state.pending_bytes += charge;
         state.stats.reserved_bytes = reserved;
-        state.stats.peak_reserved_bytes = state
-            .stats
-            .peak_reserved_bytes
-            .max(state.stats.reserved_bytes);
+        state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
         Ok(Permit {
             shared: self.0.clone(),
             charge,
         })
+    }
+
+    /// Publish an ordered protocol record without applying the ordinary
+    /// watermark. Track its full charge until the receipt drops, separately
+    /// from the bytes that can refuse ordinary packets.
+    pub fn try_send_ordered(&self, value: T, owned_bytes: usize) -> Result<(), TrySendError<T>> {
+        let mut state = self.0.lock();
+        if !state.receiver_alive {
+            return Err(TrySendError::Disconnected(value));
+        }
+        let Some(bytes) = owned_bytes.checked_add(message_overhead::<T>()) else {
+            return Err(TrySendError::Full(value));
+        };
+        let Some(reserved) = state.stats.reserved_bytes.checked_add(bytes) else {
+            return Err(TrySendError::Full(value));
+        };
+        state.ordered_bytes += bytes;
+        state.stats.reserved_bytes = reserved;
+        state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
+        state.stats.queued_items += 1;
+        state.queue.push_back((
+            value,
+            Charge {
+                bytes,
+                ordered: true,
+            },
+        ));
+        drop(state);
+        self.0.ready.notify_one();
+        Ok(())
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
@@ -186,7 +216,13 @@ impl<T> Permit<T> {
         if !state.receiver_alive || state.senders == 0 {
             return Err(value);
         }
-        state.queue.push_back((value, self.charge));
+        state.queue.push_back((
+            value,
+            Charge {
+                bytes: self.charge,
+                ordered: false,
+            },
+        ));
         state.pending_bytes -= self.charge;
         state.stats.queued_items += 1;
         self.charge = 0;
@@ -228,14 +264,20 @@ impl<T> Drop for Sender<T> {
 impl<T> Receiver<T> {
     fn pop(state: &mut State<T>) -> Option<T> {
         let (value, charge) = state.queue.pop_front()?;
-        state.stats.reserved_bytes -= charge;
+        state.stats.reserved_bytes -= charge.bytes;
+        if charge.ordered {
+            state.ordered_bytes -= charge.bytes;
+        }
         state.stats.queued_items -= 1;
         Some(value)
     }
     fn pop_owned(&self, state: &mut State<T>) -> Option<OwnedReceipt<T>> {
         let (value, charge) = state.queue.pop_front()?;
         state.stats.queued_items -= 1;
-        state.held_bytes += charge;
+        state.held_bytes += charge.bytes;
+        if charge.ordered {
+            state.held_ordered_bytes += charge.bytes;
+        }
         Some(OwnedReceipt {
             value,
             lease: ReceiveLease {
@@ -329,6 +371,7 @@ impl<T> Drop for Receiver<T> {
             state.receiver_alive = false;
             state.pending_bytes = 0;
             state.stats.reserved_bytes = state.held_bytes;
+            state.ordered_bytes = state.held_ordered_bytes;
             state.stats.queued_items = 0;
             std::mem::take(&mut state.queue)
         };

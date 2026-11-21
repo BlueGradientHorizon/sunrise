@@ -20,7 +20,6 @@ enum Target {
         configuring: Arc<AtomicBool>,
         transport: Arc<Transport>,
         events: crate::net::ingress::Producer<Event>,
-        bundle_close: Option<crate::net::BundleClose>,
     },
     Server(PlayerSender),
     Configuration(ConfigSender),
@@ -83,14 +82,7 @@ impl Endpoint {
             configuring,
             transport,
             events,
-            bundle_close: None,
         })
-    }
-    pub(crate) fn in_bundle(mut self, close: crate::net::BundleClose) -> Self {
-        if let Target::Client { bundle_close, .. } = &mut self.0 {
-            *bundle_close = Some(close);
-        }
-        self
     }
     pub fn server(sender: PlayerSender) -> Self {
         Self(Target::Server(sender))
@@ -252,14 +244,6 @@ impl Endpoint {
                 &[&format!("invalid payload disconnect reason: {error:?}")],
             )
         });
-        if let Target::Client {
-            bundle_close: Some(close),
-            ..
-        } = &self.0
-        {
-            close.mod_disconnect(reason.plain());
-            return;
-        }
         self.transport().close();
         match &self.0 {
             Target::Client {
