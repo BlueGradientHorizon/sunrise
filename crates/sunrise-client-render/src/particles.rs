@@ -1409,7 +1409,13 @@ impl ParticleEngine {
                 continue;
             };
             let sprites: Vec<u32> = if textures.is_empty() {
-                // `ParticleResources.reload`: a present empty list binds the atlas's missing sprite.
+                // `ParticleResources.reload` binds its missing sprite to a registered sprite set.
+                // A declarative asset alone keeps no sprites for an empty list.
+                if !mod_api::__private::particle_named_key(&key)
+                    .is_some_and(|key| self.providers.contains_key(&key))
+                {
+                    continue;
+                }
                 vec![self.intern(crate::hud::MISSING_SPRITE)]
             } else {
                 textures
