@@ -26,7 +26,7 @@ The hooks about the entity (`block_entity_tick`, `block_entity_update_tag`, `pre
 `BlockEntityTypeKey` as the declaration builder: equality and hashing use the shared load-owned
 registration slot, not the type's blocks. Bare names use the `minecraft:` namespace. The final
 registry resolves requests after all declarations and refuses unknown IDs, naming the requesting mod
-and type. A key retains its identity until restart. `BlockEntityRef::kind(host)` returns
+and type. A key retains its identity until restart. `entity.with_view(host, |view| view.kind()).flatten()` returns
 `Option<BlockEntityTypeKey>`: compare it with `Some(chest_type)` if you already have the key.
 To read the canonical name, use `kind.id(host)`, which borrows it as `Option<&str>`.
 Use a type ID, not a block ID (`minecraft:shulker_box`, not `minecraft:red_shulker_box`).

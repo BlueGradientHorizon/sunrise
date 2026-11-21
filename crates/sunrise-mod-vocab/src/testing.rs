@@ -492,10 +492,36 @@ impl crate::prelude::LevelTickingBackend for FakeHost {
         level == self.level.level()
     }
 }
+// no wire: a view lent by an in-process test backend.
+struct FakeBlockEntityRead {
+    id: &'static str,
+    kind: Option<BlockEntityTypeKey>,
+}
+
+impl crate::ResidentBlockEntityRead for FakeBlockEntityRead {
+    fn id(&self) -> &str {
+        self.id
+    }
+    fn kind(&self) -> Option<BlockEntityTypeKey> {
+        self.kind
+    }
+}
+
 impl crate::prelude::BlockEntitiesBackend for FakeHost {
-    fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
-        let standing = self.level.standing(entity.level, entity.position)?;
-        standing.kind().cloned()
+    fn with_block_entity_view(
+        &self,
+        entity: BlockEntityRef,
+        read: &mut dyn for<'a> FnMut(&crate::BlockEntityView<'a>),
+    ) {
+        let Some(standing) = self.level.standing(entity.level, entity.position) else {
+            return;
+        };
+        let kind = standing.kind().copied();
+        let id = kind
+            .and_then(crate::content::registry_keys::block_entity_type_name)
+            .unwrap_or("");
+        let view = FakeBlockEntityRead { id, kind };
+        read(&crate::BlockEntityView::read_only(entity, &view));
     }
 }
 impl crate::prelude::ItemsBackend for FakeHost {

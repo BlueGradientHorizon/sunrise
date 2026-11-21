@@ -460,6 +460,49 @@ impl ChunkRef {
     pub fn level(self) -> LevelRef {
         self.level
     }
+    /// Resolve this server chunk once and lend its facts to `read`, without loading it.
+    /// A valid but unloaded chunk still lends a view; a stale or unavailable level,
+    /// a client host, or a position outside the world returns `None` without calling `read`.
+    /// Inside the scope, `status` and palette reads return `None` when the chunk is unloaded.
+    /// No residency guard or lock is held while `read` runs. Retain the handle or owned
+    /// results, not the view, and resolve again after mutation or reentry.
+    pub fn with_view<R>(
+        self,
+        host: &dyn Host,
+        read: impl FnOnce(&dyn ChunkView) -> R,
+    ) -> Option<R> {
+        let backend = backend_of(host)?;
+        let mut read = Some(read);
+        let mut result = None;
+        backend.with_chunk_view(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        });
+        result
+    }
+}
+
+/// Read-only facts for a chunk in an open server level, lent by [`ChunkRef::with_view`].
+// no wire: a scoped chunk read, not a transported value.
+pub trait ChunkView {
+    /// Whether this chunk has a resident column.
+    fn loaded(&self) -> bool;
+
+    /// The status of a loaded chunk. `None` if unloaded; proto chunks are not exposed here.
+    fn status(&self) -> Option<ChunkStatus>;
+
+    /// Whether vanilla's seeded slime-chunk test passes, independent of dimension, height,
+    /// biome and other spawn conditions. Works without a resident column and does not
+    /// advance the world's random stream.
+    fn is_slime_chunk(&self) -> bool;
+
+    /// The section Y coordinates (block Y `>> 4`), from bottom up, whose block palette may
+    /// hold any state of `block` (`PalettedContainer.maybeHas`). A palette may retain an
+    /// unused state, or report a match whenever the block exists in a section with more
+    /// distinct states than a palette holds. Read the named sections to find actual blocks.
+    /// `None` if unloaded or the block-state table is unavailable; loads nothing.
+    fn sections_with_block(&self, block: BlockKey) -> Option<Vec<i32>>;
 }
 
 /// The status of a loaded chunk that Sunrise can expose.

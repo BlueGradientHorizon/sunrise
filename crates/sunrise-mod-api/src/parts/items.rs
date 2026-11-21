@@ -715,8 +715,22 @@ pub mod tests {
     }
     #[cfg(test)]
     impl mod_api::prelude::BlockEntitiesBackend for Shelf {
-        fn block_entity_kind(&self, _: BlockEntityRef) -> Option<BlockEntityTypeKey> {
-            self.overstates.then(|| type_key("test:item_overstates"))
+        fn with_block_entity_view(
+            &self,
+            entity: BlockEntityRef,
+            read: &mut dyn for<'a> FnMut(&crate::BlockEntityView<'a>),
+        ) {
+            struct Kind(Option<BlockEntityTypeKey>);
+            impl crate::ResidentBlockEntityRead for Kind {
+                fn id(&self) -> &str {
+                    ""
+                }
+                fn kind(&self) -> Option<BlockEntityTypeKey> {
+                    self.0
+                }
+            }
+            let view = Kind(self.overstates.then(|| type_key("test:item_overstates")));
+            read(&crate::BlockEntityView::read_only(entity, &view));
         }
     }
     #[cfg(test)]

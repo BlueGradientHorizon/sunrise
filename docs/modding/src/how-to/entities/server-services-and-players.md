@@ -203,13 +203,14 @@ paused level.
 
 ## Finding blocks in a chunk
 
-`chunk.sections_with_block(host, block)` names the sections of a loaded chunk whose block palette may hold any
+`chunk.with_view(host, |view| view.sections_with_block(block)).flatten()` names the sections of a loaded chunk whose block palette may hold any
 state of `block`, as section Y coordinates (block Y `>> 4`) from the bottom up, without reading their blocks
 (`PalettedContainer.maybeHas`). Read the blocks of the sections it names to find the ones that stand there: a
 palette keeps a state no block uses any more, and a section of more distinct states than a palette holds is
 named whenever the block exists. A mod that points at the nearest block of a kind asks it on `chunk_load` for
-blocks placed before it tracked them. `None` for a stale handle, on a client, or for a chunk that isn't
-loaded; it loads nothing.
+blocks placed before it tracked them. `chunk.with_view` resolves the chunk once and also exposes `loaded()`,
+`status()` and `is_slime_chunk()`; it returns `None` without calling the closure for a stale handle, on a client,
+or outside world bounds, and `sections_with_block` returns `None` for an unloaded chunk without loading anything.
 
 ## World mutation: chunks, blocks shown and placed as a player
 

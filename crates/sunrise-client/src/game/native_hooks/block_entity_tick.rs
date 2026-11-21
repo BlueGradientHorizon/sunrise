@@ -6,7 +6,8 @@ use crate::game::{
 };
 use mod_api::{
     BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTickAccess,
-    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ServerHost,
+    BlockEntityTickScope, BlockEntityView, ResidentBlockEntity, ResidentBlockEntityRead,
+    ServerHost,
 };
 use std::collections::HashMap;
 use sunrise_client::{
@@ -152,12 +153,44 @@ impl Drop for TickData<'_> {
     }
 }
 
-impl ResidentBlockEntity for TickData<'_> {
+impl ResidentBlockEntityRead for TickData<'_> {
     fn id(&self) -> &str {
         self.entity().id()
     }
-    fn data_slots(&self) -> &[i32] {
-        &self.entity().data
+    fn data_slots(&self) -> Option<&[i32]> {
+        Some(&self.entity().data)
+    }
+    fn nbt(&self) -> Option<&Compound> {
+        Some(&self.entity().nbt)
+    }
+    fn item_slots(&self) -> usize {
+        self.slot_count
+    }
+    fn item_slot(&self, slot: u32) -> Option<(&str, u32)> {
+        let index = slot as usize;
+        if index >= self.slot_count {
+            return None;
+        }
+        let stack = self.entity().items.get(index)?.as_ref()?;
+        Some((&stack.item, stack.count))
+    }
+    fn copy_item_slot(&self, slot: u32) -> Option<mod_api::ItemStack> {
+        let index = slot as usize;
+        if index >= self.slot_count {
+            return None;
+        }
+        self.entity()
+            .items
+            .get(index)?
+            .as_ref()?
+            .try_into_api()
+            .ok()
+    }
+}
+
+impl ResidentBlockEntity for TickData<'_> {
+    fn as_read(&self) -> &dyn ResidentBlockEntityRead {
+        self
     }
 
     fn set_data_slot(&mut self, slot: u32, value: i32) -> bool {
@@ -191,10 +224,6 @@ impl ResidentBlockEntity for TickData<'_> {
         Ok(true)
     }
 
-    fn nbt(&self) -> &Compound {
-        &self.entity().nbt
-    }
-
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
         if [
             "id",
@@ -223,28 +252,6 @@ impl ResidentBlockEntity for TickData<'_> {
             }
         }
         true
-    }
-
-    fn item_slots(&self) -> usize {
-        self.slot_count
-    }
-
-    fn item_slot(&self, slot: u32) -> Option<(&str, u32)> {
-        let index = slot as usize;
-        if index >= self.slot_count {
-            return None;
-        }
-        let stack = self.entity().items.get(index)?.as_ref()?;
-        Some((&stack.item, stack.count))
-    }
-
-    fn copy_item_slot(&self, slot: u32) -> Option<mod_api::ItemStack> {
-        self.entity()
-            .items
-            .get(slot as usize)?
-            .as_ref()?
-            .try_into_api()
-            .ok()
     }
 
     fn set_item_slot(

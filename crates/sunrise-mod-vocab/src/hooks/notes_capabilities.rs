@@ -133,7 +133,7 @@ pub trait Notes {
   and `block_entity_tick` takes the whole block entity, with the data slots the menu shows.
 
 - A machine reaches neighbouring storage through the block's Parts and capabilities, not a raw mutable
-  block-entity callback. `block_entity.data_slots(host)` reads a mod entity's menu data on the server or
+  block-entity callback. `block_entity.with_view(host, |view| view.data_slots().map(<[i32]>::to_vec)).flatten()` reads a mod entity's menu data on the server or
   the client's own copy; `set_data_slot(host, slot, value)` writes a declared slot on the server under
   the current transaction, rolls back on abort, and uses the normal menu broadcast to viewers.
   `level.set_block` uses the level's normal update path.

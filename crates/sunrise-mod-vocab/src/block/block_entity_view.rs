@@ -1,17 +1,27 @@
-//! The resident server ticker's two sequential loans: its subject and the world.
+//! The unified block-entity view: lent mutably by the resident server ticker and
+//! read-only by [`BlockEntityRef::with_view`].
 use crate::{
-    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockState, Compound, ItemKey,
-    ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
+    BlockEntityDataError, BlockEntityItemError, BlockEntityRef, BlockEntityTypeKey, BlockState,
+    Compound, ItemKey, ItemStack, JavaString, LevelRef, ServerHost, Tag, Transaction,
 };
 
-/// The block entity this server ticker is running. Its storage stays in the level.
+enum BlockEntityAccess<'a> {
+    Read(&'a dyn ResidentBlockEntityRead),
+    Mut {
+        state: BlockState,
+        data: &'a mut dyn ResidentBlockEntity,
+    },
+}
+
+/// A scoped view of a block entity: lent mutably by [`BlockEntityTickScope::with_view`]
+/// during a resident server tick, or read-only (`&BlockEntityView<'_>`) by
+/// [`BlockEntityRef::with_view`]. Its storage stays in the level.
 /// Keep a [`BlockEntityRef`] from [`Self::handle`] if you need to find it after the call.
 // exhaustive: only the engine constructs a view.
-// no wire: an exclusive loan, not a payload.
+// no wire: a scoped loan, not a payload.
 pub struct BlockEntityView<'a> {
     subject: BlockEntityRef,
-    state: BlockState,
-    data: &'a mut dyn ResidentBlockEntity,
+    access: BlockEntityAccess<'a>,
 }
 
 impl<'a> BlockEntityView<'a> {
@@ -24,8 +34,23 @@ impl<'a> BlockEntityView<'a> {
     ) -> Self {
         Self {
             subject,
-            state,
-            data,
+            access: BlockEntityAccess::Mut { state, data },
+        }
+    }
+
+    // hidden: the engine builds a read-only view for BlockEntityRef::with_view.
+    #[doc(hidden)]
+    pub fn read_only(subject: BlockEntityRef, data: &'a dyn ResidentBlockEntityRead) -> Self {
+        Self {
+            subject,
+            access: BlockEntityAccess::Read(data),
+        }
+    }
+
+    fn read(&self) -> &dyn ResidentBlockEntityRead {
+        match &self.access {
+            BlockEntityAccess::Read(data) => *data,
+            BlockEntityAccess::Mut { data, .. } => data.as_read(),
         }
     }
 
@@ -33,56 +58,78 @@ impl<'a> BlockEntityView<'a> {
     pub fn position(&self) -> [i32; 3] {
         self.subject.position
     }
-    /// The level the entity is ticking in.
+    /// The level the entity is in.
     pub fn level(&self) -> LevelRef {
         self.subject.level
     }
-    /// The entity's block state. Reborrowing after a state change refuses the loan.
-    pub fn state(&self) -> BlockState {
-        self.state
+    /// The entity's block state, when available in the current world view.
+    /// In a resident tick, reborrowing after a state change refuses the loan.
+    pub fn state(&self) -> Option<BlockState> {
+        match &self.access {
+            BlockEntityAccess::Read(data) => data.state(),
+            BlockEntityAccess::Mut { state, .. } => Some(*state),
+        }
     }
     /// The entity's immutable type id.
     pub fn id(&self) -> &str {
-        self.data.id()
+        self.read().id()
     }
-    /// A generation-bound handle to keep after this tick.
+    /// The entity's resolved block-entity type key (`BlockEntity.getType`), when known in
+    /// the current registry.
+    pub fn kind(&self) -> Option<BlockEntityTypeKey> {
+        self.read().kind()
+    }
+    /// A generation-bound handle to keep after this scope.
     pub fn handle(&self) -> BlockEntityRef {
         self.subject
     }
 
-    /// The live, transient integer slots its menu reads.
-    pub fn data_slots(&self) -> &[i32] {
-        self.data.data_slots()
+    /// The live, transient integer slots a mod block entity's menu reads.
+    /// `None` for vanilla block entities or views without menu data.
+    pub fn data_slots(&self) -> Option<&[i32]> {
+        self.read().data_slots()
     }
-    /// Set one existing slot. False for an absent slot or an equal value.
+    /// Set one existing slot. False for an absent slot, an equal value or a read-only loan.
     pub fn set_data_slot(&mut self, slot: u32, value: i32) -> bool {
-        self.data.set_data_slot(slot, value)
+        match &mut self.access {
+            BlockEntityAccess::Mut { data, .. } => data.set_data_slot(slot, value),
+            BlockEntityAccess::Read(_) => false,
+        }
     }
     /// Set and, if necessary, resize the menu data, without a block update packet.
     pub fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError> {
-        self.data.set_data_slots(data)
+        match &mut self.access {
+            BlockEntityAccess::Mut { data: resident, .. } => resident.set_data_slots(data),
+            BlockEntityAccess::Read(_) => Ok(false),
+        }
     }
 
-    /// The resident saved compound. Modeled item slots are separate; `Items`, when
-    /// present, holds opaque saved data that has not been decoded into item slots.
-    pub fn nbt(&self) -> &Compound {
-        self.data.nbt()
+    /// The resident saved compound of a mod block entity. Modeled item slots are separate;
+    /// `Items`, when present, holds opaque saved data that has not been decoded into item slots.
+    /// `None` for vanilla block entities or views without resident mod NBT.
+    pub fn nbt(&self) -> Option<&Compound> {
+        self.read().nbt()
     }
     /// Set or remove a mod-owned saved field, without reloading the block entity.
-    /// False for an equal field, excessive nesting, or engine-owned identity or item fields.
+    /// False for an equal field, excessive nesting, engine-owned identity or item fields,
+    /// or a read-only loan.
     pub fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool {
-        self.data.set_nbt(key, value)
+        match &mut self.access {
+            BlockEntityAccess::Mut { data, .. } => data.set_nbt(key, value),
+            BlockEntityAccess::Read(_) => false,
+        }
     }
 
     /// The declared internal slot count, independent of its external automation policy.
     pub fn item_slots(&self) -> usize {
-        self.data.item_slots()
+        self.read().item_slots()
     }
     /// Borrow a modeled stack. `None` for an empty, opaque or undeclared slot.
     pub fn item_slot(&self, slot: u32) -> Option<BlockEntityStackView<'_>> {
-        let (item, count) = self.data.item_slot(slot)?;
+        let data = self.read();
+        let (item, count) = data.item_slot(slot)?;
         Some(BlockEntityStackView {
-            data: &*self.data,
+            data,
             slot,
             item,
             count,
@@ -95,13 +142,18 @@ impl<'a> BlockEntityView<'a> {
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<bool, BlockEntityItemError> {
-        self.data.set_item_slot(slot, stack)
+        match &mut self.access {
+            BlockEntityAccess::Mut { data, .. } => data.set_item_slot(slot, stack),
+            BlockEntityAccess::Read(_) => Ok(false),
+        }
     }
 
     /// Queue one-shot fields for the next explicit block-entity sync to its current viewers.
     /// An empty compound clears the queued fields. Nothing saves or sends them from this call.
     pub fn set_client_update_fields(&mut self, fields: Compound) {
-        self.data.set_client_update_fields(fields);
+        if let BlockEntityAccess::Mut { data, .. } = &mut self.access {
+            data.set_client_update_fields(fields);
+        }
     }
 }
 
@@ -109,7 +161,7 @@ impl<'a> BlockEntityView<'a> {
 // exhaustive: the borrowed backend cannot be constructed by a mod.
 // no wire: borrowed stack storage.
 pub struct BlockEntityStackView<'a> {
-    data: &'a dyn ResidentBlockEntity,
+    data: &'a dyn ResidentBlockEntityRead,
     slot: u32,
     item: &'a str,
     count: u32,
@@ -202,23 +254,112 @@ pub trait BlockEntityTickAccess {
     fn host(&mut self) -> &mut dyn ServerHost;
 }
 
+/// Read-only engine backing for a checked block entity view.
+// hidden: the engine owns row access; listeners use the checked BlockEntityView methods.
+#[doc(hidden)]
+pub trait ResidentBlockEntityRead {
+    fn id(&self) -> &str;
+    fn kind(&self) -> Option<BlockEntityTypeKey> {
+        crate::content::registry_keys::block_entity_type_key(self.id())
+    }
+    fn state(&self) -> Option<BlockState> {
+        None
+    }
+    fn data_slots(&self) -> Option<&[i32]> {
+        None
+    }
+    fn nbt(&self) -> Option<&Compound> {
+        None
+    }
+    fn item_slots(&self) -> usize {
+        0
+    }
+    fn item_slot(&self, _slot: u32) -> Option<(&str, u32)> {
+        None
+    }
+    fn copy_item_slot(&self, _slot: u32) -> Option<ItemStack> {
+        None
+    }
+}
+
 /// Engine backing for a checked, journaled row loan.
 // hidden: the engine owns row access and journaling; listeners use the checked BlockEntityView methods.
 #[doc(hidden)]
-pub trait ResidentBlockEntity {
-    fn id(&self) -> &str;
-    fn data_slots(&self) -> &[i32];
+pub trait ResidentBlockEntity: ResidentBlockEntityRead {
+    fn as_read(&self) -> &dyn ResidentBlockEntityRead;
     fn set_data_slot(&mut self, slot: u32, value: i32) -> bool;
     fn set_data_slots(&mut self, data: &[i32]) -> Result<bool, BlockEntityDataError>;
-    fn nbt(&self) -> &Compound;
     fn set_nbt(&mut self, key: JavaString, value: Option<Tag>) -> bool;
-    fn item_slots(&self) -> usize;
-    fn item_slot(&self, slot: u32) -> Option<(&str, u32)>;
-    fn copy_item_slot(&self, slot: u32) -> Option<ItemStack>;
     fn set_item_slot(
         &mut self,
         slot: u32,
         stack: Option<ItemStack>,
     ) -> Result<bool, BlockEntityItemError>;
     fn set_client_update_fields(&mut self, fields: Compound);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{DimensionKey, WorldEpoch};
+
+    struct StubRead {
+        id: &'static str,
+        kind: Option<BlockEntityTypeKey>,
+        state: Option<BlockState>,
+        slots: Option<Vec<i32>>,
+        nbt: Option<Compound>,
+    }
+
+    impl ResidentBlockEntityRead for StubRead {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn kind(&self) -> Option<BlockEntityTypeKey> {
+            self.kind
+        }
+        fn state(&self) -> Option<BlockState> {
+            self.state
+        }
+        fn data_slots(&self) -> Option<&[i32]> {
+            self.slots.as_deref()
+        }
+        fn nbt(&self) -> Option<&Compound> {
+            self.nbt.as_ref()
+        }
+    }
+
+    #[test]
+    fn read_only_view_exposes_metadata_and_optional_fields() {
+        let level = LevelRef::new(WorldEpoch::new(1), DimensionKey::OVERWORLD);
+        let subject = BlockEntityRef {
+            level,
+            position: [4, 64, -2],
+            generation: 9,
+        };
+        let nbt = Compound::from([("fuel".into(), Tag::Int(12))]);
+        let backing = StubRead {
+            id: "test:kiln",
+            kind: Some(BlockEntityTypeKey(3)),
+            state: None,
+            slots: Some(vec![7, 8]),
+            nbt: Some(nbt.clone()),
+        };
+        let mut view = BlockEntityView::read_only(subject, &backing);
+        assert_eq!(view.handle(), subject);
+        assert_eq!(view.level(), level);
+        assert_eq!(view.position(), [4, 64, -2]);
+        assert_eq!(view.id(), "test:kiln");
+        assert_eq!(view.kind(), Some(BlockEntityTypeKey(3)));
+        assert_eq!(view.state(), None);
+        assert_eq!(view.data_slots(), Some(&[7, 8][..]));
+        assert_eq!(view.nbt(), Some(&nbt));
+        assert_eq!(view.item_slots(), 0);
+        assert!(view.item_slot(0).is_none());
+        assert!(!view.set_data_slot(0, 9));
+        assert_eq!(view.set_data_slots(&[1]), Ok(false));
+        assert!(!view.set_nbt("fuel".into(), Some(Tag::Int(1))));
+        assert_eq!(view.set_item_slot(0, None), Ok(false));
+        view.set_client_update_fields(Compound::new());
+    }
 }

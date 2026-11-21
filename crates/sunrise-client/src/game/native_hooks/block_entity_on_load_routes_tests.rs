@@ -68,8 +68,10 @@ mod tests {
                 let HostSide::Server(host) = host else {
                     panic!()
                 };
-                let pos = event.entity.with_view(host, |view| view.position()).unwrap();
-                let level = event.entity.with_view(host, |view| view.level()).unwrap();
+                let (pos, level) = event
+                    .entity
+                    .with_view(host, |view| (view.position(), view.level()))
+                    .unwrap();
                 let state = BlockState::of(&host.block_states(), self.replacement, &[]).unwrap();
                 let air = BlockState::of(&host.block_states(), self.air, &[]).unwrap();
                 assert_eq!(

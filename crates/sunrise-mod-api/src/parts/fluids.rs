@@ -286,10 +286,27 @@ pub mod tests {
     }
     #[cfg(test)]
     impl mod_api::prelude::BlockEntitiesBackend for TankWorld {
-        fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
-            self.types
+        fn with_block_entity_view(
+            &self,
+            entity: BlockEntityRef,
+            read: &mut dyn for<'a> FnMut(&crate::BlockEntityView<'a>),
+        ) {
+            struct Kind<'a>(&'a str, BlockEntityTypeKey);
+            impl crate::ResidentBlockEntityRead for Kind<'_> {
+                fn id(&self) -> &str {
+                    self.0
+                }
+                fn kind(&self) -> Option<BlockEntityTypeKey> {
+                    Some(self.1)
+                }
+            }
+            if let Some(&id) = self
+                .types
                 .get(&mod_vocab::__private::game::Fields::fields(&entity).position)
-                .map(|id| type_key(id))
+            {
+                let view = Kind(id, type_key(id));
+                read(&crate::BlockEntityView::read_only(entity, &view));
+            }
         }
     }
     #[cfg(test)]

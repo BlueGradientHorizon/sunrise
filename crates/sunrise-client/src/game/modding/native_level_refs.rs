@@ -5,7 +5,7 @@
 use super::Game;
 use mod_api::world::mod_chunk_tickets::ModTicket;
 use mod_api::{
-    BlockHit, BlockTransformPreview, ChunkRef, ChunkStatus, ClipBlock, ClipFluid, GlobalPos, Hand,
+    BlockHit, BlockTransformPreview, ChunkRef, ChunkView, ClipBlock, ClipFluid, GlobalPos, Hand,
     Identifier, LevelRef, LightLayer, MapState, PlayerRef, RespawnData, TicketController, Vec3,
 };
 use sunrise_client::{streaming::Streaming, world::World};
@@ -354,14 +354,23 @@ impl Game<'_> {
                 .collect(),
         )
     }
-    /// Whether this chunk is loaded; false on a client or for a stale handle.
-    pub(super) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
-        self.chunk(chunk.level(), chunk.pos()).is_some()
-    }
-    /// The status of a loaded chunk. Proto chunks are not exposed here.
-    pub(super) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
-        self.chunk(chunk.level(), chunk.pos())
-            .map(|_| ChunkStatus::Full)
+    /// Resolve `chunk` once in an open server level and lend a [`ChunkView`] to `read`.
+    /// A valid unloaded chunk still lends a view; a stale level, client host or position
+    /// outside the world returns without calling `read`.
+    pub(super) fn with_chunk_view(&self, chunk: ChunkRef, read: &mut dyn FnMut(&dyn ChunkView)) {
+        let pos = chunk.pos();
+        if !chunk_in_world(pos) {
+            return;
+        }
+        let Some(world) = self.native_level_world(chunk.level()) else {
+            return;
+        };
+        let [x, z] = pos;
+        read(&super::native_chunk_queries::NativeChunkView {
+            column: world.chunks.get(&(x, z)).map(std::sync::Arc::as_ref),
+            pos,
+            seed: self.level.seed,
+        });
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
     /// force an unloaded chunk. None for a stale handle, on a client, and for
@@ -1823,11 +1832,23 @@ mod tests {
             // Unchanged adds and removals do not load a missing column.
             let pending = game.level_chunk_ref(level, [200, 200]).unwrap();
             assert!(game.streaming.set_forced(200, 200, true));
-            assert!(!pending.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert!(
+                !pending
+                    .with_view(game, |view| view.loaded())
+                    .unwrap_or(false)
+            );
             assert!(!game.chunk_set_forced(pending, true));
-            assert!(!pending.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert!(
+                !pending
+                    .with_view(game, |view| view.loaded())
+                    .unwrap_or(false)
+            );
             assert!(game.chunk_set_forced(pending, false));
-            assert!(!pending.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert!(
+                !pending
+                    .with_view(game, |view| view.loaded())
+                    .unwrap_or(false)
+            );
             assert!(game.level_chunk_ref(level, [1_875_000, 0]).is_none());
             assert!(game.level_chunk_ref(level, [0, -1_875_001]).is_none());
             assert!(!game.chunk_set_forced(ChunkRef::new(level, [i32::MAX, 0]), true));
@@ -1877,11 +1898,20 @@ mod tests {
 
             let level = game.level(game.dim.id()).unwrap();
             let queued = game.level_chunk_ref(level, [40, -7]).unwrap();
-            assert!(!queued.with_view(game, |view| view.loaded()).unwrap_or(false));
+            assert!(
+                !queued
+                    .with_view(game, |view| view.loaded())
+                    .unwrap_or(false)
+            );
             assert!(game.chunk_set_forced(queued, true));
             assert!(!game.chunk_set_forced(queued, true));
             assert_eq!(game.level_forced_chunks(level), Some(vec![[40, -7]]));
-            assert!(!queued.with_view(game, |view| view.loaded()).unwrap_or(false), "paused streaming does no work");
+            assert!(
+                !queued
+                    .with_view(game, |view| view.loaded())
+                    .unwrap_or(false),
+                "paused streaming does no work"
+            );
 
             game.streaming.paused = false;
             game.prepare_levels().unwrap();

@@ -2800,13 +2800,19 @@ pub(super) mod tests {
             assert_eq!(chunk.pos(), [-2, 3]);
             assert_eq!(chunk.level(), level);
             assert!(chunk.with_view(game, |view| view.loaded()).unwrap_or(false));
-            assert_eq!(chunk.with_view(game, |view| view.status()).flatten(), Some(ChunkStatus::Full));
+            assert_eq!(
+                chunk.with_view(game, |view| view.status()).flatten(),
+                Some(ChunkStatus::Full)
+            );
             assert!(game.chunk(level, [99, 99]).is_none());
             assert!(
                 game.enter_command_level(super::super::Dim::Nether)
                     .is_some()
             );
-            assert_eq!(chunk.with_view(game, |view| view.status()).flatten(), Some(ChunkStatus::Full));
+            assert_eq!(
+                chunk.with_view(game, |view| view.status()).flatten(),
+                Some(ChunkStatus::Full)
+            );
             assert_eq!(game.chunk(level, [-2, 3]), Some(chunk));
             assert!(
                 game.enter_command_level(super::super::Dim::Overworld)

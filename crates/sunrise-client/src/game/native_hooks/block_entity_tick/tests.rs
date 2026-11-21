@@ -57,10 +57,14 @@ fn retaking_the_view_checks_the_instance_and_state() {
         let subject = place_subject(game, KIND);
         let mut access = access(game, subject);
         let mut scope = BlockEntityTickScope::new(&mut access);
-        assert_eq!(scope.with_view(|view| view.data_slots()[0]), Some(23));
+        assert_eq!(
+            scope.with_view(|view| view.data_slots().unwrap()[0]),
+            Some(23)
+        );
         let host = scope.host();
-        let level = subject.with_view(host, |view| view.level()).unwrap();
-        let pos = subject.with_view(host, |view| view.position()).unwrap();
+        let (level, pos) = subject
+            .with_view(host, |view| (view.level(), view.position()))
+            .unwrap();
         let glass = access
             .game
             .pack
@@ -109,7 +113,7 @@ fn read_only_and_noop_loans_do_not_journal_or_dirty() {
             let mut access = access(game, subject);
             BlockEntityTickScope::new(&mut access)
                 .with_view(|mut view| {
-                    assert_eq!(view.data_slots(), [23]);
+                    assert_eq!(view.data_slots(), Some(&[23][..]));
                     assert!(!view.set_data_slot(0, 23));
                     assert!(!view.set_data_slot(1, 24));
                 })
@@ -159,15 +163,15 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
                 Some(count - 1)
             );
             scope
-                .with_view(|view| assert_eq!(view.data_slots(), [24]))
+                .with_view(|view| assert_eq!(view.data_slots(), Some(&[24][..])))
                 .ok_or(())?;
             Err(())
         });
         assert_eq!(result, Err(()));
         scope
             .with_view(|view| {
-                assert_eq!(view.data_slots(), [23]);
-                assert!(view.nbt().is_empty());
+                assert_eq!(view.data_slots(), Some(&[23][..]));
+                assert!(view.nbt().unwrap().is_empty());
             })
             .unwrap();
         assert_eq!(
@@ -237,13 +241,25 @@ fn ticker_and_handle_setters_dirty_without_explicit_notices() {
         let subject = place_subject(game, KIND);
         game.world.block_log = Some(Vec::new());
         game.tick_mod_block_entity(POS);
-        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [1]);
+        assert_eq!(
+            subject
+                .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                .flatten()
+                .unwrap(),
+            [1]
+        );
         assert!(game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
         game.world.modified.clear();
         assert!(subject.set_data_slot(game, 0, 2).unwrap());
-        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [2]);
+        assert_eq!(
+            subject
+                .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                .flatten()
+                .unwrap(),
+            [2]
+        );
         assert!(game.world.modified.contains(&CHUNK));
         assert!(game.world.block_log.as_ref().unwrap().is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);
@@ -267,7 +283,13 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
         let subject = place_subject(game, UNSUBSCRIBED);
         game.world.block_entities.sleep(POS);
         game.tick_mod_block_entity(POS);
-        assert_eq!(subject.with_view(game, |view| view.data_slots().map(<[i32]>::to_vec)).flatten().unwrap(), [23]);
+        assert_eq!(
+            subject
+                .with_view(game, |view| view.data_slots().map(<[i32]>::to_vec))
+                .flatten()
+                .unwrap(),
+            [23]
+        );
         assert!(game.world.block_entities.is_asleep(&POS));
         assert!(game.world.modified.is_empty());
         assert_eq!(notices.load(Ordering::Relaxed), 0);

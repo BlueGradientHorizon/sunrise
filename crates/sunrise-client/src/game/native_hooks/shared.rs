@@ -3414,7 +3414,7 @@ mod tests {
             fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
                 event.subject.with_view(|mut entity| {
                     let key = "energy".into();
-                    let Some(Tag::Long(energy)) = entity.nbt().get(&key) else {
+                    let Some(Tag::Long(energy)) = entity.nbt().and_then(|nbt| nbt.get(&key)) else {
                         panic!("factory payload missing");
                     };
                     assert!(entity.set_nbt(key, Some(Tag::Long(energy + 1))));
@@ -3591,7 +3591,13 @@ mod tests {
                         }
                         let handle = game.block_entity(level, [x, 64, 0]).unwrap();
                         if block == "minecraft:chest" {
-                            assert_eq!(handle.with_view(game, |view| view.kind()).flatten().as_ref(), keys.vanilla.get());
+                            assert_eq!(
+                                handle
+                                    .with_view(game, |view| view.kind())
+                                    .flatten()
+                                    .as_ref(),
+                                keys.vanilla.get()
+                            );
                             let probe = level.capability(game, &PROBE, [x, 64, 0], None).unwrap();
                             assert_eq!((probe.value(), probe.owner()), (26, "be_user".into()));
                             continue;
@@ -3607,7 +3613,13 @@ mod tests {
                         }
                         assert_eq!(entity.id(), "be_test:shared");
                         assert_eq!(entity.nbt.get(&"energy".into()), Some(&Tag::Long(6300)));
-                        assert_eq!(handle.with_view(game, |view| view.kind()).flatten().as_ref(), keys.shared.get());
+                        assert_eq!(
+                            handle
+                                .with_view(game, |view| view.kind())
+                                .flatten()
+                                .as_ref(),
+                            keys.shared.get()
+                        );
                         let probe = level.capability(game, &PROBE, [x, 64, 0], None).unwrap();
                         assert_eq!((probe.value(), probe.owner()), (6300, "be_user".into()));
                         game.tick_mod_block_entity(pos);
