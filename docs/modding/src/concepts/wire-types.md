@@ -13,6 +13,8 @@ an event, copy the fields you intend to send into your own `Wire` payload type. 
 then select the facts you need for your protocol. Keep issued packet-hold and chunk-ticket controller
 handles in the process that issued them; use a ticket controller's namespaced `id()` when you need to
 record its name.
+Likewise, keep [attachment queries and write tokens](attachments/querying.md) in process; an
+attachment's own codec handles saving and syncing its value.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]
