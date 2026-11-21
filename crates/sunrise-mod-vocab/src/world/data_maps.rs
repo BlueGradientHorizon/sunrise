@@ -70,6 +70,7 @@ pub trait DataMapEntry: entry::Entry {}
 mod entry {
     use super::*;
 
+    // exhaustive: the sealed lookup represents only resident, pinned or owned registry names.
     pub enum EntryName<'a> {
         Borrowed(&'a str),
         Pinned(RegistryName),

@@ -25,6 +25,7 @@ pub struct StateProperties<'a>(&'a [(String, Vec<String>)]);
 
 impl<'a> StateProperties<'a> {
     /// Lend the game's ordered property slice.
+    // hidden: the engine lends its resident definitions; mods obtain the view from the metadata service.
     #[doc(hidden)]
     pub fn of(properties: &'a [(String, Vec<String>)]) -> Self {
         Self(properties)
