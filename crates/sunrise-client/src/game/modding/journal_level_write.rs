@@ -241,6 +241,7 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
                 seed: 0,
                 except: None,
                 entity: None,
+                skip_hooks: false,
             }));
         true
     }
@@ -430,6 +431,10 @@ impl Game<'_> {
                     sound.seed = host.hub.next_sound_seed();
                     if deliver_now {
                         self.send_resolved_native_sound(&sound);
+                    } else if self.creatures.asking_level_sound {
+                        if let Some(resolved) = self.resolve_native_sound(sound) {
+                            self.send_resolved_native_sound(&resolved);
+                        }
                     } else {
                         self.creatures.lan_sounds.push(sound);
                     }

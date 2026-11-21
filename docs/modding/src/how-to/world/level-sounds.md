@@ -6,6 +6,9 @@ Match the hook's `HostSide` to distinguish the requests; the event's sound,
 source, volume and pitch describe that side's request, and original volume and
 pitch remain available after edits. Returning `Flow::Cancel` suppresses that
 request. A server cancellation sends no packet, so there is no client request.
+Sounds played from inside a `play_level_sound_at_position` or
+`play_level_sound_at_entity` listener are not re-dispatched to level-sound
+listeners; they are validated and delivered or journaled normally in call order.
 
 Incoming sound packets, including `/playsound`, ask the client level hooks.
 An entity-sound packet stays bound to its emitter. UI clicks, engine-local

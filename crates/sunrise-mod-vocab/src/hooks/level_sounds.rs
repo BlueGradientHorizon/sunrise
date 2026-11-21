@@ -16,9 +16,13 @@ pub trait Hooks {
     /// requests ask here too. Canceling a sound does not cancel its action or prediction.
     /// Server and client requests are separate:
     /// `HostSide` identifies which one is being edited. UI and sound-engine-only
-    /// playback do not ask this hook. Both sides.
+    /// playback do not ask this hook. Sounds played from inside a
+    /// `play_level_sound_at_position` or `play_level_sound_at_entity` listener
+    /// are not re-dispatched to level-sound listeners; they are validated and
+    /// delivered or journaled normally in call order. Both sides.
     #[hook(
         side = "both",
+        version = 2,
         contract = "cancel",
         out = "cancel",
         neoforge = "PlayLevelSoundEvent.AtPosition",
@@ -44,13 +48,16 @@ pub trait Hooks {
     /// copper golem, an allay's item and duplication, a ghastling hatching, a
     /// trident thrown (the trident) or riptide (the player), and a mod's sound
     /// bound to an entity. Asked after the tick's other sounds. The fields and
-    /// their rules are `play_level_sound_at_position`'s. Client entity-sound
+    /// their rules are `play_level_sound_at_position`'s, including the
+    /// re-entrancy guard (sounds played from inside a level-sound listener are
+    /// not re-dispatched to level-sound listeners). Client entity-sound
     /// packets ask before playback and keep following their emitter; an absent
     /// emitter plays nothing. `LocalPlayer.playSound` also asks this hook,
     /// including steps, falls, hurt, bundle clicks and consumption; these remain
     /// positional sounds, not following sounds. Both sides, distinguished by `HostSide`.
     #[hook(
         side = "both",
+        version = 2,
         contract = "cancel",
         out = "cancel",
         neoforge = "PlayLevelSoundEvent.AtEntity",

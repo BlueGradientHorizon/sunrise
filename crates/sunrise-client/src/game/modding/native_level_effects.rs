@@ -95,6 +95,7 @@ impl Game<'_> {
             seed: 0,
             except,
             entity,
+            skip_hooks: false,
         }));
         true
     }

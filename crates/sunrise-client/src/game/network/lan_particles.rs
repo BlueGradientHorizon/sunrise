@@ -625,12 +625,25 @@ impl Game<'_> {
     }
 
     /// Resolve a native sound through `play_level_sound_at_*` hooks in the sound's own level and
-    /// drop unknown `minecraft:` events. Returns the edited sound ready for pure packet delivery,
-    /// or `None` if canceled/dropped.
+    /// drop unknown `minecraft:` events. Sounds emitted from inside a level-sound listener
+    /// (`skip_hooks` or active `asking_level_sound`) skip re-dispatching the hooks and undergo
+    /// registry validation only. Returns the sound ready for pure packet delivery, or `None` if
+    /// canceled/dropped.
     pub(super) fn resolve_native_sound(
         &mut self,
         mut sound: super::creatures::NativeSound,
     ) -> Option<super::creatures::NativeSound> {
+        let sound_known = |game: &Self, name: &str| {
+            !name.starts_with("minecraft:")
+                || game.lan.as_ref().is_some_and(|host| {
+                    host.hub
+                        .registry_id("minecraft:sound_event", name)
+                        .is_some()
+                })
+        };
+        if sound.skip_hooks || self.creatures.asking_level_sound {
+            return sound_known(self, &sound.sound).then_some(sound);
+        }
         let emitter = sound.entity.and_then(|id| u32::try_from(id).ok());
         let mut asked = LevelSound::new(&sound.sound, sound.at, sound.volume, sound.pitch)
             .in_source(
@@ -643,14 +656,7 @@ impl Game<'_> {
         let dim = super::Dim::from_id(sound.dimension);
         let heard = self
             .with_effect_level(dim, |game| game.ask_level_sound(sound.dimension, asked))?
-            .filter(|heard| {
-                !heard.name.starts_with("minecraft:")
-                    || self.lan.as_ref().is_some_and(|host| {
-                        host.hub
-                            .registry_id("minecraft:sound_event", &heard.name)
-                            .is_some()
-                    })
-            })?;
+            .filter(|heard| sound_known(self, &heard.name))?;
         let (edited_name, source, volume, pitch) = (
             match heard.name {
                 std::borrow::Cow::Borrowed(_) => None,
@@ -720,9 +726,14 @@ impl Game<'_> {
         if self.lan.is_none() {
             return;
         }
-        for sound in std::mem::take(&mut self.creatures.lan_sounds) {
-            if let Some(resolved) = self.resolve_native_sound(sound) {
-                self.send_resolved_native_sound(&resolved);
+        // A listener can queue direct `lan_sounds` entries (e.g. via hit effects); `AskGuard`
+        // marks those `skip_hooks = true`, so a second pass flushes them in the same tick without
+        // re-dispatching level-sound hooks and terminates in at most two passes.
+        while !self.creatures.lan_sounds.is_empty() {
+            for sound in std::mem::take(&mut self.creatures.lan_sounds) {
+                if let Some(resolved) = self.resolve_native_sound(sound) {
+                    self.send_resolved_native_sound(&resolved);
+                }
             }
         }
     }

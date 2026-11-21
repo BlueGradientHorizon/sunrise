@@ -218,6 +218,17 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         let level = game.level(game.dim.id()).unwrap();
         let at = [3.0, 64.0, 5.0];
         let pos = [3, 64, 5];
+        game.player = Some(
+            sunrise_client::motion::PlayerMotion::new(
+                game.motion,
+                sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
+            )
+            .unwrap(),
+        );
+        game.audio.set_listener(at, 0.0, 0.0);
+        let end_portal_spawn = "minecraft:block.end_portal.spawn";
+        let portal_plays =
+            |game: &super::Game<'_>| game.audio.heard.get(end_portal_spawn).copied().unwrap_or(0);
         let burp = "minecraft:entity.player.burp";
         let bell = "minecraft:block.bell.use";
         let anvil = "minecraft:block.anvil.use";
@@ -271,7 +282,9 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         let mut expected_level_random = game.world.random.clone();
 
         // 1. Rolled-back transaction discards every deferred effect path (with
-        // global_sound_events = true) and leaves both RNG streams untouched.
+        // global_sound_events = true) and leaves both RNG streams and End-portal playback count
+        // untouched.
+        let portal_before_abort = portal_plays(game);
         assert!(game.ui.rules.set("global_sound_events", Value::Bool(true)));
         let rolled = mod_api::run_transaction(game, |game, _| {
             assert!(game.entity_play_sound(entity13, burp, 1.0, 1.0));
@@ -287,7 +300,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
             assert!(game.lan_events.is_empty());
             assert!(game.lan_global_events.is_empty());
             assert!(game.lan_entity_events.is_empty());
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert_eq!(portal_plays(game), portal_before_abort);
             assert!(decode_packets(&rx12).is_empty());
             assert!(decode_packets(&rx13).is_empty());
             Err::<(), ()>(())
@@ -298,7 +311,11 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         assert!(game.lan_events.is_empty());
         assert!(game.lan_global_events.is_empty());
         assert!(game.lan_entity_events.is_empty());
-        assert!(game.audio.capture.as_ref().unwrap().is_empty());
+        assert_eq!(
+            portal_plays(game),
+            portal_before_abort,
+            "rolled-back global_level_event must not increase local End-portal playback count"
+        );
         assert!(decode_packets(&rx12).is_empty());
         assert!(decode_packets(&rx13).is_empty());
         assert_eq!(
@@ -310,6 +327,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         // 2. Nested savepoints (global_sound_events = true): aborted child drops its effects
         // without advancing RNG; committed child waits for root commit, then publishes every
         // effect directly in call order.
+        let portal_before_commit = portal_plays(game);
         let committed = mod_api::run_transaction(game, |game, _| {
             let aborted_child = mod_api::run_transaction(game, |game, _| {
                 assert!(game.entity_play_sound(entity13, anvil, 1.0, 1.0));
@@ -355,7 +373,7 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
             assert!(game.lan_events.is_empty());
             assert!(game.lan_global_events.is_empty());
             assert!(game.lan_entity_events.is_empty());
-            assert!(game.audio.capture.as_ref().unwrap().is_empty());
+            assert_eq!(portal_plays(game), portal_before_commit);
             assert!(decode_packets(&rx12).is_empty());
             assert!(decode_packets(&rx13).is_empty());
             Ok::<(), ()>(())
@@ -366,9 +384,10 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
         assert!(game.lan_events.is_empty());
         assert!(game.lan_global_events.is_empty());
         assert!(game.lan_entity_events.is_empty());
-        assert!(
-            !game.audio.capture.as_ref().unwrap().is_empty(),
-            "global_level_event plays its local global sound on root commit"
+        assert_eq!(
+            portal_plays(game),
+            portal_before_commit + 1,
+            "global_level_event plays its local global sound once on root commit"
         );
 
         let packets12 = decode_packets(&rx12);
@@ -819,8 +838,8 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                 assert!(game.entity_broadcast_event(entity13, 35));
                 calls_before_commit = calls.load(Ordering::SeqCst);
                 assert_eq!(
-                    calls_before_commit, 2,
-                    "both bell and listener-emitted anvil resolved at the call"
+                    calls_before_commit, 1,
+                    "bell ran the listener at the call; nested anvil bypassed re-dispatch"
                 );
                 assert!(
                     sound_packets(&rx12).is_empty(),
@@ -1075,8 +1094,8 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                 ));
                 calls_at_closure_end = calls.load(Ordering::SeqCst);
                 assert_eq!(
-                    calls_at_closure_end, 3,
-                    "bell, anvil, and burp resolved at call"
+                    calls_at_closure_end, 1,
+                    "bell ran the listener once; nested anvil and burp bypassed re-dispatch"
                 );
                 Ok::<(), ()>(())
             });
@@ -1154,6 +1173,249 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
             assert_eq!(
                 classify(decode_packets(&rx12)),
                 vec!["sound_anvil", "stop_anvil", "sound_bell"]
+            );
+        });
+    });
+}
+
+/// Unconditional `play_level_sound_at_position` and `play_level_sound_at_entity` listeners that
+/// play another sound every time they are called must not recurse infinitely or stall the tick —
+/// neither inside nor outside a transaction. Each original sound dispatches its hook once
+/// (`max_depth == 1`), produces nested sounds resolved without re-entering either level-sound
+/// hook, and delivers packets in exact call order within the same tick/commit. A panicking
+/// listener also releases the RAII guard so subsequent sounds still dispatch hooks.
+#[test]
+#[ignore = "daily"]
+fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_transactions() {
+    use mod_api::{Flow, HostSide};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    struct AlwaysEmitHook {
+        active_depth: Arc<AtomicUsize>,
+        max_depth: Arc<AtomicUsize>,
+        pos_calls: Arc<AtomicUsize>,
+        entity_calls: Arc<AtomicUsize>,
+        panic_once: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for AlwaysEmitHook {
+        fn play_level_sound_at_position(
+            &self,
+            host: HostSide<'_>,
+            e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+        ) -> Flow {
+            let depth = self.active_depth.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_depth.fetch_max(depth, Ordering::SeqCst);
+            self.pos_calls.fetch_add(1, Ordering::SeqCst);
+            if self.panic_once.swap(false, Ordering::SeqCst) {
+                self.active_depth.fetch_sub(1, Ordering::SeqCst);
+                panic!("simulated level-sound listener panic");
+            }
+            if let HostSide::Server(server) = host {
+                assert!(e.level.play_sound(
+                    server,
+                    "minecraft:block.anvil.use",
+                    e.position,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+            }
+            self.active_depth.fetch_sub(1, Ordering::SeqCst);
+            Flow::Continue
+        }
+
+        fn play_level_sound_at_entity(
+            &self,
+            host: HostSide<'_>,
+            e: &mut mod_api::PlayLevelSoundAtEntityEvent,
+        ) -> Flow {
+            let depth = self.active_depth.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_depth.fetch_max(depth, Ordering::SeqCst);
+            self.entity_calls.fetch_add(1, Ordering::SeqCst);
+            if let HostSide::Server(server) = host {
+                assert!(
+                    e.entity
+                        .play_sound(server, "minecraft:entity.player.burp", 1.0, 1.0,)
+                );
+                assert!(e.entity.play_bound_sound(
+                    server,
+                    "minecraft:block.anvil.use",
+                    SoundSource::Players,
+                    1.0,
+                    1.0,
+                ));
+            }
+            self.active_depth.fetch_sub(1, Ordering::SeqCst);
+            Flow::Continue
+        }
+    }
+
+    let active_depth = Arc::new(AtomicUsize::new(0));
+    let max_depth = Arc::new(AtomicUsize::new(0));
+    let pos_calls = Arc::new(AtomicUsize::new(0));
+    let entity_calls = Arc::new(AtomicUsize::new(0));
+    let panic_once = Arc::new(AtomicBool::new(false));
+    let mods = vec![mod_api::ModEntry::new(
+        "always_emit_sound_test",
+        Box::new(AlwaysEmitHook {
+            active_depth: Arc::clone(&active_depth),
+            max_depth: Arc::clone(&max_depth),
+            pos_calls: Arc::clone(&pos_calls),
+            entity_calls: Arc::clone(&entity_calls),
+            panic_once: Arc::clone(&panic_once),
+        }),
+    )]
+    .into();
+
+    mod_platform::testing::with_mods(mods, || {
+        with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            let (tx12, rx12) = mpsc::channel();
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender = PlayerSender::new(tx12, Arc::default());
+            });
+            let level = game.level(game.dim.id()).unwrap();
+            let entity13 = game.player(13).unwrap().entity();
+            let at = [3.0, 64.0, 5.0];
+            let bell = "minecraft:block.bell.use";
+            let anvil = "minecraft:block.anvil.use";
+            let burp = "minecraft:entity.player.burp";
+            let bell_id = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .registry_id("minecraft:sound_event", bell)
+                .unwrap();
+            let anvil_id = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .registry_id("minecraft:sound_event", anvil)
+                .unwrap();
+            let burp_id = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .registry_id("minecraft:sound_event", burp)
+                .unwrap();
+            let classify = |packets: Vec<C>| -> Vec<&'static str> {
+                packets
+                    .into_iter()
+                    .filter_map(|p| match p {
+                        C::Sound(s) if s.sound.0 == bell_id => Some("pos_bell"),
+                        C::Sound(s) if s.sound.0 == anvil_id => Some("pos_anvil"),
+                        C::Sound(s) if s.sound.0 == burp_id => Some("pos_burp"),
+                        C::SoundEntity(s) if s.sound.0 == bell_id => Some("ent_bell"),
+                        C::SoundEntity(s) if s.sound.0 == anvil_id => Some("ent_anvil"),
+                        _ => None,
+                    })
+                    .collect()
+            };
+            decode_packets(&rx12);
+
+            // 1. Positional sound inside a transaction: `bell` dispatches `at_position` once,
+            // which plays `anvil` without re-entering the hook; commit sends `[pos_anvil, pos_bell]`.
+            let committed = mod_api::run_transaction(game, |game, _| {
+                assert!(game.level_play_sound(
+                    level,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None
+                ));
+                Ok::<(), ()>(())
+            });
+            assert!(committed.is_ok());
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(active_depth.load(Ordering::SeqCst), 0);
+            assert_eq!(max_depth.load(Ordering::SeqCst), 1);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert_eq!(
+                classify(decode_packets(&rx12)),
+                vec!["pos_anvil", "pos_bell"]
+            );
+
+            // 2. Positional sound outside a transaction: one `flush_native_sounds` finishes the
+            // tick, dispatches `at_position` once, delivers `[pos_anvil, pos_bell]` in call order,
+            // and leaves `lan_sounds` empty.
+            assert!(game.level_play_sound(level, bell, at, SoundSource::Blocks, 1.0, 1.0, None));
+            game.flush_native_sounds();
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(entity_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(active_depth.load(Ordering::SeqCst), 0);
+            assert_eq!(max_depth.load(Ordering::SeqCst), 1);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert_eq!(
+                classify(decode_packets(&rx12)),
+                vec!["pos_anvil", "pos_bell"]
+            );
+
+            // 3. Entity-bound sound inside a transaction: dispatches `at_entity` once; its nested
+            // positional (`burp`) and bound (`anvil`) sounds bypass BOTH level-sound hooks and
+            // commit in call order `[pos_burp, ent_anvil, ent_bell]`.
+            let entity_tx = mod_api::run_transaction(game, |game, _| {
+                assert!(game.entity_play_bound_sound(
+                    entity13,
+                    bell,
+                    SoundSource::Players,
+                    1.0,
+                    1.0
+                ));
+                Ok::<(), ()>(())
+            });
+            assert!(entity_tx.is_ok());
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(entity_calls.load(Ordering::SeqCst), 1);
+            assert_eq!(active_depth.load(Ordering::SeqCst), 0);
+            assert_eq!(max_depth.load(Ordering::SeqCst), 1);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert_eq!(
+                classify(decode_packets(&rx12)),
+                vec!["pos_burp", "ent_anvil", "ent_bell"]
+            );
+
+            // 4. Entity-bound sound outside a transaction: one flush delivers the exact same
+            // `[pos_burp, ent_anvil, ent_bell]` sequence with `lan_sounds` empty.
+            assert!(game.entity_play_bound_sound(entity13, bell, SoundSource::Players, 1.0, 1.0));
+            game.flush_native_sounds();
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(entity_calls.load(Ordering::SeqCst), 2);
+            assert_eq!(active_depth.load(Ordering::SeqCst), 0);
+            assert_eq!(max_depth.load(Ordering::SeqCst), 1);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert_eq!(
+                classify(decode_packets(&rx12)),
+                vec!["pos_burp", "ent_anvil", "ent_bell"]
+            );
+
+            // 5. Panic safety: unwinding out of a listener releases the RAII guard so the next
+            // sound still dispatches hooks normally.
+            panic_once.store(true, Ordering::SeqCst);
+            assert!(game.level_play_sound(level, bell, at, SoundSource::Blocks, 1.0, 1.0, None));
+            let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                game.flush_native_sounds();
+            }));
+            assert!(panicked.is_err());
+            assert!(!game.creatures.asking_level_sound);
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 3);
+            decode_packets(&rx12);
+
+            assert!(game.level_play_sound(level, bell, at, SoundSource::Blocks, 1.0, 1.0, None));
+            game.flush_native_sounds();
+            assert_eq!(pos_calls.load(Ordering::SeqCst), 4);
+            assert_eq!(max_depth.load(Ordering::SeqCst), 1);
+            assert!(game.creatures.lan_sounds.is_empty());
+            assert_eq!(
+                classify(decode_packets(&rx12)),
+                vec!["pos_anvil", "pos_bell"]
             );
         });
     });
