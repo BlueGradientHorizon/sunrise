@@ -8,10 +8,7 @@
 
 use serde_json::{Value, json};
 use std::io::Cursor;
-use sunrise_mcp::{
-    CLIENT_CAPABILITIES_KEY, DISCOVER_TTL_MS, LEGACY, LIST_TTL_MS, MODERN, SERVER_INFO_KEY, Server,
-    VERSION_KEY, VERSIONS,
-};
+use sunrise_mcp::Server;
 
 const SERVER: Server = Server::new("test-server", "1.2.3", "Do the thing.");
 
@@ -55,10 +52,10 @@ fn request(id: i64, method: &str, params: Value) -> Value {
 
 /// The `_meta` a modern request must carry.
 fn modern(mut params: Value, version: &str, capabilities: Value) -> Value {
-    let mut meta = serde_json::Map::new();
-    meta.insert(VERSION_KEY.to_owned(), json!(version));
-    meta.insert(CLIENT_CAPABILITIES_KEY.to_owned(), capabilities);
-    params["_meta"] = Value::Object(meta);
+    params["_meta"] = json!({
+        "io.modelcontextprotocol/protocolVersion": version,
+        "io.modelcontextprotocol/clientCapabilities": capabilities,
+    });
     params
 }
 
@@ -72,15 +69,15 @@ fn legacy_initialize_goldens() {
         "jsonrpc": "2.0",
         "id": 1,
         "result": {
-            "protocolVersion": LEGACY,
+            "protocolVersion": "2025-06-18",
             "capabilities": { "tools": {} },
             "serverInfo": server_info(),
             "instructions": "Do the thing.",
         },
     });
     for params in [
-        json!({ "protocolVersion": LEGACY }),
-        json!({ "protocolVersion": MODERN }),
+        json!({ "protocolVersion": "2025-06-18" }),
+        json!({ "protocolVersion": "2026-07-28" }),
         json!({ "protocolVersion": 7 }),
         json!({}),
     ] {
@@ -91,16 +88,16 @@ fn legacy_initialize_goldens() {
 
 #[test]
 fn modern_tools_list_golden() {
-    let line = request(1, "tools/list", modern(json!({}), MODERN, json!({}))).to_string();
+    let line = request(1, "tools/list", modern(json!({}), "2026-07-28", json!({}))).to_string();
     let expected = json!({
         "jsonrpc": "2.0",
         "id": 1,
         "result": {
             "resultType": "complete",
             "tools": [{ "name": "state" }],
-            "ttlMs": LIST_TTL_MS,
+            "ttlMs": 30_000,
             "cacheScope": "public",
-            "_meta": { (SERVER_INFO_KEY): server_info() },
+            "_meta": { "io.modelcontextprotocol/serverInfo": server_info() },
         },
     });
     assert_eq!(reply(&line), expected);
@@ -111,7 +108,7 @@ fn modern_tools_call_golden() {
     let line = request(
         1,
         "tools/call",
-        modern(json!({ "name": "state" }), MODERN, json!({})),
+        modern(json!({ "name": "state" }), "2026-07-28", json!({})),
     )
     .to_string();
     let expected = json!({
@@ -121,7 +118,7 @@ fn modern_tools_call_golden() {
             "resultType": "complete",
             "content": [{ "type": "text", "text": "ok" }],
             "isError": false,
-            "_meta": { (SERVER_INFO_KEY): server_info() },
+            "_meta": { "io.modelcontextprotocol/serverInfo": server_info() },
         },
     });
     assert_eq!(reply(&line), expected);
@@ -135,11 +132,11 @@ fn discover_golden() {
         "id": 1,
         "result": {
             "resultType": "complete",
-            "supportedVersions": VERSIONS,
+            "supportedVersions": ["2026-07-28", "2025-06-18"],
             "capabilities": { "tools": {} },
-            "_meta": { (SERVER_INFO_KEY): server_info() },
+            "_meta": { "io.modelcontextprotocol/serverInfo": server_info() },
             "instructions": "Do the thing.",
-            "ttlMs": DISCOVER_TTL_MS,
+            "ttlMs": 3_600_000,
             "cacheScope": "public",
         },
     });
@@ -182,13 +179,13 @@ fn error_goldens() {
             "error": {
                 "code": -32022,
                 "message": "Unsupported protocol version",
-                "data": { "supported": VERSIONS, "requested": "1900-01-01" },
+                "data": { "supported": ["2026-07-28", "2025-06-18"], "requested": "1900-01-01" },
             },
         })
     );
 
     let mut missing = json!({});
-    missing["_meta"] = json!({ VERSION_KEY: MODERN });
+    missing["_meta"] = json!({ "io.modelcontextprotocol/protocolVersion": "2026-07-28" });
     assert_eq!(
         reply(&request(1, "tools/list", missing).to_string()),
         json!({
@@ -196,7 +193,7 @@ fn error_goldens() {
             "id": 1,
             "error": {
                 "code": -32602,
-                "message": format!("_meta.{CLIENT_CAPABILITIES_KEY} is required"),
+                "message": "_meta.io.modelcontextprotocol/clientCapabilities is required",
             },
         })
     );
@@ -241,7 +238,7 @@ fn ping_goldens_per_revision() {
         json!({ "jsonrpc": "2.0", "id": 1, "result": {} })
     );
     assert_eq!(
-        reply(&request(1, "ping", modern(json!({}), MODERN, json!({}))).to_string()),
+        reply(&request(1, "ping", modern(json!({}), "2026-07-28", json!({}))).to_string()),
         json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -339,7 +336,7 @@ fn client_capabilities_are_checked_for_presence_only() {
         let line = request(
             1,
             "tools/list",
-            modern(json!({}), MODERN, capabilities.clone()),
+            modern(json!({}), "2026-07-28", capabilities.clone()),
         )
         .to_string();
         let reply = reply(&line);
@@ -369,11 +366,15 @@ fn initialize_answers_legacy_even_with_modern_meta() {
     let line = request(
         1,
         "initialize",
-        modern(json!({ "protocolVersion": MODERN }), MODERN, json!({})),
+        modern(
+            json!({ "protocolVersion": "2026-07-28" }),
+            "2026-07-28",
+            json!({}),
+        ),
     )
     .to_string();
     let result = &reply(&line)["result"];
-    assert_eq!(result["protocolVersion"], LEGACY);
+    assert_eq!(result["protocolVersion"], "2025-06-18");
     assert!(result.get("resultType").is_none());
 }
 
@@ -387,13 +388,16 @@ fn discover_answers_modern_even_with_an_unknown_version() {
     .to_string();
     let result = &reply(&line)["result"];
     assert_eq!(result["resultType"], "complete");
-    assert_eq!(result["supportedVersions"], json!(VERSIONS));
+    assert_eq!(
+        result["supportedVersions"],
+        json!(["2026-07-28", "2025-06-18"])
+    );
 }
 
 #[test]
 fn a_non_object_application_result_is_left_unframed() {
     let mut app = |_: &str, _: &Value| Ok(json!("not an object"));
-    let line = request(1, "tools/call", modern(json!({}), MODERN, json!({}))).to_string();
+    let line = request(1, "tools/call", modern(json!({}), "2026-07-28", json!({}))).to_string();
     let reply = SERVER.handle_line(&line, &mut app).unwrap();
     assert_eq!(reply["result"], "not an object");
     assert!(reply["result"].get("resultType").is_none());
