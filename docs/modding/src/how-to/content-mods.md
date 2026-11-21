@@ -1379,10 +1379,11 @@ generator and the game's biome table, including when no data pack is enabled.
 
 A modifier changes a biome that already generates. To add a mod's own biomes to the Overworld or the Nether, a code mod
 declares a **biome region** instead: `Registrar::declare_biome_region(path, region)` takes a `BiomeRegion` (its
-`dimension`, `minecraft:overworld` or `minecraft:nether`; a `weight` from 1 to 1000 against vanilla's 10; and its
-`points`, the same `BiomePoint`s as a mod dimension's). An area belongs to one region, and the region's own points
-choose the biome there. A malformed or repeated id, an id outside the mod's namespace, another dimension, a weight
-outside 1 to 1000, no points or an invalid point refuse the mods at startup, naming the mod. A new world records the
+`dimension`, `minecraft:overworld` or `minecraft:nether`; a `weight` from 1 to `i32::MAX` against vanilla's 10; and its
+`points`, the same `BiomePoint`s as a mod dimension's). A bare path uses the declaring mod's namespace, while an
+explicit valid `namespace:path` keeps its namespace. An area belongs to one region, and the region's own points
+choose the biome there. A malformed or repeated id, another dimension, a weight
+outside 1 to `i32::MAX`, no points or an invalid point refuse the mods at startup, naming the mod. A new world records the
 declared regions in `data/sunrise/biome_regions.dat`, and from then on that record decides: a changed or added region
 reaches an existing world only when its owner opts in, and a world whose region's mod is missing asks before it opens
 (a dedicated server reads `[biome_regions] missing = "refuse" | "vanilla"` in `server.toml`).
