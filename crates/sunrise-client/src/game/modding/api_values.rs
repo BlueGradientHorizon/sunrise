@@ -886,10 +886,19 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
     encode_stack(value, id.into())
 }
 
-fn encode_stack(
-    value: &ApiStack,
-    item: std::sync::Arc<str>,
-) -> Result<EngineStack, StackWriteError> {
+fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
+    let (stack, patch) = decode_stack_record(value, item);
+    content_declarations::validate_decoded_components(|name| {
+        patch
+            .as_ref()
+            .and_then(|patch| patch.get(name))
+            .map(|_| &stack)
+    })?;
+    Ok(stack)
+}
+
+/// Decode the record and retain its incoming patch for admission checks by the caller.
+fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option<Tag>) {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
     if value.damage_component() == Some(0) {
@@ -905,8 +914,7 @@ fn encode_stack(
         damage: value.damage(),
         extra,
     };
-    content_declarations::validate_decoded_components(patch.as_ref(), &stack)?;
-    Ok(stack)
+    (stack, patch)
 }
 
 impl TryIntoApi for crate::crafting::RecipeRule {
