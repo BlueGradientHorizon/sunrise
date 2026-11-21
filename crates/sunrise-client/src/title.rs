@@ -535,44 +535,39 @@ impl Button {
     /// at the button's x plus 2, `right` at its x plus width minus the
     /// sprite's width minus 4, and `centerX` at its x plus half its width: the
     /// label slides inside that box when wider, and one that fits is moved
-    /// left until it ends where the icon's room begins. A button without an
-    /// icon has `right` 2 short of its edge, where `centerX` is the middle of
-    /// the box and nothing moves.
+    /// left until it ends where the icon's room begins. A plain button takes
+    /// its centre from the midpoint of the unreserved content bounds.
+    /// Controller glyph room narrows the fit and clip bounds, not the centre.
     fn draw_label_at(&self, batch: &mut HudBatch, atlas: &HudAtlas, color: u32, now_ms: i64) {
         let room = if self.action.is_some() && self.enabled {
             crate::widgets::action_glyph_room()
         } else {
             0.0
         };
-        let left = self.x + 2.0 + room;
-        let (y0, y1) = (self.y, self.y + 20.0);
-        let text = Text::literal(&self.label);
-        match self.trailing {
-            Some((_, size)) => crate::ui::scrolling_text_around_at(
-                batch,
-                atlas,
-                &text,
+        let left = self.x + 2.0;
+        let (center_x, right) = match self.trailing {
+            Some((_, size)) => (
                 self.x + (self.w / 2.0).floor(),
-                left,
                 self.x + self.w - size - 4.0,
-                y0,
-                y1,
-                now_ms,
-                color,
             ),
-            // `acceptScrollingWithDefaultCenter`: the centre is the box's own midpoint.
-            None => crate::ui::scrolling_text_at(
-                batch,
-                atlas,
-                &text,
-                left,
-                self.x + self.w - 2.0,
-                y0,
-                y1,
-                now_ms,
-                color,
-            ),
-        }
+            None => {
+                let right = self.x + self.w - 2.0;
+                // `acceptScrollingWithDefaultCenter`: truncate the midpoint toward zero.
+                (((left + right) / 2.0).trunc(), right)
+            }
+        };
+        crate::ui::scrolling_text_around_at(
+            batch,
+            atlas,
+            &Text::literal(&self.label),
+            center_x,
+            left + room,
+            right,
+            self.y,
+            self.y + 20.0,
+            now_ms,
+            color,
+        );
     }
 }
 

@@ -2108,10 +2108,8 @@ mod tests {
         // max(40 * 0.5, 3) = 20 s: at 0 s the whole overflow is slid, at 10 s none.
         assert_eq!(scrolled_left(10.0, 40.0, 0), -30.0);
         assert_eq!(scrolled_left(10.0, 40.0, 10_000), 10.0);
-        // A fractional slide is cut, not rounded.
-        let offset = scroll_position(40.0, 1_000) as i32 as f32;
-        assert!(offset > 0.0);
-        assert_eq!(scrolled_left(10.0, 40.0, 1_000), 10.0 - offset);
+        // At 1 s the slide is between 39.5 and 40 px: truncate to 39, not 40.
+        assert_eq!(scrolled_left(10.0, 40.0, 1_000), -29.0);
     }
 
     /// Slide in whole pixels, from vanilla 26.3's own `defaultScrollingHelper`
@@ -2359,25 +2357,12 @@ mod tests {
             0,
             u32::MAX,
         );
-        let width = atlas.font.width_text(&short.resolved());
-        let left = centered_left(10.0, 96.0, width);
-        let lo = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::INFINITY, f32::min);
-        let hi = batch
-            .vertices
-            .iter()
-            .map(|v| v.pos[0])
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert!(
-            (lo - left).abs() < 0.001,
-            "centred at {left}, drawn from {lo}"
-        );
-        assert!(
-            hi - lo >= width - 0.001,
-            "the whole label is drawn: {lo}..{hi}, {width} wide"
+        // Four 6 px advances put the start at 58 - 12 = 46; the text top is 26.
+        let mut expected = HudBatch::scratch([640, 480]);
+        expected.text_styled(&atlas, &short.resolved(), 46.0, 26.0, u32::MAX, true);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&batch.vertices),
+            bytemuck::cast_slice::<_, u8>(&expected.vertices),
         );
     }
 
