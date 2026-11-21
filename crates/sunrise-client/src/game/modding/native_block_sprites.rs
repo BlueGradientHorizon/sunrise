@@ -58,8 +58,8 @@ impl Game<'_> {
     /// multiplied by at `pos`, as the chunk mesher tints it there (`MeshTables::block_tints`:
     /// `BlockColors`, biome blend included). None for an untinted face. A fluid's face
     /// (`block_sprites::fluid_faces`: water at tint index 0) takes the water colour the fluid
-    /// mesher gives it (`MeshTables::water_tint`, the packs' water colormap included). This client's copy of the
-    /// world: the chunks around `pos` it has, as break particles read them (`particle_sprite`).
+    /// mesher gives it (`MeshTables::water_tint`, the packs' water colormap included). Both read the
+    /// mesher's current biome colours, including after `refresh_biome_colors`.
     pub(super) fn block_tint_color(
         &self,
         state: BlockStateId,
@@ -67,6 +67,7 @@ impl Game<'_> {
         pos: [i32; 3],
     ) -> Option<u32> {
         let region = self.tint_region(pos);
+        let biomes = self.mesh_biomes();
         let block = self
             .pack
             .context
@@ -79,7 +80,7 @@ impl Game<'_> {
                 self.pack.context.tables.water_tint(
                     pos,
                     &region,
-                    world_biomes!(self),
+                    biomes,
                     self.streaming.biome_zoom,
                     self.streaming.biome_blend,
                 )
@@ -89,7 +90,7 @@ impl Game<'_> {
             state,
             pos,
             &region,
-            world_biomes!(self),
+            biomes,
             self.streaming.biome_zoom,
             self.streaming.biome_blend,
             self.streaming.nether_shading,
@@ -533,20 +534,22 @@ mod quad_on_tests {
 
 #[cfg(test)]
 mod biome_tint_tests {
+    use super::Game;
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{
         __private::{ModPhase, PhaseOwner},
         Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,
+        prelude::BlockStatesHost,
     };
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
 
-    #[test]
-    #[ignore = "daily"]
-    fn biome_tint_reads_refreshed_colours_with_stock_server_biomes() {
-        const GRASS: u32 = 0xAD_248B;
-        const FOLIAGE: u32 = 0x34_D1EF;
+    const GRASS: u32 = 0xAD_248B;
+    const FOLIAGE: u32 = 0x34_D1EF;
+    const WATER: u32 = 0xDA_5227;
+    const POS: [i32; 3] = [8, 64, 8]; // The whole blend square samples this plains chunk.
 
+    fn with_stock_client_biomes(test: impl FnOnce(&mut Game<'_>)) {
         struct Seasons;
         #[mod_api::__subscriptions]
         impl Hooks for Seasons {
@@ -554,6 +557,7 @@ mod biome_tint_tests {
                 if event.biome == "minecraft:plains" {
                     event.colors.grass = GRASS;
                     event.colors.foliage = FOLIAGE;
+                    event.colors.water = WATER;
                 }
             }
         }
@@ -579,27 +583,51 @@ mod biome_tint_tests {
 
                 // Stock server biome definitions do not install a world-specific table.
                 assert!(game.world_biomes.is_none());
-                let pos = [8, 64, 8]; // The whole blend square samples this plains chunk.
-                let host: &mut dyn ClientHost = game;
-                assert_ne!(
-                    host.biome_tint(pos, ColorResolver::Grass),
-                    Ok(0xFF00_0000 | GRASS)
-                );
-                host.refresh_biome_colors();
-                assert_eq!(
-                    host.biome_tint(pos, ColorResolver::Grass),
-                    Ok(0xFF00_0000 | GRASS)
-                );
-                assert_eq!(
-                    host.biome_tint(pos, ColorResolver::Foliage),
-                    Ok(0xFF00_0000 | FOLIAGE)
-                );
-
+                test(game);
                 assert!(game.world_biomes.is_none());
-                let worker = game.worker_context();
-                let plains = worker.biomes.get(plains_id);
-                assert_eq!((plains.grass, plains.foliage), (GRASS, FOLIAGE));
             });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn biome_tint_reads_refreshed_colours_with_stock_server_biomes() {
+        with_stock_client_biomes(|game| {
+            let host: &mut dyn ClientHost = game;
+            assert_ne!(
+                host.biome_tint(POS, ColorResolver::Grass),
+                Ok(0xFF00_0000 | GRASS)
+            );
+            host.refresh_biome_colors();
+            assert_eq!(
+                host.biome_tint(POS, ColorResolver::Grass),
+                Ok(0xFF00_0000 | GRASS)
+            );
+            assert_eq!(
+                host.biome_tint(POS, ColorResolver::Foliage),
+                Ok(0xFF00_0000 | FOLIAGE)
+            );
+
+            let worker = game.worker_context();
+            let plains = worker.biomes.get(worker.biomes.id("minecraft:plains"));
+            assert_eq!((plains.grass, plains.foliage), (GRASS, FOLIAGE));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn face_tints_read_refreshed_colours_with_stock_server_biomes() {
+        with_stock_client_biomes(|game| {
+            let grass = BlockStatesHost::block_state_id(game, "minecraft:grass_block").unwrap();
+            let water = BlockStatesHost::block_state_id(game, "minecraft:water").unwrap();
+            let host: &mut dyn ClientHost = game;
+            assert_ne!(host.block_tint_color(grass, 0, POS).unwrap(), GRASS);
+            assert_ne!(host.block_tint_color(water, 0, POS).unwrap(), WATER);
+
+            host.refresh_biome_colors();
+
+            assert_eq!(host.block_tint_color(grass, 0, POS), Some(GRASS));
+            assert_eq!(host.block_tint_color(water, 0, POS), Some(WATER));
         });
     }
 }

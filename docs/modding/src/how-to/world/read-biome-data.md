@@ -60,5 +60,6 @@ fn sample_in_tint_source(level: &dyn BlockAndTintGetter, pos: [i32; 3]) {
 
 To match the tint drawn on a **specific face** of a block or fluid, use
 [`ClientHost::block_tint_color(state, tint_index, pos)`](../client/model-drawing.md#copycat-faces)
-with that face's tint index. Its `0xRRGGBB` result may differ from the biome tint because the face
-can use a different tint source or a pack's block or fluid colormap.
+with that face's tint index. It reads the same current biome colours, including after a refresh,
+but its `0xRRGGBB` result may differ because the face can use a different tint source or a pack's
+block or fluid colormap.

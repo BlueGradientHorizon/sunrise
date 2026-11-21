@@ -1,5 +1,6 @@
 ids = [
     "method:prelude::ClientRenderClientHost::biome_tint",
+    "behaviour:client_face_tint_refresh",
     "method:prelude::WorldEditServerHost::read_columns",
     "type:ColumnBlocks",
     "type:ColumnBlocks.tints",
@@ -25,6 +26,13 @@ with BlockAndTintGetter::block_tint in block tint callbacks or the new ClientHos
 current client level. The client query uses the mesher's current biome table, including updates
 from refresh_biome_colors on a server with stock biome definitions. Neither biome query looks at a
 block model or its tint sources.
+
+ClientHost::block_tint_color now also reads the mesher's current biome table for both block and
+fluid faces instead of stale stock colours after a refresh. This follows vanilla
+BlockTintSources.grassBlock and FluidStateModelSet's water source through BiomeColors.getAverage*Color
+and ClientLevel.getBlockTint, whose caches LevelExtractor.allChanged clears, and NeoForge's
+FluidTintSources.water, which uses the same client tint lookup. Face tint sources and pack
+colormap precedence are unchanged.
 """
 migrate = """
 - Replace reads of `column_blocks.tints[i * 3 + 2]` with `column_blocks.water_colors[i]` (`0xRRGGBB`,
@@ -43,6 +51,8 @@ migrate = """
     a readable client level).
     Mask a successful result with `0x00FF_FFFF` if you need `0xRRGGBB`. Use `block_tint_color` only
     for a particular block or fluid face, not to read a biome resolver.
+- Keep calling `host.block_tint_color(state, tint_index, pos)` for face tints. If you cache its
+  result for drawing, query it again after `host.refresh_biome_colors()` to get the refreshed colour.
 - Update any literal construction or exhaustive destructuring of `ColumnBlocks` to use
   `water_colors` instead of `tints`.
 """

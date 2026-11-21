@@ -128,9 +128,10 @@ pub trait ClientRenderClientHost {
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
     /// `block_sprites`): the 0xRRGGBB colour a face of `state` with tint index `tint_index`
     /// (`FaceSprite::tint_index`) is multiplied by at `pos`, as the chunk mesher tints it there
-    /// (`BlockColors.getColor`, biome blend included: grass, foliage and water follow the biome
-    /// around `pos`). None for an untinted face (-1, or an index past the state's tints). Reads
-    /// this client's copy of the world. For a biome colour independent of the face's tint source,
+    /// (biome blend included). Grass, foliage and water use the client's current biome colours,
+    /// including updates from [`Self::refresh_biome_colors`]. A face's own tint source or a pack
+    /// colormap can give it a different colour. Returns `None` for an untinted face (-1, or an
+    /// index past the state's tints). For a biome colour independent of the face's tint source,
     /// use [`Self::biome_tint`].
     #[access(WorldOnly)]
     fn block_tint_color(&self, state: BlockState, tint_index: i32, pos: [i32; 3]) -> Option<u32>;
