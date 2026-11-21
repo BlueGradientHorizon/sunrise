@@ -347,8 +347,7 @@ def sums_rows(tag: str, sums: bytes) -> list[tuple[str, str]]:
     except UnicodeDecodeError:
         raise SystemExit(f"::error::{tag}'s SHA256SUMS is not UTF-8 text")
     rows = []
-    for line in text.split("\n"):
-        line = line.removesuffix("\r")
+    for line in text.replace("\r\n", "\n").split("\n"):
         if not line.strip():
             continue
         digest, space, name = line.partition(" ")
@@ -375,18 +374,22 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
         raise SystemExit(f"::error::--signature names a file of the folder, not {signature!r}")
     sums = (folder / "SHA256SUMS").read_bytes()
     rows = sums_rows(tag, sums)
+    if not only and not rows:
+        raise SystemExit(f"::error::{tag}'s SHA256SUMS lists no file")
+    # Before any key exists, only Sunrise's own releases may go out unchecked, as with the native verifier.
+    unkeyed = publishing and not keys and os.environ.get("GITHUB_REPOSITORY", "sunrise-org/sunrise") == "sunrise-org/sunrise"
     try:
-        lines = (folder / signature).read_text(encoding="utf-8").split("\n")
+        lines = (folder / signature).read_bytes().decode().replace("\r\n", "\n").split("\n")
     except (OSError, UnicodeDecodeError):
         lines = None
     if lines is None:
-        if publishing and not keys:
+        if unkeyed:
             print(f"::warning::{tag}: published with SHA256SUMS but unsigned: release-keys.txt lists no key yet",
                   file=sys.stderr)
         else:
             raise SystemExit(f"::error::{tag} has no {signature}: launchers would refuse it")
     elif not keys:
-        if not publishing:
+        if not unkeyed:
             raise SystemExit(f"::error::{tag}: no key to check the signature with")
         print(f"::warning::{tag}: signed, but release-keys.txt lists no key yet, so launchers can't check it",
               file=sys.stderr)

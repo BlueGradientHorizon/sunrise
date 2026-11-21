@@ -792,6 +792,9 @@ class VerifySumsTests(unittest.TestCase):
                             (f"{a}  a\xff.tar.gz\n".encode("latin-1"), "is not UTF-8 text"),
                             # One marker is stripped, not two: the file ` a.tar.gz` is not in the folder.
                             (f"{a}   a.tar.gz\n".encode(), "No such file"),
+                            # A bare carriage return ends no line: here it is part of the file's name.
+                            (f"{a}  a.tar.gz\r".encode(), "No such file"),
+                            (f"\n \n".encode(), "lists no file"),
                             # A repeated name is checked against each of its rows.
                             (f"{a}  a.tar.gz\n{'0' * 64}  a.tar.gz\n".encode(), "a.tar.gz does not match")):
             with self.subTest(sums=sums), self.assertRaisesRegex((SystemExit, FileNotFoundError), error):
@@ -810,7 +813,7 @@ class VerifySumsTests(unittest.TestCase):
         alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
         loose = good[:-3] + alphabet[alphabet.index(good[-3]) ^ 1] + good[-2:]
         self.assertEqual(base64.b64decode(loose), base64.b64decode(good))
-        for text in (f"{other} {good}\n", f"{loose}\n", "not-base64!\n"):
+        for text in (f"{other} {good}\n", f"{loose}\n", "not-base64!\n", f"{other}\r{good}\n"):
             with self.subTest(text=text), self.assertRaisesRegex(SystemExit, "isn't signed"):
                 (folder / "SHA256SUMS.sig").write_text(text)
                 self.verify(folder, "26.3-0.1.0")
@@ -845,6 +848,17 @@ class VerifySumsTests(unittest.TestCase):
         self.assertIn("::warning::nightly: published with SHA256SUMS but unsigned", out.getvalue())
         with self.assertRaisesRegex(SystemExit, "has no SHA256SUMS.sig"):
             self.verify(folder, "nightly", publishing=True)
+        # Only Sunrise's own releases: a fork has no keys either, and publishes nothing unchecked, signed or not.
+        signed = self.release("nightly", {"a.tar.gz": b"a"})
+        for release in (folder, signed):
+            with self.subTest(release=release.name), \
+                    mock.patch.dict(nightly.os.environ, {"GITHUB_REPOSITORY": "someone/sunrise"}), \
+                    self.assertRaisesRegex(SystemExit, "has no SHA256SUMS.sig|no key to check"):
+                nightly.verify_sums(release, "nightly", keys=[], publishing=True)
+        with mock.patch.dict(nightly.os.environ, {"GITHUB_REPOSITORY": "sunrise-org/sunrise"}), \
+                contextlib.redirect_stderr(io.StringIO()) as out:
+            nightly.verify_sums(signed, "nightly", keys=[], publishing=True)
+        self.assertIn("signed, but release-keys.txt lists no key yet", out.getvalue())
 
     def test_the_keys_are_mains_never_the_checkouts(self):
         origin, clone = self.work / "origin", self.work / "clone"
