@@ -41,7 +41,9 @@ impl Game<'_> {
         let host = self.lan.as_mut()?;
         let mut prepared = host.hub.prepare_click(conn, p, &self.world, false)?;
         let frozen = if Self::stacked_listened() {
-            host.hub.stacked_click(&mut prepared, p)
+            host.hub
+                .stacked_click(&mut prepared, p)
+                .filter(Self::stacked_listens_for)
         } else {
             None
         };

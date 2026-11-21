@@ -104,6 +104,24 @@ mod menu_button_context_tests {
             assert_eq!(decoded.id, context.id);
         }
     }
+
+    #[test]
+    fn stacked_on_other_direction_round_trips_on_wire() {
+        use super::{StackedOnOther, StackedOnOtherDirection};
+        for direction in [
+            StackedOnOtherDirection::Event,
+            StackedOnOtherDirection::CarriedOnOther,
+            StackedOnOtherDirection::OtherStackedOnMe,
+        ] {
+            let click = StackedOnOther::new(Some(7), Some(9), 1, 2, 3, true, None, None)
+                .with_direction(direction);
+            let mut writer = Writer::new();
+            writer.put(&click);
+            let decoded = Reader::decode::<StackedOnOther>(writer.bytes()).unwrap();
+            assert_eq!(decoded, click);
+            assert_eq!(decoded.direction, direction);
+        }
+    }
 }
 
 /// The logical side on which a menu click runs.
@@ -113,6 +131,20 @@ mod menu_button_context_tests {
 pub enum LogicalSide {
     Client,
     Server,
+}
+/// Which phase of a pickup click (`AbstractContainerMenu.tryItemClickBehaviourOverride`) is
+/// asking `item_stacked_on_other`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+// exhaustive: NeoForge's event, then vanilla's carried-on-other and other-on-me overrides
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum StackedOnOtherDirection {
+    /// The global `Hooks::item_stacked_on_other` event, before either item override.
+    #[default]
+    Event,
+    /// `Item.overrideStackedOnOther`: the carried (cursor) stack's `ItemPart`, asked first.
+    CarriedOnOther,
+    /// `Item.overrideOtherStackedOnMe`: the clicked slot stack's `ItemPart`, asked second.
+    OtherStackedOnMe,
 }
 /// A pickup click on a menu slot, as `item_stacked_on_other` is asked about it: the stacks are the
 /// ones the click found, frozen before any listener ran. A listener answers through
@@ -137,6 +169,10 @@ pub struct StackedOnOther {
     pub carried: Option<ItemStack>,
     /// The stack in the clicked slot, `None` when it is empty.
     pub clicked: Option<ItemStack>,
+    /// Which phase of `tryItemClickBehaviourOverride` is firing: the global event, the carried
+    /// stack's `ItemPart` (`CarriedOnOther`), or the clicked stack's `ItemPart`
+    /// (`OtherStackedOnMe`).
+    pub direction: StackedOnOtherDirection,
 }
 impl StackedOnOther {
     /// The click `slot` (menu index) of `container`'s slot `container_slot`, with the stacks it found.
@@ -160,7 +196,14 @@ impl StackedOnOther {
             primary,
             carried,
             clicked,
+            direction: StackedOnOtherDirection::Event,
         }
+    }
+
+    /// This click in the given `direction` phase.
+    pub fn with_direction(mut self, direction: StackedOnOtherDirection) -> Self {
+        self.direction = direction;
+        self
     }
 }
 /// What a listener does to a stack the click found.

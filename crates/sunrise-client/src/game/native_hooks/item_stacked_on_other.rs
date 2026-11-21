@@ -15,4 +15,24 @@ impl Game<'_> {
     ) {
         self.fire_item_stacked_on_other(event, result, canceled);
     }
+
+    /// `ItemPart::item_stacked_on_other` for `item` (either the carried stack in
+    /// `CarriedOnOther` or the clicked stack in `OtherStackedOnMe`), sharing `HookId`, event, and
+    /// transaction with `native_item_stacked_on_other`.
+    #[inline(never)]
+    pub(in crate::game) fn item_stacked_on_other_part(
+        &mut self,
+        item: &str,
+        event: &mod_api::item::menu::StackedOnOther,
+        result: &mut mod_api::item::menu::StackedOnOtherResult,
+        canceled: &mut bool,
+    ) {
+        mod_api::dispatch_item_stacked_on_other_part(
+            execution_role::host_side(self),
+            item,
+            event,
+            result,
+            canceled,
+        );
+    }
 }

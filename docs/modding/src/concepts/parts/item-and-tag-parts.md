@@ -217,3 +217,31 @@ commits.
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
+
+## Stacking onto another item in a menu
+
+`ItemPart::item_stacked_on_other` shares the `item_stacked_on_other` hook, event and
+decide/fire/apply transaction with `Hooks::item_stacked_on_other` (NeoForge's
+`ItemStackedOnOtherEvent`), covering vanilla's `Item.overrideStackedOnOther` and
+`Item.overrideOtherStackedOnMe` on the authoritative side (single-player server, LAN host and
+dedicated server).
+
+On each pickup click, dispatch follows vanilla `AbstractContainerMenu.tryItemClickBehaviourOverride`
+order inside one transaction:
+
+1. Global `Hooks::item_stacked_on_other` listeners (`event.event.direction == StackedOnOtherDirection::Event`).
+2. The carried (cursor) stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::CarriedOnOther`).
+3. Vanilla's carried-bundle override when the carried stack holds `minecraft:bundle_contents` and
+   matches the click (`(primary && clicked.is_some()) || (!primary && clicked.is_none())`), which
+   handles the click before the clicked item's part runs.
+4. The clicked slot stack's `ItemPart::item_stacked_on_other` (`StackedOnOtherDirection::OtherStackedOnMe`).
+5. Vanilla's clicked-bundle override, then the plain pickup click.
+
+To handle the click, set `event.result.handled = true`, set `event.result.carried` and/or
+`event.result.clicked` via `StackResult::Set(...)`, and return `Flow::Cancel`. Return
+`Flow::Continue` (leaving `result` untouched) to defer to the next phase or vanilla pickup.
+Returning `Flow::Cancel` with `handled = false` skips later overrides and vanilla's bundle
+override and falls through to the plain pickup. Setting a stack without cancelling with
+`handled = true`, writing through the host to what the click read, returning an invalid stack,
+failing the slot's placement/pickup rules, or panicking refuses the click and rolls back every
+host write.

@@ -510,7 +510,7 @@ impl Game<'_> {
                 found = menu.stacked_click(env, slot, button, input);
             },
         );
-        let Some(frozen) = found else {
+        let Some(frozen) = found.filter(Self::stacked_listens_for) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {

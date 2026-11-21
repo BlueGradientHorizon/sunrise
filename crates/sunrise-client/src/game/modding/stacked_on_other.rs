@@ -122,9 +122,22 @@ pub(in crate::game) fn local_pickup_id() -> MenuId {
 }
 
 impl Game<'_> {
-    /// Whether any listener answers `item_stacked_on_other`: the one check a plain click makes.
+    /// Whether any global listener or `ItemPart` answers `item_stacked_on_other`.
     pub(in crate::game) fn stacked_listened() -> bool {
         mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther)
+            || mod_api::__private::has_part_hook(mod_api::HookId::ItemStackedOnOther)
+    }
+
+    /// Whether a global listener or an `ItemPart` on either frozen stack subscribes to
+    /// `item_stacked_on_other`: lets clicks on unrelated items skip the decision transaction.
+    pub(in crate::game) fn stacked_listens_for(frozen: &StackedClick) -> bool {
+        mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther)
+            || frozen.carried.as_ref().is_some_and(|stack| {
+                mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
+            })
+            || frozen.clicked.as_ref().is_some_and(|stack| {
+                mod_api::__private::item_listens(mod_api::HookId::ItemStackedOnOther, &stack.item)
+            })
     }
 
     /// The pickup click whose frozen stacks are `frozen`, decided by the mods and then run by
@@ -214,8 +227,9 @@ impl Game<'_> {
     }
 }
 
-/// Fire the hook with the frozen stacks and validate what it answers. The answer is kept for the
-/// click; a bad one refuses it.
+/// Fire the global hook and item-part overrides in vanilla
+/// `AbstractContainerMenu.tryItemClickBehaviourOverride` order, validating each phase's answer.
+/// The accepted answer is kept for the click; any bad answer refuses it.
 fn fire(
     game: &mut Game<'_>,
     shared: &Shared<'_>,
@@ -226,7 +240,7 @@ fn fire(
     else {
         return Reply::Invalid(InvalidReason::Plan);
     };
-    let event = mod_api::item::menu::StackedOnOther::new(
+    let base = mod_api::item::menu::StackedOnOther::new(
         frozen.player,
         frozen.player_entity_id,
         frozen.slot,
@@ -236,22 +250,84 @@ fn fire(
         carried,
         clicked,
     );
-    let mut result = StackedOnOtherResult::default();
-    let mut canceled = false;
-    game.native_item_stacked_on_other(&event, &mut result, &mut canceled);
-    match answer(game, canceled, &result) {
-        Ok(answer) => {
-            // Ask each rule with the exact stack and context the accepted click would use.
-            // Model it on a probe before deciding whether any write can be applied.
-            plan(game, &answer);
-            if answer.refused.get() {
-                return Reply::Invalid(InvalidReason::Plan);
-            }
-            *shared.answer.borrow_mut() = Some(answer);
-            Reply::Allow
+    let finish = |game: &mut Game<'_>, outcome: StackedOutcome| -> Reply {
+        // Ask each rule with the exact stack and context the accepted click would use.
+        // Model it on a probe before deciding whether any write can be applied.
+        plan(game, &outcome);
+        if outcome.refused.get() {
+            return Reply::Invalid(InvalidReason::Plan);
         }
-        Err(reason) => Reply::Invalid(reason),
+        *shared.answer.borrow_mut() = Some(outcome);
+        Reply::Allow
+    };
+
+    // 1. Global NeoForge `ItemStackedOnOtherEvent`, before either item override.
+    if mod_api::__private::listened(mod_api::HookId::ItemStackedOnOther) {
+        let mut result = StackedOnOtherResult::default();
+        let mut canceled = false;
+        game.native_item_stacked_on_other(&base, &mut result, &mut canceled);
+        let outcome = match answer(game, canceled, &result) {
+            Ok(outcome) => outcome,
+            Err(reason) => return Reply::Invalid(reason),
+        };
+        if outcome.canceled {
+            return finish(game, outcome);
+        }
     }
+
+    // 2. Carried stack's `Item.overrideStackedOnOther`.
+    if let Some(carried_stack) = frozen.carried.as_ref()
+        && mod_api::__private::item_listens(
+            mod_api::HookId::ItemStackedOnOther,
+            &carried_stack.item,
+        )
+    {
+        let event = base
+            .clone()
+            .with_direction(mod_api::item::menu::StackedOnOtherDirection::CarriedOnOther);
+        let mut result = StackedOnOtherResult::default();
+        let mut canceled = false;
+        game.item_stacked_on_other_part(&carried_stack.item, &event, &mut result, &mut canceled);
+        let outcome = match answer(game, canceled, &result) {
+            Ok(outcome) => outcome,
+            Err(reason) => return Reply::Invalid(reason),
+        };
+        if outcome.canceled {
+            return finish(game, outcome);
+        }
+    }
+
+    // 3. Vanilla `BundleItem.overrideStackedOnOther` runs before the clicked stack's
+    // `overrideOtherStackedOnMe` whenever the carried stack holds `minecraft:bundle_contents`
+    // and the button/slot occupancy matches (`clicked.is_some() == primary`).
+    let vanilla_carried_bundle_takes = frozen.carried.as_ref().is_some_and(|carried_stack| {
+        frozen.clicked.is_some() == frozen.primary
+            && sunrise_client::bundle::Contents::of(game.items(), carried_stack).is_some()
+    });
+
+    // 4. Clicked stack's `Item.overrideOtherStackedOnMe`.
+    if !vanilla_carried_bundle_takes
+        && let Some(clicked_stack) = frozen.clicked.as_ref()
+        && mod_api::__private::item_listens(
+            mod_api::HookId::ItemStackedOnOther,
+            &clicked_stack.item,
+        )
+    {
+        let event =
+            base.with_direction(mod_api::item::menu::StackedOnOtherDirection::OtherStackedOnMe);
+        let mut result = StackedOnOtherResult::default();
+        let mut canceled = false;
+        game.item_stacked_on_other_part(&clicked_stack.item, &event, &mut result, &mut canceled);
+        let outcome = match answer(game, canceled, &result) {
+            Ok(outcome) => outcome,
+            Err(reason) => return Reply::Invalid(reason),
+        };
+        if outcome.canceled {
+            return finish(game, outcome);
+        }
+    }
+
+    finish(game, StackedOutcome::default())
 }
 
 /// The typed answer, validated once: a stack may be set only by a cancelled click that is also
@@ -340,7 +416,9 @@ impl Game<'_> {
             found = menu.stacked_click(env, menu_slot, button, Input::Pickup);
             Some(false)
         });
-        let frozen = found.filter(|_| modeled)?;
+        let frozen = found
+            .filter(|_| modeled)
+            .filter(Self::stacked_listens_for)?;
         let handled = Rc::new(std::cell::Cell::new(false));
         let result = handled.clone();
         let carried = frozen.carried.clone();

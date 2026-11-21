@@ -934,3 +934,375 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
         });
     });
 }
+
+mod item_part_tests {
+    use super::*;
+    use mod_api::item::menu::StackedOnOtherDirection;
+    use mod_api::{ItemPart, Registrar, RegistrationContext};
+
+    #[derive(Clone, Default)]
+    struct PartScript {
+        cancel_carried: bool,
+        cancel_clicked: bool,
+        handled: bool,
+        set_carried: Option<Option<(&'static str, u32)>>,
+        set_clicked: Option<Option<(&'static str, u32)>>,
+        panic_on_carried: bool,
+        write_scoreboard: bool,
+    }
+
+    thread_local! {
+        static PART_SCRIPT: RefCell<PartScript> = RefCell::new(PartScript::default());
+        static TRACE: RefCell<Vec<(&'static str, StackedOnOtherDirection)>> =
+            const { RefCell::new(Vec::new()) };
+    }
+
+    fn set_part_script(script: PartScript) {
+        TRACE.with(|t| t.borrow_mut().clear());
+        PART_SCRIPT.with(|s| *s.borrow_mut() = script);
+    }
+
+    fn trace() -> Vec<(&'static str, StackedOnOtherDirection)> {
+        TRACE.with(|t| t.borrow().clone())
+    }
+
+    struct TaggedPart(&'static str);
+
+    #[mod_api::sunrise_part]
+    impl ItemPart for TaggedPart {
+        fn item_stacked_on_other(
+            &self,
+            mut host: HostSide<'_>,
+            event: &mut ItemStackedOnOtherEvent<'_>,
+        ) -> Flow {
+            TRACE.with(|t| t.borrow_mut().push((self.0, event.event.direction)));
+            let s = PART_SCRIPT.with(|s| s.borrow().clone());
+            if s.write_scoreboard
+                && let HostSide::Server(host) = &mut host
+            {
+                mod_api::prelude::ScoreboardServerHost::add_objective(
+                    &mut **host,
+                    "part_pickup",
+                    "dummy",
+                    mod_api::Text::literal("part_pickup"),
+                    mod_api::ObjectiveRenderType::Integer,
+                )
+                .unwrap();
+            }
+            if s.panic_on_carried
+                && event.event.direction == StackedOnOtherDirection::CarriedOnOther
+            {
+                panic!("item part panicked");
+            }
+            let should_cancel = match event.event.direction {
+                StackedOnOtherDirection::CarriedOnOther => s.cancel_carried,
+                StackedOnOtherDirection::OtherStackedOnMe => s.cancel_clicked,
+                StackedOnOtherDirection::Event => false,
+            };
+            if should_cancel {
+                let set = |r: Option<Option<(&str, u32)>>| match r {
+                    None => StackResult::Keep,
+                    Some(None) => StackResult::Set(None),
+                    Some(Some((item, count))) => StackResult::Set(Some(api_stack(item, count))),
+                };
+                event.result.handled = s.handled;
+                event.result.carried = set(s.set_carried);
+                event.result.clicked = set(s.set_clicked);
+                return Flow::Cancel;
+            }
+            Flow::Continue
+        }
+    }
+
+    struct PartOnlyMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for PartOnlyMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stick = r.item_key("minecraft:stick");
+            let flint = r.item_key("minecraft:flint");
+            r.item_part(stick, TaggedPart("stick"));
+            r.item_part(flint, TaggedPart("flint"));
+        }
+    }
+
+    struct GlobalAndPartMod(bool);
+    #[mod_api::__subscriptions]
+    impl Hooks for GlobalAndPartMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stick = r.item_key("minecraft:stick");
+            let flint = r.item_key("minecraft:flint");
+            r.item_part(stick, TaggedPart("stick"));
+            r.item_part(flint, TaggedPart("flint"));
+        }
+        fn item_stacked_on_other(
+            &self,
+            _: HostSide<'_>,
+            event: &mut ItemStackedOnOtherEvent<'_>,
+        ) -> Flow {
+            TRACE.with(|t| t.borrow_mut().push(("global", event.event.direction)));
+            if self.0 {
+                event.result.handled = true;
+                return Flow::Cancel;
+            }
+            Flow::Continue
+        }
+    }
+
+    fn with_part_only_mod(test: impl FnOnce()) {
+        let mods: Mods = vec![ModEntry::new("part_stacked", Box::new(PartOnlyMod))].into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, test);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_overrides_run_in_vanilla_order_and_apply_transactionally() {
+        with_part_only_mod(|| {
+            with_local(|game| {
+                // 1. Unrelated items pay no part dispatch and run plain pickup.
+                set_part_script(PartScript::default());
+                game.inventory[9] = None;
+                game.carried = Some(ItemStack::new("minecraft:stone", 3));
+                assert_eq!(click(game), (3, 0, 0));
+                assert!(trace().is_empty());
+
+                // 2. CarriedOnOther runs first; cancelling skips OtherStackedOnMe and replaces stacks.
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:stick", 1))),
+                    set_clicked: Some(Some(("minecraft:diamond", 2))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                assert_eq!(&*game.carried.as_ref().unwrap().item, "minecraft:stick");
+                assert_eq!(
+                    &*game.inventory[9].as_ref().unwrap().item,
+                    "minecraft:diamond"
+                );
+                assert_eq!(game.inventory[9].as_ref().unwrap().count, 2);
+
+                // 3. CarriedOnOther returning Continue defers to OtherStackedOnMe.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:flint", 4))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [
+                        ("stick", StackedOnOtherDirection::CarriedOnOther),
+                        ("flint", StackedOnOtherDirection::OtherStackedOnMe),
+                    ]
+                );
+                assert!(game.carried.is_none());
+                assert_eq!(game.inventory[9].as_ref().unwrap().count, 4);
+
+                // 4. Vanilla carried bundle takes a primary click on a non-empty slot BEFORE
+                //    the clicked item's OtherStackedOnMe override.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:bundle", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert!(
+                    trace().is_empty(),
+                    "vanilla carried bundle must win before clicked ItemPart"
+                );
+                assert!(game.inventory[9].is_none());
+
+                // 5. Secondary click with carried vanilla bundle on a non-empty slot is NOT
+                //    taken by vanilla BundleItem.overrideStackedOnOther, so clicked ItemPart runs.
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_clicked: Some(Some(("minecraft:diamond", 1))),
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:bundle", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 1, Input::Pickup)]));
+                assert_eq!(
+                    trace(),
+                    [("flint", StackedOnOtherDirection::OtherStackedOnMe)]
+                );
+                assert_eq!(
+                    &*game.inventory[9].as_ref().unwrap().item,
+                    "minecraft:diamond"
+                );
+
+                // 6. Panic in an ItemPart rolls back host writes and leaves stacks unchanged.
+                set_part_script(PartScript {
+                    write_scoreboard: true,
+                    panic_on_carried: true,
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(&*game.carried.as_ref().unwrap().item, "minecraft:stick");
+                assert_eq!(
+                    &*game.inventory[9].as_ref().unwrap().item,
+                    "minecraft:flint"
+                );
+                assert!(game.score.board.objective("part_pickup").is_none());
+            });
+        });
+
+        // 7. Global cancel skips both ItemParts.
+        let mods: Mods = vec![ModEntry::new(
+            "global_cancel",
+            Box::new(GlobalAndPartMod(true)),
+        )]
+        .into();
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_platform::testing::with_mods(mods, || {
+            with_local(|game| {
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    ..PartScript::default()
+                });
+                game.carried = Some(ItemStack::new("minecraft:stick", 1));
+                game.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                assert!(game.menu_ops(&[(Some(9), 0, Input::Pickup)]));
+                assert_eq!(trace(), [("global", StackedOnOtherDirection::Event)]);
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn item_part_stacked_on_other_runs_on_lan_hub_and_inventory_clicks() {
+        use sunrise_client::lan::menu::Slots;
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+        with_part_only_mod(|| {
+            with_guests(|game| {
+                PLAYER.set(12);
+                let pos = (1, 64, 1);
+                game.world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                );
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(pos.0, pos.1, pos.2, stone).unwrap();
+                let mut chest = vec![None; 27];
+                chest[0] = Some(ItemStack::new("minecraft:flint", 1));
+                game.world.block_entities.insert(
+                    pos,
+                    sunrise_client::containers::BlockEntity::Chest(chest.clone()),
+                );
+                let host = game.lan.as_mut().unwrap();
+                host.hub.open_container(
+                    12,
+                    "minecraft:generic_9x3",
+                    sunrise_core::nbt::Tag::String("test".into()),
+                    pos,
+                    Slots::Block(pos),
+                    chest,
+                    None,
+                );
+                let window = host.hub.guests[0].menu.as_ref().unwrap().window;
+                host.hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_clicked: true,
+                    handled: true,
+                    set_carried: Some(None),
+                    set_clicked: Some(Some(("minecraft:emerald", 3))),
+                    ..PartScript::default()
+                });
+                let click_pkt = |container, slot| {
+                    Serverbound::ContainerClick(ContainerClick {
+                        container,
+                        state: 0,
+                        slot,
+                        button: 0,
+                        input: 0,
+                        changed: Vec::new(),
+                        carried: None,
+                    })
+                };
+                // Hub container click fires CarriedOnOther then OtherStackedOnMe inside transaction.
+                let seal = game.transaction_open();
+                game.lan_guest_packet(12, click_pkt(window, 0));
+                assert_eq!(
+                    trace(),
+                    [
+                        ("stick", StackedOnOtherDirection::CarriedOnOther),
+                        ("flint", StackedOnOtherDirection::OtherStackedOnMe),
+                    ]
+                );
+                assert!(game.lan.as_ref().unwrap().hub.guests[0].carried.is_none());
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0]
+                        .as_ref()
+                        .map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:emerald", 3))
+                );
+                // Outer transaction abort restores both guest cursor and chest slot.
+                game.transaction_close(&seal, false);
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0]
+                        .carried
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:stick")
+                );
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0]
+                        .as_ref()
+                        .map(|s| &*s.item),
+                    Some("minecraft:flint")
+                );
+
+                // Guest inventory menu click also fires ItemPart::item_stacked_on_other.
+                game.guest_close_all(12);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.inventory = vec![None; guest.inventory.len()];
+                    guest.inventory[9] = Some(ItemStack::new("minecraft:flint", 1));
+                    guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+                });
+                set_part_script(PartScript {
+                    cancel_carried: true,
+                    handled: true,
+                    set_carried: Some(Some(("minecraft:diamond", 2))),
+                    set_clicked: Some(None),
+                    ..PartScript::default()
+                });
+                game.lan_guest_packet(12, click_pkt(0, 9));
+                assert_eq!(
+                    trace(),
+                    [("stick", StackedOnOtherDirection::CarriedOnOther)]
+                );
+                let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+                assert_eq!(
+                    guest.carried.as_ref().map(|s| (&*s.item, s.count)),
+                    Some(("minecraft:diamond", 2))
+                );
+                assert!(guest.inventory[9].is_none());
+            });
+        });
+    }
+}

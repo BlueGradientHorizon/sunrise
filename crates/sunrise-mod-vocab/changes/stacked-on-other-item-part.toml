@@ -1,0 +1,10 @@
+ids = [
+    "hook:item_stacked_on_other",
+    "type:StackedOnOther",
+    "type:StackedOnOther.direction",
+    "type:StackedOnOtherDirection",
+    "handle:StackedOnOther::with_direction",
+    "method:ItemPart::item_stacked_on_other",
+]
+why = "Expose vanilla Item.overrideStackedOnOther and Item.overrideOtherStackedOnMe on ItemPart::item_stacked_on_other under HookId::ItemStackedOnOther (version 5), with StackedOnOtherDirection distinguishing Event, CarriedOnOther, and OtherStackedOnMe in vanilla AbstractContainerMenu.tryItemClickBehaviourOverride order inside the existing pickup-click transaction."
+migrate = "Rebuild against item_stacked_on_other v5. StackedOnOther now carries direction: StackedOnOtherDirection (Event for global Hooks::item_stacked_on_other listeners; CarriedOnOther for the cursor item's ItemPart::item_stacked_on_other; OtherStackedOnMe for the clicked slot item's ItemPart::item_stacked_on_other). Global listeners continue receiving StackedOnOtherDirection::Event unchanged; custom item containers can implement ItemPart::item_stacked_on_other and branch on event.event.direction instead of installing a global listener."

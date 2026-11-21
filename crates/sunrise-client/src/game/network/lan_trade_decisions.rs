@@ -219,7 +219,7 @@ impl Game<'_> {
                     seen = menu.stacked_click(env, 2, button, input);
                 },
             );
-            if let Some(frozen) = seen {
+            if let Some(frozen) = seen.filter(Self::stacked_listens_for) {
                 let host = self.lan.as_ref().unwrap();
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;

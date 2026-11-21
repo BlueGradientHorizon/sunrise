@@ -81,7 +81,7 @@ edits retain those captured engine values. Consuming mutable events such as `bon
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 
-The `item_stacked_on_other` hook runs on the authoritative side only (a client predicts vanilla and the server corrects it). It does not lend the slot: it hands the listener the cursor and
+The `item_stacked_on_other` hook runs on the authoritative side only (a client predicts vanilla and the server corrects it), dispatching first to global `Hooks::item_stacked_on_other` (`StackedOnOtherDirection::Event`), then to the carried stack's `ItemPart::item_stacked_on_other` (`CarriedOnOther`), and then — unless a carried vanilla bundle takes the click — to the clicked stack's `ItemPart::item_stacked_on_other` (`OtherStackedOnMe`). It does not lend the slot: it hands the listener the cursor and
 the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`, and
 `StackResult::Keep` or `Set` for the cursor and the slot) that the game validates once and applies
 once. A stack can be set only by a cancelled click that is also `handled`; any other answer that
