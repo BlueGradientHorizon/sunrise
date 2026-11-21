@@ -316,18 +316,22 @@ fn viewed_group_bundle_keeps_a_normal_scoped_run_first_and_omits_metadata_withou
         else {
             return None;
         };
-        Some((
-            level,
-            packets
-                .into_iter()
-                .map(|(id, data)| {
+        let mut vanilla = Vec::new();
+        let mut sections = Vec::new();
+        for packet in packets {
+            match packet {
+                viewed_levels::ScopedPacket::Play(id, data) => {
                     let mut w = sunrise_protocol::buf::Writer::new();
                     w.varint(id);
                     w.bytes(data);
-                    w.data
-                })
-                .collect::<Vec<_>>(),
-        ))
+                    vanilla.push(w.data);
+                }
+                viewed_levels::ScopedPacket::ConnectionGroups(body) => {
+                    sections.push(Section::decode(body).unwrap());
+                }
+            }
+        }
+        Some((level, vanilla, sections))
     };
     let our = bodies(&rx_groups);
     let plain = bodies(&rx_plain);
@@ -335,10 +339,11 @@ fn viewed_group_bundle_keeps_a_normal_scoped_run_first_and_omits_metadata_withou
         .iter()
         .position(|b| matches!(decode(b), C::BundleDelimiter(_)))
         .unwrap();
-    let (level, column) = scoped(&our[start + 1]).unwrap();
-    let (group_level, metadata) = scoped(&our[start + 2]).unwrap();
+    let (level, column, no_metadata) = scoped(&our[start + 1]).unwrap();
+    let (group_level, no_vanilla, metadata) = scoped(&our[start + 2]).unwrap();
     assert_eq!(level, group_level);
-    assert_eq!(groups(&decode(&metadata[0])), section([3, 64, 5], Some(77)));
+    assert!(no_metadata.is_empty() && no_vanilla.is_empty());
+    assert_eq!(metadata, [section([3, 64, 5], Some(77))]);
     assert!(matches!(decode(&our[start + 3]), C::BundleDelimiter(_)));
     assert!(
         plain
@@ -348,7 +353,10 @@ fn viewed_group_bundle_keeps_a_normal_scoped_run_first_and_omits_metadata_withou
     let plain_column = plain
         .iter()
         .filter_map(|p| scoped(p))
-        .flat_map(|(_, packets)| packets)
+        .flat_map(|(_, packets, sections)| {
+            assert!(sections.is_empty());
+            packets
+        })
         .find(|p| matches!(decode(p), C::LevelChunkWithLight(_)))
         .unwrap();
     assert_eq!(column, [plain_column]);

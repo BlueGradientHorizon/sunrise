@@ -119,7 +119,7 @@ pub(in crate::game) mod tests {
     use sunrise_protocol::{
         buf::Reader,
         packets::play::Clientbound as C,
-        viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3},
+        viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
 
     /// A server game on a scratch world, as `levels.rs`'s tests open one.
@@ -290,7 +290,10 @@ pub(in crate::game) mod tests {
                     level: Index(2),
                     packets,
                 } => {
-                    for (id, body) in packets {
+                    for packet in packets {
+                        let ScopedPacket::Play(id, body) = packet else {
+                            continue;
+                        };
                         match C::decode(id, body) {
                             Ok(C::LevelChunkWithLight(c)) => sent.chunks.push((c.x, c.z)),
                             Ok(C::ForgetLevelChunk(f)) => sent.forgotten.push((f.pos[0], f.pos[1])),
@@ -611,7 +614,10 @@ pub(in crate::game) mod tests {
                 Message::Close { level } => got.push(Got::Close(level.number())),
                 Message::Run { level, packets } => got.extend(
                     (packets.into_iter())
-                        .filter_map(|(id, body)| C::decode(id, body).ok())
+                        .filter_map(|packet| match packet {
+                            ScopedPacket::Play(id, body) => C::decode(id, body).ok(),
+                            ScopedPacket::ConnectionGroups(_) => None,
+                        })
                         .map(|packet| Got::Wrapped(level.number(), packet)),
                 ),
                 Message::Swap { .. } => unreachable!("no swap below revision 4"),

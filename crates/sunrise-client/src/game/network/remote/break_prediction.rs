@@ -1,6 +1,6 @@
 //! Optimistic block writes and reconciliation on the multiplayer client.
 use super::*;
-use crate::game::native_connection_groups::ReceivedGroup;
+use crate::game::native_connection_groups::{GroupUpdates, ReceivedGroup, check_group_updates};
 use sunrise_core::position::BlockPos;
 
 /// `BlockStatePredictionHandler.ServerVerifiedState`: the most recent sequence,
@@ -172,17 +172,68 @@ impl Game<'_> {
         self.finish_client_block_write(pos, previous, state, false);
     }
 
-    /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
-    /// state and restore data before the correction notice. Confirmations are silent.
-    pub(super) fn end_predictions(&mut self, sequence: i32) {
+    pub(in crate::game) fn check_active_group_updates(
+        &self,
+        groups: &GroupUpdates,
+        limit: usize,
+    ) -> sunrise_protocol::Result<()> {
+        check_group_updates(
+            &self.world,
+            groups.iter().filter_map(|(&pos, &group)| {
+                (!self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.predictions.contains_key(&pos)))
+                .then_some((pos, group))
+            }),
+            limit,
+        )
+    }
+
+    /// `handleLevelChunkWithLight` writes the column directly, unlike verified block
+    /// updates. When a pending correction carries group data, that newer authoritative
+    /// snapshot supersedes the correction (including absence). Predictions without a
+    /// group correction retain vanilla's acknowledgement behaviour.
+    pub(in crate::game) fn supersede_group_predictions(
+        &mut self,
+        chunk: &sunrise_client::chunk::Chunk,
+    ) {
         let Some(r) = self.remote.as_mut() else {
             return;
+        };
+        for (&[x, y, z], prediction) in &mut r.predictions {
+            if prediction.group.is_some()
+                && (x >> 4, z >> 4) == (chunk.x, chunk.z)
+                && chunk.section_index(y).is_some()
+            {
+                prediction.state = chunk.block(x & 15, y, z & 15);
+                prediction.group = Some(ReceivedGroup(chunk.connection_group(x & 15, y, z & 15)));
+                prediction.removed_entity = None;
+            }
+        }
+    }
+
+    /// BlockStatePredictionHandler.endPredictionsUpTo: settle the server's known
+    /// state and restore data before the correction notice. Confirmations are silent.
+    pub(super) fn end_predictions(&mut self, sequence: i32) -> Result<()> {
+        let Some(r) = self.remote.as_mut() else {
+            return Ok(());
         };
         let last_teleport = r.last_teleport_sequence;
         let settled: Vec<_> = r
             .predictions
             .extract_if(|_, p| p.sequence <= sequence)
             .collect();
+        let updates = settled.iter().filter_map(|&([x, y, z], ref prediction)| {
+            prediction
+                .group
+                .filter(|_| self.world.is_loaded_at(x, y, z))
+                .map(|group| ([x, y, z], group))
+        });
+        if let Err(error) = check_group_updates(&self.world, updates, self.connection_group_limit())
+        {
+            return self.refuse_play_payload(error);
+        }
         for (pos, prediction) in settled {
             let [x, y, z] = pos;
             let state = prediction.state;
@@ -203,6 +254,7 @@ impl Game<'_> {
                 self.snap_player_to(at);
             }
         }
+        Ok(())
     }
 
     fn write_client_block(

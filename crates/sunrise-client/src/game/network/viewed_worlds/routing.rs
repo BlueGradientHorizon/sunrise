@@ -6,17 +6,21 @@ use super::{
     worlds::{Binding, ViewedWorld, stored_state},
 };
 use crate::game::remote_chunks::section_blocks;
-use crate::game::{Game, native_connection_groups::block_groups, remote::Remote};
+use crate::game::{
+    Game,
+    native_connection_groups::{block_groups, check_group_updates},
+    remote::Remote,
+};
 use sunrise_client::blocks::BlockFacts;
 use sunrise_client::{viewed_levels_net::MAX_LEVELS, world::World};
 use sunrise_protocol::{
     Error,
     connection_groups::Section,
-    ids::play::clientbound::CUSTOM_PAYLOAD,
     packets::play::{Clientbound as C, SpawnInfo},
     registry::DimensionType,
     viewed_levels::{
-        CHANNEL, Level, MAX_COLUMNS, MAX_ENTITIES, Message, REVISION, SOUNDS, ViewedLevelsError,
+        CHANNEL, Level, MAX_COLUMNS, MAX_ENTITIES, Message, REVISION, SOUNDS, ScopedPacket,
+        ViewedLevelsError,
     },
 };
 use sunrise_world::{
@@ -189,8 +193,10 @@ impl Game<'_> {
             .iter()
             .map(|(_, data)| Message::decode_with(data, REVISION, sounds))
             .collect::<Result<Vec<_>, _>>()?;
-        let has_groups = messages.iter().any(|message|
-            matches!(message, Message::Run { packets, .. } if packets.iter().any(|&(id, _)| id == CUSTOM_PAYLOAD)));
+        let has_groups = messages.iter().any(|message| {
+            matches!(message, Message::Run { packets, .. }
+                if packets.iter().any(|packet| matches!(packet, ScopedPacket::ConnectionGroups(_))))
+        });
         if !has_groups {
             for ((outer, _), message) in runs.iter().zip(messages) {
                 self.observe_client_packet(outer);
@@ -207,10 +213,10 @@ impl Game<'_> {
         let [Message::Run { level, packets }, rest @ ..] = messages.as_slice() else {
             return Err(invalid());
         };
-        let [(id, body)] = packets.as_slice() else {
+        let [ScopedPacket::Play(id, body)] = packets.as_slice() else {
             return Err(invalid());
         };
-        if rest.is_empty() || *id == CUSTOM_PAYLOAD {
+        if rest.is_empty() {
             return Err(invalid());
         }
         let (slot, epoch) = bound(*level)?;
@@ -226,15 +232,11 @@ impl Game<'_> {
             if scoped != level {
                 return Err(invalid());
             }
-            for &(id, body) in packets {
-                if id != CUSTOM_PAYLOAD {
-                    return Err(invalid());
-                }
-                let C::CustomPayload(payload) = C::decode(id, body).map_err(RouteError::Groups)?
-                else {
+            for packet in packets {
+                let ScopedPacket::ConnectionGroups(body) = packet else {
                     return Err(invalid());
                 };
-                sections.push(Section::decode(&payload.data).map_err(RouteError::Groups)?);
+                sections.push(Section::decode(body).map_err(RouteError::Groups)?);
             }
         }
         if sections.is_empty() {
@@ -294,7 +296,12 @@ impl Game<'_> {
                 if !self.live(level, epoch)? {
                     return Ok(());
                 }
-                for (id, body) in packets {
+                for packet in packets {
+                    let ScopedPacket::Play(id, body) = packet else {
+                        return Err(RouteError::Groups(Error::new(
+                            "connection groups: payload outside its bundle",
+                        )));
+                    };
                     // A sound plays in the player's level, if a mod says where.
                     if SOUNDS.contains(&id) {
                         self.viewed_level_sound(level, id, body)?;
@@ -325,22 +332,27 @@ impl Game<'_> {
         sections: &[Section],
     ) -> Result<(), RouteError> {
         let facts = self.res.facts();
+        let group_limit = if sections.is_empty() {
+            0
+        } else {
+            self.connection_group_limit()
+        };
         let Some(world) = self.remote.as_mut().and_then(|r| r.viewed.get_mut(level)) else {
             return Ok(());
         };
-        if matches!(packet, C::CustomPayload(_)) {
-            return Err(RouteError::Groups(Error::new(
-                "connection groups: payload outside its bundle",
-            )));
-        }
         let (groups, snapshot) =
             if sections.is_empty() || matches!(packet, C::LevelChunkWithLight(_)) {
                 (Default::default(), sections)
             } else {
-                (
-                    block_groups(&world.world, &packet, sections).map_err(RouteError::Groups)?,
-                    &[][..],
+                let groups =
+                    block_groups(&world.world, &packet, sections).map_err(RouteError::Groups)?;
+                check_group_updates(
+                    &world.world,
+                    groups.iter().map(|(&pos, &group)| (pos, group)),
+                    group_limit,
                 )
+                .map_err(RouteError::Groups)?;
+                (groups, &[][..])
             };
         if let C::BlockEntityData(p) = packet {
             let [x, y, z] = p.pos;
@@ -354,7 +366,7 @@ impl Game<'_> {
                 world.placed_block_entity(pos);
             }
         }
-        world.apply(packet, groups, snapshot)
+        world.apply(packet, groups, snapshot, group_limit)
     }
 
     /// Whether a `run` or `close` of `slot` at `epoch` goes to its world: false for one of a level
@@ -410,6 +422,7 @@ impl Game<'_> {
             std::sync::Arc::new(DimensionFacts::of_builtin_level(key).clone())
         });
         let mut world = World::new(air, spawn.seed);
+        world.chunks.track_connection_groups(r.group_count.clone());
         world.shape = format.shape;
         world.fast_lava = facts.fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(&facts));

@@ -130,9 +130,12 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
 - **Sync and transactions.** Negotiated clients adopt groups with the cell's current authoritative state,
   including in viewed levels. If only the group would be sent, the server sends the current block update first
   in the same bundle, only to negotiated clients. Group changes remesh affected sections and borders. Vanilla
-  peers get neither the groups nor any additional updates. Writes inside a Host transaction are tentative:
-  aborting restores the previous group quietly, and committing publishes the final block and group per position
-  (including a clear caused by an intermediate replacement).
+  peers get neither the groups nor any additional updates. A client shares one active chunk cache’s worth of
+  group cells across its active and viewed levels; replacing or unloading columns releases their old cells.
+  It disconnects rather than adopting an update that would exceed that limit. A newer column snapshot takes
+  precedence over group corrections still waiting for a prediction acknowledgement. Writes inside a Host
+  transaction are tentative: aborting restores the previous group quietly, and committing publishes the final
+  block and group per position (including a clear caused by an intermediate replacement).
 
 ## What it joins, and what it does not
 

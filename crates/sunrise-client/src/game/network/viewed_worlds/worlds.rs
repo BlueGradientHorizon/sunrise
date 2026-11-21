@@ -92,6 +92,7 @@ impl ViewedWorld {
         packet: C,
         mut groups: GroupUpdates,
         snapshot: &[Section],
+        group_limit: usize,
     ) -> Result<(), RouteError> {
         match packet {
             // `handleLevelChunkWithLight`: the column replaces any it held, with the light the
@@ -105,7 +106,7 @@ impl ViewedWorld {
             C::LevelChunkWithLight(p) => match self.format.column(&p) {
                 Ok(mut chunk) => {
                     let key = (p.x, p.z);
-                    column_groups(&mut chunk, self.world.shape, snapshot)
+                    column_groups(&mut chunk, &self.world, snapshot, group_limit)
                         .map_err(RouteError::Groups)?;
                     if let Some(old) = self.world.chunks.get(&key).cloned() {
                         take_resent_column(&mut self.world, &old, chunk, false);
@@ -472,20 +473,23 @@ mod tests {
             2048,
         );
         for x in 0..2048 {
-            viewed.apply(column(x), Default::default(), &[]).unwrap();
+            viewed.apply(column(x), Default::default(), &[], 0).unwrap();
         }
         assert_eq!(viewed.world.chunks.len(), 2048);
         // A replacement is no new column.
-        assert_eq!(viewed.apply(column(17), Default::default(), &[]), Ok(()));
+        assert_eq!(viewed.apply(column(17), Default::default(), &[], 0), Ok(()));
         assert_eq!(viewed.world.chunks.len(), 2048);
         assert_eq!(
-            viewed.apply(column(2048), Default::default(), &[]),
+            viewed.apply(column(2048), Default::default(), &[], 0),
             Err(RouteError::TooManyColumns(2048))
         );
         assert!(!viewed.world.chunks.contains_key(&(2048, 0)));
         let forget = C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [5, 0] });
-        viewed.apply(forget, Default::default(), &[]).unwrap();
-        assert_eq!(viewed.apply(column(2048), Default::default(), &[]), Ok(()));
+        viewed.apply(forget, Default::default(), &[], 0).unwrap();
+        assert_eq!(
+            viewed.apply(column(2048), Default::default(), &[], 0),
+            Ok(())
+        );
         assert!(viewed.world.chunks.contains_key(&(2048, 0)));
         assert_eq!(viewed.world.chunks.len(), 2048);
     }
@@ -516,11 +520,12 @@ mod tests {
                 time(100, vec![clock(0, 7, 1.0), clock(3, 1000, 1.0)]),
                 Default::default(),
                 &[],
+                0,
             )
             .unwrap();
         assert_eq!(viewed.world.day_time, 1000);
         viewed
-            .apply(time(120, Vec::new()), Default::default(), &[])
+            .apply(time(120, Vec::new()), Default::default(), &[], 0)
             .unwrap();
         assert_eq!(viewed.world.day_time, 1020);
         assert_eq!(viewed.world.game_time, 120);
@@ -529,14 +534,15 @@ mod tests {
                 time(120, vec![clock(3, 2000, 0.5)]),
                 Default::default(),
                 &[],
+                0,
             )
             .unwrap();
         viewed
-            .apply(time(123, Vec::new()), Default::default(), &[])
+            .apply(time(123, Vec::new()), Default::default(), &[], 0)
             .unwrap();
         assert_eq!(viewed.world.day_time, 2001);
         viewed
-            .apply(time(124, Vec::new()), Default::default(), &[])
+            .apply(time(124, Vec::new()), Default::default(), &[], 0)
             .unwrap();
         assert_eq!(viewed.world.day_time, 2002);
     }
@@ -560,10 +566,10 @@ mod tests {
         let mut viewed = fresh();
         let time = |game_time, clocks| C::SetTime(play::SetTime { game_time, clocks });
         viewed
-            .apply(time(i64::MIN, Vec::new()), Default::default(), &[])
+            .apply(time(i64::MIN, Vec::new()), Default::default(), &[], 0)
             .unwrap();
         assert_eq!(
-            viewed.apply(time(i64::MAX, Vec::new()), Default::default(), &[]),
+            viewed.apply(time(i64::MAX, Vec::new()), Default::default(), &[], 0),
             Err(RouteError::ClockOverflow)
         );
         assert_eq!(viewed.world.game_time, i64::MIN);
@@ -579,11 +585,11 @@ mod tests {
         };
         let mut viewed = fresh();
         viewed
-            .apply(time(100, vec![full]), Default::default(), &[])
+            .apply(time(100, vec![full]), Default::default(), &[], 0)
             .unwrap();
         assert_eq!(viewed.world.day_time, i64::MAX);
         assert_eq!(
-            viewed.apply(time(101, Vec::new()), Default::default(), &[]),
+            viewed.apply(time(101, Vec::new()), Default::default(), &[], 0),
             Err(RouteError::ClockOverflow)
         );
         assert_eq!(

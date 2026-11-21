@@ -600,13 +600,18 @@ impl World {
         let Some(cell) = chunk.dynamic_cell(x & 15, y, z & 15) else {
             return false;
         };
-        if chunk.connection_groups.get(&cell).copied() == group {
+        let previous = chunk.connection_groups.get(&cell).copied();
+        if previous == group {
             return false;
         }
         let chunk = Arc::make_mut(chunk);
         chunk.write_group(cell, group);
+        let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
+        if previous.is_some() != group.is_some() {
+            self.chunks
+                .connection_group_changed(previous.is_some(), group.is_some());
+        }
         if publish {
-            let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
             self.mark_remesh_at(x, y, z, min_y, sections, false);
         }
         true
@@ -699,7 +704,9 @@ impl World {
         }
         let previous = Arc::make_mut(chunk).set(x & 15, y, z & 15, state.0);
         if previous != state.0 {
-            self.block_storage_changed((x, y, z), BlockStateId(previous), state);
+            if !chunk.connection_groups.is_empty() {
+                self.block_storage_changed((x, y, z), BlockStateId(previous), state);
+            }
             self.block_entities
                 .state_changed((x, y, z), previous, state.0);
             let watches = |id: u32| self.watched.get(id as usize).copied().unwrap_or(false);

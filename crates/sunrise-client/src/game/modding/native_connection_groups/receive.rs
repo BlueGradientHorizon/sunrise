@@ -1,10 +1,6 @@
-//! Give one completed bundle's group data to the packet that owns it. Nothing
-//! here waits for another frame or survives the packet's adoption.
-use sunrise_client::{
-    chunk::{Chunk, LevelShape},
-    fast_hash::FxHashMap,
-    world::World,
-};
+//! Give a completed bundle's group data to the packet that owns it and check
+//! the net cost against the connection's resident group limit before adoption.
+use sunrise_client::{chunk::Chunk, fast_hash::FxHashMap, world::World};
 use sunrise_protocol::{
     Error, Result, connection_groups::Section, packets::play::Clientbound as C,
 };
@@ -20,17 +16,50 @@ impl ReceivedGroup {
 
 pub(in crate::game) type GroupUpdates = FxHashMap<[i32; 3], ReceivedGroup>;
 
+pub(in crate::game) fn check_group_updates(
+    world: &World,
+    updates: impl IntoIterator<Item = ([i32; 3], ReceivedGroup)>,
+    limit: usize,
+) -> Result<()> {
+    let (mut old, mut new) = (0, 0);
+    for ([x, y, z], group) in updates {
+        old += usize::from(world.connection_group(x, y, z).is_some());
+        new += usize::from(group.0.is_some());
+    }
+    check_group_capacity(world, old, new, limit)
+}
+
+fn check_group_capacity(world: &World, old: usize, new: usize, limit: usize) -> Result<()> {
+    if world.chunks.allows_connection_groups(old, new, limit) {
+        Ok(())
+    } else {
+        Err(Error::new(format!(
+            "connection groups: resident cell limit ({limit}) exceeded"
+        )))
+    }
+}
+
 /// Install the decoded map in the new column before the column, its remesh
 /// diff or any of its load hooks can become visible.
 pub(in crate::game) fn column_groups(
     chunk: &mut Chunk,
-    shape: LevelShape,
+    world: &World,
     sections: &[Section],
+    limit: usize,
 ) -> Result<()> {
+    if sections.is_empty() {
+        return Ok(());
+    }
+    let old = world
+        .chunks
+        .get(&(chunk.x, chunk.z))
+        .map_or(0, |resident| resident.connection_groups.len());
+    let new = sections.iter().map(|section| section.entries.len()).sum();
+    check_group_capacity(world, old, new, limit)?;
     let mut seen = sunrise_client::fast_hash::FxHashSet::default();
     for section in sections {
         let [x, y, z] = section.pos;
-        if (x, z) != (chunk.x, chunk.z) || !shape.contains_y(y << 4) || !seen.insert(y) {
+        if (x, z) != (chunk.x, chunk.z) || !world.shape.has_section(y) || !seen.insert(y) {
             return Err(Error::new("connection groups: unexpected column section"));
         }
         for entry in &section.entries {
@@ -98,4 +127,45 @@ pub(in crate::game) fn block_groups(
         return Err(Error::new("connection groups: group cell is not loaded"));
     }
     Ok(updates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use sunrise_client::chunk_map::ConnectionGroupCount;
+    use sunrise_protocol::connection_groups::{Cell, Entry};
+    use sunrise_world::registry::BlockStateId;
+
+    #[test]
+    fn full_credit_allows_a_resend_but_refuses_new_cells_before_adoption() {
+        let mut world = World::new(BlockStateId(0), 0);
+        world
+            .chunks
+            .track_connection_groups(ConnectionGroupCount::default());
+        let mut original = Chunk::empty(0, 0);
+        original.set_connection_group(0, 0, 0, Some(30));
+        world.chunks.insert((0, 0), Arc::new(original));
+
+        let section = |x| Section {
+            pos: [x, 0, 0],
+            entries: vec![Entry {
+                cell: Cell::of([0, 0, 0]),
+                group: Some(40),
+            }],
+        };
+        let mut replacement = Chunk::empty(0, 0);
+        column_groups(&mut replacement, &world, &[section(0)], 1).unwrap();
+        assert_eq!(replacement.connection_group(0, 0, 0), Some(40));
+        world.chunks.insert((0, 0), Arc::new(replacement));
+
+        let mut new_column = Chunk::empty(1, 0);
+        let error = column_groups(&mut new_column, &world, &[section(1)], 1).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "connection groups: resident cell limit (1) exceeded"
+        );
+        assert_eq!(new_column.connection_group(0, 0, 0), None);
+        assert!(!world.chunks.contains_key(&(1, 0)));
+    }
 }

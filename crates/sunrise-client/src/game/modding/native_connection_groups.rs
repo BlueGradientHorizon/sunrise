@@ -8,7 +8,9 @@ use sunrise_protocol::{
 
 #[path = "native_connection_groups/receive.rs"]
 mod receive;
-pub(in crate::game) use receive::{GroupUpdates, ReceivedGroup, block_groups, column_groups};
+pub(in crate::game) use receive::{
+    GroupUpdates, ReceivedGroup, block_groups, check_group_updates, column_groups,
+};
 
 fn payload<'a>(packet: &'a C, channel: &str) -> Option<&'a [u8]> {
     match packet {
@@ -83,6 +85,7 @@ impl Game<'_> {
         packet: &C,
         sections: &[Section],
     ) -> sunrise_protocol::Result<()> {
+        let limit = self.connection_group_limit();
         if let C::LevelChunkWithLight(packet) = packet {
             if !self.remote_chunk_in_range(packet.x, packet.z) {
                 return Err(Error::new("connection groups: column outside the view"));
@@ -94,10 +97,11 @@ impl Game<'_> {
                 .chunk_format
                 .clone();
             let mut chunk = format.column(packet).map_err(Error::new)?;
-            column_groups(&mut chunk, self.world.shape, sections)?;
+            column_groups(&mut chunk, &self.world, sections, limit)?;
             self.remote_chunk(packet, Some((&format, Ok(chunk))));
         } else {
             let mut groups = block_groups(&self.world, packet, sections)?;
+            self.check_active_group_updates(&groups, limit)?;
             match packet {
                 C::BlockUpdate(packet) => {
                     self.server_block(packet.pos, packet.state, groups.remove(&packet.pos))
@@ -597,10 +601,7 @@ mod tests {
                 ..Sources::default()
             }));
             assert!(game.tickets.levels().block_ticking(0, 0));
-            assert_eq!(
-                level.set_connection_group(game, [7, 65, 7], Some(14)),
-                Ok(true)
-            );
+            assert_eq!(level.connection_group(game, [7, 65, 7]), Ok(None));
             game.world.connection_group_log.as_mut().unwrap().clear();
             let same_state = game.transaction_open();
             assert_eq!(
@@ -1011,6 +1012,50 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_column_resend_supersedes_a_deferred_same_state_group() {
+        let mut resources = None;
+        let (mut game, _server) = client_with_pipe(&mut resources);
+        negotiate(&game, true);
+        let pos = [3, 64, 5];
+        let [x, y, z] = pos;
+        let at = sunrise_core::position::BlockPos::new(x, y, z);
+        let column = viewed_column(0, 0);
+        game.handle_packet(column.clone()).unwrap();
+        let state = game.world.block(x, y, z);
+        let level = game.level("minecraft:overworld").unwrap();
+        for (sequence, snapshot) in [(1, Some(27)), (2, None)] {
+            game.predict_blocks(&[(at, state)], sequence);
+            let before = level.connection_group(&game, pos);
+            deliver_group_bundle(
+                &mut game,
+                vec![
+                    C::BlockUpdate(play::BlockUpdate {
+                        pos,
+                        state: state.0 as i32,
+                    }),
+                    group_packet(pos, Some(19)),
+                ],
+            );
+            assert_eq!(level.connection_group(&game, pos), before);
+            if let Some(group) = snapshot {
+                deliver_group_bundle(
+                    &mut game,
+                    vec![column.clone(), group_packet(pos, Some(group))],
+                );
+            } else {
+                game.handle_packet(column.clone()).unwrap();
+            }
+            assert_eq!(game.world.block(x, y, z), state);
+            assert_eq!(level.connection_group(&game, pos), Ok(snapshot));
+            game.handle_packet(C::BlockChangedAck(play::BlockChangedAck { sequence }))
+                .unwrap();
+            assert_eq!(game.world.block(x, y, z), state);
+            assert_eq!(level.connection_group(&game, pos), Ok(snapshot));
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn received_groups_join_and_unjoin_a_real_mesh_across_the_column_border() {
         use sunrise_assets::resource_source::{Resource, ResourceRoot};
         use sunrise_client::{
@@ -1163,12 +1208,15 @@ mod tests {
                 ],
             );
             let viewed = game.level("minecraft:the_nether").unwrap();
+            let count = game.remote.as_ref().unwrap().group_count.clone();
+            assert!(!count.allows_replacement(0, 1, 1));
             assert_eq!(viewed.connection_group(&game, pos), Ok(Some(50)));
             assert_eq!(own.connection_group(&game, pos), Ok(None));
             send(&mut game, pos, Some(60));
             assert_eq!(viewed.connection_group(&game, pos), Ok(Some(60)));
             send(&mut game, pos, None);
             assert_eq!(viewed.connection_group(&game, pos), Ok(None));
+            assert!(count.allows_replacement(0, 1, 1));
             game.handle_packet(viewed_close(1)).unwrap();
             assert_eq!(own.connection_group(&game, pos), Ok(None));
         }

@@ -415,6 +415,7 @@ pub(super) struct Remote {
     /// The ClientInformation last sent (`Options.broadcastOptions` sends it
     /// again when a view distance, Chat, skin or Main Hand option changes).
     sent_info: sunrise_protocol::packets::configuration::ClientInformation,
+    pub(in crate::game) group_count: sunrise_client::chunk_map::ConnectionGroupCount,
     /// BlockStatePredictionHandler: blocks changed ahead of the server (a predicted break),
     /// with what it remembers of each of them. Until the server acknowledges the
     /// sequence its block updates only replace the remembered state; then the block
@@ -655,6 +656,19 @@ fn number_format(f: &play::NumberFormat) -> sunrise_client::scoreboard::NumberFo
 }
 
 impl Game<'_> {
+    /// One vanilla active cache: `(2 * (max(2, client_view_distance) + 3) + 1)^2` columns
+    /// (`ClientChunkCache.calculateStorageRange`), times the active dimension's sections,
+    /// times 4,096 cells. Viewed levels share that footprint; a legitimate server need not
+    /// group more cells than one full active world.
+    /// The server's view-radius packet and per-view column caps cannot grow the ceiling.
+    pub(in crate::game) fn connection_group_limit(&self) -> usize {
+        self.remote.as_ref().map_or(0, |remote| {
+            let radius = remote.sent_info.view_distance.max(2) as usize + 3;
+            let width = 2 * radius + 1;
+            (width * width).saturating_mul(self.world.shape.section_count() * 4096)
+        })
+    }
+
     // remote_sound_name: remote/sync.rs
 
     /// The hurt sound the hurt player's own client plays from
@@ -1044,7 +1058,7 @@ impl Game<'_> {
             C::SectionBlocksUpdate(p) => {
                 self.apply_section_blocks_update_packet(&p, Default::default())
             }
-            C::BlockChangedAck(p) => self.end_predictions(p.sequence),
+            C::BlockChangedAck(p) => self.end_predictions(p.sequence)?,
             C::BlockEvent(p) => self.apply_block_event_packet(p)?,
             // ClientLevel.levelEvent: LevelEventHandler, as this client's own
             // level plays them (particles and sounds: a spawner's burst, bone

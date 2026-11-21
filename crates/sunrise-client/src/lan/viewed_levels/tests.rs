@@ -14,7 +14,7 @@ use sunrise_protocol::{
     buf::{Reader, Writer},
     ids::play::clientbound as ids,
     packets::play::Clientbound as C,
-    viewed_levels::{self, Answer, CHANNEL, Level, Message},
+    viewed_levels::{self, Answer, CHANNEL, Level, Message, ScopedPacket},
 };
 
 const NETHER: &str = "minecraft:the_nether";
@@ -211,13 +211,16 @@ fn got(rx: &Receiver<Out>) -> Vec<Got> {
         match Message::decode_in(&payload.data, viewed_levels::REVISION_3).unwrap() {
             Message::Open { level, .. } => out.push(Got::Open(level.number())),
             Message::Close { level } => out.push(Got::Close(level.number())),
-            Message::Run { level, packets } => {
-                out.extend(packets.into_iter().map(|(id, body)| Got::Wrapped {
+            Message::Run { level, packets } => out.extend(packets.into_iter().map(|packet| {
+                let ScopedPacket::Play(id, body) = packet else {
+                    panic!("expected a vanilla packet");
+                };
+                Got::Wrapped {
                     level: level.number(),
                     id,
                     body: body.to_vec(),
-                }))
-            }
+                }
+            })),
             Message::Swap { .. } => unreachable!("no swap below revision 4"),
         }
     }
@@ -653,7 +656,10 @@ fn a_column_too_large_to_wrap_is_not_counted_as_sent() {
             panic!("not a run");
         };
         assert_eq!(level, Level::Index(NETHER_INDEX));
-        for (id, body) in packets {
+        for packet in packets {
+            let ScopedPacket::Play(id, body) = packet else {
+                panic!("expected a vanilla packet");
+            };
             let Ok(C::LevelChunkWithLight(c)) = C::decode(id, body) else {
                 panic!("not a chunk");
             };
@@ -1215,7 +1221,15 @@ fn got_bound(rx: &Receiver<Out>) -> Vec<Bound> {
                 }
                 Message::Run { level, packets } => {
                     let (slot, epoch) = binding(level);
-                    let ids = packets.iter().map(|(id, _)| *id).collect();
+                    let ids = packets
+                        .iter()
+                        .map(|packet| match packet {
+                            ScopedPacket::Play(id, _) => *id,
+                            ScopedPacket::ConnectionGroups(_) => {
+                                panic!("expected a vanilla packet")
+                            }
+                        })
+                        .collect();
                     Bound::Run { slot, epoch, ids }
                 }
                 Message::Close { level } => {
