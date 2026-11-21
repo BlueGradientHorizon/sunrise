@@ -301,9 +301,9 @@ returned by `screen_pos()`. Neither is live data or block backing.
 Pass `Some(hand)` from an item's use to let `menu_still_valid` compare that hand's current
 stack with the one at open. Other openers pass `None`. The menu's declared container slots,
 if any, start empty; [`owned_slots`](../../concepts/capabilities/menu-slots.md#menu-owned-slots)
-declares a temporary container that belongs to the window. Opening returns the window id or
-`Ok(None)` when vetoed or a registered slot exclusion is out of range. Invalid type,
-connection or client support, opening bytes, data count or
+declares a temporary container that belongs to the window. Opening returns `Ok(Some(MenuRef))`
+(call `menu.container_id(host)` for its window id) or `Ok(None)` when vetoed or a registered slot
+exclusion is out of range. Invalid type, connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
@@ -313,15 +313,16 @@ for `mymod:status` with an empty slot layout. Add a draw callback to the screen 
 ```rust,ignore
 let mut request = ModMenuOpen::new(status, Text::translate("mymod.status", vec![]));
 request.data = vec![-80_000, 7];
-player.open_mod_menu(host, request)?;
+let _menu = player.open_mod_menu(host, request)?; // Option<MenuRef>
 ```
 
 The negotiated blockless payload sends initial `i32` values after the window opens, at
 indices 0 through 65,535. Larger declared indices remain in server storage. A client
 without the required layout is refused with `OpenMenuError::PlayerUnavailable`. In the draw
 callback, read `frame.data.get(index)`; values are not available before they arrive. The owning mod
-gets the live `MenuRef` from `player.container_menu(host)` or the open event and calls, for
-example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a changed value,
+gets the live `MenuRef` returned by `open_mod_menu`, from `player.container_menu(host)`, or from the
+open event and calls, for example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a
+changed value,
 `false` for a repeat, and refuses unsupported, stale or foreign menus and undeclared indices.
 Updates go only to this player and this window. Within a transaction, another write sees the
 pending value, but a full resend only includes committed values. Commit sends the final changed
@@ -337,7 +338,7 @@ as `PlayerRef::container_menu` does. It is `None` for crafting tables, merchants
 lecterns and mount inventories. A supported menu's permanently excluded slots are inaccessible
 but keep their backing indices. `replace` is the Java `MenuProvider`'s choice
 (`shouldTriggerClientSideContainerClosingOnOpen`), as for
-[`open_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
+[`PlayerRef::open_chest_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
 `MenuReplace::CloseFirst`, vanilla's default, first sends the client a close for the old
 window, which centres the mouse again; `MenuReplace::InPlace` sends none, so the client keeps
 its screen and its mouse where they are until the new screen replaces it, as when one
