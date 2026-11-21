@@ -150,8 +150,40 @@ impl<'a> ItemStackView<'a> {
 }
 
 /// A scoped editor for the component overrides of a stack at an [`ItemPlace`](crate::ItemPlace).
-/// Reads see staged changes. The item and count cannot be changed; the game validates and
-/// commits the edits together after the callback returns.
+/// [`ItemPlace::edit`](crate::ItemPlace::edit) lends this editor without lending the host.
+/// [`get`](Self::get) and the damage getters see earlier edits in the same callback.
+/// [`original`](Self::original) reads the pre-edit stack; project that view explicitly to
+/// keep an owned copy. After the callback returns, the game validates the batch before
+/// changing the resolved slot. A successful write is still subject to transaction rollback.
+///
+/// The editor cannot leave the callback:
+///
+/// ```compile_fail
+/// use mod_api::{ItemComponentEditor, ItemPlace, ServerHost, Transaction};
+/// fn keep_editor(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+///     let mut saved: Option<&mut ItemComponentEditor<'_>> = None;
+///     let _ = place.edit(host, tx, |editor| { saved = Some(editor); });
+///     let _ = saved;
+/// }
+/// ```
+///
+/// The callback cannot use the host already borrowed by the edit:
+///
+/// ```compile_fail
+/// use mod_api::{ItemPlace, ServerHost, Transaction};
+/// fn reread(place: &ItemPlace, host: &mut dyn ServerHost, tx: &Transaction) {
+///     let _ = place.edit(host, tx, |_| { let _ = place.with_stack(host, |s| s.count()); });
+/// }
+/// ```
+///
+/// Changing the item or count requires a slot write or transfer, not a component edit:
+///
+/// ```compile_fail
+/// use mod_api::ItemComponentEditor;
+/// fn shrink(editor: &mut ItemComponentEditor<'_>) {
+///     let _ = editor.set_count(1);
+/// }
+/// ```
 // no wire: the editor borrows the addressed stack for one callback.
 // exhaustive: its private fields prevent construction outside the game bridge.
 pub struct ItemComponentEditor<'a> {
@@ -187,13 +219,14 @@ impl<'a> ItemComponentEditor<'a> {
     }
 
     /// Read the stack before any edits. Call [`ItemStackView::project`] on this view to
-    /// request an owned snapshot of the original stack.
+    /// request an owned snapshot; that projection never includes staged changes.
     pub fn original(&self) -> &ItemStackView<'a> {
         &self.original
     }
 
     /// Read a staged or original override with its typed descriptor, without consulting
-    /// item defaults or projecting the entire stack.
+    /// item defaults or projecting the entire stack. An inherited or removed component
+    /// has no ordinary override to decode.
     pub fn get<C: Component>(&self, component: &C) -> Option<C::Value> {
         let id = component.id();
         if id == "minecraft:damage" {
@@ -254,9 +287,10 @@ impl<'a> ItemComponentEditor<'a> {
         self.edits.damage = Some(ComponentEdit::Remove);
     }
 
-    /// Merge a patch into the staged edits, leaving other components alone. A removal wins
-    /// over an ordinary value in the same patch. Malformed or conflicting damage refuses
-    /// the entire patch without disturbing earlier edits.
+    /// Merge values and explicit `!id` removals into the staged edits, leaving other
+    /// components alone. For components other than damage, a removal wins over a value in
+    /// the same patch. Malformed or conflicting damage refuses the entire patch without
+    /// disturbing earlier edits.
     pub fn apply_components(&mut self, patch: &Compound) -> Result<(), StackError> {
         visit_component_patch(patch, |edit| match edit {
             PatchEdit::Component(id, edit) => {

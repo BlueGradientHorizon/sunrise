@@ -521,9 +521,12 @@ pub trait ItemsBackendMut {
         place: &ItemPlace,
         read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
     ) -> Option<()>;
-    /// Side: server. Lend one component editor for an occupied player slot, hand, or mob or
-    /// armor stand equipment slot. Admit and journal its changed overrides in `tx`, without
-    /// running equipment effects. Refuse a closed transaction before invoking the editor.
+    /// Side: server. Resolve an occupied player slot, hand, or mob or armour stand equipment
+    /// slot before lending its component editor once, without lending the host. Refuse an
+    /// unavailable or unreadable slot or a closed `tx` before calling `edit`. Validate all
+    /// changed overrides before applying any of them to that slot. Journal the write in `tx`
+    /// and let normal menu, inventory and equipment sync publish it without replaying equip
+    /// effects. A refusal or a transaction abort leaves the original slot intact.
     #[access(WorldOnly)]
     fn game_edit_stack(
         &mut self,

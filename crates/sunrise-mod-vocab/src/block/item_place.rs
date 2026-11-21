@@ -74,9 +74,10 @@ pub enum ItemPlace {
     },
     /// Slot `slot` of living entity `entity`'s equipment (NeoForge's
     /// `LivingEntityEquipmentWrapper` through `Capabilities.Item.ENTITY`), reached through
-    /// [`ENTITY_ITEMS`](crate::ENTITY_ITEMS). Its write is the equipment write
-    /// `LivingRef::set_equipment` makes, so the equip and unequip game event, sound and
-    /// attribute updates are the same, and a transaction that aborts puts it back.
+    /// [`ENTITY_ITEMS`](crate::ENTITY_ITEMS). A slot replacement uses the equipment write
+    /// `LivingRef::set_equipment` makes, with the same game events, sounds and attribute
+    /// updates. [`edit`](Self::edit) changes only the components without those equip effects.
+    /// A transaction that aborts restores the previous slot.
     Equipment {
         /// The entity's network id.
         entity: u32,
@@ -283,9 +284,10 @@ pub enum ItemPlaceEditError {
     NotHeld,
     /// The place has no whole-stack edit (a cursor or a virtual transfer wrapper).
     UnsupportedPlace,
-    /// The backend, transaction or storage refused the write.
+    /// The backend, transaction or storage refused the write. For native player slots,
+    /// hands and equipment, a missing backend or a closed transaction refuses before the editor runs.
     Unavailable,
-    /// The updated stack did not pass the game's write validation.
+    /// The component edits did not pass the game's write validation; none were applied.
     Stack(StackWriteError),
 }
 
@@ -665,16 +667,23 @@ impl ItemPlace {
             .game_on_crafted_by(self, tx, amount)
     }
 
-    /// Edit the components of the whole stack here, keeping its item and count. The editor
-    /// reads staged overrides and never lends the host. Player slots (including armour and the
-    /// off hand), hands, and a mob's or armour stand's equipment update only the changed
-    /// components in place, like `ItemStack.set`: no equip effects or attribute reapplication.
-    /// The editor runs only on a readable stack in an open transaction for those slots. An
-    /// unchanged batch needs no write. The usual slot sync sends the new stack. `Strict`
-    /// preserves this contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse the edit
-    /// because they do not provide a synced whole-stack write. Other places use their usual
-    /// exchange rules. A refusal leaves the place unchanged; aborting `tx` restores a successful
-    /// write.
+    /// Edit only the components of the whole stack, without replacing the item, changing its
+    /// count or splitting off one item. [`ItemComponentEditor::get`] reads pending overrides;
+    /// [`ItemComponentEditor::original`] shows the stack before edits. The callback does not
+    /// receive the host and cannot use the host borrowed by this call.
+    ///
+    /// For a player slot (including armour and off hand), hand, or a mob's or armour stand's
+    /// equipment, the game resolves the occupied slot before lending the editor. An unavailable
+    /// backend, a closed `tx`, or an empty or unreadable slot refuses before the callback runs.
+    /// The game validates the changed overrides together against the stack's effective limits
+    /// before writing any of them. Only those changes are applied, in place like `ItemStack.set`;
+    /// an unchanged batch needs no write. The result reaches clients through the usual menu,
+    /// inventory or equipment sync, without replaying equip sounds, events or attribute effects.
+    ///
+    /// `Strict` preserves this contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse
+    /// before calling the editor: they do not provide a synced whole-stack write. Other places
+    /// use their ordinary exchange rules. A refusal leaves the place unchanged; aborting `tx`
+    /// or an enclosing transaction restores a successful write.
     pub fn edit(
         &self,
         host: &mut dyn ServerHost,
