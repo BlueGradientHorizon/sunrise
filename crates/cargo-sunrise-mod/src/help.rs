@@ -59,6 +59,12 @@ const COMMANDS: &[Command] = &[
         summary: "Makes a Minisign key pair in .sunrise/ (or --out) and prints the public key. The private key is encrypted unless --no-password is given. Never overwrites either key.",
     },
     Command {
+        name: "sign",
+        everyday: false,
+        usage: "sign <file> [--key <private key path>] [--no-password] | sign <file> --key-env",
+        summary: "Writes the detached .minisig beside <file> without replacing it. Uses .sunrise/signing.key unless --key is given; --key-env reads SUNRISE_MOD_SIGNING_KEY and optional SUNRISE_MOD_SIGNING_PASSPHRASE without prompting.",
+    },
+    Command {
         name: "internals",
         everyday: false,
         usage: "internals sync | internals add <path>… [--kind <kind>]",
