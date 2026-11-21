@@ -74,21 +74,28 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(ServerTravel::Veto);
         }
 
+        self.player.set_velocity(velocity);
         // Compare the accepted vectors before travel: a real edit calls for
-        // a correction even if the live move's collision absorbs it.
-        let within_dead_zone =
-            |input: Vec3| input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED;
+        // a correction even if the live move's collision absorbs it. A
+        // non-finite input produces no acceleration in `moveRelative` /
+        // `setDeltaMovement`, matching inputs inside vanilla's dead zone.
+        let no_op_input = |input: Vec3| {
+            !input.is_finite() || input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED
+        };
         let edited = self.player.server_copy
-            && (!same_vector(velocity, requested_velocity)
+            && (!same_vector(self.player.velocity, requested_velocity)
                 || (!same_vector(input, requested_input)
-                    && !(within_dead_zone(input) && within_dead_zone(requested_input))));
-        self.player.velocity = velocity;
+                    && !(no_op_input(input) && no_op_input(requested_input))));
         // Creative flight damps the accepted vertical speed, not the speed
         // left by the branch after the move.
-        let flying_y = self.player.flying.then_some(velocity.y);
+        let flying_y = self.player.flying.then_some(self.player.velocity.y);
         self.apply_travel_branch(branch, &mut MoveGate::new(), input)?;
         if let Some(y) = flying_y {
-            self.player.velocity.y = y * 0.6;
+            self.player.set_velocity(Vec3::new(
+                self.player.velocity.x,
+                y * 0.6,
+                self.player.velocity.z,
+            ));
         }
         Ok(if edited {
             ServerTravel::Replace {
@@ -149,7 +156,12 @@ impl MotionWorld<'_, '_, '_> {
         let v = self.player.velocity;
         let move_h = (v.x * v.x + v.z * v.z).sqrt();
         let gravity = sunrise_world::living_motion::effective_gravity(self)?;
-        self.player.velocity = fall_flying_movement(v, self.player.pitch, self.player.yaw, gravity);
+        self.player.set_velocity(fall_flying_movement(
+            v,
+            self.player.pitch,
+            self.player.yaw,
+            gravity,
+        ));
         let movement = self.player.velocity;
         self.move_self(gate, movement)?;
         // LivingEntity.handleFallFlyingCollisions: the fall-damage sound plays

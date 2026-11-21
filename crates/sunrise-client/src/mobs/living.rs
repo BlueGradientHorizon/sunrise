@@ -815,16 +815,22 @@ impl Mob {
     fn affected_by_fluids(&self) -> bool {
         true
     }
+    /// `Entity.setDeltaMovement`: keep only finite values.
+    pub(crate) fn set_velocity(&mut self, velocity: Vec3) {
+        if velocity.is_finite() {
+            self.velocity = velocity;
+        }
+    }
     /// Entity.moveRelative: input rotated by yaw and scaled to `speed`.
     pub fn move_relative(&mut self, speed: f32, input: Vec3) {
         let len_sq = input.x * input.x + input.y * input.y + input.z * input.z;
         if len_sq < 1.0e-7 {
             // `getInputVector` is `Vec3.ZERO`, still added to the motion: a -0.0 becomes 0.0.
-            self.velocity = Vec3::new(
+            self.set_velocity(Vec3::new(
                 self.velocity.x + 0.0,
                 self.velocity.y + 0.0,
                 self.velocity.z + 0.0,
-            );
+            ));
             return;
         }
         let v = if len_sq > 1.0 {
@@ -845,11 +851,11 @@ impl Mob {
         );
         let angle = f64::from(self.yaw * trig::DEG_TO_RAD);
         let (s, c) = (f64::from(trig::sin(angle)), f64::from(trig::cos(angle)));
-        self.velocity = Vec3::new(
+        self.set_velocity(Vec3::new(
             self.velocity.x + (v.x * c - v.z * s),
             self.velocity.y + v.y,
             self.velocity.z + (v.z * c + v.x * s),
-        );
+        ));
     }
     /// Entity.move with block collisions and step-up; updates collision flags
     /// and fall distance (Entity.checkFallDamage).
@@ -1768,12 +1774,12 @@ impl Mob {
         pause: bool,
     ) -> Result<(), TravelTrample> {
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
-        self.velocity = crate::motion::fall_flying_movement(
+        self.set_velocity(crate::motion::fall_flying_movement(
             self.velocity,
             self.head_pitch,
             self.yaw,
             self.effective_gravity(),
-        );
+        ));
         self.travel_move_with(w, level, events, pause, TravelTail::FallFlying { before })
     }
     /// LivingEntity.travelFlying: no gravity, `0.91F` drag in the air,
@@ -2560,7 +2566,7 @@ impl RestitutionWorld for MobRestitution<'_, '_, '_> {
         self.mob.sync_position = true;
     }
     fn set_velocity(&mut self, velocity: Vec3) -> Result<(), ()> {
-        self.mob.velocity = velocity;
+        self.mob.set_velocity(velocity);
         Ok(())
     }
 }
@@ -4343,6 +4349,28 @@ mod farmland_event_tests {
         // Without the vanilla data under .local/sunrise-client the world
         // cannot be built: the test has nothing to check.
         assert!(ran, "vanilla data is missing");
+    }
+
+    #[test]
+    fn set_velocity_and_move_relative_follow_vanilla_finiteness_and_normalization() {
+        let mut mob = Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0);
+        mob.set_velocity(Vec3::new(80.0, -70.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+
+        for bad in [
+            Vec3::new(f64::NAN, 0.0, 0.0),
+            Vec3::new(0.0, f64::INFINITY, 0.0),
+            Vec3::new(0.0, 0.0, f64::NEG_INFINITY),
+        ] {
+            mob.set_velocity(bad);
+            assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+            mob.move_relative(0.1, bad);
+            assert_eq!(mob.velocity, Vec3::new(80.0, -70.0, 0.0));
+        }
+
+        mob.set_velocity(Vec3::ZERO);
+        mob.move_relative(0.1, Vec3::new(2.0, 0.0, 0.0));
+        assert_eq!(mob.velocity, Vec3::new(f64::from(0.1_f32), 0.0, 0.0));
     }
 }
 

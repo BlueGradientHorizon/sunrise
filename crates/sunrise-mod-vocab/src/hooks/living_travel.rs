@@ -9,39 +9,51 @@ pub trait Hooks {
     /// a replayed player tick. A branch that calls `entity_move` can still meet
     /// a move veto there.
     ///
-    /// Replace `input` (finite components in [-1, 1]) or `velocity` (finite
-    /// components within ±64 blocks per tick) to change the branch's starting
-    /// values, not the branch itself. An unchanged vector is not subject to the
-    /// replacement budget. A malformed vector drops that listener's entire
-    /// result, including cancellation; later listeners see the preceding accepted
-    /// values, and the log names the mod and refused field once per tick.
+    /// Replace `input` or `velocity` to change the branch's starting values,
+    /// not the branch itself. Edits and cancellation are independent: there is
+    /// no per-listener rollback or synthetic magnitude cap. Velocity writes
+    /// follow vanilla `Entity.setDeltaMovement` (any finite vector is applied;
+    /// a non-finite vector leaves the previous velocity intact without
+    /// reverting valid input edits or cancellation). Input flows through
+    /// vanilla `LivingEntity.travel` (`Entity.moveRelative` and
+    /// `Entity.getInputVector`: vectors with squared length above `1.0` are
+    /// normalized, and a non-finite input produces no acceleration without
+    /// reverting valid velocity edits or cancellation).
     ///
     /// Set `cancelled` or return `Flow::Cancel` to skip the branch, its nested
-    /// moves and flying vertical damping. An accepted cancellation cannot be
-    /// cleared. Work before travel, such as swim steering, is not undone. If a
-    /// listener panics, the game uses the originally resolved values, skips later
-    /// listeners for that invocation and disables the failed listener for this
-    /// hook for the session. The hook takes a loop context, not a `Host`.
+    /// moves and flying vertical damping. Listeners registered with
+    /// `#[listener(receive_cancelled)]` still run and may set `cancelled` back
+    /// to `false`. Work before travel, such as swim steering, is not undone. If
+    /// a listener panics, the game uses the originally resolved values, skips
+    /// later listeners for that invocation and disables the failed listener for
+    /// this hook for the session. The hook takes a loop context, not a `Host`.
     ///
     /// For a player, the veto takes effect at the server's travel boundary:
     /// reports it already accepted are not rewound. While the veto stands,
     /// the server corrects new movement reports to its accepted position.
-    /// An edit that changes the input or velocity sends one correction, even
-    /// if collision absorbs it, if the player remains eligible and no
-    /// correction awaits acknowledgement. A separate teleport in the same
-    /// tick takes priority. The correction carries the live server position
-    /// and velocity. The server compares the vectors bit for bit, except that
-    /// inputs within vanilla's movement dead zone are equivalent.
+    /// An edit that changes the accepted input or velocity sends one
+    /// correction, even if collision absorbs it, if the player remains eligible
+    /// and no correction awaits acknowledgement. A separate teleport in the
+    /// same tick takes priority. The correction carries the live server
+    /// position and velocity. The server compares the accepted vectors bit for
+    /// bit, except that inputs within vanilla's movement dead zone (or
+    /// non-finite inputs that add no acceleration) are equivalent.
     /// The hook never runs on the client.
     /// Beyond NeoForge: there is no counterpart.
+    ///
+    /// Version 2: removed the per-listener output validator, its synthetic
+    /// `[-1, 1]` input and `±64` velocity limits, and its cancellation latch.
+    /// Edits and cancellation apply independently through vanilla's travel and
+    /// velocity operations, and `#[listener(receive_cancelled)]` listeners may
+    /// clear `cancelled`.
     #[hook(
+        version = 2,
         side = "server",
         contract = "cancel",
         out = "canceled",
         context = "loop",
         cancellable = true,
         isolate = true,
-        output_validator = "crate::entity::types::refused_travel_output",
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::travel_gate::native_living_travel"
     )]

@@ -22,6 +22,12 @@ enum Reply {
     Velocity,
     TinyInput,
     Input,
+    LargeInput,
+    LargeVelocity,
+    NonFiniteVelocityWithInput,
+    NonFiniteInputWithVelocity,
+    NonFiniteNoOp,
+    VetoWithNonFiniteVelocity,
 }
 
 #[mod_api::__subscriptions]
@@ -34,6 +40,24 @@ impl Hooks for Reply {
             Self::Velocity => *event.velocity = [0.5, 0.0, 0.0],
             Self::TinyInput => *event.input = [0.000001, 0.0, 0.0],
             Self::Input => *event.input = [1.0, 0.0, 0.0],
+            Self::LargeInput => *event.input = [2.0, 0.0, 0.0],
+            Self::LargeVelocity => *event.velocity = [70.0, 0.0, 0.0],
+            Self::NonFiniteVelocityWithInput => {
+                *event.velocity = [f64::NAN, 0.0, 0.0];
+                *event.input = [1.0, 0.0, 0.0];
+            }
+            Self::NonFiniteInputWithVelocity => {
+                *event.input = [f64::INFINITY, 0.0, 0.0];
+                *event.velocity = [0.5, 0.0, 0.0];
+            }
+            Self::NonFiniteNoOp => {
+                *event.input = [f64::NAN, 0.0, 0.0];
+                *event.velocity = [f64::INFINITY, 0.0, 0.0];
+            }
+            Self::VetoWithNonFiniteVelocity => {
+                *event.velocity = [f64::NAN, 0.0, 0.0];
+                return Flow::Cancel;
+            }
         }
         Flow::Continue
     }
@@ -445,4 +469,63 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
             });
         });
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn vanilla_travel_operations_apply_large_and_non_finite_edits_independently() {
+    let cases = [
+        (Reply::LargeInput, f64::from(0.02_f32)),
+        (Reply::LargeVelocity, 70.0),
+        (Reply::NonFiniteVelocityWithInput, f64::from(0.02_f32)),
+        (Reply::NonFiniteInputWithVelocity, 0.5),
+    ];
+    for (reply, displacement_x) in cases {
+        with_reply(Some(reply), || {
+            with_player(false, |game, rx| {
+                for cx in 1..=5 {
+                    game.streaming
+                        .insert_remote(&mut game.world, Chunk::empty(cx, 0));
+                }
+                game.guest_server_tick(1, true);
+                let position = [START[0] + displacement_x, START[1], START[2]];
+                let packet = correction(&rx);
+                assert_eq!(packet.position, position);
+                assert_eq!(guest(game).position, position);
+                let expected = Vec3::new(
+                    displacement_x * f64::from(0.91_f32),
+                    -0.08 * f64::from(0.98_f32),
+                    0.0,
+                );
+                assert_eq!(guest(game).motion.as_ref().unwrap().velocity, expected);
+            });
+        });
+    }
+
+    with_reply(Some(Reply::NonFiniteNoOp), || {
+        with_player(false, |game, rx| {
+            report(game, ACCEPTED);
+            game.guest_server_tick(1, true);
+            report(game, NEXT);
+            let guest = guest(game);
+            assert_eq!(guest.position, NEXT);
+            assert!(guest.awaiting_teleport.is_none());
+            assert!(guest.motion.as_ref().unwrap().velocity.is_finite());
+            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
+                C::decode(id, &body).unwrap(),
+                C::PlayerPosition(_) | C::SetEntityMotion(_)
+            )));
+        });
+    });
+
+    with_reply(Some(Reply::VetoWithNonFiniteVelocity), || {
+        with_player(false, |game, rx| {
+            report(game, ACCEPTED);
+            game.guest_server_tick(1, true);
+            report(game, NEXT);
+            let packet = correction(&rx);
+            assert_eq!(packet.position, ACCEPTED);
+            assert_eq!(guest(game).position, ACCEPTED);
+        });
+    });
 }

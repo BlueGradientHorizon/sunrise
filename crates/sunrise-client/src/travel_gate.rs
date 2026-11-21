@@ -56,17 +56,15 @@ fn mode_of(mode: GameTravelMode) -> TravelMode {
 /// values stand and the cost is the subscriber branch. `mode` names the
 /// branch only when a listener asks for it. A listener that cancels skips
 /// the invocation - its nested move does not run and the flying vertical
-/// damping is skipped; what the tick already did is not undone. A
-/// replacement of `input` (each component within [-1, 1]) or `velocity`
-/// (finite, each component within ±64 blocks) supplies the branch's
-/// starting values. The dispatch checks each listener's pair as it
-/// returns: one with a component that is not a finite number, or outside
-/// its budget, is refused whole, naming the mod and the field, and the
-/// pair the preceding listeners left stands (the values the game resolved
-/// before any), never clamped. A listener that unwinds keeps
-/// those resolved values, not a replacement an earlier listener had
-/// proposed, and is switched off for this hook for the session - the
-/// generated isolated dispatch does that - and the travel carries on.
+/// damping is skipped; what the tick already did is not undone. Listeners
+/// registered with `#[listener(receive_cancelled)]` may clear cancellation.
+/// Replacements of `input` and `velocity` pass through directly to the
+/// owning travel and velocity operations (`Entity.moveRelative`,
+/// `Entity.getInputVector`, `Entity.setDeltaMovement`), without synthetic
+/// limits or per-listener rollback. A listener that unwinds keeps the
+/// originally resolved values and is switched off for this hook for the
+/// session - the generated isolated dispatch does that - and the travel
+/// carries on.
 ///
 /// Returns whether the travel runs; `input` and `velocity` are the values
 /// the branch starts from.
@@ -102,8 +100,6 @@ pub fn decide(
     if canceled {
         return false;
     }
-    // The dispatch checked each listener's pair as it returned (budgets in
-    // `refused_travel_output`): what stands here is the last accepted pair.
     *input = Vec3::new(replaced_input[0], replaced_input[1], replaced_input[2]);
     *velocity = Vec3::new(
         replaced_velocity[0],

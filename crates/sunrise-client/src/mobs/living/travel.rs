@@ -63,7 +63,7 @@ impl Mob {
         ) {
             return Ok(());
         }
-        self.velocity = velocity;
+        self.set_velocity(velocity);
         // Camel.travel: on the ground, a camel that sits or changes pose keeps
         // the vertical part of its motion and drops the horizontal input.
         if super::super::camel::is_camel(self.species())

@@ -181,11 +181,6 @@ pub struct Hook {
     /// A collector receives at most one returned value per registration, and later listeners
     /// still run after a failure.
     pub isolate: bool,
-    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
-    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
-    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
-    /// result, including its cancellation, rolls back; later listeners still run.
-    pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
@@ -359,7 +354,6 @@ struct ModApiEntry {
     collect_validator: Option<String>,
     registration_append: Option<RegistrationAppend>,
     isolate: Option<bool>,
-    output_validator: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -527,16 +521,6 @@ impl Hook {
                         .into(),
             });
         }
-        if let Some(validator) = &api.output_validator
-            && (!isolate
-                || api.contract != Contract::Cancel
-                || syn::parse_str::<syn::Path>(validator).is_err())
-        {
-            return Err(CatalogError::InvalidHook {
-                hook: name.clone(),
-                error: "output_validator is a path on an isolated cancel hook".into(),
-            });
-        }
         let counterparts = Counterparts {
             neoforge: counterparts(&name, "neoforge", entry.neoforge)?,
             fabric: counterparts(&name, "fabric", entry.fabric)?,
@@ -557,7 +541,6 @@ impl Hook {
             registration_append: api.registration_append,
             inert: entry.inert,
             isolate,
-            output_validator: api.output_validator,
             scope,
             host: entry.host,
             context: entry.context,
@@ -845,7 +828,6 @@ impl Declared {
                             "collect_validator",
                             "registration_append",
                             "isolate",
-                            "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
                                 api.insert(key.into(), value);
@@ -1020,7 +1002,6 @@ impl Hook {
             registration_append: None,
             inert: None,
             isolate: false,
-            output_validator: None,
             scope: None,
             host: None,
             context: None,
