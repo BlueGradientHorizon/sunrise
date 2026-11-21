@@ -2,6 +2,7 @@
 //! `tick_experience`), the stacks a destroyed container lets fall, and spawning and merging orbs.
 use super::*;
 use crate::game::collision_source::Mover;
+use sunrise_client::{entities::ItemCells, join_seq::JoinList};
 
 /// A dropped item's `bobOffs` (its bob and spin phase) from its random's draw `drawn`, or under
 /// `SUNRISE_STILL` from a random seeded by its position alone: a client seeds an item's random
@@ -16,10 +17,17 @@ pub(super) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
     drawn * std::f32::consts::PI * 2.0
 }
 
+/// The lifted list's removal mask and merge grid, indexed by its current row order.
+struct ItemPass {
+    removed: Vec<bool>,
+    cells: ItemCells,
+    gone: bool,
+}
+
 /// The items `give_items_back` takes again, where the item the loop was at now is (none once it
 /// is gone), and the index the loop goes on from.
 struct GivenBack {
-    items: sunrise_client::join_seq::JoinList<ItemEntity>,
+    items: JoinList<ItemEntity>,
     at: Option<usize>,
     next: usize,
 }
@@ -38,11 +46,16 @@ impl Game<'_> {
         id > self.ticked_entities_through || self.contact_drops.contains(&id)
     }
     pub(super) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
+        // The family-wide Pre and item update hooks can discard a drop before the pass starts.
+        self.native_item_removals_flush(|item| round.not_ticked(item.id));
         let mut items = self.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
-        let mut removed = vec![false; items.len()];
-        let mut cells = sunrise_client::entities::ItemCells::new(&items);
+        let mut pass = ItemPass {
+            removed: vec![false; items.len()],
+            cells: ItemCells::new(&items),
+            gone: false,
+        };
         // A LAN or server guest only shows the host's items.
         let merging = self.remote.is_none();
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
@@ -68,14 +81,13 @@ impl Game<'_> {
         let alone = round.alone_kind(native_ticks::ITEM);
         let update_hook =
             merging && mod_api::__private::has_part_hook(mod_api::HookId::OnEntityItemUpdate);
-        // Whether an item left the pass (`removed`) since the list was last given back.
-        let mut gone = false;
+        let leave_hook = merging && mod_api::__private::listened(mod_api::HookId::EntityLeaveLevel);
         let mut next = 0;
         while next < items.len() {
             let mut i = next;
             next += 1;
             sunrise_threads::work::set_entity(item_type);
-            if removed[i] {
+            if pass.removed[i] {
                 // Merged into an earlier item before its own tick: it never ticked.
                 round.not_ticked(items[i].id);
                 continue;
@@ -93,17 +105,16 @@ impl Game<'_> {
             }
             if alone {
                 let id = items[i].id;
-                let given =
-                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
-                        if game.native_tick_pre_one(round, id, native_ticks::ITEM)
-                            && update_hook
-                            && let Some(k) =
-                                native_ticks::place(&game.dropped, i, |item| item.id == id)
-                            && game.item_update_halts(k)
-                        {
-                            round.halt(id);
-                        }
-                    });
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    if native_ticks::place(&game.dropped, i, |item| item.id == id).is_some()
+                        && game.native_tick_pre_one(round, id, native_ticks::ITEM)
+                        && update_hook
+                        && let Some(k) = native_ticks::place(&game.dropped, i, |item| item.id == id)
+                        && game.item_update_halts(k)
+                    {
+                        round.halt(id);
+                    }
+                });
                 (items, next) = (given.items, given.next);
                 let Some(at) = given.at else {
                     continue;
@@ -113,6 +124,7 @@ impl Game<'_> {
             if round.canceled(items[i].id) {
                 continue;
             }
+            let mut expiry_discarded = false;
             'tick: {
                 if round.halted(items[i].id) {
                     break 'tick;
@@ -155,9 +167,9 @@ impl Game<'_> {
                     self.apply_item_splash(splash);
                 }
                 if discarded {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.previous);
+                    pass.removed[i] = true;
+                    pass.gone = true;
+                    pass.cells.remove(i, item.previous);
                     break 'tick;
                 }
                 if merging && !no_physics {
@@ -170,7 +182,7 @@ impl Game<'_> {
                         false,
                     );
                 }
-                cells.moved(i, item.previous, item.position);
+                pass.cells.moved(i, item.previous, item.position);
                 // Entity.handleOnAboveBubbleColumn: the server sends the particles of
                 // the surface of a bubble column the item is at the top of.
                 if merging {
@@ -196,10 +208,10 @@ impl Game<'_> {
                 {
                     let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
                     // A merge may take this item or a neighbour out of the pass.
-                    gone |= sunrise_client::entities::merge_with_neighbours(
+                    pass.gone |= sunrise_client::entities::merge_with_neighbours(
                         &mut items,
-                        &mut removed,
-                        &mut cells,
+                        &mut pass.removed,
+                        &mut pass.cells,
                         i,
                         true,
                         &max_stack,
@@ -208,24 +220,21 @@ impl Game<'_> {
                 let mut alive =
                     alive || (items[i].age < items[i].lifespan && items[i].position.y >= void);
                 if merging
-                    && !removed[i]
+                    && !pass.removed[i]
                     && items[i].age >= items[i].lifespan
                     && items[i].position.y >= void
                 {
                     let mut extra_life = 0;
                     if mod_api::__private::listened(mod_api::HookId::ItemExpire) {
                         let id = items[i].id;
-                        let stack = items[i].stack.clone();
-                        let given = self.give_items_back(
-                            items,
-                            &mut removed,
-                            &mut cells,
-                            &mut gone,
-                            i,
-                            |game| {
+                        let given = self.give_items_back(items, &mut pass, i, round, |game, _| {
+                            if let Some(at) =
+                                native_ticks::place(&game.dropped, i, |item| item.id == id)
+                            {
+                                let stack = game.dropped[at].stack.clone();
                                 game.native_item_expire(id, &stack, &mut extra_life);
-                            },
-                        );
+                            }
+                        });
                         (items, next) = (given.items, given.next);
                         let Some(at) = given.at else {
                             continue;
@@ -233,20 +242,21 @@ impl Game<'_> {
                         i = at;
                     }
                     let item = &mut items[i];
-                    // NeoForge `ItemEntity.tick`: clamp `lifespan + extra_life` to
-                    // `0..=Short.MAX_VALUE - 1` without rewinding `age`.
+                    // NeoForge `ItemEntity.tick`: Java int addition, then clamp to
+                    // `0..=Short.MAX_VALUE - 1`, without rewinding `age`.
                     item.lifespan = item
                         .lifespan
-                        .saturating_add(extra_life)
+                        .wrapping_add(extra_life)
                         .clamp(0, ItemEntity::MAX_LIFESPAN);
                     alive =
                         item.age < item.lifespan && item.position.y >= void && item.stack.count > 0;
+                    expiry_discarded = !alive;
                 }
                 let item = &mut items[i];
-                if !alive || removed[i] {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.position);
+                if !alive || pass.removed[i] {
+                    pass.removed[i] = true;
+                    pass.gone = true;
+                    pass.cells.remove(i, item.position);
                     break 'tick;
                 }
                 let from = item.previous;
@@ -258,9 +268,9 @@ impl Game<'_> {
                         [to.x, to.y, to.z],
                     );
                     if !live {
-                        removed[i] = true;
-                        gone = true;
-                        cells.remove(i, to);
+                        pass.removed[i] = true;
+                        pass.gone = true;
+                        pass.cells.remove(i, to);
                         break 'tick;
                     }
                 } else {
@@ -328,42 +338,46 @@ impl Game<'_> {
                     );
                 }
                 if !environment.alive {
-                    removed[i] = true;
-                    gone = true;
-                    cells.remove(i, item.position);
+                    pass.removed[i] = true;
+                    pass.gone = true;
+                    pass.cells.remove(i, item.position);
                     for stack in environment.spilled {
                         destroyed.push((stack, item.position));
                     }
                 }
             }
-            if alone {
+            // `Entity.discard` calls `ServerLevel.EntityCallbacks.onTrackingEnd` within
+            // this turn. Restore surviving drops for the leave hook even without a Post.
+            if alone || (expiry_discarded && leave_hook && !self.persist.live.is_empty()) {
                 let id = items[i].id;
-                let given =
-                    self.give_items_back(items, &mut removed, &mut cells, &mut gone, i, |game| {
+                let given = self.give_items_back(items, &mut pass, i, round, |game, round| {
+                    if alone {
                         game.native_tick_post_one(round, id, native_ticks::ITEM);
-                    });
+                    }
+                });
                 (items, next) = (given.items, given.next);
             }
         }
         for pos in bubble_tops {
             self.bubble_column_particles(pos);
         }
-        let left = if gone && merging && !self.persist.live.is_empty() {
+        let left = if pass.gone && merging && !self.persist.live.is_empty() {
             items
                 .iter()
-                .zip(removed.iter())
+                .zip(pass.removed.iter())
                 .filter_map(|(item, &was_removed)| was_removed.then_some(item.id))
                 .collect()
         } else {
             Vec::new()
         };
-        let mut removed = removed.into_iter();
+        let mut removed = pass.removed.into_iter();
         items.retain(|_| !removed.next().unwrap_or(false));
         if !left.is_empty() {
             self.put_back_dropped(items);
             for id in left {
                 self.native_entity_left(id);
             }
+            self.native_item_removals_flush(|_| {});
             items = self.dropped.lift();
         }
         let Some(p) = self.player.as_ref() else {
@@ -395,44 +409,58 @@ impl Game<'_> {
         self.put_back_dropped(items);
         self.spawn_destroyed_contents(destroyed);
     }
-    /// Gives the lifted items back to the level for a hook that reads them live (a named item's
-    /// own Pre or Post, at item `i`), then takes them again. The items gone this pass so far
-    /// (`gone` says whether there are any) leave the list first, so the hook sees the level as it
-    /// stands. When none left, none joined during the pass and the hook wrote no item (the
-    /// list's write stamp didn't move), the list comes back as it went and `removed` and `cells`
-    /// stay as they are; otherwise they are rebuilt for the list taken back. The loop goes on
-    /// right after item `i`, or, when it is gone, after where it stood in the list's join order.
+    /// Restores the items for a lifecycle callback, taking out and announcing the rows already
+    /// gone this pass first. Retires any drops the callbacks discarded before resuming the pass.
+    /// When no rows left, none joined during the pass and the callbacks wrote no items (the
+    /// list's write stamp didn't move), the removal mask and merge grid still fit; otherwise
+    /// rebuild them and resume after the current item in join order, even if it is gone.
     fn give_items_back(
         &mut self,
-        mut items: sunrise_client::join_seq::JoinList<ItemEntity>,
-        removed: &mut Vec<bool>,
-        cells: &mut sunrise_client::entities::ItemCells,
-        gone: &mut bool,
+        mut items: JoinList<ItemEntity>,
+        pass: &mut ItemPass,
         i: usize,
-        call: impl FnOnce(&mut Self),
+        round: &mut native_ticks::TickRound,
+        call: impl FnOnce(&mut Self, &mut native_ticks::TickRound),
     ) -> GivenBack {
         let (id, join) = (items[i].id, items[i].join);
-        let same_rows = !*gone && self.dropped.is_empty();
-        let left = if *gone && self.remote.is_none() && !self.persist.live.is_empty() {
+        let same_rows = !pass.gone && self.dropped.is_empty();
+        let left = if pass.gone && self.remote.is_none() && !self.persist.live.is_empty() {
             items
                 .iter()
-                .zip(removed.iter())
+                .zip(pass.removed.iter())
                 .filter_map(|(item, &was_removed)| was_removed.then_some(item.id))
                 .collect()
         } else {
             Vec::new()
         };
-        if *gone {
-            let mut left = removed.iter();
-            items.retain(|_| !left.next().copied().unwrap_or(false));
-            *gone = false;
+        if pass.gone {
+            let mut mask = pass.removed.iter();
+            items.retain(|item| {
+                let removed = mask.next().copied().unwrap_or(false);
+                if removed && item.join > join {
+                    round.not_ticked(item.id);
+                }
+                !removed
+            });
+            pass.gone = false;
         }
         self.put_back_dropped(items);
-        for left_id in left {
-            self.native_entity_left(left_id);
-        }
         let restored = self.dropped.stamp();
-        call(self);
+        let flush_discards = |game: &mut Self, round: &mut native_ticks::TickRound| {
+            game.native_item_removals_flush(|item| {
+                if item.join > join {
+                    round.not_ticked(item.id);
+                }
+            });
+        };
+        if !left.is_empty() {
+            for left_id in left {
+                self.native_entity_left(left_id);
+            }
+            flush_discards(self, round);
+        }
+        call(self, round);
+        flush_discards(self, round);
         let unchanged = same_rows && self.dropped.stamp() == restored;
         let items = self.dropped.lift();
         if unchanged {
@@ -442,9 +470,9 @@ impl Game<'_> {
                 next: i + 1,
             };
         }
-        removed.clear();
-        removed.resize(items.len(), false);
-        *cells = sunrise_client::entities::ItemCells::new(&items);
+        pass.removed.clear();
+        pass.removed.resize(items.len(), false);
+        pass.cells = ItemCells::new(&items);
         let at = items.iter().position(|item| item.id == id);
         let next = match at {
             Some(at) => at + 1,
@@ -1182,16 +1210,38 @@ mod escape_tests {
 
 #[cfg(test)]
 mod expire_tests {
-    use crate::game::Dim;
-    use crate::game::native_entity_refs::tests::with_game;
-    use mod_api::{EntityLeaveLevelEvent, ItemExpireEvent, ModEntry, ServerHost};
+    use crate::game::native_entity_refs::tests::{prepare_entity_ticking_neighborhood, with_game};
+    use crate::game::{Dim, Game};
+    use mod_api::{EntityLeaveLevelEvent, HostTransaction, ItemExpireEvent, ModEntry, ServerHost};
     use std::sync::{
         Arc, Mutex,
-        atomic::{AtomicI32, Ordering},
+        atomic::{AtomicI32, AtomicU32, Ordering},
     };
     use sunrise_client::chunk::Chunk;
-    use sunrise_client::entities::ItemEntity;
     use sunrise_client::items::ItemStack;
+    use sunrise_client::motion::PlayerMotion;
+    use sunrise_core::{geometry::Vec3, position::ChunkPos};
+
+    const AT: [f64; 3] = [2.5, 64.0, 2.5];
+
+    fn expiry_level(game: &mut Game<'_>) {
+        game.enter_level(Dim::Overworld).unwrap();
+        game.options.dedicated = Some(Vec::new());
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        assert!(game.entity_ticking_area()(2, 2));
+    }
+
+    fn drop_at_age(game: &mut Game<'_>, name: &str, age: i32) -> u32 {
+        game.push_item_entity(ItemStack::new(name, 1), AT, Some([0.0; 3]), 0, None);
+        let item = game.dropped.last_mut().unwrap();
+        item.age = age;
+        let id = item.id;
+        game.native_joins_flush(false, 0);
+        game.ticked_entities_through = id;
+        id
+    }
 
     #[derive(Default)]
     struct ExpireLog {
@@ -1214,7 +1264,9 @@ mod expire_tests {
                 .and_then(|e| host.item_entity(e))
                 .and_then(|item| item.age(host));
             self.log.lock().unwrap().seen.push((event.entity, pos, age));
-            event.extra_life += self.extra.load(Ordering::Relaxed);
+            event.extra_life = event
+                .extra_life
+                .wrapping_add(self.extra.load(Ordering::Relaxed));
         }
 
         fn entity_leave_level(
@@ -1263,22 +1315,8 @@ mod expire_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                game.enter_level(Dim::Overworld).unwrap();
-                game.options.dedicated = Some(Vec::new());
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.push_item_entity(
-                    ItemStack::new("minecraft:diamond", 1),
-                    [2.5, 64.0, 2.5],
-                    Some([0.0, 0.0, 0.0]),
-                    0,
-                    None,
-                );
-                let id = game.dropped.last().unwrap().id;
-                game.native_joins_flush(false, 0);
-                game.ticked_entities_through = id;
-                game.dropped.last_mut().unwrap().age = 5999;
+                expiry_level(game);
+                let id = drop_at_age(game, "minecraft:diamond", 5999);
 
                 // First expiry at age 6000: listeners add 60 + 40 -> lifespan 6100, age stays 6000.
                 game.tick_items();
@@ -1300,8 +1338,8 @@ mod expire_tests {
                     assert!(guard.leaves.is_empty());
                 }
 
-                // Overflowing extension clamps to ItemEntity::MAX_LIFESPAN (32766).
-                extra_a.store(i32::MAX, Ordering::Relaxed);
+                // The sum 6100 + 30000 fits a Java int but exceeds Short.MAX_VALUE - 1.
+                extra_a.store(30000, Ordering::Relaxed);
                 extra_b.store(0, Ordering::Relaxed);
                 game.dropped.last_mut().unwrap().age = 6099;
                 game.tick_items();
@@ -1311,11 +1349,11 @@ mod expire_tests {
                     .find(|item| item.id == id)
                     .expect("clamped item survives at age 6100 < 32766");
                 assert_eq!(item.age, 6100);
-                assert_eq!(item.lifespan, ItemEntity::MAX_LIFESPAN);
+                assert_eq!(item.lifespan, 32766);
 
                 // Reaching 32766 discards even when listeners still request extra life;
                 // entity_leave_level fires immediately at removal and does not duplicate on flush.
-                game.dropped.last_mut().unwrap().age = ItemEntity::MAX_LIFESPAN - 1;
+                game.dropped.last_mut().unwrap().age = 32765;
                 game.tick_items();
                 assert!(!game.dropped.iter().any(|item| item.id == id));
                 assert_eq!(
@@ -1332,13 +1370,11 @@ mod expire_tests {
         });
     }
 
-    /// An over-aged item whose extension does not push `lifespan` past `age`, or an item
-    /// with a negative `extra_life`, is discarded and fires `entity_leave_level` once.
     #[test]
     #[ignore = "daily"]
-    fn item_expire_insufficient_or_negative_extension_discards_and_fires_entity_leave_level() {
+    fn item_expire_discards_after_insufficient_negative_or_wrapping_extensions() {
         let log = Arc::new(Mutex::new(ExpireLog::default()));
-        let extra = Arc::new(AtomicI32::new(100));
+        let extra = Arc::new(AtomicI32::new(0));
         let mods: mod_api::Mods = vec![ModEntry::new(
             "item-expire-discard",
             Box::new(ExpireListener {
@@ -1350,55 +1386,182 @@ mod expire_tests {
         .into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                game.enter_level(Dim::Overworld).unwrap();
-                game.options.dedicated = Some(Vec::new());
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                expiry_level(game);
+                for (age, lifespan, extension) in [
+                    (6499, 6000, 100),      // Age 6500 still exceeds the extended lifespan of 6100.
+                    (5999, 6000, -500),     // Age 6000 exceeds the shortened lifespan of 5500.
+                    (6099, 6100, i32::MAX), // Java int sum -2147477549 clamps to zero.
+                ] {
+                    extra.store(extension, Ordering::Relaxed);
+                    let id = drop_at_age(game, "minecraft:stone", age);
+                    game.dropped.last_mut().unwrap().lifespan = lifespan;
+                    game.tick_items();
+                    assert!(game.dropped.is_empty(), "extension {extension}");
+                    assert_eq!(
+                        std::mem::take(&mut log.lock().unwrap().leaves),
+                        [(id, "minecraft:item".to_owned())]
+                    );
+                    game.native_leaves_flush();
+                    assert!(log.lock().unwrap().leaves.is_empty());
+                }
+            });
+        });
+    }
 
-                // Over-aged item (age 6500 after tick): lifespan 6000 + 100 = 6100 <= 6500 -> discarded.
-                game.push_item_entity(
-                    ItemStack::new("minecraft:stone", 1),
-                    [2.5, 64.0, 2.5],
-                    Some([0.0, 0.0, 0.0]),
-                    0,
-                    None,
-                );
-                let over_aged = game.dropped.last().unwrap().id;
-                game.dropped.last_mut().unwrap().age = 6499;
-                game.native_joins_flush(false, 0);
-                game.ticked_entities_through = over_aged;
-                game.tick_items();
-                assert!(!game.dropped.iter().any(|item| item.id == over_aged));
-                assert_eq!(
-                    log.lock().unwrap().leaves.as_slice(),
-                    &[(over_aged, "minecraft:item".to_owned())]
-                );
+    #[derive(Default)]
+    struct LeaveObservation {
+        next_drop: AtomicU32,
+        heard: Mutex<Vec<(u32, Option<i32>)>>,
+    }
 
-                // Negative extra_life clamps lifespan downward and discards.
-                extra.store(-500, Ordering::Relaxed);
-                game.push_item_entity(
-                    ItemStack::new("minecraft:cobblestone", 1),
-                    [2.5, 64.0, 2.5],
-                    Some([0.0, 0.0, 0.0]),
-                    0,
-                    None,
-                );
-                let negative = game.dropped.last().unwrap().id;
-                game.dropped.last_mut().unwrap().age = 5999;
-                game.native_joins_flush(false, 0);
-                game.ticked_entities_through = negative;
+    struct LeaveObserver(Arc<LeaveObservation>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for LeaveObserver {
+        fn entity_leave_level(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut EntityLeaveLevelEvent<'_>,
+        ) {
+            let next_age = host
+                .entity(self.0.next_drop.load(Ordering::Relaxed))
+                .and_then(|entity| host.item_entity(entity))
+                .and_then(|item| item.age(host));
+            self.0.heard.lock().unwrap().push((event.entity, next_age));
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn expiry_leave_runs_before_the_next_due_drop_ticks() {
+        let observed = Arc::new(LeaveObservation::default());
+        // With no item_expire or per-entity tick listener, only removal itself lends the list.
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "expiry-leave-order",
+            Box::new(LeaveObserver(observed.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                expiry_level(game);
+                let first = drop_at_age(game, "minecraft:stone", 5999);
+                let next = drop_at_age(game, "minecraft:diamond", 5999);
+                observed.next_drop.store(next, Ordering::Relaxed);
+
                 game.tick_items();
-                assert!(!game.dropped.iter().any(|item| item.id == negative));
                 assert_eq!(
-                    log.lock().unwrap().leaves.as_slice(),
-                    &[
-                        (over_aged, "minecraft:item".to_owned()),
-                        (negative, "minecraft:item".to_owned()),
-                    ]
+                    *observed.heard.lock().unwrap(),
+                    [(first, Some(5999)), (next, None)]
                 );
+                assert!(game.dropped.is_empty());
                 game.native_leaves_flush();
-                assert_eq!(log.lock().unwrap().leaves.len(), 2);
+                assert_eq!(observed.heard.lock().unwrap().len(), 2);
+            });
+        });
+    }
+
+    #[derive(Default)]
+    struct DiscardLog {
+        drops: [u32; 2],
+        commit: Option<bool>,
+        discarded: Option<[bool; 2]>,
+        expires: Vec<u32>,
+        leaves: Vec<u32>,
+    }
+
+    struct DiscardOnExpiry(Arc<Mutex<DiscardLog>>);
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for DiscardOnExpiry {
+        fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>) {
+            let (drops, commit) = {
+                let mut log = self.0.lock().unwrap();
+                log.expires.push(event.entity);
+                (log.drops, log.commit)
+            };
+            // Without the discard both items live long enough to reach pickup.
+            event.extra_life = 20;
+            if event.entity != drops[0] {
+                return;
+            }
+            let mut discarded = [false; 2];
+            let mut discard = |host: &mut dyn ServerHost| {
+                discarded =
+                    drops.map(|id| host.entity(id).is_some_and(|entity| entity.discard(host)));
+            };
+            if let Some(commit) = commit {
+                let _ = host.transaction(|host, _| {
+                    discard(host);
+                    if commit { Ok(()) } else { Err(()) }
+                });
+            } else {
+                discard(host);
+            }
+            self.0.lock().unwrap().discarded = Some(discarded);
+        }
+
+        fn entity_leave_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityLeaveLevelEvent<'_>,
+        ) {
+            self.0.lock().unwrap().leaves.push(event.entity);
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn expiry_listener_discards_are_swept_before_more_ticks_or_pickup() {
+        let log = Arc::new(Mutex::new(DiscardLog::default()));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "discard-on-expiry",
+            Box::new(DiscardOnExpiry(log.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                expiry_level(game);
+                prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
+                game.player =
+                    Some(PlayerMotion::new(game.motion, Vec3::new(AT[0], AT[1], AT[2])).unwrap());
+                game.update_chunk_tickets();
+                assert!(game.entity_ticking_area()(2, 2));
+
+                for commit in [None, Some(true), Some(false)] {
+                    game.inventory.fill(None);
+                    let drops = [
+                        drop_at_age(game, "minecraft:apple", 5999),
+                        drop_at_age(game, "minecraft:diamond", 5999),
+                    ];
+                    *log.lock().unwrap() = DiscardLog {
+                        drops,
+                        commit,
+                        ..DiscardLog::default()
+                    };
+
+                    game.tick_items();
+                    assert!(game.dropped.is_empty(), "{commit:?}");
+                    let picked_up: Vec<&str> = game
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .map(|s| s.item.as_ref())
+                        .collect();
+                    {
+                        let log = log.lock().unwrap();
+                        assert_eq!(log.discarded, Some([true, true]), "{commit:?}");
+                        if commit == Some(false) {
+                            assert_eq!(log.expires, drops);
+                            assert_eq!(picked_up, ["minecraft:apple", "minecraft:diamond"]);
+                        } else {
+                            assert_eq!(log.expires, [drops[0]], "{commit:?}");
+                            assert_eq!(log.leaves, drops, "{commit:?}");
+                            assert!(picked_up.is_empty(), "{commit:?}");
+                        }
+                    }
+                    game.native_leaves_flush();
+                    assert_eq!(log.lock().unwrap().leaves, drops, "{commit:?}");
+                }
             });
         });
     }

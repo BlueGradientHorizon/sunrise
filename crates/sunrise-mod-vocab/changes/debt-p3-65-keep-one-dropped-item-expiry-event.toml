@@ -1,25 +1,43 @@
 ids = [
     "hook:item_despawn",
+    "hook:item_despawn.entity",
+    "hook:item_despawn.item",
+    "hook:item_despawn.count",
+    "hook:item_despawn.pos",
+    "method:Hooks::item_despawn",
+    "type:ItemDespawnEvent",
+    "type:ItemDespawnEvent.entity",
+    "type:ItemDespawnEvent.item",
+    "type:ItemDespawnEvent.count",
+    "type:ItemDespawnEvent.pos",
     "hook:item_expire",
 ]
 why = """
 Removed the duplicate `item_despawn` hook so dropped-item lifetime expiry has one NeoForge-shaped
 event (`item_expire`, matching NeoForge `EventHooks.onItemExpire` / `ItemExpireEvent` and the
-`ItemEntity.tick` patch over vanilla `net.minecraft.world.entity.item.ItemEntity#tick`), while
-general removal of expired items continues to fire `entity_leave_level` at the removal site.
+`ItemEntity.tick` patch over vanilla `net.minecraft.world.entity.item.ItemEntity#tick`). Expiry
+discard fires `entity_leave_level` before the next drop ticks, as in `Entity.discard` and the
+NeoForge patch to `ServerLevel.EntityCallbacks.onTrackingEnd`.
 
-`ItemEntity` now carries NeoForge's separate `lifespan` field (default 6000, saved in NBT under
-`"Lifespan"` when non-default) instead of rewinding `age` on expiry extension. When `age >= lifespan`,
-`item_expire` runs with the item entity live and resident in the level (`host.entity(event.entity)`
-and `host.item_entity(...)` resolve live), then updates `lifespan` to
-`clamp(lifespan + extra_life, 0, 32766)` (`Short.MAX_VALUE - 1`) and discards the item if
-`age >= lifespan` (or the stack is empty). `item_expire` hook version bumped from 1 to 2 because
-listeners observe updated `lifespan`/`age` semantics and live entity residency under the same
-signature.
+`ItemEntity` now has NeoForge's separate `lifespan` field (default 6000, saved in NBT under
+`"Lifespan"` when non-default). When `age >= lifespan`, `item_expire` runs before removal with
+the drop in the level. Its extension is added to `lifespan` using signed 32-bit wrapping
+addition, then clamped to `0..=32766` (`Short.MAX_VALUE - 1`) without rewinding `age`.
+The drop is discarded if `age >= lifespan` (or the stack is empty). A drop a listener discards
+is removed from the pass before it can merge, tick again, or be picked up. `item_expire` version
+2 reflects the new lifespan and live entity semantics under the same signature.
 """
 migrate = """
-Remove any `item_despawn` listener and listen to `item_expire` (leaving `event.extra_life` at zero
-if only observing expiry, and reading position or other entity state through
-`host.entity(event.entity)` / `host.item_entity(...)`), or listen to `entity_leave_level` for
-general removal. If your manifest pins `hook_version` for `item_expire`, bump it to `2`.
+Replace `Hooks::item_despawn` / `ItemDespawnEvent` with
+`fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>)`.
+`event.entity` is unchanged. Replace `event.item` with `event.stack.item().id(host)` (an
+`Option<&str>`), `event.count` (formerly `i32`) with `event.stack.count()` (`u32`), and
+`event.pos` with `host.entity(event.entity).and_then(|entity| entity.position(host))`
+(an `Option<[f64; 3]>`).
+Leave `event.extra_life` unchanged if you are only observing. `item_expire` is a pre-decision
+hook: it still fires when another listener extends the lifespan and the drop survives. Do not
+use it to count actual removals. For those, listen to `entity_leave_level` and filter
+`event.kind == "minecraft:item"`; that hook reports actual departures of every cause, not just
+expiry. There is no exact replacement for a lifetime-only post-decision notice. If your manifest
+pins `hook_version` for `item_expire`, bump it to `2`.
 """

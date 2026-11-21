@@ -6,12 +6,13 @@ pub trait Hooks {
     /// NeoForge's `EventHooks.onItemExpire` / `ItemExpireEvent`), before
     /// removal. Every mod may set or add to `extra_life`, in ticks, which
     /// starts at zero, and may query the live item entity through
-    /// `host.entity(event.entity)` / `host.item_entity(...)`. After listeners
-    /// run, the item's `lifespan` (default 6000) becomes
-    /// `clamp(lifespan + extra_life, 0, 32766)` (`Short.MAX_VALUE - 1`), while
-    /// `age` is not rewound. If `age >= lifespan`, the item is discarded and
-    /// `entity_leave_level` fires at the removal site; otherwise it survives
-    /// until `age` reaches the updated `lifespan`, when this hook fires again.
+    /// `host.entity(event.entity)` / `host.item_entity(...)`. This is an expiry
+    /// attempt, not a removal notice: it runs even when a listener extends
+    /// the item's life. The item's `lifespan` (default 6000) gets `extra_life`
+    /// by signed 32-bit wrapping addition, then is clamped to `0..=32766`
+    /// (`Short.MAX_VALUE - 1`) without rewinding `age`. If `age >= lifespan`,
+    /// the item is discarded and `entity_leave_level` fires before the next
+    /// drop ticks; otherwise this hook fires again at the updated lifespan.
     /// Extensions through this event cannot exceed a total lifespan of 32766
     /// ticks; use unlimited or extended lifetime (`ItemDrop::UNLIMITED_LIFETIME`)
     /// for longer lifetimes.

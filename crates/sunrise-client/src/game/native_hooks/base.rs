@@ -3885,9 +3885,10 @@ impl Game<'_> {
     /// NeoForge's `EventHooks.onItemExpire` / `ItemExpireEvent`), before
     /// removal. Every mod may set or add to `extra_life`, in ticks, which
     /// starts at zero, and may query the live item entity through `Host`.
-    /// Afterward `lifespan` becomes `clamp(lifespan + extra_life, 0, 32766)`
-    /// without rewinding `age`; if `age >= lifespan`, the item is discarded
-    /// and `entity_leave_level` fires at the removal site.
+    /// Afterward `lifespan` gets `extra_life` by signed 32-bit wrapping
+    /// addition, then is clamped to `0..=32766` (`Short.MAX_VALUE - 1`)
+    /// without rewinding `age`. If `age >= lifespan`, the item is discarded
+    /// and `entity_leave_level` fires before the next drop ticks.
     pub(in crate::game) fn native_item_expire(
         &mut self,
         entity: u32,
