@@ -1601,12 +1601,7 @@ impl Game<'_> {
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
         for (id, at, width, height, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
+            self.finish_mob_death_animation(id, at, width, height, split);
         }
         laps.lap("creature_retain");
         self.sync_riders();
@@ -1708,6 +1703,24 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
+    /// also splits a large cube before it reaches `Entity.setRemoved`.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        let at = at.components();
+        self.lan_entity_event(id as i32, 60, at);
+        self.death_poof(at, width, height);
+        if let Some(mob) = split {
+            self.split_dead_cube(mob);
+        }
+    }
+
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
     pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
         let options = sunrise_client::particles::ParticleOptions::simple(
@@ -2624,9 +2637,7 @@ impl Game<'_> {
                         if self.died.insert(target) {
                             self.mob_died(&m);
                         }
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target) {
-                            m.removed = true;
-                        }
+                        self.remove_mob_now(target, false);
                     }
                 }
                 MobEvent::Push { target, velocity } => {
@@ -6789,7 +6800,7 @@ impl Game<'_> {
             let id = self.mobs[index].id as i32;
             // Leashable.dropLeash, then discard.
             self.break_leash(id as u32, true, false);
-            self.mobs[index].removed = true;
+            self.remove_mob_now(id as u32, false);
             if self.creative {
                 if let Some(rest) = self.add_stack_to_inventory(filled) {
                     self.spawn_item(rest, self.eye_position().unwrap_or([0.0; 3]), [0.0; 3], 40);
@@ -6978,11 +6989,9 @@ impl Game<'_> {
         let is_food = m.kind.food.contains(&item);
         let baby_turtle = species == Species::Turtle && m.is_baby();
         // MushroomCow.getEffectsFromItemStack: the item's block supplies them.
-        let flower = if species == Species::Mooshroom {
-            sunrise_client::flowers::stew_effect(&item)
-        } else {
-            None
-        };
+        let stew_effects = (species == Species::Mooshroom && m.extra.variant == 1 && !m.is_baby())
+            .then(|| world_items!(self).suspicious_stew_effects(&item))
+            .flatten();
         let mut give_stew: Option<Vec<(Arc<str>, i32)>> = None;
         // `Some(true)` for the four spell particles, `Some(false)` for the two
         // smoke puffs of a cow that already holds effects.
@@ -7030,14 +7039,13 @@ impl Game<'_> {
                 self.post_game_event("minecraft:shear", feet, ctx);
                 self.damage_held_tool();
             }
-            // MushroomCow.mobInteract: a brown adult takes the flower's effects
+            // MushroomCow.mobInteract: a brown adult takes the block's effects
             // unless it holds some already, when it only puffs smoke.
-            Species::Mooshroom if m.extra.variant == 1 && !m.is_baby() && flower.is_some() => {
+            Species::Mooshroom if let Some(effects) = stew_effects => {
                 if m.extra.stew_effects.is_some() {
                     stew_particles = Some(false);
                 } else {
-                    let (effect, ticks) = flower.expect("the guard checked");
-                    m.extra.stew_effects = Some(vec![(Arc::from(effect), ticks)]);
+                    m.extra.stew_effects = Some(effects.to_vec());
                     consume = true;
                     eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
                     stew_particles = Some(true);

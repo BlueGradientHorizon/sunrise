@@ -16,6 +16,7 @@ pub trait Hooks {
     /// its `render_player_post` follows.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         neoforge = "RenderLivingEvent.Post",
         cancellable = false

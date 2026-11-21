@@ -93,7 +93,7 @@ Entity.getRopeHoldPosition	inline	crates/sunrise-client/src/game/entities/leads.
 Entity.setYRot	skip:other		plain setter; yaw is a struct field
 Entity.getClientPosition	port	crates/sunrise-world/src/stepped_interpolation.rs::SteppedInterpolation::heading	the interpolation target while it runs, else the entity's position
 Entity.shouldBeSaved	inline	crates/sunrise-client/src/game/world/persist.rs::Game::put_mob_passengers	riders are saved inside their vehicle's tag, not on their own
-Entity.lerpPositionAndRotationStep	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::tick_remote_entities	boats, minecarts, projectiles and orbs of a server step toward the packet's target by 1/steps each tick
+Entity.lerpPositionAndRotationStep	inline	crates/sunrise-client/src/game/network/remote/tick.rs::Game::tick_remote_entities	boats, minecarts, projectiles and orbs of a server step toward the packet's target by 1/steps each tick
 Entity.applyImplicitComponents	port	crates/sunrise-client/src/game/entities/armor_stands.rs::Game::armor_stand_spawn	ticked in #3514; `Entity.applyImplicitComponents` is cited at crates/sunrise-client/src/game/entities/armor_stands.rs:390 (in a comment, so `where` names the enclosing fn)
 Entity.applyImplicitComponent	inline	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	the stack's components (name, bucket data, variant, trim...) applied to the entity it spawns
 Entity.applyImplicitComponentIfPresent	inline	crates/sunrise-client/src/entity_nbt.rs::apply_item_components	each component is applied only when the stack carries it

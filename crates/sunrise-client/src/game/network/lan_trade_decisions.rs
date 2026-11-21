@@ -15,7 +15,7 @@ use std::{cell::RefCell, collections::HashMap};
 use sunrise_client::{
     advancements::Advancement,
     items::ItemStack,
-    lan::conn::transaction_packets::{Packets, Scope},
+    lan::conn::transaction_packets::Scope,
     menu::{Input, Menu, RuleAnswers, StackedOutcome, StoredRules},
     merchant::Event,
 };
@@ -107,7 +107,6 @@ impl Journal {
 }
 
 pub(in crate::game) enum Effect {
-    Packets(Packets),
     Orb([f64; 3], u32),
     Drops(u32, Vec<sunrise_client::items::ItemStack>),
     Reward(u128, Advancement),
@@ -123,7 +122,7 @@ impl Game<'_> {
             (2, 4) => Input::Throw,
             _ => return self.lan_merchant_click_plain(conn, p),
         };
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return true;
         }
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
@@ -188,10 +187,12 @@ impl Game<'_> {
         true
     }
 
-    pub(super) fn merchant_click_in_progress(&self, conn: u32) -> bool {
+    /// Screen replacement cannot publish while a transaction owns a click. The older
+    /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
+    pub(super) fn menu_click_in_progress(&self, conn: u32) -> bool {
         self.transactions
             .iter()
-            .any(|level| level.trades.active == Some(conn))
+            .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
 
     fn run_merchant_take(
@@ -630,10 +631,8 @@ impl Game<'_> {
     }
     pub(in crate::game) fn commit_merchant_effect(&mut self, effect: Effect) {
         match effect {
-            Effect::Packets(packets) => packets.publish(),
             Effect::Notice(uuid, name, mob) => {
-                // A completed trade cannot be undone, and its captured success packets
-                // still have to reach the client even if the notification fails.
+                // A completed trade cannot be undone if the notification fails.
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     self.native_player_trade(uuid, &name, mob);
                 }))

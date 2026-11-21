@@ -15,7 +15,7 @@ pub struct Flags {
     /// LivingEntity.omnidirectionalAirMover (bees and parrots).
     pub omnidirectional: bool,
     pub fire_immune: bool,
-    /// EntityTypeTags.BURN_IN_DAYLIGHT
+    /// Membership of the `minecraft:burn_in_daylight` entity type tag, resolved at load.
     pub burns_in_day: bool,
     pub undead: bool,
     pub breathes_water: bool,
