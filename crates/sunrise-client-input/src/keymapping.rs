@@ -1,6 +1,10 @@
 //! The down/click state of `KeyMapping` and `ToggleKeyMapping` (sneak,
 //! sprint, attack and use can be toggled instead of held).
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    num::NonZeroU64,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 /// The bound of a mapping's pending clicks: its count's largest value. Nothing in the engine
 /// drains them in a loop; a mod's `consumeClick` takes one a call.
@@ -276,8 +280,9 @@ impl ModKey {
 /// bound once at registration and again when a binding changes, with an index
 /// from each key to its mappings, so an input touches only the mappings bound
 /// to it and allocates nothing.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug)]
 pub struct ModKeys {
+    client_generation: Option<NonZeroU64>,
     keys: Vec<ModKey>,
     /// Each bound key's mappings, by its name.
     by_input: HashMap<Box<str>, Vec<usize>>,
@@ -287,7 +292,37 @@ pub struct ModKeys {
     /// Every mapping is up with no clicks, so `release_all` has nothing to do.
     idle: bool,
 }
+
+/// Issue an identity from one process-wide sequence for mapping generations.
+fn issue_mapping_generation() -> Option<NonZeroU64> {
+    // The old value is the issued identity; u64::MAX is the exhausted sentinel.
+    static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+    NEXT_GENERATION
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            next.checked_add(1)
+        })
+        .ok()
+        .and_then(NonZeroU64::new)
+}
+
+impl Default for ModKeys {
+    fn default() -> Self {
+        Self {
+            client_generation: issue_mapping_generation(),
+            keys: Vec::new(),
+            by_input: HashMap::new(),
+            by_mouse: HashMap::new(),
+            by_id: HashMap::new(),
+            idle: false,
+        }
+    }
+}
 impl ModKeys {
+    /// The client input state's identity, unchanged by rebinding; `None` if the issuer is exhausted.
+    pub fn client_generation(&self) -> Option<NonZeroU64> {
+        self.client_generation
+    }
+
     /// Binds the mappings, in registration order. A mapping keeps its held state
     /// and pending clicks across a rebinding; an unbound one hears no input.
     pub fn bind<'a>(&mut self, bindings: impl IntoIterator<Item = ModBinding<'a>>) {
