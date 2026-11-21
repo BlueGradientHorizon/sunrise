@@ -843,13 +843,5 @@
     "crate::world::phase::LoopSide",
     "crate::world::phase::ModPhase",
     "crate::world::phase::PackageKind"
-  ],
-  "manual_contract_changes": {
-    "AttachmentError": {
-      "contract_change": "#4614 appends Undeclared at u32 ordinal 9 with package_id:String and attachment_id:String. Existing ordinals 0 through 8 remain unchanged. This manual data-carrying Wire enum is pinned by every_attachment_error_and_write_case_has_declared_tag_type; fieldless enum layouts are unchanged."
-    },
-    "PartStateRefusal": {
-      "contract_change": "#4614 removes the former UnownedNamespace refusal: attachment usages may reference another loaded owner. Incompatible and EntityKind move from ordinals 5 and 6 to 4 and 5; this data-carrying enum is outside the fieldless baseline. All declarations still require the declaring package namespace."
-    }
-  }
+  ]
 }

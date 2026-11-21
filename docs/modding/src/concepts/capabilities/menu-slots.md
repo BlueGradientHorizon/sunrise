@@ -59,17 +59,15 @@ Parts that read `context.setting(..)` or `side()` have no counterpart on the Hos
 
 ### Who and where: the slot's context
 
-A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` the game
-fills the same way on the server and on the client's prediction. `context.player` is the UUID of
-the player whose menu it is, `context.pos` the block entity the menu belongs to
-(`ContainerLevelAccess`), and `context.slots` a read-only copy of the menu's own containers'
-slots as they stand while the click plans, without the player's inventory. The containers are
-keyed by `MenuContainer`: `Main` for the menu's own slots, and for a mod menu type with a crafting
-grid `Grid` (the grid's slots, row by row) and `Result` (its crafted result, slot 0).
-`event.container` names the container the asked slot is in, and `event.slot` indexes inside it;
-`context.slot(container, index)` reads any of them. A machine whose upgrade slot takes one card
-per kind, a cable bus that asks its block entity what a part slot holds, a grid slot that looks at
-the result, or a slot only the block's owner fills answers from these:
+A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext<'_>` lent
+for this ask on either the server or the predicting client. `context.player` is the UUID of
+the player whose menu it is, and `context.pos` locates the block entity the menu belongs to
+(`ContainerLevelAccess`). `event.container` names the container the asked slot is in, and
+`event.slot` indexes inside it. Read a staged slot with `context.slot(container, index)`: use
+`MenuContainer::Main` for the menu's own slots, and on a mod menu type with a crafting grid use
+`Grid` (row by row) and `Result` (its crafted result, slot 0) for those slots. For example, a
+machine can use the view to accept only one upgrade card of each kind, or a grid slot can check
+whether a result is waiting to be taken:
 
 ```rust,ignore
 use mod_api::MenuContainer;
@@ -94,10 +92,13 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 ```
 
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
-opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot cross to the API
-shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built once per click plan, and only for a menu type a part answers: vanilla menus and
-types with no listening part never pay for it, and the asks of one click share one copy.
+opened with no block by `PlayerRef::open_mod_menu`, a vehicle's). `slot` converts just the requested
+stack and returns it as an owned `ItemStack`. It returns `None` for an empty, unavailable, or
+unrepresentable stack, and never reads `MenuContainer::Player`. There is no matrix to enumerate
+or retain. During planning, the same question reuses its answer while the slots the rule read
+still match. For example, filling a grid slot the rule read as empty can cause a new ask.
+Validation and apply use the plan's recorded answers and do not call the rule again.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
@@ -197,9 +198,15 @@ with the caller's transaction. A stack not held in a menu slot or cursor is refu
 The server asks the open mod menu's `MenuPart` for `menu_still_valid` each tick and before processing a
 matching non-spectator container click, as a Java menu overrides `AbstractContainerMenu.stillValid`. A click
 for a different window is dropped; a matching spectator click resends the menu without asking the part.
-`event.menu` is the menu type. For menus opened without a backing block, `event.valid` starts true and
-`event.pos` is `None`, even if `player_open_mod_menu` was given a position for the client's screen. Set
-`valid` to false to close the menu and return the cursor stack as on a normal close.
+In `menu_still_valid` v3, `event.menu` is the menu type. For a blockless open, `event.valid` starts
+true and `event.pos` is `None`, even if the open request supplied a position for the client's screen.
+Set `event.valid` to false to close the menu and return the cursor stack as on a normal close.
+
+An item opener can set the request's `opening_hand` to `Some(hand)` regardless of what backs the slots.
+`event.opening_item` then contains the `hand` and `stack_matches`: the hand holds the same item with the
+same components as at open, ignoring the count. This compares stack values, not instance identity. A part
+can set `event.valid = item.stack_matches` to close on a mismatch. With no supplied hand, `opening_item`
+is `None`; in either case the game leaves the decision with the part.
 
 For a block menu, `event.pos` is the backing block and `valid` starts as the reach check: the player's
 eyes must be within their block interaction range plus 4 of each backing block. A large machine with a
@@ -301,14 +308,24 @@ host.transaction(|host, tx| {
 })
 ```
 
-`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 4, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
-through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
-panicking `menu_quick_move` publishes neither the detached block entity (including one-shot update fields)
-nor the stack remainder or handled answer. A panic, an invalid answer, or a `Host` write to a player's inventory,
-cursor or menu storage refuses the whole quick move instead of falling back to the game's routing.
-`menu_clicked` hears the raw slot, button
-and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
-set-slot never reach it, and it cannot know whether the click changes anything.
+`MenuPart::menu_clicked` v3 runs on parts registered for the open mod menu's type. The event names
+that type and gives the raw slot, button and click type. Menu-button clicks, recipe placement and creative
+set-slot do not reach it. Return `Flow::Cancel` after doing the click yourself to skip the default. On
+`Flow::Continue`, the part and the default action share one transaction. If the part changes what the
+default would read, or if the default refuses, the action rolls back without trying a different click.
+The client still predicts the default action. After an override or refusal the server sends the full menu,
+cursor and any predicted swap target omitted from the menu. A display-only menu has no default moves.
+
+A click action cannot replace a screen: `open_menu` returns `Ok(None)` and `PlayerRef::open_mod_menu`
+returns `OpenMenuError::ClickInProgress`. `close_menu` and `MenuRef::close_container` wait for a
+successful commit. An abort leaves the window and its items in place and sends no close packet.
+`menu_set_items` changes also roll back without sending a packet if the action aborts.
+
+`menu_quick_move` v4 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
+menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder
+holds what is left in the clicked slot (`None` empties it). A panicking callback publishes
+neither the detached block entity (including one-shot update fields) nor the stack remainder or
+handled answer.
 
 Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill
@@ -341,7 +358,7 @@ replaces everything it shows and sends it as one `ContainerSetContent` for that 
 tick's sync, as vanilla's `sendAllDataToRemote` does: the screen, the title and the cursor stay. Like `open_menu` it pads
 `items` with empty slots and drops the ones past the menu's last. It returns `Result<(), MenuItemsRefusal>` and each
 refusal sends and changes nothing: `Client`, `NoPlayer` (no placed player has that UUID), `NotOpen` (`window` is not
-the player's open `open_menu` menu: another window, a closed menu, or a menu the game opened) and
+the player's open native menu), `OwnedSlots` (the menu owns its storage; use `ItemPlace::MenuSlot`), or
 `Stack(StackWriteError)` (an item the world lacks, a count or damage the item does not allow). For one slot or a few,
 write them through `host.menu` as above: they cost one packet each and no replacement of the others.
 
@@ -353,6 +370,32 @@ client a close, which centres the mouse again; `MenuReplace::InPlace` sends none
 one's place and the mouse stays where it is. Opening from the player's inventory sends no close either way.
 `player.open_mod_menu` takes the same `replace` for a content mod's menu type
 ([machine menu data](../../how-to/world/machine-menu-data.md)).
+
+## Menu-owned slots
+
+A blockless mod menu can own transient storage, like the container holding a crafting grid or a
+stonecutter's input. A type with `owned_slots` can only open without a block and cannot declare
+`results` or a `crafting` grid. Declare one stack limit (1–99) per container slot:
+
+```json
+{ "slots": 2, "player_inventory": false, "owned_slots": [1, 4] }
+```
+
+Each window starts with empty slots. Read them with `MenuRef::slot` and edit them through
+`ItemPlace::MenuSlot` in a transaction. `MenuRef::slot_backing` reports `MenuSlotBacking::Owned`.
+Insertion respects the smaller of the slot limit and the item's limit. Neither `back_mod_menu_slots`
+nor `menu_set_items` replaces this storage. The client gets normal slot updates, with no new packet.
+
+Ordinary clicks move items up to the slot cap on both sides. To make a filter slot, handle `menu_clicked`:
+read the cursor, insert a copy without extracting from it, and return `Flow::Cancel`. The server sends the
+committed menu and cursor regardless of whether their item IDs and counts match the prediction.
+
+The storage is never saved. `menu_closed` v2 sees its final `owned_slots` in slot order and the supplied
+`opening_hand`, if any. The old window and its handles are already stale. Unlike vanilla's `clearContainer`,
+the game does not return or drop those values automatically. A part that wants real inputs returned must
+return them using the server Host. A listener can instead write a filter selection to the held item. Check
+that the player and item are still available before writing; do not give filter copies back as real items.
+The cursor's ordinary close behavior is unchanged.
 
 ## Slots backed by a held item or an entity's handler
 
@@ -384,13 +427,14 @@ emptied: it never keeps the copy it showed, which stays in the storage it came f
 changes nothing and says why with a `MenuSlotBackRefusal`:
 
 - `NoPlayerOrWindow`: the player is not online here, or `window` is not the menu they have open.
-- `UnsupportedMenu`: the open menu is not a mod menu opened with no block (a block's or an entity's menu shows its own
-  storage).
+- `UnsupportedMenu`: the open menu is not a blockless mod menu, or it declares `owned_slots`.
 - `TooManyPlaces`: more places than the menu's container slots.
 - `PlaceUnresolved { index }`: `places[index]` names no storage now.
 
 ```rust,ignore
-let window = player.open_mod_menu(host, backpack_menu, title, Vec::new(), Vec::new(), None, MenuReplace::CloseFirst)?;
+let mut request = ModMenuOpen::new(backpack_menu, title);
+request.opening_hand = Some(Hand::Main);
+let window = player.open_mod_menu(host, request)?;
 if let Some(window) = window {
     let places = (0..27).map(|slot| MenuSlotPlace::HeldItem { hand: Hand::Main, slot }).collect();
     if let Err(refusal) = player.back_mod_menu_slots(host, window, places) {

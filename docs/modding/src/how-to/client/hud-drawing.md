@@ -33,7 +33,10 @@ In the same registration hook, call `event.layers.replace_layer(id, Box::new(dra
 an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
 registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
-place in the HUD and its draw conditions.
+place in the HUD and its draw conditions. A replacement drops callbacks staged in the same listener
+before returning. Bodies from earlier listeners are dropped after commit, in the order the
+listener first replaced their layers, not in HUD draw order. Do not call the Host from `Drop` on
+a captured value.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
@@ -54,6 +57,17 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
 runs. For work that must happen even when the HUD is hidden, use the independent foreground
 `gui_render_post` hook.
+
+## Status rows and fixed text positions
+
+`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
+in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
+`minecraft:vehicle_health` layer.
+
+Adding a taller status bar does not move the selected item name or the action bar. The name starts
+59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
+pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
+`minecraft:selected_item_name` or `minecraft:overlay_message`.
 
 ## Registering F3 text
 

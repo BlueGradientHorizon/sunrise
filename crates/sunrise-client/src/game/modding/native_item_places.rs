@@ -597,7 +597,13 @@ impl Game<'_> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_insert(*id, &stack);
         }
-        let max = self.containers().max_stack(&stack);
+        let item_max = self.containers().max_stack(&stack);
+        let max = match place {
+            ItemPlace::MenuSlot { menu, slot } => self
+                .menu_owned_slot_limit(*menu, *slot)
+                .map_or(item_max, |limit| limit.min(item_max)),
+            _ => item_max,
+        };
         // Puts what of `rest` fits into `slot`.
         let fill = |slot: &mut Option<ItemStack>, rest: &mut ItemStack| {
             let held = slot.as_ref().map_or(0, |held| held.count);

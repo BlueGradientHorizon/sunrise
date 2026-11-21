@@ -73,8 +73,8 @@ ids = [
 ]
 why = "Render callbacks borrow the selected model and its baked hierarchy instead of passing bounded lists of hidden names and copied humanoid snapshots. Pre listeners share draw-local hides, layers and Post can read the actual posed body of any living model, and setup-animation listeners edit the live pose without snapshot writeback."
 migrate = """
-Rebuild for render_living_pre v3, render_player_pre v2, render_living_post v2,
-render_player_post v2 and humanoid_setup_anim v3.
+Rebuild for render_living_pre v6, render_player_pre v5, render_living_post v5,
+render_player_post v5 and humanoid_setup_anim v3.
 
 In Player Pre and Living Pre, replace event.hidden with event.model. Change helpers taking
 &mut HiddenParts to take &mut dyn FrameModelEdit and pass &mut *event.model. Replace

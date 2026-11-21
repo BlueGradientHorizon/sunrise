@@ -32,7 +32,7 @@ pub trait GuiLayerWrapContext {
 /// Edits are visible in call order to the current callback and publish together when it
 /// returns successfully. The registrar is only available during that hook.
 pub trait GuiLayerRegistrar {
-    /// Install `draw` at `placement` under a namespaced ID such as `mymod:compass`.
+    /// Stage `draw` at `placement` under a namespaced ID such as `mymod:compass`.
     /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
     /// already registered, or relative to a layer that is not registered yet. A rejected
     /// registration does not reserve the ID; use `replace_layer` or `wrap_layer` to edit one.
@@ -43,13 +43,16 @@ pub trait GuiLayerRegistrar {
         draw: Box<GuiLayerDraw>,
     ) -> bool;
 
-    /// Replace an already registered layer (including a vanilla layer) with `draw`.
+    /// Stage a replacement for an already registered layer (including a vanilla layer).
     /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
-    /// position and draw conditions.
+    /// position and draw conditions. Callbacks staged in this listener are dropped before this
+    /// call returns. After commit, bodies installed by earlier listeners are dropped in the
+    /// order this listener first replaced their layers, not in HUD draw order.
+    /// Do not call the Host from a callback capture's `Drop`.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
-    /// Wrap an already registered layer in place, keeping its ID, position and draw conditions.
+    /// Stage a wrapper for an already registered layer, keeping its ID, position and draw conditions.
     /// The newest wrapper runs first and can draw the previous body through its context.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;

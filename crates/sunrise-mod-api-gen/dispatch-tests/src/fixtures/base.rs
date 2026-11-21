@@ -105,34 +105,6 @@ fn empty_dispatch_checks_before_event_construction() {
 }
 
 #[test]
-fn command_dispatch_forwards_typed_input_and_source() {
-    struct Observer(Arc<Mutex<Vec<i32>>>);
-    #[mod_api::__subscriptions]
-    impl Hooks for Observer {
-        fn run_mod_command(
-            &self,
-            _: &mut dyn ServerHost,
-            event: &mut RunModCommandEvent<'_>,
-        ) -> Flow {
-            self.0
-                .lock()
-                .unwrap()
-                .push(event.command.amount * event.source.sign);
-            Flow::Cancel
-        }
-    }
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    install(vec![ModEntry::new("commands", Box::new(Observer(calls.clone())))].into());
-    let command = CommandInvocation { amount: 37 };
-    for sign in [1, -1] {
-        let mut ran = false;
-        dispatch_run_mod_command(&mut TestHost, &CommandSource { sign }, &command, &mut ran);
-        assert!(ran);
-    }
-    assert_eq!(*calls.lock().unwrap(), vec![37, -37]);
-}
-
-#[test]
 fn advancement_progress_reports_grant_and_revoke_identity() {
     struct Observer(Arc<Mutex<Vec<ProgressType>>>);
     #[mod_api::__subscriptions]
@@ -297,11 +269,12 @@ fn slot_rules_mutate_and_item_tick_can_cancel() {
             slot: 0,
             container: MenuContainer::Grid,
             stack: &ItemStack::default(),
-            context: &MenuSlotContext {
-                player: Some(7),
-                pos: Some([1, 2, 3]),
-                slots: vec![vec![None], vec![None, Some(ItemStack::default())]],
-            },
+            context: &MenuSlotContext::new(Some(7), Some([1, 2, 3]), &|container, index| {
+                (container == MenuContainer::Grid && index == 1).then(|| ItemStack {
+                    item: "planks".into(),
+                    count: 4,
+                })
+            }),
             may_place: &mut may_place,
             may_pickup: &mut may_pickup,
             max_stack: &mut max_stack,
@@ -820,12 +793,6 @@ mod stubs {
     pub(super) struct LifecycleContext;
     pub(super) struct Load(pub &'static str);
     pub(super) struct ServerPlayer;
-    pub(super) struct CommandSource {
-        pub(super) sign: i32,
-    }
-    pub(super) struct CommandInvocation {
-        pub(super) amount: i32,
-    }
     #[derive(Clone, Copy)]
     pub(super) struct ServerTickPhase;
     #[derive(Clone, Copy)]

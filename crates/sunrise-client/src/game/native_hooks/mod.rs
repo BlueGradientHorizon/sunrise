@@ -29,7 +29,6 @@ use super::{
 use mod_api::__private::game::{
     LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
 };
-use mod_api::CommandSource;
 use mod_api::GameMode;
 use mod_api::GameTests;
 pub use mod_api::game::{PhantomSpawnResult, Shake, SleepProblem};
@@ -37,11 +36,11 @@ use mod_api::{
     self, Answered, BlockPlacement, BlockTintSources, CauldronFluidContents, CauldronInteractions,
     ClientAudioOptions, ClientChatOptions, ClientGraphicsOptions, ClientGuiOptions,
     ClientInputOptions, ClientMiningPrediction, ClientModifiers, ClientReloadListeners,
-    ColorResolvers, CommandInvocation, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers,
-    EntityRef, EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt,
-    InteractionKey, ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions,
-    NoteBlockChange, ParticleProviders, PathComputationType, Placement, PlayerRef,
-    PoiTypeExtensions, RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
+    ColorResolvers, EnchantmentDamageEffects, EnchantmentInfo, EntityLayers, EntityRef,
+    EntityRenderers, GameRuleActor, HandRender, InsideEffects, InteractionAttempt, InteractionKey,
+    ItemEntityRef, JsonAnimationType, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
+    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
+    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
     ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
     VillagerProfessions, WorldPhase,
 };
@@ -51,8 +50,8 @@ use mod_api::{
     TriState, UsePhase,
 };
 use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, GuiLayerRegistrar,
-    MapDecorationType, SkullModel, TextureAtlasRegistration,
+    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, MapDecorationType,
+    SkullModel, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,
@@ -508,6 +507,7 @@ mod screen_room;
 mod screen_slot_tests;
 mod screen_transparent_background;
 mod screenshot;
+mod section_visibility;
 mod server_chat;
 mod server_tick_rate_changed;
 mod set_placed_by;

@@ -163,6 +163,8 @@ pub struct Hook {
     /// A replace hook whose output also names the mod that answered, or a collect hook whose
     /// entries each name the mod that pushed it.
     pub answered_by_mod: bool,
+    /// Return one optional named answer per listener, passed to an engine-owned sink.
+    pub single_answer: bool,
     /// Clear an answered collector's private batch on refusal without cloning its owned entries.
     pub owned_answer_batch: bool,
     /// A listener about one mod's own things: the event field naming that mod, whose
@@ -350,6 +352,8 @@ struct ModApiEntry {
     key: Option<String>,
     answered_by: Option<AnsweredBy>,
     #[serde(default)]
+    single_answer: bool,
+    #[serde(default)]
     owned_answer_batch: bool,
     owner: Option<String>,
     collect_validator: Option<String>,
@@ -485,6 +489,18 @@ impl Hook {
         {
             return Err(CatalogError::AnsweredNeedsGlobalOutput(name));
         }
+        if api.single_answer
+            && (!answered_by_mod
+                || api.contract != Contract::Collect
+                || api.owned_answer_batch
+                || api.registration_append.is_some())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name,
+                error: "single_answer requires a global answered collector with an engine sink"
+                    .into(),
+            });
+        }
         if api.owned_answer_batch
             && (!answered_by_mod
                 || api.contract != Contract::Collect
@@ -545,6 +561,7 @@ impl Hook {
             contract: api.contract,
             out: api.out,
             answered_by_mod,
+            single_answer: api.single_answer,
             owned_answer_batch: api.owned_answer_batch,
             owner: api.owner,
             collect_validator: api.collect_validator,
@@ -839,6 +856,7 @@ impl Declared {
                             "collect_validator",
                             "registration_append",
                             "staged_surface",
+                            "single_answer",
                             "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
@@ -1008,6 +1026,7 @@ impl Hook {
             contract: Contract::Listen,
             out: None,
             answered_by_mod: false,
+            single_answer: false,
             owned_answer_batch: false,
             owner: None,
             collect_validator: None,
@@ -1099,6 +1118,34 @@ mod tests {
     }
 
     const HOOK: &str = "pub trait Hooks { /// Doc.\n #[hook(side = \"server\", contract = \"listen\")] fn one(); }";
+
+    #[test]
+    fn metadata_generators_need_only_the_hook_declarations() {
+        let root = checkout(&[(
+            &format!("{DECLARATIONS}/base.rs"),
+            r###"
+            pub trait Hooks {
+                /// Example hook.
+                #[hook(side = "server", contract = "listen", neoforge = "ExampleEvent")]
+                #[notes = "## Example\n\nA hook note."]
+                fn example();
+            }
+        "###,
+        )]);
+        let json = crate::neoforge_catalog(&root);
+        let notes = crate::generate_hook_notes(&root);
+        fs::remove_dir_all(root).unwrap();
+
+        let actual: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(r#"{"hooks":[{"name":"example","neoforge":"ExampleEvent"}]}"#)
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            notes.unwrap(),
+            "# Hook notes\n\n## Example\n\nA hook note.\n"
+        );
+    }
 
     #[test]
     fn the_retired_json_catalog_is_refused_wherever_it_is() {

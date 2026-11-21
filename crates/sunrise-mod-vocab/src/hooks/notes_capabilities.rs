@@ -30,8 +30,8 @@ pub trait Notes {
 - Authoritative server tick events through `server_tick`: start (before any level ticks, like NeoForge's `ServerTickEvent.Pre`) and end of each non-paused
   server tick, with `world_running`. A frozen world reports false except during a requested step.
 
-- Server commands and players: `register_commands` (the commands a mod adds to every player's
-  command tree) and `run_mod_command` (a player's command on the server), with helpers to answer
+- Server commands and players: `register_commands` adds usages to the server tree with
+  `Command::executes` to bind their executors, with helpers to answer
   ([Server commands and players](#server-commands-and-players)).
 
 - A player's items for server mods: counting, taking and giving go through the player's
@@ -382,10 +382,11 @@ pub trait Notes {
   changing the player's saved shader selection); other packs are unaffected.
 
 ### Custom ingredient metadata
-`ingredient` and `ingredient_test` carry an API `Compound`. Recipe JSON is
+`ingredient` receives its recipe metadata as an API `Compound`. Recipe JSON is
 converted at load by the shared JsonOps-to-NbtOps boundary; mod code matches
 `Tag` variants rather than JSON fields. Nested null refuses the recipe as an
-unclaimed kind does; numeric and heterogeneous arrays remain lists. Matching
-borrows the retained compound and never converts metadata on the tick."#]
+unclaimed kind does; numeric and heterogeneous arrays remain lists. Read `event.data`
+while claiming the kind and capture the parsed configuration in the predicate. Matching
+borrows the live stack, not the recipe's JSON or its converted compound."#]
     fn capabilities();
 }

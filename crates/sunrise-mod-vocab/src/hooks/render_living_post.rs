@@ -15,15 +15,17 @@ pub trait Hooks {
     /// flames and its shadow (the reference draws the leash and the name tag first, #3915). A type
     /// with a mod's registered renderer (`register_entity_renderers`) has its own model's order,
     /// the renderer in the model's place, so it changes with #3915 and not before. For a player,
-    /// its `render_player_post` follows.
+    /// its `render_player_post` follows. In the ordered body pass, each entity's hooks finish
+    /// before the next entity's submission begins, including any general entity renderer at its
+    /// own level join slot.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 5,
         contract = "listen",
         neoforge = "RenderLivingEvent.Post",
-        cancellable = false,
-        version = 2
+        cancellable = false
     )]
     fn render_living_post(
         entity: &MobRender<'_>,
