@@ -121,8 +121,11 @@ pub trait ItemsServerHost {
     /// `DefaultDispenseItemBehavior.consumeWithRemainder`: one of `stack` is used and
     /// `remainder` replaces it, a single `stack` by becoming it, else into the dispenser at
     /// `pos` (`DispenserBlockEntity.insertItem`) or, where it doesn't fit, out of its front with
-    /// the click and smoke. What the slot holds then. A client, another dimension or an unloaded
-    /// chunk keeps `stack` unchanged.
+    /// the click and smoke. Returns the detached active-slot remainder immediately. Inside a
+    /// transaction, insertion into another slot is provisional; slot notices, overflow drops,
+    /// click and smoke are published in the source level only when the enclosing transaction
+    /// commits at the root. A client, another dimension or an unloaded chunk keeps `stack`
+    /// unchanged.
     #[access(WorldOnly)]
     fn dispense_with_remainder(
         &mut self,

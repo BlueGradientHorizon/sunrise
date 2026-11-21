@@ -13,9 +13,9 @@ pub trait Hooks {
     /// level event played with the smoke: 1000 the click, 1001 the fail sound,
     /// or 0 for nothing at all. Leave answer None and `dispense_item` decides.
     /// The remainder is detached until the dispenser writes its slot. An invalid remainder is
-    /// reported; the input is kept without running another behaviour.
-    /// A disabled owner's subscribed method retains the stack and emits no dispense event unless
-    /// an earlier enabled Part supplies a reply the engine accepts.
+    /// reported without writing or notifying the slot, and no other behaviour runs. A disabled
+    /// owner's subscribed method skips the slot write and dispense events unless an earlier
+    /// enabled Part supplies a reply the engine accepts.
     #[hook(
         dispatch = "flat",
         side = "server",

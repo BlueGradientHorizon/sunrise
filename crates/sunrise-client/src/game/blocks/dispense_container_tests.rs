@@ -27,6 +27,29 @@ impl ItemPart for Container {
     }
 }
 
+struct DetachedReply;
+#[mod_api::sunrise_part]
+impl ItemPart for DetachedReply {
+    fn dispense_item(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut DispenseItemEvent<'_>,
+    ) -> Option<Dispensed> {
+        let mut stack = event.stack.clone();
+        stack.set_count(3).unwrap();
+        stack
+            .set_components(
+                [(
+                    "!minecraft:max_stack_size".into(),
+                    Tag::Compound(Default::default()),
+                )]
+                .into(),
+            )
+            .unwrap();
+        Some((Some(stack), 0))
+    }
+}
+
 #[derive(Clone, Default)]
 struct Notices(Arc<Mutex<Vec<DimensionKey>>>);
 
@@ -45,6 +68,8 @@ impl Hooks for Containers {
     fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
         let dispenser = r.block_key("minecraft:dispenser");
         r.block_part(dispenser, self.0.clone());
+        let stick = r.item_key("minecraft:stick");
+        r.item_part(stick, DetachedReply);
         for item in [
             "minecraft:bucket",
             "minecraft:water_bucket",
@@ -360,6 +385,44 @@ fn oversized_dispenser_stacks_keep_their_count_until_the_slot_write() {
 
 #[test]
 #[ignore = "daily"]
+fn removed_max_stack_size_limits_dispenser_placement_and_scratch_insertion() {
+    with_dispenser(|game, _| {
+        game.world
+            .block_entities
+            .get_mut(&SLOT_POS)
+            .unwrap()
+            .slots_mut()[0] = Some(ItemStack::new("minecraft:stick", 1));
+        let [x, y, z] = DISPENSER;
+        game.dispense_from(BlockPos::new(x, y, z), game.world.block(x, y, z))
+            .unwrap();
+        let slot = &game.world.block_entities.get(&SLOT_POS).unwrap().slots()[0];
+        let placed = slot.as_ref().unwrap();
+        assert_eq!((&*placed.item, placed.count), ("minecraft:stick", 1));
+        assert!(
+            placed
+                .data()
+                .unwrap()
+                .other("!minecraft:max_stack_size")
+                .is_some()
+        );
+        assert!(game.dropped.is_empty());
+
+        let stack = test_snapshot(placed);
+        let resource = ItemResource::of(&stack);
+        let host: &mut dyn ServerHost = game;
+        let (inserted, final_stack) = host
+            .scratch_stack(stack, |host, tx, slot| {
+                assert_eq!(slot.extract(host, tx, &resource, 1), 1);
+                Ok::<_, ()>(slot.insert(host, tx, &resource, 3))
+            })
+            .unwrap();
+        assert_eq!(inserted, 1);
+        assert_eq!(final_stack, resource.to_stack(1));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn oversized_failed_transfer_runs_the_helpers_default_dispense() {
     with_dispenser(|game, _| {
         set_front(game, "minecraft:stone");
@@ -554,6 +617,98 @@ fn nested_dispense_settles_in_the_command_source_level() {
                 ]
             );
         });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn nested_dispense_container_publishes_fluid_changes_only_in_the_source_level() {
+    with_dispenser(|game, _| {
+        let overworld = game.server_source();
+        let mut nether = overworld;
+        nether.dimension = Dim::Nether;
+        for (input, before, after, output, drop, event) in [
+            (
+                "minecraft:bucket",
+                "minecraft:water",
+                "minecraft:air",
+                "minecraft:water_bucket",
+                None,
+                "minecraft:fluid_pickup",
+            ),
+            (
+                "minecraft:water_bucket",
+                "minecraft:poppy",
+                "minecraft:water",
+                "minecraft:bucket",
+                Some("minecraft:poppy"),
+                "minecraft:fluid_place",
+            ),
+        ] {
+            set_front(game, before);
+            game.world.block_log = Some(Vec::new());
+            game.with_source(nether, |game| {
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                set_front(game, "minecraft:netherrack");
+                game.world.block_log = Some(Vec::new());
+                for commit in [false, true] {
+                    dispense_fixture::start_recording();
+                    let outcome = game.storage_transaction(|game, _| {
+                        game.with_source(overworld, |game| {
+                            let mut answer = None;
+                            let stack = ItemStack::new(input, 1);
+                            game.native_dispense_item(
+                                Dim::Overworld.id(),
+                                DISPENSER,
+                                Direction::East,
+                                &stack,
+                                &mut answer,
+                            );
+                            let (left, _) = answer.unwrap();
+                            let expected = test_snapshot(&ItemStack::new(output, 1));
+                            assert_eq!(left, Some(expected));
+                            assert_eq!(front(game), state(game, after));
+                            assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                            assert!(game.dropped.is_empty());
+                        });
+                        assert_eq!(game.dim, Dim::Nether);
+                        commit.then_some(()).ok_or(())
+                    });
+                    assert_eq!(outcome, commit.then_some(()).ok_or(()));
+                    let lines = dispense_fixture::stop_recording();
+                    if commit {
+                        assert_eq!(
+                            lines.iter().filter(|line| line.ends_with(event)).count(),
+                            1,
+                            "{lines:?}"
+                        );
+                    } else {
+                        assert!(lines.is_empty(), "{lines:?}");
+                    }
+                    assert_eq!(game.dim, Dim::Nether);
+                    assert_eq!(front(game), state(game, "minecraft:netherrack"));
+                    assert!(game.world.block_log.as_ref().unwrap().is_empty());
+                    assert!(game.dropped.is_empty());
+                    game.with_source(overworld, |game| {
+                        let pos = (FRONT[0], FRONT[1], FRONT[2]);
+                        assert_eq!(
+                            front(game),
+                            state(game, if commit { after } else { before })
+                        );
+                        let log = game.world.block_log.as_ref().unwrap();
+                        assert_eq!(
+                            log.iter().filter(|p| **p == pos).count(),
+                            usize::from(commit)
+                        );
+                        let drops: Vec<_> =
+                            game.dropped.iter().map(|item| &*item.stack.item).collect();
+                        assert_eq!(drops, if commit { drop.as_slice() } else { &[] });
+                    });
+                }
+            });
+        }
     });
 }
 

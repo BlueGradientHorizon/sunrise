@@ -138,10 +138,14 @@ A single container is replaced in its slot (the final first slot, or the second 
 first was emptied). When both slots remain populated, the final first slot stays in the
 dispenser's active slot and the second slot's remainder goes into the dispenser's other slots,
 else out of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
-Dispenser slot writes are journaled, and a transaction defers drops and slot notices in the
-source level until commit. Inserting the remainder into an empty slot notifies; growing a
-compatible stack does not. The detached active stack keeps its count until the dispenser
-writes its slot. The fluid's sound and game event come before the dispenser's click and smoke.
+While an enclosing transaction is open, the helper's fluid and slot changes are provisional.
+Block updates, fluid ticks, drops, sounds, and slot notices publish in the source level at the
+root commit. `ItemsServerHost::dispense_with_remainder` likewise returns a detached active-slot
+remainder immediately, but any other slot it fills is provisional, and overflow drops, click
+and smoke wait for the root commit. Inserting the remainder into an empty slot notifies; growing
+a compatible stack does not. The detached active stack keeps its count until the dispenser
+writes its slot, using the effective stack-size component (one if absent). An inert Part or a
+refused reply leaves the slot untouched and sends no slot change notice.
 Where neither pickup nor placement moves anything, one unchanged container is dispensed as
 `DefaultDispenseItemBehavior` does. Where the helper returns `None` (for example, when a
 transaction is unavailable or stack validation fails), return `None` from the Part rather than

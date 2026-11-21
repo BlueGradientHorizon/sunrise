@@ -255,8 +255,10 @@ pub fn try_place_fluid(
 /// become a full one of another item. It picks up from the block in front first
 /// ([`try_pickup_fluid`], its `FLUIDS` reached from the dispenser's side), and places a bucket
 /// of what it holds there ([`try_place_fluid`], unvalidated, as a bucket) only where nothing
-/// was picked up; the fluid's sound and game event go out as the transfer commits, before the
-/// dispenser's click and smoke. A single container is replaced in place (the first slot, else
+/// was picked up. A transfer inside an enclosing transaction is provisional: block updates,
+/// fluid ticks, drops, sound, and game event publish in the dispenser's level at the root commit.
+/// Without an enclosing transaction, those effects publish before the dispenser's click and
+/// smoke. A single container is replaced in place (the first slot, else
 /// the second when the first was emptied); when both slots remain populated, the first slot
 /// stays in the dispenser slot and the second slot's remainder goes into the dispenser, else out
 /// of its front with a second click (`DefaultDispenseItemBehavior.addToInventoryOrDispense`).
