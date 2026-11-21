@@ -11,8 +11,9 @@ pub trait Hooks {
     /// hands' view space, in blocks, +x right, +y up, -z into the screen,
     /// under the hand sway and before vanilla's per-item transforms; both
     /// hands share it, and `render.hand` says which one is asked. It is lit
-    /// with the light at the eyes; add geometry with `native_draw_cube`,
-    /// `native_draw_quad`, `native_draw_block` and `native_draw_item`. It
+    /// with the light at the eyes. [`HandDrawContext::render_arm`](crate::HandDrawContext::render_arm)
+    /// submits either physical arm with the local avatar's skin, sleeve and
+    /// model width, at the current draw pose and light. It
     /// joins the hand's own vertices, ahead of vanilla's: the hand's field of
     /// view, the view bob, a shader pack's hand pass and `hand_drawn`
     /// see it as they see vanilla's hand. Unlike NeoForge, the pose stack is
@@ -22,7 +23,7 @@ pub trait Hooks {
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderHandEvent",

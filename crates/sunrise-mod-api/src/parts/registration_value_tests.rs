@@ -189,6 +189,9 @@ fn render_hand_chains_pose_and_draw_until_cancelled() {
             self.0 += 1;
         }
     }
+    impl crate::HandDrawContext for Draw {
+        fn render_arm(&mut self, _: crate::MainHand) {}
+    }
     #[mod_api::__subscriptions]
     impl Hooks for HandMod {
         fn render_hand(&self, _host: &dyn ClientHost, event: &mut RenderHandEvent<'_, '_>) -> Flow {

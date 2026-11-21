@@ -18,8 +18,8 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
 - `new <path> [--name "Name"]` writes the content template. `--template native` writes
   a flat native mod instead: `sunrise-mod.toml`, root `Cargo.toml`
   and `src/lib.rs`, and empty `assets/` and `data/` directories. The mod is pinned to the build of the current
-  Nightly (players have it), or to `--sunrise`'s: `nightly-<YYYY-MM-DD>`, or a commit sha (7 hex digits are enough when
-  they name one build). The native mod pins it in `[native] sunrise`. `Cargo.toml` names the API by path,
+  Nightly (players have it), or to `--sunrise`'s: a game release's tag (`nightly-<YYYY-MM-DD>`, a Stable tag such as
+  `26.3-0.1.0`, or `dev-<YYYY-MM-DD>-<short sha>`), or a commit sha (7 hex digits are enough when they name one build). The native mod pins it in `[native] sunrise`. `Cargo.toml` names the API by path,
   `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form a build
   takes. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
   would take the crate from crates.io, where anyone can publish its name), another source, or another path. `new` fetches that build's SDK into `.sunrise/sdk/`,

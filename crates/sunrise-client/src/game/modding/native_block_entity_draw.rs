@@ -22,7 +22,7 @@ use sunrise_client::{
     hud::Rect,
     items::ItemStack,
     mesher::Vertex,
-    mobs::model_layers,
+    mobs::{ModelNormals, model_layers},
     text::Text,
 };
 use sunrise_world::registry::BlockStateId;
@@ -309,10 +309,12 @@ pub struct BlockEntityDraw {
     /// The block drawn, for `native_draw_item`'s owner.
     block: [i32; 3],
     pose: Mat4,
+    /// First-person arm normals follow the listener's pose operations separately.
+    normal_pose: Option<ModelNormals>,
     /// World entity draws track the local translation separately from their camera-relative
     /// render pose. The affine pose's basis is the same in both spaces.
     local_light_translation: Option<DVec3>,
-    parent_poses: Vec<(Mat4, Option<DVec3>)>,
+    parent_poses: Vec<(Mat4, Option<ModelNormals>, Option<DVec3>)>,
     lights: (Vec3, Vec3),
     vertices: Vec<Vertex>,
     kept: bool,
@@ -550,6 +552,7 @@ impl BlockEntityDraw {
             light,
             block,
             pose,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights,
@@ -690,15 +693,22 @@ impl BlockEntityDraw {
         self.local_light_translation = Some(DVec3::ZERO);
     }
 
+    /// Track normals from the rigid first-person view transform through listener draws.
+    pub(super) fn track_normal_pose(mut self) -> Self {
+        self.normal_pose = Some(ModelNormals::from_rotation(self.pose));
+        self
+    }
+
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
     fn push(&mut self) {
         self.parent_poses
-            .push((self.pose, self.local_light_translation));
+            .push((self.pose, self.normal_pose, self.local_light_translation));
     }
     /// `PoseStack.popPose`; the block's own pose is never popped.
     fn pop(&mut self) {
-        if let Some((pose, light_translation)) = self.parent_poses.pop() {
+        if let Some((pose, normals, light_translation)) = self.parent_poses.pop() {
             self.pose = pose;
+            self.normal_pose = normals;
             self.local_light_translation = light_translation;
         }
     }
@@ -712,15 +722,19 @@ impl BlockEntityDraw {
     fn rotate_about(&mut self, axis: [f32; 3], degrees: f32, pivot: [f32; 3]) {
         let axis = Vec3::from_array(axis).normalize_or(Vec3::Y);
         let pivot = Vec3::from_array(pivot);
-        self.apply(
-            Mat4::from_translation(pivot)
-                * Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()))
-                * Mat4::from_translation(-pivot),
-        );
+        let rotation = Mat4::from_quat(Quat::from_axis_angle(axis, degrees.to_radians()));
+        self.apply(Mat4::from_translation(pivot) * rotation * Mat4::from_translation(-pivot));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.rotate(glam::Mat3::from_mat4(rotation));
+        }
     }
     /// Scales what is drawn next by `by` about the pose's origin.
     fn scale(&mut self, by: [f32; 3]) {
-        self.apply(Mat4::from_scale(Vec3::from_array(by)));
+        let scale = Vec3::from_array(by);
+        self.apply(Mat4::from_scale(scale));
+        if let Some(normal) = &mut self.normal_pose {
+            normal.scale(scale);
+        }
     }
     /// Keeps what this call drew: the block is drawn the same again, with
     /// neither `native_block_entity_submit` nor
@@ -814,6 +828,9 @@ impl BlockEntityDraw {
     }
     pub(super) fn pose(&self) -> Mat4 {
         self.pose
+    }
+    pub(super) fn normal_pose(&self) -> Option<ModelNormals> {
+        self.normal_pose
     }
     pub(super) fn vertices_mut(&mut self) -> &mut Vec<Vertex> {
         &mut self.vertices
@@ -1171,6 +1188,7 @@ impl Game<'_> {
             light: 0,
             block: [0; 3],
             pose: Mat4::IDENTITY,
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(self.nether_lighting()),
@@ -1825,6 +1843,7 @@ mod tests {
             light: 0xF0F0,
             block: [0; 3],
             pose: Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+            normal_pose: None,
             local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(false),

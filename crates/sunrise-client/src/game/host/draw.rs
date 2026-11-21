@@ -424,6 +424,19 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_fluid_box(&mut *self.surface, stack, bounds, options)
     }
 }
+impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
+    fn render_arm(&mut self, arm: MainHand) {
+        if let Some(normals) = self.surface.normal_pose() {
+            self.game.submit_first_person_arm(
+                arm == MainHand::Left,
+                (self.surface.pose(), normals),
+                self.surface.light(),
+                self.surface.vertices_mut(),
+            );
+        }
+    }
+}
+
 /// [`CameraDrawContext`] on the game's `crate::screen_effects::CameraQuads`.
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
