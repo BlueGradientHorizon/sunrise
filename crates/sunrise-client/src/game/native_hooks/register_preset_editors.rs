@@ -452,6 +452,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
+        crate::game::in_own_process(
+            "game::native_hooks::register_preset_editors::tests::preset_editor_test_mod_draws_and_edits_through_real_client_hooks",
+            exercise_preset_editor,
+        );
+    }
+
+    fn exercise_preset_editor() {
         struct NoopLoop;
         impl crate::game::event_loop::EventLoopCtl for NoopLoop {
             fn exit(&self) {}
@@ -752,15 +759,38 @@ mod tests {
                     mouse.lock().unwrap().press_result = TriState::Default;
                     editor_press(game, other, Some(1514), 300, true, false);
 
+                    // Clicking Done would set the Tab starting point to Done. When Pre
+                    // cancels the press, the screen stays open and the first Tab lands on
+                    // Done instead of moving from it to Cancel.
+                    game.pad_clear_focus();
+                    sunrise_client::widgets::end_frame(1);
+                    let renderer = game.renderer.as_ref().unwrap();
+                    let _ = game.hud_layers([renderer.config.width, renderer.config.height]);
+                    sunrise_client::widgets::end_frame(2);
+                    let (w, h) = game.gui_size();
+                    let done = (w / 2.0 - 80.0, h - 18.0);
+                    let target = game
+                        .pad_targets()
+                        .into_iter()
+                        .find(|target| {
+                            let [x, y, width, height] = target.rect;
+                            (x..x + width).contains(&done.0) && (y..y + height).contains(&done.1)
+                        })
+                        .expect("the rendered Done button is a focus target");
+                    game.cursor = done;
                     mouse.lock().unwrap().cancel_press = true;
-                    assert_eq!(press(game, right, Some(2000)), [Pre(1, false)]);
+                    assert_eq!(press(game, left, Some(2000)), [Pre(0, false)]);
+                    assert_eq!(game.title.as_ref().unwrap().mode.id(), PRESET);
                     mouse.lock().unwrap().cancel_press = false;
-                    editor_press(game, right, Some(2001), 1, true, true);
+                    assert!(game.key_focus_key(&NoopLoop, KeyCode::Tab));
+                    assert_eq!(game.pad.menu.focus.map(|t| t.rect), Some(target.rect));
+                    game.pad_clear_focus();
+                    game.cursor = (20.0, 30.0);
+                    editor_press(game, left, Some(2001), 0, true, true);
 
                     // Done and Cancel are taken by the footer, not the editor callback. The
                     // release resolves its own receiver on the screen they have just opened.
-                    let (w, h) = game.gui_size();
-                    game.cursor = (w / 2.0 - 80.0, h - 18.0);
+                    game.cursor = done;
                     assert_eq!(
                         press(game, left, Some(2010)),
                         [Pre(0, false), Post(PRESET, 0, false, true, false)]

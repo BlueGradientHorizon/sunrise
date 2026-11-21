@@ -203,6 +203,13 @@ fn client_modifier_snapshot_tracks_focus_loss() {
 #[test]
 #[ignore = "daily"]
 fn blank_inventory_presses_are_handled_and_feed_double_click_history() {
+    in_own_process(
+        "game::core_tests::blank_inventory_presses_are_handled_and_feed_double_click_history",
+        exercise_blank_inventory_presses,
+    );
+}
+
+fn exercise_blank_inventory_presses() {
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenMouseButtonPressedPostEvent};
     use std::sync::Mutex;
     use winit::{event::DeviceId, event_loop::ControlFlow};
