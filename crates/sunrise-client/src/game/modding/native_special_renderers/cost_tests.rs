@@ -177,7 +177,10 @@ fn special_item_draw_cost() {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
         let special = game.pack.item_renderer.decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,
-            Some(&factories),
+            &sunrise_client::item_render::ItemProviderTables {
+                special: Some(&factories),
+                ..Default::default()
+            },
         ).unwrap();
         Arc::get_mut(&mut game.pack.item_renderer)
             .expect("the game's item renderer is shared")

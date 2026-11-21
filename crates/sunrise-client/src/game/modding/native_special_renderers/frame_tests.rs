@@ -184,7 +184,10 @@ fn install_stick_with(
     )]);
     let definition = game.pack.item_renderer.decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:item/stick","model":{"type":"test:stick"}}}"#,
-        Some(&factories),
+        &sunrise_client::item_render::ItemProviderTables {
+            special: Some(&factories),
+            ..Default::default()
+        },
     ).unwrap();
     Arc::get_mut(&mut game.pack.item_renderer)
         .expect("the game's item renderer is shared")

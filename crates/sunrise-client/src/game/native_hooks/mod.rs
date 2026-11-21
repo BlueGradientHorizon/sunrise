@@ -27,9 +27,10 @@ use super::{
     native_panel_recipes::RecipePage,
 };
 use mod_api::__private::game::{
-    BlockStateDefinitionRegistration, JsonAnimationTypeRegistration, LayerDefinitionRegistration,
-    ModelLoaderRegistration, ParticleGroupRegistration, SpriteSourceRegistration,
-    StandaloneModelRegistration,
+    BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
+    JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
+    ParticleGroupRegistration, RangeSelectPropertyRegistration, SelectPropertyRegistration,
+    SpriteSourceRegistration, StandaloneModelRegistration,
 };
 use mod_api::CommandSource;
 use mod_api::GameMode;
@@ -324,14 +325,10 @@ mod item_crafted;
 mod item_fished;
 mod item_interact_mob;
 mod item_model_property;
-mod item_model_range_property;
-mod item_model_select_property;
-mod item_model_update;
 mod item_picked_up;
 mod item_picked_up_tests;
 mod item_smelted;
 mod item_stacked_on_other;
-mod item_tint_source;
 mod item_tooltip;
 mod item_toss;
 mod key_mapping_pre;

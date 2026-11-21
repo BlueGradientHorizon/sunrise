@@ -80,9 +80,20 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
             ),
             // No texture.
             skull("skulltest:blank", "skulltest:goblin_head#main", ""),
-            // Vanilla's namespace, an unnamespaced kind, and a kind registered twice.
+            // A custom `minecraft:` skull kind is accepted; built-in vanilla skull types, an
+            // unnamespaced kind, and a kind registered twice are rejected.
             skull(
                 "minecraft:goblin",
+                "skulltest:goblin_head#main",
+                "skulltest:entity/goblin",
+            ),
+            skull(
+                "minecraft:skeleton",
+                "skulltest:goblin_head#main",
+                "skulltest:entity/goblin",
+            ),
+            skull(
+                "minecraft:dragon",
                 "skulltest:goblin_head#main",
                 "skulltest:entity/goblin",
             ),
@@ -99,7 +110,14 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
         ],
         &vanilla_root,
     );
-    assert_eq!(kept, ["skulltest:goblin", "skulltest:zombie_like"]);
+    assert_eq!(
+        kept,
+        [
+            "skulltest:goblin",
+            "skulltest:zombie_like",
+            "minecraft:goblin"
+        ]
+    );
     // An item renderer loaded afterwards draws a mod head as it draws a vanilla one: the kind's
     // model with its default texture, resolved when the renderer loads.
     let drawn = heads_drawn(&vanilla_root);
@@ -137,10 +155,16 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
     assert_eq!(zombie_like.children[0].1.pose[1], 2.0);
     assert_eq!(zombie_like.children[0].1.polygons.len(), 1);
 
+    let minecraft_goblin =
+        skull_models::part("minecraft:goblin").expect("custom minecraft: skull kind");
+    assert_eq!(minecraft_goblin.children[0].1.polygons.len(), 6);
+    assert!(is_skull_kind("minecraft:goblin"));
+
     for left_out in [
         "skulltest:ghost",
         "skulltest:blank",
-        "minecraft:goblin",
+        "minecraft:skeleton",
+        "minecraft:dragon",
         "goblin",
     ] {
         assert!(skull_models::part(left_out).is_none(), "{left_out}");
@@ -155,8 +179,13 @@ fn skull_types_keep_a_known_layer_and_leave_out_the_rest() {
         head("skulltest:goblin").map(|m| m.kind),
         Ok(SpecialKind::Head { kind, .. }) if kind == "skulltest:goblin"
     ));
+    assert!(matches!(
+        head("minecraft:goblin").map(|m| m.kind),
+        Ok(SpecialKind::Head { kind, .. }) if kind == "minecraft:goblin"
+    ));
     assert!(head("skulltest:ghost").is_err());
     assert!(head("skulltest:blank").is_err());
+    assert!(head("minecraft:skeleton").is_err());
     // Registration happens once; a second call keeps nothing, not even the kind.
     let late = skull(
         "skulltest:late",

@@ -520,7 +520,7 @@ pub(super) fn register_range_select_item_model_properties(role: ExecutionRole) {
         &RegistrationContext::new(),
         &mut properties,
     );
-    sunrise_assets::item_model::register_range_properties(properties);
+    sunrise_client::item_render::install_range_property_factories(properties);
 }
 /// The native mods' categorical item model properties
 /// (`native_register_select_item_model_property`), kept once at start, before resources
@@ -531,7 +531,7 @@ pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
     }
     let mut properties = Vec::new();
     Game::native_register_select_item_model_property(&RegistrationContext::new(), &mut properties);
-    sunrise_assets::item_model::register_select_properties(properties);
+    sunrise_client::item_render::install_select_property_factories(properties);
 }
 /// The types native mods register for resource definitions, kept once at start, before
 /// resources load: item tint sources (`native_register_item_tint_sources`), so `tints` entries on
@@ -552,7 +552,7 @@ pub(super) fn register_resource_sources(role: ExecutionRole) {
     }
     let mut sources = Vec::new();
     Game::native_register_item_tint_sources(&RegistrationContext::new(), &mut sources);
-    sunrise_assets::item_model::register_tint_sources(sources);
+    sunrise_client::item_render::install_item_tint_factories(sources);
     let mut sources = Vec::new();
     Game::native_register_sprite_sources(&RegistrationContext::new(), &mut sources);
     sunrise_client_render::mod_sprite_sources::register(sources);
@@ -561,7 +561,7 @@ pub(super) fn register_resource_sources(role: ExecutionRole) {
     sunrise_client_render::mod_model_loaders::register(loaders);
     let mut models = Vec::new();
     Game::native_register_item_models(&RegistrationContext::new(), &mut models);
-    sunrise_assets::item_model::register_item_models(models);
+    sunrise_client::item_render::install_item_model_factories(models);
     let mut types = Vec::new();
     Game::native_register_json_animation_types(&RegistrationContext::new(), &mut types);
     sunrise_client_render::mod_animations::register(types);
