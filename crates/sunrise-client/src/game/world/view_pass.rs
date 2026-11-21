@@ -698,6 +698,10 @@ pub(in crate::game) mod tests {
         for reopen in [false, true] {
             let mut resources = None;
             let mut game = open_game(&mut resources, root, home.path());
+            // `load_world` is the synchronous test shortcut; open the handle epoch as the
+            // server startup does before any block-entity load callbacks need it.
+            game.native_lifecycle_open_started();
+            game.native_lifecycle_world_ready();
             let transport = Transport::capture(Side::Server).unwrap();
             transport
                 .accept(transport.local.manifest.entries())
