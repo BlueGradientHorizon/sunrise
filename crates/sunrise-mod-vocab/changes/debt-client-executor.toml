@@ -4,18 +4,22 @@ Vanilla's `BlockableEventLoop.execute` (`Minecraft.execute`) moves work to the c
 connector started by `ConnectScreen.startConnecting`. `Minecraft.runTick` runs scheduled executables \
 after the packet processor, and `Minecraft.shouldRun` accepts every runnable. NeoForge dispatches \
 payload-scoped work through `MainThreadPayloadHandler` and `ClientPayloadContext.enqueueWork`, which \
-schedules off-thread submissions on the packet processor. Sunrise's \
-executor submits one-shot closures to the same ingress as queued payload work, even when called on the \
-client thread. Deferred packets and disconnects do not defer this turn's tasks. Each task gets a live \
-host. `Minecraft.stop` ends the loop; Sunrise drops work as soon as the client starts quitting. \
-Like `BlockableEventLoop.doRunTask` for recoverable errors, a panic reports the failed task (a log and \
-an error toast naming its mod) and the client continues to run later tasks."""
+schedules off-thread submissions on the packet processor. Sunrise submits one-shot closures through \
+the same ingress but runs them in the executor phase, after packets and queued payload work. Work \
+published during packet processing is eligible for that phase; tasks behind deferred packet work wait \
+until it is handled. Each task gets a live host, even after a disconnect. `TitleScreen`'s Quit button \
+calls `Minecraft.stop`; Sunrise closes its task receiver at the start of quitting, including from the \
+live title screen. Like `BlockableEventLoop.doRunTask` for recoverable errors, a panic ends only that \
+task and logs the mod's name. Its error toast passes through `toast_add` before queuing, as NeoForge's \
+`ToastAddEvent` does in `ToastManager.addToast`."""
 migrate = """
 Existing payload handlers need no change. In `client_setup`, use `let Some(executor) = \
 host.client_executor() else { return; };` and clone it into workers. Restricted hosts such as the \
 client-side `entity_entering_section` host return `None`. Replace an off-thread client operation with \
 `executor.execute(Box::new(move |host| { /* use the live client host */ }))`. Keep \
-`IPayloadContext::enqueue_work` when the task needs that payload's epoch or reply context.
+`IPayloadContext::enqueue_work` when the task needs that payload's epoch or reply context. When the \
+closure runs, recheck retained world handles: a preceding packet may have removed the entity or \
+changed the level.
 
 In a `[[native.mixin]]` row, change the target from `sunrise_client_lib::net::Session::poll` to \
 `sunrise_client_lib::net::client_inbox::ClientInbox::poll`. The Rust signature for the new target is \

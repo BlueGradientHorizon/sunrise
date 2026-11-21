@@ -88,6 +88,24 @@ impl ClientInbox {
         (0..count).map_while(|_| receiver.try_recv().ok()).collect()
     }
 
+    /// Take tasks published before the executor phase, up to the first packet
+    /// still waiting for the active connection's next packet drain.
+    pub fn poll_ready_tasks(&self, serial: Option<u64>) -> impl Iterator<Item = ClientTask> + '_ {
+        self.receiver.iter().flat_map(move |receiver| {
+            let count = receiver.stats().queued_items;
+            (0..count)
+                .map_while(move |_| {
+                    receiver.try_recv_if(|item| {
+                        matches!(item.event, Event::ClientTask(_)) || item.serial != serial
+                    })
+                })
+                .filter_map(|item| match item.event {
+                    Event::ClientTask(task) => Some(task),
+                    _ => None, // A packet from a retired connection.
+                })
+        })
+    }
+
     pub fn close(&mut self) {
         self.receiver = None;
     }
@@ -235,6 +253,29 @@ impl EventSender {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn executor_phase_leaves_tasks_behind_unhandled_packets() {
+        let inbox = ClientInbox::default();
+        let connection = inbox.connection(1);
+        inbox.executor("before").unwrap().execute(Box::new(|_| {}));
+        connection.send(Event::Status("packet".into())).unwrap();
+        inbox.executor("after").unwrap().execute(Box::new(|_| {}));
+
+        let owners: Vec<_> = inbox
+            .poll_ready_tasks(Some(1))
+            .map(|task| task.owner)
+            .collect();
+        assert_eq!(owners, ["before"]);
+        let mut pending = inbox.poll().into_iter();
+        assert!(
+            matches!(pending.next().unwrap().event, Event::Status(status) if status == "packet")
+        );
+        assert!(
+            matches!(pending.next().unwrap().event, Event::ClientTask(task) if task.owner == "after")
+        );
+        assert!(pending.next().is_none());
+    }
 
     #[test]
     fn full_retired_connection_cannot_charge_or_publish_into_its_replacement() {

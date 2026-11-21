@@ -18,11 +18,13 @@ impl ClientExecutor {
         Self(Arc::new(submit))
     }
 
-    /// Queues `task` for the next client-thread drain, even when called on the client
-    /// thread. Tasks run in submission order with a fresh host. Move owned data into
-    /// the task, not the caller's host or payload context. The task is dropped if the
-    /// client stops before it can run. A task that panics is reported with the mod's name;
-    /// later tasks, including those from the same mod, still run.
+    /// Queues `task` for the executor phase after the packet processor; it never runs
+    /// inline, even on the client thread. Tasks get a live host in submission order.
+    /// A packet or queued payload work still waiting ahead of a task holds it back.
+    /// Move owned data into the task, not the caller's host or payload context.
+    /// Quitting drops tasks that have not run.
+    /// A panic ends that task and is logged with the mod's name; an error toast goes
+    /// through `toast_add`. Later tasks, including those from the same mod, still run.
     pub fn execute(&self, task: Box<dyn FnOnce(&mut dyn ClientHost) + Send>) {
         (self.0)(task);
     }

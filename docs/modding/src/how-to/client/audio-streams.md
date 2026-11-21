@@ -116,7 +116,8 @@ worker_executor.execute(Box::new(move |host| {
 }));
 ```
 
-`set_entity` checks tracking when the task runs, not when it is submitted.
+`set_entity` checks tracking when the task runs, after preceding packets. It returns `false`
+if a packet already removed the entity or moved the client to another level.
 
 ## Threading
 

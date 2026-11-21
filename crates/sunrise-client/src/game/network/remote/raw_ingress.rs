@@ -3,49 +3,74 @@ use super::*;
 
 impl Game<'_> {
     /// Drain the current connection's packets and then the application's tasks.
-    /// Before a tick we take only deferred packets, with no chunk budget.
+    /// Before a tick the packet phase takes only deferred packets, with no chunk budget.
     pub(super) fn poll_remote_events(&mut self, before_tick: bool) -> Result<()> {
         let serial = self.remote.as_ref().map(|remote| remote.session.serial());
         let mut events = std::mem::take(&mut self.client_backlog);
+        let mut tasks = std::mem::take(&mut self.client_backlog_tasks);
         if self.client_backlog_serial != serial {
             // Old packets (including queued payload work) belong only to their connection.
-            events.clear();
+            drop(events.drain(..events.len() - tasks));
             self.client_backlog_serial = serial;
         }
-        let mut turn = if before_tick {
-            Vec::new()
-        } else {
-            self.client_inbox.poll()
-        };
-        // Minecraft.runTick processes packets before its scheduled executables.
-        // Keep this turn's tasks in the frozen turn itself, not the packet backlog.
-        for queued in turn.extract_if(.., |item| !matches!(item.event, Event::ClientTask(_))) {
-            let (source, event, credit) = queued.into_parts();
-            if source != serial {
-                continue;
-            }
-            // Decode the columns in parallel, but apply each at its ordered slot.
-            events.push_back(match (self.remote.as_mut(), event) {
-                (Some(remote), Event::Packet(packet))
-                    if matches!(*packet, C::LevelChunkWithLight(_)) =>
-                {
-                    match remote.decoder.submit(remote.chunk_format.clone(), packet) {
-                        None => Received::Chunk(remote.chunk_format.clone(), credit),
-                        Some(packet) => Received::Event(Event::Packet(packet), credit),
-                    }
+        if !before_tick {
+            let mut turn = self.client_inbox.poll();
+            let deferred_end = events.len();
+            for queued in turn.extract_if(.., |item| !matches!(item.event, Event::ClientTask(_))) {
+                let (source, event, credit) = queued.into_parts();
+                if source != serial {
+                    continue;
                 }
-                (_, event) => Received::Event(event, credit),
-            });
-        }
-        let result = self.dispatch_client_events(&mut events, before_tick);
-        self.client_backlog = events;
-        for queued in turn {
-            if !self.client_inbox.is_open() {
-                break;
+                // Decode the columns in parallel, but apply each at its ordered slot.
+                events.push_back(match (self.remote.as_mut(), event) {
+                    (Some(remote), Event::Packet(packet))
+                        if matches!(*packet, C::LevelChunkWithLight(_)) =>
+                    {
+                        match remote.decoder.submit(remote.chunk_format.clone(), packet) {
+                            None => Received::Chunk(remote.chunk_format.clone(), credit),
+                            Some(packet) => Received::Event(Event::Packet(packet), credit),
+                        }
+                    }
+                    (_, event) => Received::Event(event, credit),
+                });
             }
-            if let Event::ClientTask(task) = queued.event {
+            if tasks != 0 && events.len() != deferred_end {
+                // Put newly received packets before the deferred task suffix.
+                events.make_contiguous()[deferred_end - tasks..].rotate_left(tasks);
+            }
+            tasks += turn.len();
+            events.extend(turn.into_iter().map(|queued| {
+                let (_, event, credit) = queued.into_parts();
+                Received::Event(event, credit)
+            }));
+        }
+        let result = self.dispatch_client_events(&mut events, before_tick, tasks);
+        let active = self.remote.as_ref().map(|remote| remote.session.serial());
+        if active != serial {
+            drop(events.drain(..events.len() - tasks));
+            self.client_backlog_serial = active;
+        }
+        // Minecraft.runTick finishes packet processing before scheduled executables.
+        // Anything held behind an undecoded or deferred chunk stays in this backlog.
+        if result.is_ok() && events.len() == tasks {
+            events.extend(
+                self.client_inbox
+                    .poll_ready_tasks(active)
+                    .map(|task| Received::Event(Event::ClientTask(task), None)),
+            );
+            while self.client_inbox.is_open()
+                && let Some(item) = events.pop_front()
+            {
+                let Received::Event(Event::ClientTask(task), _) = item else {
+                    unreachable!("only executor tasks remain after packet dispatch");
+                };
                 self.run_client_task(task);
             }
+            tasks = 0;
+        }
+        if self.client_inbox.is_open() {
+            self.client_backlog_tasks = tasks;
+            self.client_backlog = events;
         }
         result
     }
@@ -54,6 +79,7 @@ impl Game<'_> {
         &mut self,
         events: &mut VecDeque<Received>,
         before_tick: bool,
+        tasks: usize,
     ) -> Result<()> {
         let overdue = self
             .remote
@@ -65,7 +91,8 @@ impl Game<'_> {
         // teleport at 32 chunks) is forgotten at once, before whatever follows it.
         let mut forgotten = sunrise_client::fast_hash::FxHashSet::default();
         let mut forgotten_credits = Vec::new();
-        while let Some(item) = events.pop_front() {
+        for _ in 0..events.len() - tasks {
+            let item = events.pop_front().expect("packet slot in the backlog");
             if let Received::Event(Event::Packet(packet), _) = &item
                 && let C::ForgetLevelChunk(p) = &**packet
             {
@@ -293,7 +320,7 @@ impl Game<'_> {
                     self.leave_server(Some(Text::literal(reason)))?;
                     return Ok(());
                 }
-                Event::ClientTask(task) => self.run_client_task(task),
+                Event::ClientTask(_) => unreachable!("executor tasks follow the packet slots"),
                 Event::RawPayload(incoming) => {
                     if let Some(remote) = self.remote.as_ref() {
                         self.run_payload(remote.session.payload_endpoint(), *incoming);
@@ -317,7 +344,7 @@ impl Game<'_> {
             });
         }
         if let Some(r) = self.remote.as_mut() {
-            r.backlog_since = if events.is_empty() {
+            r.backlog_since = if events.len() == tasks {
                 None
             } else {
                 Some(r.backlog_since.unwrap_or_else(Instant::now))
@@ -325,5 +352,58 @@ impl Game<'_> {
         }
         self.send_suggestion_request();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::with_client_game;
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_waits_for_entity_removal_behind_a_decoding_chunk() {
+        with_client_game(|game| {
+            game.init_remote_for_replay().unwrap();
+            let remote = game.remote.as_mut().unwrap();
+            remote.logged_in = true;
+            let format = remote.chunk_format.clone();
+            game.client_backlog_serial = Some(remote.session.serial());
+            // Insert the decoder slot without supplying its result yet.
+            assert!(matches!(remote.decoder.next(), Next::Decoding));
+            game.client_backlog.extend([
+                Received::Chunk(format, None),
+                Received::Event(
+                    Event::Packet(Box::new(C::RemoveEntities(play::RemoveEntities {
+                        ids: vec![20],
+                    }))),
+                    None,
+                ),
+            ]);
+            game.spawn_entity(20, "minecraft:pig", [2.0, 64.0, 0.0], [0.0; 3]);
+            let entity = game.entity(20).unwrap();
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            let (record, calls) = std::sync::mpsc::channel();
+            let executor = game.client_inbox.executor("producer").unwrap();
+            executor.execute(Box::new(move |host| {
+                record.send(entity.position(host)).unwrap()
+            }));
+
+            game.poll_remote().unwrap();
+            assert!(matches!(
+                calls.try_recv(),
+                Err(std::sync::mpsc::TryRecvError::Empty)
+            ));
+            assert_eq!(entity.position(game), Some([2.0, 64.0, 0.0]));
+
+            // Retire the synthetic chunk slot without relying on worker timing.
+            assert!(matches!(
+                game.client_backlog.pop_front(),
+                Some(Received::Chunk(..))
+            ));
+            game.poll_remote_before_tick().unwrap();
+            assert_eq!(calls.try_recv(), Ok(None));
+        });
     }
 }

@@ -4012,7 +4012,9 @@ struct Game<'a> {
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
     client_inbox: sunrise_client::net::ClientInbox,
+    // Deferred packets, then pending executor tasks, in the same backlog.
     client_backlog: std::collections::VecDeque<raw_backlog::Received>,
+    client_backlog_tasks: usize,
     client_backlog_serial: Option<u64>,
     client_executor: client_executor::State,
     /// The current connection came from Realms (retained for reconnect).
@@ -12277,8 +12279,8 @@ impl Game<'_> {
                     if sound {
                         self.audio.play_button_click();
                     }
-                    self.title_action(event_loop, action)?;
-                    self.reopen_data_packs(event_loop)?;
+                    self.title_action(action)?;
+                    self.reopen_data_packs()?;
                 }
                 // AbstractSelectionList.mouseClicked: the world list takes a
                 // click of any button, so the middle one selects its row
@@ -12696,7 +12698,7 @@ impl Game<'_> {
                                 if sound {
                                     self.audio.play_button_click();
                                 }
-                                self.title_action(event_loop, action)?;
+                                self.title_action(action)?;
                             }
                             PhysicalKey::Code(
                                 key @ (KeyCode::Backspace
@@ -12738,7 +12740,7 @@ impl Game<'_> {
                             PhysicalKey::Code(KeyCode::Escape) => {
                                 if let Some(t) = self.title.as_mut() {
                                     t.escape();
-                                    self.reopen_data_packs(event_loop)?;
+                                    self.reopen_data_packs()?;
                                 }
                                 self.save_title_options();
                             }
@@ -13610,6 +13612,7 @@ impl<'a> Game<'a> {
             remote: None,
             client_inbox: Default::default(),
             client_backlog: Default::default(),
+            client_backlog_tasks: 0,
             client_backlog_serial: None,
             client_executor: Default::default(),
             realm_session: false,

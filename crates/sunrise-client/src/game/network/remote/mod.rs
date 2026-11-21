@@ -2298,7 +2298,7 @@ impl Game<'_> {
     pub(super) fn remote_backlog(&self) -> usize {
         self.remote
             .as_ref()
-            .map_or(0, |_| self.client_backlog.len())
+            .map_or(0, |_| self.client_backlog.len() - self.client_backlog_tasks)
     }
 
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -2333,12 +2333,12 @@ impl Game<'_> {
     /// `CHUNK_PACKETS_PER_FRAME`: once a frame has spent it, the events from
     /// the next chunk packet on wait for the next frame, unless they have
     /// already waited `BACKLOG_LIMIT`. A chunk packet still decoding holds
-    /// back later network events, but not this turn's client executor tasks.
+    /// back later network events and the executor phase that follows them.
     pub(super) fn poll_remote(&mut self) -> Result<()> {
         self.poll_remote_with(false)
     }
 
-    /// `Minecraft.runTick` handles every packet that came (`runAllTasks`)
+    /// `Minecraft.runTick` handles every packet that came (`processQueuedPackets`)
     /// before the frame's ticks. What this frame's poll left for later (chunks
     /// past its budget or still decoding, and everything after them) is taken
     /// when a tick is about to run, so the tick moves through those chunks, as

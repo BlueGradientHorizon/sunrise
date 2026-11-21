@@ -16,10 +16,13 @@ let worker_executor = executor.clone();
 worker_executor.execute(Box::new(move |host| { /* use the client host here */ }));
 ```
 
-The executor does not run the closure inline. The next client task drain runs queued work in
-submission order and lends each callback a live `&mut dyn ClientHost`, even if packet work
-must wait. Work submitted after shutdown starts is dropped, as is any work that has not run by
-then. A panic is logged and shown in an error toast naming the mod; other tasks still run.
+The executor does not run the closure inline. Each client drain handles packets and queued
+payload work first, then runs executor tasks in submission order with a live
+`&mut dyn ClientHost`. A task submitted while packets are being handled can run in that drain;
+if packet work ahead of it is deferred, the task waits too. When the client starts quitting,
+including from the title screen, pending and new tasks are dropped. A panic ends only that task
+and is logged with the mod's name. The error toast goes through `toast_add`, so listeners may
+edit or cancel it without suppressing the log.
 
 The executor belongs to the client application, not to a connection or level. Keep using
 `IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or

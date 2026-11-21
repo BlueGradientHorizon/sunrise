@@ -270,6 +270,17 @@ impl<T> Receiver<T> {
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
     }
+
+    /// Receive the front value only if it matches, without skipping queued values.
+    /// The predicate runs under the queue lock and must not call back into the channel.
+    pub fn try_recv_if(&self, matches: impl FnOnce(&T) -> bool) -> Option<T> {
+        let mut state = self.0.lock();
+        if !matches(&state.queue.front()?.0) {
+            return None;
+        }
+        Self::pop(&mut state)
+    }
+
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let mut state = self.0.lock();
         Self::pop(&mut state).ok_or(if state.senders == 0 {

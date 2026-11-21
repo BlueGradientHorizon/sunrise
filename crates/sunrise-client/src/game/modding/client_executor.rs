@@ -25,6 +25,7 @@ impl Game<'_> {
     pub(super) fn close_client_tasks(&mut self) {
         self.client_inbox.close();
         self.client_backlog.clear();
+        self.client_backlog_tasks = 0;
     }
 
     pub(super) fn run_client_task(&mut self, task: ClientTask) {
@@ -42,13 +43,14 @@ impl Game<'_> {
             Ok(Err(refusal)) => refusal.report(),
             Err(error) => {
                 log::error!("Mod {owner} panicked in client executor work: {error}");
-                self.client_executor.errors.push(
-                    SystemToast::new(
-                        Text::tr("sunrise.toast.client_task_failed", &[]),
-                        Some(Text::literal(owner)),
-                    )
-                    .with_title_color(hud::rgba(255, 85, 85, 255)),
-                );
+                let toast = SystemToast::new(
+                    Text::tr("sunrise.toast.client_task_failed", &[]),
+                    Some(Text::literal(owner)),
+                )
+                .with_title_color(hud::rgba(255, 85, 85, 255));
+                if let Some(toast) = self.add_system_toast(toast) {
+                    self.client_executor.errors.push(toast);
+                }
             }
         }
     }
@@ -99,9 +101,11 @@ mod tests {
     use crate::game::{
         EventLoopCtl, native_entity_refs::tests::with_client_game, raw_backlog::Received,
     };
-    use mod_api::ClientHost;
+    use mod_api::{
+        ClientDisconnectingEvent, ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind,
+    };
     use std::{
-        sync::{Arc, Mutex},
+        sync::{Arc, Mutex, mpsc},
         thread,
     };
     use sunrise_client::net::Event;
@@ -224,47 +228,120 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn executor_reports_a_panic_and_runs_later_tasks_from_any_mod() {
+    fn title_quit_discards_pending_and_late_client_tasks() {
         with_client_game(|game| {
-            let failed = executor(game, "failed");
-            let other = executor(game, "other");
-            let (record, calls) = std::sync::mpsc::channel();
-            failed.execute(Box::new(|_| std::panic::panic_any(PanickingPayload)));
-            let same_mod = record.clone();
-            failed.execute(Box::new(move |_| same_mod.send("failed").unwrap()));
-            other.execute(Box::new(move |_| record.send("other").unwrap()));
+            game.title = Some(game.new_title(game.save.root.clone()));
+            let executor = executor(game, "producer");
+            let (pending, pending_calls) = mpsc::channel();
+            executor.execute(Box::new(move |_| pending.send(()).unwrap()));
 
+            game.title_action(crate::game::Action::Quit).unwrap();
+            assert_eq!(
+                pending_calls.try_recv(),
+                Err(mpsc::TryRecvError::Disconnected)
+            );
+            assert!(game.pending_save.as_ref().unwrap().quit);
+
+            let (late, late_calls) = mpsc::channel();
+            thread::spawn(move || executor.execute(Box::new(move |_| late.send(()).unwrap())))
+                .join()
+                .unwrap();
+            assert_eq!(late_calls.try_recv(), Err(mpsc::TryRecvError::Disconnected));
             game.poll_remote().unwrap();
-            assert_eq!(calls.try_iter().collect::<Vec<_>>(), ["failed", "other"]);
-            assert_eq!(game.client_executor.errors.len(), 1);
-            let error = &game.client_executor.errors[0];
-            assert_eq!(error.message.as_ref().unwrap().plain(), "failed");
+            assert!(game.poll_closing_save().unwrap());
         });
     }
 
     #[test]
     #[ignore = "daily"]
-    fn executor_drains_the_current_turn_even_when_a_packet_disconnects() {
-        with_client_game(|game| {
-            game.init_remote_for_replay().unwrap();
-            game.client_backlog_serial = Some(game.remote.as_ref().unwrap().session.serial());
-            game.client_backlog.push_back(Received::Event(
-                Event::Disconnected {
-                    reason: "fixture disconnected".into(),
-                    key: None,
-                    from_server: true,
-                },
-                None,
-            ));
-            let executor = executor(game, "producer");
-            let (record, calls) = std::sync::mpsc::channel();
-            let first = record.clone();
-            executor.execute(Box::new(move |_| first.send(2).unwrap()));
-            executor.execute(Box::new(move |_| record.send(1).unwrap()));
+    fn executor_admits_panic_toasts_through_toast_add_and_runs_later_tasks() {
+        struct Listener;
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+                if event.kind == ToastKind::System {
+                    match event.description.as_ref().map(|text| &text.content) {
+                        Some(mod_api::text::TextContent::Literal(owner)) if owner == "canceled" => {
+                            return Flow::Cancel;
+                        }
+                        Some(mod_api::text::TextContent::Literal(owner)) if owner == "failed" => {
+                            *event.title = mod_api::Text::literal("Executor callback failed");
+                        }
+                        _ => {}
+                    }
+                }
+                Flow::Continue
+            }
+        }
 
-            game.poll_remote().unwrap();
-            assert!(game.remote.is_none());
-            assert_eq!(calls.try_iter().collect::<Vec<_>>(), [2, 1]);
+        let mods = vec![ModEntry::new("toast_listener", Box::new(Listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                let failed = executor(game, "failed");
+                let canceled = executor(game, "canceled");
+                let other = executor(game, "other");
+                let (record, calls) = mpsc::channel();
+                failed.execute(Box::new(|_| std::panic::panic_any(PanickingPayload)));
+                canceled.execute(Box::new(|_| panic!("cancel this toast")));
+                let same_mod = record.clone();
+                failed.execute(Box::new(move |_| same_mod.send("failed").unwrap()));
+                other.execute(Box::new(move |_| record.send("other").unwrap()));
+
+                game.poll_remote().unwrap();
+                assert_eq!(calls.try_iter().collect::<Vec<_>>(), ["failed", "other"]);
+                assert_eq!(game.client_executor.errors.len(), 1);
+                let error = &game.client_executor.errors[0];
+                assert_eq!(error.title.plain(), "Executor callback failed");
+                assert_eq!(error.message.as_ref().unwrap().plain(), "failed");
+            });
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn executor_drains_work_published_while_a_packet_disconnects() {
+        struct Listener(mpsc::Sender<i32>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn client_disconnecting(
+                &self,
+                host: &dyn ClientHost,
+                _: &mut ClientDisconnectingEvent,
+            ) {
+                let record = self.0.clone();
+                host.client_executor()
+                    .unwrap()
+                    .execute(Box::new(move |_| record.send(3).unwrap()));
+            }
+        }
+
+        let (record, calls) = mpsc::channel();
+        let mods = vec![ModEntry::new(
+            "during_disconnect",
+            Box::new(Listener(record.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                game.init_remote_for_replay().unwrap();
+                game.client_backlog_serial = Some(game.remote.as_ref().unwrap().session.serial());
+                game.client_backlog.push_back(Received::Event(
+                    Event::Disconnected {
+                        reason: "fixture disconnected".into(),
+                        key: None,
+                        from_server: true,
+                    },
+                    None,
+                ));
+                let executor = executor(game, "producer");
+                let first = record.clone();
+                executor.execute(Box::new(move |_| first.send(2).unwrap()));
+                executor.execute(Box::new(move |_| record.send(1).unwrap()));
+
+                game.poll_remote().unwrap();
+                assert!(game.remote.is_none());
+                assert_eq!(calls.try_iter().collect::<Vec<_>>(), [2, 1, 3]);
+            });
         });
     }
 }
