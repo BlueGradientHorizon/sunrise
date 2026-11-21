@@ -916,7 +916,8 @@ fn predicate(t: &Tag, source: Source) -> Result<Value> {
 pub fn from_component_tag(id: &str, t: &Tag) -> Result<Value> {
     from_component_tag_with(id, t, |_| false)
 }
-/// Project a retained component and its templates using effects admitted when it was read.
+/// Project a live component, reusing its admitted effects and reporting any effects
+/// newly materialized from deferred templates to the caller.
 pub fn from_admitted_component_tag(
     id: &str,
     t: &Tag,

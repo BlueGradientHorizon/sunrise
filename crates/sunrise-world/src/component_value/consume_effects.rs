@@ -99,7 +99,7 @@ impl Admitted {
     }
 }
 
-/// Decode the registered map codec at persistent admission, not at packet send.
+/// Decode a registered map value when its containing stack is materialized.
 /// `None` means the key is not registered, not that its registered codec refused the value.
 pub fn admit(name: &str, fields: &Compound) -> Result<Option<Admitted>, String> {
     let Some((name, ty)) = by_name(name) else {
