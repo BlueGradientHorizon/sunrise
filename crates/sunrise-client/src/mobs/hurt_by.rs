@@ -41,10 +41,6 @@ pub(super) fn resolve(m: &mut Mob, source: &Damage) {
     let Some(who) = source.attacker else { return };
     if !source.kind.no_anger() {
         m.ai.hurt_by(who, m.age as i32);
-        if m.species() == Species::Villager {
-            let alive = m.alive();
-            super::villager::ext_mut(m).hurts.push((who, None, alive));
-        }
     }
     if who == Who::Player {
         m.ai.last_hurt_by_player = 100;

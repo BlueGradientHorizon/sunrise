@@ -58,7 +58,7 @@ def main(argv=None):
     artifacts = {}
     executed = {}
     for package, group, count in [
-        ('sunrise-client-lib', 'mobs::villager_brain::reputation_witness_tests', 2),
+        ('sunrise-client-lib', 'mobs::villager_brain::reputation_witness_tests', 1),
         ('sunrise-client', 'game::villagers::witness_tests', 2),
     ]:
         if package not in artifacts:

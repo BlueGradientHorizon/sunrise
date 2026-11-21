@@ -2,9 +2,10 @@
 use super::{Game, combat::PlayerCredit};
 use std::collections::HashMap;
 use sunrise_client::{
+    gossip::{self, GossipType},
     health::{Attack, Hurting, KnockbackCredit},
     items::ItemStack,
-    mobs::{Mob, Species, Who},
+    mobs::{Damage, Mob, MobEvent, Species, Who, villager},
 };
 
 #[derive(Default)]
@@ -24,6 +25,14 @@ pub(super) struct CreditPlan {
     responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
     responsibility_live: bool,
     fixed: CreditEntity,
+    /// A villager victim's hurt gossip: the player acting and the mob (or other entity)
+    /// attacking, with that attacker's UUID and whether it was made up for this hit.
+    hurt_by: Option<HurtBy>,
+}
+
+struct HurtBy {
+    player: Option<[i32; 4]>,
+    attacker: Option<(u32, [i32; 4], bool)>,
 }
 
 pub(super) struct CreditLoan<'a> {
@@ -47,10 +56,6 @@ impl KnockbackCredit for CreditLoan<'_> {
             mob.ai.last_hurt_by_player = if responsibility.is_some() { 100 } else { 0 };
             match &responsibility {
                 Some((credit, _)) => {
-                    sunrise_client::mobs::villager::bind_hurt_player(
-                        mob,
-                        sunrise_client::lan::playerdata::uuid_ints(credit.0),
-                    );
                     self.players.insert(mob.id, *credit);
                 }
                 None => {
@@ -59,6 +64,37 @@ impl KnockbackCredit for CreditLoan<'_> {
             }
             self.plan.player = responsibility;
         }
+    }
+
+    fn villager_hurt(&mut self, mob: &mut Mob, source: &Damage) {
+        let (Some(hurt_by), Some(who)) = (&self.plan.hurt_by, source.attacker) else {
+            return;
+        };
+        if source.kind.no_anger() {
+            return;
+        }
+        let (uuid, attacker_uuid) = match who {
+            Who::Player => (hurt_by.player, None),
+            Who::Mob(id) => match hurt_by.attacker {
+                Some((attacker, uuid, minted)) if attacker == id => {
+                    (Some(uuid), minted.then_some((id, uuid)))
+                }
+                _ => (None, None),
+            },
+        };
+        let Some(uuid) = uuid else { return };
+        villager::ext_mut(mob).gossips.add(
+            uuid,
+            GossipType::MinorNegative,
+            gossip::REPUTATION_CHANGE_PER_EVENT,
+        );
+        // The angry event only for a living villager and a player.
+        mob.outbox.push(MobEvent::VillagerHurt {
+            mob: mob.id,
+            angry: mob.alive() && who == Who::Player,
+            player: who == Who::Player,
+            attacker_uuid,
+        });
     }
 
     fn resolve_player_responsible(&mut self, mob: &mut Mob) -> bool {
@@ -188,6 +224,25 @@ impl Game<'_> {
                 let credited = self.credited_entity(id).map_or(0, |e| e.id() as i32);
                 (id, entity(credited))
             });
+        let hurt_by = self
+            .mobs
+            .iter()
+            .any(|m| m.id as i32 == victim && m.species() == Species::Villager)
+            .then(|| HurtBy {
+                player: self.player_uuid_of(self.lan_acting),
+                attacker: match attacker {
+                    Some(Who::Mob(id)) => Some(
+                        match self
+                            .known_resident_entity_uuid_at(self.dim.key(), id)
+                            .or_else(|| self.persist.uuids.get(&id).copied())
+                        {
+                            Some(uuid) => (id, uuid, false),
+                            None => (id, sunrise_client::save::random_uuid(), true),
+                        },
+                    ),
+                    _ => None,
+                },
+            });
         let fixed = if observed && mob.is_none() {
             self.entity(victim as u32)
                 .and_then(|entity| self.living(entity))
@@ -209,6 +264,7 @@ impl Game<'_> {
             responsibility: responsibility.map(|credit| credit.map(credited_player)),
             responsibility_live,
             fixed,
+            hurt_by,
         }
     }
 }

@@ -98,28 +98,3 @@ fn witnesses_use_sensor_candidates_radius_invisibility_and_cached_results() {
         },
     ));
 }
-
-#[test]
-fn each_accepted_hit_queues_one_hurt_even_in_one_tick() {
-    let mut m = villager(1, 0.0, 0.0, false);
-    let hit = |who| crate::mobs::Damage {
-        attacker: Some(who),
-        ..crate::mobs::Damage::of(crate::mobs::DamageKind::PlayerAttack)
-    };
-    for who in [Who::Mob(7), Who::Player, Who::Player] {
-        super::super::hurt_by::resolve(&mut m, &hit(who));
-    }
-    m.health = 0.0;
-    super::super::hurt_by::resolve(&mut m, &hit(Who::Mob(8)));
-    let hurts = &super::super::villager::ext(&m).unwrap().hurts;
-    let who: Vec<_> = hurts.iter().map(|h| (h.0, h.2)).collect();
-    assert_eq!(
-        who,
-        [
-            (Who::Mob(7), true),
-            (Who::Player, true),
-            (Who::Player, true),
-            (Who::Mob(8), false)
-        ]
-    );
-}

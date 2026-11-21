@@ -1,0 +1,1 @@
+sunrise-client game::villagers::witness_tests::every_accepted_hurt_counts_for_its_own_attacker lib daily resources

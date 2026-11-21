@@ -1615,7 +1615,6 @@ impl Game<'_> {
         self.sync_riders();
         self.tick_skeleton_traps();
         self.guardian_bubbles();
-        self.villager_reputation_tick();
         self.villager_item_sense();
         self.villager_pickups();
         laps.lap("creature_villagers");
@@ -2213,9 +2212,6 @@ impl Game<'_> {
     /// Remember the acting player for a mob's `lastHurtByPlayer`.
     pub(super) fn remember_mob_player_credit(&mut self, victim: u32) {
         if let Some(uuid) = self.player_uuid_of(self.lan_acting) {
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == victim) {
-                sunrise_client::mobs::villager::bind_hurt_player(m, uuid);
-            }
             self.last_hurt_by_player.insert(
                 victim,
                 super::combat::PlayerCredit(sunrise_client::lan::playerdata::ints_uuid(uuid)),
@@ -2464,6 +2460,12 @@ impl Game<'_> {
                     source,
                 } => self.hurt_mob_armor(mob, amount, &source),
                 MobEvent::GliderWear { mob, slot } => self.wear_mob_glider(mob, slot),
+                MobEvent::VillagerHurt {
+                    mob,
+                    angry,
+                    player,
+                    attacker_uuid,
+                } => self.villager_hurt_event(mob, angry, player, attacker_uuid),
                 MobEvent::EntityEvent { mob, event, at } => {
                     // Ravager.roar (event 69 ends it): with the raw mob_griefing rule (not
                     // canEntityGrief), ROAR_TARGET_WITH_GRIEFING also takes the armor stands.

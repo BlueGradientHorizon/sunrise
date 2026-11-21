@@ -409,8 +409,9 @@ impl<'a> DamageLevel<'a> {
         self
     }
     /// Commit this accepted hit's responsibility at vanilla's pre-push memory point.
-    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob) {
+    pub fn accepted_mob_hit(&mut self, mob: &mut crate::mobs::Mob, source: &crate::mobs::Damage) {
         if let Credit::Loan(credit) = &mut self.credit {
+            credit.villager_hurt(mob, source);
             credit.accepted_mob_hit(mob);
         }
     }

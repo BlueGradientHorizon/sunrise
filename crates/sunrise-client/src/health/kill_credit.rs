@@ -53,6 +53,9 @@ impl PlayerResolver<'_> {
 pub trait KnockbackCredit {
     /// Commit accepted-hit player responsibility before the default push.
     fn accepted_mob_hit(&mut self, mob: &mut Mob);
+    /// `Villager.setLastHurtByMob` of this accepted hit: the gossip about the entity that
+    /// caused it, the moment it lands.
+    fn villager_hurt(&mut self, mob: &mut Mob, source: &crate::mobs::Damage);
     /// `LivingEntity.resolvePlayerResponsibleForDamage`: commit this hit's
     /// player/tamed-wolf responsibility (if any) and report whether a live
     /// player is responsible while the 100-tick memory timer is active.
