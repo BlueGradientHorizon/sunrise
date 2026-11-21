@@ -684,8 +684,11 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
     files = released_assets(sha, SDK_INDEX, *names)
     try:
         index = json.loads(files[SDK_INDEX])
-        if index["schema"] != 1 or index["build"]["commit"] != sha:
-            raise ValueError("sdk.json has an unsupported schema or names the wrong build")
+        schema = index["schema"]
+        if type(schema) is not int or schema != 1:
+            raise ValueError(f"sdk.json has schema {schema!r}; expected 1")
+        if index["build"]["commit"] != sha:
+            raise ValueError("sdk.json names the wrong build")
         content_api = index["content_api"]
         if not isinstance(content_api, str):
             raise ValueError("sdk.json has no content_api version")
@@ -744,7 +747,7 @@ def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerpri
 
 
 def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> None:
-    """Backports may be merged by PR; new history shared with main starts a new major."""
+    """Backports may be merged by PR; new commits from main's first-parent line start a new major."""
     main = "refs/remotes/origin/main"
     # The publish job normally has a shallow checkout. Both sides' full ancestry is needed;
     # only fetch the candidate, its previous stable build and main, not every branch and tag.
@@ -752,10 +755,10 @@ def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> No
     git("fetch", "--quiet", "--no-tags", *unshallow, "origin", f"+refs/heads/main:{main}", sha, old_sha)
     if not is_ancestor(old_sha, sha):
         raise SystemExit(f"::error::refused: {tag} does not descend from {old_tag}")
-    # Every common ancestor of main and the candidate is reachable from some merge base.
-    # If one base is newer than the stable history, the candidate imported main history.
-    bases = git("merge-base", "--all", main, sha).splitlines()
-    if imported := next((base for base in bases if not is_ancestor(base, old_sha)), None):
+    # A backport merged back into main is reachable from main, but not on its first-parent line.
+    candidate_commits = set(git("rev-list", sha, f"^{old_sha}").splitlines())
+    main_line = git("rev-list", "--first-parent", main, f"^{old_sha}").splitlines()
+    if imported := next((commit for commit in main_line if commit in candidate_commits), None):
         raise SystemExit(f"::error::refused: {tag} brings in main history ({imported}) absent from {old_tag}; "
                          "cherry-pick fixes on this line or use a new major")
 
@@ -1168,6 +1171,8 @@ def main() -> None:
     elif args.cmd == "break-glass-notes":
         break_glass_notes(args.notes)
     elif args.cmd == "stable-mod-api":
+        if not train.FULL_SHA.fullmatch(args.sha):
+            stable_api.error("sha must be a full lowercase commit SHA")
         stable_mod_api(args.sha, args.tag, args.notes)
     elif args.cmd == "rotate":
         rotate()

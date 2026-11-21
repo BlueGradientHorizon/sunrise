@@ -347,6 +347,49 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "does not descend from"):
                 nightly.require_stable_lineage(unrelated, tag, previous, PREVIOUS)
 
+    def test_same_line_accepts_backport_already_merged_back_into_main(self):
+        repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
+        repo.mkdir()
+        git = nightly.git
+        with chdir(repo):
+            git("init", "--initial-branch=main")
+            for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+                git("config", key, git("config", "--default", default, "--get", key))
+            git("commit", "--allow-empty", "-m", "previous stable")
+            previous = git("rev-parse", "HEAD")
+            git("switch", "-c", "release")
+            git("commit", "--allow-empty", "-m", "backport")
+            git("switch", "main")
+            git("commit", "--allow-empty", "-m", "main-only change")
+            git("merge", "--no-ff", "release", "-m", "back-merge release")
+            git("switch", "release")
+            git("commit", "--allow-empty", "-m", "another release fix")
+            candidate = git("rev-parse", "HEAD")
+        git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
+        with chdir(checkout):
+            nightly.require_stable_lineage(candidate, "26.3-0.1.11", previous, PREVIOUS)
+
+    def test_stable_mod_api_command_requires_a_full_commit_sha(self):
+        for sha in ("HEAD", HEAD[:12], HEAD.upper()):
+            with self.subTest(sha=sha), \
+                    mock.patch("sys.argv", ["nightly.py", "stable-mod-api", sha, PREVIOUS, str(self.notes)]), \
+                    mock.patch("sys.stderr", new_callable=io.StringIO) as stderr, \
+                    mock.patch.object(nightly, "stable_mod_api") as compare:
+                with self.assertRaises(SystemExit):
+                    nightly.main()
+                self.assertIn("sha must be a full lowercase commit SHA", stderr.getvalue())
+                compare.assert_not_called()
+
+    def test_stable_sdk_rejects_non_integer_index_schema(self):
+        assets = sdk_assets(OLD, SURFACE, "1", {})
+        index = json.loads(assets[nightly.SDK_INDEX])
+        for schema in (True, 1.0, "1"):
+            with self.subTest(schema=schema):
+                assets[nightly.SDK_INDEX] = json.dumps(index | {"schema": schema}).encode()
+                with mock.patch.object(nightly, "released_assets", return_value=assets), \
+                        self.assertRaisesRegex(SystemExit, "sdk.json has schema"):
+                    nightly.stable_sdk_inputs(OLD, None)
+
     def test_large_notes_keep_every_target_in_a_linked_file(self):
         target = "module::" + "x" * 125_000
         nightly.append_mixin_notes(self.notes, "26.3-0.1.11", PREVIOUS, {}, {target: ("signature", "source")})
