@@ -293,9 +293,18 @@ mod tests {
                 let overlay = sunrise_world::loot::PackOverlay::new(&files);
                 let root = &game.options.resources;
                 let item_data = &game.res.core.item_data;
-                let sources =
-                    crate::game::lan::sync::server_sources(root, item_data, game.items(), &overlay)
+                // Build the server's item catalog from its packs, not the client table whose
+                // item tags were intentionally replaced by the preceding empty update.
+                let server_items =
+                    sunrise_client::items::Items::catalog(root, &overlay, item_data.defaults())
                         .unwrap();
+                let sources = crate::game::lan::sync::server_sources(
+                    root,
+                    item_data,
+                    &server_items,
+                    &overlay,
+                )
+                .unwrap();
                 let wire = sunrise_client::lan::data::SyncData::load(
                     root,
                     &overlay,

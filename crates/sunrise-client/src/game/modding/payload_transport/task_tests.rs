@@ -530,9 +530,15 @@ fn serving_game_drives_configuration_tasks() {
                                         );
                                     }
                                     assert!(
-                                        reason.contains("mod task_fixture: ConfigurationTask::start (task_fixture:first) panicked"),
+                                        reason.contains("mod task_fixture: configuration task callback panicked; it is disabled"),
                                         "{reason}"
                                     );
+                                    if matches!(case, Case::Panic) {
+                                        assert!(
+                                            reason.contains("fixture panic after staging completion and a payload"),
+                                            "{reason}"
+                                        );
+                                    }
                                     assert_eq!(*starts, [kind("first")]);
                                 }
                                 _ => panic!("unexpected configuration disconnect: {reason}"),
