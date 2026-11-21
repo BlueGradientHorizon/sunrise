@@ -93,24 +93,25 @@ pub fn parse(spec: &str) -> Option<ureq::Proxy> {
     };
     match ureq::Proxy::new(&address) {
         Ok(proxy) => Some(proxy),
-        Err(e) => {
-            say(&format!(
-                "The proxy address {} can't be used ({e}); downloads go without one.",
-                redacted(spec)
-            ));
+        Err(_) => {
+            say("Invalid proxy URL; downloads go without one.");
             None
         }
     }
 }
 
-/// `spec` as it may be shown: a user name and password in it become `***`. An address that can't
-/// be used is printed to stderr and shown in the launcher, and a proxy's credentials don't belong in
-/// either. Everything up to the last `@` is the credentials, so a password with an unescaped `/` or
-/// `@` is hidden too.
+/// `spec` as it may be shown: a user name and password in it become `***`. Everything up to the
+/// last `@`, excluding a valid scheme prefix, is hidden so unescaped delimiters in passwords aren't
+/// shown either. Diagnostics for invalid settings should not display their value at all.
 pub fn redacted(spec: &str) -> String {
     let (scheme, rest) = match spec.split_once("://") {
-        Some((scheme, rest)) => (format!("{scheme}://"), rest),
-        None => (String::new(), spec),
+        Some((scheme, rest))
+            if matches!(scheme.as_bytes(), [first, tail @ ..] if first.is_ascii_alphabetic()
+                && tail.iter().all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(b))) =>
+        {
+            (format!("{scheme}://"), rest)
+        }
+        _ => (String::new(), spec),
     };
     match rest.rfind('@') {
         Some(at) => format!("{scheme}***@{}", &rest[at + 1..]),
@@ -260,6 +261,10 @@ mod tests {
         );
         assert_eq!(redacted("http://u:p/a@ss@proxy:1"), "http://***@proxy:1");
         assert_eq!(redacted("http://user:pass@"), "http://***@");
+        assert_eq!(
+            redacted("dummy-user:dummy-password://with@delimiters@proxy.local:3128"),
+            "***@proxy.local:3128"
+        );
     }
 
     #[test]
