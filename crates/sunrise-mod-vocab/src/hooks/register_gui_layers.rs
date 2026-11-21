@@ -1,9 +1,9 @@
 //! The `register_gui_layers` hooks: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// Register a HUD layer's ID, placement and owned draw callback (NeoForge's
-    /// `RegisterGuiLayersEvent`). Asked once at client startup. The client calls only that
-    /// layer's callback when drawing it, between `gui_layer_pre` and `gui_layer_post`.
+    /// Register, wrap or replace a HUD layer with an owned draw callback (NeoForge's
+    /// `RegisterGuiLayersEvent`). Asked once at client startup. The installed body runs
+    /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -16,15 +16,21 @@ are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, 
 load order. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
 refused.
 
-Each frame the HUD shows, the client draws the layers in order. A registered layer fires
-`Hooks::gui_layer_pre` with its ID, calls its own callback with the client host and drawing
-context unless canceled, and fires `Hooks::gui_layer_post`. Other mods can hide it or draw
-around it the same way they do for vanilla layers.
+Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
+`layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
+position and draw conditions. A wrapper uses `ctx.with_draw` to paint with the current
+scoped drawing context and `ctx.draw_previous()` to draw the previous body at that point.
+It can omit that call to skip the previous body. Both methods refuse an unknown ID.
+
+A layer fires `Hooks::gui_layer_pre` with its ID, runs its installed body, and fires
+`Hooks::gui_layer_post` once. No body or Post runs if Pre cancels. Drawing a previous
+body does not fire layer hooks again.
 
 A vanilla layer Sunrise does not draw this frame (the crosshair in third person, the mount's
-health off a mount) still keeps its place: the mod layers around it are drawn in order, at the
-next layer that is. F1 and a canceled `Hooks::render_gui_pre` hide every mod layer; a mod that
-draws under F1 uses `Hooks::gui_render_post`."#]
+health off a mount) still keeps its place: the inserted layers around it draw in order, at the
+next layer that is drawn. F1 and a canceled `Hooks::render_gui_pre` hide all inserted layers;
+a replacement or wrapper inherits its slot's draw conditions. A mod that needs a foreground
+pass regardless of F1 uses `Hooks::gui_render_post`."#]
     #[hook(
         side = "client",
         version = 2,

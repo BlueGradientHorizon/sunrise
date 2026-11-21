@@ -2,11 +2,13 @@
 // catalog-order: 0145
 
 pub trait Hooks {
-    /// After one of vanilla's HUD layers (or after the layer a mod hid), with
-    /// the ids of `gui_layer_pre`: draw here to put something above
-    /// the layer (`RenderGuiLayerEvent.Post`).
+    /// After the complete body of a vanilla or mod HUD layer (`RenderGuiLayerEvent.Post`).
+    /// Fires once with the ID from `gui_layer_pre`, even if a wrapper omitted its previous
+    /// body. Does not fire when `gui_layer_pre` cancels the layer. Use `event.draw` to
+    /// paint above the layer.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         neoforge = "RenderGuiLayerEvent.Post",
         cancellable = false

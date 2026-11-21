@@ -2,23 +2,19 @@
 // catalog-order: 0144
 
 pub trait Hooks {
-    /// Before one of vanilla's HUD layers is drawn (`RenderGuiLayerEvent.Pre`):
-    /// draw here to put something below the layer, or set `canceled` to hide
-    /// it. `layer` is the layer's id, in the order Sunrise draws them:
-    /// `minecraft:crosshair`, `hotbar`, `effects`, `boss_overlay`,
-    /// `vehicle_health` (only riding a mount), `contextual_info_bar` (the
-    /// mount's jump bar, the locator bar or the experience bar, with the level
-    /// number), `player_health` (the health, armor, food and air rows, drawn in
-    /// one pass), `selected_item_name`, `sleep_overlay`, `overlay_message`
-    /// (the action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. A layer F1 hides fires nothing, and the chat
-    /// screen draws the focused chat itself, so `chat` is only the unfocused
-    /// lines. The camera overlays and the debug screen are not layers here:
-    /// they are not drawn in this pass. Draw with `native_fill`, `native_text`
-    /// and the sprite helpers; `draw.size()` is the GUI
-    /// size. A layer a mod registered (`register_gui_layers`) fires this
-    /// and `gui_layer_post` too, with its own id, in its place among
-    /// these.
+    /// Before a vanilla or mod HUD layer (`RenderGuiLayerEvent.Pre`). Draw below the
+    /// layer through `event.draw`, or return `Flow::Cancel` to skip its entire body
+    /// and `gui_layer_post`. Cancellation skips painting, not the layer's game logic.
+    /// A wrapped or replaced layer fires this once, with the slot's original ID.
+    ///
+    /// The vanilla anchors, in HUD order, are `minecraft:crosshair`, `hotbar`,
+    /// `effects`, `boss_overlay`, `vehicle_health` (while riding a mount),
+    /// `player_health` (health, armor, food and air), `contextual_info_bar` (jump,
+    /// locator or experience bar, with the level number), `selected_item_name`,
+    /// `sleep_overlay`, `overlay_message` (action bar), `title`, `scoreboard_sidebar`,
+    /// `subtitle_overlay`, `chat` and `tab_list`. A slot skipped by its draw conditions
+    /// (for example, one F1 hides) fires neither hook. Focused chat still draws at the
+    /// chat screen's paint site. The camera overlays and debug screen are not HUD layers.
     #[hook(
         side = "client",
         contract = "cancel",

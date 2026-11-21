@@ -1,8 +1,10 @@
 //! The HUD's layer order (NeoForge's `GuiLayerManager`): vanilla's layers in the order Sunrise
-//! draws them, with the layers native mods register (`register_gui_layers`) placed among them
-//! once at start, as `RegisterGuiLayersEvent` inserts them.
+//! draws them, with native layers inserted and bodies installed once at client startup.
 
-use mod_api::{GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, Identifier};
+use mod_api::{
+    GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, Identifier,
+    content::crash::current_native_mod,
+};
 use std::sync::OnceLock;
 
 /// Vanilla HUD anchors used by the engine's HUD pass (no camera overlays or debug screen).
@@ -13,8 +15,8 @@ pub enum VanillaGuiLayer {
     Effects,
     BossOverlay,
     VehicleHealth,
-    ContextualInfoBar,
     PlayerHealth,
+    ContextualInfoBar,
     SelectedItemName,
     SleepOverlay,
     OverlayMessage,
@@ -33,8 +35,8 @@ impl VanillaGuiLayer {
         Self::Effects,
         Self::BossOverlay,
         Self::VehicleHealth,
-        Self::ContextualInfoBar,
         Self::PlayerHealth,
+        Self::ContextualInfoBar,
         Self::SelectedItemName,
         Self::SleepOverlay,
         Self::OverlayMessage,
@@ -53,8 +55,8 @@ impl VanillaGuiLayer {
             Self::Effects => "minecraft:effects",
             Self::BossOverlay => "minecraft:boss_overlay",
             Self::VehicleHealth => "minecraft:vehicle_health",
-            Self::ContextualInfoBar => "minecraft:contextual_info_bar",
             Self::PlayerHealth => "minecraft:player_health",
+            Self::ContextualInfoBar => "minecraft:contextual_info_bar",
             Self::SelectedItemName => "minecraft:selected_item_name",
             Self::SleepOverlay => "minecraft:sleep_overlay",
             Self::OverlayMessage => "minecraft:overlay_message",
@@ -67,22 +69,47 @@ impl VanillaGuiLayer {
     }
 }
 
-// no wire: native slots own process-local draw callbacks.
-/// An installed HUD layer: a vanilla anchor or a mod's resolved draw callback.
-pub enum GuiLayerSlot {
+// no wire: slots own process-local layer bodies.
+/// An installed HUD layer, with an ID and anchor independent of its body.
+pub struct GuiLayerSlot {
+    id: GuiLayerId,
+    pub body: GuiLayerBody,
+}
+
+enum GuiLayerId {
     Vanilla(VanillaGuiLayer),
+    Native(String),
+}
+
+// no wire: native bodies own process-local draw callbacks.
+/// The current implementation of one HUD slot.
+pub enum GuiLayerBody {
+    Vanilla,
     Native {
-        id: String,
-        registrant: Option<&'static str>,
+        owner: Option<&'static str>,
         draw: Box<GuiLayerDraw>,
+    },
+    Wrapped {
+        owner: Option<&'static str>,
+        wrap: Box<GuiLayerWrapper>,
+        previous: Box<GuiLayerBody>,
     },
 }
 
 impl GuiLayerSlot {
-    fn id(&self) -> &str {
-        match self {
-            Self::Vanilla(layer) => layer.id(),
-            Self::Native { id, .. } => id,
+    /// The stable slot ID reported by Pre and Post.
+    pub fn id(&self) -> &str {
+        match &self.id {
+            GuiLayerId::Vanilla(layer) => layer.id(),
+            GuiLayerId::Native(id) => id,
+        }
+    }
+
+    /// The engine paint site for a vanilla slot, even when its body is replaced or wrapped.
+    pub fn vanilla_anchor(&self) -> Option<VanillaGuiLayer> {
+        match &self.id {
+            GuiLayerId::Vanilla(layer) => Some(*layer),
+            GuiLayerId::Native(_) => None,
         }
     }
 }
@@ -97,7 +124,10 @@ impl Default for GuiLayers {
         Self {
             slots: VanillaGuiLayer::ALL
                 .into_iter()
-                .map(GuiLayerSlot::Vanilla)
+                .map(|layer| GuiLayerSlot {
+                    id: GuiLayerId::Vanilla(layer),
+                    body: GuiLayerBody::Vanilla,
+                })
                 .collect(),
         }
     }
@@ -127,18 +157,44 @@ impl GuiLayerRegistrar for GuiLayers {
             GuiLayerPlacement::Below(other) => position(other),
             GuiLayerPlacement::Above(other) => position(other).map(|i| i + 1),
         };
+        let owner = current_native_mod();
         let Some(at) = at else {
-            log::warn!("HUD layer {id} has no registered anchor for {placement:?}; it is left out");
+            log::warn!(
+                "{} cannot register HUD layer {id}: no registered anchor for {placement:?}",
+                owner.unwrap_or("unknown mod")
+            );
             return false;
         };
         self.slots.insert(
             at,
-            GuiLayerSlot::Native {
-                id,
-                registrant: mod_api::content::crash::current_native_mod(),
-                draw,
+            GuiLayerSlot {
+                id: GuiLayerId::Native(id),
+                body: GuiLayerBody::Native { owner, draw },
             },
         );
+        true
+    }
+
+    fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool {
+        let owner = current_native_mod();
+        let Some(slot) = self.slot_for_edit(id, owner, "replace") else {
+            return false;
+        };
+        slot.body = GuiLayerBody::Native { owner, draw };
+        true
+    }
+
+    fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool {
+        let owner = current_native_mod();
+        let Some(slot) = self.slot_for_edit(id, owner, "wrap") else {
+            return false;
+        };
+        let previous = Box::new(std::mem::replace(&mut slot.body, GuiLayerBody::Vanilla));
+        slot.body = GuiLayerBody::Wrapped {
+            owner,
+            wrap,
+            previous,
+        };
         true
     }
 }
@@ -147,19 +203,39 @@ impl GuiLayerRegistrar for GuiLayers {
 pub struct GuiLayerOrder {
     slots: Vec<GuiLayerSlot>,
     positions: [usize; VanillaGuiLayer::ALL.len()],
+    has_native_bodies: bool,
 }
 
 impl GuiLayers {
+    fn slot_for_edit(
+        &mut self,
+        id: &str,
+        owner: Option<&str>,
+        action: &str,
+    ) -> Option<&mut GuiLayerSlot> {
+        let slot = self.slots.iter_mut().find(|slot| slot.id() == id);
+        if slot.is_none() {
+            log::warn!(
+                "{} cannot {action} HUD layer {id}: it is not registered",
+                owner.unwrap_or("unknown mod")
+            );
+        }
+        slot
+    }
+
     fn into_order(self) -> GuiLayerOrder {
         let mut positions = [0; VanillaGuiLayer::ALL.len()];
+        let mut has_native_bodies = false;
         for (at, slot) in self.slots.iter().enumerate() {
-            if let GuiLayerSlot::Vanilla(layer) = slot {
-                positions[*layer as usize] = at;
+            if let Some(layer) = slot.vanilla_anchor() {
+                positions[layer as usize] = at;
             }
+            has_native_bodies |= !matches!(slot.body, GuiLayerBody::Vanilla);
         }
         GuiLayerOrder {
             slots: self.slots,
             positions,
+            has_native_bodies,
         }
     }
 }
@@ -185,11 +261,9 @@ pub fn freeze(layers: GuiLayers) {
     }
 }
 
-/// The installed order, if there are any native layers to draw.
+/// The installed order, if it has a mod's own layer, replacement or wrapper.
 pub fn order() -> Option<&'static GuiLayerOrder> {
-    ORDER
-        .get()
-        .filter(|order| order.slots.len() > VanillaGuiLayer::ALL.len())
+    ORDER.get().filter(|order| order.has_native_bodies)
 }
 
 #[cfg(test)]
@@ -226,8 +300,8 @@ mod tests {
                 "minecraft:effects",
                 "minecraft:boss_overlay",
                 "minecraft:vehicle_health",
-                "minecraft:contextual_info_bar",
                 "minecraft:player_health",
+                "minecraft:contextual_info_bar",
                 "minecraft:selected_item_name",
                 "minecraft:sleep_overlay",
                 "minecraft:overlay_message",
@@ -276,10 +350,8 @@ mod tests {
         let mods: Vec<&str> = order
             .slots()
             .iter()
-            .filter_map(|slot| match slot {
-                GuiLayerSlot::Native { id, .. } => Some(id.as_str()),
-                GuiLayerSlot::Vanilla(_) => None,
-            })
+            .filter(|slot| slot.vanilla_anchor().is_none())
+            .map(GuiLayerSlot::id)
             .collect();
         assert_eq!(mods, ["compass:bar", "compass:early", "compass:late"]);
         assert_eq!(
@@ -295,7 +367,7 @@ mod tests {
             order
                 .slots()
                 .iter()
-                .all(|slot| matches!(slot, GuiLayerSlot::Vanilla(_)))
+                .all(|slot| matches!(slot.body, GuiLayerBody::Vanilla))
         );
         for (at, layer) in VanillaGuiLayer::ALL.into_iter().enumerate() {
             assert_eq!(order.position(layer), at);

@@ -18,7 +18,35 @@ invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it in
 The client owns the callback for its lifetime. Capture any state the layer needs in the
 closure, and use the current `ClientHost` and `DrawContext` passed on each draw. The callback
 runs only for its own layer, and not when the HUD is hidden or `gui_layer_pre` cancels the layer.
-A vanilla anchor that doesn't draw that frame still determines the layer's position.
+A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
+health, player health and contextual bar anchors follow that paint order.
+
+### Replacing or wrapping a layer
+
+In the same registration hook, call `event.layers.replace_layer(id, Box::new(draw))` to discard
+an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
+to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
+registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
+place in the HUD and its draw conditions.
+
+A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
+`DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
+The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
+for this draw without discarding it at registration.
+
+```rust,ignore
+event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
+    ctx.draw_previous();
+    ctx.with_draw(&mut |draw| {
+        let [w, h] = draw.size();
+        draw.fill([w / 2.0 - 91.0, h - 23.0, 182.0, 1.0], 0xFF80_80FF);
+    });
+}));
+```
+
+`gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. If Pre cancels, neither
+its body nor Post runs. For work that must happen even when the HUD is hidden, use the independent
+foreground `gui_render_post` hook.
 
 ## Gradient fills
 
