@@ -362,16 +362,15 @@ fn effect_details(w: &mut Writer, v: &Value, depth: u32) -> Result<()> {
     })
 }
 fn consume(w: &mut Writer, v: &Value, ids: &dyn Ids) -> Result<()> {
-    let kind = named(
-        need(v, "type")?,
-        &[
-            "minecraft:apply_effects",
-            "minecraft:remove_effects",
-            "minecraft:clear_all_effects",
-            "minecraft:teleport_randomly",
-            "minecraft:play_sound",
-        ],
-    )?;
+    use crate::item::consume_effects::{self, BUILTINS, REGISTRY};
+
+    let name = string(need(v, "type")?)?;
+    let kind = if let Some(index) = BUILTINS.iter().position(|&key| key == name) {
+        index as i32
+    } else {
+        ids.id(REGISTRY, &name)
+            .ok_or_else(|| err(format!("unknown consume effect {name}")))?
+    };
     w.varint(kind);
     match kind {
         0 => {
@@ -385,7 +384,13 @@ fn consume(w: &mut Writer, v: &Value, ids: &dyn Ids) -> Result<()> {
             w.bool(b(v, "directional_particles", true)?);
         }
         4 => sound(w, need(v, "sound")?, ids)?,
-        _ => unreachable!(),
+        _ => {
+            let data = v.to_tag().map_err(err)?;
+            let Tag::Compound(data) = data else {
+                return Err(err("consume effect is not a map"));
+            };
+            w.bytes(&consume_effects::write_saved(kind, data)?);
+        }
     }
     Ok(())
 }

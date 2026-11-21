@@ -10,6 +10,7 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::vanilla_bytes::Writer;
 
 #[doc(hidden)]
+pub mod consume_effects;
 pub mod custom;
 mod hash;
 pub mod persistent;

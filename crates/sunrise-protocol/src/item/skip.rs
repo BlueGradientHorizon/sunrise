@@ -310,7 +310,7 @@ fn consume_effect(r: &mut Reader) -> Result<()> {
         }
         // play_sound.
         4 => sound(r),
-        other => Err(Error::new(format!("unknown consume effect type {other}"))),
+        other => super::consume_effects::skip(other, r),
     }
 }
 /// BlockPredicate: blocks, properties, nbt, then DataComponentMatchers (exact, partial).

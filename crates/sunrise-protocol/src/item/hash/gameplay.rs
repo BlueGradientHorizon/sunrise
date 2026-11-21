@@ -165,7 +165,12 @@ fn consume_effect_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::V
             4 => rec
                 .field("type", string_with::<O>("minecraft:play_sound"))
                 .field("sound", sound_with::<O>(r, names)?.code),
-            _ => return None,
+            _ => {
+                return O::from_nbt(
+                    &crate::item::consume_effects::read_saved(kind, r).ok()?,
+                    &[],
+                );
+            }
         }
         .build(),
     )

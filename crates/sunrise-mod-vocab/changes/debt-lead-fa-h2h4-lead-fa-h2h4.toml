@@ -1,0 +1,8 @@
+ids = [
+    "trait:ConsumeEffectsRegistrar",
+    "method:ConsumeEffectsRegistrar::register_consume_effect_type",
+    "type:ConsumeEffectType",
+    "handle:ConsumeEffectType::new",
+]
+why = "Vanilla 26.3 ConsumeEffect.Type owns a persistent map codec and a stream codec, and ConsumeEffect.STREAM_CODEC writes the CONSUME_EFFECT_TYPE registry ID followed by that type's own fields. NeoForgeRegistriesSetup includes this registry in the frozen registry sync. Native Sunrise types now travel on the same item stack stream as built-in effects, using the existing Wire codec for the mod's type and existing configuration registry sync for type IDs."
+migrate = "For each custom kind used in a synchronized stack, derive Wire on a struct for its values. In Hooks::register, call registrar.register_consume_effect_type(id, ConsumeEffectType::new::<T>(load, save)), where load is fn(&Compound) -> Result<T, String> and save is fn(&T) -> Result<Compound, String>. Both functions handle only your saved fields, not the type dispatch key. Install the mod on both sides; keep the same type identifier and fields in the stack's on_consume_effects entry and keep the existing server-side consume_effect listener. Do not send another payload to mirror the effect."

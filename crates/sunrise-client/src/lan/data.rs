@@ -10,6 +10,7 @@ use std::{
     sync::Arc,
 };
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_protocol::item::consume_effects;
 use sunrise_protocol::{
     entity_data,
     packets::configuration::{RegistryData, RegistryEntry, RegistryTags, TagEntry, UpdateTags},
@@ -737,6 +738,24 @@ impl SyncData {
             );
             registries.push(((*key).to_owned(), e));
         }
+        if consume_effects::entries().next().is_some() {
+            let (names, data): (Vec<_>, Vec<_>) = consume_effects::configuration()
+                .map(|(name, schema)| (name.to_owned(), Tag::Long(schema as i64)))
+                .unzip();
+            dynamic.registries.insert(
+                consume_effects::REGISTRY.to_owned(),
+                names.iter().cloned().map(|name| (name, None)).collect(),
+            );
+            let from_pack = vec![true; names.len()];
+            registries.push((
+                consume_effects::REGISTRY.to_owned(),
+                Entries {
+                    names,
+                    data,
+                    from_pack,
+                },
+            ));
+        }
         // Merge the world's tag files against the admitted registry IDs above.
         drop(registries_step);
         let tags_step = startup::step("sync.tags");
@@ -908,6 +927,9 @@ impl SyncData {
 
     /// The id of a name in a built-in or synchronized registry.
     pub fn id(&self, registry: &str, name: &str) -> Option<i32> {
+        if registry == consume_effects::REGISTRY {
+            return consume_effects::id(name);
+        }
         if registry == "minecraft:data_component_type"
             && self.dynamic.custom_components
             && let Some(id) = sunrise_protocol::item::custom::id(name)

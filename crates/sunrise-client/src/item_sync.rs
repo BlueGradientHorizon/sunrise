@@ -1148,7 +1148,7 @@ fn consume_effect_tag(r: &mut Reader, builtin: &Builtin, depth: u32) -> Option<T
             fields.push(("type", Tag::String("minecraft:play_sound".into())));
             fields.push(("sound", sound_tag(r, builtin)?));
         }
-        _ => return None,
+        kind => return sunrise_protocol::item::consume_effects::read_saved(kind, r).ok(),
     }
     Some(Tag::compound(fields))
 }

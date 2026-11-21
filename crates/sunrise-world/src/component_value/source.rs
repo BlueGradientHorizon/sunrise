@@ -661,7 +661,16 @@ fn consume_effect(t: &Tag) -> Result<Value> {
                 r.b("directional_particles", true)?;
             }
             "minecraft:play_sound" => r.required("sound", sound)?,
-            _ => return Err(format!("unknown consume effect {kind}")),
+            _ => {
+                let Tag::Compound(fields) = t else {
+                    return Err("consume effect is not a map".into());
+                };
+                let type_key = "type".into();
+                r.fields
+                    .extend(fields.iter().filter(|(key, _)| *key != &type_key).map(
+                        |(key, value)| (Value::String(key.0.clone()), Value::from_nbt(value, &[])),
+                    ));
+            }
         }
         Ok(())
     })

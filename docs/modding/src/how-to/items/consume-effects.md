@@ -1,5 +1,35 @@
 # Custom consume effects
 
+Register the type in `Hooks::register` before using it in a synchronized item
+stack. The two functions in `ConsumeEffectType::new` read and write its saved
+map. The game owns the `type` field. The value itself derives `Wire`; its
+bytes follow the registry ID just as a built-in effect's stream fields do.
+Install the registering mod on both sides. The type IDs and stream layouts
+are checked during the normal content registry sync, not on first use.
+
+```rust
+use mod_api::{Compound, ConsumeEffectType, Identifier, Registrar, Tag, Wire};
+
+#[derive(Wire)]
+struct Charge { points: u16 }
+
+fn register(r: &mut dyn Registrar) -> Result<(), String> {
+    r.register_consume_effect_type(
+        Identifier::parse("example:charge").map_err(|e| e.to_string())?,
+        ConsumeEffectType::new::<Charge>(
+            |fields| match fields.get(&"points".into()) {
+                Some(Tag::Int(n)) => u16::try_from(*n)
+                    .map(|points| Charge { points })
+                    .map_err(|e| e.to_string()),
+                _ => Err("expected integer points".into()),
+            },
+            |effect| Ok(Compound::from([("points".into(), Tag::Int(effect.points.into()))])),
+        ),
+    )
+}
+```
+
+An entry then reads `{type: "example:charge", points: 10}` in SNBT.
 Implement `Hooks::consume_effect` to handle a consumable's `on_consume_effects`
 entry whose type is in your mod's namespace. Only that namespace's enabled
 subscriber receives it. The hook runs on the server thread for the consuming

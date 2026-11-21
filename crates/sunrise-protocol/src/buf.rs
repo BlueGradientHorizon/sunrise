@@ -63,6 +63,9 @@ impl<'a> Reader<'a> {
     pub fn since(&self, start: usize) -> &'a [u8] {
         &self.data[start.min(self.pos)..self.pos]
     }
+    pub(crate) fn unread(&self) -> &'a [u8] {
+        &self.data[self.pos..]
+    }
     pub fn rest(&mut self) -> &'a [u8] {
         let rest = &self.data[self.pos..];
         self.pos = self.data.len();

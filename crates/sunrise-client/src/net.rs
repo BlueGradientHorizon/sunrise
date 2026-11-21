@@ -1435,6 +1435,23 @@ fn configure(
                 let _ = send.send(Event::Features(p.features));
             }
             cfg::Clientbound::RegistryData(mut r) => {
+                use sunrise_protocol::item::consume_effects;
+                if r.registry == consume_effects::REGISTRY
+                    && !r
+                        .entries
+                        .iter()
+                        .map(|entry| {
+                            let schema = match entry.data {
+                                Some(sunrise_core::nbt::Tag::Long(schema)) => Some(schema as u64),
+                                _ => None,
+                            };
+                            (entry.id.as_str(), schema)
+                        })
+                        .eq(consume_effects::configuration()
+                            .map(|(name, schema)| (name, Some(schema))))
+                {
+                    return Err(Reason::plain(crate::content_identity::MISMATCH.to_string()));
+                }
                 fill_known_entries(&mut r, resources.root());
                 if r.registry == "minecraft:dialog" {
                     dialog_snapshot = None;
