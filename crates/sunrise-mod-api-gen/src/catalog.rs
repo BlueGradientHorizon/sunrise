@@ -124,11 +124,13 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook whose dispatch runs every listener inside `catch_unwind`: one that
-    /// unwinds is switched off for this hook for the session, and the outputs it had written roll
-    /// back to what the game requested (#2414 ruling).
+    /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
+    /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
+    /// session. A cancel hook rolls outputs back to the requested values and stops (#2414).
+    /// A collector receives at most one returned value per registration, and later listeners
+    /// still run after a failure.
     pub isolate: bool,
-    /// An isolated hook's per-listener check of the outputs it wrote: a path to
+    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
     /// vector/scalar outputs in declaration order and naming the first refused one. A refused
     /// result, including its cancellation, rolls back; later listeners still run.
@@ -383,21 +385,29 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // Isolation is the cancel loop's own: a listener that unwinds rolls the outputs back
-        // to the requested ones and is skipped for the hook for the session (#2414 ruling).
+        // A listener that unwinds is disabled for this hook. Cancellation rolls back and
+        // stops dispatch (#2414); an answered collector has no output until its listener returns.
         let isolate = api.isolate.unwrap_or(false);
-        if isolate && (api.contract != Contract::Cancel || scope.is_some()) {
-            return Err(CatalogError::InvalidHook {
-                hook: name.clone(),
-                error: "isolate is for a global cancel hook".into(),
-            });
-        }
-        if let Some(validator) = &api.output_validator
-            && (!isolate || syn::parse_str::<syn::Path>(validator).is_err())
+        if isolate
+            && (scope.is_some()
+                || !(api.contract == Contract::Cancel
+                    || api.contract == Contract::Collect && answered_by_mod))
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "output_validator is a path on an isolated hook".into(),
+                error:
+                    "isolate is for a global cancel hook or a global collect hook answered by mod"
+                        .into(),
+            });
+        }
+        if let Some(validator) = &api.output_validator
+            && (!isolate
+                || api.contract != Contract::Cancel
+                || syn::parse_str::<syn::Path>(validator).is_err())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "output_validator is a path on an isolated cancel hook".into(),
             });
         }
         let counterparts = Counterparts {
@@ -944,6 +954,34 @@ mod tests {
     }
 
     const HOOK: &str = "pub trait Hooks { /// Doc.\n #[hook(side = \"server\", contract = \"listen\")] fn one(); }";
+
+    #[test]
+    fn metadata_generators_need_only_the_hook_declarations() {
+        let root = checkout(&[(
+            &format!("{DECLARATIONS}/base.rs"),
+            r###"
+            pub trait Hooks {
+                /// Example hook.
+                #[hook(side = "server", contract = "listen", neoforge = "ExampleEvent")]
+                #[notes = "## Example\n\nA hook note."]
+                fn example();
+            }
+        "###,
+        )]);
+        let json = crate::neoforge_catalog(&root);
+        let notes = crate::generate_hook_notes(&root);
+        fs::remove_dir_all(root).unwrap();
+
+        let actual: serde_json::Value = serde_json::from_str(&json.unwrap()).unwrap();
+        let expected: serde_json::Value =
+            serde_json::from_str(r#"{"hooks":[{"name":"example","neoforge":"ExampleEvent"}]}"#)
+                .unwrap();
+        assert_eq!(actual, expected);
+        assert_eq!(
+            notes.unwrap(),
+            "# Hook notes\n\n## Example\n\nA hook note.\n"
+        );
+    }
 
     #[test]
     fn the_retired_json_catalog_is_refused_wherever_it_is() {

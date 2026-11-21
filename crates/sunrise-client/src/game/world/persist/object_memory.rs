@@ -957,6 +957,13 @@ impl Game<'_> {
                 retained.insert(vehicle);
             }
         }
+        retained.extend(
+            self.persist
+                .removed_vehicles
+                .keys()
+                .copied()
+                .filter(|&id| self.general_passengers(id).next().is_some()),
+        );
         let mut pending: Vec<_> = links
             .keys()
             .copied()

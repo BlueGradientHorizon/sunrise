@@ -612,25 +612,26 @@ fn extras(
             Class::Conditional,
         ));
     }
-    let (x, y) = (get(old, "shape"), get(new, "shape"));
-    if x != y {
-        lines.push((
-            format!(
-                "wire layout: {} → {}: affects users of this encoding",
-                quoted("shape", &x),
-                quoted("shape", &y)
-            ),
-            Class::Conditional,
-        ));
-    }
     let wire = |map: &Map<String, Value>| get(map, "wire") == Value::Bool(true);
     match (wire(old), wire(new)) {
+        (false, false) => {}
         (false, true) => lines.push(("now implements `Wire`".into(), Class::Additive)),
         (true, false) => lines.push((
             "no longer implements `Wire`: affects users of this encoding".into(),
             Class::Conditional,
         )),
-        _ => {
+        (true, true) => {
+            let (x, y) = (get(old, "shape"), get(new, "shape"));
+            if x != y {
+                lines.push((
+                    format!(
+                        "wire layout: {} → {}: affects users of this encoding",
+                        quoted("shape", &x),
+                        quoted("shape", &y)
+                    ),
+                    Class::Conditional,
+                ));
+            }
             let (x, y) = (get(old, "wire_form"), get(new, "wire_form"));
             if x != y {
                 lines.push((

@@ -688,6 +688,7 @@ def _build_locked(out: Path, server: bool, target_dir: Path) -> None:
         "patch_files": {name: digest for name, digest in files.items() if name.startswith("patches/")},
         "registry_lock": (staged / "Cargo.lock").read_text(),
         "native_links": native_links(metadata, GAME),
+        "native_log": True,
         # The API route: the mods library's crate name and metadata, and which files the `runtime` and `api` archives
         # hold (every other file is the `engine` archive's).
         "slices": sliced,
@@ -1050,7 +1051,9 @@ def tool(target: str) -> Path:
     """The folder holding `cargo-sunrise-mod` built from this source for `target`, which must be this computer."""
     if rustc_host() != target:
         sys.exit(f"the tool for {target} is built on that computer, not on {rustc_host()}")
-    run(["cargo", "build", "--locked", "--release", "-p", TOOL, "--bin", TOOL], cwd=ROOT)
+    # `--version` names the commit; a build that names none says `dev`.
+    environment = {**os.environ, "SUNRISE_TOOL_COMMIT": os.environ.get("SUNRISE_TOOL_COMMIT") or head()}
+    run(["cargo", "build", "--locked", "--release", "-p", TOOL, "--bin", TOOL], cwd=ROOT, env=environment)
     folder = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / "release"
     if not (folder / TOOL_PROGRAM).is_file():
         sys.exit(f"cargo built no {folder / TOOL_PROGRAM}")

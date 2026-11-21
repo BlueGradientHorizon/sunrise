@@ -300,8 +300,8 @@ pub struct BlockEntityDraw {
     partial: f32,
     /// The level's game time, for animations.
     game_time: i64,
-    /// The client's animation clock, in ticks with the partial tick (`spin`):
-    /// the ticks its level ran (`TextureManager.tick`'s count), never set back.
+    /// The client's mod animation clock for `spin`: whole level-running ticks plus a separate
+    /// animation phase.
     animation: f64,
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
@@ -1117,21 +1117,16 @@ impl KeptGeometry {
 }
 
 impl Game<'_> {
+    /// The client's mod animation clock: level-running texture ticks plus a phase that holds
+    /// across pauses and freezes. Server time updates never change it.
+    pub(super) fn animation_time(&self) -> f64 {
+        self.texture_ticks as f64 + self.clock.animation_phase()
+    }
     /// The mod block entities within view distance of `camera` whose block's
     /// template has none, which the mesher's block entity lists (made from
     /// the template) leave out: where they are and their block's state, for
     /// `mod_block_entity_geometry`. From the per-chunk list of
     /// `BlockEntities::mods_near`, not a scan of every block entity.
-    /// The client's animation clock, in ticks: the ticks its level has run
-    /// (`texture_ticks`, `TextureManager.tick`'s count) and the level's partial
-    /// tick (`Clock::fraction`, held while frozen), never the camera's, which
-    /// runs on in a frozen level and would turn parts back as it wraps.
-    /// Pausing and `/tick freeze` hold it and `SetTime` never sets it back, so a
-    /// `spin` part turns smoothly whatever the server's clock does; each client
-    /// counts from its own start.
-    pub(super) fn animation_time(&self) -> f64 {
-        self.texture_ticks as f64 + self.clock.fraction()
-    }
     pub(super) fn untemplated_mod_block_entities(&self, camera: DVec3) -> Vec<([i32; 3], u32)> {
         self.world
             .block_entities
@@ -1364,8 +1359,8 @@ impl Game<'_> {
     pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
         draw.game_time
     }
-    /// The frame on this client's animation clock, in ticks with the partial tick
-    /// (`Game::animation_time`): what turns `spin` parts.
+    /// The frame on this client's animation clock: whole level ticks plus the animation phase,
+    /// held through a tick freeze and carried on without a jump. This is what turns `spin` parts.
     pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
         draw.animation
     }
@@ -3025,38 +3020,46 @@ mod tests {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             game.clock = sunrise_client::clock::FixedStep::client();
             game.texture_ticks = 0;
-            game.clock.advance(Duration::from_millis(75), 50.0);
-            game.tick_frame_visuals(true);
+            // Run just the fixture's visual work, then the real frame's phase sampling.
+            let frame = |game: &mut Game<'_>, ms, target, pause| {
+                let steps = game.clock.advance(Duration::from_millis(ms), target);
+                if !game.clock.paused() {
+                    for _ in 0..steps {
+                        let running = game.clock.world_runs();
+                        game.tick_frame_visuals(running);
+                    }
+                }
+                game.client_tick_steps(0, None).unwrap();
+                game.clock.end_frame(pause);
+            };
+            frame(game, 75, 50.0, true);
             assert_eq!(game.animation_time(), 1.5);
-            game.clock.end_frame(true);
-            game.clock.advance(Duration::from_millis(50), 50.0);
+            frame(game, 25, 50.0, false);
             assert_eq!(game.animation_time(), 1.5);
-            game.clock.end_frame(false);
             game.clock.set_frozen(true);
-            // Freeze requests become the frame's running decision at the
-            // tick boundary, before end_frame snapshots it for interpolation.
-            assert!(!game.clock.world_runs());
-            game.clock.end_frame(false);
-            assert_eq!(game.animation_time(), 2.0);
-            game.clock.advance(Duration::from_millis(25), 50.0);
-            let running = game.clock.world_runs();
-            game.tick_frame_visuals(running);
-            assert_eq!(game.texture_ticks, 1);
-            assert_eq!(game.animation_time(), 2.0);
-            assert_eq!(game.clock.camera_fraction(), 0.0);
+            frame(game, 25, 50.0, false);
+            assert_eq!(game.animation_time(), 1.5);
+            game.world.game_time = 40;
             game.handle_packet(play::Clientbound::SetTime(play::SetTime {
                 game_time: 0,
                 clocks: vec![],
             }))
             .unwrap();
-            assert_eq!(game.animation_time(), 2.0);
-            game.clock.set_frozen(false);
-            assert!(game.clock.world_runs());
-            game.clock.end_frame(false);
-            game.clock.advance(Duration::from_millis(75), 50.0);
-            let running = game.clock.world_runs();
-            game.tick_frame_visuals(running);
+            assert_eq!(game.world.game_time, 0);
+            assert_eq!(game.animation_time(), 1.5);
+
+            assert!(game.clock.start_step(1));
+            frame(game, 50, 50.0, false);
             assert_eq!(game.animation_time(), 2.5);
+
+            game.clock.set_frozen(false);
+            frame(game, 50, 50.0, false);
+            assert_eq!(game.texture_ticks, 3);
+            assert_eq!(game.animation_time(), 2.5);
+            frame(game, 25, 100.0, false);
+            assert_eq!(game.animation_time(), 2.75);
+            frame(game, 75, 100.0, false);
+            assert_eq!(game.animation_time(), 3.5);
         });
     }
 

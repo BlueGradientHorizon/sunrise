@@ -320,9 +320,10 @@ so a signed list can't be reused under another tag.
   runs, which sign with a throwaway key). No code from the repository runs beside the key, so no pull request
   can read it by changing what a build compiles; the key is in no file, no log and no password vault, and nobody
   needs to read it.
-- The publish job then checks the signature the way launchers do (`sunrise-release-sign verify --publishing`,
-  crates/sunrise-release-sign), against the public keys built in from
-  `crates/sunrise-release-sign/release-keys.txt`. While that file lists no key, releases go out with SHA256SUMS
+- The publish job then checks the signature the way launchers do, against the public keys in main's
+  `crates/sunrise-release-sign/release-keys.txt`: `nightly-build.yml` with the runner's OpenSSL
+  (`nightly.py verify-sums --publishing`, which runs no code of the checkout, so a release branch's candidate can't
+  change the check), the SDK and mod-tool workflows with `sunrise-release-sign verify --publishing`. While that file lists no key, releases go out with SHA256SUMS
   alone and a warning (today's releases keep working). Once it lists one, a missing secret or a key it doesn't
   list fails the release before anything is published, instead of publishing something launchers would refuse.
 - Making the key: `tools/ci/new_release_key.sh` pipes a new key from `sunrise-release-sign keygen` straight into
@@ -415,6 +416,22 @@ Until an owner creates them, everything above runs as it did: the Nightly follow
 | `nightly/26.3` | fast-forwarded by the [daily run](#daily-run) to each fully green commit of main (job `nightly-branch`, the `sunrise-sunny` App's token); only ever forward | the Nightly: its head, under the `nightly` tag and channel as before |
 | `release/26.3` | cut by an owner from a green daily's commit; later commits by pull request (a fix, or a Nightly merged in) | `26.3-<semver>`, by hand, and the `sdk-<sha>` of its own daily runs |
 
+**The release branch is the trust boundary.** GitHub runs `nightly-build.yml` from the ref it is dispatched on, so a
+stable release's workflow, its checks (`tools/ci/nightly.py`, `tools/release_train.py`) and its signing script
+(`tools/ci/sign_release.sh`) are `release/26.3`'s own. No step can make them independent of that branch: a commit
+that could change them could change the workflow too. Its stable checks stay independent of the *candidate's built
+code* (the published parent's own `sunrise-stage` judges the mod API, and signatures are checked with OpenSSL against
+main's `release-keys.txt`), but the scripts themselves are only as trustworthy as the branch. So `release/26.3`, and
+every later `release/*`, must have a ruleset before any stable release after 0.1.0, set by Sunrise's owners:
+
+- a pull request for every change;
+- one approving review from someone other than the last pusher, with stale approvals dismissed on a new push;
+- force pushes and deletion blocked;
+- no bypass actors.
+
+Code-owner review joins those rules once `.github/CODEOWNERS` names a sunrise-org team: today it names another
+organisation's team, so requiring it would request nobody.
+
 Only these three refs publish or sign: `PUBLISHES` in `tools/release_train.py` says which kind each may publish.
 Every workflow asks `release_train.py authorize` before it takes a key, an environment or a write: it compares the
 repository, the event (a dispatch), the full ref and the dry-run input exactly, since Actions' own comparisons ignore
@@ -434,8 +451,8 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
 1. builds only the full SHA approved in the release-candidate check (`-f base=<sha>`), which must be the head of
    `release/26.3` (a missing branch is refused) and have a real daily run that passed every leg on exactly it: main's
    for the commit the branch was cut at, or the branch's own (`gh workflow run daily.yml --ref release/26.3
-   -f dry_run=false`, which publishes the commit's SDK and moves no `daily-green`, files no issue and starts no
-   Nightly). A dry run only warns when that run is missing, as it does for a missing SDK;
+   -f dry_run=false`, which publishes the commit's SDK, moves no `daily-green` and starts no Nightly; its reds file
+   `bug` issues titled `Daily (release/26.3): …`, apart from main's). The pick step only warns about missing daily evidence or a missing SDK in a dry run;
 2. needs `sdk-<sha>` of that commit published first, as a Nightly does;
 3. is held by `RELEASES_PAUSED` and by an open `release-blocker` at the pick, and by a blocker again before publishing;
 4. is tagged `<target>-<release_version>`, which a real run must name: newer than every stable tag on the target,
@@ -449,12 +466,105 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
    and publishes a full release, not a pre-release, with `--latest=false`: the site's launcher download reads
    GitHub's latest release.
 
+The stable workflow compares each release with its parent, the newest published (not draft, not pre-release) stable
+release before it (`nightly.stable_parent`); the parent's tag must name the commit its own signed
+`sunrise-release.json` names, and a `26.3-*` tag above it with no published release stops every stable release.
+The version must follow the parent: the first release is `0.1.0`, a patch keeps the major and minor, a minor is
+`X.N.0` and a major `N.0.0`. Within the same Minecraft version and Sunrise major version (`26.3-0.x` is one line),
+the parent's own `sunrise-stage` judges the mod API, never the candidate's: built from the parent's tree alone (its
+own folder and target, no inherited compiler wrapper or job token), it exports both trees, its export of the parent
+must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. A patch requires an identical mod API; a
+minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
+minor refuses them too. For content mods, the SDK's `content_api` version string must stay the same within a line.
+Until [#3817](https://github.com/sunrise-org/sunrise/issues/3817) exports the declarations for comparison, the check
+also refuses any patch or minor whose tree changes the manifest or mod-content readers listed in
+`tools/ci/nightly.py` (`CONTENT_SCHEMA_PATHS`). The refusal names every changed file. Even a legitimate fix in one
+of those files cannot ship in a patch or minor until #3817. The first release of a line has no API restriction.
+No label, change note or dispatch option overrides the check. The mod API surface comparison judges declarations,
+not behaviour: a vanilla parity fix that leaves the surface and these content files alone can ship in a patch.
+
+Within a line, the candidate must descend from its previous stable tag and may not bring in commits from
+`main`'s first-parent history that are absent from that tag. Backport fixes by cherry-pick; merging a backport PR
+or merging the release branch back into main is fine. Bringing in new mainline history starts a new major.
+The workflow runs from the dispatch ref, so backport the check to the release branch before cutting a patch or
+minor there.
+
+The check runs in `pick`, before anything is built or signed (a dry run only warns), and again before tag
+reservation, on publish-only retries and in dry runs. Comparing against a previous
+stable release requires both signed SDKs, even on a dry run. Native engine loops, internals and mixin targets
+are outside the API restriction. The release notes list targets added, removed or changed since the previous
+stable release of the same Minecraft version (including across a major bump). They compare each target's signature
+and source hashes from `functions.json`, not offsets or other lookup metadata. If the list doesn't fit in the notes,
+they link to the full list on the release.
+
 No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nightly), so a stable release is a
 download for now.
 
 ```sh
 gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=true -f base=<sha>   # check first
 gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<approved sha> -f release_version=0.1.0
+```
+
+## Break-glass patch releases
+
+A stable patch release whose cherry-picks need only part of the daily (agreed by umceko and ari, 2026-11-20). It
+waives the full daily on the release commit and nothing else:
+
+- **One parent.** Every check compares with the same release: the newest published (not draft, not pre-release)
+  stable release on the target before this one (`nightly.stable_parent`). A `26.3-*` tag above it with no published
+  release (an aborted run's, or one pushed by hand) stops every stable release, break-glass or not, until it is
+  published or deleted; with no published stable release there is nothing to patch, and the release takes the full
+  daily.
+- **Two people approve it in GitHub.** `nightly-build.yml` binds one job to each environment in
+  `BREAK_GLASS_APPROVERS` (`tools/release_train.py`), which names each environment's approver by GitHub user id. Each
+  environment has that one person as its required reviewer, deployments only from `release/26.3`, and admin bypass
+  off: GitHub lets any one reviewer of an environment approve, so two people take two environments. The `break-glass`
+  job reads the run's recorded approvals and refuses unless each environment was approved once, by its own approver,
+  a user, with no rejection or second review. Only a run's first attempt counts, since the approvals record has no
+  attempt: `pick` refuses a re-run before anyone is asked, the jobs after the approvals run only in the first
+  attempt, and a new dispatch asks again. Nothing builds, signs or publishes until it passes, and
+  `reserve-stable-tag` checks the approvals again before the tag. No input or variable stands in for an approval.
+- **The changed paths choose the daily legs.** `release_train.break_glass_legs` maps each path that differs between
+  the parent and the release commit (`git diff -z --raw`) to daily legs, by the rows of `BREAK_GLASS_LEGS`, the
+  first matching row deciding. A path no row matches, a symbolic link, a submodule or a name holding a line break
+  means the full daily, and so does any change to the code that judges a release (`release_train.judge_graph`: the
+  crates of its mod API surface, packages and signature and every local crate they build from, through path and
+  workspace dependencies and the root manifest's `[patch]` and `[replace]`), to those two tables, to a
+  `[workspace.dependencies]` entry those crates take, or to the `Cargo.lock` entries they build from:
+  the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
+  run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
+  game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots
+  the game headless on the commit. A break-glass daily's legs count only when the whole run succeeded.
+- **The gate always applies.** dyna-checks runs on pushes to `release/26.3`, and the release needs `lint`, `verify` and
+  `verify-static` passed on a push of exactly its commit.
+- **Never for** a minor or major release (only a patch of the parent), a commit that is the parent's or doesn't
+  descend from it, a release whose `surface.json` differs from the parent's, a commit whose own newest full daily
+  failed, or a parent whose newest full daily did not pass every leg. `nightly.py stable-mod-api` holds the surface:
+  under break-glass it refuses any change to the published `surface.json`, then builds the parent's own
+  `sunrise-stage` from the parent's tree alone (its own folder and target, no inherited compiler wrapper), which
+  exports both trees itself: the parent's export must equal its published surface and the candidate's must equal the
+  parent's, and its diff must be `identical`. The candidate's own exporter never judges it. It runs in `pick`, before anything is approved,
+  built or signed, and again in `publish` before the tag. A break-glass daily run never counts as a full one, and it
+  files and closes no issue.
+- **Recorded and followed up.** The run's summary and the release notes (a `### Break-glass release` section above
+  the closing disclaimer) name the parent, the legs it passed, why (the `break_glass` input) and who approved it with
+  their comments. Once any stable release is published, `full-daily` dispatches the full daily on the release branch
+  for its commit: a real run, whose reds file `bug` issues titled `Daily (release/26.3): …`. Each commit on
+  `release/26.3` has its own daily queue, so another commit's run never replaces it. A break-glass patch needs its
+  parent's newest full daily created after the parent's publication to have passed, whatever kind of release the
+  parent was; until one has, the next patch can't take this path. If the follow-up was lost, dispatch it again:
+  `gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f commit=<its sha>`.
+
+`pick` checks the rules of `release_train.break_glass_problems` and puts the parent and the selected legs in the run
+summary before either environment asks for approval; `nightly.py reserve-stable-tag` checks the parent (tag and
+commit), the rules and the approvals again right before the tag is made.
+
+```sh
+# 1. The legs the cherry-picks select, on the release branch's head: publishes its SDK, writes nothing else.
+gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f break_glass=true
+# 2. The release, once that run passed: it waits for both approvals before it builds.
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<sha> -f release_version=0.1.1 \
+  -f break_glass="<why>"
 ```
 
 ## Prebuilt SDK retention design (#3011)
@@ -749,7 +859,8 @@ comment on any issue or pull request (`.github/workflows/nightly-command.yml`, `
   merge with a read-only token that isn't kept in the checkout and no secrets, and signs nothing with Developer ID
   (`developer_id: false`). `sign` and `musl-attach` pass the key only to main's `tools/ci/sign_release.sh`, which
   hashes the archives with the runner's `sha256sum` and signs with its OpenSSL: it never runs what the build made.
-  `publish` and `musl-attach` verify with main's `sunrise-release-sign`, never the archives. Nothing a nightly's build leaves reaches a
+  `publish` and `musl-attach` verify with the runner's OpenSSL and main's release keys (`nightly.py verify-sums`),
+  never the archives, and build nothing from the checkout. Nothing a nightly's build leaves reaches a
   release either: `game-build.yml`'s `trusted` input is true only for `release.yml`. An untrusted build's legs
   run on fresh Blacksmith (or GitHub) machines, and its Rust cache has its own key and is never saved. A trusted build doesn't use the machine's
   shared sccache, which pull requests' jobs write (`SUNRISE_NO_SCCACHE`, `tools/ci/runner-env.sh`).

@@ -99,6 +99,10 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
 pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+use sunrise_client_gameplay::frame_autotune;
+use sunrise_client_gameplay::occlusion_culling;
+use sunrise_gameplay::lan::idle as lan_idle;
+use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
 
 mod host;
 mod native_hooks;
@@ -1178,8 +1182,6 @@ struct Game<'a> {
     entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
     /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
     entity_runs: Vec<entity::DrawRun>,
-    // Extracted general rows; keep the capacity between frames.
-    general_render_states: std::cell::RefCell<Vec<general_draw::ExtractedGeneral>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
@@ -1740,21 +1742,12 @@ struct Game<'a> {
     /// The mod whose own screen is open (`Screen::Mod`).
     native_mod_screen: Option<String>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
-    pending_uploads: Vec<((i32, i32, i32), sunrise_client::mesher::SectionMesh)>,
+    pending_uploads: Vec<sunrise_client::streaming::MeshUpload>,
     upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
-    /// Whether the renderer's section-occlusion graph is active for this view.
-    entity_section_visibility_valid: bool,
-    /// The camera section in the current world layout.
-    entity_section_camera: Option<(i32, i32, i32)>,
-    sync_occlusion_culler: Option<sunrise_client::voxel_occlusion::Culler>,
-    async_occlusion_culler: Option<Box<occlusion_culling::AsyncOcclusionCuller>>,
-    async_occlusion_culling_failed: bool,
+    occlusion: entity_culling::EntityOcclusion,
     async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
-    /// `Renderer::pack_shadow_casters` for this frame's entities: (keep what the culler hides,
-    /// build the player's model in first person); (false, false) without a shader pack.
-    pack_shadow_casters: (bool, bool),
     /// A scripted flight from the control socket (`fly`).
     flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
@@ -1866,7 +1859,7 @@ struct Game<'a> {
     gpu_culling_auto: sunrise_client::autotune::GpuCullingAuto,
     /// Dynamic Resolution: the scale it has the world at (`frame_autotune`).
     dynamic_resolution: sunrise_client::dynamic_resolution::DynamicResolution,
-    /// The mobs `mob_geometry` drew last frame (`lastEntityRenderStateCount`).
+    /// The mobs `mob_run_geometry` drew last frame (`lastEntityRenderStateCount`).
     rendered_mobs: std::cell::Cell<usize>,
     /// Whether a native mod requested background blur for this frame (`apply_screen_blur`).
     screen_blur_requested: std::cell::Cell<bool>,
@@ -5106,11 +5099,12 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts.
+            // The mount's hearts reserve right-column space before air is laid out.
+            let mut status_heights = hud_layout::StatusBarHeights::default();
             let vehicle_hearts = if spectator {
                 0
             } else {
-                self.draw_mount_hud(&mut batch, wi, hi)
+                self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
             };
             let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
             let kind = (!self.creative && !spectator)
@@ -5150,15 +5144,20 @@ impl Game<'_> {
                 // that answers draws every row instead.
                 let mut native_health_hud = None;
                 self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let draws = match native_health_hud {
-                    Some(draws) => draws,
-                    None => self.health_hud.layout(&inputs, wi, hi),
+                let replacement = native_health_hud.as_deref();
+                let vanilla;
+                let layers;
+                let (draws, paint_steps) = if let Some(draws) = &replacement {
+                    (*draws, std::slice::from_ref(draws))
+                } else {
+                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
+                    layers = vanilla.layers();
+                    (vanilla.draws(), layers.as_slice())
                 };
-                self.keep_status_rows(&draws, wi, hi);
-                // The rows draw in one pass here, so a mod's `player_health`
-                // layer stands for the armor, food and air rows too.
+                self.keep_status_rows(draws, wi, hi);
+                // Keep the four paint steps under the same public layer for now.
                 self.gui_layer("minecraft:player_health", &mut batch, |g, batch| {
-                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
                 });
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
                 // by this client only.
@@ -5427,6 +5426,8 @@ impl Game<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The player's own model (third person, and a shader pack's shadow pass).
     pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
+    /// The local player's flame vertices are tracked separately from the body run.
+    const MOTION_OWN_PLAYER_FIRE: u64 = Self::MOTION_OWN_PLAYER | 1;
     /// The entity whose geometry starts at vertex `start` (0: none), for frame
     /// generation to follow its own motion. Each run lasts until the next mark.
     pub(super) fn mark_motion(&self, start: usize, id: u64) {
@@ -5443,6 +5444,7 @@ impl Game<'_> {
         alpha: f64,
         billboard_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
         mut out: Vec<Vertex>,
+        additive: &mut Vec<Vertex>,
     ) -> (
         Vec<Vertex>,
         Arc<[StaticSectionSnapshot]>,
@@ -5548,11 +5550,35 @@ impl Game<'_> {
         let falling_setup = std::cell::OnceCell::new();
         let orb_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
-        self.ordered_draw_runs(&mut runs);
+        let general_frame = self.begin_general_geometry(camera, alpha);
+        let crystal_frame = self.begin_crystal_geometry();
+        self.ordered_draw_runs(general_frame.is_some(), crystal_frame.is_some(), &mut runs);
+        // Sets the CEM frame even if there are no mobs; later passes also use it.
+        let mob_frame = self.begin_mob_geometry(camera, alpha);
         for run in &runs {
             use entity::DrawFamily as F;
             let range = run.range.clone();
             match run.family {
+                F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
+                F::LocalPlayer => self.local_player_geometry(camera, &mut out),
+                F::RemoteGeneral => {
+                    if let Some(frame) = &general_frame {
+                        self.general_run_geometry(frame, range, &mut out);
+                    }
+                }
+                F::Dragon => {
+                    // A dragon summoned outside the End draws at its join slot too.
+                    if let Some(dragon) = self.dragon.as_ref() {
+                        self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
+                    }
+                }
+                F::Crystal => {
+                    if let Some(frame) = &crystal_frame {
+                        for crystal in &self.crystals[range] {
+                            self.end_crystal_geometry(crystal, frame, camera, &mut out);
+                        }
+                    }
+                }
                 F::Item => {
                     // `ItemEntityRenderer`.
                     self.mark_entity(out.len(), "minecraft:item");
@@ -5617,9 +5643,11 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:ominous_item_spawner");
         self.ominous_item_spawner_geometry(camera, alpha, &mut out);
         laps.lap("eg_items_misc");
-        // Mobs and their projectiles (a span each).
-        self.mob_geometry(camera, alpha, &mut out);
+        // Spawners and projectiles still have their own pass.
+        self.other_creature_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
+        laps.lap("eg_other_creatures");
+        // These billboards stay in their later pass, outside the ordered body runs.
         for m in self.drawn_mobs() {
             // Blaze.isOnFire: a charged blaze burns.
             let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
@@ -5645,13 +5673,6 @@ impl Game<'_> {
                 );
             }
         }
-        laps.lap("eg_mobs");
-        // In first person only a shader pack's shadow pass draws the player.
-        self.mark_player(out.len(), !self.own_body_in_view());
-        let player_start = out.len();
-        self.mark_motion(player_start, Self::MOTION_OWN_PLAYER);
-        let player_alpha = self.own_player_alpha();
-        self.player_model_geometry(camera, player_alpha, &mut out);
         if self.own_body_in_view()
             && let Some(p) = &self.player
             && p.is_on_fire()
@@ -5665,6 +5686,8 @@ impl Game<'_> {
                 p.dimensions.width,
                 p.dimensions.height,
             ) {
+                self.mark_player(out.len(), false);
+                self.mark_motion(out.len(), Self::MOTION_OWN_PLAYER_FIRE);
                 sunrise_client::fire_render::flames(
                     [feet.x, feet.y, feet.z],
                     p.dimensions.width,
@@ -5679,19 +5702,14 @@ impl Game<'_> {
                     ),
                     &mut out,
                 );
+                self.mark_motion(out.len(), 0);
             }
         }
-        // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
-        if self.pack_ids.is_none() && !self.own_body_in_view() {
-            self.shadow_only_vertices
-                .borrow_mut()
-                .extend(out.drain(player_start..));
-        }
-        self.mark_motion(out.len(), 0);
+        laps.lap("eg_fire_living");
         self.mark_entity(out.len(), "minecraft:evoker_fangs");
         self.fangs_geometry(camera, alpha, &mut out);
         self.block_item_display_geometry(camera, alpha, &mut out);
-        laps.lap("eg_players");
+        laps.lap("eg_displays");
         let mut see_through = std::mem::take(&mut self.see_through_vertices);
         see_through.clear();
         self.name_tag_geometry(camera, alpha, &mut out, &mut see_through);
@@ -5815,7 +5833,7 @@ impl Game<'_> {
             // in the view or not (`Renderer::shadow_pass_block_entities`, #8464): those the
             // view leaves out go in hidden from the camera.
             let shadow_only: Vec<&([i32; 3], u32)> =
-                if self.pack_ids.is_some() && self.pack_shadow_casters.0 {
+                if self.pack_ids.is_some() && self.occlusion.shadow_casters.0 {
                     let listed: HashSet<[i32; 3]> = camera_list.iter().map(|b| b.0).collect();
                     r.shadow_pass_block_entities(camera)
                         .filter(|(pos, state)| {
@@ -5840,7 +5858,7 @@ impl Game<'_> {
                 }
                 let name = &*self.res.facts().get(BlockStateId(state)).name;
                 if self.settings.sunrise.entity_culling == EntityCullingMode::Off
-                    || self.pack_shadow_casters.0
+                    || self.occlusion.shadow_casters.0
                     || name == "minecraft:end_portal"
                     || name == "minecraft:end_gateway"
                     || hi.y - lo.y > 2.0
@@ -6316,7 +6334,6 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:item");
         self.pickup_item_geometry(camera, alpha, out);
         self.mark_motion(out.len(), 0);
-        self.mark_entity(out.len(), "minecraft:arrow");
         self.pickup_arrow_geometry(camera, alpha, out);
         self.mark_entity(out.len(), "minecraft:trident");
         self.pickup_trident_geometry(camera, alpha, out);
@@ -6328,7 +6345,6 @@ impl Game<'_> {
         });
         let frame = self.orb_frame();
         self.orb_geometry(camera, &frame, taken, None, out);
-        self.mark_entity(out.len(), "minecraft:elder_guardian");
         self.elder_apparition_geometry(alpha, out);
         if self.mod_clear_particles.get() {
             self.apply_mod_particle_clear();
@@ -6698,7 +6714,7 @@ impl Game<'_> {
         self.spawn_spiral = Default::default();
         self.player_spawn = None;
         self.creatures.reset_trader();
-        self.creatures.cat_tick = 0;
+        self.creatures.cat = Default::default();
         self.creatures.custom_spawners.clear();
         self.portals = Default::default();
         self.experience = Experience {
@@ -8790,10 +8806,13 @@ impl Game<'_> {
         } else {
             self.shader_pack_inputs(camera, alpha as f32, &sky)
         };
+        // Retain the existing additive particle stream; the ordered dragon emitter appends
+        // the eyes and rays to it without changing their material routing.
+        let mut additive = self.particles.take_additive();
         if !title {
             let (built, static_sections, visible_static_sections, static_stats) =
                 spans::time("entity_geometry", || {
-                    self.entity_geometry(camera, alpha, billboard_frustum, entities)
+                    self.entity_geometry(camera, alpha, billboard_frustum, entities, &mut additive)
                 });
             entities = built;
             static_block_entities = static_sections;
@@ -8812,18 +8831,10 @@ impl Game<'_> {
         } else {
             self.bolt_instances(camera)
         };
-        // Particles blended additively (resource packs' Polytone ones, #11486), from the
-        // render that built `entities`.
-        let mut additive = self.particles.take_additive();
-        // The dragon is drawn in every dimension, as any entity: a dragon
-        // summoned outside the End (the server's AddEntity) is shown too.
         if !title {
-            let mut dragon = Vec::new();
-            self.dragon_geometry(camera, alpha, &mut dragon, &mut additive);
-            self.dragon_fireball_geometry(camera, alpha, &mut dragon);
-            entities.extend(dragon);
+            self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
-        pr.lap("pr_dragon_bolts");
+        pr.lap("pr_dragon_fireballs_bolts");
         let (celestial, celestial_bodies, stars) = if title {
             (Vec::new(), Vec::new(), None)
         } else if self.overworld_skybox()
@@ -8871,7 +8882,7 @@ impl Game<'_> {
             self.screen_quads(alpha as f32, size, scale, hand_projection)
         };
         if !title {
-            self.end_geometry(camera, &mut entities);
+            self.eye_geometry(camera, &mut entities);
         }
         self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
@@ -11005,7 +11016,6 @@ impl<'a> Game<'a> {
             shadow_only_vertices: Default::default(),
             entity_spans: Default::default(),
             entity_runs: Vec::new(),
-            general_render_states: Default::default(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
             skin_models: Default::default(),
@@ -11313,13 +11323,8 @@ impl<'a> Game<'a> {
             tick_script: tick_script::TickScript::from_env(),
             agent: agent::Agent::default(),
             view_frustum: None,
-            entity_section_visibility_valid: false,
-            entity_section_camera: None,
-            sync_occlusion_culler: None,
-            async_occlusion_culler: None,
-            async_occlusion_culling_failed: false,
+            occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
-            pack_shadow_casters: (false, false),
             pending_uploads: Vec::new(),
             upload_pace: Default::default(),
             extras: Default::default(),
