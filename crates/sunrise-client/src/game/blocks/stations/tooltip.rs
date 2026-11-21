@@ -1,7 +1,10 @@
 use super::*;
-use std::{borrow::Cow, sync::LazyLock};
+use std::borrow::Cow;
+#[cfg(test)]
+use std::sync::LazyLock;
 use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 
+#[cfg(test)]
 static DEFAULT_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
     mod_api::Identifier::from_parts("minecraft", "default")
         .expect("minecraft:default is a valid identifier")
