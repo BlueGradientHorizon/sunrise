@@ -263,7 +263,13 @@ impl<'w> SceneCollisions<'w, '_> {
         context: CollisionContext<'_>,
     ) -> std::result::Result<(), CollisionScanError<io::Error>> {
         ground.check_support(ground.on_ground, bounds, movement, |bounds| {
-            find_supporting_block(self, context, feet, bounds, 1_000_000)
+            find_supporting_block(
+                self,
+                context.at_entity_height(feet.y),
+                feet,
+                bounds,
+                usize::MAX,
+            )
         })
     }
 

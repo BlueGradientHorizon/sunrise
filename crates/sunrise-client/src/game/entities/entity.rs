@@ -27,29 +27,11 @@ use sunrise_client::projectiles::{Projectile, ProjectileKind};
 use sunrise_core::geometry::{Aabb, Direction, Vec3};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_core::random::RandomSource as _;
 use sunrise_world::{
-    block_collision_scan::CollisionScanError,
-    collision_context::{CollisionContext, CollisionEntity, EntityContextKind},
-    entity_obstruction::EntityIdentity,
-    ground_support::GroundState,
-    level::data::PushReaction,
-    move_gate::MoveGate,
-    piston_push,
+    block_collision_scan::CollisionScanError, collision_context::CollisionContext,
+    ground_support::GroundState, level::data::PushReaction, move_gate::MoveGate, piston_push,
 };
-
-/// `CollisionContext.of(entity)` for a nonliving entity other than an item.
-pub(super) fn nonliving_support_context(id: u32, feet_y: f64) -> CollisionContext<'static> {
-    CollisionContext::for_entity(
-        CollisionEntity {
-            identity: EntityIdentity(u64::from(id)),
-            kind: EntityContextKind::Other,
-            y: feet_y,
-            descending: false,
-            main_hand: None,
-        },
-        false,
-    )
-}
 
 /// Assign a stored owner's delayed id at its existing allocation point.
 /// Kinds without a lifetime slot pass None; a bound owner must keep its id.
@@ -143,6 +125,9 @@ pub(super) trait Entity: EntityRules {
     fn on_ground(&self) -> bool {
         self.ground_state().is_some_and(|g| g.on_ground)
     }
+    fn body_fall_distance(&self) -> f64 {
+        0.0
+    }
     fn ground_state(&self) -> Option<&GroundState> {
         None
     }
@@ -151,7 +136,7 @@ pub(super) trait Entity: EntityRules {
     }
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
-            nonliving_support_context(self.id(), self.position().y),
+            sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
             None,
         )
     }
@@ -800,6 +785,9 @@ mod render_bounds_tests {
 /// The common retained support owned by moving bodies.
 macro_rules! stored_ground {
     () => {
+        fn body_fall_distance(&self) -> f64 {
+            self.fall_distance
+        }
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
         }
@@ -831,6 +819,86 @@ macro_rules! stored_motion {
             &mut self.velocity
         }
     };
+}
+
+impl Game<'_> {
+    /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
+    pub(super) fn nonliving_fall_on(
+        &mut self,
+        id: u32,
+        feet: Vec3,
+        contact: sunrise_client::motion::BodyContact,
+    ) {
+        // FarmlandBlock draws the level's float before checking LivingEntity.
+        match &*self.res.facts().get(contact.state).name {
+            "minecraft:farmland" => {
+                self.world.random.next_float();
+            }
+            "minecraft:honey_block" => {
+                let at = [feet.x, feet.y, feet.z];
+                if !self.entity_silent(id) {
+                    self.audio
+                        .play("minecraft:block.honey_block.slide", Some(at), 1.0, 1.0);
+                }
+                self.lan_entity_event(id as i32, 54, at);
+            }
+            _ => {}
+        }
+    }
+
+    /// Finish a body bounce before the caller changes the live entity's delta movement.
+    pub(super) fn finish_body_restitution(
+        &mut self,
+        (id, kind): (u32, &str),
+        feet: Vec3,
+        response: sunrise_client::motion::BodyRestitution,
+    ) -> Vec3 {
+        let Some(bounce) = response.bounce else {
+            return response.velocity;
+        };
+        // ShelfMushroomBlock calls ClientLevel.playSound with a null player, and
+        // ClientLevel.gameEvent does nothing. The authoritative level sends both.
+        if self.options.execution_role.is_client() || self.remote.is_some() {
+            return response.velocity;
+        }
+        if !matches!(kind, "minecraft:item" | "minecraft:tnt")
+            && self.motion.landing.has_shelf_bounce(bounce.state)
+        {
+            let pos = bounce.position;
+            self.audio.play(
+                "minecraft:block.shelf_mushroom.bounce",
+                Some([
+                    f64::from(pos.x) + 0.5,
+                    f64::from(pos.y) + 0.5,
+                    f64::from(pos.z) + 0.5,
+                ]),
+                1.0,
+                1.0,
+            );
+        }
+        let movement = sunrise_client::block_contact::bounce(
+            &mut sunrise_client::health::DamageLevel::of(
+                &mut self.world,
+                self.pack.assets.registry,
+                Some(world_items!(self)),
+                Some(&self.pack.block_registries),
+                &self.damage_hooks,
+            )
+            .no_push(),
+            sunrise_client::block_contact::Contact {
+                entity: id as i32,
+                kind,
+                state: bounce.state,
+                position: bounce.position,
+            },
+            bounce.fall_distance,
+            response.velocity,
+        );
+        let context = self.entity_event_context(id, None);
+        self.post_game_event("minecraft:bounce", [feet.x, feet.y, feet.z], context);
+        self.persist.sync_body_position.insert(id);
+        movement
+    }
 }
 
 /// One `ItemEntity.tick`, with the fluid push and the bubble column decided by
@@ -1081,7 +1149,10 @@ impl Game<'_> {
         if !client && let Some((on, distance)) = step.landed() {
             self.item_fall_on(item.id, on, distance);
         }
-        item.apply_move_restitution(self.body_motion(&game_side!(self)), step);
+        if let Some(response) = item.move_restitution(self.body_motion(&game_side!(self)), step) {
+            item.velocity =
+                self.finish_body_restitution((item.id, "minecraft:item"), item.position, response);
+        }
         if !client {
             // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
             self.sweep_item_inside(item);
@@ -2611,7 +2682,7 @@ impl Entity for FallingBlock {
     stored_ground!();
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
-            nonliving_support_context(self.id, self.position.y),
+            sunrise_client::motion::BodyMotion::entity_context(self.id, self.position),
             Some(PowderSnowSubject {
                 fall_distance: self.fall_distance,
                 falling_block: true,
@@ -2685,6 +2756,7 @@ impl Entity for FallingBlock {
 }
 
 impl Entity for Projectile {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         if let Some(arrow) = self.arrow.as_deref_mut() {
             arrow.fall_distance = 0.0;
@@ -2939,6 +3011,7 @@ impl Entity for Rocket {
 }
 
 impl Entity for ThrownTrident {
+    stored_ground!();
     fn reset_fall_distance(&mut self) {
         // A thrown trident keeps no fall distance here.
     }
@@ -2956,14 +3029,14 @@ impl Entity for ThrownTrident {
         self.pitch = pitch.clamp(-90.0, 90.0);
     }
     fn on_ground(&self) -> bool {
-        self.on_ground
+        self.ground.on_ground
     }
     /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
     fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
+        self.ground.on_ground = on_ground;
     }
     fn native_type(&self) -> Cow<'_, str> {
         "minecraft:trident".into()

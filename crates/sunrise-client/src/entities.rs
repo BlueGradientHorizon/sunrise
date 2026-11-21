@@ -855,6 +855,13 @@ pub struct OrbMove {
     /// `Entity.isInWater` from this tick's fluid step.
     pub in_water: bool,
 }
+/// Resume an orb's tick after its authoritative landing and restitution phases.
+#[derive(Clone, Copy)]
+pub struct OrbTickMove {
+    pub step: OrbMove,
+    pub movement: crate::motion::BodyMove,
+    burnt_out: bool,
+}
 impl ExperienceOrb {
     /// A fresh orb (`new ExperienceOrb(level, pos, motion, value)`): full
     /// health, no age, fall or followed player, not yet ticked.
@@ -1043,80 +1050,48 @@ impl ExperienceOrb {
         on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
     ) -> (bool, OrbMove) {
-        let mut world = world;
-        self.tick_among_inner(
-            &mut world,
-            facts,
+        let motion = crate::motion::BodyMotion {
+            world,
             collision,
-            player,
+            facts,
+            blocks,
+            context,
+            side: Some(side),
+        };
+        let tick =
+            self.move_before_fall(motion, player, server, next_float, border, fluids, entities);
+        self.velocity = self.move_restitution(motion, tick).velocity;
+        let stays = self.finish_tick(
+            &mut &*world,
+            (collision, facts, context, side),
+            fluids,
+            tick,
             server,
             next_float,
-            border,
-            fluids,
-            context,
-            blocks,
-            side,
             on_sound,
-            entities,
             &mut |_| false,
-        )
+        );
+        (stays, tick.step)
     }
 
-    /// As `tick_among`, consulting the hook at each actual lava hit.
-    #[allow(clippy::too_many_arguments)]
-    pub fn tick_among_with_hook(
+    /// Move and read the legacy state before the level handles the impact.
+    pub fn move_before_fall(
         &mut self,
-        mut world: &mut World,
-        facts: &BlockFacts,
-        collision: &BlockCollisionRegistry<'_>,
+        motion: crate::motion::BodyMotion<'_>,
         player: Option<[f64; 3]>,
         server: bool,
         next_float: &mut dyn FnMut() -> f32,
         border: Option<&BorderGeometry>,
         fluids: &crate::motion::FluidResources,
-        context: &sunrise_world::native_load_context::LoopContext,
-        blocks: Option<&BoundMovementProperties>,
-        side: &dyn crate::motion::SideLevel,
-        on_sound: &mut dyn FnMut([f64; 3], f32),
         entities: &[Aabb],
-        invulnerable: &mut dyn FnMut(&mut World) -> bool,
-    ) -> (bool, OrbMove) {
-        self.tick_among_inner(
-            &mut world,
-            facts,
+    ) -> OrbTickMove {
+        let crate::motion::BodyMotion {
+            world,
             collision,
-            player,
-            server,
-            next_float,
-            border,
-            fluids,
+            facts,
             context,
-            blocks,
-            side,
-            on_sound,
-            entities,
-            &mut |world| invulnerable(world),
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn tick_among_inner<W: std::ops::Deref<Target = World>>(
-        &mut self,
-        world: &mut W,
-        facts: &BlockFacts,
-        collision: &BlockCollisionRegistry<'_>,
-        player: Option<[f64; 3]>,
-        server: bool,
-        next_float: &mut dyn FnMut() -> f32,
-        border: Option<&BorderGeometry>,
-        fluids: &crate::motion::FluidResources,
-        context: &sunrise_world::native_load_context::LoopContext,
-        blocks: Option<&BoundMovementProperties>,
-        side: &dyn crate::motion::SideLevel,
-        on_sound: &mut dyn FnMut([f64; 3], f32),
-        entities: &[Aabb],
-        invulnerable: &mut dyn FnMut(&mut W) -> bool,
-    ) -> (bool, OrbMove) {
+            ..
+        } = motion;
         self.ticks += 1;
         self.previous = self.position;
         // `Entity.baseTick`'s fluid step, whose `updateFluidOnEyes` answer the
@@ -1230,14 +1205,6 @@ impl ExperienceOrb {
             self.position.y + moved.y,
             self.position.z + moved.z,
         );
-        let motion = crate::motion::BodyMotion {
-            world,
-            collision,
-            facts,
-            blocks,
-            context,
-            side: Some(side),
-        };
         if !gate.skipped() {
             motion.record_move(
                 self.position,
@@ -1245,22 +1212,64 @@ impl ExperienceOrb {
                 wanted,
                 moved,
                 server,
-                sunrise_world::collision_context::CollisionContext::empty(false),
+                crate::motion::BodyMotion::entity_context(self.id, self.position),
                 None,
                 &mut self.ground,
             );
         }
         let effect = motion.legacy_contact(self.position, &self.ground);
+        OrbTickMove {
+            step: OrbMove {
+                from,
+                moved,
+                in_water,
+            },
+            movement: crate::motion::BodyMove {
+                wanted,
+                moved,
+                effect,
+            },
+            burnt_out,
+        }
+    }
+
+    pub fn move_restitution(
+        &self,
+        motion: crate::motion::BodyMotion<'_>,
+        tick: OrbTickMove,
+    ) -> crate::motion::BodyRestitution {
         motion.restitute(
             (self.id, "minecraft:experience_orb"),
-            false,
-            wanted,
-            moved,
-            effect,
+            tick.movement,
             self.get_gravity(),
             0.98_f32,
-            &mut self.velocity,
-        );
+            self.velocity,
+            self.fall_distance,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn finish_tick<W: std::ops::Deref<Target = World>>(
+        &mut self,
+        world: &mut W,
+        (collision, facts, context, side): (
+            &BlockCollisionRegistry<'_>,
+            &BlockFacts,
+            &sunrise_world::native_load_context::LoopContext,
+            &dyn crate::motion::SideLevel,
+        ),
+        fluids: &crate::motion::FluidResources,
+        tick: OrbTickMove,
+        server: bool,
+        next_float: &mut dyn FnMut() -> f32,
+        on_sound: &mut dyn FnMut([f64; 3], f32),
+        invulnerable: &mut dyn FnMut(&mut W) -> bool,
+    ) -> bool {
+        let OrbTickMove {
+            movement: crate::motion::BodyMove { wanted, .. },
+            burnt_out,
+            ..
+        } = tick;
         // ExperienceOrb.tick applies block effects after moving, before drag.
         let discarded = server
             && !burnt_out
@@ -1305,12 +1314,7 @@ impl ExperienceOrb {
         }
         // `++age` on a Java int.
         self.age = self.age.wrapping_add(1);
-        let step = OrbMove {
-            from,
-            moved,
-            in_water,
-        };
-        (!discarded && !burnt_out && self.age < 6000, step)
+        !discarded && !burnt_out && self.age < 6000
     }
     /// `LavaFluid.entityInside` on the server: `Entity.lavaIgnite` (300 ticks),
     /// then `Entity.lavaHurt`, four damage through the orb's existing hurt/discard
@@ -5157,28 +5161,31 @@ mod orb_lava_tests {
             let mut orb = sample_orb(Vec3::new(20.5, 4.1, 20.5), 5);
             let mut sounds = 0;
             let mut calls = 0;
-            assert!(
-                orb.tick_among_with_hook(
-                    world,
-                    facts,
-                    collision,
-                    None,
-                    true,
-                    &mut || 0.0,
-                    None,
-                    fluids,
-                    crate::test_resources::server_loop_context(),
-                    None,
-                    sunrise_client::motion::dry_side(),
-                    &mut |_, _| sounds += 1,
-                    &[],
-                    &mut |_| {
-                        calls += 1;
-                        true
-                    },
-                )
-                .0
-            );
+            let context = crate::test_resources::server_loop_context();
+            let side = sunrise_client::motion::dry_side();
+            let motion = crate::motion::BodyMotion {
+                world,
+                collision,
+                facts,
+                blocks: None,
+                context,
+                side: Some(side),
+            };
+            let tick = orb.move_before_fall(motion, None, true, &mut || 0.0, None, fluids, &[]);
+            orb.velocity = orb.move_restitution(motion, tick).velocity;
+            assert!(orb.finish_tick(
+                &mut &mut *world,
+                (collision, facts, context, side),
+                fluids,
+                tick,
+                true,
+                &mut || 0.0,
+                &mut |_, _| sounds += 1,
+                &mut |_| {
+                    calls += 1;
+                    true
+                },
+            ));
             assert_eq!(orb.health, 5);
             assert_eq!(calls, 1);
             assert_eq!(sounds, 1);

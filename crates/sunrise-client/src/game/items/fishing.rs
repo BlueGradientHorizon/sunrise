@@ -1358,7 +1358,7 @@ impl Game<'_> {
         Some(h)
     }
     fn restitute_bobber(
-        &self,
+        &mut self,
         id: u32,
         position: Vec3,
         ground: &mut sunrise_world::ground_support::GroundState,
@@ -1376,21 +1376,25 @@ impl Game<'_> {
             wanted,
             moved,
             authoritative,
-            sunrise_world::collision_context::CollisionContext::empty(false),
+            sunrise_client::motion::BodyMotion::entity_context(id, position),
             None,
             ground,
         );
         let effect = motion.legacy_contact(position, ground);
-        motion.restitute(
-            (id, "minecraft:fishing_bobber"),
-            false,
-            wanted,
-            moved,
-            effect,
+        let entity = (id, "minecraft:fishing_bobber");
+        let response = motion.restitute(
+            entity,
+            sunrise_client::motion::BodyMove {
+                wanted,
+                moved,
+                effect,
+            },
             f64::from(0.03_f32),
             0.98_f32,
-            velocity,
+            *velocity,
+            0.0,
         );
+        *velocity = self.finish_body_restitution(entity, position, response);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
@@ -1694,7 +1698,7 @@ impl Game<'_> {
                 at,
                 bounds,
                 None,
-                super::entity::nonliving_support_context(id, at.y),
+                sunrise_client::motion::BodyMotion::entity_context(id, at),
             )
             .map_err(|_| mod_api::LevelWriteError::Unavailable)?;
         let hook = match caster {
