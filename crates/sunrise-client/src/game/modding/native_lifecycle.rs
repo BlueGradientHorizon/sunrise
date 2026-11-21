@@ -722,51 +722,94 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{
             __private::{ModPhase, PhaseOwner, enter},
             ObjectiveRenderType, Text,
         };
-        use std::{cell::Cell, rc::Rc};
+        use std::{
+            cell::Cell,
+            panic::{AssertUnwindSafe, catch_unwind},
+            rc::Rc,
+            sync::Mutex,
+        };
+
+        if run_fresh_cases(
+            "game::native_lifecycle::tests::a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks",
+            "SUNRISE_SCHEDULED_PHASE_REFUSAL_CHILD",
+            &["repeated"],
+        ) {
+            return;
+        }
 
         const OWNER: &str = "task_owner";
+        struct RefusalLog(Mutex<Vec<String>>);
+        impl log::Log for RefusalLog {
+            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                metadata.level() == log::Level::Warn
+            }
+            fn log(&self, record: &log::Record<'_>) {
+                if !self.enabled(record.metadata()) {
+                    return;
+                }
+                let message = record.args().to_string();
+                if message.contains("mod API objective is unavailable during Setup") {
+                    self.0.lock().unwrap().push(message);
+                }
+            }
+            fn flush(&self) {}
+        }
+        static LOG: RefusalLog = RefusalLog(Mutex::new(Vec::new()));
+        log::set_logger(&LOG).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+
         let mods = vec![ModEntry::new(OWNER, Box::new(TaskOwner))];
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
                 game.native_lifecycle.world_open_ready().unwrap();
                 game.native_lifecycle_server_tick_start(true);
-                let refused = Rc::new(Cell::new(false));
+                let refused = Rc::new(Cell::new(0));
                 let later = Rc::new(Cell::new(false));
                 {
                     let host: &mut dyn ServerHost = game;
                     let _owner = enter(OWNER, "schedule fixture");
-                    let refused = Rc::clone(&refused);
-                    host.schedule_task(
-                        0,
-                        Box::new(move |host| {
-                            host.add_objective(
-                                "refused",
-                                "dummy",
-                                Text::literal("Refused"),
-                                ObjectiveRenderType::Integer,
-                            )
-                            .unwrap();
-                            refused.set(true);
-                            let _setup = PhaseOwner::scope(ModPhase::Setup);
-                            let _ = host.objective("refused");
-                        }),
-                    )
-                    .unwrap();
+                    for (name, swallows_refusal) in
+                        [("refused_first", false), ("refused_second", true)]
+                    {
+                        let refused = Rc::clone(&refused);
+                        host.schedule_task(
+                            0,
+                            Box::new(move |host| {
+                                host.add_objective(
+                                    name,
+                                    "dummy",
+                                    Text::literal("Refused"),
+                                    ObjectiveRenderType::Integer,
+                                )
+                                .unwrap();
+                                refused.set(refused.get() + 1);
+                                let _setup = PhaseOwner::scope(ModPhase::Setup);
+                                if swallows_refusal {
+                                    let _ = catch_unwind(AssertUnwindSafe(|| host.objective(name)));
+                                } else {
+                                    let _ = host.objective(name);
+                                }
+                            }),
+                        )
+                        .unwrap();
+                    }
                     let later = Rc::clone(&later);
                     host.schedule_task(0, Box::new(move |_| later.set(true)))
                         .unwrap();
                 }
                 game.native_lifecycle_server_tick_end(false);
-                assert!(refused.get(), "the first task never reached the refusal");
-                assert!(
-                    game.objective("refused").is_none(),
-                    "it committed its write"
-                );
+                assert_eq!(refused.get(), 2, "both calls reached the refusal");
+                assert!(game.objective("refused_first").is_none());
+                assert!(game.objective("refused_second").is_none());
                 assert!(later.get(), "a refusal disabled the owner's next task");
+                let log = LOG.0.lock().unwrap();
+                assert_eq!(log.len(), 2, "each refusal must be reported: {log:?}");
+                assert!(log.iter().all(|line| line.contains(OWNER)), "{log:?}");
             });
         });
     }
