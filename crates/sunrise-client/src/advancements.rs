@@ -1308,7 +1308,7 @@ pub fn killed_by_arrow(
             this: Some(e),
             origin: me.position,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         }
@@ -1345,7 +1345,7 @@ pub fn killed(
         this: Some(me),
         origin: me.position,
         tool: None,
-        block_pos: None,
+        event_block: None,
         target: None,
         interacting: None,
     };
@@ -1439,7 +1439,7 @@ pub struct Entities<'a> {
     pub this: Option<&'a EntityView>,
     pub origin: [f64; 3],
     pub tool: Option<&'a ItemView>,
-    pub block_pos: Option<[i32; 3]>,
+    pub event_block: Option<[i32; 3]>,
     /// `LootContextParams.TARGET_ENTITY`.
     pub target: Option<&'a EntityView>,
     /// `LootContextParams.INTERACTING_ENTITY`.
@@ -1470,7 +1470,7 @@ pub fn item_entity(
         this: Some(player),
         origin: player.position,
         tool: None,
-        block_pos: None,
+        event_block: None,
         target: None,
         interacting: None,
     };
@@ -1648,9 +1648,9 @@ fn condition_leaf(v: &Value, ctx: &Entities, w: &dyn World) -> bool {
                 "minecraft:entity_properties" => ctx
                     .entity(v["entity"].as_str().unwrap_or("this"))
                     .is_some_and(|e| entity(&v["predicate"], e, w, ctx.origin)),
-                "minecraft:location_check" => location_check(v, ctx.block_pos, ctx.origin, w),
-                "minecraft:match_block" => ctx.block_pos.is_some_and(|b| block(v, b, w)),
-                "minecraft:block_state_property" => ctx.block_pos.is_some_and(|b| {
+                "minecraft:location_check" => location_check(v, ctx.event_block, ctx.origin, w),
+                "minecraft:match_block" => ctx.event_block.is_some_and(|b| block(v, b, w)),
+                "minecraft:block_state_property" => ctx.event_block.is_some_and(|b| {
                     let mut pred = serde_json::Map::new();
                     pred.insert("blocks".into(), v["block"].clone());
                     if !v["properties"].is_null() {
@@ -2228,7 +2228,7 @@ mod tests {
             this: None,
             origin: [0.0; 3],
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -2744,7 +2744,7 @@ mod tests {
             this: None,
             origin: [0.0; 3],
             tool: None,
-            block_pos: Some([0; 3]),
+            event_block: Some([0; 3]),
             target: None,
             interacting: None,
         };
@@ -2753,7 +2753,7 @@ mod tests {
         assert!(conditions(&stone, &ctx, &Flat));
         assert!(!conditions(&wheat, &ctx, &Flat));
         let absent = Entities {
-            block_pos: None,
+            event_block: None,
             ..ctx
         };
         assert!(!conditions(&stone, &absent, &Flat));
@@ -2776,7 +2776,7 @@ mod tests {
             this: Some(&source),
             origin: [0.0; 3],
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: Some(&target),
             interacting: Some(&actor),
         };
@@ -2833,7 +2833,7 @@ mod tests {
             this: Some(&player),
             origin: player.position,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -3012,7 +3012,7 @@ mod tests {
             this: Some(&player),
             origin: player.position,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -3681,7 +3681,7 @@ mod tests {
             this: None,
             origin: [0.0; 3],
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -3709,7 +3709,7 @@ mod tests {
             this: None,
             origin: [0.0; 3],
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -3748,7 +3748,7 @@ mod tests {
             this: None,
             origin: [0.0; 3],
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };

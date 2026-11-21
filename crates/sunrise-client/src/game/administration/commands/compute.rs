@@ -38,7 +38,7 @@ fn context_entities<'a>(
         this: source_this.filter(|_| c.without_this.is_none()),
         origin: c.without_this.unwrap_or(source_pos),
         tool: None,
-        block_pos: None,
+        event_block: None,
         target,
         interacting,
     }

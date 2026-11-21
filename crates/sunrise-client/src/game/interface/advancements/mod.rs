@@ -517,7 +517,7 @@ impl Game<'_> {
                 this,
                 origin,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             },
@@ -540,7 +540,7 @@ impl Game<'_> {
             this,
             origin,
             tool: None,
-            block_pos: None,
+            event_block: None,
             target: None,
             interacting: None,
         };
@@ -1406,7 +1406,7 @@ impl Game<'_> {
                         this: Some(&me),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     },
@@ -1437,7 +1437,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1476,7 +1476,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1493,7 +1493,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1501,7 +1501,7 @@ impl Game<'_> {
                 this: Some(&target),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1551,7 +1551,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1644,7 +1644,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1664,7 +1664,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1677,7 +1677,7 @@ impl Game<'_> {
                             this: Some(cause),
                             origin: me.position,
                             tool: None,
-                            block_pos: None,
+                            event_block: None,
                             target: None,
                             interacting: None,
                         };
@@ -1694,7 +1694,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1711,7 +1711,7 @@ impl Game<'_> {
                         this: Some(s),
                         origin: me.position,
                         tool: None,
-                        block_pos: None,
+                        event_block: None,
                         target: None,
                         interacting: None,
                     };
@@ -1751,7 +1751,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1773,7 +1773,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1792,7 +1792,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1867,7 +1867,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1913,7 +1913,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1930,7 +1930,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -1984,7 +1984,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2000,7 +2000,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2019,7 +2019,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2037,7 +2037,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2067,7 +2067,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2098,7 +2098,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2113,7 +2113,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2130,7 +2130,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2169,14 +2169,14 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
             let location = adv::Entities {
                 origin: centre,
                 tool: it.as_ref(),
-                block_pos: Some(pos),
+                event_block: Some(pos),
                 ..player
             };
             adv::conditions(&c["location"], &location, w)
@@ -2193,7 +2193,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2226,7 +2226,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2253,7 +2253,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2279,7 +2279,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2315,7 +2315,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2348,7 +2348,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2367,7 +2367,7 @@ impl Game<'_> {
                 this: Some(&me),
                 origin: me.position,
                 tool: None,
-                block_pos: None,
+                event_block: None,
                 target: None,
                 interacting: None,
             };
@@ -2390,7 +2390,7 @@ impl Game<'_> {
                     this: Some(e),
                     origin: me.position,
                     tool: None,
-                    block_pos: None,
+                    event_block: None,
                     target: None,
                     interacting: None,
                 }
@@ -2407,7 +2407,7 @@ impl Game<'_> {
                                 this: Some(e),
                                 origin: me.position,
                                 tool: None,
-                                block_pos: None,
+                                event_block: None,
                                 target: None,
                                 interacting: None,
                             },
