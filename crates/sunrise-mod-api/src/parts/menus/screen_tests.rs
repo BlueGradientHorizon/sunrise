@@ -67,3 +67,63 @@ fn a_second_screen_part_for_the_same_screens_is_refused() {
         [("alpha", "Layout"), ("beta", "Overlay")]
     );
 }
+
+#[test]
+fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
+    const MENU: &str = "alpha:pack";
+    const STOCK: &str = "minecraft:hopper";
+    const BLOCK: &str = "alpha:machine";
+    let declare = || {
+        let mut registrar = PartRegistrar::new("alpha");
+        registrar
+            .menu_slot_exclusions(MENU, None, &[3, 1, 3])
+            .unwrap();
+        registrar
+            .menu_slot_exclusions(MENU, Some(BLOCK), &[])
+            .unwrap();
+        registrar
+            .menu_slot_exclusions(STOCK, Some(BLOCK), &[4])
+            .unwrap();
+        registrar
+    };
+    let mut registrar = declare();
+    let good = registrar.menu_slot_exclusions.clone();
+    assert!(registrar.menu_slot_exclusions(MENU, None, &[2]).is_err());
+    assert!(registrar.menu_slot_exclusions(STOCK, None, &[2]).is_err());
+    assert!(
+        registrar
+            .menu_slot_exclusions(STOCK, Some("beta:machine"), &[2])
+            .is_err()
+    );
+    assert!(
+        registrar
+            .menu_slot_exclusions(MENU, Some("alpha:"), &[2])
+            .is_err()
+    );
+    registrar.mod_id = "beta";
+    assert!(
+        registrar
+            .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
+            .is_err()
+    );
+    assert_eq!(registrar.menu_slot_exclusions, good);
+
+    let schema = super::super::tests::rule_schema();
+    let errors = install_registrar(registrar, &schema).unwrap_err();
+    assert_eq!(errors.len(), 5);
+    assert!(menu_slot_exclusions(MENU, None).is_empty());
+
+    let mut registrar = declare();
+    let rollback = registrar.registration_checkpoint();
+    registrar
+        .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
+        .unwrap();
+    rollback(&mut registrar);
+    install_registrar(registrar, &schema).unwrap();
+    assert_eq!(menu_slot_exclusions(MENU, None), &[1, 3]);
+    assert!(menu_slot_exclusions(MENU, Some(BLOCK)).is_empty());
+    assert_eq!(menu_slot_exclusions(MENU, Some("beta:machine")), &[1, 3]);
+    assert_eq!(menu_slot_exclusions(STOCK, Some(BLOCK)), &[4]);
+    assert!(menu_slot_exclusions(STOCK, Some("alpha:other")).is_empty());
+    assert!(menu_slot_exclusions(STOCK, None).is_empty());
+}

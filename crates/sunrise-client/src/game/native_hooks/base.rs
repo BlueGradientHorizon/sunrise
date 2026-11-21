@@ -963,7 +963,7 @@ impl Game<'_> {
         block: &str,
         container: &mut Option<ModContainer>,
     ) {
-        *container = mod_api::__private::parts_installation::block_container(block);
+        *container = mod_api::__private::parts_installation::block_container(block).cloned();
     }
     /// Block `block`'s registered fluid tanks: each tank's capacity in
     /// millibuckets, the tanks each face reaches, and the tanks a fill may
@@ -1083,8 +1083,8 @@ impl Game<'_> {
     /// the menu. `block` is the mod block at the menu's position whose
     /// container opens this menu type (`menu_opener_block`), none without
     /// one. Only the part that owns the screen hears its hooks (on a vanilla
-    /// type, the part of the block's mod). The server asks it too, whatever
-    /// opened the menu: a slot it hides takes no shift-click there.
+    /// type, the part of the block's mod). The server uses the registered
+    /// backing-slot mask, never the layout hook.
     pub(in crate::game) fn native_screen(
         &self,
         menu: &str,

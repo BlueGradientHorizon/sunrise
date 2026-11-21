@@ -8,6 +8,7 @@ impl PartRegistrar {
         let tags = self.tags.clone();
         let keys = self.registry_keys.borrow().clone();
         let menu_recipe_books = self.menu_recipe_books.clone();
+        let menu_slot_exclusions = self.menu_slot_exclusions.clone();
         let recipe_book_types = self.recipe_book_types.clone();
         let recipe_book_fields = self.recipe_book_fields.clone();
         let recipe_book_filters = self.recipe_book_filters.clone();
@@ -27,6 +28,7 @@ impl PartRegistrar {
                     registrar.tags = tags;
                     *registrar.registry_keys.borrow_mut() = keys;
                     registrar.menu_recipe_books = menu_recipe_books;
+                    registrar.menu_slot_exclusions = menu_slot_exclusions;
                     registrar.recipe_book_types = recipe_book_types;
                     registrar.recipe_book_fields = recipe_book_fields;
                     registrar.recipe_book_filters = recipe_book_filters;

@@ -107,6 +107,20 @@ pub fn menu_listens(hook: HookId, menu: &str) -> bool {
         .is_some_and(|table| !table.menu(|| Some(menu)).is_empty())
 }
 
+/// Authoritative exclusions for the validated opener, or the menu type's default.
+/// The caller checks these backing indices against the count of its actual menu.
+pub fn menu_slot_exclusions(menu: &str, block: Option<&str>) -> &'static [u16] {
+    let Some(scopes) = installed().and_then(|installed| installed.menu_slot_exclusions.get(menu))
+    else {
+        return &[];
+    };
+    // An empty scope key denotes the default; explicit block IDs cannot be empty.
+    block
+        .and_then(|block| scopes.get(block))
+        .or_else(|| scopes.get(""))
+        .map_or(&[], |slots| slots.as_ref())
+}
+
 impl dyn Registrar + '_ {
     /// Attach `part` to the menu type `menu`: a mod's, or one of vanilla's that a mod block opens.
     pub fn menu_part<P: MenuPart>(&mut self, menu: &str, part: P) {
@@ -116,12 +130,30 @@ impl dyn Registrar + '_ {
 
 /// Registrar operations for menus.
 pub trait MenusRegistrar {
+    /// Exclude container backing indices from server pickup and quick-move and
+    /// from the client layout. Indices stay in place; the player inventory is unaffected.
+    /// The owning mod of a custom `menu` may use `None` for its default or `Some(block)`
+    /// to replace it when that exact mod block's container opens this menu type.
+    /// For a stock menu, `block` must name an explicit mod block owned by the registrar.
+    /// Both IDs must be namespaced. Indices are sorted and deduplicated.
+    /// An empty slice is an explicit empty mask.
+    /// A duplicate or out-of-scope declaration refuses installation even if the error
+    /// is ignored. An index outside the actual container backing refuses the open.
+    /// Screen layouts leave these positions empty; local hides never change this mask.
+    fn menu_slot_exclusions(
+        &mut self,
+        menu: &str,
+        block: Option<&str>,
+        excluded: &[u16],
+    ) -> Result<(), String>;
+
     /// Declare this menu's book, authoritative recipe type and destination roles.
     /// The menu remains content-owned; loading checks these roles against its
     /// actual container slots and crafting declaration. `screen` is the existing
     /// typed screen value, frozen here: mapped slots need finite coordinates and
-    /// its book must equal `book`. This screen owns client geometry and server
-    /// hidden-slot policy; these menus do not call the dynamic screen hook.
+    /// its book must equal `book`. This screen owns client geometry; permanent
+    /// exclusions are declared separately with [`Self::menu_slot_exclusions`].
+    /// These menus do not call the dynamic screen hook.
     /// The declaring mod owns the screen's callbacks and slot controls, even
     /// without a screen part. A foreign screen part on this menu is refused.
     /// This does not turn display candidates into ingredient predicates.

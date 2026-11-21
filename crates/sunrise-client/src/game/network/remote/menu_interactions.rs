@@ -540,11 +540,10 @@ impl Game<'_> {
             let backing_slots = entity.slots().len();
             self.world.block_entities.insert(key, entity);
             self.container = Some(key);
-            self.open_native_screen(key, target, backing_slots, extra);
-            // A mod menu type shows through its mod's screen only: without one
-            // (`MenuScreens.create` finds no screen) the window closes again.
-            if self.mod_screen.is_none() && mod_type.is_some() {
-                self.world.block_entities.remove(&key);
+            if !self.open_native_screen(key, target, backing_slots, extra) {
+                if mod_type.is_some() || key.0 == i32::MIN {
+                    self.world.block_entities.remove(&key);
+                }
                 self.remote_reject_container(p.container);
                 return;
             }

@@ -971,24 +971,8 @@ mod tests {
         });
     }
 
-    /// A held box's menu, opened from code at the mod block whose container opens its type:
-    /// the type's screen hides slot 0 there.
-    struct SatchelScreen;
-    #[mod_api::sunrise_part]
-    impl mod_api::MenuPart for SatchelScreen {
-        fn screen(
-            &self,
-            _: &dyn mod_api::Host,
-            _: &mut mod_api::ScreenEvent<'_>,
-        ) -> Option<mod_api::MenuScreenLayout> {
-            Some(mod_api::MenuScreenLayout {
-                slots: (0..9)
-                    .map(|i| (i != 0).then(mod_api::ScreenSlot::default))
-                    .collect(),
-                ..Default::default()
-            })
-        }
-    }
+    /// A held box's menu, opened from code at the mod block whose container
+    /// opens its type, with backing slot 0 excluded for that opener.
     struct Satchel;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Satchel {
@@ -1004,7 +988,8 @@ mod tests {
                     ..Default::default()
                 },
             );
-            r.menu_part(SATCHEL_MENU, SatchelScreen);
+            r.menu_slot_exclusions(SATCHEL_MENU, Some("satchel:stand"), &[0])
+                .unwrap();
         }
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
             event
@@ -1017,7 +1002,7 @@ mod tests {
     const SATCHEL_MENU: &str = "minecraft:generic_9x1";
 
     /// #1172: a menu `player_open_mod_menu` opens keeps its handle and backing, and a
-    /// shift-click on the server passes over the slot its screen hid at open.
+    /// shift-click on the server passes over the slot its opener excludes.
     /// Neither pickup nor shift-click can move an item out of the hidden slot.
     #[test]
     #[ignore = "daily"]

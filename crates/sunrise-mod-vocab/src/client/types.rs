@@ -1002,11 +1002,10 @@ impl ColoredLight {
 }
 
 /// Layout for a mod menu type's screen (`screen`): its size, where
-/// each of the container's slots is (`Slot.x`, `Slot.y`; none hides the
-/// slot, and so do slots past the list; for a block's menu the server's menu
-/// does not have a hidden slot either, so clicks and shift-clicks skip it), and the player inventory's first
-/// row (vanilla's is 84; the hotbar is 58 below it) and left column, from
-/// its top left.
+/// each of the container's slots is (`Slot.x`, `Slot.y`), and the player
+/// inventory's first row (vanilla's is 84; the hotbar is 58 below it) and
+/// left column, from its top left. The screen does not decide which slots
+/// take server clicks; see [`crate::MenusRegistrar::menu_slot_exclusions`].
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: mods build it with a literal and the game reads every field
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -1015,7 +1014,9 @@ pub struct MenuScreenLayout {
     pub width: f32,
     /// The screen's height in GUI pixels; vanilla's is 166.
     pub height: f32,
-    /// Each menu slot's top-left (x, y), or `None` to hide it.
+    /// Slot geometry at its original backing index. Every nonexcluded slot
+    /// needs geometry; `None` (including an omitted trailing entry) is valid
+    /// only for a registered exclusion. There are no entries past the backing.
     pub slots: Vec<Option<ScreenSlot>>,
     /// The y of the player inventory's first row; vanilla's is 84.
     pub inventory_y: f32,

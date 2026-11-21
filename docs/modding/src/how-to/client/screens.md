@@ -103,8 +103,10 @@ over the screen override.
 
 ## Moving or hiding a mod screen's slots
 
-A mod screen declares where each slot sits in `MenuScreenLayout::slots`. A screen whose layout changes while it is
-open (tabs, a collapsing panel, a scrolling slot grid, Tinkers' station laying its inputs out for the tool
+A mod screen declares where each slot sits in `MenuScreenLayout::slots`. Keep the original backing indices:
+only [registered slot exclusions](../world/machine-menu-data.md#the-menus-screen) may be `None` or omitted
+at the end of the list. A screen whose layout changes while it is open (tabs, a collapsing panel, a scrolling
+slot grid, Tinkers' station laying its inputs out for the tool
 being built) moves or hides a slot afterwards with `ClientHost::set_screen_slot`, as a Java screen sets
 `Slot.x`/`Slot.y` or deactivates a slot:
 
@@ -144,18 +146,18 @@ or a hide never touches the recipe book: a bound book keeps its catalogue and it
 position outside the image is allowed and is not clamped, and a slot there takes the click instead of making it a
 click outside the screen.
 
-The call is client-side only: nothing is sent, and the server's menu never learns a position. It keeps every slot,
-so a hidden slot keeps its item and a shift-click may still fill it, as a deactivated Java slot does. A slot the
-screen hid in `MenuScreenLayout::slots` when it opened is not in the server's menu, so it can't be shown: declare the most
-slots any layout shows, and hide the ones a layout doesn't use.
+The call is client-side only: nothing is sent, and the server's slot exclusions never change. A locally hidden
+slot keeps its item and a shift-click may still fill it, as a deactivated Java slot does. A permanently
+excluded slot cannot be shown: give every slot that any local layout uses a position at open, then hide the
+ones the current local layout doesn't use.
 
 Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 
 | Refusal | When |
 |---|---|
 | `NoScreen` | No mod screen is open, or the open one is another menu type's |
-| `NoSuchSlot` | `slot` is past the end of `MenuScreenLayout::slots` |
-| `HiddenAtOpen` | A position for a slot `MenuScreenLayout::slots` hid when the screen opened |
+| `NoSuchSlot` | `slot` is outside the menu's container backing |
+| `HiddenAtOpen` | A position for a permanently excluded slot |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |
 | `Unavailable` | No game backend: screens are the client's |
 

@@ -1,0 +1,17 @@
+ids = [
+    "trait:MenusRegistrar",
+    "method:MenusRegistrar::menu_slot_exclusions",
+    "method:MenusRegistrar::menu_recipe_book",
+    "hook:screen",
+    "method:MenuPart::screen",
+    "type:MenuScreenLayout",
+    "type:MenuScreenLayout.slots",
+    "type:ScreenSlotRefusal",
+    "type:ScreenSlotRefusal.NoSuchSlot",
+    "type:ScreenSlotRefusal.HiddenAtOpen",
+    "method:prelude::ScreensClientHost::set_screen_slot",
+    "handle:PlayerRef::open_menu",
+    "handle:PlayerRef::open_mod_menu",
+]
+why = "The server reads permanent slot exclusions from registration rather than running a client layout callback. A screen cannot change which backing slots accept clicks, and an out-of-range mask refuses the open before replacing the old server window."
+migrate = "Replace permanent None entries and omitted trailing slots in your screen layout (including a layout passed to menu_recipe_book) with r.menu_slot_exclusions(menu_id, opener, &[original_backing_indices]) in Hooks::register. Use None for a custom menu you own, Some(block_id) for an exact override of that custom menu, and Some(your_block_id) for a stock menu. Keep None placeholders and give every other backing slot geometry without compacting indices. Trailing exclusions may be omitted from the layout, but must be in the registered mask; they now return HiddenAtOpen rather than NoSuchSlot if you try to show them. For a temporary hide, give the slot geometry and call host.set_screen_slot(menu_id, index, None) on the client instead. Move any server logic out of MenuPart::screen; it runs only on the client. An invalid exclusion returns the existing not-open result from PlayerRef::open_menu or PlayerRef::open_mod_menu."

@@ -12,11 +12,11 @@ pub trait Hooks {
     /// answering them, and a vanilla one takes one per mod, asked only for
     /// that mod's blocks; a second is refused at load. A mod menu type
     /// with no answer has no screen, and its window closes again. The server
-    /// asks it too, whatever opened the menu: a slot it hides takes no
-    /// shift-click there. A recipe-book menu's registered screen opens only
-    /// for its block's menu.
+    /// never calls this hook. Register permanent backing-slot exclusions with
+    /// `MenusRegistrar::menu_slot_exclusions`; the layout must agree with that
+    /// mask. A recipe-book menu uses its registered screen instead of this hook.
     #[hook(
-        version = 2,
+        version = 3,
         side = "both",
         contract = "replace",
         out = "screen",

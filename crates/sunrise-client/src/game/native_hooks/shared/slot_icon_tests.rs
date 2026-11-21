@@ -108,6 +108,12 @@ impl mod_api::Hooks for IconMod {
                 ..Default::default()
             },
         );
+        r.menu_slot_exclusions(
+            "minecraft:generic_9x1",
+            Some("icon_open:machine"),
+            &[1, 2, 3, 4, 5, 6, 7, 8],
+        )
+        .unwrap();
         r.menu_part("minecraft:generic_9x1", IconScreen(self.0.clone()));
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
@@ -168,13 +174,13 @@ fn unknown_slot_icon_refuses_screen_at_open_with_diagnostic() {
                     .default_state("icon_open:machine")
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, block).unwrap();
-                game.open_native_screen(pos, Some(pos), 9, None);
+                assert!(game.open_native_screen(pos, Some(pos), 9, None));
                 assert!(game.mod_screen.is_some(), "valid icon must open the screen");
                 DIAGNOSTICS.0.lock().unwrap().clear();
                 unknown.store(true, Ordering::Relaxed);
                 // A panic fails this test; no catch_unwind masks it.
                 seed_native_menu(game, 2, "minecraft:generic_9x1");
-                game.open_native_screen(pos, Some(pos), 9, None);
+                assert!(!game.open_native_screen(pos, Some(pos), 9, None));
                 assert!(
                     game.mod_screen.is_none(),
                     "unknown icon must refuse, not retain the prior screen"

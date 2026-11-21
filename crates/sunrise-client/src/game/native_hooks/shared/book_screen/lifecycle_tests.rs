@@ -38,6 +38,9 @@ impl mod_api::Hooks for BoundBookMod {
     fn register(&self, registrar: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
         let key = registrar.recipe_book_type("bound:book").unwrap();
         registrar
+            .menu_slot_exclusions("bound:menu", None, &[2])
+            .unwrap();
+        registrar
             .menu_recipe_book(
                 "bound:menu",
                 &key,
@@ -157,7 +160,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
             mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
             with_bound_menu_type(|| {
                 seed_native_menu(game, 7, "bound:menu");
-                game.open_native_screen(
+                assert!(game.open_native_screen(
                     (i32::MIN, 0, 0),
                     None,
                     3,
@@ -166,7 +169,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                         pos: None,
                         data: Vec::new(),
                     }),
-                );
+                ));
                 let screen = game.mod_screen.as_ref().expect("registered screen stages");
                 assert_eq!(
                     screen.screen.recipe_book.as_ref().unwrap().as_str(),
@@ -174,7 +177,12 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 );
                 assert_eq!(screen.menu.block, None);
                 assert_eq!(screen.menu.pos, None);
-                assert_eq!(game.native_hidden_slots("bound:menu", None, 3), vec![2]);
+                assert_eq!(
+                    Game::native_hidden_slots("bound:menu", None, 3),
+                    Some(&[2][..])
+                );
+                assert_eq!(screen.screen.slots.len(), 3);
+                assert!(screen.screen.slots[2].is_none());
             });
         });
     });

@@ -250,8 +250,9 @@ or changing levels stops every sound. Add particles from the same tick with `hos
 ([hook notes](../../reference/hook-notes.md#client-ticks-hums-smoke-and-moving-parts)).
 
 `player.open_menu(host, entity)` also returns `Result<bool, BlockEntityError>`:
-`Ok(true)` means opened, `Ok(false)` means a non-provider, cancelled open or
-unconnected/wrong-level player, and `Err(BlockEntityError::Stale)` means the entity
+`Ok(true)` means opened, `Ok(false)` means a non-provider, cancelled open,
+out-of-range slot exclusion or unconnected/wrong-level player, and
+`Err(BlockEntityError::Stale)` means the entity
 does not resolve. It never opens a replacement through an old handle.
 
 ## Blockless status menus
@@ -266,7 +267,8 @@ Reusing a window id does not reuse the previous opening's context.
 Copy the bytes with `to_vec()` only if you need to keep them beyond the host borrow.
 `pos` is an optional hint returned by `screen_pos()`. Neither is live data or block backing.
 The menu's declared container slots, if any, start empty. Opening returns the window id or
-`Ok(None)` when vetoed. Invalid type, connection or client support, opening bytes, data count or
+`Ok(None)` when vetoed or a registered slot exclusion is out of range. Invalid type,
+connection or client support, opening bytes, data count or
 title returns `OpenMenuError`. Neither a refused nor a cancelled open closes the old menu.
 
 For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
@@ -321,7 +323,7 @@ impl mod_api::MenuPart for BackpackScreen {
         Some(mod_api::MenuScreenLayout {
             width: 176.0,
             height: 133.0,
-            // One row of nine; a slot left `None` is hidden.
+            // One row of nine, all available at their backing indices.
             slots: (0..9)
                 .map(|i| Some(mod_api::ScreenSlot { position: [8.0 + 18.0 * i as f32, 18.0], ..Default::default() }))
                 .collect(),
@@ -344,8 +346,23 @@ gets a mod screen the same way, from a part attached to that vanilla menu type; 
 only for your own mod's blocks that open the menu, never for another mod's or vanilla's own,
 so several mods' machines can share one vanilla type. One part owns each screen and alone
 hears its four hooks: a mod menu type takes one part answering them, a vanilla type one per
-mod, and a second is refused at load. The server asks `screen` too, whatever opened the
-menu, so a slot it hides takes no shift-click there either.
+mod, and a second is refused at load. The server does not call `screen`.
+
+To exclude slots permanently, register the original backing indices. For example, if
+`mymod:machine` opens `minecraft:hopper` but uses only its first two slots, call this in
+`register`:
+
+```rust,ignore
+r.menu_slot_exclusions("minecraft:hopper", Some("mymod:machine"), &[2, 3, 4]).unwrap();
+```
+
+A stock type requires an explicit opener block you own. For a custom menu type you own,
+use `None` for the default and `Some("namespace:block")` to replace it for that exact
+block when its container opens the type. Use `&[]` for an override with no exclusions.
+An excluded slot keeps its index but takes no pickup or shift-click. Give every other
+slot geometry at its original index and leave `None` for each exclusion (you may omit
+trailing exclusions). An out-of-range mask or a client layout that disagrees with the
+mask refuses the opening.
 
 For a menu type with a `MenuPart`, a button returned by `screen_click` reaches
 `menu_button` on the server. A block-backed menu also supplies its backing block entity;
@@ -359,7 +376,7 @@ for drawing, clicks and tooltips; another mod's screen part is refused.
 A screen whose slots move while it is open (Tinkers' tinker station, which lays its input slots out for the
 tool being built) calls `host.set_screen_slot(menu, slot, Some([x, y]))` on the client, or `None` to hide a
 slot ([moving or hiding a mod screen's slots](../client/screens.md#moving-or-hiding-a-mod-screens-slots)). Only
-the screen changes: the server's menu keeps every slot.
+the screen changes: the server's slot exclusions do not change.
 
 ## Receiving synchronized data
 

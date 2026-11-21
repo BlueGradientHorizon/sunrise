@@ -8,6 +8,58 @@ mod book_tests;
 mod screen_tests;
 
 impl MenusRegistrar for PartRegistrar {
+    fn menu_slot_exclusions(
+        &mut self,
+        menu: &str,
+        block: Option<&str>,
+        excluded: &[u16],
+    ) -> Result<(), String> {
+        let result = (|| {
+            if mod_vocab::__private::parts_installation::parts_installed() {
+                return Err("registry is frozen");
+            }
+            let menu_id = crate::Identifier::parse_namespaced(menu)
+                .ok_or("menu must be a namespaced identifier")?;
+            let block_id = block
+                .map(|block| {
+                    crate::Identifier::parse_namespaced(block)
+                        .filter(|id| id.namespace() != "minecraft")
+                        .ok_or("opener must be a namespaced mod block identifier")
+                })
+                .transpose()?;
+            if menu_id.namespace() == "minecraft" {
+                if !block_id
+                    .as_ref()
+                    .is_some_and(|id| owns_namespace(self.mod_id, id.namespace()))
+                {
+                    return Err(
+                        "a stock menu requires an opener block owned by the registering mod",
+                    );
+                }
+            } else if !owns_namespace(self.mod_id, menu_id.namespace()) {
+                return Err("the custom menu must be owned by the registering mod");
+            }
+            let scopes = self.menu_slot_exclusions.entry(menu.into()).or_default();
+            let scope = block.unwrap_or_default();
+            if scopes.contains_key(scope) {
+                return Err("duplicate menu slot exclusions");
+            }
+            let mut excluded = excluded.to_vec();
+            excluded.sort_unstable();
+            excluded.dedup();
+            scopes.insert(scope.into(), excluded.into_boxed_slice());
+            Ok(())
+        })();
+        result.map_err(|reason| {
+            let message = format!(
+                "mod {} menu {menu:?} opener {block:?}: {reason}",
+                self.mod_id,
+            );
+            self.refused.push(message.clone());
+            message
+        })
+    }
+
     fn menu_recipe_book(
         &mut self,
         menu: &str,

@@ -62,10 +62,10 @@ pub trait ScreensClientHost {
     /// even if it reuses the same window id. Only the mod that owns the open screen moves
     /// its slots: the mod that registered
     /// its recipe-book layout (`MenusRegistrar`), with or without a screen part, else the mod
-    /// whose screen part lays it out. Nothing is sent:
-    /// the server's menu keeps every slot, so a hidden slot keeps its
-    /// item and a shift-click may still fill it, as a deactivated Java slot does, and a slot
-    /// the screen hid when it opened stays hidden. It takes `&self`, so a screen hook may call
+    /// whose screen part lays it out. Nothing is sent and the server's mask does not change:
+    /// a locally hidden slot keeps its item and a shift-click may still fill it, as a
+    /// deactivated Java slot does. A slot excluded at registration cannot be shown.
+    /// It takes `&self`, so a screen hook may call
     /// it every frame; repeating a slot's current place changes nothing and costs no layout
     /// work. Each refusal changes nothing and is named by `ScreenSlotRefusal`: `NoScreen`,
     /// `NoSuchSlot`, `HiddenAtOpen`, `BadPosition` and `Unavailable`.

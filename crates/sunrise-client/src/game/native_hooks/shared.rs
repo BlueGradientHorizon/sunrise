@@ -747,10 +747,9 @@ impl SlotMoves {
         }
     }
     /// Moves slot `slot` of a screen that declared `slots` to `pos`, or hides
-    /// it with None, from the next build. A slot the screen hid when it opened
-    /// (the server's menu has no such slot) is never shown. Each refusal
-    /// changes nothing; repeating the slot's current place changes nothing
-    /// either, not even the move count.
+    /// it with None, from the next build. A permanently excluded slot is
+    /// never shown. A refusal or a repeat changes nothing, not even the
+    /// move count.
     fn set(
         &self,
         slots: &[Option<mod_api::ScreenSlot>],

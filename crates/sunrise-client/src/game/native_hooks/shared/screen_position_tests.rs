@@ -69,10 +69,11 @@ impl mod_api::MenuPart for Position {
         seen.tooltip_at.push(event.at);
     }
 }
-struct Listener(Seen);
+struct Listener(Seen, &'static [u16]);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Listener {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.menu_slot_exclusions(PACK, None, self.1).unwrap();
         r.menu_part("minecraft:generic_9x3", Position(self.0.clone()));
         r.menu_part(PACK, Position(self.0.clone()));
     }
@@ -89,11 +90,11 @@ impl mod_api::Hooks for Listener {
             .then_some(mod_api::ScreenOpening::Cancel)
     }
 }
-fn with_listener(test: impl FnOnce(&mut Game<'_>, &Seen)) {
+fn with_listener(excluded: &'static [u16], test: impl FnOnce(&mut Game<'_>, &Seen)) {
     let seen = Seen::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "test",
-        Box::new(Listener(seen.clone())),
+        Box::new(Listener(seen.clone(), excluded)),
     )]
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
@@ -125,7 +126,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             false,
         )],
         || {
-            with_listener(|game, seen| {
+            with_listener(&[], |game, seen| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Slotless").unwrap();
                 let remote = game.remote.as_mut().unwrap();
@@ -255,7 +256,7 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
             false,
         )],
         || {
-            with_listener(|game, _| {
+            with_listener(&[], |game, _| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Extra bytes").unwrap();
                 let remote = game.remote.as_mut().unwrap();
@@ -330,6 +331,8 @@ impl mod_api::Hooks for CrateMod {
                 ..Default::default()
             },
         );
+        r.menu_slot_exclusions("minecraft:generic_9x3", Some("test:crate"), &[4])
+            .unwrap();
         r.menu_part("minecraft:generic_9x3", Position(self.0.clone()));
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
@@ -338,9 +341,8 @@ impl mod_api::Hooks for CrateMod {
             .unwrap();
     }
 }
-/// A mod block whose container opens a vanilla menu type: the client's screen is the type's
-/// part's, told the block and its position, and the server asks the same part with the block
-/// and leaves the slot it hides out of the menu.
+/// A mod block whose container opens a vanilla menu type: the client lays it
+/// out for that opener, and the mask for that opener leaves out slot 4.
 #[test]
 #[ignore = "daily"]
 fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
@@ -387,7 +389,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                     .default_state("test:crate")
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-                game.open_native_screen(pos, Some(pos), 27, None);
+                assert!(game.open_native_screen(pos, Some(pos), 27, None));
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                 assert_eq!(open.screen.height, 166.0);
@@ -447,11 +449,9 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                         [[90.0, 75.0], [89.0, 79.0], [-75.75, 92.75]]
                     );
                 }
-                // The server's menu for the block: asked with the block, so slot 4 is not in it.
-                assert_eq!(
-                    game.native_hidden_slots("minecraft:generic_9x3", Some(pos), 27),
-                    [4]
-                );
+                let menu = "minecraft:generic_9x3";
+                let block = game.menu_opener_block(pos, menu);
+                assert_eq!(Game::native_hidden_slots(menu, block, 27), Some(&[4][..]));
             },
         );
     });
@@ -474,23 +474,33 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
             true,
         )],
         || {
-            with_listener(|game, seen| {
+            with_listener(&[0, 1, 2, 3, 4, 5, 6, 7, 8], |game, seen| {
                 let key = (i32::MIN, 0, 0);
                 seed_native_menu(game, 1, PACK);
-                game.open_native_screen(key, None, 9, None);
+                assert!(game.open_native_screen(key, None, 9, None));
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!((open.screen.height, &open.menu.block), (133.0, &None));
+                assert_eq!(open.screen.slots, vec![None; 9]);
                 game.container = Some(key);
                 game.set_screen(Screen::Inventory);
                 let mut batch = HudBatch::scratch([128, 128]);
                 assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
                 assert_eq!(seen.lock().unwrap().draw, [(None, None)]);
                 seed_native_menu(game, 2, "minecraft:generic_9x3");
-                game.open_native_screen(key, None, 27, None);
+                assert!(game.open_native_screen(key, None, 27, None));
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla chest keeps its screen"
                 );
+            });
+            with_listener(&[], |game, _| {
+                let key = (i32::MIN, 0, 0);
+                seed_native_menu(game, 1, PACK);
+                assert!(
+                    !game.open_native_screen(key, None, 9, None),
+                    "a layout alone cannot omit any of the nine backing slots"
+                );
+                assert!(game.mod_screen.is_none());
             });
         },
     );
@@ -549,7 +559,8 @@ struct HopperMod<const HIDDEN: usize>(HopperScreen<HIDDEN>);
 #[mod_api::__subscriptions]
 impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        let block = r.block_key(&format!("{}:machine", self.0.owner));
+        let id = format!("{}:machine", self.0.owner);
+        let block = r.block_key(&id);
         r.block_container(
             &block,
             mod_api::ModContainer {
@@ -558,6 +569,8 @@ impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {
                 ..Default::default()
             },
         );
+        r.menu_slot_exclusions("minecraft:hopper", Some(&id), &[HIDDEN as u16])
+            .unwrap();
         r.menu_part("minecraft:hopper", self.0.clone());
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
@@ -568,8 +581,8 @@ impl<const HIDDEN: usize> mod_api::Hooks for HopperMod<HIDDEN> {
     }
 }
 /// Two mods' machines opening vanilla's hopper menu each get only their own mod's screen:
-/// its layout on both sides, its drawing, its button, its tooltip and its slot controls. A
-/// vanilla hopper keeps vanilla's screen.
+/// its authoritative exclusions, layout, drawing, button, tooltip and slot controls.
+/// A vanilla hopper keeps vanilla's screen.
 #[test]
 #[ignore = "daily"]
 fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
@@ -618,7 +631,7 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                     heard.lock().unwrap().clear();
                     seed_native_menu(game, x, "minecraft:hopper");
-                    game.open_native_screen(pos, Some(pos), 5, None);
+                    assert!(game.open_native_screen(pos, Some(pos), 5, None));
                     game.container = Some(pos);
                     game.set_screen(Screen::Inventory);
                     let open = game.mod_screen.as_ref().expect("the machine's screen");
@@ -658,8 +671,14 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     let hooks = ["screen", "draw", "click", "tooltip"];
                     let only_owner: Vec<_> = hooks.iter().map(|&hook| (owner, hook)).collect();
                     assert_eq!(*heard.lock().unwrap(), only_owner);
-                    // The server leaves out the owner's hidden slot, and only it.
-                    assert_eq!(game.native_hidden_slots(&menu, Some(pos), 5), [hidden]);
+                    // Only the verified opener's mask applies, with no layout callback.
+                    let opener = game.menu_opener_block(pos, &menu);
+                    assert_eq!(opener, block);
+                    assert_eq!(
+                        Game::native_hidden_slots(&menu, opener, 5),
+                        Some(&[hidden as u16][..])
+                    );
+                    assert_eq!(*heard.lock().unwrap(), only_owner);
                     // Only the owner reads and moves the screen's slots.
                     for calling in ["alpha", "beta"] {
                         let _call = mod_api::content::crash::enter_native_mod(
@@ -686,15 +705,14 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 heard.lock().unwrap().clear();
                 seed_native_menu(game, 3, "minecraft:hopper");
-                game.open_native_screen(pos, Some(pos), 5, None);
+                assert!(game.open_native_screen(pos, Some(pos), 5, None));
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla hopper keeps its screen"
                 );
-                assert!(
-                    game.native_hidden_slots("minecraft:hopper", Some(pos), 5)
-                        .is_empty()
-                );
+                let menu = "minecraft:hopper";
+                assert_eq!(game.menu_opener_block(pos, menu), None);
+                assert!(Game::native_hidden_slots(menu, None, 5).unwrap().is_empty());
                 assert!(heard.lock().unwrap().is_empty());
             },
         );
