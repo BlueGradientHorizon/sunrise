@@ -320,9 +320,10 @@ so a signed list can't be reused under another tag.
   runs, which sign with a throwaway key). No code from the repository runs beside the key, so no pull request
   can read it by changing what a build compiles; the key is in no file, no log and no password vault, and nobody
   needs to read it.
-- The publish job then checks the signature the way launchers do (`sunrise-release-sign verify --publishing`,
-  crates/sunrise-release-sign), against the public keys built in from
-  `crates/sunrise-release-sign/release-keys.txt`. While that file lists no key, releases go out with SHA256SUMS
+- The publish job then checks the signature the way launchers do, against the public keys in main's
+  `crates/sunrise-release-sign/release-keys.txt`: `nightly-build.yml` with the runner's OpenSSL
+  (`nightly.py verify-sums --publishing`, which runs no code of the checkout, so a release branch's candidate can't
+  change the check), the SDK and mod-tool workflows with `sunrise-release-sign verify --publishing`. While that file lists no key, releases go out with SHA256SUMS
   alone and a warning (today's releases keep working). Once it lists one, a missing secret or a key it doesn't
   list fails the release before anything is published, instead of publishing something launchers would refuse.
 - Making the key: `tools/ci/new_release_key.sh` pipes a new key from `sunrise-release-sign keygen` straight into
@@ -842,7 +843,8 @@ comment on any issue or pull request (`.github/workflows/nightly-command.yml`, `
   merge with a read-only token that isn't kept in the checkout and no secrets, and signs nothing with Developer ID
   (`developer_id: false`). `sign` and `musl-attach` pass the key only to main's `tools/ci/sign_release.sh`, which
   hashes the archives with the runner's `sha256sum` and signs with its OpenSSL: it never runs what the build made.
-  `publish` and `musl-attach` verify with main's `sunrise-release-sign`, never the archives. Nothing a nightly's build leaves reaches a
+  `publish` and `musl-attach` verify with the runner's OpenSSL and main's release keys (`nightly.py verify-sums`),
+  never the archives, and build nothing from the checkout. Nothing a nightly's build leaves reaches a
   release either: `game-build.yml`'s `trusted` input is true only for `release.yml`. An untrusted build's legs
   run on fresh Blacksmith (or GitHub) machines, and its Rust cache has its own key and is never saved. A trusted build doesn't use the machine's
   shared sccache, which pull requests' jobs write (`SUNRISE_NO_SCCACHE`, `tools/ci/runner-env.sh`).

@@ -549,7 +549,7 @@ class ReserveStableTagTests(unittest.TestCase):
             self.reserve({}, head="9" * 40)
         with self.assertRaisesRegex(SystemExit, "a real stable runs only on release/26.3"):
             self.reserve({}, ref="refs/heads/Release/26.3")
-        with self.assertRaisesRegex(SystemExit, "26.3-0.1.1 does not follow 26.3-0.2.0"):
+        with self.assertRaisesRegex(SystemExit, "26.3-0.1.1 is not newer than 26.3-0.2.0"):
             self.reserve({"26.3-0.2.0": "9" * 40}, tag="26.3-0.1.1",
                          parent=nightly.train.Release("26.3-0.2.0", "9" * 40, ""))
         with self.assertRaisesRegex(SystemExit, "the first stable release on 26.3 is 26.3-0.1.0"):

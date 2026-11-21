@@ -569,6 +569,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(stable["run"].index("break-glass-notes"), stable["run"].index("reserve-stable-tag"))
         self.assertLess(publish["steps"].index(check), publish["steps"].index(stable))
 
+    def test_no_release_job_runs_cargo_in_the_checkout(self):
+        # The checkout is the candidate: its .cargo/config.toml, [patch] or build scripts would run. Signatures are
+        # checked with OpenSSL (nightly.py verify-sums); the only build is the parent's sunrise-stage, from the
+        # parent's own tree (nightly.parent_stage).
+        jobs = workflow("nightly-build.yml")["jobs"]
+        for name in ("pick", "break-glass", "sign", "publish", "musl-attach"):
+            for step in jobs[name]["steps"]:
+                with self.subTest(job=name, step=step.get("name", step.get("uses"))):
+                    self.assertNotRegex(step.get("run", ""), r"(^|\s)cargo\s")
+
     def test_the_full_daily_follows_every_published_stable_release(self):
         full_daily = workflow("nightly-build.yml")["jobs"]["full-daily"]
         self.assertIn("needs.publish.result == 'success'", full_daily["if"])
