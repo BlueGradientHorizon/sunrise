@@ -5,7 +5,7 @@ impl DisplayResources for Registry {
         true
     }
     fn item(&self, id: &str) -> bool {
-        id == "minecraft:stone"
+        matches!(id, "minecraft:stone" | "minecraft:dirt")
     }
     fn stack(&self, _: &mod_api::ItemStack) -> bool {
         false
@@ -77,15 +77,15 @@ fn explicit_not_placeable_is_not_missing_authoritative_information() {
     assert!(
         matches!(error, DisplayLoadError::InvalidPlacement(reason) if reason.contains("mod demo") && reason.contains("PlacementInfo"))
     );
-    let mut impossible = batch(Some(PlacementInfo::NOT_PLACEABLE));
-    validate_batch(&mut impossible, &Registry).unwrap();
+    let impossible = batch(Some(PlacementInfo::NOT_PLACEABLE));
+    validate_batch(&impossible, &Registry).unwrap();
     assert!(
         compile("demo", "demo:pot", &impossible[0].displays[0], &layout)
             .unwrap()
             .is_none()
     );
-    let mut available = batch(Some(info()));
-    validate_batch(&mut available, &Registry).unwrap();
+    let available = batch(Some(info()));
+    validate_batch(&available, &Registry).unwrap();
     assert!(
         compile("demo", "demo:pot", &available[0].displays[0], &layout)
             .unwrap()
@@ -100,108 +100,207 @@ fn item_identity_holder_order_and_shape_are_checked_at_load() {
         .unwrap()
         .items
         .insert("demo:missing".into());
-    assert!(validate_batch(&mut batch(Some(unknown)), &Registry).is_err());
+    assert!(validate_batch(&batch(Some(unknown)), &Registry).is_err());
     let mut order = info();
     order.cells[0].as_mut().unwrap().order.clear();
-    assert!(validate_batch(&mut batch(Some(order)), &Registry).is_err());
+    assert!(validate_batch(&batch(Some(order)), &Registry).is_err());
     let mut shape = info();
     shape.shape = Some([2, 1]);
-    assert!(validate_batch(&mut batch(Some(shape)), &Registry).is_err());
+    assert!(validate_batch(&batch(Some(shape)), &Registry).is_err());
     let mut shape = info();
     shape.shape = Some([1, 1]);
-    let mut values = batch(Some(shape));
-    validate_batch(&mut values, &Registry).unwrap();
+    let values = batch(Some(shape));
+    validate_batch(&values, &Registry).unwrap();
     assert!(compile("demo", "demo:pot", &values[0].displays[0], &layout()).is_err());
 }
 #[test]
-fn rejected_native_ingredient_tree_is_disposed_without_recursive_drop() {
-    let mut ingredient = mod_api::Ingredient::of(vec![]);
-    for _ in 0..100_000 {
-        let mut parent = mod_api::Ingredient::of(vec![]);
-        parent.children = Some((mod_api::item::crafting::Shape::Compound, vec![ingredient]));
-        ingredient = parent;
-    }
-    let values = batch(Some(PlacementInfo {
-        cells: vec![Some(ingredient)],
-        shape: None,
-    }));
-    assert!(matches!(
-        super::super::ModBookIndex::build(values, &Registry),
-        Err(DisplayLoadError::InvalidPlacement(_))
-    ));
-}
-#[test]
-fn native_placement_display_keeps_the_independent_vanilla_nbt_depth() {
-    for (depth, expected) in [(512, true), (513, false)] {
-        let mut tag = Tag::Int(1);
-        for _ in 0..depth {
-            tag = Tag::List(vec![tag]);
-        }
-        let mut value = info();
-        value.cells[0].as_mut().unwrap().display =
-            Some(Box::new([("data".into(), tag)].into_iter().collect()));
-        assert_eq!(
-            validate_batch(&mut batch(Some(value)), &Registry).is_ok(),
-            expected
-        );
-    }
-}
-
-#[test]
-fn native_depth_acceptance_matches_the_catalogue_envelope() {
+fn in_process_validation_has_no_wire_depth_cap_while_network_sync_keeps_its_boundary() {
     let limit = usize::from(mod_api::wire::MAX_DEPTH);
-    for (depth, expected) in [(limit - 5, true), (limit - 4, true), (limit - 3, false)] {
+    for (depth, wire_ok) in [(limit - 4, true), (limit - 3, false)] {
         let mut ingredient = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
         for _ in 0..depth {
             let mut parent = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
             parent.children = Some((Shape::Compound, vec![ingredient]));
             ingredient = parent;
         }
-        let mut values = batch(Some(PlacementInfo {
+        let values = batch(Some(PlacementInfo {
             cells: vec![Some(ingredient)],
             shape: None,
         }));
-        let wire = crate::recipe_book::placement_sync::encode_catalogue(&values);
-        assert_eq!(wire.is_ok(), expected, "transport at depth {depth}");
+        assert!(validate_batch(&values, &Registry).is_ok(), "depth {depth}");
         assert_eq!(
-            validate_batch(&mut values, &Registry).is_ok(),
-            expected,
-            "depth {depth}"
+            crate::recipe_book::placement_sync::encode_catalogue(&values).is_ok(),
+            wire_ok,
+            "transport at depth {depth}"
         );
     }
+
+    let mut tag = sunrise_core::nbt::Tag::Int(1);
+    for _ in 0..513 {
+        tag = sunrise_core::nbt::Tag::List(vec![tag]);
+    }
+    let mut deep_display = info();
+    deep_display.cells[0].as_mut().unwrap().display =
+        Some(Box::new([("data".into(), tag)].into_iter().collect()));
+    let values = batch(Some(deep_display));
+    assert!(validate_batch(&values, &Registry).is_ok());
+    assert!(crate::recipe_book::placement_sync::encode_catalogue(&values).is_err());
 }
 
 #[test]
-fn network_catalogue_keeps_pictures_but_not_nested_native_predicates() {
+fn network_catalogue_projects_non_empty_custom_ingredients_and_composites_to_item_sets() {
     use crate::recipe_book::placement_sync::{decode_catalogue, encode_catalogue};
-    let mut declarations = batch(Some(info()));
-    let entry = &mut declarations[0].displays[0];
-    entry.displays.push(mod_api::RecipeBookDisplay::Shapeless {
-        ingredients: vec![mod_api::RecipeSlotDisplay::Item("minecraft:stone".into())],
-        result: mod_api::RecipeSlotDisplay::Empty,
-        station: mod_api::RecipeSlotDisplay::Empty,
-    });
-    let mut child = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
-    child.custom = Some(
+    let display_nbt: Box<sunrise_core::nbt::Compound> = Box::new(
+        [("slot".into(), sunrise_core::nbt::Tag::Int(1))]
+            .into_iter()
+            .collect(),
+    );
+    let predicate = || {
         mod_api::__private::bind_ingredient_predicate(
             "demo",
             0,
             mod_api::IngredientDefinition::new(vec![], |_, _| false),
         )
-        .1,
+        .1
+    };
+
+    let expected_items = std::collections::HashSet::from([
+        "minecraft:stone".to_owned(),
+        "minecraft:dirt".to_owned(),
+    ]);
+
+    // Direct custom ingredient with partial holder order projects to a plain item set
+    // covering all candidate items, while the server's original keeps its predicate.
+    let mut direct = batch(Some(PlacementInfo {
+        cells: vec![Some(mod_api::Ingredient {
+            items: expected_items.clone(),
+            order: vec!["minecraft:stone".into()],
+            custom: Some(predicate()),
+            children: None,
+            rule: None,
+            display: Some(display_nbt.clone()),
+        })],
+        shape: None,
+    }));
+    direct[0].displays[0]
+        .displays
+        .push(mod_api::RecipeBookDisplay::Shapeless {
+            ingredients: vec![mod_api::RecipeSlotDisplay::Item("minecraft:stone".into())],
+            result: mod_api::RecipeSlotDisplay::Empty,
+            station: mod_api::RecipeSlotDisplay::Empty,
+        });
+    validate_batch(&direct, &Registry).unwrap();
+    let received = decode_catalogue(&encode_catalogue(&direct).unwrap()).unwrap();
+    validate_batch(&received, &Registry).unwrap();
+    assert!(
+        compile("demo", "demo:pot", &received[0].displays[0], &layout())
+            .unwrap()
+            .is_some()
     );
-    entry.placement.as_mut().unwrap().cells[0]
-        .as_mut()
-        .unwrap()
-        .children = Some((Shape::Compound, vec![child]));
+    let projected = received[0].displays[0].placement.as_ref().unwrap().cells[0]
+        .as_ref()
+        .unwrap();
+    assert_eq!(projected.items, expected_items);
+    assert_eq!(
+        projected.order,
+        vec!["minecraft:stone".to_owned(), "minecraft:dirt".to_owned()]
+    );
+    assert!(projected.custom.is_none());
+    assert!(projected.children.is_none());
+    assert!(projected.rule.is_none());
+    assert_eq!(projected.display, Some(display_nbt.clone()));
+    assert_eq!(
+        received[0].displays[0].displays,
+        direct[0].displays[0].displays
+    );
+    assert!(
+        direct[0].displays[0].placement.as_ref().unwrap().cells[0]
+            .as_ref()
+            .unwrap()
+            .custom
+            .is_some()
+    );
+
+    // Composite ingredient with a custom descendant and empty parent order projects to a
+    // plain item set carrying the composite's candidate items and full deterministic order.
+    let mut child = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
+    child.custom = Some(predicate());
+    let composite = batch(Some(PlacementInfo {
+        cells: vec![Some(mod_api::Ingredient {
+            items: expected_items.clone(),
+            order: Vec::new(),
+            custom: None,
+            children: Some((
+                Shape::Compound,
+                vec![
+                    child,
+                    mod_api::Ingredient::of(vec!["minecraft:dirt".into()]),
+                ],
+            )),
+            rule: None,
+            display: Some(display_nbt.clone()),
+        })],
+        shape: None,
+    }));
+    validate_batch(&composite, &Registry).unwrap();
+    let received = decode_catalogue(&encode_catalogue(&composite).unwrap()).unwrap();
+    validate_batch(&received, &Registry).unwrap();
+    let projected = received[0].displays[0].placement.as_ref().unwrap().cells[0]
+        .as_ref()
+        .unwrap();
+    assert_eq!(projected.items, expected_items);
+    assert_eq!(
+        projected.order,
+        vec!["minecraft:dirt".to_owned(), "minecraft:stone".to_owned()]
+    );
+    assert!(projected.custom.is_none());
+    assert!(projected.children.is_none());
+    assert!(projected.rule.is_none());
+    assert_eq!(projected.display, Some(display_nbt));
+}
+
+#[test]
+fn network_catalogue_collapses_empty_candidate_ingredients_to_not_placeable() {
+    use crate::recipe_book::placement_sync::{decode_catalogue, encode_catalogue};
+    let mut declarations = batch(Some(PlacementInfo {
+        cells: vec![
+            Some(mod_api::Ingredient::of(vec!["minecraft:stone".into()])),
+            Some(mod_api::Ingredient {
+                items: Default::default(),
+                order: Vec::new(),
+                custom: Some(
+                    mod_api::__private::bind_ingredient_predicate(
+                        "demo",
+                        0,
+                        mod_api::IngredientDefinition::new(vec![], |_, _| false),
+                    )
+                    .1,
+                ),
+                children: None,
+                rule: None,
+                display: None,
+            }),
+        ],
+        shape: Some([2, 1]),
+    }));
+    declarations[0].displays[0]
+        .displays
+        .push(mod_api::RecipeBookDisplay::Shapeless {
+            ingredients: vec![mod_api::RecipeSlotDisplay::Item("minecraft:stone".into())],
+            result: mod_api::RecipeSlotDisplay::Empty,
+            station: mod_api::RecipeSlotDisplay::Empty,
+        });
+    validate_batch(&declarations, &Registry).unwrap();
     let received = decode_catalogue(&encode_catalogue(&declarations).unwrap()).unwrap();
-    let original = &declarations[0].displays[0];
-    assert_ne!(original.placement, Some(PlacementInfo::NOT_PLACEABLE));
+    validate_batch(&received, &Registry).unwrap();
     assert_eq!(
         received[0].displays[0].placement,
         Some(PlacementInfo::NOT_PLACEABLE)
     );
-    assert_eq!(received[0].displays[0].displays, original.displays);
+    assert_eq!(
+        received[0].displays[0].displays,
+        declarations[0].displays[0].displays
+    );
 }
 
 #[test]
@@ -216,5 +315,5 @@ fn non_simple_placement_accepts_empty_display_order_with_candidates() {
             strict: false,
         },
     ));
-    validate_batch(&mut batch(Some(value)), &Registry).unwrap();
+    validate_batch(&batch(Some(value)), &Registry).unwrap();
 }

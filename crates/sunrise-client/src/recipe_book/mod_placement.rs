@@ -7,57 +7,17 @@ use crate::{
     crafting::{Ingredient, Placement},
     menu::place::custom_plan::{MenuPlacement, PlacementRefusal},
 };
-use mod_api::{
-    PlacementInfo, RecipeBookDisplayEntry,
-    item::crafting::{IngredientRule, Shape},
-};
-use sunrise_core::nbt::{Tag, discard_tag};
+use mod_api::{PlacementInfo, RecipeBookDisplayEntry, item::crafting::Shape};
 
-// A rejected native declaration may contain a tree too deep even to drop recursively.
-// Drain every new placement value before its category batch is dropped on refusal.
-struct BatchGuard<'a> {
-    values: &'a mut [RecipeBookCategory],
-    accepted: bool,
-}
-impl Drop for BatchGuard<'_> {
-    fn drop(&mut self) {
-        if self.accepted {
-            return;
-        }
-        for category in &mut *self.values {
-            for entry in &mut category.displays {
-                if let Some(info) = entry.placement.take() {
-                    let mut pending: Vec<_> = info.cells.into_iter().flatten().collect();
-                    while let Some(mut ingredient) = pending.pop() {
-                        if let Some((_, children)) = ingredient.children.take() {
-                            pending.extend(children);
-                        }
-                        if let Some(rule) = ingredient.rule.take() {
-                            let IngredientRule::Components { patch, .. } = *rule;
-                            discard_tag(Tag::Compound(patch));
-                        }
-                        if let Some(display) = ingredient.display.take() {
-                            discard_tag(Tag::Compound(*display));
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 fn invalid(reason: impl Into<String>) -> DisplayLoadError {
     DisplayLoadError::InvalidPlacement(reason.into())
 }
 
 pub(super) fn validate_batch(
-    values: &mut [RecipeBookCategory],
+    values: &[RecipeBookCategory],
     resources: &dyn DisplayResources,
 ) -> Result<(), DisplayLoadError> {
-    let mut guard = BatchGuard {
-        values,
-        accepted: false,
-    };
-    for category in &*guard.values {
+    for category in values {
         for entry in &category.displays {
             let Some(info) = &entry.placement else {
                 continue;
@@ -67,7 +27,6 @@ pub(super) fn validate_batch(
             })?;
         }
     }
-    guard.accepted = true;
     Ok(())
 }
 fn validate(info: &PlacementInfo, resources: &dyn DisplayResources) -> Result<(), String> {
@@ -78,18 +37,8 @@ fn validate(info: &PlacementInfo, resources: &dyn DisplayResources) -> Result<()
     {
         return Err("shape dimensions disagree with cells".into());
     }
-    // Bound recursive use and keep the code-free projection within the recipe
-    // catalogue's depth budget (category, entry, cells and first ingredient).
-    let mut pending: Vec<_> = info
-        .cells
-        .iter()
-        .flatten()
-        .map(|value| (value, 4usize))
-        .collect();
-    while let Some((ingredient, depth)) = pending.pop() {
-        if depth > usize::from(mod_api::wire::MAX_DEPTH) {
-            return Err("placement ingredient exceeds depth".into());
-        }
+    let mut pending: Vec<_> = info.cells.iter().flatten().collect();
+    while let Some(ingredient) = pending.pop() {
         if ingredient.items.iter().any(|id| !resources.item(id)) {
             return Err("unknown ingredient item".into());
         }
@@ -114,15 +63,7 @@ fn validate(info: &PlacementInfo, resources: &dyn DisplayResources) -> Result<()
             if !valid {
                 return Err("ingredient shape has invalid children".into());
             }
-            pending.extend(children.iter().map(|value| (value, depth + 1)));
-        }
-        // The native declaration itself has no codec. Its remaining NBT
-        // fields still have the independent vanilla depth budget.
-        let mut output = mod_api::wire::Writer::new();
-        output.put(&ingredient.rule);
-        output.put(&ingredient.display);
-        if let Some(error) = output.error() {
-            return Err(format!("invalid placement ingredient data: {error}"));
+            pending.extend(children);
         }
     }
     Ok(())
@@ -180,18 +121,14 @@ fn convert(value: &mod_api::Ingredient) -> Ingredient {
     }
 }
 
-// Bound the walk before consulting an untrusted native provider's recursive tree.
 fn simple_ingredient(ingredient: &mod_api::Ingredient) -> bool {
-    let mut pending = vec![(ingredient, 0usize)];
-    while let Some((ingredient, depth)) = pending.pop() {
-        if depth > usize::from(mod_api::wire::MAX_DEPTH)
-            || ingredient.rule.is_some()
-            || ingredient.custom.is_some()
-        {
+    let mut pending = vec![ingredient];
+    while let Some(ingredient) = pending.pop() {
+        if ingredient.rule.is_some() || ingredient.custom.is_some() {
             return false;
         }
         if let Some((_, children)) = &ingredient.children {
-            pending.extend(children.iter().map(|child| (child, depth + 1)));
+            pending.extend(children);
         }
     }
     true

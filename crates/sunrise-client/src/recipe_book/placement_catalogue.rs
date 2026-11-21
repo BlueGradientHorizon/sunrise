@@ -40,25 +40,71 @@ struct StaticIngredient {
     display: Option<Box<Compound>>,
 }
 
+fn has_custom(value: &Ingredient) -> bool {
+    let mut pending = vec![value];
+    while let Some(ingredient) = pending.pop() {
+        if ingredient.custom.is_some() {
+            return true;
+        }
+        if let Some((_, children)) = &ingredient.children {
+            pending.extend(children);
+        }
+    }
+    false
+}
+
+fn full_order(items: &HashSet<String>, existing: &[String]) -> Vec<String> {
+    let mut seen = HashSet::with_capacity(items.len());
+    let mut order = Vec::with_capacity(items.len());
+    for item in existing {
+        if let Some(known) = items.get(item)
+            && seen.insert(known.as_str())
+        {
+            order.push(known.clone());
+        }
+    }
+    if order.len() < items.len() {
+        let mut missing: Vec<&str> = items
+            .iter()
+            .map(String::as_str)
+            .filter(|item| !seen.contains(item))
+            .collect();
+        missing.sort_unstable();
+        order.extend(missing.into_iter().map(str::to_owned));
+    }
+    order
+}
+
 impl StaticIngredient {
     fn project(value: &Ingredient) -> Option<Self> {
-        if value.custom.is_some() {
+        if value.items.is_empty() {
             return None;
         }
-        let children = match &value.children {
-            Some((shape, children)) => Some((
-                shape.clone(),
-                children.iter().map(Self::project).collect::<Option<_>>()?,
-            )),
-            None => None,
-        };
-        Some(Self {
+        if has_custom(value) {
+            return Some(Self {
+                items: value.items.clone(),
+                order: full_order(&value.items, &value.order),
+                children: None,
+                rule: None,
+                display: value.display.clone(),
+            });
+        }
+        Some(Self::static_tree(value))
+    }
+
+    fn static_tree(value: &Ingredient) -> Self {
+        Self {
             items: value.items.clone(),
             order: value.order.clone(),
-            children,
+            children: value.children.as_ref().map(|(shape, children)| {
+                (
+                    shape.clone(),
+                    children.iter().map(Self::static_tree).collect(),
+                )
+            }),
             rule: value.rule.clone(),
             display: value.display.clone(),
-        })
+        }
     }
 }
 
@@ -102,8 +148,8 @@ impl From<&RecipeBookCategory> for Category {
                                 Some(ingredient) => StaticIngredient::project(ingredient).map(Some),
                             })
                             .collect::<Option<_>>();
-                        // The client cannot predict craftability for a native predicate. Keep
-                        // the pictures and selection; only the server has a placement plan.
+                        // Match PlacementInfo.createFromOptionals / Ingredient.isEmpty: an empty
+                        // candidate set collapses placement to NOT_PLACEABLE while keeping displays.
                         cells.map_or(
                             Cells {
                                 cells: Vec::new(),
