@@ -1,11 +1,11 @@
 #!/bin/sh
-# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (GitHub's
-# latest release while there is none), or the newest stable release (--version stable), downloaded from GitHub
-# Releases and checked against the release's signed SHA256SUMS when OpenSSL 3 is installed (docs/release-flow.md, "Signed
+# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (the
+# only build Sunrise ships; GitHub's latest release while there is none), downloaded from GitHub Releases and
+# checked against the release's signed SHA256SUMS when OpenSSL 3 is installed (docs/release-flow.md, "Signed
 # checksums"), else against the SHA-256 GitHub publishes for it. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
-#   curl -fsSL .../install.sh | sh -s -- --version stable    (the newest stable release, which updates then follow)
+#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0    (a stable release, whose line updates then follow)
 #   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0 --dir /opt/sunrise --bin /usr/local/bin
 #   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild   (an archive you have)
 #
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
     --dir) [ $# -ge 2 ] || die "--dir needs a folder"; DIR=$2; shift 2 ;;
     --bin) [ $# -ge 2 ] || die "--bin needs a folder"; BIN=$2; shift 2 ;;
     --archive) [ $# -ge 2 ] || die "--archive needs a file"; ARCHIVE=$2; shift 2 ;;
-    -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" 2>/dev/null || true; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
 done
@@ -76,107 +76,17 @@ else
   else die "sha256sum or shasum is needed"; fi
 
   api() { curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/$1"; }
-  # GitHub's JSON decoded, whatever its layout: one token per line (sed splits after each string, punctuation mark or
-  # bare word, left to right), then awk checks the whole document against JSON's grammar and the shape asked for:
-  # `list` (an array of release objects) or `one` (one release object). It prints one line per release,
-  # `<tag_name>\t<prerelease>\t<draft>` (a field it lacks is empty; a value that is not a plain string or a boolean
-  # is `?`), then `ok` once the whole document was read and was that shape. Nothing is trusted without that `ok`.
-  releases() {
-    sed -E 's/("([^"\\]|\\.)*"|[][{}:,]|[^][{}:,[:space:]]+)/&\
-/g' | sed -E 's/^[[:space:]]+//; /^$/d' | awk -v shape="$1" '
-      function unquote(t) { return substr(t, 2, length(t) - 2) }
-      # A value where one may stand: at the top before anything, after `[`, `,` in an array, or `:`.
-      function value_here() { return depth ? state[depth] == "value" || state[depth] == "value|end" : !started }
-      # The value just ended: its container now wants a comma or its end; at the top, the document is done.
-      function ended() { if (depth) state[depth] = "comma|end"; else done = 1 }
-      BEGIN { at = shape == "list" ? 2 : 1 }
-      bad { next }
-      done { bad = 1; next }
-      $0 == "{" || $0 == "[" {
-        if (!value_here()) { bad = 1; next }
-        started = 1
-        # The shape: a list is an array of objects; one release is an object.
-        if (depth + 1 == 1 && $0 != (shape == "list" ? "[" : "{")) bad = 1
-        if (depth + 1 == at && $0 != "{") bad = 1
-        kind[++depth] = $0; state[depth] = $0 == "{" ? "key|end" : "value|end"
-        if (depth == at) tag = pre = draft = ""
-        next
-      }
-      $0 == "}" || $0 == "]" {
-        want = $0 == "}" ? "{" : "["
-        if (!depth || kind[depth] != want || (state[depth] != "comma|end" && state[depth] != (want == "{" ? "key|end" : "value|end"))) { bad = 1; next }
-        if (depth == at) printf "%s\t%s\t%s\n", tag, pre, draft
-        depth--; ended(); next
-      }
-      $0 == ":" { if (!depth || state[depth] != "colon") bad = 1; else state[depth] = "value"; next }
-      $0 == "," {
-        if (!depth || state[depth] != "comma|end") bad = 1; else state[depth] = kind[depth] == "{" ? "key" : "value"
-        next
-      }
-      $0 !~ /^"([^"\\]|\\.)*"$/ && $0 !~ /^(true|false|null|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)$/ { bad = 1; next }
-      depth && kind[depth] == "{" && (state[depth] == "key|end" || state[depth] == "key") {
-        if ($0 !~ /^"/) { bad = 1; next }
-        key[depth] = unquote($0); state[depth] = "colon"; next
-      }
-      {
-        if (!value_here() || depth + 1 == at) { bad = 1; next }
-        started = 1
-        if (depth == at && key[depth] == "tag_name") tag = $0 ~ /^"[^"\\]*"$/ ? unquote($0) : "?"
-        if (depth == at && key[depth] == "prerelease") pre = $0 ~ /^(true|false)$/ ? $0 : "?"
-        if (depth == at && key[depth] == "draft") draft = $0 ~ /^(true|false)$/ ? $0 : "?"
-        ended()
-      }
-      END { if (!bad && done) print "ok" }'
-  }
-  # Every published (not pre-release, not draft) release's tag, from every page of the release list. A page that
-  # fails or can't be read stops the install, and only an empty list ends it: a short list could pick an older
-  # stable release.
-  published_tags() {
-    PAGE=1
-    while :; do
-      LIST=$(curl -fsSL -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/$REPO/releases?per_page=100&page=$PAGE") \
-        || die "could not list the releases on GitHub (page $PAGE)"
-      LIST=$(printf '%s\n' "$LIST" | releases list)
-      [ "$(printf '%s\n' "$LIST" | tail -n 1)" = ok ] || die "could not read the releases GitHub listed (page $PAGE)"
-      [ "$LIST" != ok ] || break
-      printf '%s\n' "$LIST" | awk -F'\t' '$2 == "false" && $3 == "false" { print $1 }'
-      PAGE=$((PAGE + 1))
-    done
-  }
-  # The stable tags among them (`<Minecraft version>-<semver>`, docs/release-flow.md "Release branches"), newest first,
-  # each number compared as a number, as release_train.stable_key and `sunrise-server update` order them.
-  stable_newest_first() {
-    printf '%s\n' "$1" | awk -F'[.-]' '
-      /^[0-9]+\.[0-9]+(\.[0-9]+)?-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ {
-        if (NF == 5) print $1, $2, -1, $3, $4, $5, $0; else print $1, $2, $3, $4, $5, $6, $0 }' \
-      | sort -k1,1nr -k2,2nr -k3,3nr -k4,4nr -k5,5nr -k6,6nr | cut -d' ' -f7
-  }
   if [ "$VERSION" = latest ]; then
     JSON=$(api tags/nightly) || JSON=$(api latest) || die "no release on GitHub"
-  elif [ "$VERSION" = stable ]; then
-    # The newest stable release published under exactly its own tag. Its line is what `sunrise-server update` follows.
-    TAGS=$(published_tags) || exit 1
-    STABLE=$(stable_newest_first "$TAGS" | head -n 1)
-    [ -n "$STABLE" ] || die "no stable release on GitHub yet: install the Nightly (--version latest)"
-    JSON=$(api "tags/$STABLE") || die "could not read release $STABLE on GitHub"
   else
     JSON=$(api "tags/$VERSION") || die "no release $VERSION on GitHub"
   fi
 
-  # The release's tag, decoded: the one its signature is checked for and it installs under. A stable release must be
-  # the one chosen, and still published.
-  RELEASE=$(printf '%s\n' "$JSON" | releases one)
-  [ "$(printf '%s\n' "$RELEASE" | sed -n 2p)" = ok ] || die "could not read the release GitHub sent"
-  TAG=$(printf '%s\n' "$RELEASE" | head -n 1 | cut -f1)
-  case "$TAG" in ''|'?') die "could not read the release's tag" ;; esac
-  if [ "$VERSION" = stable ] && [ "$(printf '%s\n' "$RELEASE" | head -n 1)" != "$(printf '%s\tfalse\tfalse' "$STABLE")" ]; then
-    die "GitHub's release $STABLE names another tag, or is not published: not installed"
-  fi
+  TAG=$(printf '%s\n' "$JSON" | sed -n 's/^  "tag_name": "\([^"]*\)".*/\1/p' | head -n 1)
   [ -n "$TAG" ] || die "could not read the release's tag"
   RAWTAG=$TAG
   case "$TAG" in
-    dev|dev-*) die "$TAG is a Dev build, made to test main: servers don't install it. Install the Nightly (--version latest) or a stable release (--version stable)." ;;
+    dev|dev-*) die "$TAG is a Dev build, made to test main: servers don't install it. Install the Nightly (the default) or a stable release (--version <tag>)." ;;
   esac
   # A Nightly installs under its date and commit, as `sunrise-server update` names it:
   # "Nightly 2026-10-28 · 0c02067" is nightly-2026-10-28-0c02067. Its signature is checked for exactly that

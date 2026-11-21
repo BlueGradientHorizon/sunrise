@@ -1,11 +1,11 @@
-# Installs sunrise-server (docs/server.md) on Windows: the current Sunrise Nightly (GitHub's latest release while
-# there is none), or the newest stable release (-Version stable), downloaded from GitHub Releases and checked
-# against the release's signed SHA256SUMS when OpenSSL 3 is found (docs/release-flow.md, "Signed checksums"), else
-# against the SHA-256 GitHub publishes for it. OpenSSL is looked for on the PATH and in Git for Windows, which ships it.
+# Installs sunrise-server (docs/server.md) on Windows: the current Sunrise Nightly (the only build Sunrise ships;
+# GitHub's latest release while there is none), downloaded from GitHub Releases and checked against the release's
+# signed SHA256SUMS when OpenSSL 3 is found (docs/release-flow.md, "Signed checksums"), else against the SHA-256
+# GitHub publishes for it. OpenSSL is looked for on the PATH and in Git for Windows, which ships it.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version stable    (the newest stable release, which updates then follow)
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise    (a stable release, whose line
+#   updates then follow)
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own
@@ -47,70 +47,15 @@ switch ($Architecture) {
 function Get-Release([string]$Path) {
     Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/$Path" -Headers @{ Accept = "application/vnd.github+json" }
 }
-# A release GitHub lists or sends is published only when both flags were sent and are the boolean false: a missing or
-# null flag is not false.
-function Test-Published($Release) {
-    $Release.prerelease -is [bool] -and -not $Release.prerelease -and $Release.draft -is [bool] -and -not $Release.draft
-}
-# The published stable tags among every page of the release list (`<Minecraft version>-<semver>`, docs/release-flow.md
-# "Release branches"), newest first, each number compared as a number, as release_train.stable_key and
-# `sunrise-server update` order them. A page that fails or isn't a list of releases stops the install, and only an
-# empty list ends it: a short list could pick an older stable release.
-function Get-StableTags {
-    $Stable = @()
-    $File = [IO.Path]::GetTempFileName()
-    try {
-        for ($Page = 1; ; $Page++) {
-            # The page as GitHub sent it, decoded here so its shape stays: Invoke-RestMethod unrolls an array, and a
-            # one-release list would then look like a bare release. PowerShell 7 unrolls in ConvertFrom-Json too unless
-            # told not to, and its parser takes a document cut short, so .NET's strict JSON reader checks it first;
-            # Windows PowerShell 5.1's parser is strict and never unrolls.
-            Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$Page" `
-                -Headers @{ Accept = "application/vnd.github+json" } -OutFile $File
-            $Text = [IO.File]::ReadAllText($File)
-            $Items = $null
-            try {
-                $Items = if ($PSVersionTable.PSVersion.Major -ge 7) {
-                    [System.Text.Json.JsonDocument]::Parse($Text).Dispose()
-                    ConvertFrom-Json -InputObject $Text -NoEnumerate
-                } else { ConvertFrom-Json -InputObject $Text }
-            } catch { }
-            if (-not ($Items -is [array])) { throw "Could not read the releases GitHub listed (page $Page)" }
-            if ($Items.Count -eq 0) { break }
-            foreach ($Item in $Items) {
-                if (-not ($Item -is [System.Management.Automation.PSCustomObject]) -or -not ($Item.tag_name -is [string])) {
-                    throw "Could not read the releases GitHub listed (page $Page)"
-                }
-                if (-not (Test-Published $Item)) { continue }
-                if (-not ($Item.tag_name -cmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')) { continue }
-                $Third = if ($Matches[3]) { [bigint]::Parse($Matches[3]) } else { [bigint]::MinusOne }
-                $Stable += [pscustomobject]@{
-                    Tag = $Item.tag_name
-                    G1 = [bigint]::Parse($Matches[1]); G2 = [bigint]::Parse($Matches[2]); G3 = $Third
-                    V1 = [bigint]::Parse($Matches[4]); V2 = [bigint]::Parse($Matches[5]); V3 = [bigint]::Parse($Matches[6])
-                }
-            }
-        }
-    } finally { Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue }
-    $Stable | Sort-Object -Descending G1, G2, G3, V1, V2, V3 | ForEach-Object { $_.Tag }
-}
 if ($Version -eq "latest") {
     try { $Release = Get-Release "tags/nightly" } catch { $Release = Get-Release "latest" }
-} elseif ($Version -eq "stable") {
-    # The newest stable release published under exactly its own tag. Its line is what `sunrise-server update` follows.
-    $Stable = @(Get-StableTags) | Select-Object -First 1
-    if (-not $Stable) { throw "No stable release on GitHub yet: install the Nightly (-Version latest)" }
-    $Release = Get-Release "tags/$Stable"
-    if (-not ($Release.tag_name -is [string]) -or $Release.tag_name -cne $Stable -or -not (Test-Published $Release)) {
-        throw "GitHub's release $Stable names another tag, or is not published: not installed"
-    }
 } else {
     $Release = Get-Release "tags/$Version"
 }
 $Tag = $Release.tag_name
 $RawTag = $Tag
 if ($Tag -ceq "dev" -or $Tag.StartsWith("dev-")) {
-    throw "$Tag is a Dev build, made to test main: servers don't install it. Install the Nightly (-Version latest) or a stable release (-Version stable)."
+    throw "$Tag is a Dev build, made to test main: servers don't install it. Install the Nightly (the default) or a stable release (-Version <tag>)."
 }
 # A Nightly installs under its date and commit, as `sunrise-server update` names it:
 # "Nightly 2026-10-28 <middle dot> 0c02067" is nightly-2026-10-28-0c02067 ([char]0xB7: this file stays ASCII).

@@ -471,7 +471,7 @@ comes out of the headless-engine work.
   on macOS arm64 the game's), downloads it from GitHub Releases, and checks it against the release's signed
   `SHA256SUMS` when OpenSSL 3 is installed, else against the SHA-256 GitHub publishes for each asset
   (docs/security.md). It installs the Nightly unless told otherwise. It never asks for sudo. Options: `--version`
-  (`stable` for the newest stable release, or a release's tag such as `26.3-0.1.0`), `--dir` (default
+  (a release's tag: a stable one such as `26.3-0.1.0` puts the server on that stable line), `--dir` (default
   `~/.local/share/sunrise`), `--bin` (default `~/.local/bin`), and `--archive FILE` to install an archive
   already on the machine (a build of your own; no download and no checksum).
   A Linux release from before the server archive installs the full game, which links ALSA's and udev's

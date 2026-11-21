@@ -40,7 +40,7 @@ json() {  # dir tag with-sums [title]: GitHub's release JSON, as install.sh read
   local d=$1 tag=$2 sums=$3 name=${4:-$2} sha
   sha=$(sha256sum "$d/files/sunrise-server-linux-x86_64.tar.gz" | cut -d' ' -f1)
   {
-    printf '{\n  "tag_name": "%s",\n  "name": "%s",\n  "draft": false,\n  "prerelease": false,\n  "assets": [\n' "$tag" "$name"
+    printf '{\n  "tag_name": "%s",\n  "name": "%s",\n  "assets": [\n' "$tag" "$name"
     printf '    {\n      "name": "sunrise-server-linux-x86_64.tar.gz",\n      "digest": "sha256:%s",\n      "browser_download_url": "https://dl.test/sunrise-server-linux-x86_64.tar.gz"\n    }' "$sha"
     if [ "$sums" = yes ]; then for f in SHA256SUMS SHA256SUMS.sig SHA256SUMS.v2.sig; do
       [ -f "$d/files/$f" ] || continue
@@ -60,11 +60,6 @@ cat > "$W/fake/curl" <<'CURL'
 out=; url=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) url=$1; shift ;; esac; done
 case "$url" in
-  # The release list, page by page (page-<n>.json); a page with no file fails as GitHub's error would.
-  *"/releases?per_page=100&page="*) src=$REL/page-${url##*page=}.json ;;
-  # One release by tag: tag-<tag>.json when the case has one, else release.json.
-  https://api.github.com/*/releases/tags/*)
-    src=$REL/tag-${url##*/tags/}.json; [ -f "$src" ] || src=$REL/release.json ;;
   https://api.github.com/*) src=$REL/release.json ;;
   *) src=$REL/files/$(basename "$url") ;;
 esac
@@ -169,63 +164,7 @@ done
 d=$W/legacy; make_release "$d" v1.2.3; with_key "$d"; json "$d" v1.2.3 no
 run "$d" "$P" --version v1.2.3; verdict "unsigned release: installs, says so" 0 "no signed checksums" "$d"
 
-# 10. --version stable: the newest published stable release from every page, numbers compared as numbers
-# (0.1.1000000000 is newer than 0.1.999999999, which a padded-string sort gets wrong), whatever the JSON's layout;
-# never an rc, a leading zero, a pre-release, a draft or a release whose flags are missing.
-d=$W/stable; make_release "$d" 26.3-0.1.1000000000; with_key "$d"
-printf '[{"tag_name":"26.3-0.1.999999999","prerelease":false,"draft":false,"body":"a, \\"b\\": [c]"},' > "$d/page-1.json"
-printf '{"tag_name":"nightly","prerelease":true,"draft":false}]\n' >> "$d/page-1.json"
-cat > "$d/page-2.json" <<'PAGE'
-[
-  {
-    "tag_name": "26.3-0.1.1000000000",
-    "assets": [ { "name": "x", "draft": true } ],
-    "draft": false,
-    "prerelease": false
-  },
-  { "tag_name": "26.3-0.9.0", "draft": false, "prerelease": true },
-  { "tag_name": "26.3-0.8.0", "draft": true, "prerelease": false },
-  { "tag_name": "26.3-0.7.0", "prerelease": false },
-  { "tag_name": "26.3-0.6.0", "draft": null, "prerelease": false },
-  { "tag_name": "26.3-0.2.0-rc.1", "draft": false, "prerelease": false },
-  { "tag_name": "26.3-01.0.0", "draft": false, "prerelease": false }
-]
-PAGE
-printf '[]\n' > "$d/page-3.json"
-run "$d" "$P" --version stable; verdict "--version stable: the newest published stable release, from a later page" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
-
-# 10b. A later page that fails, or that can't be read, stops the install rather than choosing from a short list.
-d=$W/stable-short; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin" "$d/page-2.json"; with_key "$d"
-run "$d" "$P" --version stable; verdict "--version stable: a failed page stops the install" 1 "could not list the releases on GitHub (page 2)" "$d"
-[ ! -e "$d/inst/current" ] || { echo "FAIL installed from a short list"; fails=$((fails+1)); }
-# A page that isn't a list of releases (cut short, `[null]`, `[,]`, a bare release object) stops it too, and an
-# install already there stays on the release it had.
-for bad in cut null comma object; do
-  d=$W/stable-$bad; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-  case $bad in
-    cut) head -c 60 "$W/stable/page-2.json" > "$d/page-2.json" ;;
-    null) printf '[null]\n' > "$d/page-2.json" ;;
-    comma) printf '[,]\n' > "$d/page-2.json" ;;
-    object) printf '{"tag_name":"26.3-9.0.0","prerelease":false,"draft":false}\n' > "$d/page-2.json" ;;
-  esac
-  mkdir -p "$d/inst/releases/26.3-0.1.0"; ln -s "$d/inst/releases/26.3-0.1.0" "$d/inst/current"
-  run "$d" "$P" --version stable; verdict "--version stable: a page that isn't a list ($bad) stops the install" 1 "could not read the releases GitHub listed (page 2)" "$d"
-  [ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] || { echo "FAIL the active install moved ($bad)"; fails=$((fails+1)); }
-done
-# The release sent for the chosen tag must be one release object, not a list holding it.
-d=$W/stable-wrapped; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-{ printf '['; cat "$d/release.json"; printf ']\n'; } > "$d/tag-26.3-0.1.1000000000.json"
-run "$d" "$P" --version stable; verdict "--version stable: a list sent as one release refused" 1 "could not read the release GitHub sent" "$d"
-
-# 10c. The release served for the chosen tag names another one, or is no longer published: refused before any download.
-d=$W/stable-swap; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-sed 's/26.3-0.1.1000000000/26.4-1.0.0/' "$d/release.json" > "$d/tag-26.3-0.1.1000000000.json"
-run "$d" "$P" --version stable; verdict "--version stable: a release under another tag refused" 1 "names another tag" "$d"
-d=$W/stable-draft; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-sed 's/"draft": false/"draft": null/' "$d/release.json" > "$d/tag-26.3-0.1.1000000000.json"
-run "$d" "$P" --version stable; verdict "--version stable: a release whose draft flag isn't false refused" 1 "not published" "$d"
-
-# 11. A Dev build is refused by name: servers don't install one.
+# 10. A Dev build is refused by name: servers don't install one.
 d=$W/dev; make_release "$d" dev-2026-11-21-0c02067; with_key "$d"
 run "$d" "$P" --version dev-2026-11-21-0c02067; verdict "a Dev build refused by name" 1 "is a Dev build" "$d"
 

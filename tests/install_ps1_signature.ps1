@@ -47,21 +47,9 @@ public static class FakeEnvironment {
 "@
 
 # The fakes: the API answers with the case's release, any download with the case's file of that name.
-# A case may also serve other releases by tag (Tags[tag]), and the release list page by page as GitHub's JSON text
-# (Pages[n]; a page it lacks fails as GitHub's error would).
-function Invoke-RestMethod {
-    param($Uri, $Headers)
-    $Case = $global:SunriseTestRel
-    if ($Uri -match '/releases/tags/(.+)$' -and $Case.Tags.ContainsKey($Matches[1])) { return $Case.Tags[$Matches[1]] }
-    $Case.Release
-}
+function Invoke-RestMethod { param($Uri, $Headers) $global:SunriseTestRel.Release }
 function Invoke-WebRequest {
-    param($Uri, $OutFile, $Headers, [switch]$UseBasicParsing)
-    if ($Uri -match 'releases\?per_page=100&page=(\d+)$') {
-        $Pages = $global:SunriseTestRel.Pages
-        if (-not $Pages.ContainsKey([int]$Matches[1])) { throw "404 $Uri" }
-        return Write-Ascii $OutFile $Pages[[int]$Matches[1]]
-    }
+    param($Uri, $OutFile, [switch]$UseBasicParsing)
     $Source = Join-Path $global:SunriseTestRel.Files ($Uri -split "/")[-1]
     if (-not (Test-Path -LiteralPath $Source)) { throw "404 $Uri" }
     Copy-Item -LiteralPath $Source -Destination $OutFile
@@ -112,15 +100,9 @@ function Set-Release([string]$Dir, [string]$Tag, [bool]$Sums, [string]$Title = $
             }
         }
     }
-    $script:Releases[$Dir] = [pscustomobject]@{ tag_name = $Tag; name = $Title; draft = $false; prerelease = $false; assets = $Assets }
+    $script:Releases[$Dir] = [pscustomobject]@{ tag_name = $Tag; name = $Title; assets = $Assets }
 }
 $script:Releases = @{}
-$script:Pages = @{}
-$script:Tags = @{}
-# A release as the list shows it.
-function Get-Listed([string]$Tag, $Prerelease = $false, $Draft = $false) {
-    [pscustomobject]@{ tag_name = $Tag; prerelease = $Prerelease; draft = $Draft }
-}
 
 # install.ps1 with the throwaway public key in place of the release key, and the fake environment.
 function Set-Installer([string]$Dir, [string]$Key) {
@@ -133,11 +115,7 @@ function Set-Installer([string]$Dir, [string]$Key) {
 # Runs the case's install.ps1 with PATH set to Path; returns @{ Ok; Out }.
 # Arguments by name: an array splatted into a script passes "-Version" as a positional value, not the parameter.
 function Invoke-Case([string]$Dir, [string]$Path, [hashtable]$Arguments = @{}) {
-    $Pages = if ($script:Pages.ContainsKey($Dir)) { $script:Pages[$Dir] } else { @{} }
-    $Tags = if ($script:Tags.ContainsKey($Dir)) { $script:Tags[$Dir] } else { @{} }
-    $global:SunriseTestRel = [pscustomobject]@{
-        Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files"; Pages = $Pages; Tags = $Tags
-    }
+    $global:SunriseTestRel = [pscustomobject]@{ Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files" }
     $env:PATH = $Path
     $Ok = $true
     $Out = try {
@@ -228,47 +206,11 @@ try {
     $d = Join-Path $W "legacy"; New-Release $d "v1.2.3"; Set-Release $d "v1.2.3" $false
     $r = Invoke-Case $d $P @{ Version = "v1.2.3" }; Test-Case "unsigned release: installs, says so" $true "no signed checksums" $r
 
-    # 10. -Version stable: the newest published stable release from every page, numbers compared as numbers
-    # (0.1.1000000000 is newer than 0.1.999999999, which a padded-string sort gets wrong); never an rc, a leading zero,
-    # a pre-release, a draft or a release whose flags are missing or null.
-    $Win = "26.3-0.1.1000000000"
-    $StablePages = @{
-        1 = '[{"tag_name":"26.3-0.1.999999999","prerelease":false,"draft":false},{"tag_name":"nightly","prerelease":true,"draft":false}]'
-        2 = '[{"tag_name":"26.3-0.1.1000000000","assets":[{"draft":true}],"prerelease":false,"draft":false},
-              {"tag_name":"26.3-0.9.0","prerelease":true,"draft":false},{"tag_name":"26.3-0.8.0","prerelease":false,"draft":true},
-              {"tag_name":"26.3-0.7.0","prerelease":false},{"tag_name":"26.3-0.6.0","prerelease":false,"draft":null},
-              {"tag_name":"26.3-0.2.0-rc.1","prerelease":false,"draft":false},{"tag_name":"26.3-01.0.0","prerelease":false,"draft":false}]'
-        3 = '[]'
-    }
-    $d = Join-Path $W "stable"; New-Release $d $Win; $script:Pages[$d] = $StablePages
-    $r = Invoke-Case $d $P @{ Version = "stable" }
-    Test-Case "-Version stable: the newest published stable release, from a later page" $true "Downloading Sunrise $Win " $r
-
-    # 10b. A later page that fails, or that isn't a list of releases, stops the install.
-    $d = Join-Path $W "stable-short"; New-Release $d $Win; $script:Pages[$d] = @{ 1 = $StablePages[1] }
-    $r = Invoke-Case $d $P @{ Version = "stable" }; Test-Case "-Version stable: a failed page stops the install" $false "404" $r
-    Test-That "installed from a short list" (-not (Test-Path (Join-Path $d "inst\current")))
-    # A page that isn't a list of releases (`[null]`, cut short, a bare release object) stops it too.
-    foreach ($Bad in '[null]', '[{"tag_name":"26.3-9.0.0"', '{"tag_name":"26.3-9.0.0","prerelease":false,"draft":false}') {
-        $d = Join-Path $W ("stable-bad-" + [Guid]::NewGuid()); New-Release $d $Win
-        $script:Pages[$d] = @{ 1 = $StablePages[1]; 2 = $Bad; 3 = '[]' }
-        $r = Invoke-Case $d $P @{ Version = "stable" }
-        Test-Case "-Version stable: a page that isn't a list ($Bad) stops the install" $false "Could not read the releases" $r
-    }
-
-    # 10c. The release served for the chosen tag names another one, or its draft flag is null: refused.
-    $d = Join-Path $W "stable-swap"; New-Release $d $Win; $script:Pages[$d] = $StablePages
-    $script:Tags[$d] = @{ $Win = [pscustomobject]@{ tag_name = "26.4-1.0.0"; prerelease = $false; draft = $false } }
-    $r = Invoke-Case $d $P @{ Version = "stable" }; Test-Case "-Version stable: a release under another tag refused" $false "names another tag" $r
-    $d = Join-Path $W "stable-null"; New-Release $d $Win; $script:Pages[$d] = $StablePages
-    $script:Tags[$d] = @{ $Win = [pscustomobject]@{ tag_name = $Win; prerelease = $false; draft = $null } }
-    $r = Invoke-Case $d $P @{ Version = "stable" }; Test-Case "-Version stable: a null draft flag refused" $false "not published" $r
-
-    # 11. A Dev build is refused by name: servers don't install one.
+    # 10. A Dev build is refused by name: servers don't install one.
     $d = Join-Path $W "dev"; New-Release $d "dev-2026-11-21-0c02067"
     $r = Invoke-Case $d $P @{ Version = "dev-2026-11-21-0c02067" }; Test-Case "a Dev build refused by name" $false "is a Dev build" $r
 
-    # 12. OpenSSL found in Git for Windows, not on the PATH: git.exe in Git\cmd, OpenSSL in Git\usr\bin (or
+    # 11. OpenSSL found in Git for Windows, not on the PATH: git.exe in Git\cmd, OpenSSL in Git\usr\bin (or
     # Git\mingw64\bin). Only when this machine's OpenSSL is such a copy, which the fake Git folder links to.
     $Up = Split-Path $P
     if ((Split-Path $P -Leaf) -eq "bin" -and (Split-Path $Up -Leaf) -in "usr", "mingw64") {
