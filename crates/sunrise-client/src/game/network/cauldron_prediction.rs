@@ -63,10 +63,20 @@ pub(super) fn decode_registrations(data: &[u8]) -> sunrise_protocol::Result<Disp
     Ok(table)
 }
 
-pub(super) fn use_result(receipt: i64, passed: bool) -> Clientbound {
+/// The two independent decisions made by the server's UseItemOn turn.
+#[derive(Default)]
+pub(super) struct UseOnOutcome {
+    /// The client may run its local item-on-block phase when the block passed or was skipped.
+    pub(super) block_fell_through: bool,
+    /// Only a final Pass lets the client continue to air use or the other hand.
+    pub(super) passed: bool,
+}
+
+pub(super) fn use_result(receipt: i64, outcome: UseOnOutcome) -> Clientbound {
     let mut body = Writer::new();
     body.i64(receipt);
-    body.bool(passed);
+    body.bool(outcome.block_fell_through);
+    body.bool(outcome.passed);
     Clientbound::CustomPayload(CustomPayload {
         channel: USE_CHANNEL.into(),
         data: body.data,

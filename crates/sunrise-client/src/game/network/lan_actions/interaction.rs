@@ -237,7 +237,8 @@ impl Game<'_> {
     /// `hit` with `hand`, after the packet's sequence is acknowledged: reach, the hit's place in
     /// its block, the build height, spawn protection and the border, then
     /// `ServerPlayerGameMode.useItemOn`, and the blocks the client predicted sent back. True
-    /// when the use consumed (`InteractionResult` a success or a consume). A fake player's
+    /// when the use ends the click. An optional receipt reports block and item phases before
+    /// their block updates. The packet handler answers refusals. A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does.
     pub(in crate::game) fn guest_use_item_on(
         &mut self,
@@ -245,9 +246,16 @@ impl Game<'_> {
         gi: usize,
         hit: Hit,
         hand: Hand,
-        _receipt: Option<i64>,
+        receipt: Option<i64>,
     ) -> Result<bool, ActionRefused> {
-        let mut consumed = false;
+        use super::super::cauldron_prediction::{UseOnOutcome, use_result};
+
+        let reply = |game: &Self, outcome| {
+            if let (Some(receipt), Some(host)) = (receipt, &game.lan) {
+                host.hub.send_to(conn, &use_result(receipt, outcome));
+            }
+        };
+        let (mut consumed, mut block_fell_through) = (false, false);
         let Some(host) = self.lan.as_mut() else {
             return Err(ActionRefused::Stale);
         };
@@ -302,6 +310,7 @@ impl Game<'_> {
             .contains(f64::from(hit.pos[0]), f64::from(hit.pos[2]))
         {
             if spectator && self.spectator_use_portal(conn, gi, hit.pos) {
+                reply(self, UseOnOutcome::default());
                 return Ok(true);
             }
             let logged = self.world.block_log.as_ref().map_or(0, Vec::len);
@@ -320,15 +329,24 @@ impl Game<'_> {
                     }
                     result
                 });
+                let fell_through = matches!(
+                    g.guest_use,
+                    Some(GuestUse::OnBlock {
+                        block_fell_through: true,
+                        ..
+                    })
+                );
                 (g.forced_hit, g.guest_use) = saved;
                 reset_use_attack_strength(&mut g.attack_ticks, swings, g.swings_started);
                 (
                     g.swings_started != swings && g.predicted_swings == predicted,
                     result.map(|used| used.is_some()),
                     attempt,
+                    fell_through,
                 )
             });
-            let (swung, result, attempt) = used.map_err(|_| ActionRefused::Stale)?;
+            let (swung, result, attempt, fell_through) = used.map_err(|_| ActionRefused::Stale)?;
+            block_fell_through = fell_through;
             self.lan_swing_back(conn, Some(swung));
             self.guest_use_sounds(conn, logged, heard);
             // A placement that did nothing at the top or bottom of the
@@ -354,6 +372,17 @@ impl Game<'_> {
         } else {
             self.build_limit_message(conn, true, max_y);
             refused = Some(ActionRefused::Protected);
+        }
+        // Let a waiting client run the item prediction while it still sees the
+        // pre-use blocks, under the same sequence that will settle the changes.
+        if refused.is_none() {
+            reply(
+                self,
+                UseOnOutcome {
+                    block_fell_through,
+                    passed: !spectator && !consumed,
+                },
+            );
         }
         // The client predicted a result: correct it with what really is.
         let Some(host) = self.lan.as_mut() else {

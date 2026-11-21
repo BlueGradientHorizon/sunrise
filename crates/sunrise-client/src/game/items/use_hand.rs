@@ -58,6 +58,8 @@ impl Game<'_> {
                     self.use_failed = answer == Answer::Fail;
                     return Ok(true);
                 }
+                // A canceled PASS permits Item.use but never reaches ItemStack.useOn.
+                native_hooks::BlockClickAnswer::Canceled(_) if on_block => return Ok(false),
                 native_hooks::BlockClickAnswer::Canceled(_) => {
                     (use_block, use_item) = (TriState::False, TriState::False);
                 }
@@ -332,6 +334,14 @@ impl Game<'_> {
                     return Ok(true);
                 }
             }
+        }
+        // The block passed or was skipped, independently of what ItemStack.useOn
+        // is about to answer. Record this on the current guest turn only.
+        if let Some(GuestUse::OnBlock {
+            block_fell_through, ..
+        }) = &mut self.guest_use
+        {
+            *block_fell_through = true;
         }
         // RightClickBlock's useItem FALSE: no ItemStack.useOn, so only Item.use is left (a guest's UseItem asks for it).
         if !use_item.or(true) {

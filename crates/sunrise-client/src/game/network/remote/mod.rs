@@ -580,9 +580,20 @@ pub(in crate::game) struct PendingCauldron {
     selected: usize,
     main: Option<ItemStack>,
     off: Option<ItemStack>,
-    aim: (f32, f32),
+    aim: ItemUseAim,
     swing: [bool; 2],
+    sequence: i32,
     item_after_block: bool,
+}
+
+#[derive(PartialEq)]
+struct ItemUseAim {
+    // UseItem carries these angles but not the server's ray origin.
+    rotation: (f32, f32),
+    eye: Option<[f64; 3]>,
+    // The local ray can also come from a tracked input device.
+    ray: Option<([f64; 3], [f64; 3])>,
+    reach: f64,
 }
 
 pub(super) struct Remote {
@@ -3449,44 +3460,7 @@ impl Game<'_> {
                 }
             }
             C::CustomPayload(p) if p.channel == super::cauldron_prediction::USE_CHANNEL => {
-                let mut body = sunrise_protocol::buf::Reader::new(&p.data);
-                let receipt = body.i64()?;
-                let passed = body.bool()?;
-                if body.remaining() != 0 {
-                    return Err("extra bytes in authoritative block-use result".into());
-                }
-                let click = self
-                    .remote
-                    .as_mut()
-                    .and_then(|r| r.pending_cauldrons.get_mut().remove(&receipt));
-                // Minecraft.startUseItem finishes with the same slot, stacks
-                // and aim. Changed input supersedes the delayed item turn;
-                // don't reselect an old slot or send a ray at a different aim.
-                if passed
-                    && let Some(click) = click
-                    && self.selected == click.selected
-                    && self.stack_in(click.selected) == click.main.as_ref()
-                    && self.offhand == click.off
-                    && (self.yaw, self.pitch) == click.aim
-                {
-                    self.with_interaction_swing_scope(|game| {
-                        if let Some(remote) = &mut game.remote {
-                            remote.interaction_swing = click.swing;
-                        }
-                        let held = match click.hand {
-                            Hand::Main => click.main.as_ref(),
-                            Hand::Off => click.off.as_ref(),
-                        };
-                        if click.item_after_block
-                            && let Some(answer) =
-                                game.remote_item_after_block(&click.hit, click.hand, held)
-                            && game.finish_remote_item_on(click.hand, answer)
-                        {
-                            return;
-                        }
-                        game.remote_use_hands(click.hand, click.attempt, Some(click.hit));
-                    });
-                }
+                self.receive_cauldron_use(&p.data)?;
             }
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
@@ -8470,6 +8444,17 @@ impl Game<'_> {
         let before = self.with_hand(hand, |g| g.held().map(|s| s.count));
         let swings = self.swings_started;
         let done = self.remote_use_item_on(hand, attempt, hit);
+        self.finish_remote_use_block(hand, before, swings, done);
+        done
+    }
+
+    fn finish_remote_use_block(
+        &mut self,
+        hand: Hand,
+        before: Option<u32>,
+        swings: u32,
+        done: bool,
+    ) {
         if done
             && self.swings_started != swings
             && let Some(after) = self.with_hand(hand, |g| g.held().map(|s| s.count))
@@ -8477,7 +8462,6 @@ impl Game<'_> {
         {
             self.heights.item_used(hand);
         }
-        done
     }
 
     /// `Item.useOn` on this client's level for the items whose effects are

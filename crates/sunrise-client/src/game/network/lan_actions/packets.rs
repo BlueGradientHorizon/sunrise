@@ -147,7 +147,7 @@ impl Game<'_> {
         {
             return self.guest_passage_cross(conn, &p.data);
         }
-        use super::super::cauldron_prediction::{USE_CHANNEL, use_result};
+        use super::super::cauldron_prediction::{USE_CHANNEL, UseOnOutcome, use_result};
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -177,7 +177,8 @@ impl Game<'_> {
                 };
                 let guest = &host.hub.guests[gi];
                 if !guest.client_loaded() {
-                    host.hub.send_to(conn, &use_result(receipt, false));
+                    host.hub
+                        .send_to(conn, &use_result(receipt, UseOnOutcome::default()));
                     return;
                 }
                 (S::UseItemOn(packet), Some(receipt))
@@ -197,7 +198,8 @@ impl Game<'_> {
             )
         {
             if let Some(receipt) = receipt {
-                host.hub.send_to(conn, &use_result(receipt, false));
+                host.hub
+                    .send_to(conn, &use_result(receipt, UseOnOutcome::default()));
             }
             return;
         }
@@ -590,12 +592,13 @@ impl Game<'_> {
                 host.hub.ack(conn, p.sequence);
                 let hit = Hit::from_use_item_on(&p);
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
-                let result = self.guest_use_item_on(conn, gi, hit, hand, None);
-                if let Some(receipt) = receipt
+                let result = self.guest_use_item_on(conn, gi, hit, hand, receipt);
+                if result.is_err()
+                    && let Some(receipt) = receipt
                     && let Some(host) = self.lan.as_ref()
                 {
                     host.hub
-                        .send_to(conn, &use_result(receipt, matches!(result, Ok(false))));
+                        .send_to(conn, &use_result(receipt, UseOnOutcome::default()));
                 }
             }
             S::UseItem(p) => {

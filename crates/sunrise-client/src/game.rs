@@ -2573,6 +2573,7 @@ enum FallStep {
 enum GuestUse {
     OnBlock {
         hand: Hand,
+        block_fell_through: bool,
     },
     Item(Hand),
     /// `handleInteract`: `Player.interactOn` with the hand, nothing else (the
@@ -2584,7 +2585,10 @@ enum GuestUse {
 }
 impl GuestUse {
     fn on_block(hand: Hand) -> Self {
-        Self::OnBlock { hand }
+        Self::OnBlock {
+            hand,
+            block_fell_through: false,
+        }
     }
 }
 /// The entity an interact packet names and where its client clicked it (the

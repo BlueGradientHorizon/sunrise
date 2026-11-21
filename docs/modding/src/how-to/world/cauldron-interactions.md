@@ -206,12 +206,17 @@ Sunrise clients use the server's published registration keys to identify a
 custom cauldron click, even when the handler is installed only on the server.
 They do not invoke `Interaction::interact`, predict its writes, or send a
 speculative item-use packet, even if the client's block-use phase was skipped.
-A terminal client hook answer ends the local click as usual. Otherwise, only a
-server pass continues the click: the same hand's remaining item phases, then the
-off hand's block and item use if the main hand still passes. The original
-swing policy applies. Changing the selected slot, held stacks or aim before
-the result supersedes the pending item turn; it does not use the replacement
-item or new aim.
+A terminal client hook answer ends the local click as usual. Otherwise, if the
+server's block phase passes or is skipped, the client runs its eligible
+`ItemAfterBlock` hook and item-on-block behaviour once, without sending the
+block-use packet again. This local phase still runs if the server's item-on-block
+phase consumes the click. Only a pass on both sides allows the same hand's air
+use and then, if that passes, the other hand's turn.
+
+The original swing policy applies. Changing the selected slot, held stacks,
+eye position, aim direction or reach before the result supersedes the pending
+item turn. For example, walking without turning cannot redirect an empty
+bucket's pending use.
 
 `client_packet_send` still sees `minecraft:use_item_on` for the block-use action.
 Canceling that packet stops both the action and its continuation. If a packet

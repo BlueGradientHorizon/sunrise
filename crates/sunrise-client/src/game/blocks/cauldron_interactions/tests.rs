@@ -1495,10 +1495,13 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             "already-sent",
             "slot-changed",
             "aim-changed",
+            "origin-changed",
             "no-swing",
             "server-sneak-override",
             "client-block-terminal",
             "client-item-on-terminal",
+            "server-item-on-terminal",
+            "skipped-block-brush",
             "packet-veto",
             "hold-drop",
             "hold-release",
@@ -1507,7 +1510,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         return;
     }
     use crate::game::{
-        cauldron_prediction::{USE_CHANNEL, registration_packet, use_result},
+        cauldron_prediction::{USE_CHANNEL, UseOnOutcome, registration_packet, use_result},
         execution_role::ExecutionRole,
         native_sound_refs::tests::{guest, packets},
     };
@@ -1517,6 +1520,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     let already_sent = case == "already-sent";
     let block_terminal = case == "client-block-terminal";
     let sneak_override = case == "server-sneak-override";
+    let brushing = case == "skipped-block-brush";
+    let sneaking = sneak_override || brushing;
     let decision = match case.as_str() {
         "consume" | "server-sneak-override" => CauldronDecision::Consume,
         "success" => CauldronDecision::Success,
@@ -1525,6 +1530,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     let item = match case.as_str() {
         "server-sneak-override" => "minecraft:milk_bucket",
         "no-swing" | "aim-changed" => "minecraft:ender_pearl",
+        "origin-changed" => "minecraft:bucket",
+        "skipped-block-brush" => "minecraft:brush",
         _ => "minecraft:paper",
     };
     struct PacketDecision {
@@ -1544,7 +1551,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         calls: Arc<AtomicUsize>,
         item_uses: Arc<AtomicUsize>,
         block_packets: Arc<AtomicUsize>,
-        item_on_terminations: Arc<AtomicUsize>,
+        client_item_on: Arc<AtomicUsize>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for PacketMod {
@@ -1597,11 +1604,16 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             host: mod_api::HostSide<'_>,
             event: &mut mod_api::UseItemOnBlockEvent<'_>,
         ) -> mod_api::Flow {
-            if self.case == "client-item-on-terminal"
-                && matches!(host, mod_api::HostSide::Client(_))
-                && event.phase == mod_api::UsePhase::ItemAfterBlock
+            if event.phase != mod_api::UsePhase::ItemAfterBlock {
+                return mod_api::Flow::Continue;
+            }
+            let client = matches!(host, mod_api::HostSide::Client(_));
+            if client {
+                self.client_item_on.fetch_add(1, Ordering::SeqCst);
+            }
+            if (client && self.case == "client-item-on-terminal")
+                || (!client && self.case == "server-item-on-terminal")
             {
-                self.item_on_terminations.fetch_add(1, Ordering::SeqCst);
                 *event.cancellation_result = mod_api::InteractionResult::Consume;
                 return mod_api::Flow::Cancel;
             }
@@ -1635,7 +1647,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     let calls = Arc::new(AtomicUsize::new(0));
     let item_uses = Arc::new(AtomicUsize::new(0));
     let block_packets = Arc::new(AtomicUsize::new(0));
-    let item_on_terminations = Arc::new(AtomicUsize::new(0));
+    let client_item_on = Arc::new(AtomicUsize::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "packet_cauldron",
         Box::new(PacketMod {
@@ -1645,7 +1657,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             calls: calls.clone(),
             item_uses: item_uses.clone(),
             block_packets: block_packets.clone(),
-            item_on_terminations: item_on_terminations.clone(),
+            client_item_on: client_item_on.clone(),
         }),
     )]
     .into();
@@ -1675,7 +1687,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         setup(game, "minecraft:cauldron", None, item, 1);
         let aim = (35.0, -12.0);
         (game.yaw, game.pitch) = aim;
-        if sneak_override {
+        if sneaking {
             game.set_sent_sneak_for_test();
         }
         // The client has no local registration. Selection must come from the server.
@@ -1696,8 +1708,17 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let hold = matches!(case.as_str(), "hold-drop" | "hold-release")
             .then(|| game.hold_packets().unwrap());
         game.remote_use(mod_api::InteractionAttempt::Press);
-        assert_eq!(block_packets.load(Ordering::SeqCst), 1);
-        assert_eq!(item_on_terminations.load(Ordering::SeqCst), 0);
+        // In the vanilla transport control, paper's air use passes, so the
+        // off hand still gets its ordinary block turn even though it's empty.
+        assert_eq!(
+            block_packets.load(Ordering::SeqCst),
+            1 + usize::from(already_sent)
+        );
+        assert_eq!(
+            client_item_on.load(Ordering::SeqCst),
+            usize::from(already_sent),
+            "the item phase must wait for receipt on a registered click",
+        );
         assert_eq!(
             game.swings_started - client_swings,
             u32::from(block_terminal)
@@ -1721,7 +1742,14 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             assert_eq!(uses.len(), 0);
             // Neither a dropped request nor a canceled action may leave a
             // continuation waiting for the first receipt of this connection.
-            game.apply_packet(use_result(1, true)).unwrap();
+            game.apply_packet(use_result(
+                1,
+                UseOnOutcome {
+                    block_fell_through: true,
+                    passed: true,
+                },
+            ))
+            .unwrap();
             assert!(read_uses(game).is_empty());
             return;
         }
@@ -1733,8 +1761,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }
         assert_eq!(
             uses.len(),
-            usize::from(already_sent),
-            "no speculative item use"
+            2 * usize::from(already_sent),
+            "no speculative follow-up on a registered click"
         );
 
         let remote = game.remote.take();
@@ -1751,7 +1779,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         player.load_timeout = 0;
         player.inventory[0] = Some(ItemStack::new(item, 1));
         player.inventory[1] = Some(ItemStack::new("minecraft:ender_pearl", 1));
-        player.sneaking = sneak_override;
+        player.sneaking = sneaking;
         player.dead = case == "dead";
         if !already_sent {
             player.offhand = Some(ItemStack::new("minecraft:water_bucket", 1));
@@ -1760,8 +1788,18 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         game.lan_guest_packet(1, block_use);
         assert_eq!(
             calls.load(Ordering::SeqCst),
-            usize::from(!matches!(case.as_str(), "refused" | "dead"))
+            usize::from(!matches!(
+                case.as_str(),
+                "refused" | "dead" | "skipped-block-brush"
+            ))
         );
+        if brushing {
+            assert_eq!(
+                game.as_guest(1, |guest| guest.using),
+                Some(Some((0, 0))),
+                "the server's BrushItem.useOn started using the brush"
+            );
+        }
         assert_eq!(
             item_uses.load(Ordering::SeqCst),
             0,
@@ -1774,6 +1812,9 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
                 .expect("client already sent the vanilla Item.use");
             assert!(matches!(&item_use, S::UseItem(p) if p.hand == 0));
             game.lan_guest_packet(1, item_use);
+            let offhand = uses.next().expect("the vanilla click tries its other hand");
+            assert!(matches!(&offhand, S::UseItemOn(p) if p.hand == 1 && p.pos == POS));
+            game.lan_guest_packet(1, offhand);
             assert_eq!(item_uses.load(Ordering::SeqCst), 1);
             return;
         }
@@ -1802,7 +1843,7 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         game.options.execution_role = ExecutionRole::Client;
         let dedicated = game.options.dedicated.take();
         // The off hand must use the captured block hit even if picking has
-        // changed meanwhile. A changed slot or look must not start another use.
+        // changed meanwhile. A changed slot or ray must not start another use.
         game.forced_hit = None;
         (game.yaw, game.pitch) = aim;
         if case == "slot-changed" {
@@ -1811,6 +1852,18 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         }
         if case == "aim-changed" {
             (game.yaw, game.pitch) = (90.0, 25.0);
+        }
+        if case == "origin-changed" {
+            game.player.as_mut().unwrap().position.x += 1.0;
+            assert_eq!((game.yaw, game.pitch), aim);
+            assert_eq!(
+                game.inventory[0],
+                Some(ItemStack::new("minecraft:bucket", 1))
+            );
+            assert_eq!(
+                game.offhand,
+                Some(ItemStack::new("minecraft:water_bucket", 1))
+            );
         }
         game.apply_packet(response.clone()).unwrap();
         game.apply_packet(response).unwrap();
@@ -1833,12 +1886,22 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
             assert!(followup.is_empty(), "{followup:?}");
         }
         assert_eq!(
-            item_on_terminations.load(Ordering::SeqCst),
-            usize::from(case == "client-item-on-terminal"),
+            client_item_on.load(Ordering::SeqCst),
+            usize::from(matches!(
+                case.as_str(),
+                "pass"
+                    | "hold-release"
+                    | "no-swing"
+                    | "client-item-on-terminal"
+                    | "server-item-on-terminal"
+                    | "skipped-block-brush"
+            )),
+            "run the local item phase only once and only after block fallthrough",
         );
-        assert!(
-            game.using.is_none(),
-            "terminal cauldron must not start drinking milk"
+        assert_eq!(
+            game.using,
+            brushing.then_some((0, 0)),
+            "brush use begins locally even when the server's item phase consumed",
         );
 
         // Terminal or refused clicks cannot eat the next independent item packet.

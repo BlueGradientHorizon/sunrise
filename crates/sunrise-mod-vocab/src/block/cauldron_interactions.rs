@@ -30,7 +30,8 @@ pub struct CauldronUse {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CauldronDecision {
-    /// Leave normal item use available (`InteractionResult.TRY_WITH_EMPTY_HAND`).
+    /// Let the block phase fall through to normal item-on-block use
+    /// (`InteractionResult.TRY_WITH_EMPTY_HAND`). Air use remains a separate turn.
     #[default]
     Pass,
     /// Stop normal item use without swinging the player's arm (`InteractionResult.CONSUME`).
@@ -54,9 +55,11 @@ pub enum CauldronRegistrationError {
 
 /// NeoForge's `RegisterCauldronInteractionEvent.Interaction` counterpart (`CauldronInteraction`).
 /// Custom handlers run only on the server. A matching registration stops speculative item use on
-/// Sunrise clients, even if the client would have skipped the block phase. A server pass resumes
-/// the original click only if the local hook allowed it and the held stacks, slot and aim still
-/// match. Vanilla handlers still predict locally. Perform block, item, sound, event, and statistic
+/// Sunrise clients, even if the client would have skipped the block phase. If the server's block
+/// phase passes or is skipped, the eligible local item-on-block phase runs once, even when the
+/// server's item-on-block phase consumes. Air use and the other hand require both sides to pass.
+/// The original slot, held stacks and ray (including eye position and reach) must still match.
+/// Vanilla handlers still predict locally. Perform block, item, sound, event, and statistic
 /// changes directly through `host`, using
 /// [`HostTransaction::transaction`](crate::HostTransaction::transaction) when grouping storage
 /// mutations.
