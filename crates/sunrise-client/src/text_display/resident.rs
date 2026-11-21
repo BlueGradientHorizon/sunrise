@@ -1,4 +1,7 @@
 //! The server's resident display data and its `SynchedEntityData` projection.
+#[cfg(test)]
+mod tests;
+
 use crate::{items::ItemStack, scoreboard::component_tag, text::Text};
 use mod_api::{Billboard, ItemDisplayContext, TextAlignment, Transformation};
 use std::sync::Arc;
