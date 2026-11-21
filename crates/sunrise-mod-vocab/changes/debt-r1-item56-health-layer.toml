@@ -3,8 +3,6 @@ ids = [
     "hook:gui_layer_post",
     "hook:render_gui_pre",
     "hook:register_gui_layers",
-    "method:GuiLayerRegistrar::replace_layer",
-    "method:GuiLayerRegistrar::wrap_layer",
     "hook:player_heart_type",
     "hook:health_hud",
     "hook:health_hud.inputs",
@@ -15,24 +13,7 @@ ids = [
     "type:HealthHudEvent.inputs",
     "type:HealthHudEvent.wi",
     "type:HealthHudEvent.hi",
-    "type:client::hud_layout::HealthInputs",
-    "type:client::hud_layout::HealthInputs.tick",
-    "type:client::hud_layout::HealthInputs.millis",
-    "type:client::hud_layout::HealthInputs.health",
-    "type:client::hud_layout::HealthInputs.max_health",
-    "type:client::hud_layout::HealthInputs.absorption",
-    "type:client::hud_layout::HealthInputs.armor",
-    "type:client::hud_layout::HealthInputs.food",
-    "type:client::hud_layout::HealthInputs.saturation",
-    "type:client::hud_layout::HealthInputs.kind",
-    "type:client::hud_layout::HealthInputs.regeneration",
-    "type:client::hud_layout::HealthInputs.hunger",
-    "type:client::hud_layout::HealthInputs.hardcore",
-    "type:client::hud_layout::HealthInputs.damage_cooldown",
-    "type:client::hud_layout::HealthInputs.air",
-    "type:client::hud_layout::HealthInputs.max_air",
-    "type:client::hud_layout::HealthInputs.under_water",
-    "type:client::hud_layout::HealthInputs.vehicle_hearts",
+    "type:HealthInputs",
 ]
 why = "Vanilla 26.3 updates the heart flash in Hud.extractPlayerHealth and the pop sound in Hud.extractAirBubbles. NeoForge's Hud.registerVanillaLayers gives each status row its own body and applies hudVisible and survivalVisible to the original body, not the slot (GuiLayerManager.add). RegisterGuiLayersEvent replaces or wraps that body in place; GuiLayerManager.renderInner fires RenderGuiLayerEvent.Pre before the installed body and Post after it if Pre did not cancel. Remove the second health callback. The vanilla heart body updates its own state and chooses sprites (Hud.HeartType.forPlayer); the vanilla air body updates bubbles and plays the pop independently. The status slots dispatch even when F1 or another vanilla condition hides their original bodies. GuiLayerManager.render still excludes a vetoed HUD pass, and Hud.extractRenderState excludes the loading screen. The installed status callbacks use the shared retained-callback boundary and the same attributed error report as the rest of the HUD."
 migrate = """
@@ -51,4 +32,6 @@ If you returned `None` on frames that should use vanilla, use `event.layers.wrap
 `render_gui_pre` (v2) keeps its signature and now fires under F1 so it can veto status-slot dispatch there too. If your listener should do work only with the vanilla HUD visible, guard that work with `host.hud_mode() == mod_api::HudMode::AllVisible`.
 
 `player_heart_type` (v2) keeps its signature; sprite overrides need no source change. It now fires after the heart slot's `gui_layer_pre` and only when the vanilla heart body runs. Move work that must run independently of that body to an independent HUD layer or to `gui_render_post` if it must also run with the HUD hidden.
+
+`register_gui_layers` accepts unused `minecraft:` IDs, but not duplicates of vanilla or mod layers. A refused or panicking registration publishes none of that subscriber’s edits. A HUD veto cannot hide mandatory mod-error toasts, including audio pull failures; the player’s hide-GUI preference still applies.
 """

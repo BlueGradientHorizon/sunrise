@@ -1,3 +1,0 @@
-ids = ["trait:AudioStream", "method:AudioStream::read", "type:AudioStreamState", "method:prelude::AudioClientHost::open_audio_stream"]
-why = "Vanilla 26.3's Channel.pumpBuffers and Channel.destroy report read and close errors at the source. Sunrise contains panics in a source's read or destruction at its owning callback, including rejected openings. An EOF drains already-queued PCM only after the source retires normally."
-migrate = "Open with host.open_audio_stream(&spec, Box::new(source)). Return 0 after the last frames. If the source panics in read or drop, or the owner is disabled before retirement completes, the stream stops without intentionally draining queued PCM."

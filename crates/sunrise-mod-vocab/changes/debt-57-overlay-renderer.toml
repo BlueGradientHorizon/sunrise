@@ -42,4 +42,6 @@ migrate = """
 - For water, `event.state` is now the default water state. If you need the actual block, read it from the client's level
   with `level.block_state(host, [event.pos.x, event.pos.y, event.pos.z])`.
 - Keep `event.partial_tick` for world interpolation and use `event.player_partial_tick` for local-player interpolation.
+
+Only a completed extraction changes the chosen renderer or cancellation. A submission interrupted by a phase refusal publishes no quads; refusals are reported each time without disabling the renderer. A panic also publishes no quads and disables only that mod’s submission for that effect kind for the session.
 """

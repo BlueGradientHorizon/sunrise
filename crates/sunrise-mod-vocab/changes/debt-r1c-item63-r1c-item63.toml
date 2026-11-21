@@ -8,7 +8,6 @@ ids = [
   "method:SpecialModelRenderer::submit",
   "handle:SpecialModelRendererRegistry::initial_owners",
   "handle:SpecialModelRendererRegistry::into_renderers",
-  "type:ReplacedSpecialModelRenderer",
   "type:ReplacedSpecialModelRenderer.kind",
   "type:SpecialModelPolicy",
   "type:SpecialModelPolicy.Stack",

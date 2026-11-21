@@ -1,7 +1,5 @@
 ids = [
-    "hook:register_gui_layers",
     "hook:register_gui_layers.layers",
-    # RegisterGuiLayersEvent's field is retyped; the non-exhaustive event's own record is unchanged.
     "type:RegisterGuiLayersEvent.layers",
     "type:GuiLayer",
     "type:GuiLayer.id",
@@ -16,7 +14,6 @@ ids = [
     "method:GuiLayerWrapContext::host",
     "method:GuiLayerWrapContext::with_draw",
     "method:GuiLayerWrapContext::draw_previous",
-    "hook:gui_layer_post",
     "hook:gui_layer_draw",
     "hook:gui_layer_draw.layer",
     "hook:gui_layer_draw.draw",
@@ -24,8 +21,6 @@ ids = [
     "type:GuiLayerDrawEvent",
     "type:GuiLayerDrawEvent.layer",
     "type:GuiLayerDrawEvent.draw",
-
-    "hook:register_debug_entries",
     "type:DebugEntry",
     "type:DebugEntry.id",
     "type:DebugEntry.group",
@@ -43,12 +38,8 @@ ids = [
     "type:DebugEntryLinesEvent",
     "type:DebugEntryLinesEvent.id",
     "type:DebugEntryLinesEvent.lines",
-
-    "hook:register_debug_renderers",
     "type:DebugRenderer",
     "type:DebugRenderer.id",
-    "handle:DebugRenderer::new",
-    "handle:DebugRenderer::id",
     "handle:DebugRenderer::draw",
     "hook:debug_renderer_draw",
     "hook:debug_renderer_draw.id",
@@ -59,13 +50,9 @@ ids = [
     "type:DebugRendererDrawEvent.id",
     "type:DebugRendererDrawEvent.view",
     "type:DebugRendererDrawEvent.draw",
-
-    "hook:register_dimension_transition_screen",
     "type:DimensionTransitionScreen",
     "type:DimensionTransitionScreen.screen",
     "type:DimensionTransitionScreen.transition",
-    "handle:DimensionTransitionScreen::new",
-    "handle:DimensionTransitionScreen::screen",
     "handle:DimensionTransitionScreen::transition",
     "handle:DimensionTransitionScreen::create",
     "trait:DimensionTransitionPresentation",
@@ -97,4 +84,6 @@ Loading screens — In `Hooks::register_dimension_transition_screen`, push `Dime
 A retained HUD or F3 callback runs as its registering mod. A panic disables only that callback for the session and logs and queues an error toast naming the mod. If a HUD wrapper is disabled, `draw_previous()`'s body draws directly; when a wrapper delegates, vanilla paint runs as the engine and a mod body as its own mod. Do not use `catch_unwind` around `ctx.draw_previous()` to recover from a vanilla paint fault: the engine still propagates it out of the layer without disabling the wrapper. A failed HUD painter or wrapper loses its own paint, not the paint of any completed `draw_previous()` calls. A failed transition draw discards its paint and pending blur, local sound, particle clear and camera requests, but not requests that were already pending. A draw panic also disables future draws for that registration, but the factory is still called on the next matching load. A custom presentation's `Drop` runs as its registering mod on normal close or disconnect, even when drawing is disabled. A panicking destructor is reported against that mod and disables drawing, but does not prevent close or disable the factory. No callback signatures change for these failure rules.
 
 `GuiLayer` is gone. `DebugEntry`, `DebugRenderer` and `DimensionTransitionScreen` now own callbacks and no longer implement `Wire`, `Clone`, `Debug`, `PartialEq` or `Eq`. Store IDs, text groups, placements and transition keys in your own data, construct declarations with local functions when registering, and compare or log their IDs or keys instead of the declarations. The four registration hooks and `gui_layer_post` move from version 1 to 2; `gui_layer_pre` stays at version 1.
+
+Registered callbacks use the panic policy described in `debt-fin-panic-fin-panic.toml`. For independent health-row slots and placement changes, see `debt-r1-item56-health-layer.toml`. The final F3 and transition constructor forms are in `debt-fa-queued-client-presentation.toml`.
 """

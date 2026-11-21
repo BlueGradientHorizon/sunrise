@@ -1,5 +1,4 @@
 ids = [
-    "hook:menu_slot_rules",
     "hook:menu_slot_rules.context",
     "type:MenuSlotRulesEvent.context",
     "type:MenuSlotContext",

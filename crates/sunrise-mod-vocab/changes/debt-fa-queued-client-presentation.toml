@@ -1,5 +1,4 @@
 ids = [
-    "hook:register_gui_layers",
     "hook:register_debug_entries",
     "hook:register_debug_renderers",
     "hook:register_dimension_transition_screen",
@@ -7,10 +6,8 @@ ids = [
     "handle:DebugEntry::allowed_in_reduced_debug_info",
     "handle:DebugEntry::is_allowed",
     "handle:DebugRenderer::new",
-    "handle:DebugRenderer::id",
     "handle:RegisterDebugRenderersEvent::is_debug_entry_enabled",
     "handle:DimensionTransitionScreen::new",
-    "handle:DimensionTransitionScreen::screen",
 ]
 why = "Match vanilla 26.3 (`DebugScreenEntry.isAllowed`, `DebugScreenEntryList.isCurrentlyEnabled`, `DebugRenderer.refreshRendererList`) and NeoForge 26.3 (`RegisterGuiLayersEvent`, `RegisterDebugEntriesEvent`, `RegisterDebugRenderersEvent`, `RegisterDimensionTransitionScreenEvent`): allow custom `minecraft:<path>` IDs that do not duplicate built-in vanilla entries on HUD layers and F3 debug entries, expose per-entry reduced-debug-info opt-in (`DebugEntry::with_reduced_debug_info`, `allowed_in_reduced_debug_info`, `is_allowed`), drop the synthetic switch ID from `DebugRenderer` so listeners query `event.is_debug_entry_enabled(id)` or push unconditional renderers without ID-based deduplication, and drop the synthetic diagnostic screen ID from `DimensionTransitionScreen`."
 migrate = """

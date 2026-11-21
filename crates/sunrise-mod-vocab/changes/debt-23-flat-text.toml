@@ -1,5 +1,4 @@
 ids = [
-  "type:text::Text",
   "type:text::TextForm",
   "type:text::TextNode",
   "type:text::TextNodeContent",

@@ -7,7 +7,6 @@ ids = [
     "handle:LevelRef::visit_entities_in",
     "handle:LevelRef::visit_online_players",
     "handle:TeamRef::visit_members",
-    "handle:LevelRef::ray_trace_entities",
     "handle:LevelRef::ray_trace_nearest_entity",
     "type:TeamMembersReadError",
     "type:TeamMembersReadError.Stale",

@@ -1,3 +1,0 @@
-ids = ["method:prelude::ClientTextClientHost::text_visual_order"]
-why = "Vanilla 26.3 SubStringSource.substring groups adjacent characters by Style.equals, and ClickEvent.Custom compares IDs decoded by Identifier.CODEC. Sunrise now groups custom click actions with equivalent identifier spellings without rewriting the action returned for each character. NeoForge has no separate visual-order hook."
-migrate = "Keep calling text_visual_order(&text). If you used source_index == 0 to infer a component boundary when custom click ID spellings differ, track that boundary yourself instead: example and minecraft:example share a run when the other style fields and payload match. Each character still returns its original click ID and payload."

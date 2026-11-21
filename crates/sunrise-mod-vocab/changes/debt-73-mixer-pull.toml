@@ -18,4 +18,7 @@ producer (such as proximity voice chat), own a bounded nonblocking buffer beside
 implementation, push decoded frames into it from your producer thread, and drain frames from it in \
 `AudioStream::read`. Treat `AudioRefusal::WorkerUnavailable` like any other opening failure. If you \
 implement `AudioClientHost` in tests, update `open_audio_stream` to take the `Box<dyn AudioStream>` \
-argument."""
+argument.
+
+Returning zero drains already-queued PCM only after normal source retirement. An out-of-range read count stops the stream. A panic during read or source disposal is reported for that owner and stops the stream without draining its queued PCM; other owners still play.
+"""
