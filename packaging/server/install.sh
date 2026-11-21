@@ -5,7 +5,8 @@
 # checksums"), else against the SHA-256 GitHub publishes for it. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
-#   curl -fsSL .../install.sh | sh -s -- --version v0.5.0 --dir /opt/sunrise --bin /usr/local/bin
+#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0    (a stable release, whose line updates then follow)
+#   curl -fsSL .../install.sh | sh -s -- --version 26.3-0.1.0 --dir /opt/sunrise --bin /usr/local/bin
 #   sh install.sh --archive sunrise-server-linux-x86_64.tar.gz --version mybuild   (an archive you have)
 #
 # It needs curl, tar or unzip, and sha256sum or shasum (and OpenSSL 3 for the signature: macOS's LibreSSL is not
@@ -43,7 +44,7 @@ while [ $# -gt 0 ]; do
     --dir) [ $# -ge 2 ] || die "--dir needs a folder"; DIR=$2; shift 2 ;;
     --bin) [ $# -ge 2 ] || die "--bin needs a folder"; BIN=$2; shift 2 ;;
     --archive) [ $# -ge 2 ] || die "--archive needs a file"; ARCHIVE=$2; shift 2 ;;
-    -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" 2>/dev/null || true; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
 done
@@ -84,6 +85,9 @@ else
   TAG=$(printf '%s\n' "$JSON" | sed -n 's/^  "tag_name": "\([^"]*\)".*/\1/p' | head -n 1)
   [ -n "$TAG" ] || die "could not read the release's tag"
   RAWTAG=$TAG
+  case "$TAG" in
+    dev|dev-*) die "$TAG is a Dev build, made to test main: servers don't install it. Install the Nightly (the default) or a stable release (--version <tag>)." ;;
+  esac
   # A Nightly installs under its date and commit, as `sunrise-server update` names it:
   # "Nightly 2026-10-28 · 0c02067" is nightly-2026-10-28-0c02067. Its signature is checked for exactly that
   # version, so the title must name it (as sunrise_release_sign::build_title_version reads it, strictly).
