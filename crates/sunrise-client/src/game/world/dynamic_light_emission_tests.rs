@@ -235,7 +235,7 @@ fn light_query_uses_the_supplied_state_and_its_declared_default() {
                 Err(LevelReadError::Stale)
             );
             {
-                let _phase = PhaseOwner::scope(ModPhase::Boot);
+                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 assert_eq!(
                     level.get_light_emission(host, [1, 65, 2], dynamic),
                     Err(LevelReadError::Unavailable)
