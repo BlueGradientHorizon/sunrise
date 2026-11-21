@@ -254,6 +254,147 @@ enum Retake {
     },
 }
 
+#[test]
+#[ignore = "daily"]
+fn aborted_block_entity_edits_preserve_a_queued_client_update() {
+    use crate::game::{
+        native_entity_refs::tests::fixture_root, native_guest_turn_tests::with_guests_at,
+    };
+    use sunrise_client::lan::{Out, PlayerSender};
+    use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::aborted_block_entity_edits_preserve_a_queued_client_update";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_SYNC", &["run"]) {
+        return;
+    }
+
+    const MACHINE: &str = "view_tick_update:machine";
+    struct Machine;
+    #[mod_api::__subscriptions]
+    impl Hooks for Machine {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            r.block_entity_type("machine").blocks(&[MACHINE]).build();
+        }
+
+        fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+            event
+                .register(mod_api::Block::new(MACHINE, "minecraft:stone").with_item(false))
+                .unwrap();
+        }
+    }
+
+    let mods: mod_api::Mods = vec![ModEntry::new("view_tick_update", Box::new(Machine))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        mod_api::__private::mark_game_thread();
+        let root = crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+        with_guests_at(root.prepared().to_owned(), |game| {
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let kind = hub
+                .registry_id("minecraft:block_entity_type", MACHINE)
+                .unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            hub.update_guest(12, |guest| {
+                guest.sender = PlayerSender::new(tx, Arc::default());
+                guest.sent_chunks.insert(CHUNK);
+            })
+            .unwrap();
+            let received_tags = || {
+                rx.try_iter()
+                    .filter_map(|out| {
+                        let Out::Packet(body) = out else {
+                            return None;
+                        };
+                        let mut reader = Reader::new(&body);
+                        let id = reader.varint().unwrap();
+                        let Clientbound::BlockEntityData(packet) =
+                            Clientbound::decode(id, reader.rest()).unwrap()
+                        else {
+                            return None;
+                        };
+                        assert_eq!(packet.pos, AT);
+                        assert_eq!(packet.kind, kind);
+                        Some(packet.tag)
+                    })
+                    .collect::<Vec<_>>()
+            };
+
+            let registry = game.pack.assets.registry;
+            let machine = registry.default_state(MACHINE).unwrap();
+            let replacement = registry
+                .default_state("minecraft:glass")
+                .unwrap()
+                .try_into_api()
+                .unwrap();
+            let level = game.level(game.dim.id()).unwrap();
+            for replace in [false, true] {
+                game.world
+                    .chunks
+                    .insert(CHUNK, Arc::new(Chunk::empty(0, 0)));
+                game.world.set(POS.0, POS.1, POS.2, machine).unwrap();
+                game.world.block_entities.insert(POS, row(MACHINE, 23));
+                // Discard setup changes; the first broadcast must use the sync queued below.
+                game.world.block_log.as_mut().unwrap().clear();
+                let subject = game.block_entity(level, AT).unwrap();
+                let waiting = Compound::from([("effect".into(), Tag::Int(7))]);
+                let mut tick = access(game, subject);
+                let mut scope = BlockEntityTickScope::new(&mut tick);
+                scope
+                    .with_view(|mut view| view.set_client_update_fields(waiting.clone()))
+                    .unwrap();
+                scope.host().block_entity_sync(AT);
+
+                let result: Result<(), ()> = scope.transaction(|scope, _| {
+                    if replace {
+                        // The first write captures the row through the world, not a ticker loan.
+                        assert_eq!(
+                            level.set_block(
+                                scope.host(),
+                                AT,
+                                replacement,
+                                BlockUpdateFlags::KNOWN_SHAPE
+                            ),
+                            Ok(true)
+                        );
+                        assert_eq!(scope.with_view(|_| ()), None);
+                    } else {
+                        scope
+                            .with_view(|mut view| {
+                                view.set_client_update_fields(Compound::from([(
+                                    "effect".into(),
+                                    Tag::Int(9),
+                                )]));
+                            })
+                            .unwrap();
+                    }
+                    Err(())
+                });
+                assert_eq!(result, Err(()));
+
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .broadcast_changes(&mut game.world);
+                assert_eq!(
+                    received_tags(),
+                    [Tag::Compound(waiting)],
+                    "replace={replace}"
+                );
+
+                // A later sync of the restored entity must not replay either batch.
+                game.block_entity_sync(AT);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .broadcast_changes(&mut game.world);
+                assert!(received_tags().is_empty(), "replace={replace}");
+            }
+        });
+    });
+}
+
 fn check_edit_then_replace(commit: bool) {
     with_game(|game| {
         let subject = place_subject(game, KIND);

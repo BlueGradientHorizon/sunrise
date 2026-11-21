@@ -109,8 +109,9 @@ impl<'a> BlockEntityView<'a> {
         self.data.set_item_slot(slot, stack)
     }
 
-    /// Queue one-shot fields for the next explicit block-entity sync to its current viewers.
+    /// Queue one-shot fields for the next block-entity sync to its current viewers.
     /// An empty compound clears the queued fields. Nothing saves or sends them from this call.
+    /// Aborting a transaction restores the batch that was waiting before its first edit.
     pub fn set_client_update_fields(&mut self, fields: Compound) {
         self.data.set_client_update_fields(fields);
     }

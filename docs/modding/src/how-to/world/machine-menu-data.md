@@ -126,8 +126,9 @@ or unloading the block entity drops it. It is never saved, cloned or compared, a
 not change the entity's revision.
 
 If the merged tag exceeds the 2 MiB network-NBT limit, the game drops the fields,
-logs a warning, and sends the original update tag instead. A transaction that rolls
-the block entity back also drops any batch queued before it.
+logs a warning, and sends the original update tag instead. When a transaction rolls back
+the block entity, it restores the batch waiting before the transaction's first edit.
+If a sync was requested, that batch still goes out on the next block change with viewers.
 
 A client merges the fields into its copy's `nbt` as any update field, and they stay there
 until sent again: put a counter in them to tell one effect from the next.

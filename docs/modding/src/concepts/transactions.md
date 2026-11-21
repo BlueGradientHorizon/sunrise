@@ -31,11 +31,11 @@ fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
 - Closing a transaction aborts any transactions left open inside it before closing
   the parent.
 
-The journal covers writes through capability handlers to these storages:
+The journal covers these storages, including writes through capability handlers:
 
 | Storage | Recorded state |
 |---|---|
-| Block entity | Item slots, saved compound, custom name and attachments |
+| Block entity | Item slots, transient `data_slots`, saved compound, queued one-shot client update fields, custom name and attachments |
 | Hopper | Cooldown |
 | Cauldron | Block state |
 | Composter | Block state and composter-local random stream; fill feedback, game events and maturation scheduling wait for outer commit |
