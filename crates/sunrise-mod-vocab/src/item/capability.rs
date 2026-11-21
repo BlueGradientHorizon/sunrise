@@ -24,9 +24,17 @@ pub struct CapabilityKey<T: ?Sized + 'static> {
 /// A position a capability is asked of (its block, and the block entity there if any), by its
 /// level and position, and the side it is
 /// reached through (none: from no particular side): NeoForge's block capability context.
+///
+/// This is a local query address: copy its dimension, position and side into your own `Wire`
+/// type at a serialization or network boundary.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockSide>();
+/// ```
+// no wire: local block-capability query context carrying a process-local LevelRef.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct BlockSide {
     /// The level.
     pub level: LevelRef,

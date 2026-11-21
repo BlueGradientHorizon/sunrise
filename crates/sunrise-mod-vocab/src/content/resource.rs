@@ -139,7 +139,15 @@ pub struct ItemDamageSource {
 
 /// An item and its components, without a count, as NeoForge's `ItemResource`: what a slot holds.
 /// An empty slot holds none.
-// no wire: decoding calls ItemResource::of to normalize the incoming stack count to one; a structural derive would preserve a non-unit wire count.
+///
+/// This is a process-local transfer and query identity: convert to [`ItemStack`] for `Wire`
+/// schemas.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::ItemResource>();
+/// ```
+// no wire: process-local transfer and query identity; convert to ItemStack at Wire boundaries.
 #[derive(Clone)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ItemResource(pub(crate) ItemStack);
@@ -643,9 +651,16 @@ pub(crate) fn checked_transfer(answer: u32, asked: u32) -> Result<u32, Overanswe
 }
 
 /// A handler answered more than it was asked. A move that returns this error rolls back.
+///
+/// This is a local handler error returned inside [`TransactionError`], not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::Overanswered>();
+/// ```
+// no wire: local handler refusal returned inside TransactionError.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct Overanswered {
     /// The mod whose handler answered, or "the game", if the provider is known.
     pub owner: Option<String>,
