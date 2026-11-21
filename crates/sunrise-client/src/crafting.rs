@@ -1417,8 +1417,9 @@ pub(crate) enum DecodedRecipe {
         group: String,
     },
     Brewing {
-        input: Option<Ingredient>,
-        reagent: Option<Ingredient>,
+        recipe: crate::brewing::BrewingRecipe,
+        input: Ingredient,
+        reagent: Ingredient,
         category: String,
         group: String,
     },
@@ -1593,6 +1594,14 @@ impl ResolvedSources {
             .iter()
             .filter_map(|recipe| match &recipe.decoded {
                 DecodedRecipe::Station { recipe, .. } => Some(recipe),
+                _ => None,
+            })
+    }
+    pub(crate) fn brewing_recipes(&self) -> impl Iterator<Item = &crate::brewing::BrewingRecipe> {
+        self.recipes
+            .iter()
+            .filter_map(|recipe| match &recipe.decoded {
+                DecodedRecipe::Brewing { recipe, .. } => Some(recipe),
                 _ => None,
             })
     }
@@ -1838,7 +1847,26 @@ fn decode_vanilla_recipe(
             if let Some(error) = custom_error.borrow_mut().take() {
                 return Err(recipe_refused(name, &error));
             }
+            let (Some(input), Some(reagent)) = (input, reagent) else {
+                return fail("invalid ingredients or required fields for minecraft:brewing".into());
+            };
+            let output = Template::parse(&v["output"])
+                .filter(|template| template.item.is_some())
+                .ok_or_else(|| recipe_refused(name, &format!("invalid output: {}", v["output"])))?;
+            let recipe = crate::brewing::BrewingRecipe {
+                id: qualified(name),
+                input: crate::brewing::PotionIngredient {
+                    items: input.items.clone(),
+                    potions: crate::brewing::PotionIngredient::parse_potions(&v["input"]),
+                },
+                reagent: crate::brewing::PotionIngredient {
+                    items: reagent.items.clone(),
+                    potions: crate::brewing::PotionIngredient::parse_potions(&v["reagent"]),
+                },
+                output: output.create(),
+            };
             Ok(DecodedRecipe::Brewing {
+                recipe,
                 input,
                 reagent,
                 category: text("category"),
@@ -2582,6 +2610,61 @@ mod tests {
         assert_eq!(recipes.crafting.len(), 1);
         assert_eq!(recipes.crafting[0].0, "mymod:treated");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn brewing_recipes_decode_once_by_type_preserving_potions_and_result_components() {
+        let root = tempfile::tempdir().unwrap();
+        let items = Items::for_tests(HashMap::new());
+        let load = crate::test_resources::server_load();
+        let recipe = serde_json::json!({
+            "type": "minecraft:brewing",
+            "input": {
+                "item": "minecraft:potion",
+                "potion_contents": {"potions": "minecraft:water"}
+            },
+            "reagent": {"item": "minecraft:blaze_powder"},
+            "output": {
+                "id": "minecraft:potion",
+                "count": 1,
+                "components": {
+                    "minecraft:potion_contents": {"potion": "minecraft:strength"},
+                    "minecraft:repair_cost": 3
+                }
+            }
+        });
+        let sources = ResolvedSources::resolve(
+            vec![("example:custom_elixir".into(), recipe)],
+            &items,
+            &load,
+        )
+        .unwrap();
+        let recipes =
+            Recipes::from_resolved(root.path(), &items, &PackOverlay::NONE, &sources).unwrap();
+        fs::write(root.path().join("items.json"), b"{}").unwrap();
+        let defaults = sunrise_world::item_defaults::ItemDefaults::load(
+            root.path(),
+            crate::test_resources::server_load(),
+        )
+        .unwrap();
+        let stations = crate::stations::StationData::from_sources(
+            root.path(),
+            &items,
+            &PackOverlay::NONE,
+            &defaults,
+            (&sources, &recipes),
+        );
+        assert_eq!(stations.brewing.recipes.len(), 1);
+        assert_eq!(stations.brewing.recipes[0].id, "example:custom_elixir");
+        assert!(stations.brewing.reagents.contains("minecraft:blaze_powder"));
+        assert!(stations.brewing.inputs.contains("minecraft:potion"));
+        let water = ItemStack::new("minecraft:potion", 1).with_potion("minecraft:water");
+        let awkward = ItemStack::new("minecraft:potion", 1).with_potion("minecraft:awkward");
+        let reagent = ItemStack::new("minecraft:blaze_powder", 1);
+        assert!(stations.brewing.find(&awkward, &reagent).is_none());
+        let matched = stations.brewing.find(&water, &reagent).unwrap();
+        assert_eq!(matched.output.potion(), Some("minecraft:strength"));
+        assert_eq!(matched.output.data().map(|d| d.repair_cost), Some(3));
     }
 
     #[test]

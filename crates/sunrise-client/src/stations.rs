@@ -62,7 +62,9 @@ impl StationData {
             enchantments: std::sync::Arc::clone(&items.enchantments),
             recipes: StationRecipes::from_sources(root, items, sources),
             brewing: {
-                let mut brewing = crate::brewing::Brewing::load(root, items, overlay);
+                let mut brewing = crate::brewing::Brewing::from_recipes(
+                    sources.brewing_recipes().cloned().collect(),
+                );
                 let added = |key| sources.property_additions.get(key).into_iter().flatten();
                 brewing.reagents.extend(added("brewing_reagent").cloned());
                 brewing.inputs.extend(added("brewing_input").cloned());

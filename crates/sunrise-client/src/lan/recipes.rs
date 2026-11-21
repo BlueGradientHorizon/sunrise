@@ -233,9 +233,6 @@ fn normalize_ingredients(recipe: &ResolvedRecipe) -> Option<Value> {
             }
         },
         DecodedRecipe::Brewing { input, reagent, .. } => {
-            let (Some(input), Some(reagent)) = (input, reagent) else {
-                return None;
-            };
             projection["input"] =
                 Value::Array(input.order.iter().cloned().map(Value::String).collect());
             projection["reagent"] =
@@ -349,14 +346,7 @@ pub fn update_recipes(
                         set.extend(ids);
                     }
                 }
-                (
-                    DecodedRecipe::Brewing {
-                        input: Some(input),
-                        reagent: Some(reagent),
-                        ..
-                    },
-                    "minecraft:brewing",
-                ) => {
+                (DecodedRecipe::Brewing { input, reagent, .. }, "minecraft:brewing") => {
                     let input_ids = ingredient_ids(&file["input"]["item"], input);
                     let reagent_ids = ingredient_ids(&file["reagent"]["item"], reagent);
                     if input_ids.is_empty() || reagent_ids.is_empty() {
