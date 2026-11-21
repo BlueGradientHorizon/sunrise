@@ -46,7 +46,9 @@ pub trait GuiLayerRegistrar {
 
     /// Stage a replacement for an already registered layer (including a vanilla layer).
     /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
-    /// position and draw conditions.
+    /// position and draw conditions. Callbacks staged in this listener are dropped before this
+    /// call returns; callbacks installed by earlier listeners are dropped only after commit.
+    /// Do not call the Host from a callback capture's `Drop`.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 

@@ -121,11 +121,6 @@ mod root {
         impl Refusal {
             pub(super) fn report(&self) {}
         }
-        impl std::fmt::Display for Refusal {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("fixture refusal")
-            }
-        }
         pub(super) fn first_output_refusal(_: super::HookId, id: &'static str) -> bool {
             super::OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().push(id));
             true

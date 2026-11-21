@@ -2,8 +2,9 @@
 //! draws them, with native layers inserted and bodies installed once at client startup.
 
 use mod_api::{
+    __private::contain_outside_world,
     GuiLayerDraw, GuiLayerPlacement, GuiLayerRegistrar, GuiLayerWrapper, Identifier,
-    content::crash::current_native_mod,
+    content::crash::{ModCall, current_native_mod, enter_native_mod},
 };
 use std::sync::OnceLock;
 
@@ -133,32 +134,67 @@ impl Default for GuiLayers {
     }
 }
 
-enum GuiLayerEdit {
-    Insert(usize, GuiLayerSlot),
-    Replace(usize, GuiLayerBody),
-    Wrap(usize, Option<&'static str>, Box<GuiLayerWrapper>),
+impl GuiLayerBody {
+    /// Drop each callback separately. Detach the tail before running a wrapper's destructor so
+    /// another mod destructor cannot run as part of its unwind.
+    fn dispose(&mut self, in_listener: bool) {
+        loop {
+            let (owner, draw, wrap) = match std::mem::replace(self, Self::Vanilla) {
+                Self::Vanilla => return,
+                Self::Native { owner, draw } => (owner, Some(draw), None),
+                Self::Wrapped {
+                    owner,
+                    wrap,
+                    previous,
+                } => {
+                    *self = *previous;
+                    (owner, None, Some(wrap))
+                }
+            };
+            let drop_callback = || drop((draw, wrap));
+            if in_listener {
+                // Let the listener's own refusal scope reject its whole batch.
+                drop_callback();
+            } else {
+                // The listener has already returned. Cleanup must not undo a successful batch
+                // or let a discarded callback's refusal prevent the next cleanup or listener.
+                let _owner = enter_native_mod(ModCall {
+                    id: owner.unwrap_or("unknown"),
+                    hook: "register_gui_layers",
+                    part: None,
+                });
+                if let Err(refusal) = contain_outside_world(drop_callback) {
+                    refusal.report();
+                }
+            }
+        }
+    }
+}
+
+enum StagedLayerId {
+    Existing(usize),
+    Native(String),
+}
+
+struct StagedLayer {
+    id: StagedLayerId,
+    // A Vanilla tail on an existing slot stands for its original body, still in `existing`.
+    body: GuiLayerBody,
 }
 
 struct GuiLayerEdits<'a> {
     existing: &'a [GuiLayerSlot],
-    edits: Vec<GuiLayerEdit>,
-    len: usize,
+    slots: Vec<StagedLayer>,
+    obsolete: Vec<GuiLayerBody>,
 }
 
 impl GuiLayerEdits<'_> {
     /// Resolve against the order at this call, including this listener's earlier insertions.
     fn position(&self, id: &str) -> Option<usize> {
-        let mut at = self.existing.iter().position(|slot| slot.id() == id);
-        for edit in &self.edits {
-            if let GuiLayerEdit::Insert(index, slot) = edit {
-                at = match at {
-                    Some(at) => Some(at + usize::from(*index <= at)),
-                    None if slot.id() == id => Some(*index),
-                    None => None,
-                };
-            }
-        }
-        at
+        self.slots.iter().position(|slot| match &slot.id {
+            StagedLayerId::Existing(at) => self.existing[*at].id() == id,
+            StagedLayerId::Native(key) => key == id,
+        })
     }
 
     fn edit_position(&self, id: &str, owner: Option<&str>, action: &str) -> Option<usize> {
@@ -192,7 +228,7 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         }
         let at = match &placement {
             GuiLayerPlacement::BelowAll => Some(0),
-            GuiLayerPlacement::AboveAll => Some(self.len),
+            GuiLayerPlacement::AboveAll => Some(self.slots.len()),
             GuiLayerPlacement::Below(other) => self.position(other),
             GuiLayerPlacement::Above(other) => self.position(other).map(|i| i + 1),
         };
@@ -204,14 +240,13 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
             );
             return false;
         };
-        self.edits.push(GuiLayerEdit::Insert(
+        self.slots.insert(
             at,
-            GuiLayerSlot {
-                id: GuiLayerId::Native(id),
+            StagedLayer {
+                id: StagedLayerId::Native(id),
                 body: GuiLayerBody::Native { owner, draw },
             },
-        ));
-        self.len += 1;
+        );
         true
     }
 
@@ -220,10 +255,18 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         let Some(at) = self.edit_position(id, owner, "replace") else {
             return false;
         };
-        self.edits.push(GuiLayerEdit::Replace(
-            at,
+        let old = std::mem::replace(
+            &mut self.slots[at].body,
             GuiLayerBody::Native { owner, draw },
-        ));
+        );
+        if !matches!(old, GuiLayerBody::Vanilla) {
+            self.obsolete.push(old);
+        }
+        // Keep both the new callback and any undropped tail in the batch if a destructor unwinds.
+        while let Some(body) = self.obsolete.last_mut() {
+            body.dispose(true);
+            self.obsolete.pop();
+        }
         true
     }
 
@@ -232,7 +275,13 @@ impl GuiLayerRegistrar for GuiLayerEdits<'_> {
         let Some(at) = self.edit_position(id, owner, "wrap") else {
             return false;
         };
-        self.edits.push(GuiLayerEdit::Wrap(at, owner, wrap));
+        let body = &mut self.slots[at].body;
+        let previous = Box::new(std::mem::replace(body, GuiLayerBody::Vanilla));
+        *body = GuiLayerBody::Wrapped {
+            owner,
+            wrap,
+            previous,
+        };
         true
     }
 }
@@ -249,26 +298,53 @@ impl GuiLayers {
     pub fn register_listener(&mut self, listen: impl FnOnce(&mut dyn GuiLayerRegistrar) -> bool) {
         let mut pending = GuiLayerEdits {
             existing: &self.slots,
-            edits: Vec::new(),
-            len: self.slots.len(),
+            slots: (0..self.slots.len())
+                .map(|at| StagedLayer {
+                    id: StagedLayerId::Existing(at),
+                    body: GuiLayerBody::Vanilla,
+                })
+                .collect(),
+            obsolete: Vec::new(),
         };
-        if !listen(&mut pending) {
-            return;
-        }
-        for edit in pending.edits {
-            match edit {
-                GuiLayerEdit::Insert(at, slot) => self.slots.insert(at, slot),
-                GuiLayerEdit::Replace(at, body) => self.slots[at].body = body,
-                GuiLayerEdit::Wrap(at, owner, wrap) => {
-                    let body = &mut self.slots[at].body;
-                    let previous = Box::new(std::mem::replace(body, GuiLayerBody::Vanilla));
-                    *body = GuiLayerBody::Wrapped {
-                        owner,
-                        wrap,
-                        previous,
-                    };
-                }
+        let accepted = listen(&mut pending);
+        let GuiLayerEdits {
+            slots,
+            mut obsolete,
+            ..
+        } = pending;
+        if accepted {
+            // Insertions never reorder existing slots. Splice in their bodies before disposing
+            // of replacements, so no mod destructor runs while the order is being published.
+            let mut existing = std::mem::take(&mut self.slots).into_iter();
+            self.slots = slots
+                .into_iter()
+                .map(|StagedLayer { id, mut body }| match id {
+                    StagedLayerId::Native(id) => GuiLayerSlot {
+                        id: GuiLayerId::Native(id),
+                        body,
+                    },
+                    StagedLayerId::Existing(_) => {
+                        let slot = existing.next().expect("staged existing HUD slot");
+                        let mut tail = &mut body;
+                        while let GuiLayerBody::Wrapped { previous, .. } = tail {
+                            tail = previous;
+                        }
+                        if matches!(tail, GuiLayerBody::Vanilla) {
+                            *tail = slot.body;
+                        } else {
+                            obsolete.push(slot.body);
+                        }
+                        GuiLayerSlot { id: slot.id, body }
+                    }
+                })
+                .collect();
+        } else {
+            for mut slot in slots {
+                slot.body.dispose(false);
             }
+        }
+        for mut body in obsolete {
+            body.dispose(false);
         }
     }
 
@@ -534,6 +610,150 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn hud_callback_teardown_refusals_are_contained() {
+        use mod_api::__private::game::RegistrationContextNew;
+        use mod_api::__private::{LoadAccess, ModPhase, PhaseOwner, check_access};
+        use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
+        use std::sync::{Arc, Mutex};
+
+        type Drops = Arc<Mutex<Vec<(&'static str, Option<&'static str>)>>>;
+
+        struct PhaseDrop(&'static str, Drops);
+        impl Drop for PhaseDrop {
+            fn drop(&mut self) {
+                self.1.lock().unwrap().push((self.0, current_native_mod()));
+                // A regression should fail this test, not double-panic and abort the test binary.
+                if !std::thread::panicking() {
+                    check_access("hud_capture_drop", LoadAccess::WorldOnly);
+                }
+            }
+        }
+
+        enum Action {
+            Register,
+            Refuse,
+            Replace,
+        }
+        struct Listener(Action, Drops);
+        #[mod_api::__subscriptions]
+        impl Hooks for Listener {
+            fn register_gui_layers(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterGuiLayersEvent<'_>,
+            ) {
+                let layers = &mut *event.layers;
+                let draw = |label| -> Box<GuiLayerDraw> {
+                    let capture = PhaseDrop(label, Arc::clone(&self.1));
+                    Box::new(move |_, _| {
+                        std::hint::black_box(&capture);
+                    })
+                };
+                match self.0 {
+                    Action::Register => {
+                        assert!(layers.register(
+                            "hud:original".into(),
+                            GuiLayerPlacement::AboveAll,
+                            draw("retired"),
+                        ));
+                    }
+                    Action::Refuse => {
+                        assert!(layers.register(
+                            "hud:aborted".into(),
+                            GuiLayerPlacement::AboveAll,
+                            draw("discarded inner draw"),
+                        ));
+                        let outer = PhaseDrop("superseded wrapper", Arc::clone(&self.1));
+                        assert!(layers.wrap_layer(
+                            "hud:aborted",
+                            Box::new(move |_| {
+                                std::hint::black_box(&outer);
+                            }),
+                        ));
+                        // The superseded wrapper refuses the listener while this call is active.
+                        layers.replace_layer("hud:aborted", draw("discarded replacement"));
+                        self.1
+                            .lock()
+                            .unwrap()
+                            .push(("replace returned", current_native_mod()));
+                    }
+                    Action::Replace => {
+                        assert!(layers.replace_layer("hud:original", Box::new(|_, _| {})));
+                        assert!(layers.register(
+                            "hud:last".into(),
+                            GuiLayerPlacement::Above("hud:original".into()),
+                            Box::new(|_, _| {}),
+                        ));
+                    }
+                }
+            }
+        }
+
+        crate::test_log::install();
+        crate::test_log::clear();
+        let drops = Drops::default();
+        let mods = vec![
+            ModEntry::new(
+                "original",
+                Box::new(Listener(Action::Register, drops.clone())),
+            ),
+            ModEntry::new(
+                "refusing_drop",
+                Box::new(Listener(Action::Refuse, drops.clone())),
+            ),
+            ModEntry::new(
+                "replacing",
+                Box::new(Listener(Action::Replace, drops.clone())),
+            ),
+        ];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let _phase = PhaseOwner::scope(ModPhase::Registration);
+            // Refusal is not poison: both calls take the same path, but use the shared diagnostic.
+            for _ in 0..2 {
+                let mut layers = GuiLayers::default();
+                mod_api::dispatch_register_gui_layers(&RegistrationContext::new(), |listen| {
+                    layers.register_listener(listen);
+                });
+                let order = layers.into_order();
+                let native = &order.slots()[VanillaGuiLayer::ALL.len()..];
+                assert_eq!(
+                    native.iter().map(GuiLayerSlot::id).collect::<Vec<_>>(),
+                    ["hud:original", "hud:last"]
+                );
+                assert!(matches!(
+                    &native[0].body,
+                    GuiLayerBody::Native {
+                        owner: Some("replacing"),
+                        ..
+                    }
+                ));
+            }
+        });
+        assert_eq!(
+            *drops.lock().unwrap(),
+            [
+                ("superseded wrapper", Some("refusing_drop")),
+                ("discarded replacement", Some("refusing_drop")),
+                ("discarded inner draw", Some("refusing_drop")),
+                ("retired", Some("original")),
+            ]
+            .repeat(2)
+        );
+        let logs: Vec<_> = crate::test_log::records()
+            .into_iter()
+            .map(|(_, message)| message)
+            .filter(|message| message.contains("hud_capture_drop"))
+            .collect();
+        assert_eq!(
+            logs,
+            [
+                "native refusal: refusing_drop hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
+                "native refusal: original hook register_gui_layers: mod API hud_capture_drop is unavailable during Registration",
+            ]
+        );
     }
 
     #[test]

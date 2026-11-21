@@ -6,8 +6,9 @@ pub trait Hooks {
     /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it. Use
     /// `event.layers.register(id, placement, Box::new(draw))` to insert a new slot,
     /// or `replace_layer` and `wrap_layer` to change an existing slot's body.
-    /// Each listener sees its own staged edits. If a load-phase refusal occurs, the game discards
-    /// that listener's edits without changing earlier listeners' layers.
+    /// Each listener sees its own staged edits. If a load-phase refusal occurs, including when
+    /// a replacement drops a callback staged by the same listener, the game discards that
+    /// listener's edits without changing earlier listeners' layers.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -19,7 +20,8 @@ are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, 
 `Hooks::gui_layer_pre` lists) or a layer already registered, including one added earlier in this
 listener. The game commits each successful listener's calls in order before invoking the next
 listener. A load-phase refusal discards all edits by that listener, including replacements and
-wrappers, and leaves earlier listeners' work intact. Invalid, reserved or duplicate IDs and unknown
+wrappers, and leaves earlier listeners' work intact. This includes a refusal while dropping a
+callback the listener staged and then replaced. Invalid, reserved or duplicate IDs and unknown
 relative anchors are logged and refused. The client calls each installed callback as its owner.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or

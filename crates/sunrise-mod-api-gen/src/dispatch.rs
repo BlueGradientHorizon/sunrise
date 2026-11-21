@@ -1066,15 +1066,9 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
-        let report_refusal = if staged_gui_layers {
-            // A refused registration is not a disabled listener; report every refused call.
-            "log::warn!(\"native refusal in register_gui_layers: {refusal}\");"
-        } else {
-            "refusal.report();"
-        };
         let run = |expression: &str| {
             format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}{report_refusal} {refused_value} }} }}"
+                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
             )
         };
         // One callee's call: a mod's, or a scoped hook's part's.
