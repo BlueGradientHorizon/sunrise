@@ -131,7 +131,7 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
             .iter()
             .map(|row| {
                 let row = row.unwrap();
-                (row.holder(), *row.value())
+                (row.holder(), row.with_value(|value| *value).unwrap())
             })
             .collect::<Vec<_>>()
     };
@@ -168,7 +168,7 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(*row.value(), 10);
+        assert_eq!(row.with_value(|value| *value).unwrap(), 10);
     }
     for target in decoys {
         assert_eq!(

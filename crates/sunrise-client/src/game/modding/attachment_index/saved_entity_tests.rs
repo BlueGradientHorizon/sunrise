@@ -228,7 +228,7 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 Err(mod_api::AttachmentRowError::StaleHolder),
                 "{kind}"
             );
-            assert_eq!(*row.value(), 19);
+            assert_eq!(row.with_value(|value| *value).unwrap(), 19);
         }
     });
 }

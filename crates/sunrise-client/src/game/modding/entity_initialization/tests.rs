@@ -537,7 +537,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             let batch = game.query_mut(&SAVED).unwrap();
             assert_eq!(batch.iter().count(), 1);
             let row = batch.iter().next().unwrap().unwrap();
-            assert_eq!(*row.value(), 7);
+            assert_eq!(row.with_value(|value| *value).unwrap(), 7);
             // Serialize by object ID: the child's equal UUID cannot select the root's map.
             crate::game::persist::write_attachments(&mut child, ghost, &game.entity_attachments);
             let child_state = game.take_transferred_entity_state(ghost);
@@ -566,7 +566,7 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 row.set(game, 88),
                 Err(mod_api::AttachmentRowError::StaleHolder)
             );
-            assert_eq!(*row.value(), 7);
+            assert_eq!(row.with_value(|value| *value).unwrap(), 7);
             game.persist.off_level.remove(&refused);
             game.forget_entity(refused);
             game.prune_entity_attachments();

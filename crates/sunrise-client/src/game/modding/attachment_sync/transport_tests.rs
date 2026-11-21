@@ -88,7 +88,7 @@ fn window_value(game: &mut Game<'_>) -> Option<i32> {
         .unwrap()
         .query(&VALUE)
         .ok()?;
-    rows.iter().next().map(|row| *row.unwrap().value)
+    rows.iter().next().map(|row| row.unwrap().with_value(|value| *value).unwrap())
 }
 
 /// Let the server's hub tick `n` times, so later edits land in a later pass.

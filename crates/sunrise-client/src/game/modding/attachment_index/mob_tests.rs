@@ -85,7 +85,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
             row.set(game, 9),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(*row.value(), 7);
+        assert_eq!(row.with_value(|value| *value).unwrap(), 7);
     });
 }
 
@@ -130,7 +130,7 @@ fn saved_mob_binding_tracks_serialized_transfer_and_parked_levels() {
             row.set(game, 12),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(*row.value(), 11);
+        assert_eq!(row.with_value(|value| *value).unwrap(), 11);
         game.mobs.clear();
         assert!(
             game.attachment_indexes[&Dim::Nether]
@@ -173,7 +173,7 @@ fn saved_mob_binding_rebinds_retained_id_with_a_new_generation() {
             row.set(game, 14),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(*row.value(), 13);
+        assert_eq!(row.with_value(|value| *value).unwrap(), 13);
         game.mobs.clear();
         assert!(
             game.attachment_indexes[&Dim::Nether]

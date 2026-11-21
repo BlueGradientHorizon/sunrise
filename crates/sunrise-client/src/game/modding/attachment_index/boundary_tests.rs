@@ -20,8 +20,8 @@ fn capture(game: &Game<'_>) -> Vec<(AttachmentHolder, u32, AttachmentWriteToken)
             let row = row.unwrap();
             (
                 row.holder,
-                *row.value,
-                AttachmentWriteToken::from(row.write_token()),
+                row.with_value(|value| *value).unwrap(),
+                row.write_token(),
             )
         })
         .collect()

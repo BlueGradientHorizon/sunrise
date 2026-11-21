@@ -87,10 +87,10 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
             row.holder,
             mod_api::AttachmentHolder::Level(game.level("test:pocket").unwrap())
         );
-        let token = mod_api::AttachmentWriteToken::from(row.write_token());
+        let token = row.write_token();
         sync(game, Holder::Level, 42);
         assert_eq!(values(game), [42]);
-        assert_eq!(*row.value, 41);
+        assert_eq!(row.with_value(|value| *value).unwrap(), 41);
         client(game).attachments.remove(&Holder::Level);
         assert!(values(game).is_empty());
         assert_eq!(
