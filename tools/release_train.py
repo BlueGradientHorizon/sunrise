@@ -810,20 +810,24 @@ def judge_graph(sha):
 
 
 def locked_closure(sha, packages):
-    """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples: a judge
-    built from another crates.io version builds other code."""
+    """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples with
+    their dependency edges: a judge built from another version or source of a crate, or linking another set of them,
+    builds other code. A dependency is Cargo.lock's `name`, `name version` or `name version (source)`, each part
+    given only when needed to tell entries apart."""
     entries = manifest(sha, "Cargo.lock").get("package", [])
     by_name = {}
     for entry in entries:
         by_name.setdefault(entry["name"], []).append(entry)
     found, todo = set(), [name for name in packages if name in by_name]
     while todo:
-        name, _, version = todo.pop().partition(" ")
-        version = version.split(" ")[0]
+        name, _, rest = todo.pop().partition(" ")
+        version, _, source = rest.partition(" ")
+        source = source.removeprefix("(").removesuffix(")")
         for entry in by_name.get(name, []):
-            if version and entry["version"] != version:
+            if version and entry["version"] != version or source and entry.get("source") != source:
                 continue
-            key = (entry["name"], entry["version"], entry.get("source"), entry.get("checksum"))
+            key = (entry["name"], entry["version"], entry.get("source"), entry.get("checksum"),
+                   tuple(sorted(entry.get("dependencies", []))))
             if key not in found:
                 found.add(key)
                 todo += entry.get("dependencies", [])
