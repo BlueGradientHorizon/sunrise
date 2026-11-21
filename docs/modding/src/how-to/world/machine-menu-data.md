@@ -194,11 +194,13 @@ paused or frozen), in vanilla's ticker order. A loaded copy ticks whether or not
 wall, out of view or beyond `block_entity_view_distance`, where `block_entity_submit` is not called. It is
 never called on a server, and a type that doesn't opt in costs nothing.
 
-The event has the copy's `pos`, its `block_entity` handle, its block `state` and its `entity` data, read only,
-and the host is a `ClientHost`. The data is what the frame's handling of the server's packets merged into the
-copy (`block_entity_update_tag`, and `block_entity_data_received` told before): a frame handles what has
-arrived, then runs its client ticks, so every tick of one frame sees the same data, and an update that arrives
-during a frame is seen from the next frame's first tick.
+The event carries `event.subject: BlockEntityClientScope<'_>`: call `event.subject.with_view(|view| ...)`
+to read the resident copy's handle, position, level, block state, data slots, item slots and merged NBT
+directly (no per-tick snapshot copy), then call `event.subject.host()` for the `ClientHost`. The resident
+data is what the frame's handling of the server's packets merged into the copy (`block_entity_update_tag`,
+and `block_entity_data_received` told before): a frame handles what has arrived, then runs its client ticks,
+so every tick of one frame sees the same data, and an update that arrives during a frame is seen from the
+next frame's first tick.
 
 Here a machine whose update tag carries `running` starts a looping hum on the first client tick it runs and
 fades it out when it stops:
@@ -225,24 +227,29 @@ impl mod_api::BlockEntityPart for Hum {
     }
     fn block_entity_client_tick(
         &self,
-        host: &mut dyn mod_api::ClientHost,
         event: &mut mod_api::BlockEntityClientTickEvent<'_>,
     ) {
-        let running = matches!(event.entity.nbt.get(&"running".into()), Some(mod_api::Tag::Byte(1)));
+        let Some((handle, pos, running)) = event.subject.with_view(|view| {
+            let running = matches!(view.nbt().get(&"running".into()), Some(mod_api::Tag::Byte(1)));
+            (view.handle(), view.position(), running)
+        }) else {
+            return;
+        };
+        let host = event.subject.host();
         let mut hums = HUMS.lock().unwrap();
-        match (running, hums.get(&event.block_entity).copied()) {
+        match (running, hums.get(&handle).copied()) {
             (true, None) => {
-                let [x, y, z] = event.pos.map(|c| f64::from(c) + 0.5);
+                let [x, y, z] = pos.map(|c| f64::from(c) + 0.5);
                 let play = mod_api::SoundPlay::at("mymod:machine.hum", mod_api::SoundSource::Blocks, [x, y, z])
                     .looping(0);
                 if let Some(sound) = host.play_local_sound(&play, 0) {
-                    hums.insert(event.block_entity, sound);
+                    hums.insert(handle, sound);
                 }
             }
             (false, Some(sound)) => {
                 // A fade to 0 stops the sound when it ends.
                 sound.fade(&*host, 0.0, 20);
-                hums.remove(&event.block_entity);
+                hums.remove(&handle);
             }
             _ => {}
         }
@@ -460,13 +467,14 @@ the screen changes: the server's slot exclusions do not change.
 ## Receiving synchronized data
 
 Implement `block_entity_data_received` on the block entity's part to react on the
-client after its synchronized tag has merged. It receives a `BlockEntityRef` and
-the arriving compound; reads through the handle already see the new data. This
+client after its synchronized tag has merged. It receives `event.subject: BlockEntityClientReadScope<'_>`
+(`with_view` lends a read-only `BlockEntityReadView` that already sees the merged copy, and `host()`
+borrows `&dyn ClientHost`) together with the arriving compound `event.tag`. This
 listen notice carries `BlockEntityDataSource::Chunk` or `UpdatePacket`. A chunk
 with an empty compound sends no notice. An update packet with an empty compound
 sends one notice; a packet with no tag sends none. Repeated identical packets
-each notify, and the event contains only the arriving fields, while handle reads
-see the merged copy.
+each notify, and `event.tag` contains only the arriving fields, while the scoped view
+sees the merged copy.
 It cannot change the arriving tag. Vanilla entities, missing tags, missing client
 entities and mismatched types do not call it. Server tag production uses
 `block_entity_update_tag`.

@@ -308,6 +308,14 @@ pub(super) fn emit<'a>(
                     "& ModBlockEntity" | "& mut ModBlockEntity" => {
                         format!("block_entity_kind(|| Some({key}.id()))")
                     }
+                    "BlockEntityClientScope < '_ >" | "BlockEntityClientReadScope < '_ >"
+                        if table == "block_entity" =>
+                    {
+                        format!("block_entity_kind(|| {key}.route_kind())")
+                    }
+                    "EntityClientScope < '_ >" if table == "entity" => {
+                        format!("entity(|| {key}.route_kind())")
+                    }
                     other => return Err(format!("key {key} of {name} has type {other}")),
                 };
                 Some((part_trait, lookup))

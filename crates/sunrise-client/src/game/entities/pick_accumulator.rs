@@ -66,10 +66,7 @@ impl PickAccumulator {
                 && let Some(epoch) = game.native_lifecycle.epoch()
             {
                 let entity = mod_api::EntityRef::new(epoch, candidate.id);
-                game.native_can_rider_interact(mod_api::__private::CanRiderInteractCall {
-                    entity,
-                    allowed: &mut allowed,
-                });
+                game.ask_can_rider_interact(entity, &mut allowed);
                 if game.pick_camera_id() != camera {
                     // The captured ray and vehicle decision no longer belong
                     // to this camera. Refuse the pick, never recast it.
