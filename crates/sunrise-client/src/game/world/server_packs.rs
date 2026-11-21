@@ -75,7 +75,6 @@ impl ServerPackState {
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
             .chain(self.server_errors.iter().flatten())
-            .chain(self.mod_audio_errors.iter().flatten())
             .chain(self.hook_panics.iter().flatten())
             .filter_map(|t| t.slot)
     }
@@ -104,7 +103,6 @@ pub(super) struct ServerPackState {
     /// Error reports the integrated server delivered to the window.
     server_errors: Vec<Option<SystemToast>>,
     /// Pull callback failures to show, one toast per panic.
-    mod_audio_errors: Vec<Option<SystemToast>>,
     /// One error toast per `(hook, mod)` whose callback panicked and was disabled for the session.
     pub(super) hook_panics: Vec<Option<SystemToast>>,
 }
@@ -582,18 +580,8 @@ impl Game<'_> {
         let multiplier = self.settings.notification_display_time;
         self.add_server_report_toasts();
         self.add_hook_panic_toasts();
-        // A mod cannot veto the notice reporting its failed callback.
-        self.server_packs
-            .mod_audio_errors
-            .extend(self.audio.take_pull_panics().into_iter().map(|id| {
-                Some(SystemToast::new(
-                    Text::tr("sunrise.audio.mod_stream_error.title", &[]),
-                    Some(Text::tr("sunrise.audio.mod_stream_error.message", &[&id])),
-                ))
-            }));
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
-        let hide_audio_errors = presentation_hidden || self.ui.hide_gui;
         for (slot_toast, hidden) in packs
             .notifiers
             .iter_mut()
@@ -602,12 +590,6 @@ impl Game<'_> {
             .chain(packs.chunk_io.iter_mut())
             .chain(packs.server_errors.iter_mut())
             .map(|toast| (toast, hud_hidden))
-            .chain(
-                packs
-                    .mod_audio_errors
-                    .iter_mut()
-                    .map(|toast| (toast, hide_audio_errors)),
-            )
             .chain(
                 packs
                     .hook_panics
@@ -640,7 +622,6 @@ impl Game<'_> {
             }
         }
         packs.server_errors.retain(Option::is_some);
-        packs.mod_audio_errors.retain(Option::is_some);
         packs.hook_panics.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
@@ -671,8 +652,8 @@ mod tests {
     #[ignore = "daily"]
     fn an_audio_panic_toast_survives_its_mods_hud_veto_but_not_f1() {
         use mod_api::{
-            AudioRead, AudioStream, ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent,
-            SoundSource, StreamSpec,
+            AudioStream, ClientHost, Flow, Hooks, ModEntry, RenderGuiPreEvent, SoundSource,
+            StreamSpec,
         };
         use std::{
             sync::mpsc,
@@ -690,7 +671,7 @@ mod tests {
 
         struct BrokenSource(mpsc::Sender<()>);
         impl AudioStream for BrokenSource {
-            fn read(&mut self, _: &mut [i16]) -> AudioRead {
+            fn read(&mut self, _: &mut [i16]) -> usize {
                 panic!("broken pull callback");
             }
         }
@@ -712,7 +693,7 @@ mod tests {
                     let (dropped, retired) = mpsc::channel();
                     let _handle = game
                         .audio
-                        .open_stream(OWNER, &spec, Some(Box::new(BrokenSource(dropped))))
+                        .open_stream(OWNER, &spec, None, Box::new(BrokenSource(dropped)))
                         .unwrap();
                     game.audio.mix_buffer(&mut [0.0; 2], 2, 48_000);
                     // The worker queues the notice before dropping the failed source.
@@ -725,7 +706,7 @@ mod tests {
                     let size = [640, 480];
                     let _ = game.hud_layers(size);
                     let regular = game.server_packs.load_fail.as_mut().unwrap();
-                    let error = game.server_packs.mod_audio_errors[0].as_mut().unwrap();
+                    let error = game.server_packs.hook_panics[0].as_mut().unwrap();
                     assert_eq!(regular.slot, Some(0));
                     let error_slot = error.slot.unwrap();
                     assert_ne!(error_slot, 0, "the ordinary toast keeps its slot");

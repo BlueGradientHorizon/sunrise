@@ -1,7 +1,7 @@
-//! The game opens client mods' pull and push audio streams on the mixer's separate pool and
+//! The game opens client mods' audio streams on the mixer's separate pool and
 //! places the entity-following ones each frame.
 use super::Game;
-use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, StreamSpec};
+use mod_api::{AudioRefusal, AudioStream, AudioStreamRef, StreamPlacement, StreamSpec};
 
 /// The mod whose call this is: the host marks it when it enters the native callback.
 /// A call from no mod opens nothing.
@@ -16,30 +16,18 @@ impl Game<'_> {
         spec: &StreamSpec,
         source: Box<dyn AudioStream>,
     ) -> Result<AudioStreamRef, AudioRefusal> {
-        self.open_mod_audio_stream(spec, Some(source))
-    }
-
-    /// Opens a stream an async producer pushes into.
-    pub(in crate::game) fn open_push_audio_stream(
-        &self,
-        spec: &StreamSpec,
-    ) -> Result<AudioStreamRef, AudioRefusal> {
-        self.open_mod_audio_stream(spec, None)
-    }
-
-    fn open_mod_audio_stream(
-        &self,
-        spec: &StreamSpec,
-        source: Option<Box<dyn AudioStream>>,
-    ) -> Result<AudioStreamRef, AudioRefusal> {
         if !self.native_window() {
             return Err(AudioRefusal::OnServer);
         }
+        let entity_pos = match spec.placement {
+            StreamPlacement::Entity(entity) => self.entity_position(entity),
+            StreamPlacement::Flat | StreamPlacement::At(_) => None,
+        };
         self.audio
-            .open_stream(calling_mod()?, spec, source)
+            .open_stream(calling_mod()?, spec, entity_pos, source)
             .map(AudioStreamRef::new)
     }
-    /// Places every entity-following stream at its entity, or leaves it unplaced where the client
+    /// Places every entity-following stream at its entity, or stops it where the client
     /// tracks no such entity. Once a frame, beside the listener's own update.
     pub(in crate::game) fn follow_audio_stream_entities(&self) {
         self.audio

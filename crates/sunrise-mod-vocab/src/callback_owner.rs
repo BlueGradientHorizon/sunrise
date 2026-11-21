@@ -202,20 +202,64 @@ fn record_callback_panic(
 #[derive(Clone, Debug)]
 pub struct CallbackOwner {
     id: &'static str,
-    index: Option<usize>,
+    binding: OwnerBinding,
     poisoned: Arc<AtomicBool>,
+}
+
+// Retained work can run on a worker, outside the thread which issued its owner.
+#[derive(Clone, Copy)]
+struct OwnerBinding {
+    index: Option<usize>,
+    installed: Option<&'static crate::runtime::Installed>,
+}
+
+impl std::fmt::Debug for OwnerBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnerBinding")
+            .field("index", &self.index)
+            .finish_non_exhaustive()
+    }
+}
+
+impl OwnerBinding {
+    fn current(index: Option<usize>) -> Self {
+        Self {
+            index,
+            installed: crate::runtime::installed(),
+        }
+    }
+
+    fn installed(self) -> Option<&'static crate::runtime::Installed> {
+        self.installed.or_else(crate::runtime::installed)
+    }
+
+    fn enabled(self, poisoned: &AtomicBool) -> bool {
+        !poisoned.load(Ordering::Acquire)
+            && self
+                .index
+                .zip(self.installed())
+                .is_none_or(|(index, installed)| !installed.disabled[index].load(Ordering::Relaxed))
+    }
 }
 
 impl CallbackOwner {
     /// Bind a dispatch-attributed registration to its installed mod slot once, at freeze time.
     pub fn new(id: &'static str) -> Option<Self> {
-        Some(Self::for_index(id, crate::__private::mod_index(id)?))
+        let index = crate::__private::mod_index(id)?;
+        Some(Self {
+            id,
+            binding: OwnerBinding::current(Some(index)),
+            poisoned: Arc::new(AtomicBool::new(false)),
+        })
     }
 
     pub(crate) fn for_index(id: &'static str, index: usize) -> Self {
         Self {
             id,
-            index: Some(index),
+            binding: OwnerBinding {
+                index: Some(index),
+                installed: None,
+            },
             poisoned: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -233,7 +277,7 @@ impl CallbackOwner {
         host: &mut H,
         invoke: impl FnOnce(&mut H),
     ) -> Result<(), String> {
-        let state = Self::scheduled(id).map(|owner| (owner.index, owner.poisoned.as_ref()));
+        let state = Self::scheduled(id).map(|owner| (owner.binding.index, owner.poisoned.as_ref()));
         match run_scheduled(id, state, "schedule_task", || {
             crate::run_transaction(host, |host, _| {
                 invoke(host);
@@ -251,11 +295,11 @@ impl CallbackOwner {
     pub fn dispose_scheduled_task<T>(id: &'static str, task: T) {
         let uninstalled = AtomicBool::new(false);
         let (index, poisoned) = Self::scheduled(id).map_or((None, &uninstalled), |owner| {
-            (owner.index, owner.poisoned.as_ref())
+            (owner.binding.index, owner.poisoned.as_ref())
         });
         let _ = call_opt(
             id,
-            index,
+            OwnerBinding::current(index),
             poisoned,
             "scheduled task",
             "schedule_task_drop",
@@ -268,7 +312,7 @@ impl CallbackOwner {
     pub fn for_mod(id: &'static str) -> Self {
         Self {
             id,
-            index: crate::__private::mod_index(id),
+            binding: OwnerBinding::current(crate::__private::mod_index(id)),
             poisoned: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -280,7 +324,7 @@ impl CallbackOwner {
 
     /// Whether this callback is still enabled for this session.
     pub fn is_enabled(&self) -> bool {
-        enabled_opt(self.index, &self.poisoned)
+        self.binding.enabled(&self.poisoned)
     }
 
     /// Invoke retained code with its owner's enablement, attribution and panic policy.
@@ -324,7 +368,7 @@ impl CallbackOwner {
     ) -> Result<T, CallFailure> {
         call_opt(
             self.id,
-            self.index,
+            self.binding,
             &self.poisoned,
             kind,
             operation,
@@ -337,7 +381,7 @@ impl CallbackOwner {
     pub fn dispose<T>(&self, kind: &'static str, operation: &'static str, value: T) {
         let _ = call_opt(
             self.id,
-            self.index,
+            self.binding,
             &self.poisoned,
             kind,
             operation,
@@ -384,7 +428,7 @@ pub(crate) fn call<T>(
 ) -> Result<T, String> {
     call_opt(
         owner,
-        Some(index),
+        OwnerBinding::current(Some(index)),
         poisoned,
         kind,
         operation,
@@ -429,7 +473,7 @@ pub(crate) fn call_typed<T>(
     }
     call_opt(
         owner,
-        Some(index),
+        OwnerBinding::current(Some(index)),
         poisoned,
         kind,
         operation,
@@ -476,14 +520,14 @@ fn run_scheduled<T>(
 
 fn call_opt<T>(
     owner: &'static str,
-    index: Option<usize>,
+    binding: OwnerBinding,
     poisoned: &AtomicBool,
     kind: &'static str,
     operation: &'static str,
     invocation: Invocation,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, CallFailure> {
-    if invocation != Invocation::Dispose && !enabled_opt(index, poisoned) {
+    if invocation != Invocation::Dispose && !binding.enabled(poisoned) {
         let _guard = crate::mark_mod(owner, operation);
         let _ = contain_unwind(|| drop(invoke));
         return Err(CallFailure::Unavailable(format!(
@@ -503,7 +547,13 @@ fn call_opt<T>(
             .take_message()
             .unwrap_or_else(|| panic_payload_text(payload));
         if first || invocation == Invocation::Dispose {
-            crate::runtime::log_and_queue_panic(operation, owner, payload);
+            crate::runtime::log_and_queue_named_panic(
+                binding.installed(),
+                operation,
+                owner,
+                None,
+                payload,
+            );
             record_callback_panic(owner, kind, operation, msg.clone());
             failure = Some(format!("{kind} callback panicked; it is disabled: {msg}"));
         } else {

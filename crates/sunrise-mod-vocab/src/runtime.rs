@@ -301,10 +301,11 @@ pub(crate) fn log_and_queue_panic(
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
 ) {
-    log_and_queue_named_panic(hook, mod_id, None, payload);
+    log_and_queue_named_panic(installed(), hook, mod_id, None, payload);
 }
 
-fn log_and_queue_named_panic(
+pub(crate) fn log_and_queue_named_panic(
+    installed: Option<&Installed>,
     hook: &'static str,
     mod_id: &'static str,
     named_callback: Option<&Identifier>,
@@ -324,7 +325,7 @@ fn log_and_queue_named_panic(
             "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
         );
     }
-    if let Some(installed) = installed() {
+    if let Some(installed) = installed {
         let mut queue = installed
             .hook_panics
             .lock()
@@ -410,7 +411,7 @@ pub fn call_session_callback<T>(
                 .insert(id.clone())
         });
         if first {
-            log_and_queue_named_panic(operation, owner, Some(id), payload);
+            log_and_queue_named_panic(installed(), operation, owner, Some(id), payload);
         }
     })
     .ok_or_else(|| format!("mod {owner}: {operation} ({id}) panicked"))

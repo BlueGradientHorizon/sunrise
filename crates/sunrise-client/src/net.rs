@@ -7,6 +7,8 @@
 //! (crate::auth): the login joins the server through the session service and
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
 use crate::auth::AuthSession;
+mod client_inbox;
+pub use client_inbox::{ClientTask, ClientTasks};
 #[cfg(test)]
 #[path = "net/bundle_tests.rs"]
 mod bundle_tests;
@@ -564,6 +566,14 @@ impl Session {
             .ok_or(SendPacketError::NotConnected)?;
         writer.prepare_packet(encoded.data, None)
     }
+    /// Publish into the real session FIFO for an actor test, without a reader thread.
+    #[cfg(feature = "test-payload-probe")]
+    #[doc(hidden)]
+    pub fn received_event_probe(&self) -> impl Fn(Event) + Send + Sync + use<> {
+        let sender = self.payload_events.clone();
+        move |event| assert!(sender.send(event).is_ok())
+    }
+
     /// The frozen receiving turn, retaining every input credit through its actor.
     #[sunrise_mod_api_macros::replaceable]
     pub fn poll(&self) -> Vec<ingress::OwnedReceipt<Event>> {

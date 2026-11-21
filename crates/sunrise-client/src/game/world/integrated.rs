@@ -286,6 +286,19 @@ impl Integrated {
     pub fn post(&self, f: impl FnOnce(&mut Game<'_>) + Send + 'static) -> bool {
         self.tell(OwnerRequest::InTest(Box::new(f)))
     }
+    /// An integrated server whose thread already finished, just before the window disconnects.
+    #[cfg(test)]
+    pub(in crate::game) fn stopped_for_test() -> Self {
+        Self {
+            flags: Arc::new(Flags::default()),
+            thread: None,
+            emergency_save: None,
+            tasks: channel().0,
+            world_name: "Test world".into(),
+            save_folder: "test_world".into(),
+            rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+        }
+    }
     /// `IntegratedServer.halt(true)`: returns once the world is saved and let go.
     pub fn stop(mut self) -> Result<()> {
         self.halt()

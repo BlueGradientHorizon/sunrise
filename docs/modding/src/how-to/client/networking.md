@@ -2,6 +2,38 @@
 
 Call `host.disconnect(reason)` through `ClientHost` to leave the joined server or world at the end of the frame, outside hooks. Pass `Some(Text)` to show a disconnect reason or `None` for the normal leave flow. The disconnect screen renders the reason in the player's language, like other translatable text: a translatable component shows its translated text and a plain-text reason is unchanged. The call returns `Result<(), DisconnectError>`: `Unavailable` means no world is joined, it is closing, or a save is pending, and `Text` reports an invalid reason (a malformed or too-deep component is refused by that name and nothing changes). A pending request belongs to its current world epoch and cannot leave a later world. Server code continues to use the separate player disconnect operation.
 
+## Moving work to the client thread
+
+In `client_setup`, get the `ClientExecutor` and clone it into a network handler or another
+worker. Handle `None`: restricted hosts such as the client-side `entity_entering_section`
+host cannot issue an executor, and neither can a closing client or a client in which this mod's
+executor already panicked.
+
+```rust,ignore
+// In client_setup:
+let Some(executor) = host.client_executor() else { return; };
+let worker_executor = executor.clone();
+// In the worker, move owned data into the closure:
+worker_executor.execute(Box::new(move |host| { /* use the client host here */ }));
+```
+
+The executor does not run the closure inline. Each client drain handles packets and queued
+payload work first, then runs executor tasks in submission order with a live
+`&mut dyn ClientHost`. The packet phase includes packets and queued payload work published
+while earlier packets are being handled, even when a task was submitted first. If any packet
+work is deferred, executor tasks wait for the packet phase to finish. When the client starts
+quitting, including from the title screen, pending and new tasks are dropped. There is no extra
+transaction around the task: effects already applied to the live client, such as audio placement,
+are not undone on panic. The shared error log and toast name the panicking mod. Its executor is
+disabled for the rest of the client session: already queued tasks for the same mod are skipped and
+retained executors discard later submissions. Other mods' tasks still run. A phase refusal is
+reported but does not disable the executor.
+
+The executor belongs to the client application, not to a connection or level. Keep using
+`IPayloadContext::enqueue_work` if the work needs the payload's original epoch, player, reply or
+configuration controls. A `ClientExecutor` task receives no payload context. Check any retained
+entity or level handle when the task runs; a disconnect or dimension change may have made it stale.
+
 ## Holding outgoing play packets
 
 Call `host.hold_packets()` to start an ordered hold and receive its opaque `HoldId`.

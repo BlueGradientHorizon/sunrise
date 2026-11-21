@@ -1,25 +1,18 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
-use super::{Control, Ring};
-use crate::crash::contain;
-use mod_api::{
-    __private::{mod_index, mod_index_on},
-    AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_TOTAL, AudioRead, AudioRefusal,
-    AudioStream,
-    content::crash::{ModCall, enter_native_mod},
-};
+use super::{Control, Ring, pcm};
+use mod_api::{__private::CallbackOwner, AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream};
 use std::{
-    collections::HashMap,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering::*},
-        mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError},
+        atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::*},
+        mpsc::{self, SyncSender, TryRecvError, TrySendError},
     },
     thread::{self, Thread},
 };
 
 const CAPACITY: usize = AUDIO_STREAMS_TOTAL as usize;
-const SCRATCH_SAMPLES: usize =
-    (AUDIO_STREAM_RATE_MAX * AUDIO_STREAM_RING_MAX_MS / 1000 * 2) as usize;
+const ADMIT_CAPACITY: usize = CAPACITY;
+const SCRATCH_SAMPLES: usize = 96_000;
 
 /// Pair the thread's park token with a flag: source code runs on this thread and may use
 /// standard synchronization that consumes the token before we get back to the worker loop.
@@ -39,25 +32,24 @@ impl Wake {
 
 pub(super) struct Demand {
     pub(super) wake: Wake,
-    /// The desired number of queued frames, or zero when no request is pending. The latest
+    /// The rate of queued PCM, set by the callback before it publishes its first demand.
+    pub(super) ring_rate: AtomicU32,
+    /// The desired number of queued ring frames, or zero when no request is pending. The latest
     /// output buffer replaces an older request rather than accumulating a backlog.
     pub(super) frames: AtomicUsize,
     pub(super) eof: AtomicBool,
 }
 
-/// Holds the only job sender. Disconnecting it and waking the worker makes teardown independent
-/// of the next device callback. Live voices and handles have only the wake token.
+/// The only sender. Disconnecting it and waking the worker makes teardown independent of the
+/// next device callback. Live voices and handles have only the wake token, not a sender.
 pub(super) struct Worker {
     sender: SyncSender<PullJob>,
     wake: Wake,
-    owners: HashMap<&'static str, Arc<PullOwner>>,
-    panic_sender: Sender<&'static str>,
-    panics: Receiver<&'static str>,
 }
 
 impl Worker {
     pub(super) fn start() -> Result<Self, AudioRefusal> {
-        let (sender, receiver) = mpsc::sync_channel(CAPACITY);
+        let (sender, receiver) = mpsc::sync_channel(ADMIT_CAPACITY);
         let pending = Arc::new(AtomicBool::new(false));
         let signaled = pending.clone();
         let worker = thread::Builder::new()
@@ -74,10 +66,16 @@ impl Worker {
                         }
                     }
                     let was_full = jobs.len() == CAPACITY;
-                    jobs.retain_mut(|job| job.refill(&mut scratch));
-                    // If room freed up without polling the whole queue, check it again. Otherwise
-                    // park even if a read was short. A wake sent during this pass is not lost.
-                    if !was_full || jobs.len() == CAPACITY {
+                    let mut more = false;
+                    jobs.retain_mut(|job| {
+                        let live = job.refill(&mut scratch);
+                        more |= live && job.target != 0;
+                        live
+                    });
+                    // Each job gets one bounded read per pass. Keep going if any job still
+                    // owes frames, or if a full job list freed up without polling the queue.
+                    // A wake sent during this pass is not lost.
+                    if !more && (!was_full || jobs.len() == CAPACITY) {
                         while !signaled.swap(false, Acquire) {
                             thread::park();
                         }
@@ -85,50 +83,19 @@ impl Worker {
                 }
             })
             .map_err(|_| AudioRefusal::WorkerUnavailable)?;
-        Ok(Self::with_queue(
+        Ok(Self {
             sender,
-            Wake {
+            wake: Wake {
                 pending,
                 thread: worker.thread().clone(),
             },
-        ))
-    }
-
-    fn with_queue(sender: SyncSender<PullJob>, wake: Wake) -> Self {
-        let (panic_sender, panics) = mpsc::channel();
-        Self {
-            sender,
-            wake,
-            owners: HashMap::new(),
-            panic_sender,
-            panics,
-        }
-    }
-
-    pub(super) fn owner(&mut self, id: &'static str) -> Arc<PullOwner> {
-        let panics = &self.panic_sender;
-        let wake = &self.wake;
-        self.owners
-            .entry(id)
-            .or_insert_with(|| {
-                Arc::new(PullOwner {
-                    id,
-                    index: mod_index(id),
-                    poisoned: AtomicBool::new(false),
-                    wake: wake.clone(),
-                    panics: panics.clone(),
-                })
-            })
-            .clone()
-    }
-
-    pub(super) fn take_panics(&self) -> Vec<&'static str> {
-        self.panics.try_iter().collect()
+        })
     }
 
     pub(super) fn demand(&self) -> Demand {
         Demand {
             wake: self.wake.clone(),
+            ring_rate: AtomicU32::new(0),
             frames: AtomicUsize::new(0),
             eof: AtomicBool::new(false),
         }
@@ -154,138 +121,261 @@ impl Worker {
         drop(self.sender);
         self.wake.signal();
     }
+
+    #[cfg(test)]
+    pub(super) fn test_pair() -> (Self, mpsc::Receiver<PullJob>) {
+        let (sender, receiver) = mpsc::sync_channel(ADMIT_CAPACITY);
+        (
+            Self {
+                sender,
+                wake: Wake {
+                    pending: Arc::default(),
+                    thread: thread::current(),
+                },
+            },
+            receiver,
+        )
+    }
 }
 
-/// All pull sources from one mod share a session poison, separate from the mod's other callbacks.
-pub(super) struct PullOwner {
-    id: &'static str,
-    index: Option<usize>,
-    poisoned: AtomicBool,
-    wake: Wake,
-    panics: Sender<&'static str>,
+/// Runs last when a [`PullJob`] drops, after its source and PCM ring have been released.
+struct JobRetirement(Arc<Control>);
+
+impl Drop for JobRetirement {
+    fn drop(&mut self) {
+        self.0.job_retired.store(true, Release);
+    }
 }
 
-impl PullOwner {
-    pub(super) fn pull_disabled(&self) -> bool {
-        self.poisoned.load(Acquire)
-    }
+/// Owns native source disposal, including when opening refuses the source before admission.
+pub(super) struct OwnedSource {
+    owner: CallbackOwner,
+    source: Option<Box<dyn AudioStream>>,
+}
 
-    fn enabled(&self) -> bool {
-        !self.pull_disabled() && self.index.is_none_or(mod_index_on)
-    }
-
-    /// Destruction runs mod code even for a disabled owner. True if it completed normally.
-    pub(super) fn drop_source(&self, source: Box<dyn AudioStream>) -> bool {
-        self.call("AudioStream drop", || drop(source)).is_ok()
-    }
-
-    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, String> {
-        let id = self.id;
-        let _guard = enter_native_mod(ModCall {
-            id,
-            hook,
-            part: None,
-        });
-        let result = contain(call);
-        match &result {
-            Ok(_) => {}
-            Err(_) => {
-                log::error!(
-                    "mod {id}: {hook} panicked; audio stream reads are disabled for this session"
-                );
-                self.poisoned.store(true, Release);
-                // A rejected job can stop and wake the worker before its source panics on
-                // the opening thread. Wake again after publishing the poison for live siblings.
-                self.wake.signal();
-                // If the output has been destroyed, the log above still reports the panic.
-                let _ = self.panics.send(id);
-            }
+impl OwnedSource {
+    pub(super) fn new(owner: &'static str, source: Box<dyn AudioStream>) -> Self {
+        Self {
+            owner: CallbackOwner::for_mod(owner),
+            source: Some(source),
         }
-        result
+    }
+
+    fn finish(&mut self) -> bool {
+        if let Some(source) = self.source.take() {
+            self.owner
+                .dispose("audio stream", "AudioStream::drop", source);
+        }
+        self.owner.is_enabled()
+    }
+}
+
+impl Drop for OwnedSource {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 
 pub(super) struct PullJob {
-    pub(super) control: Arc<Control>,
-    pub(super) demand: Arc<Demand>,
+    source: OwnedSource,
     pub(super) ring: Arc<Ring>,
-    pub(super) owner: Arc<PullOwner>,
-    pub(super) source: Option<Box<dyn AudioStream>>,
+    pub(super) demand: Arc<Demand>,
+    pub(super) control: Arc<Control>,
+    /// Last requested queue length, carried over when a single read cannot fill it.
+    target: usize,
+    downsample: Downsample,
+    _retire: JobRetirement,
 }
 
-impl PullJob {
-    /// At most one read per pass, using only the missing whole frames. False retires the job
-    /// and its source on the worker; only the mixer decides when an EOF voice has drained.
-    fn refill(&mut self, scratch: &mut [i16]) -> bool {
-        if self.control.closed.load(Acquire) || !self.owner.enabled() {
-            return false;
-        }
-        let target = self.demand.frames.swap(0, AcqRel);
-        if target == 0 {
-            return true;
-        }
-        let (tail, queued, free) = self.ring.producer_window();
-        let missing = target.saturating_sub(queued).min(free);
-        if missing == 0 {
-            return true;
-        }
-        let channels = self.ring.channels;
-        let pcm = &mut scratch[..missing * channels];
-        pcm.fill(0);
-        let source = self.source.as_mut().expect("live pull job owns its source");
-        match self.owner.call("AudioStream::read", || source.read(pcm)) {
-            Ok(AudioRead::Frames(frames)) if frames > missing => {
-                log::warn!(
-                    "mod {}: AudioStream::read returned {frames} frames with room for {missing}; stopping this stream",
-                    self.owner.id,
-                );
-                false
+/// A worker-side linear resampler for sources faster than the ring. The next output frame
+/// is at `index + phase / ring_rate` in source frames. Whole frames between output times
+/// are discarded here instead of requiring the mixer to buffer that entire advance.
+#[derive(Default)]
+struct Downsample {
+    index: u64,
+    phase: u64,
+    consumed: u64,
+    previous: [f32; 2],
+}
+
+impl Downsample {
+    /// How many more source frames the requested ring frames need, including a right-hand
+    /// sample for each fractional position. The last position determines how far to read.
+    fn needed(&self, missing: usize, input_rate: u64, ring_rate: u64) -> u64 {
+        let phase = self.phase + (missing as u64 - 1) * input_rate;
+        self.index + phase.div_ceil(ring_rate) + 1 - self.consumed
+    }
+
+    fn queue(
+        &mut self,
+        ring: &Ring,
+        tail: u64,
+        samples: &[i16],
+        input_rate: u64,
+        ring_rate: u64,
+    ) -> usize {
+        let ch = ring.channels;
+        let start = self.consumed;
+        let end = start + (samples.len() / ch) as u64;
+        let previous = self.previous;
+        let at = |index| {
+            if index < start {
+                // Downsampling advances by >1 source frame, so only the last frame of the
+                // previous input chunk can be needed across a chunk boundary.
+                previous
+            } else {
+                let i = (index - start) as usize * ch;
+                let left = pcm(samples[i]);
+                [left, if ch == 2 { pcm(samples[i + 1]) } else { left }]
             }
-            Err(_) => false,
-            // A rejected source can poison the owner on the opening thread during this read.
-            _ if !self.owner.enabled() => false,
-            Ok(AudioRead::Frames(0)) => true,
-            Ok(AudioRead::Frames(frames)) => {
-                self.ring.publish_frames(tail, &pcm[..frames * channels]);
-                true
+        };
+        let mut written = 0;
+        let frames = std::iter::from_fn(|| {
+            if self.index >= end {
+                return None;
             }
-            Ok(AudioRead::Eof) => {
-                let source = self.source.take().expect("live pull job owns its source");
-                // Destruction is still mod code. Only commit normal EOF retirement after it
-                // succeeds, at the last enabled check before publishing EOF to the mixer.
-                if self.owner.drop_source(source) && self.owner.enabled() {
-                    self.demand.eof.store(true, Release);
+            let mut frame = at(self.index);
+            if self.phase != 0 {
+                if self.index + 1 < end {
+                    let next = at(self.index + 1);
+                    let t = (self.phase as f64 / ring_rate as f64) as f32;
+                    for (sample, next) in frame.iter_mut().zip(next).take(ch) {
+                        *sample += (next - *sample) * t;
+                    }
+                } else if !samples.is_empty() {
+                    return None; // Wait for the next chunk's first frame (or EOF).
                 }
-                false
+                // At EOF, hold the final source sample for the rest of its duration.
             }
+            let step = self.phase + input_rate;
+            self.index += step / ring_rate;
+            self.phase = step % ring_rate;
+            written += 1;
+            Some(frame)
+        });
+        ring.publish_frames(tail, frames.flat_map(|frame| frame.into_iter().take(ch)));
+        if end != start {
+            self.previous = at(end - 1);
+            self.consumed = end;
         }
+        written
     }
 }
 
 impl Drop for PullJob {
     fn drop(&mut self) {
-        // A job that leaves without EOF cannot produce again. Only an EOF voice drains.
+        // Silence non-EOF exits before dropping mod code. Only EOF drains queued samples.
         if !self.demand.eof.load(Relaxed) {
             self.control.stop();
         }
-        if let Some(source) = self.source.take() {
-            self.owner.drop_source(source);
+    }
+}
+
+impl PullJob {
+    pub(super) fn new(
+        control: Arc<Control>,
+        demand: Arc<Demand>,
+        ring: Arc<Ring>,
+        source: OwnedSource,
+    ) -> Self {
+        let retire = JobRetirement(control.clone());
+        Self {
+            source,
+            ring,
+            demand,
+            control,
+            target: 0,
+            downsample: Downsample::default(),
+            _retire: retire,
         }
+    }
+
+    /// At most one read per pass, using only the missing whole frames. False retires the job
+    /// and its source on the worker; only the mixer decides when an EOF voice has drained.
+    fn refill(&mut self, scratch: &mut [i16]) -> bool {
+        if self.control.closed.load(Acquire) || !self.source.owner.is_enabled() {
+            return false;
+        }
+        let target = self.demand.frames.swap(0, AcqRel);
+        if target != 0 {
+            self.target = target;
+        }
+        if self.target == 0 {
+            return true;
+        }
+        let (tail, queued, free) = self.ring.producer_window();
+        let missing = self.target.saturating_sub(queued).min(free);
+        if missing == 0 {
+            self.target = 0;
+            return true;
+        }
+        let channels = self.ring.channels;
+        let input_rate = u64::from(self.control.rate);
+        let ring_rate = u64::from(self.demand.ring_rate.load(Relaxed));
+        let downsample = input_rate > ring_rate;
+        let needed = if downsample {
+            self.downsample.needed(missing, input_rate, ring_rate)
+        } else {
+            missing as u64
+        };
+        let offered = needed.min((scratch.len() / channels) as u64) as usize;
+        let buffer = &mut scratch[..offered * channels];
+        buffer.fill(0);
+        let source = self.source.source.as_mut().expect("live pull source");
+        let Ok(frames) = self
+            .source
+            .owner
+            .call("audio stream", "AudioStream::read", || source.read(buffer))
+        else {
+            return false;
+        };
+        if !self.source.owner.is_enabled() || self.control.closed.load(Acquire) {
+            return false;
+        }
+        if frames > offered {
+            log::warn!(
+                "mod `{}` audio stream returned invalid frame count {frames} (offered {offered}); stopping stream",
+                self.control.owner
+            );
+            return false;
+        }
+        let samples = &buffer[..frames * channels];
+        let filled = if downsample {
+            self.downsample
+                .queue(&self.ring, tail, samples, input_rate, ring_rate)
+                == missing
+        } else {
+            self.ring
+                .publish_frames(tail, samples.iter().copied().map(pcm));
+            // As before, an ordinary short read yields until the next device request.
+            // A full read limited by scratch continues the outstanding demand.
+            frames < offered || frames == missing
+        };
+        if frames == 0 {
+            if self.source.finish() {
+                self.demand.eof.store(true, Release);
+            }
+            return false;
+        }
+        if filled {
+            self.target = 0;
+        }
+        true
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::{Audio, Mixer, mix_pieces};
-    use super::super::{StreamPool, request_pull};
+    use super::super::super::{Mixer, mix_pieces};
+    use super::super::StreamPool;
     use super::*;
     use mod_api::{AudioStreamSource, AudioStreamState, SoundSource, StreamSpec};
     use std::{sync::Mutex, thread::ThreadId, time::Duration};
 
     struct Source<F>(F);
 
-    impl<F: FnMut(&mut [i16]) -> AudioRead + Send + 'static> AudioStream for Source<F> {
-        fn read(&mut self, pcm: &mut [i16]) -> AudioRead {
+    impl<F: FnMut(&mut [i16]) -> usize + Send + 'static> AudioStream for Source<F> {
+        fn read(&mut self, pcm: &mut [i16]) -> usize {
             (self.0)(pcm)
         }
     }
@@ -293,40 +383,31 @@ mod tests {
     /// Takes the admitted job instead of starting a thread, so each refill happens at a chosen
     /// output buffer boundary. Uses the same queue, refill and mixer as a live output.
     struct Rig {
-        pool: StreamPool,
+        _pool: StreamPool,
         mixer: Mutex<Mixer>,
         stream: Arc<dyn AudioStreamSource>,
         job: Option<PullJob>,
-        admitted: Receiver<PullJob>,
         scratch: [i16; 16],
     }
 
     impl Rig {
-        fn new(read: impl FnMut(&mut [i16]) -> AudioRead + Send + 'static) -> Self {
-            mod_platform::__private::initialize().unwrap();
+        fn new(read: impl FnMut(&mut [i16]) -> usize + Send + 'static) -> Self {
             let pool = StreamPool::default();
-            let (sender, receiver) = mpsc::sync_channel(CAPACITY);
-            pool.state().worker = Some(Worker::with_queue(
-                sender,
-                Wake {
-                    pending: Arc::default(),
-                    thread: thread::current(),
-                },
-            ));
+            let (worker, receiver) = Worker::test_pair();
+            pool.state().worker = Some(worker);
             let mixer = Mutex::new(Mixer {
                 stream_gain: [1.0; 11],
                 ..Mixer::default()
             });
             let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
             let stream = pool
-                .open(&mixer, "mod", &spec, Some(Box::new(Source(read))))
+                .open(&mixer, "mod", &spec, None, Box::new(Source(read)))
                 .unwrap();
             Self {
-                pool,
+                _pool: pool,
                 mixer,
                 stream,
                 job: Some(receiver.try_recv().unwrap()),
-                admitted: receiver,
                 scratch: [99; 16],
             }
         }
@@ -349,17 +430,16 @@ mod tests {
 
     #[test]
     fn a_pull_worker_reads_and_drops_the_source_with_both_guards_held() {
-        mod_platform::__private::initialize().unwrap();
         struct Probe {
             read: SyncSender<(ThreadId, usize)>,
             dropped: SyncSender<ThreadId>,
         }
 
         impl AudioStream for Probe {
-            fn read(&mut self, pcm: &mut [i16]) -> AudioRead {
+            fn read(&mut self, pcm: &mut [i16]) -> usize {
                 pcm[0] = 16_384;
                 let _ = self.read.try_send((thread::current().id(), pcm.len()));
-                AudioRead::Frames(1)
+                1
             }
         }
 
@@ -379,7 +459,8 @@ mod tests {
                 &mixer,
                 "mod",
                 &spec,
-                Some(Box::new(Probe { read, dropped })),
+                None,
+                Box::new(Probe { read, dropped }),
             )
             .unwrap();
 
@@ -406,481 +487,12 @@ mod tests {
     }
 
     #[test]
-    fn pull_panic_retires_the_owner_without_stopping_the_shared_worker() {
-        mod_platform::__private::initialize().unwrap();
-        let mut audio = Audio::silent(&sunrise_assets::resource_source::ResourceSource::directory(
-            std::path::PathBuf::from("/nonexistent/sunrise-test-audio"),
-        ));
-        audio.backend_live_for_bench();
-        let mixer = &audio.backend.mixer;
-        mixer.lock().unwrap().stream_gain = [1.0; 11];
-        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
-        let (called, calls) = mpsc::sync_channel(2);
-        let (release, released) = mpsc::channel();
-        let broken_called = called.clone();
-        let broken = audio
-            .open_stream(
-                "broken",
-                &spec,
-                Some(Box::new(Source(move |pcm: &mut [i16]| {
-                    let _ = broken_called.try_send((
-                        thread::current().id(),
-                        mod_api::content::crash::current_native_call(),
-                    ));
-                    let _ = released.recv();
-                    pcm.fill(i16::MAX);
-                    panic!("broken pull callback");
-                }))),
-            )
-            .unwrap();
-        let sibling = audio
-            .open_stream(
-                "broken",
-                &spec,
-                Some(Box::new(Source(|_: &mut [i16]| {
-                    panic!("a disabled owner's other stream must not be read");
-                }))),
-            )
-            .unwrap();
-        let good = audio
-            .open_stream(
-                "good",
-                &spec,
-                Some(Box::new(Source(move |pcm: &mut [i16]| {
-                    pcm.fill(16_384);
-                    let _ = called.try_send((
-                        thread::current().id(),
-                        mod_api::content::crash::current_native_call(),
-                    ));
-                    AudioRead::Frames(pcm.len() / 2)
-                }))),
-            )
-            .unwrap();
-        // An admission wake may already be scanning the jobs. Only the failing source has
-        // demand until it has entered read, so its sibling cannot be the first to panic.
-        request_pull(&mixer.lock().unwrap().streams[..1], 1, 48_000);
-        let timeout = Duration::from_secs(1);
-        let (worker, broken_call) = calls
-            .recv_timeout(timeout)
-            .expect("broken mod did not read");
-        request_pull(&mixer.lock().unwrap().streams[1..], 1, 48_000);
-        release.send(()).unwrap();
-        let (good_worker, good_call) = calls
-            .recv_timeout(timeout)
-            .expect("other mod lost its worker");
-        assert_eq!(good_worker, worker);
-        for (call, id) in [(broken_call, "broken"), (good_call, "good")] {
-            assert_eq!(
-                call,
-                Some(ModCall {
-                    id,
-                    hook: "AudioStream::read",
-                    part: None
-                })
-            );
-        }
-        assert_eq!(audio.take_pull_panics(), ["broken"]);
-        assert_eq!(broken.state(), AudioStreamState::Stopped);
-        assert_eq!(sibling.state(), AudioStreamState::Stopped);
-        assert_eq!(good.state(), AudioStreamState::Playing);
-        assert!(matches!(
-            audio.open_stream(
-                "broken",
-                &spec,
-                Some(Box::new(Source(|_: &mut [i16]| AudioRead::Eof)))
-            ),
-            Err(AudioRefusal::PullDisabled)
-        ));
-
-        let (opened, reads) = mpsc::sync_channel(1);
-        let _late = audio
-            .open_stream(
-                "late",
-                &spec,
-                Some(Box::new(Source(move |_: &mut [i16]| {
-                    let _ = opened.try_send(thread::current().id());
-                    AudioRead::Frames(0)
-                }))),
-            )
-            .unwrap();
-        request_pull(&mixer.lock().unwrap().streams, 1, 48_000);
-        assert_eq!(
-            reads
-                .recv_timeout(timeout)
-                .expect("new stream did not read"),
-            worker
-        );
-        // The later job ran on the same worker, after it published the healthy mod's PCM.
-        let mut out = [0.0; 2];
-        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
-        assert_eq!(out, [0.5; 2]);
-    }
-
-    #[test]
-    fn eof_pcm_still_drains_after_a_sibling_source_panics() {
-        let mut first = true;
-        let mut rig = Rig::new(move |pcm| {
-            if std::mem::take(&mut first) {
-                pcm[..4].fill(16_384);
-                AudioRead::Frames(2)
-            } else {
-                AudioRead::Eof
-            }
-        });
-        // Ask for one more source frame without consuming the frames already queued.
-        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-        assert!(rig.refill());
-        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-        assert!(!rig.refill());
-
-        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
-        let sibling = rig
-            .pool
-            .open(
-                &rig.mixer,
-                "mod",
-                &spec,
-                Some(Box::new(Source(|_: &mut [i16]| panic!("sibling read")))),
-            )
-            .unwrap();
-        rig.job = Some(rig.admitted.try_recv().unwrap());
-        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-        assert!(!rig.refill());
-        assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
-        assert_eq!(sibling.state(), AudioStreamState::Stopped);
-        assert_eq!(rig.stream.state(), AudioStreamState::Playing);
-        assert_eq!(rig.play::<8>(), [0.5; 8]);
-        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
-        assert_eq!(rig.play::<2>(), [0.0; 2]);
-    }
-
-    #[test]
-    fn a_pull_job_retires_before_reading_when_its_mod_is_disabled() {
-        struct TestMod;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for TestMod {}
-
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new("mod", Box::new(TestMod))].into(),
-            || {
-                let mut rig = Rig::new(|_| panic!("the disabled mod must not read"));
-                assert!(mod_api::__private::set_mod_enabled("mod", false));
-                assert_eq!(rig.play::<4>(), [0.0; 4]);
-                assert!(!rig.refill());
-                assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
-                assert!(rig.pool.take_pull_panics().is_empty());
-            },
-        );
-    }
-
-    #[test]
-    fn a_phase_refusal_leaves_the_source_available_for_later_demand() {
-        let mut first = true;
-        let mut rig = Rig::new(move |pcm| {
-            if std::mem::take(&mut first) {
-                mod_api::__private::refuse("test_read", mod_api::__private::ModPhase::Reloading);
-            }
-            pcm.fill(16_384);
-            AudioRead::Frames(1)
-        });
-        assert_eq!(rig.play::<4>(), [0.0; 4]);
-        assert!(rig.refill());
-        assert_eq!(rig.play::<4>(), [0.0; 4]);
-        assert!(rig.refill());
-        assert_eq!(rig.play::<4>(), [0.5; 4]);
-        assert!(rig.pool.take_pull_panics().is_empty());
-    }
-
-    #[test]
-    fn a_rejected_job_contains_source_destruction_on_the_opening_thread() {
-        use crate::crash::{contained_panic, tests::with_claimed_panics};
-
-        struct Payload;
-        impl Drop for Payload {
-            fn drop(&mut self) {
-                panic!("must not run opaque panic payload's destructor");
-            }
-        }
-        struct SourceDrop;
-        impl AudioStream for SourceDrop {
-            fn read(&mut self, _: &mut [i16]) -> AudioRead {
-                panic!("the queue refused this source")
-            }
-        }
-        impl Drop for SourceDrop {
-            fn drop(&mut self) {
-                std::panic::panic_any(Payload);
-            }
-        }
-
-        mod_platform::__private::initialize().unwrap();
-        let pool = StreamPool::default();
-        // This queue has a receiver but no available slot, so admit returns the job.
-        let (sender, _receiver) = mpsc::sync_channel(0);
-        pool.state().worker = Some(Worker::with_queue(
-            sender,
-            Wake {
-                pending: Arc::default(),
-                thread: thread::current(),
-            },
-        ));
-        let mixer = Mutex::new(Mixer::default());
-        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
-        let recovered = Arc::new(AtomicUsize::new(0));
-        let at_hook = recovered.clone();
-        with_claimed_panics(
-            move |info| {
-                if !info.payload().is::<Payload>() {
-                    return false;
-                }
-                if contained_panic(info) {
-                    at_hook.fetch_add(1, Relaxed);
-                }
-                true
-            },
-            || {
-                let open = || pool.open(&mixer, "mod", &spec, Some(Box::new(SourceDrop)));
-                assert!(matches!(open(), Err(AudioRefusal::WorkerUnavailable)));
-                assert!(matches!(open(), Err(AudioRefusal::PullDisabled)));
-            },
-        );
-        assert_eq!(
-            recovered.load(Relaxed),
-            2,
-            "both drops bypass the fatal hook"
-        );
-        assert_eq!(pool.take_pull_panics(), ["mod", "mod"]);
-        assert!(mixer.lock().unwrap().streams.is_empty());
-    }
-
-    #[test]
-    fn rejected_source_panic_retires_an_idle_sibling_without_more_output() {
-        struct Rejected {
-            demand: Arc<Demand>,
-            resume: Sender<()>,
-            reads: Receiver<()>,
-        }
-
-        impl AudioStream for Rejected {
-            fn read(&mut self, _: &mut [i16]) -> AudioRead {
-                AudioRead::Frames(0)
-            }
-        }
-
-        impl Drop for Rejected {
-            fn drop(&mut self) {
-                // The rejection has already stopped its job and signaled the worker. Queue
-                // one more sibling read without signaling, then let the first read return.
-                self.demand.frames.store(1, Release);
-                if self.resume.send(()).is_ok()
-                    && self.reads.recv_timeout(Duration::from_secs(1)).is_ok()
-                {
-                    // The same job could only read again after consuming the pending wake.
-                    // It is now out of demand and has already seen the owner as enabled.
-                    panic!("rejected source destructor");
-                }
-            }
-        }
-
-        mod_platform::__private::initialize().unwrap();
-        let pool = StreamPool::default();
-        let mixer = Mutex::new(Mixer::default());
-        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
-        let (reading, reads) = mpsc::sync_channel(1);
-        let (resume, resumed) = mpsc::channel();
-        let (live, retired) = mpsc::channel::<()>();
-        let mut first = true;
-        let sibling = pool
-            .open(
-                &mixer,
-                "wake_regression",
-                &spec,
-                Some(Box::new(Source(move |_: &mut [i16]| {
-                    let _keep_alive = &live;
-                    let _ = reading.try_send(());
-                    if std::mem::take(&mut first) {
-                        let _ = resumed.recv();
-                    }
-                    AudioRead::Frames(0)
-                }))),
-            )
-            .unwrap();
-        let timeout = Duration::from_secs(1);
-        request_pull(&mixer.lock().unwrap().streams, 1, 48_000);
-        reads.recv_timeout(timeout).expect("sibling did not read");
-
-        // Force the next open to fail admission but keep the real worker's receiver connected.
-        let (reject, _rejecting) = mpsc::sync_channel(0);
-        let (demand, _live_sender) = {
-            let mut state = pool.state();
-            let demand = state.controls[0].pull.as_ref().unwrap().clone();
-            let worker = state.worker.as_mut().unwrap();
-            (demand, std::mem::replace(&mut worker.sender, reject))
-        };
-        let rejected = Rejected {
-            demand,
-            resume,
-            reads,
-        };
-        assert!(matches!(
-            pool.open(&mixer, "wake_regression", &spec, Some(Box::new(rejected))),
-            Err(AudioRefusal::WorkerUnavailable)
-        ));
-        assert_eq!(pool.take_pull_panics(), ["wake_regression"]);
-        assert_eq!(
-            retired.recv_timeout(timeout),
-            Err(mpsc::RecvTimeoutError::Disconnected),
-            "the idle sibling was not dropped without another output callback"
-        );
-        assert_eq!(sibling.state(), AudioStreamState::Stopped);
-    }
-
-    #[test]
-    fn rejected_source_panic_discards_in_flight_pcm_and_prevents_eof_drain() {
-        struct PauseAtBoundary {
-            waiting: Sender<()>,
-            resume: Receiver<()>,
-        }
-
-        impl Drop for PauseAtBoundary {
-            fn drop(&mut self) {
-                if self.waiting.send(()).is_ok() {
-                    let _ = self.resume.recv_timeout(Duration::from_secs(1));
-                }
-            }
-        }
-
-        struct Rejected;
-        impl AudioStream for Rejected {
-            fn read(&mut self, _: &mut [i16]) -> AudioRead {
-                AudioRead::Frames(0)
-            }
-        }
-        impl Drop for Rejected {
-            fn drop(&mut self) {
-                panic!("rejected source destructor");
-            }
-        }
-
-        for (result, pause_in_read, boundary) in [
-            (AudioRead::Frames(1), true, "PCM read"),
-            (AudioRead::Eof, true, "EOF read"),
-            (AudioRead::Eof, false, "EOF destruction"),
-        ] {
-            let (waiting, reached) = mpsc::channel();
-            let (resume, released) = mpsc::channel();
-            let mut pause = Some(PauseAtBoundary {
-                waiting,
-                resume: released,
-            });
-            let mut first = true;
-            let mut rig = Rig::new(move |pcm| {
-                if std::mem::take(&mut first) {
-                    pcm[..4].fill(16_384);
-                    return AudioRead::Frames(2);
-                }
-                if pause_in_read {
-                    drop(pause.take());
-                }
-                if let AudioRead::Frames(frames) = result {
-                    pcm[..frames * 2].fill(-8192);
-                }
-                result
-            });
-            // Queue two frames and ask for one more without ever running the mixer.
-            request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-            assert!(rig.refill());
-            request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-
-            // The original job is already admitted. A zero-slot queue rejects the next open.
-            let (reject, _rejecting) = mpsc::sync_channel(0);
-            rig.pool.state().worker.as_mut().unwrap().sender = reject;
-            let mut job = rig.job.take().unwrap();
-            let scratch = &mut rig.scratch;
-            let (keep, tail) = thread::scope(|scope| {
-                let worker = scope.spawn(move || {
-                    let keep = job.refill(scratch);
-                    (keep, job.ring.producer_window().0)
-                });
-                reached
-                    .recv_timeout(Duration::from_secs(1))
-                    .expect("sibling did not reach the read or drop boundary");
-                let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
-                assert!(matches!(
-                    rig.pool
-                        .open(&rig.mixer, "mod", &spec, Some(Box::new(Rejected))),
-                    Err(AudioRefusal::WorkerUnavailable)
-                ));
-                assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
-                resume.send(()).unwrap();
-                worker.join().unwrap()
-            });
-            // This refill must retire the job and leave only the two original stereo frames.
-            assert_eq!(
-                (keep, tail),
-                (false, 4),
-                "{boundary}: (keep job, ring tail)"
-            );
-            assert_eq!(rig.stream.state(), AudioStreamState::Stopped, "{boundary}");
-            assert_eq!(rig.play::<8>(), [0.0; 8], "{boundary} must not drain");
-        }
-    }
-
-    #[test]
-    fn a_refused_source_destruction_does_not_commit_eof_drain() {
-        struct RefuseOnDrop;
-        impl Drop for RefuseOnDrop {
-            fn drop(&mut self) {
-                mod_api::__private::refuse("test_drop", mod_api::__private::ModPhase::Reloading);
-            }
-        }
-
-        let source = RefuseOnDrop;
-        let mut first = true;
-        let mut rig = Rig::new(move |pcm| {
-            let _owned = &source;
-            if std::mem::take(&mut first) {
-                pcm[..4].fill(16_384);
-                AudioRead::Frames(2)
-            } else {
-                AudioRead::Eof
-            }
-        });
-        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-        assert!(rig.refill());
-        request_pull(&rig.mixer.lock().unwrap().streams, 4, 48_000);
-        assert!(!rig.refill());
-        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
-        assert_eq!(rig.play::<8>(), [0.0; 8]);
-        assert!(rig.pool.take_pull_panics().is_empty());
-    }
-
-    #[test]
-    fn a_pull_source_can_panic_during_retirement_without_unwinding_the_worker() {
-        struct PanicOnDrop;
-        impl Drop for PanicOnDrop {
-            fn drop(&mut self) {
-                panic!("broken pull source destructor");
-            }
-        }
-        let source = PanicOnDrop;
-        let mut rig = Rig::new(move |_| {
-            let _owned = &source;
-            AudioRead::Eof
-        });
-        assert_eq!(rig.play::<4>(), [0.0; 4]);
-        assert!(!rig.refill());
-        assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
-        assert_eq!(rig.pool.take_pull_panics(), ["mod"]);
-    }
-
-    #[test]
-    fn pull_plays_short_reads_retries_dry_reads_and_drains_the_last_frame_at_eof() {
-        let reads: [(usize, &[i16], AudioRead); 4] = [
-            (6, &[16_384, -8_192], AudioRead::Frames(1)),
-            (6, &[99, 99], AudioRead::Frames(0)),
-            (6, &[8_192, 16_384, -16_384, 8_192], AudioRead::Frames(2)),
-            (2, &[], AudioRead::Eof),
+    fn pull_plays_short_reads_silence_frames_and_drains_the_last_frame_at_eof() {
+        let reads: [(usize, &[i16], usize); 4] = [
+            (6, &[16_384, -8_192], 1),
+            (6, &[], 1),
+            (6, &[8_192, 16_384, -16_384, 8_192], 2),
+            (2, &[], 0),
         ];
         let mut reads = reads.into_iter();
         let mut rig = Rig::new(move |pcm| {
@@ -890,7 +502,6 @@ mod tests {
             pcm[..samples.len()].copy_from_slice(samples);
             result
         });
-        assert_eq!(rig.stream.push(&[8192, 8192]), 0);
         // An empty callback asks for nothing.
         assert_eq!(rig.play::<0>(), [0.0; 0]);
         assert!(rig.refill());
@@ -900,8 +511,10 @@ mod tests {
             rig.play::<8>(),
             [0.5, -0.25, 0.5, -0.25, 0.0, 0.0, 0.0, 0.0]
         );
-        assert!(rig.refill()); // dry, but still open; the next pass alone must not retry
+        // Returning 1 without writing publishes one silent frame from the zeroed buffer.
         assert!(rig.refill());
+        assert!(rig.refill());
+        assert_eq!(rig.job.as_ref().unwrap().ring.producer_window().1, 1);
         assert_eq!(rig.stream.state(), AudioStreamState::Playing);
         assert_eq!(rig.play::<8>(), [0.0; 8]);
         assert!(rig.refill());
@@ -921,7 +534,7 @@ mod tests {
             // one stereo source frame plus one frame of interpolation lookahead.
             assert_eq!(pcm.len(), 4);
             pcm.copy_from_slice(&[16_384, -8192, -16_384, 8192]);
-            AudioRead::Frames(2)
+            2
         });
         // Two callbacks, no producer pass in between. The smaller request replaces the larger.
         assert_eq!(rig.play::<8>(), [0.0; 8]);
@@ -937,7 +550,7 @@ mod tests {
     fn pull_refuses_an_oversized_count_without_publishing_samples() {
         let mut rig = Rig::new(|pcm| {
             pcm.fill(16_384);
-            AudioRead::Frames(usize::MAX)
+            usize::MAX
         });
         assert_eq!(rig.play::<4>(), [0.0; 4]);
         let ring = rig.job.as_ref().unwrap().ring.clone();
@@ -945,5 +558,257 @@ mod tests {
         assert_eq!(ring.producer_window().1, 0);
         assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
         assert_eq!(rig.play::<4>(), [0.0; 4]);
+    }
+
+    #[test]
+    fn invalid_read_silences_queued_pcm_before_source_disposal() {
+        struct Invalid {
+            first: bool,
+            dropping: SyncSender<()>,
+            finish: mpsc::Receiver<()>,
+        }
+
+        impl AudioStream for Invalid {
+            fn read(&mut self, pcm: &mut [i16]) -> usize {
+                if std::mem::take(&mut self.first) {
+                    pcm[..2].fill(16_384);
+                    1
+                } else {
+                    usize::MAX
+                }
+            }
+        }
+
+        impl Drop for Invalid {
+            fn drop(&mut self) {
+                let _ = self.dropping.send(());
+                let _ = self.finish.recv();
+            }
+        }
+
+        let (dropping, drop_started) = mpsc::sync_channel(1);
+        let (finish, finish_drop) = mpsc::sync_channel(1);
+        let pool = StreamPool::default();
+        let (worker, queued_jobs) = Worker::test_pair();
+        pool.state().worker = Some(worker);
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+        let stream = pool
+            .open(
+                &mixer,
+                "mod",
+                &spec,
+                None,
+                Box::new(Invalid {
+                    first: true,
+                    dropping,
+                    finish: finish_drop,
+                }),
+            )
+            .unwrap();
+        let mut job = queued_jobs.try_recv().unwrap();
+        let mut out = [0.0; 4];
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert!(job.refill(&mut [0; 16]));
+        assert_eq!(job.ring.producer_window().1, 1);
+        job.demand.frames.store(2, Release);
+        let control = job.control.clone();
+        let worker = thread::spawn(move || {
+            assert!(!job.refill(&mut [0; 16]));
+            drop(job);
+        });
+        drop_started.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(!control.job_retired.load(Acquire));
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        assert_eq!(out, [0.0; 4]);
+        finish.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(control.job_retired.load(Acquire));
+    }
+
+    #[test]
+    fn panicking_read_queues_the_shared_attributed_diagnostic() {
+        mod_api::testing::with_dispatch(Default::default(), || {
+            let mut rig = Rig::new(|_| panic!("test audio source panic"));
+            assert_eq!(rig.play::<4>(), [0.0; 4]);
+            assert!(!rig.refill());
+            assert_eq!(rig.stream.state(), AudioStreamState::Stopped);
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "mod",
+                    hook: "AudioStream::read",
+                }]
+            );
+        });
+    }
+
+    #[test]
+    fn pull_panic_stops_only_the_panicking_stream() {
+        struct Panicker(SyncSender<()>);
+
+        impl AudioStream for Panicker {
+            fn read(&mut self, _pcm: &mut [i16]) -> usize {
+                panic!("test audio source panic");
+            }
+        }
+
+        impl Drop for Panicker {
+            fn drop(&mut self) {
+                let _ = self.0.try_send(());
+            }
+        }
+
+        let (panicker_drop, panicker_dropped) = mpsc::sync_channel(1);
+        let (healthy_read, healthy_reads) = mpsc::sync_channel(4);
+        let pool = StreamPool::default();
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
+        let panicker = pool
+            .open(
+                &mixer,
+                "bad_mod",
+                &spec,
+                None,
+                Box::new(Panicker(panicker_drop)),
+            )
+            .unwrap();
+        let healthy = pool
+            .open(
+                &mixer,
+                "good_mod",
+                &spec,
+                None,
+                Box::new(Source(move |pcm| {
+                    pcm[..2].copy_from_slice(&[16_384, -8_192]);
+                    let _ = healthy_read.try_send(());
+                    1
+                })),
+            )
+            .unwrap();
+
+        let timeout = Duration::from_secs(2);
+        let mut out = [0.0; 8];
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        panicker_dropped
+            .recv_timeout(timeout)
+            .expect("panicking source was not dropped");
+        healthy_reads
+            .recv_timeout(timeout)
+            .expect("healthy source was not read after sibling panicked");
+        assert_eq!(panicker.state(), AudioStreamState::Stopped);
+        assert_eq!(healthy.state(), AudioStreamState::Playing);
+
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        if out == [0.0; 8] {
+            // If the worker had not yet published read #1 before the mix, wait for read #2
+            // which runs serially on the same worker after read #1's publish.
+            healthy_reads
+                .recv_timeout(timeout)
+                .expect("healthy source was not read on follow-up demand");
+            mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, 48_000);
+        }
+        assert_eq!(out[..4], [0.5, -0.25, 0.5, -0.25]);
+        assert_eq!(healthy.state(), AudioStreamState::Playing);
+        healthy.stop();
+    }
+
+    #[test]
+    fn pull_clamps_each_read_to_scratch_capacity_without_losing_demand() {
+        let mut chunks = [16, 6].into_iter();
+        let mut rig = Rig::new(move |pcm| {
+            // 20 output stereo frames at 48 kHz demand 11 source frames at 24 kHz, or
+            // 8 and 3 frames in two reads with the rig's scratch buffer.
+            assert_eq!(pcm.len(), chunks.next().unwrap());
+            pcm.fill(16_384);
+            pcm.len() / 2
+        });
+        assert_eq!(rig.play::<40>(), [0.0; 40]);
+        assert!(rig.refill());
+        assert!(rig.refill());
+        assert_eq!(rig.job.as_ref().unwrap().ring.producer_window().1, 11);
+        assert_eq!(rig.play::<40>(), [0.5; 40]);
+    }
+
+    #[test]
+    fn high_rate_pull_crosses_chunk_and_ring_capacity_without_losing_source_time() {
+        // At this output rate, even one step at u32::MAX Hz passes more than 384,000
+        // source frames (ring capacity) and several 48,000-frame stereo scratch chunks.
+        const OUTPUT_RATE: u32 = 11_025;
+        const END: usize = 779_133;
+        fn signal(index: usize) -> i16 {
+            ((index % 4_096) as i16 - 2_048) * 4
+        }
+
+        struct Source {
+            next: usize,
+            finished: SyncSender<usize>,
+        }
+        impl AudioStream for Source {
+            fn read(&mut self, buffer: &mut [i16]) -> usize {
+                assert!(buffer.len() <= SCRATCH_SAMPLES);
+                let frames = (END - self.next).min(buffer.len() / 2);
+                for frame in buffer[..frames * 2].chunks_exact_mut(2) {
+                    let left = signal(self.next);
+                    frame.copy_from_slice(&[left, -left]);
+                    self.next += 1;
+                }
+                frames
+            }
+        }
+        impl Drop for Source {
+            fn drop(&mut self) {
+                let _ = self.finished.try_send(self.next);
+            }
+        }
+
+        let pool = StreamPool::default();
+        let mut out = [0.0; 16];
+        let mixer = Mutex::new(Mixer {
+            stream_gain: [1.0; 11],
+            ..Mixer::default()
+        });
+        let (finished, consumed) = mpsc::sync_channel(1);
+        let spec = StreamSpec::new(SoundSource::Voice, 2, u32::MAX);
+        let stream = pool
+            .open(
+                &mixer,
+                "mod",
+                &spec,
+                None,
+                Box::new(Source { next: 0, finished }),
+            )
+            .unwrap();
+
+        // One callback, one wake. The real worker must continue through all chunks to EOF
+        // even if the device does not call back again before the queued PCM is ready.
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, OUTPUT_RATE);
+        assert_eq!(out, [0.0; 16]);
+        assert_eq!(consumed.recv_timeout(Duration::from_secs(1)).unwrap(), END);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+
+        let mut first = [0.0; 4];
+        mix_pieces(&mut mixer.lock().unwrap(), &mut first, 2, OUTPUT_RATE);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+        mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, OUTPUT_RATE);
+        let samples: Vec<_> = first.into_iter().chain(out).collect();
+        // Source positions of successive outputs. At the third position, the fractional
+        // offset would need source frame 779,133, so EOF instead holds frame 779,132.
+        let expected = [(0, 0), (389_566, 2_145), (779_132, 0)];
+        for (frame, (index, remainder)) in samples.chunks_exact(2).zip(expected) {
+            let a = f32::from(signal(index)) / 32768.0;
+            let b = f32::from(signal(index + 1)) / 32768.0;
+            let left = a + (b - a) * (remainder as f32 / OUTPUT_RATE as f32);
+            assert_eq!(frame, [left, -left], "source frame {index}");
+        }
+        assert_eq!(samples[6..], [0.0; 14]);
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
     }
 }
