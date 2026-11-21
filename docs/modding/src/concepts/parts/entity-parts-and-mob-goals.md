@@ -33,11 +33,15 @@ gives an empty view (`tags.is_empty()`); a stale handle, client or snapshot with
 gives `None`. A goal can read its own mob's tags and the tags of other live mobs lent to the tick.
 
 Use `entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` for an exact match
-without allocating. `tags.iter_utf16()` yields each tag's exact UTF-16 code units in saved
-order, and view equality compares those strings in that order. Use `String::from_utf16(units)`
-to reject unpaired surrogates, `String::from_utf16_lossy(units)` for the same replacement
-characters as `/tag ... list`, or `units.to_vec()` to keep the exact units after the host
-borrow ends. For the old replacement-character comparison, use
+without allocating. View equality compares exact UTF-16 tag membership, ignoring order and
+repeated entries. `tags.iter_utf16()` still yields tags in saved order, so use
+`a.iter_utf16().eq(b.iter_utf16())` when the order matters. To keep the old `Vec<String>`
+equality, including replacement characters for unpaired surrogates, compare
+`a.iter_utf16().map(String::from_utf16_lossy).eq(b.iter_utf16().map(String::from_utf16_lossy))`.
+
+Use `String::from_utf16(units)` to reject unpaired surrogates, `String::from_utf16_lossy(units)`
+for the same replacement characters as `/tag ... list`, or `units.to_vec()` to keep the exact
+units after the host borrow ends. For the old replacement-character membership check, use
 `tags.iter_utf16().any(|units| String::from_utf16_lossy(units) == name)`.
 
 ## Goals

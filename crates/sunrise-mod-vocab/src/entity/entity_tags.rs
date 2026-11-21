@@ -3,8 +3,12 @@ use sunrise_core::nbt::Tag;
 
 // no wire: borrows the live entity's saved tags from the host.
 /// A borrowed view of an entity's scoreboard tags (`Entity.entityTags()`).
-/// Equality and debug output use the exact UTF-16 strings in view order, ignoring
-/// non-string entries.
+/// Equality compares set membership by exact UTF-16 code units, ignoring order and
+/// duplicates. Debug output lists the string tags in saved order.
+///
+/// For an ordered comparison, use `a.iter_utf16().eq(b.iter_utf16())`. To match
+/// the old `Vec<String>` equality, map both iterators through
+/// [`String::from_utf16_lossy`] before comparing them.
 // exhaustive: its field is private
 #[derive(Clone, Copy)]
 pub struct EntityTags<'a>(&'a [Tag]);
@@ -40,7 +44,11 @@ impl fmt::Debug for EntityTags<'_> {
 
 impl PartialEq for EntityTags<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.iter_utf16().eq(other.iter_utf16())
+        let is_subset = |left: Self, right: Self| {
+            left.iter_utf16()
+                .all(|tag| right.iter_utf16().any(|candidate| candidate == tag))
+        };
+        is_subset(*self, *other) && is_subset(*other, *self)
     }
 }
 
@@ -53,26 +61,53 @@ pub fn borrow_entity_tags(tags: &[Tag]) -> EntityTags<'_> {
 
 #[cfg(test)]
 #[test]
-fn entity_tag_view_compares_only_strings_in_order_and_preserves_surrogates() {
+fn entity_tag_view_preserves_saved_order_and_exact_strings() {
     use sunrise_core::nbt::JavaString;
 
-    let surrogate = Tag::String(JavaString(vec![0xD800]));
-    let x = Tag::String("x".into());
-    let saved = [surrogate.clone(), Tag::Byte(7), x.clone()];
+    let saved = [
+        Tag::String(JavaString(vec![0xD800])),
+        Tag::Byte(7),
+        Tag::String("x".into()),
+    ];
     let tags = borrow_entity_tags(&saved);
     assert!(!tags.is_empty());
     assert!(!borrow_entity_tags(&[Tag::String("".into())]).is_empty());
     assert!(borrow_entity_tags(&[Tag::Byte(3)]).is_empty());
-    assert_eq!(tags, borrow_entity_tags(&[surrogate.clone(), x.clone()]));
-    assert_ne!(tags, borrow_entity_tags(&[x.clone(), surrogate]));
-    assert_ne!(
-        tags,
-        borrow_entity_tags(&[Tag::String("\u{fffd}".into()), x])
-    );
+    let expected: [&[u16]; 2] = [&[0xD800], &[0x78]];
+    assert!(tags.iter_utf16().eq(expected));
     assert!(!tags.contains("\u{fffd}"));
     assert!(
         tags.iter_utf16()
             .any(|units| String::from_utf16_lossy(units) == "\u{fffd}")
     );
     assert_eq!(format!("{tags:?}"), "[[55296], [120]]");
+}
+
+#[cfg(test)]
+#[test]
+fn entity_tag_view_equality_uses_exact_utf16_set_membership() {
+    use sunrise_core::nbt::JavaString;
+
+    let surrogate = Tag::String(JavaString(vec![0xD800]));
+    let x = Tag::String("x".into());
+    let original = [surrogate.clone(), Tag::Byte(7), x.clone()];
+    let tags = borrow_entity_tags(&original);
+    let reordered = [x.clone(), surrogate, x.clone()];
+    let reordered_tags = borrow_entity_tags(&reordered);
+    assert_eq!(tags, reordered_tags);
+    assert_eq!(reordered_tags, tags);
+    let expected: [&[u16]; 3] = [&[0x78], &[0xD800], &[0x78]];
+    assert!(reordered_tags.iter_utf16().eq(expected));
+
+    let subset = borrow_entity_tags(std::slice::from_ref(&x));
+    assert_ne!(tags, subset);
+    assert_ne!(subset, tags);
+    assert_ne!(
+        tags,
+        borrow_entity_tags(&[Tag::String(JavaString(vec![0xD801])), x.clone()])
+    );
+    assert_ne!(
+        tags,
+        borrow_entity_tags(&[Tag::String("\u{fffd}".into()), x])
+    );
 }
