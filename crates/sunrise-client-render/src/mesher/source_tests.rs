@@ -189,6 +189,40 @@ fn fixture() -> (Scratch, Assets, RenderAssets, MeshTables, Biomes) {
 }
 
 #[test]
+fn baked_model_particle_uses_the_published_sprite_name_at_its_layer() {
+    let (_scratch, _, mut render, _, _) = fixture();
+    let key = render
+        .block_state_models(BlockStateId(1))
+        .iter()
+        .next()
+        .unwrap();
+    // Not the quad's texture, the model slot, or the first name in the atlas.
+    render.sprite_names = vec![
+        Some("fixture:block/other".into()),
+        None,
+        Some("fixture:block/particle".into()),
+    ];
+    for (_, model) in render.model_catalog.models_mut() {
+        model.particle = Some(2);
+    }
+    let name = render.baked_model(key).unwrap().particle.unwrap();
+    assert_eq!(name, "fixture:block/particle");
+    assert!(std::ptr::eq(
+        name,
+        render.sprite_names[2].as_deref().unwrap()
+    ));
+
+    render.sprite_names[2] = None;
+    assert_eq!(render.baked_model(key).unwrap().particle, None);
+    render.sprite_names.truncate(2);
+    assert_eq!(render.baked_model(key).unwrap().particle, None);
+    for (_, model) in render.model_catalog.models_mut() {
+        model.particle = None;
+    }
+    assert_eq!(render.baked_model(key).unwrap().particle, None);
+}
+
+#[test]
 fn terrain_source_cpu_multipart_and_waterlogged_faces_keep_their_owner() {
     let (_scratch, assets, render, tables, biomes) = fixture();
     let mut chunk = Chunk::with_layout(3, -2, crate::chunk::ColumnLayout::new(0, 16).unwrap());

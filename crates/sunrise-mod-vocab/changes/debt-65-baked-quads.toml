@@ -6,7 +6,6 @@ ids = [
     "type:BakedModelView",
     "type:BakedModelView.particle",
     "type:BakedModelView.quads",
-    "handle:BakedModelView::quads",
     "type:BakedQuad",
     "type:BakedQuad.positions",
     "type:BakedQuad.uvs",
