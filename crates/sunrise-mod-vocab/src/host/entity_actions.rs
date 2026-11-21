@@ -70,10 +70,13 @@ pub trait EntityActionsBackendMut {
     /// (`Player.playSound`) doesn't hear it themself, their own client plays
     /// it. True means queued, not heard; false for an unknown `minecraft:`
     /// event or a volume or pitch that isn't a finite non-negative number.
-    /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
-    /// in call order across deferred effects, and is discarded on rollback or an aborted nested
+    /// Inside an open transaction, `play_level_sound_at_position` runs synchronously at the call
+    /// (so listeners can edit or cancel the sound and journal writes in the same transaction),
+    /// while packet delivery waits for the outermost commit in the entity's level, in journal
+    /// order across deferred effects, and is discarded on rollback or an aborted nested
     /// transaction. The server sound-seed stream advances at the call outside a transaction, at
-    /// the outermost commit inside one, and stays untouched on rollback or nested abort.
+    /// the outermost commit when a resolved sound publishes inside one, and stays untouched on
+    /// rollback, nested abort, or listener cancellation.
     #[access(WorldOnly)]
     fn entity_play_sound(
         &mut self,
@@ -108,10 +111,13 @@ pub trait EntityActionsBackendMut {
     /// the players within range (16 blocks, times the volume above 1) of
     /// where it is now, the entity's own player too. True means queued, not
     /// heard; false for an entity outside the level in place.
-    /// Inside an open transaction, delivery waits for the outermost commit in the entity's level,
-    /// in call order across deferred effects, and is discarded on rollback or an aborted nested
+    /// Inside an open transaction, `play_level_sound_at_entity` runs synchronously at the call
+    /// (so listeners can edit or cancel the sound and journal writes in the same transaction),
+    /// while packet delivery waits for the outermost commit in the entity's level, in journal
+    /// order across deferred effects, and is discarded on rollback or an aborted nested
     /// transaction. The server sound-seed stream advances at the call outside a transaction, at
-    /// the outermost commit inside one, and stays untouched on rollback or nested abort.
+    /// the outermost commit when a resolved sound publishes inside one, and stays untouched on
+    /// rollback, nested abort, or listener cancellation.
     #[access(WorldOnly)]
     fn entity_play_bound_sound(
         &mut self,

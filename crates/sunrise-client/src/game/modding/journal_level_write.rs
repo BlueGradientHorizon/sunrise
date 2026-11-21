@@ -230,17 +230,19 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         {
             return false;
         }
-        self.queue(PendingWrite::Sound(NativeSound {
-            dimension: self.level.dimension_id(),
-            sound: sound.to_owned(),
-            at,
-            source: source as i32,
-            volume,
-            pitch,
-            seed: 0,
-            except: None,
-            entity: None,
-        }))
+        self.game
+            .emit_level_effect(PendingWrite::Sound(NativeSound {
+                dimension: self.level.dimension_id(),
+                sound: sound.to_owned(),
+                at,
+                source: source as i32,
+                volume,
+                pitch,
+                seed: 0,
+                except: None,
+                entity: None,
+            }));
+        true
     }
     fn send_particles(
         &mut self,
@@ -373,11 +375,22 @@ impl Game<'_> {
         Some(f(guard.game))
     }
 
-    /// Queue a validated level, entity, or player effect immediately, or defer it to root commit
-    /// when a transaction is open so rolled-back transactions and aborted savepoints never publish
-    /// sounds, particles, or level/global/entity events.
+    /// Queue a validated level, entity, or player effect immediately, or defer pure delivery to
+    /// root commit when a transaction is open so rolled-back transactions and aborted savepoints
+    /// never publish sounds, particles, or level/global/entity events.
+    ///
+    /// For transactional sounds, `play_level_sound_at_*` hooks run synchronously here inside the
+    /// open transaction so listeners can edit/cancel the sound and have their own writes journaled
+    /// by the same transaction; only the resolved packet record is deferred to commit.
     pub(super) fn emit_level_effect(&mut self, write: PendingWrite) {
         if !self.transactions.is_empty() {
+            let write = match write {
+                PendingWrite::Sound(sound) => match self.resolve_native_sound(sound) {
+                    Some(resolved) => PendingWrite::Sound(resolved),
+                    None => return,
+                },
+                other => other,
+            };
             self.after_commit(super::transactions::After::LevelWrite(Box::new(write)));
             return;
         }
@@ -388,9 +401,10 @@ impl Game<'_> {
         self.publish_level_effect(write, true);
     }
 
-    /// Shared publication path for immediate calls (`deliver_now = false`) and root-commit replay
-    /// (`deliver_now = true`). When `deliver_now` is true, each effect replays in its recorded
-    /// `Dim` and writes packets directly in call order without draining unrelated queued effects.
+    /// Shared publication path for immediate calls (`deliver_now = false`) and pure root-commit
+    /// replay (`deliver_now = true`). When `deliver_now` is true, each effect replays in its
+    /// recorded `Dim` and writes packets directly in journal order without running mod callbacks
+    /// or draining unrelated queued effects.
     fn publish_level_effect(&mut self, write: PendingWrite, deliver_now: bool) {
         match write {
             PendingWrite::BlockTick(level, pos, block, delay) => {
@@ -415,7 +429,7 @@ impl Game<'_> {
                 if let Some(host) = &self.lan {
                     sound.seed = host.hub.next_sound_seed();
                     if deliver_now {
-                        self.deliver_native_sound(sound);
+                        self.send_resolved_native_sound(&sound);
                     } else {
                         self.creatures.lan_sounds.push(sound);
                     }

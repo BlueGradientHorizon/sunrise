@@ -37,12 +37,15 @@ sound for its action; pass `None` to play it to everyone. The game finds that pl
 player has no client, so it leaves no one out; a stale player handle queues nothing and the call returns `false`.
 
 Inside an open transaction, `LevelRef::play_sound`, `EntityRef::play_sound`, `EntityRef::play_bound_sound`,
-`PlayerRef::play_sound`, and `PlayerRef::stop_sound` validate arguments at the call and defer publication until the
-outermost commit, discarding on rollback or an aborted nested transaction. Committed effects replay in each
-request's level and deliver packets in call order across all effect kinds. The server sound-seed stream (for
-level and entity sounds) and the request level's random (for `PlayerRef::play_sound`'s `nextLong` seed) advance at
-the call outside a transaction, at the outermost commit inside one, and remain untouched on rollback or nested
-abort. (By contrast, `HitHost::play_sound_at` and `play_sound_from` below queue immediately at the call.)
+`PlayerRef::play_sound`, and `PlayerRef::stop_sound` validate arguments at the call and defer pure packet delivery
+until the outermost commit, discarding on rollback or an aborted nested transaction. For transactional level and
+entity sounds, `play_level_sound_at_position` and `play_level_sound_at_entity` run synchronously at the call inside
+the transaction (so listeners can edit or cancel the sound and journal their own writes in the same transaction);
+commit replay runs no mod callbacks, replaying each resolved effect in its request level and delivering packets in
+journal order across all effect kinds. The server sound-seed stream (for level and entity sounds) and the request
+level's random (for `PlayerRef::play_sound`'s `nextLong` seed) advance at the call outside a transaction, at the
+outermost commit when published inside one, and remain untouched on rollback, nested abort, or listener
+cancellation. (By contrast, `HitHost::play_sound_at` and `play_sound_from` below queue immediately at the call.)
 
 ## Engine playback and live parameters
 

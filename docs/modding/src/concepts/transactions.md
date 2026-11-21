@@ -84,15 +84,20 @@ are discarded on rollback or an aborted nested transaction:
 - `PlayerRef::play_sound`, `PlayerRef::stop_sound`
 
 Argument and handle validation still happens at the call, so invalid requests return `false`
-immediately. On the outermost commit, each deferred effect replays in the level where it was
-requested (even if another level is active when the transaction commits) and delivers its packets
-in exact call order across all effect kinds without draining unrelated queued effects.
+immediately. For level and entity sounds, `play_level_sound_at_position` and
+`play_level_sound_at_entity` run synchronously at the call inside the open transaction, so
+listeners can edit or cancel the sound and have any writes or effects they issue journaled by the
+same transaction; only the resolved effect record is deferred. On the outermost commit, pure
+delivery sends every deferred record in journal order across all effect kinds, replaying in each
+request's level (even if another level is active when the transaction commits) without running mod
+callbacks or draining unrelated queued effects.
 
 Random-number streams advance only when an effect is actually published:
 
 - The server sound-seed stream (used by `LevelRef::play_sound`, `EntityRef::play_sound`,
   `EntityRef::play_bound_sound`, and `LevelWriteHost::play_sound`) advances at the call outside a
-  transaction, at the outermost commit inside one, and stays untouched on rollback or nested abort.
+  transaction, at the outermost commit when a resolved sound publishes inside one, and stays
+  untouched on rollback, nested abort, or listener cancellation.
 - The request level's random (`world.random`, used by `PlayerRef::play_sound` for its `nextLong`
   seed) advances at the call outside a transaction, at the outermost commit in the request's level
   inside one, and stays untouched on rollback or nested abort.

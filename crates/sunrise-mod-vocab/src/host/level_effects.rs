@@ -16,10 +16,13 @@ pub trait LevelEffectsBackendMut {
     /// nothing. A `minecraft:` event must be registered; a mod's goes by name
     /// and is heard where its resources define it. True means queued, not
     /// heard.
-    /// Inside an open transaction, delivery waits for the outermost commit in this level, in call
-    /// order across deferred effects, and is discarded on rollback or an aborted nested
-    /// transaction. The server sound-seed stream advances at the call outside a transaction, at
-    /// the outermost commit inside one, and stays untouched on rollback or nested abort.
+    /// Inside an open transaction, `play_level_sound_at_position` runs synchronously at the call
+    /// (so listeners can edit or cancel the sound and journal writes in the same transaction),
+    /// while packet delivery waits for the outermost commit in this level, in journal order across
+    /// deferred effects, and is discarded on rollback or an aborted nested transaction. The server
+    /// sound-seed stream advances at the call outside a transaction, at the outermost commit when
+    /// a resolved sound publishes inside one, and stays untouched on rollback, nested abort, or
+    /// listener cancellation.
     #[access(WorldOnly)]
     fn level_play_sound(
         &mut self,

@@ -624,46 +624,13 @@ impl Game<'_> {
         });
     }
 
-    /// Deliver one native sound now (asking `play_level_sound_at_*` hooks in the sound's own
-    /// level, then sending the packet to nearby players and viewers) without draining unrelated
-    /// entries in `self.creatures.lan_sounds`. Re-entrant calls (for example, when a
-    /// `play_level_sound_at_*` listener commits another sound) enqueue on
-    /// `deferred_native_sound_deliveries` and are drained iteratively once the current sound
-    /// finishes.
-    pub(super) fn deliver_native_sound(&mut self, sound: super::creatures::NativeSound) {
-        if self.lan.is_none() {
-            return;
-        }
-        if self.creatures.delivering_native_sound {
-            self.creatures
-                .deferred_native_sound_deliveries
-                .push_back(sound);
-            return;
-        }
-        struct DeliveryGuard<'g, 'a>(&'g mut Game<'a>);
-        impl Drop for DeliveryGuard<'_, '_> {
-            fn drop(&mut self) {
-                self.0.creatures.delivering_native_sound = false;
-                self.0.creatures.deferred_native_sound_deliveries.clear();
-            }
-        }
-        self.creatures.delivering_native_sound = true;
-        let guard = DeliveryGuard(self);
-        guard.0.deliver_one_native_sound(sound);
-        while let Some(next) = guard
-            .0
-            .creatures
-            .deferred_native_sound_deliveries
-            .pop_front()
-        {
-            if guard.0.lan.is_none() {
-                break;
-            }
-            guard.0.deliver_one_native_sound(next);
-        }
-    }
-
-    fn deliver_one_native_sound(&mut self, sound: super::creatures::NativeSound) {
+    /// Resolve a native sound through `play_level_sound_at_*` hooks in the sound's own level and
+    /// drop unknown `minecraft:` events. Returns the edited sound ready for pure packet delivery,
+    /// or `None` if canceled/dropped.
+    pub(super) fn resolve_native_sound(
+        &mut self,
+        mut sound: super::creatures::NativeSound,
+    ) -> Option<super::creatures::NativeSound> {
         let emitter = sound.entity.and_then(|id| u32::try_from(id).ok());
         let mut asked = LevelSound::new(&sound.sound, sound.at, sound.volume, sound.pitch)
             .in_source(
@@ -674,26 +641,44 @@ impl Game<'_> {
             );
         asked.emitter = emitter;
         let dim = super::Dim::from_id(sound.dimension);
-        let Some(Some(heard)) =
-            self.with_effect_level(dim, |game| game.ask_level_sound(sound.dimension, asked))
-        else {
-            return;
-        };
-        let Some(host) = &self.lan else { return };
-        if heard.name.starts_with("minecraft:")
-            && host
-                .hub
-                .registry_id("minecraft:sound_event", &heard.name)
-                .is_none()
-        {
-            return;
-        }
-        let packet = host.hub.sound_packet(
-            &heard.name,
-            sound.at,
+        let heard = self
+            .with_effect_level(dim, |game| game.ask_level_sound(sound.dimension, asked))?
+            .filter(|heard| {
+                !heard.name.starts_with("minecraft:")
+                    || self.lan.as_ref().is_some_and(|host| {
+                        host.hub
+                            .registry_id("minecraft:sound_event", &heard.name)
+                            .is_some()
+                    })
+            })?;
+        let (edited_name, source, volume, pitch) = (
+            match heard.name {
+                std::borrow::Cow::Borrowed(_) => None,
+                std::borrow::Cow::Owned(name) => Some(name),
+            },
+            heard.source as i32,
             heard.volume,
             heard.pitch,
-            heard.source as i32,
+        );
+        if let Some(name) = edited_name {
+            sound.sound = name;
+        }
+        sound.source = source;
+        sound.volume = volume;
+        sound.pitch = pitch;
+        Some(sound)
+    }
+
+    /// Pure packet delivery for a native sound that has already passed `resolve_native_sound`
+    /// (runs no mod hooks and does not touch `self.creatures.lan_sounds`).
+    pub(super) fn send_resolved_native_sound(&self, sound: &super::creatures::NativeSound) {
+        let Some(host) = &self.lan else { return };
+        let packet = host.hub.sound_packet(
+            &sound.sound,
+            sound.at,
+            sound.volume,
+            sound.pitch,
+            sound.source,
             sound.seed,
         );
         // `Level.playSound(except, entity, ...)`: the same sound and
@@ -710,11 +695,12 @@ impl Game<'_> {
             (packet, _) => packet,
         }
         .encode();
-        let range = f64::from(heard.volume.max(1.0)) * 16.0;
+        let range = f64::from(sound.volume.max(1.0)) * 16.0;
         // Wrapped for the level's viewers too: one bound to an entity for those tracking it.
-        let (dimension, at) = (sound.dimension, sound.at);
         host.hub
-            .send_viewed_sound(dimension, at, range, sound.entity, || packet.clone());
+            .send_viewed_sound(sound.dimension, sound.at, range, sound.entity, || {
+                packet.clone()
+            });
         send_native_nearby(
             host,
             sound.dimension,
@@ -735,7 +721,9 @@ impl Game<'_> {
             return;
         }
         for sound in std::mem::take(&mut self.creatures.lan_sounds) {
-            self.deliver_native_sound(sound);
+            if let Some(resolved) = self.resolve_native_sound(sound) {
+                self.send_resolved_native_sound(&resolved);
+            }
         }
     }
 

@@ -276,12 +276,6 @@ pub(super) struct Creatures {
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
-    /// True while `deliver_native_sound` is running so a `play_level_sound_at_*` listener that
-    /// commits another sound queues it instead of recursing into sound delivery.
-    pub delivering_native_sound: bool,
-    /// Committed native sounds queued while `deliver_native_sound` is active and drained
-    /// iteratively once the current sound finishes.
-    pub deferred_native_sound_deliveries: std::collections::VecDeque<NativeSound>,
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
