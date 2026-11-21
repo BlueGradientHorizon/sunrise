@@ -835,47 +835,79 @@ mod set_size_tests {
 mod own_base_tests {
     use crate::mobs::{Mob, MobType};
     use std::collections::HashMap;
+    use std::fmt::Write as _;
     use std::sync::Arc;
-    use sunrise_world::attributes::entity::Catalog;
+    use sunrise_core::nbt::Tag;
+    use sunrise_world::{attribute_map::ValueKind, attributes::entity::Catalog};
 
-    /// The saved `attributes` as (id, base), after the live map is built as a tick builds it.
-    fn saved_bases(m: &Mob, catalog: &Arc<Catalog>) -> Vec<(String, f64)> {
-        let _ = m.extra.live.read(
-            catalog,
-            &m.kind.id,
-            "minecraft:max_health",
-            sunrise_world::attribute_map::ValueKind::Base,
-            || {
-                crate::entity_nbt::attribute_entries(m)
-                    .into_iter()
-                    .map(|(_, e)| e)
-                    .collect()
-            },
-        );
-        let tag = crate::entity_nbt::mob_to_nbt(
-            m,
-            [1, 2, 3, 4],
-            None,
-            None,
-            |_| None,
-            &Default::default(),
-        );
-        let Some(sunrise_core::nbt::Tag::List(list)) = tag.get("attributes") else {
-            panic!("no attributes list");
-        };
-        list.iter()
-            .map(|e| {
-                (
-                    crate::save::text(e.get("id")).unwrap(),
-                    crate::save::float(e.get("base")).unwrap(),
-                )
-            })
+    const WITNESS_26_3: &str =
+        include_str!("../../../../tools/fixtures/26.3/mob_attribute_nbt.tsv");
+
+    fn mob_seed(m: &Mob) -> Vec<Tag> {
+        crate::entity_nbt::attribute_entries(m)
+            .into_iter()
+            .map(|(_, e)| e)
             .collect()
     }
 
-    /// Vanilla never clamps a base, only the value: a size-39 slime saves `max_health` 1600 and
-    /// a magma cube given `Size:199` saves `armor` 600, once its map is built and again after a
-    /// reload of that save (#2676).
+    fn check_reads(m: &Mob, catalog: &Arc<Catalog>, tokens: &[&str], prefix: &str, case: &str) {
+        for token in tokens {
+            let mut parts = token.split(' ');
+            assert_eq!(parts.next(), Some(prefix), "{case}: {token}");
+            let attr = parts.next().unwrap();
+            let actual = match (
+                m.extra
+                    .live
+                    .read(catalog, &m.kind.id, attr, ValueKind::Computed, || {
+                        mob_seed(m)
+                    }),
+                m.extra
+                    .live
+                    .read(catalog, &m.kind.id, attr, ValueKind::Base, || mob_seed(m)),
+            ) {
+                (Some(v), Some(b)) => {
+                    format!("{prefix} {attr} {:x} {:x}", v.to_bits(), b.to_bits())
+                }
+                (None, None) => format!("{prefix} {attr} none"),
+                other => panic!("{case} {attr}: inconsistent live read {other:?}"),
+            };
+            assert_eq!(actual, *token, "{case}");
+        }
+    }
+
+    fn saved_tokens(tag: &Tag, prefix: &str) -> Vec<String> {
+        let Some(Tag::List(list)) = tag.get("attributes") else {
+            return Vec::new();
+        };
+        let mut rows: Vec<(String, String)> = list
+            .iter()
+            .map(|a| {
+                let base = match a.get("base") {
+                    Some(Tag::Double(b)) => format!("{b:x}"),
+                    other => panic!("non-double base: {other:?}"),
+                };
+                let mut row = format!("base {base}");
+                if let Some(Tag::List(mods)) = a.get("modifiers") {
+                    for modifier in mods {
+                        let id = crate::save::text(modifier.get("id")).unwrap();
+                        let amount = match modifier.get("amount") {
+                            Some(Tag::Double(b)) => format!("{b:x}"),
+                            other => panic!("non-double modifier amount: {other:?}"),
+                        };
+                        let op = crate::save::text(modifier.get("operation")).unwrap();
+                        let _ = write!(row, " mod {id} {amount} {op}");
+                    }
+                }
+                (crate::save::text(a.get("id")).unwrap(), row)
+            })
+            .collect();
+        rows.sort();
+        rows.into_iter()
+            .map(|(id, row)| format!("{prefix} {id} {row}"))
+            .collect()
+    }
+
+    /// Replays the vanilla 26.3 cube load/save/reload cases from `tools/fixtures/26.3/mob_attribute_nbt.tsv` (#2676).
     #[test]
     #[ignore = "daily"]
     fn a_cube_keeps_the_bases_its_own_size_set() {
@@ -885,18 +917,36 @@ mod own_base_tests {
                 .iter()
                 .map(|(id, kind)| (id.clone(), Arc::new(kind.clone())))
                 .collect();
-            for (id, size, attribute, base) in [
-                ("minecraft:slime", 39, "minecraft:max_health", 1600.0),
-                ("minecraft:magma_cube", 199, "minecraft:armor", 600.0),
-            ] {
-                let snbt = format!(r#"{{id:"{id}",Pos:[0.5d,80d,0.5d],NoAI:1b,Size:{size}}}"#);
-                let tag = sunrise_core::nbt::parse_snbt(&snbt).unwrap().0;
+            let mut checked = 0usize;
+            for line in WITNESS_26_3.lines() {
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                let cols: Vec<&str> = line.split('\t').collect();
+                let (name, entity, snbt) = (cols[0], cols[1], cols[2]);
+                if !matches!(entity, "minecraft:slime" | "minecraft:magma_cube") {
+                    continue;
+                }
+                let mut expected_reads = Vec::new();
+                let mut expected_saved = Vec::new();
+                let mut expected_reload_reads = Vec::new();
+                let mut expected_reload_saved = Vec::new();
+                for token in &cols[3..] {
+                    if token.starts_with("read ") {
+                        expected_reads.push(*token);
+                    } else if token.starts_with("saved ") {
+                        expected_saved.push(*token);
+                    } else if token.starts_with("reload_read ") {
+                        expected_reload_reads.push(*token);
+                    } else if token.starts_with("reload_saved ") {
+                        expected_reload_saved.push(*token);
+                    } else {
+                        panic!("{name}: unexpected witness token: {token}");
+                    }
+                }
+                let tag = sunrise_core::nbt::parse_snbt(snbt).unwrap().0;
                 let m = crate::entity_nbt::mob_from_nbt(&tag, &types, 1, None).unwrap();
-                let first = saved_bases(&m, w.attributes);
-                assert!(
-                    first.contains(&(attribute.to_owned(), base)),
-                    "{id}: {first:?}"
-                );
+                check_reads(&m, w.attributes, &expected_reads, "read", name);
                 let saved = crate::entity_nbt::mob_to_nbt(
                     &m,
                     [1, 2, 3, 4],
@@ -905,13 +955,35 @@ mod own_base_tests {
                     |_| None,
                     &Default::default(),
                 );
-                let again = crate::entity_nbt::mob_from_nbt(&saved, &types, 1, None).unwrap();
-                let second = saved_bases(&again, w.attributes);
+                assert_eq!(saved_tokens(&saved, "saved"), expected_saved, "{name}");
                 assert!(
-                    second.contains(&(attribute.to_owned(), base)),
-                    "{id} reloaded: {second:?}"
+                    !expected_reload_reads.is_empty() && !expected_reload_saved.is_empty(),
+                    "{name}: missing reload witness"
                 );
+                let again = crate::entity_nbt::mob_from_nbt(&saved, &types, 1, None).unwrap();
+                check_reads(
+                    &again,
+                    w.attributes,
+                    &expected_reload_reads,
+                    "reload_read",
+                    name,
+                );
+                let resaved = crate::entity_nbt::mob_to_nbt(
+                    &again,
+                    [1, 2, 3, 4],
+                    None,
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                assert_eq!(
+                    saved_tokens(&resaved, "reload_saved"),
+                    expected_reload_saved,
+                    "{name} reloaded"
+                );
+                checked += 1;
             }
+            assert!(checked > 0, "no cube cases in 26.3 witness");
         });
         assert!(ran, "vanilla data is missing");
     }

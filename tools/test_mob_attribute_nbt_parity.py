@@ -15,18 +15,27 @@ except ImportError:
     import lab
     import test_rust_parity as base
 
+WITNESS = lab.ROOT / 'tools/fixtures/26.3/mob_attribute_nbt.tsv'
 POS = 'Pos:[0.0d,64.0d,0.0d],Motion:[0.0d,0.0d,0.0d],Rotation:[0.0f,0.0f]'
 BONUS = '{id:"test:bonus",amount:0.5d,operation:"add_multiplied_base"}'
 
 
-def case(name, entity, attributes, equip=None, then=None, read=()):
-    snbt = f'{{id:"{entity}",{POS},Health:20.0f'
+def case(name, entity, attributes, equip=None, then=None, read=(), extra=None, reload=False, health='20.0f'):
+    snbt = f'{{id:"{entity}",{POS}'
+    if health is not None:
+        snbt += f',Health:{health}'
+    if extra:
+        snbt += f',{extra}'
     if attributes:
         snbt += f',attributes:[{",".join(attributes)}]'
-    return dict(name=name, entity=entity, snbt=snbt + '}', equip=equip or {}, then=then or {}, read=list(read))
+    entry = dict(name=name, entity=entity, snbt=snbt + '}', equip=equip or {}, then=then or {}, read=list(read))
+    if reload:
+        entry['reload'] = True
+    return entry
 
 
 ZOMBIE, STAND = 'minecraft:zombie', 'minecraft:armor_stand'
+SLIME, MAGMA_CUBE = 'minecraft:slime', 'minecraft:magma_cube'
 CASES = [
     case('zombie_defaults', ZOMBIE, [], read=['minecraft:max_health', 'minecraft:attack_damage', 'minecraft:armor']),
     # A base override and a non-transient modifier with an id on a modelled attribute, a base and a
@@ -54,12 +63,40 @@ CASES = [
         f'{{id:"minecraft:max_health",base:30.0d,modifiers:[{BONUS}]}}',
         '{id:"minecraft:movement_speed",base:0.25d}',
     ], equip={'head': 'minecraft:diamond_helmet'}, read=['minecraft:max_health', 'minecraft:armor', 'minecraft:movement_speed']),
+    # Cube mobs set bases past the attribute bounds (AbstractCubeMob.setSize / MagmaCube.setSize) and keep them across reload.
+    case('slime_size_39', SLIME, [], extra='NoAI:1b,Size:39', health=None, reload=True,
+         read=['minecraft:max_health', 'minecraft:movement_speed', 'minecraft:attack_damage']),
+    case('magma_cube_size_199', MAGMA_CUBE, [], extra='NoAI:1b,Size:199', health=None, reload=True,
+         read=['minecraft:max_health', 'minecraft:movement_speed', 'minecraft:attack_damage', 'minecraft:armor']),
+    case('magma_cube_size_neg5', MAGMA_CUBE, [], extra='NoAI:1b,Size:-5', health=None, reload=True,
+         read=['minecraft:max_health', 'minecraft:movement_speed', 'minecraft:attack_damage', 'minecraft:armor']),
 ]
+
+
+def format_witness(version, vanilla):
+    header = [
+        f'# Vanilla {version} mob attribute NBT witness (JDK 25, exact IEEE-754 double bits).',
+        '# Recorded by: python3 tools/test_mob_attribute_nbt_parity.py --record',
+        '# Oracle: VanillaMobAttributeNbtOracle',
+        '# Columns: name<TAB>entity<TAB>snbt<TAB>tokens...',
+    ]
+    if len(vanilla) != len(CASES):
+        raise AssertionError(f'vanilla has {len(vanilla)} lines for {len(CASES)} cases')
+    rows = []
+    for entry, line in zip(CASES, vanilla):
+        parts = line.split('\t')
+        if parts[0] != entry['name']:
+            raise AssertionError(f'case order mismatch: expected {entry["name"]}, got {parts[0]}')
+        if any(tok.startswith('FAIL ') for tok in parts[1:]):
+            raise AssertionError(f'oracle failed for {entry["name"]}: {line}')
+        rows.append('\t'.join([entry['name'], entry['entity'], entry['snbt'], *parts[1:]]))
+    return '\n'.join(header + rows) + '\n'
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--record', action='store_true', help='Record the vanilla 26.3 witness file from the Java oracle only')
     args = parser.parse_args()
     build = lab.LOCAL / 'rust-mob-attribute-nbt-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -78,10 +115,18 @@ def main():
             subprocess.run(list(map(str, cmd)), cwd=lab.ROOT, check=True, timeout=3600, stdout=log, stderr=subprocess.STDOUT)
     run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-cp', str(jars['server']) + os.pathsep + deps, '-d', classes, oracle], 'compile-java')
     run(['java', '-Xmx1G', '-cp', os.pathsep.join([str(classes), str(jars['server']), deps]), 'dev.sunriselab.parity.VanillaMobAttributeNbtOracle', cases, build / 'vanilla.txt'], 'java')
+    vanilla = build.joinpath('vanilla.txt').read_text(encoding='utf-8').splitlines()
+    witness_text = format_witness(lock['minecraft']['version'], vanilla)
+    if args.record:
+        WITNESS.parent.mkdir(parents=True, exist_ok=True)
+        WITNESS.write_text(witness_text, encoding='utf-8')
+        print(f'Recorded {WITNESS.relative_to(lab.ROOT)} ({len(CASES)} cases, Minecraft {lock["minecraft"]["version"]})')
+        return
+    if not WITNESS.exists() or WITNESS.read_text(encoding='utf-8') != witness_text:
+        raise AssertionError(f'vanilla output differs from {WITNESS.relative_to(lab.ROOT)}; re-run with --record')
     run(['cargo', 'build', '--profile', 'fast', '-p', 'sunrise-client-lib', '--example', 'client_probe'], 'compile-rust')
     binary = lab.cargo_target() / 'fast/examples/client_probe'
     run([binary, 'mob_attribute_nbt_fixture', lab.RESOURCES, cases, build / 'rust.txt'], 'rust')
-    vanilla = build.joinpath('vanilla.txt').read_text(encoding='utf-8').splitlines()
     rust = build.joinpath('rust.txt').read_text(encoding='utf-8').splitlines()
     problems = []
     for v, r in zip(vanilla, rust):
