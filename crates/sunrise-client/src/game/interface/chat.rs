@@ -1607,9 +1607,9 @@ impl Game<'_> {
             super::packs::open_uri(&url);
         }
     }
-    pub(super) fn link_prompt_click(&mut self) {
+    pub(super) fn link_prompt_click(&mut self) -> bool {
         let Some(url) = self.link_prompt.clone() else {
-            return;
+            return false;
         };
         let pressed = self
             .link_prompt_layout(&url, self.gui_size())
@@ -1623,6 +1623,7 @@ impl Game<'_> {
             }
             self.answer_link_prompt(button == LINK_YES);
         }
+        pressed.is_some()
     }
     /// `Screen.clickCommandAction`: run a clicked command as the player
     /// without adding it to the chat history. A client mod's command goes

@@ -173,6 +173,7 @@ fn observed_screen_view_carries_mod_screen_owner() {
         mod_screen: Some("mod_a".to_owned()),
         menu: None,
         menu_generation: None,
+        dialog_key: None,
         title: None,
         rect: [0.0, 0.0, 320.0, 240.0],
         screen_size: [320.0, 240.0],
@@ -1093,8 +1094,9 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         fn bounds(&self) -> [f32; 4] {
             [20.0, 20.0, 80.0, 20.0]
         }
-        fn captures_input(&self) -> bool {
-            true
+        fn char_typed(&mut self, _: &mut dyn ClientHost, c: char, _: u32) -> bool {
+            self.0.lock().unwrap().push(format!("editor_char:{c}"));
+            c == 'φ'
         }
         fn mouse_clicked(
             &mut self,
@@ -1111,6 +1113,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
     struct InputMod {
         log: Arc<Mutex<Vec<String>>>,
+        dialog_mount: AtomicUsize,
         override_press_handled: Arc<Mutex<Option<bool>>>,
         override_release_handled: Arc<Mutex<Option<bool>>>,
         cancel_key_post: Arc<AtomicBool>,
@@ -1149,6 +1152,16 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                         handle_scroll: self.handle_scroll.clone(),
                         transition_on_drag: self.transition_on_drag.clone(),
                     }));
+                }
+                "dialog" => {
+                    let mount = self.dialog_mount.fetch_add(1, Ordering::SeqCst);
+                    let log = self.log.clone();
+                    let id = event.widgets.add_button(Button::new(
+                        [20.0, 20.0, 75.0, 20.0],
+                        ApiText::literal("Mounted"),
+                        move |_, _| log.lock().unwrap().push(format!("dialog_press:{mount}")),
+                    ));
+                    event.widgets.set_initial_focus(id);
                 }
                 "stats" => {
                     let id = event
@@ -1406,6 +1419,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         "target_mod",
         Box::new(InputMod {
             log: log.clone(),
+            dialog_mount: AtomicUsize::new(0),
             override_press_handled: override_press_handled.clone(),
             override_release_handled: override_release_handled.clone(),
             cancel_key_post: cancel_key_post.clone(),
@@ -1619,7 +1633,8 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.open_options(false);
             take_log(&log);
             send_key_control(game, "key z down");
-            game.screen_chars_typed(Some("z"));
+            game.dispatch_window_keyboard(&NoLoop, None, true, false, None, Some("z"))
+                .unwrap();
             assert_eq!(
                 take_log(&log),
                 [
@@ -1636,6 +1651,13 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 ["scroll_pre:options", "scroll_post:options"]
             );
 
+            // There is a real held button, but Options' blank background did not grab a child.
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            take_log(&log);
+            move_mouse(game, win_id, 5.0, 6.0);
+            assert_eq!(take_log(&log), ["drag_pre:options", "drag_post:options"]);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+
             // The socket sentinel reports a declined edit, not successful typing. Enter
             // is still a key (Post reports it), never a click on the selected custom child.
             game.set_screen(Screen::Stats);
@@ -1649,6 +1671,12 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "key_press_post:stats:key.keyboard.enter"
                 ]
             );
+
+            // A custom child needn't capture keyboard shortcuts to receive independent text.
+            assert!(!game.mounted_widget_captures_input());
+            game.dispatch_window_keyboard(&NoLoop, None, true, false, None, Some("φ"))
+                .unwrap();
+            assert_eq!(take_log(&log), ["char_pre:stats:φ", "editor_char:φ"]);
 
             // Two mounted fields at identical bounds still have distinct focus identities.
             game.set_screen(Screen::Chat);
@@ -1698,6 +1726,213 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             game.screen_chars_typed(Some("c"));
             assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "c");
             assert_eq!(take_log(&log), ["char_pre:chat:c"]);
+
+            // A held dialog slider consumes drag on the overlay, not on Options under it.
+            use sunrise_client::dialog_screen::{Layout, Part};
+            let dialog = sunrise_client::command::snbt::parse_fully(
+                r#"{type:"minecraft:notice",title:"Wait",after_action:"wait_for_response",inputs:[{type:"minecraft:number_range",key:"amount",label:"Amount",start:0.0f,end:10.0f,initial:0.0f}]}"#,
+            )
+            .unwrap();
+            game.open_options(false);
+            game.show_dialog(&dialog);
+            let layout = Layout::new(
+                &game.decode_dialog(&dialog, None).unwrap(),
+                &game.gui.atlas.font,
+                game.gui_size(),
+            );
+            let slider = layout
+                .placed(0.0)
+                .find_map(|(part, _)| match part {
+                    Part::Slider { rect, .. } => Some(rect),
+                    _ => None,
+                })
+                .unwrap();
+            let [x, y, width, _] = slider;
+            move_mouse(game, win_id, f64::from(x + 4.0), f64::from(y + 6.0));
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            take_log(&log);
+            move_mouse(game, win_id, f64::from(x + width - 4.0), f64::from(y + 6.0));
+            assert_eq!(take_log(&log), ["drag_pre:dialog"]);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+
+            let original = game.mounted_widget_targets()[0];
+            game.sync_mounted_focus(original);
+            assert!(game.screen_state.widgets.has_focus());
+            let [x, y, _, _] = layout
+                .footer
+                .iter()
+                .find_map(|part| match part {
+                    Part::Button { rect, .. } => Some(*rect),
+                    _ => None,
+                })
+                .unwrap();
+            // Call the receiving dialog's own action without a pointer click moving focus first.
+            game.cursor = (x + 4.0, y + 6.0);
+            assert!(game.dialog_click().unwrap());
+            assert_eq!(game.dialog_status()["screen"], "waiting_for_response");
+            take_log(&log);
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::Enter), true, false, None, None)
+                .unwrap();
+            assert_eq!(
+                take_log(&log),
+                ["key_press_pre:dialog:key.keyboard.enter", "dialog_press:1"]
+            );
+            game.close_dialogs();
+            game.set_screen(Screen::Playing);
+
+            // Only a real Yes/No hit consumes the press while the pack prompt covers gameplay.
+            use sunrise_client::confirm_screen::Confirm;
+            use sunrise_client::text::Text;
+            use sunrise_core::geometry::Vec3;
+            use sunrise_protocol::packets::configuration::ResourcePackPush;
+            game.player =
+                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            game.handle_pack_push(ResourcePackPush {
+                id: 1,
+                url: "https://example.invalid/pack.zip".into(),
+                hash: String::new(),
+                required: false,
+                prompt: None,
+            });
+            move_mouse(game, win_id, 4.0, 4.0);
+            take_log(&log);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            assert_eq!(
+                take_log(&log),
+                [
+                    "press_pre:server_pack_prompt:0:false",
+                    "press_post:server_pack_prompt:0:false:false"
+                ]
+            );
+            assert!(game.server_packs.prompt.is_some());
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            let (_, (no_x, no_y)) = {
+                let layout = Confirm::new(
+                    &game.gui.atlas.font,
+                    game.gui_size(),
+                    &Text::translate("multiplayer.texturePrompt.line1", &[]),
+                    &Text::translate("multiplayer.texturePrompt.line2", &[]),
+                );
+                (layout.buttons[0], layout.buttons[1])
+            };
+            move_mouse(game, win_id, f64::from(no_x + 4.0), f64::from(no_y + 4.0));
+            take_log(&log);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            assert!(game.server_packs.prompt.is_none());
+            assert!(game.captured);
+            assert!(!game.left, "the prompt's press must not reach the world");
+            assert_eq!(
+                take_log(&log),
+                [
+                    "press_pre:server_pack_prompt:0:false",
+                    "press_post:server_pack_prompt:0:false:true"
+                ]
+            );
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+
+            // Rebound close skips Post; a rebound slot swap runs even when Post cancels.
+            game.settings.keys.set("key.inventory", "key.keyboard.j");
+            game.settings.keys.set("key.hotbar.1", "key.keyboard.k");
+            game.open_player_inventory();
+            assert_eq!(game.screen, Screen::Inventory);
+            game.inventory[9] = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 2));
+            let batch = game.gui_batch().unwrap();
+            let layout = game.built_container(&batch).unwrap();
+            let &(_, [x, y, _, _]) = layout.slots.iter().find(|(slot, _)| *slot == 9).unwrap();
+            move_mouse(game, win_id, f64::from(x + 5.0), f64::from(y + 5.0));
+            cancel_key_post.store(true, Ordering::SeqCst);
+            take_log(&log);
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyK), true, false, None, None)
+                .unwrap();
+            assert!(game.inventory[9].is_none());
+            assert_eq!(
+                game.inventory[0].as_ref().unwrap().item.as_ref(),
+                "minecraft:stick"
+            );
+            assert_eq!(
+                take_log(&log),
+                [
+                    "key_press_pre:inventory:key.keyboard.k",
+                    "key_press_post:inventory:key.keyboard.k"
+                ]
+            );
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyJ), true, false, None, None)
+                .unwrap();
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(take_log(&log), ["key_press_pre:inventory:key.keyboard.j"]);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn controller_activates_the_selected_mount_and_edits_its_field() {
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::controller_activates_the_selected_mount_and_edits_its_field",
+        "SUNRISE_CONTROLLER_MOUNTS_CASE",
+        &["controller"],
+    ) {
+        return;
+    }
+    use sunrise_client::{gamepad::Button as PadButton, osk::Output};
+
+    struct Mounts(Arc<Mutex<Vec<String>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Mounts {
+        fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
+            if event.screen.id != "mod" {
+                return;
+            }
+            for name in ["first", "second"] {
+                let log = self.0.clone();
+                event.widgets.add_button(Button::new(
+                    [30.0, 30.0, 90.0, 20.0],
+                    ApiText::literal(name),
+                    move |_, _| log.lock().unwrap().push(name.to_owned()),
+                ));
+            }
+            let log = self.0.clone();
+            event
+                .widgets
+                .add_text_field(TextField::new([30.0, 70.0, 90.0, 20.0], 32).on_submit(
+                    move |value, _| log.lock().unwrap().push(format!("submit:{value}")),
+                ));
+        }
+    }
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![ModEntry::new(
+        "controller_mounts",
+        Box::new(Mounts(log.clone())),
+    )]
+    .into();
+    with_mods(mods, || {
+        with_client_game(|game| {
+            let (_event_loop, win_id) = attach_offscreen_window(game);
+            assert!(game.mod_screen_open("controller_mounts"));
+            let targets = game.mounted_widget_targets();
+            game.pad.menu.focus = Some(targets[1]);
+            game.pad_menu_button(&NoLoop, PadButton::South, true)
+                .unwrap();
+            assert!(take_log(&log).is_empty());
+            game.pad_menu_button(&NoLoop, PadButton::South, false)
+                .unwrap();
+            assert_eq!(take_log(&log), ["second"]);
+
+            move_mouse(game, win_id, 40.0, 40.0);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            assert_eq!(take_log(&log), ["first"]);
+
+            game.pad.menu.focus = Some(targets[2]);
+            game.pad_menu_button(&NoLoop, PadButton::South, true)
+                .unwrap();
+            assert!(game.pad.menu.osk.is_some());
+            game.pad_osk_output(Output::Text("ab".into()));
+            game.pad_osk_output(Output::Backspace);
+            game.pad_osk_output(Output::Enter);
+            assert_eq!(take_log(&log), ["submit:a"]);
+            assert!(game.pad.menu.osk.is_none());
         });
     });
 }

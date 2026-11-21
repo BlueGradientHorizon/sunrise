@@ -1509,6 +1509,8 @@ pub(crate) trait Hosted {
         right: bool,
         shift: bool,
     ) -> Vec<Output>;
+    /// A drag reaches the held slider or scrollbar, if there is one.
+    fn drag(&mut self, s: &mut Settings, at: (f32, f32), size: (f32, f32)) -> (bool, Vec<Output>);
     /// Lets go of a slider or the scrollbar: for a slider (it plays its click), what its change
     /// does now (`Screen::slider_released`).
     fn release(&mut self) -> Option<Vec<Output>>;
@@ -2451,33 +2453,16 @@ impl<S: Screen + Default> Hosted for Shell<S> {
         right: bool,
         shift: bool,
     ) -> Vec<Output> {
+        if drag {
+            return self.drag(s, (x, y), size).1;
+        }
         self.keep(s);
         // A click of its own: the focus a page opened on is the mouse's now.
-        if !drag {
-            self.focus_opened = None;
-        }
+        self.focus_opened = None;
         let view = self.view(s, size);
         let cols = view.cols;
         let at = |[rx, ry, rw, rh]: [f32; 4]| ui::hovered((x, y), rx, ry, rw, rh);
-        if !drag {
-            self.keyed = false;
-        }
-        if drag {
-            if self.scroll.held() && !cols.scrolls() {
-                self.scroll.release();
-            }
-            if self.scroll.held() {
-                self.picked = None;
-                self.scroll.drag(y, cols.top, cols.bottom, view.content);
-                return Vec::new();
-            }
-            if let Some(row) = self.dragging {
-                self.screen.slide(s, row, cols.slider_at(x));
-                self.did(&[DRAGGED]);
-                return vec![DRAGGED];
-            }
-            return Vec::new();
-        }
+        self.keyed = false;
         // The right button presses nothing, as on vanilla's `CycleButton`.
         if right {
             return Vec::new();
@@ -2541,6 +2526,30 @@ impl<S: Screen + Default> Hosted for Shell<S> {
         // A press on the track sets the value there; on the name, only focuses.
         let track = (x >= cols.track().0).then(|| cols.slider_at(x));
         self.activate(s, row, shift, track, self.clicks_step)
+    }
+    fn drag(
+        &mut self,
+        s: &mut Settings,
+        (x, y): (f32, f32),
+        size: (f32, f32),
+    ) -> (bool, Vec<Output>) {
+        self.keep(s);
+        let view = self.view(s, size);
+        let cols = view.cols;
+        if self.scroll.held() && !cols.scrolls() {
+            self.scroll.release();
+        }
+        if self.scroll.held() {
+            self.picked = None;
+            self.scroll.drag(y, cols.top, cols.bottom, view.content);
+            return (true, Vec::new());
+        }
+        if let Some(row) = self.dragging {
+            self.screen.slide(s, row, cols.slider_at(x));
+            self.did(&[DRAGGED]);
+            return (true, vec![DRAGGED]);
+        }
+        (false, Vec::new())
     }
     fn opened_focus(&self) -> Option<[f32; 4]> {
         self.focus_opened.map(|(_, rect)| rect)

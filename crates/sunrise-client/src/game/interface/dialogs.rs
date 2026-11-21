@@ -35,7 +35,7 @@ struct Open {
     scroll: ui::Scroll,
     /// The number range input whose slider is held.
     dragging: Option<usize>,
-    /// The multiline input the pointer is selecting in.
+    /// The text input the pointer is selecting in.
     selecting: Option<usize>,
 }
 
@@ -299,7 +299,7 @@ impl Game<'_> {
     /// returns to what was open before it).
     pub(super) fn clear_dialog(&mut self) {
         if self.dialogs.open.take().is_some() && !self.dialog_open() {
-            self.dialog_closed();
+            self.dialog_receiver_changed();
         }
     }
 
@@ -311,9 +311,13 @@ impl Game<'_> {
         };
     }
 
-    fn dialog_closed(&mut self) {
+    fn dialog_receiver_changed(&mut self) {
         self.refresh_screen_widgets();
-        if self.player.is_some() && self.screen == super::Screen::Playing && self.title.is_none() {
+        if self.player.is_some()
+            && self.screen == super::Screen::Playing
+            && !self.screen_over_playing()
+            && self.title.is_none()
+        {
             self.capture(true);
         }
     }
@@ -350,6 +354,7 @@ impl Game<'_> {
             }
             return Ok(());
         }
+        let before = self.dialog_screen_key();
         // openSendConfirmationWindow's `currentScreen`: a command that asks
         // first still has this dialog to go back to.
         let closing = match (&click, &after) {
@@ -421,8 +426,8 @@ impl Game<'_> {
             Some(other) => log::error!("Don't know how to handle {other:?}"),
             None => {}
         }
-        if !self.dialog_open() {
-            self.dialog_closed();
+        if self.dialog_screen_key() != before {
+            self.dialog_receiver_changed();
         }
         Ok(())
     }
@@ -835,7 +840,7 @@ impl Game<'_> {
     }
 
     /// A left click on a dialog screen.
-    pub(super) fn dialog_click(&mut self) -> Result<()> {
+    pub(super) fn dialog_click(&mut self) -> Result<bool> {
         let cursor = self.cursor;
         if self.dialogs.warning {
             let (title, message, _) = warning_texts();
@@ -845,18 +850,16 @@ impl Game<'_> {
                 Some(true) => {
                     self.audio.play_button_click();
                     let reason = Text::translate("menu.custom_screen_info.disconnect", &[]);
-                    return self.leave_server(Some(reason));
+                    self.leave_server(Some(reason))?;
                 }
                 Some(false) => {
                     self.audio.play_button_click();
                     self.dialogs.warning = false;
-                    if !self.dialog_open() {
-                        self.dialog_closed();
-                    }
+                    self.dialog_receiver_changed();
                 }
                 None => {}
             }
-            return Ok(());
+            return Ok(answer.is_some());
         }
         if let Some(since) = self.dialogs.waiting {
             let (w, h) = self.gui_size();
@@ -868,22 +871,23 @@ impl Game<'_> {
             if active && ui::hovered(cursor, bx, by, 200.0, 20.0) {
                 self.audio.play_button_click();
                 self.dialogs.waiting = None;
-                self.dialog_closed();
+                self.dialog_receiver_changed();
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         let Some(layout) = self.dialog_layout() else {
-            return Ok(());
+            return Ok(false);
         };
         let [wx, wy, ww, wh] = layout.warning;
         if ui::hovered(cursor, wx, wy, ww, wh) {
             self.audio.play_button_click();
-            self.dialogs.warning = true;
-            return Ok(());
+            self.open_screen_overlay("dialog", |game| game.dialogs.warning = true);
+            return Ok(true);
         }
         let shift = self.modifiers.shift_key();
         let Some(open) = self.dialogs.open.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         let [_, ay, _, ah] = layout.area;
         let mut action = None;
@@ -915,6 +919,7 @@ impl Game<'_> {
                         Some(Some(Field::Line(edit))) => {
                             edit.focused = true;
                             edit.click(&self.gui.atlas, cursor.0, false, false);
+                            open.selecting = Some(input);
                         }
                         Some(Some(Field::Multi(edit))) => {
                             [edit.x, edit.y, edit.width, edit.height] = [x, y, w, h];
@@ -975,6 +980,7 @@ impl Game<'_> {
             }
         }
         let Some(action) = action else {
+            let focused = open.focus.is_some();
             // A text click runs its event (DialogScreen.runAction) with no button sound.
             let click = match text_click {
                 Some(ClickEvent::OpenUrl(url)) => Click::OpenUrl(url),
@@ -989,17 +995,20 @@ impl Game<'_> {
                     id,
                     payload: payload.map(std::sync::Arc::unwrap_or_clone),
                 },
-                Some(ClickEvent::OpenFile(_) | ClickEvent::Profiler(_)) | None => return Ok(()),
+                Some(ClickEvent::OpenFile(_) | ClickEvent::Profiler(_)) | None => {
+                    return Ok(focused);
+                }
             };
             let after = open.dialog.after_action;
-            return self.run_dialog_action(Some(click), after);
+            self.run_dialog_action(Some(click), after)?;
+            return Ok(true);
         };
         self.audio.play_button_click();
         let Some(index) = action else {
-            return Ok(());
+            return Ok(true);
         };
         let Some(open) = self.dialogs.open.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         Self::dialog_values(open);
         let d = &open.dialog;
@@ -1008,7 +1017,8 @@ impl Game<'_> {
             .as_ref()
             .and_then(|a| a.click(&d.inputs, &open.values));
         let after = d.after_action;
-        self.run_dialog_action(click, after)
+        self.run_dialog_action(click, after)?;
+        Ok(true)
     }
 
     /// The mouse wheel over a dialog: a cycle button under it takes the
@@ -1076,25 +1086,30 @@ impl Game<'_> {
         false
     }
 
-    /// The pointer moved with a slider held (`AbstractSliderButton.onDrag`).
-    pub(super) fn dialog_drag(&mut self) {
+    /// The pointer moved with a text field or slider held.
+    pub(super) fn dialog_drag(&mut self) -> bool {
+        if self.dialogs.warning || self.dialogs.waiting.is_some() {
+            return false;
+        }
         let (cursor, shift) = (self.cursor, self.modifiers.shift_key());
         if let Some(open) = self.dialogs.open.as_mut()
-            && let Some(Some(Field::Multi(edit))) =
-                open.selecting.and_then(|i| open.fields.get_mut(i))
+            && let Some(Some(field)) = open.selecting.and_then(|i| open.fields.get_mut(i))
         {
-            // MultiLineEditBox.onDrag.
-            edit.drag(&self.gui.atlas.font, cursor, shift);
+            match field {
+                Field::Line(edit) => edit.drag_to(&self.gui.atlas, cursor.0),
+                Field::Multi(edit) => edit.drag(&self.gui.atlas.font, cursor, shift),
+            }
+            return true;
         }
         let Some(input) = self.dialogs.open.as_ref().and_then(|o| o.dragging) else {
-            return;
+            return false;
         };
         let Some(layout) = self.dialog_layout() else {
-            return;
+            return false;
         };
         let x = self.cursor.0;
         let Some(open) = self.dialogs.open.as_mut() else {
-            return;
+            return false;
         };
         let slider = layout.body.iter().find_map(|p| match p {
             Part::Slider { input: i, rect } if *i == input => Some(*rect),
@@ -1102,21 +1117,29 @@ impl Game<'_> {
         });
         if let (Some([sx, _, sw, _]), Some(value)) = (slider, open.values.get_mut(input)) {
             *value = InputValue::Slider(ui::slider_value(sx, sw, x) as f32);
+            return true;
         }
+        false
     }
 
     /// The left button released: a held slider lets go and clicks.
-    pub(super) fn dialog_release(&mut self) {
+    pub(super) fn dialog_release(&mut self) -> bool {
+        if self.dialogs.warning || self.dialogs.waiting.is_some() {
+            return false;
+        }
         if let Some(open) = self.dialogs.open.as_mut() {
-            if let Some(Some(Field::Multi(edit))) =
-                open.selecting.take().and_then(|i| open.fields.get_mut(i))
-            {
-                edit.release();
+            if let Some(Some(field)) = open.selecting.take().and_then(|i| open.fields.get_mut(i)) {
+                if let Field::Multi(edit) = field {
+                    edit.release();
+                }
+                return true;
             }
             if open.dragging.take().is_some() {
                 self.audio.play_button_click();
+                return true;
             }
         }
+        false
     }
 
     /// A key pressed on a dialog screen: Escape closes what allows it, Tab
@@ -1131,9 +1154,7 @@ impl Game<'_> {
         if self.dialogs.warning {
             if escape {
                 self.dialogs.warning = false;
-                if !self.dialog_open() {
-                    self.dialog_closed();
-                }
+                self.dialog_receiver_changed();
             }
             return Ok(escape);
         }
@@ -1141,7 +1162,7 @@ impl Game<'_> {
             // shouldCloseOnEsc: once Back works.
             if escape && waiting_button((since.elapsed().as_millis() / 50) as u32).2 {
                 self.dialogs.waiting = None;
-                self.dialog_closed();
+                self.dialog_receiver_changed();
                 return Ok(true);
             }
             return Ok(false);

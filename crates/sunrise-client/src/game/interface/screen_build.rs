@@ -31,6 +31,8 @@ pub(super) struct ObservedScreen {
     pub(super) mod_screen: Option<String>,
     pub(super) menu: Option<String>,
     pub(super) menu_generation: Option<u64>,
+    /// Dialog, warning and waiting screens share one public id, not one receiver.
+    pub(super) dialog_key: Option<(bool, bool, Option<u64>)>,
     pub(super) title: Option<std::sync::Arc<mod_api::Text>>,
     pub(super) rect: [f32; 4],
     /// Actual GUI-scaled screen dimensions (`width`, `height`), used to detect

@@ -93,6 +93,14 @@ impl MountedScreenWidgets {
             .is_some_and(|e| e.disabled)
     }
 
+    fn index_of(&self, id: ScreenWidgetId) -> Option<usize> {
+        self.inner
+            .borrow()
+            .entries
+            .iter()
+            .position(|slot| slot.as_ref().is_some_and(|entry| entry.id == id))
+    }
+
     pub(super) fn focused_id(&self) -> Option<ScreenWidgetId> {
         let inner = self.inner.borrow();
         let idx = inner.focused?;
@@ -504,11 +512,7 @@ impl Game<'_> {
             Kind::Mounted { id, .. } => self
                 .screen_state
                 .widgets
-                .inner
-                .borrow()
-                .entries
-                .iter()
-                .position(|slot| slot.as_ref().is_some_and(|entry| entry.id.raw() == id)),
+                .index_of(ScreenWidgetId::from_raw(id)),
             _ => None,
         };
         self.set_mounted_widget_focus(idx);
@@ -710,12 +714,45 @@ impl Game<'_> {
         modifiers: u32,
         double_click: bool,
     ) -> bool {
-        let len = self.screen_state.widgets.inner.borrow().entries.len();
-        if len == 0 {
-            return false;
-        }
+        self.mounted_widget_click(None, mouse, button, modifiers, double_click)
+    }
+
+    /// Controller focus names the child; coincident bounds are only a pointer concern.
+    pub(super) fn activate_mounted_widget(
+        &mut self,
+        id: ScreenWidgetId,
+        (x, y): (f32, f32),
+    ) -> bool {
         let generation = self.screen_state.widgets.generation();
-        for idx in 0..len {
+        let mouse = [x, y];
+        let modifiers = super::glfw_modifiers(self.modifiers);
+        let handled = self.mounted_widget_click(Some(id), mouse, 0, modifiers, false);
+        if handled && self.screen_state.widgets.generation() == generation {
+            self.mounted_widget_mouse_released(mouse, 0, modifiers);
+        }
+        handled
+    }
+
+    fn mounted_widget_click(
+        &mut self,
+        id: Option<ScreenWidgetId>,
+        mouse: [f32; 2],
+        button: i32,
+        modifiers: u32,
+        double_click: bool,
+    ) -> bool {
+        let range = if let Some(id) = id {
+            let Some(index) = self.screen_state.widgets.index_of(id) else {
+                return false;
+            };
+            index..index + 1
+        } else {
+            let len = self.screen_state.widgets.inner.borrow().entries.len();
+            0..len
+        };
+        let hit_rect = |rect| id.is_some() || point_in_rect(mouse, rect);
+        let generation = self.screen_state.widgets.generation();
+        for idx in range {
             if self.screen_state.widgets.generation() != generation {
                 return false;
             }
@@ -731,7 +768,7 @@ impl Game<'_> {
                     Some(entry) if !entry.disabled && entry.owner.is_enabled() => match &entry.kind
                     {
                         MountedWidgetKind::Button { state, .. } => {
-                            if state.visible && state.active && point_in_rect(mouse, state.rect) {
+                            if state.visible && state.active && hit_rect(state.rect) {
                                 (Hit::Button, false)
                             } else {
                                 (Hit::Miss, false)
@@ -744,7 +781,7 @@ impl Game<'_> {
                             ..
                         } => {
                             let rect = [edit_box.x, edit_box.y, edit_box.width, edit_box.height];
-                            if *visible && *active && point_in_rect(mouse, rect) {
+                            if *visible && *active && hit_rect(rect) {
                                 (Hit::TextField, false)
                             } else {
                                 (Hit::Miss, false)
@@ -758,7 +795,7 @@ impl Game<'_> {
                                 || {
                                     widget.visible()
                                         && widget.active()
-                                        && point_in_rect(mouse, widget.bounds())
+                                        && (id.is_some() || hit_rect(widget.bounds()))
                                 },
                             )
                             .unwrap_or(false);
@@ -845,7 +882,9 @@ impl Game<'_> {
                 }
             }
         }
-        self.clear_mounted_widget_focus();
+        if id.is_none() {
+            self.clear_mounted_widget_focus();
+        }
         false
     }
 

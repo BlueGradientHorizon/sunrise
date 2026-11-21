@@ -3095,13 +3095,94 @@ impl OptionsUi {
         drag: bool,
         right: bool,
     ) -> Vec<Event> {
-        let events = self.click_unrevised(s, atlas, x, y, size, framebuffer, drag, right);
+        if drag {
+            return self.drag(s, atlas, (x, y), size, framebuffer, right).1;
+        }
+        let events = self.click_unrevised(s, atlas, x, y, size, framebuffer, right);
         // A click that changed nothing the layout reads (an empty spot, a
         // focus move) keeps the built layout.
         if !events.is_empty() {
             self.relayout();
         }
         events
+    }
+    /// A held pointer moved. The boolean is the receiving child's response,
+    /// independent of whether it emitted an option event.
+    pub fn drag(
+        &mut self,
+        s: &mut Settings,
+        atlas: &HudAtlas,
+        (x, y): (f32, f32),
+        size: (f32, f32),
+        framebuffer: [i32; 2],
+        right: bool,
+    ) -> (bool, Vec<Event>) {
+        if self.resource_error.is_some() {
+            return (false, Vec::new());
+        }
+        match self.page() {
+            Page::Studio | Page::ControllerRadialName => return (false, Vec::new()),
+            _ => {}
+        }
+        if self.page() == Page::HdrCalibration
+            && let Some(calibration) = &mut self.calibration
+        {
+            let handled = !right
+                && calibration.click(&atlas.font, (x, y), size, true)
+                    != crate::hdr_calibration::Outcome::Nothing;
+            return (handled, Vec::new());
+        }
+        self.framebuffer = framebuffer;
+        if self.shell().is_some() {
+            self.shell_framebuffers();
+            if let Some(shell) = self.shell_mut() {
+                let (handled, outputs) = shell.drag(s, (x, y), size);
+                let events = self.shell_events(s, outputs);
+                if !events.is_empty() {
+                    self.relayout();
+                }
+                return (handled, events);
+            }
+        }
+        match self.page() {
+            Page::Mods => return (self.mods_page(s, size).drag(f64::from(y)), Vec::new()),
+            Page::Packs => return (self.packs(atlas, size).drag(f64::from(y)), Vec::new()),
+            _ => {}
+        }
+        let layout = self.built_layout(s, size.0, size.1);
+        let (widgets, top, bottom, content) = layout.parts();
+        self.size = size;
+        let mut events = Vec::new();
+        if let Some(previous_y) = self.scrollbar_drag_y {
+            if let Some((_, thumb)) = ui::scrollbar_thumb(top, bottom, content, self.scroll) {
+                let max = content - (bottom - top);
+                self.scroll = if y < top {
+                    0.0
+                } else if y > bottom {
+                    max
+                } else {
+                    self.scroll + (y - previous_y) * max / (bottom - top - thumb)
+                };
+                self.clamp_scroll(top, bottom, content);
+                self.scrollbar_drag_y = Some(y);
+                return (true, events);
+            } else {
+                self.scrollbar_drag_y = None;
+            }
+            return (false, events);
+        }
+        if let Some(opt) = self.dragging
+            && let Some(wd) = widgets
+                .iter()
+                .find(|wd| matches!(&wd.kind, WKind::Slider { opt: o, .. } if *o == opt))
+        {
+            let v = ui::slider_value(wd.x, wd.w, x);
+            self.slider_value = Some((opt, v as f32, Instant::now()));
+            drag_slider(opt, s, v, &mut events);
+            self.relayout();
+            return (true, events);
+        }
+        (false, events)
     }
     /// `click` without the layout revision: the events it answered with say
     /// whether the layout's inputs moved.
@@ -3113,21 +3194,17 @@ impl OptionsUi {
         y: f32,
         size: (f32, f32),
         framebuffer: [i32; 2],
-        drag: bool,
         right: bool,
     ) -> Vec<Event> {
         if self.resource_error.is_some() {
-            if !drag
-                && !right
-                && ui::hovered((x, y), size.0 / 2.0 - 100.0, size.1 - 28.0, 200.0, 20.0)
-            {
+            if !right && ui::hovered((x, y), size.0 / 2.0 - 100.0, size.1 - 28.0, 200.0, 20.0) {
                 self.resource_error = None;
                 return vec![Event::ButtonClick];
             }
             return Vec::new();
         }
         if self.page() == Page::Studio {
-            if right || drag {
+            if right {
                 return Vec::new();
             }
             use crate::studio_ui::StudioAction;
@@ -3151,19 +3228,19 @@ impl OptionsUi {
             if right {
                 return Vec::new();
             }
-            let outcome = c.click(&atlas.font, (x, y), size, drag);
+            let outcome = c.click(&atlas.font, (x, y), size, false);
             return self.calibration_outcome(s, outcome);
         }
         if self.page() == Page::ControllerRadialName {
-            return self.click_radial_name(s, atlas, (x, y), size, drag || right);
+            return self.click_radial_name(s, atlas, (x, y), size, right);
         }
         if self.shell().is_some() {
             // Waiting on a controller button: a click cancels the wait.
-            if !drag && self.selected_pad_action.take().is_some() {
+            if self.selected_pad_action.take().is_some() {
                 return Vec::new();
             }
             // Waiting on a key: a mouse button binds, as on Key Binds.
-            if self.selected_key.is_some() && !drag {
+            if self.selected_key.is_some() {
                 let button = if right {
                     winit::event::MouseButton::Right
                 } else {
@@ -3175,16 +3252,12 @@ impl OptionsUi {
             self.framebuffer = framebuffer;
             self.shell_framebuffers();
             let outputs = self.shell_mut().map_or_else(Vec::new, |shell| {
-                shell.click(s, (x, y), size, drag, right, shift)
+                shell.click(s, (x, y), size, false, right, shift)
             });
             return self.shell_events(s, outputs);
         }
         if self.page() == Page::Mods {
             let mut events = Vec::new();
-            if drag {
-                self.mods_page(s, size).drag(y as f64);
-                return events;
-            }
             if right {
                 return events;
             }
@@ -3214,10 +3287,6 @@ impl OptionsUi {
         }
         if self.page() == Page::Packs {
             let mut events = Vec::new();
-            if drag {
-                self.packs(atlas, size).drag(y as f64);
-                return events;
-            }
             if right {
                 return events;
             }
@@ -3251,12 +3320,10 @@ impl OptionsUi {
         self.size = size;
         self.framebuffer = framebuffer;
         let mut events = Vec::new();
-        if !drag
-            && matches!(
-                self.page(),
-                Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
-            )
-        {
+        if matches!(
+            self.page(),
+            Page::Video | Page::Controls | Page::KeyBinds | Page::ModBrowser
+        ) {
             let search = &mut self.settings_search;
             search.focused = ui::hovered((x, y), search.x, search.y, search.width, search.height);
             if search.focused {
@@ -3269,7 +3336,7 @@ impl OptionsUi {
                 return events;
             }
         }
-        if !drag && self.page() == Page::Language {
+        if self.page() == Page::Language {
             let search = &mut self.language_search;
             search.focused = ui::hovered((x, y), search.x, search.y, search.width, search.height);
             if search.focused {
@@ -3280,35 +3347,6 @@ impl OptionsUi {
                 self.scroll = 0.0;
                 return events;
             }
-        }
-        if drag {
-            if let Some(previous_y) = self.scrollbar_drag_y {
-                if let Some((_, thumb)) = ui::scrollbar_thumb(top, bottom, content, self.scroll) {
-                    let max = content - (bottom - top);
-                    self.scroll = if y < top {
-                        0.0
-                    } else if y > bottom {
-                        max
-                    } else {
-                        self.scroll + (y - previous_y) * max / (bottom - top - thumb)
-                    };
-                    self.clamp_scroll(top, bottom, content);
-                    self.scrollbar_drag_y = Some(y);
-                } else {
-                    self.scrollbar_drag_y = None;
-                }
-                return events;
-            }
-            if let Some(opt) = self.dragging
-                && let Some(wd) = widgets
-                    .iter()
-                    .find(|wd| matches!(&wd.kind, WKind::Slider { opt: o, .. } if *o == opt))
-            {
-                let v = ui::slider_value(wd.x, wd.w, x);
-                self.slider_value = Some((opt, v as f32, Instant::now()));
-                drag_slider(opt, s, v, &mut events);
-            }
-            return events;
         }
         // Key Binds: a mouse button pressed while waiting binds it.
         if self.selected_key.is_some() {

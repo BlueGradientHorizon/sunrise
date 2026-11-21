@@ -194,10 +194,10 @@ pub(super) fn wheel(state: &mut State, delta: f32, cursor: (f32, f32), size: (f3
     state.scroll.wheel(delta, ROW_HEIGHT, top, bottom, content);
     true
 }
-pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) {
+pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) -> bool {
     let rows = state.rows();
     let (top, bottom, _, content) = list_area(size, rows.len());
-    state.scroll.drag(cursor.1, top, bottom, content);
+    state.scroll.drag(cursor.1, top, bottom, content)
 }
 pub(super) fn release(state: &mut State) {
     state.scroll.release();

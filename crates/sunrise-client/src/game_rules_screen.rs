@@ -317,11 +317,12 @@ impl RulesScreen {
             .press(cursor, Self::bar(w), HEADER, h - FOOTER, content)
     }
     /// The pointer moved while the scrollbar is held.
-    pub fn drag(&mut self, y: f32, h: f32) {
+    pub fn drag(&mut self, y: f32, h: f32) -> bool {
         if self.scroll.held() {
             let content = self.content();
-            self.scroll.drag(y, HEADER, h - FOOTER, content);
+            return self.scroll.drag(y, HEADER, h - FOOTER, content);
         }
+        false
     }
     /// The button came up: the scrollbar lets go.
     pub fn release(&mut self) {

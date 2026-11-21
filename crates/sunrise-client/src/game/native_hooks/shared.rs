@@ -573,6 +573,10 @@ impl Game<'_> {
             menu_generation: (self.screen == Screen::Inventory && !self.screen_over_playing())
                 .then(|| self.remote.as_ref().map(|r| r.menu.generation))
                 .flatten(),
+            dialog_key: (view.id == "dialog").then(|| match self.dialog_screen_key() {
+                (true, _, _) => (true, false, None),
+                key => key,
+            }),
             title: view
                 .title
                 .and_then(|_| self.remote.as_ref()?.shared_menu_title_snapshot()),
@@ -712,6 +716,7 @@ impl Game<'_> {
                     || old.menu != new.menu
                     || old.menu_generation != new.menu_generation
                     || old.mod_screen != new.mod_screen
+                    || old.dialog_key != new.dialog_key
             }
             (None, None) => false,
             _ => true,
@@ -4114,8 +4119,12 @@ mod tests {
                     overlay: false,
                     mod_screen: None,
                     menu: None,
+                    menu_generation: None,
+                    dialog_key: None,
                     title: None,
                     rect: [0.0; 4],
+                    screen_size: [0.0; 2],
+                    instance: 0,
                     slots: 0,
                     mouse: [0.0; 2],
                     partial_tick: 0.0,

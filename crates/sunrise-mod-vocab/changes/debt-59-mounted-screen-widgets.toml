@@ -14,6 +14,13 @@
 ids = [
     "hook:screen_init_post",
     "hook:screen_init_post.widgets",
+    "hook:screen_preedit_post",
+    "hook:screen_mouse_button_released_pre",
+    "hook:screen_mouse_dragged_pre",
+    "hook:screen_mouse_scrolled_pre",
+    "hook:screen_key_pressed_pre",
+    "hook:screen_key_released_pre",
+    "hook:screen_char_typed_pre",
     "type:ScreenInitPostEvent.widgets",
     "type:ScreenView.mod_screen",
     "hook:screen_mouse_button_pressed_pre",
@@ -92,7 +99,11 @@ same-screen same-button `double_click`) and NeoForge `MouseHandler.java.patch`, 
 `KeyboardHandler.java.patch`, and `ScreenEvent.*.Post`: every Post reports the receiving screen \
 captured at Pre time; mouse press/release Post hooks collect `handled`; key press/release Post \
 hooks fire only when unhandled and remain cancellable; and drag, scroll, char, and preedit Post \
-hooks fire as non-cancellable notices only when unhandled.
+hooks fire as non-cancellable notices only when unhandled. `DialogScreen.runAction` uses a new \
+receiver for the waiting screen, even though it shares the `dialog` id. `ConfirmScreen` button \
+presses are handled; `ContainerEventHandler.mouseDragged` reports the top screen's child result. \
+Vanilla `AbstractContainerScreen.keyPressed` consumes inventory close and applies unhandled slot \
+actions before Post. `KeyboardHandler.charTyped` does not require a physical key or focused editor.
 """
 migrate = """
 1. Mounted widgets (`screen_init_post` v2): remove mod-owned `Widgets` fields, `Outcome` matches, \
@@ -136,7 +147,18 @@ is currently open.
 title screen, overlay, or other mod screen through `screen_opening` / `screen_closing` rather than \
 returning `false` outside bare `Screen::Playing`. Remove any workaround that closed another screen \
 first only to satisfy the old restriction.
-3. Screen input hooks (all Post/Pre double-click hooks bumped to version 2):
+3. Screen input hooks (mouse, key and character Pre/Post hooks and preedit Post are version 2):
+   - The mouse button, drag, scroll, key and typed-character Pre hooks now receive overlays, as do \
+matching Post hooks. To keep the previous exclusion, return without handling when \
+`event.screen.id` is `"command_prompt"`, `"link_prompt"`, `"code_of_conduct"`, `"server_pack_prompt"`, \
+`"dialog"`, `"book_view"`, `"book_edit"`, `"book_sign"`, `"lectern"`, or `"sign_editor"`.
+   - `screen_key_released_pre` and `screen_key_released_post` now fire for control socket \
+`key ... up` and the release phase of `key ... tap`. Do not cancel a release just to bypass screen \
+handling if its mapped press was allowed: release cancellation now skips mapped holds and toggles \
+as well. Remove the cancellation in that case and let the mapping release.
+   - `screen_key_pressed_post` no longer sees the bound inventory close key if the container took it. \
+To prevent a container slot swap, pick or drop, cancel `screen_key_pressed_pre` instead of Post: \
+those slot actions have already taken effect when the unhandled Post fires.
    - `screen_char_typed_pre.field`: preserved for focused vanilla boxes and focused mounted \
 built-in `TextField`s (modifications to `event.field` are applied back through the `EditBox` \
 filter, `max_length`, and `on_change` responder). Focused custom `ScreenWidget`s own their own \
@@ -153,7 +175,9 @@ only when neither mounted widgets nor the screen handled the drag or scroll.
 `event.cancelled = true` or `Flow::Cancel` for unhandled keys; both now report the receiving screen.
    - `screen_char_typed_post`: change the return type from `Flow` to `()`, remove any \
 `event.cancelled` access, and rely on it as a non-cancellable notice for unhandled characters on \
-the receiving screen.
+the receiving screen. The control socket's `type` now also delivers this Post for unhandled \
+text. Printable window text with no physical key, such as an Alt code, uses the normal Pre, child, \
+and Post route even without a focused edit box.
    - `screen_preedit_post`: a focused custom `ScreenWidget` does not consume preedit, even with \
 `captures_input() == true`. Unless Pre cancels, handle the unconsumed composition as a notice in \
 `screen_preedit_post` keyed by the receiving screen and your own focus state, or use a built-in \

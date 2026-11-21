@@ -2473,7 +2473,7 @@ impl Screen {
 
     /// `AbstractSliderButton.onDrag`: the settings tab's held distance slider follows the
     /// pointer while the button stays down.
-    pub fn drag(&mut self, cursor: (f32, f32), (w, h): (f32, f32)) {
+    pub fn drag(&mut self, cursor: (f32, f32), (w, h): (f32, f32)) -> bool {
         // `ScrollableLayout`'s held scrollbar (the settings tab's column).
         if self.settings_scroll.held()
             && let SubScreen::Configure {
@@ -2483,8 +2483,7 @@ impl Screen {
             } = &self.subscreen
         {
             let content = settings_rows(matches!(tier, Some(Ok(_)))).1;
-            self.settings_scroll.drag(cursor.1, 24.0, h - 33.0, content);
-            return;
+            return self.settings_scroll.drag(cursor.1, 24.0, h - 33.0, content);
         }
         if let Some(slider) = self.other_slider {
             match slider {
@@ -2500,6 +2499,7 @@ impl Screen {
                         let x = (w / 2.0).floor() + 4.0;
                         *spawn_protection =
                             (crate::ui::slider_value(x, 150.0, cursor.0) * 16.0).round() as i32;
+                        return true;
                     }
                 }
                 // `RealmsEditInviteCodeScreen.ExpirationSlider`: one choice per step.
@@ -2514,14 +2514,15 @@ impl Screen {
                         let left = (w / 2.0).floor() - 154.0;
                         let value = crate::ui::slider_value(left, 308.0, cursor.0);
                         *expiration = (value * (EXPIRATIONS.len() - 1) as f64).round() as usize;
+                        return true;
                     }
                 }
                 _ => {}
             }
-            return;
+            return false;
         }
         let Some(which) = self.settings_slider else {
-            return;
+            return false;
         };
         let SubScreen::Configure {
             tab: ConfigureTab::Settings,
@@ -2530,17 +2531,17 @@ impl Screen {
             ..
         } = &mut self.subscreen
         else {
-            return;
+            return false;
         };
         let Some(Ok(config)) = tier.as_ref() else {
-            return;
+            return false;
         };
         let range = match which {
             0 => config.render_distance.as_ref(),
             _ => config.sim_distance.as_ref(),
         };
         let Some(range) = range else {
-            return;
+            return false;
         };
         let left = (w / 2.0).floor() - 106.0;
         let value = range.from_slider(crate::ui::slider_value(left, 212.0, cursor.0) as f32);
@@ -2549,6 +2550,7 @@ impl Screen {
         } else {
             draft.simulation_distance = Some(value);
         }
+        true
     }
 
     /// `AbstractSliderButton.onRelease`.

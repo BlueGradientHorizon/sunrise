@@ -360,7 +360,8 @@ contract on the **receiving screen**:
   `event.screen.mod_screen` when a mod screen is open) and passes that same `ScreenView` to the
   matching Post hook, even if handling closed the screen or opened another mod's screen. Read
   `event.screen.mod_screen` in screen Post hooks rather than `host.mod_screen()`, which always
-  reports the screen currently open at the moment it is called.
+  reports the screen currently open at the moment it is called. A dialog, prompt, book, lectern,
+  or sign editor in front of another screen is itself the receiver.
 - **Focused text-box rewrites (`screen_char_typed_pre.field`)**: `event.field` is `Some` for
   vanilla edit boxes and for focused mounted built-in `TextField`s (whose edits and `on_change`
   callback stay in sync), and `None` for custom `ScreenWidget`s (which own their own state).
@@ -375,11 +376,17 @@ contract on the **receiving screen**:
 - **Key press and release Post (unhandled-only, cancellable)**:
   `screen_key_pressed_post` and `screen_key_released_post` fire on the receiving screen only when
   neither mounted widgets nor the screen handled the key. Set `event.cancelled = true` (or return
-  `Flow::Cancel`) to mark the key handled so the game's key bindings skip it.
+  `Flow::Cancel`) to mark the key handled so the game's key bindings skip it. A handled inventory
+  close does not fire Post; an unhandled slot swap, pick or drop has already happened by Post.
+  Cancel Pre to prevent a slot action. Window releases, `sunrise-ctl key … up`, and the release phase
+  of `key … tap` all deliver release Pre/Post. Do not cancel a release merely to bypass screen
+  handling after allowing its mapped press; canceling the release also skips the mapped release.
 - **Unhandled-only notices (non-cancellable)**:
   `screen_mouse_dragged_post`, `screen_mouse_scrolled_post`, `screen_char_typed_post`, and
   `screen_preedit_post` fire on the receiving screen only when neither mounted widgets nor the
-  screen handled the input, and cannot cancel (`screen_char_typed_post` returns `()`). A built-in
+  screen handled the input, and cannot cancel (`screen_char_typed_post` returns `()`). Printable
+  window text without a physical key and unhandled `sunrise-ctl type` text use the same character
+  hooks. Controller keyboard edits go to the focused child without emitting physical input hooks. A built-in
   `TextField` can consume preedit; a custom `ScreenWidget` cannot, even when its `captures_input()`
   returns `true`. A custom editor can observe the unhandled composition in `screen_preedit_post`
   and receives committed characters through `char_typed`.

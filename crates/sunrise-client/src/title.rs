@@ -1285,7 +1285,7 @@ impl Title {
         Some((row as usize, (x - left - 2.0, y - content_y)))
     }
     /// The pointer moved with the button held (`mouseDragged`).
-    pub fn drag(&mut self, cursor: (f32, f32), size: (f32, f32)) {
+    pub fn drag(&mut self, cursor: (f32, f32), size: (f32, f32)) -> bool {
         if let Some(rules) = self.rules.get_mut() {
             return rules.drag(cursor.1, size.1.ceil());
         }
@@ -1296,22 +1296,22 @@ impl Title {
             return screen.drag(cursor.1, size);
         }
         if let Mode::CreateFlat { flat, .. } = &mut self.mode {
-            flat::drag(flat, cursor, size);
-            return;
+            return flat::drag(flat, cursor, size);
         }
         if let Mode::CreateBuffet { buffet, .. } = &mut self.mode {
-            buffet::drag(buffet, cursor, size);
-            return;
+            return buffet::drag(buffet, cursor, size);
         }
-        if self.drag_missing_mods(cursor, size) {
-            return;
+        if matches!(self.mode, Mode::MissingMods { .. }) {
+            return self.drag_missing_mods(cursor, size);
         }
         if let Mode::Select { worlds, .. } = &self.mode {
             let (top, bottom, _, content) = self.world_list(worlds, size);
             let mut scroll = self.scroll.get();
-            scroll.drag(cursor.1, top, bottom, content);
+            let handled = scroll.drag(cursor.1, top, bottom, content);
             self.scroll.set(scroll);
+            return handled;
         }
+        false
     }
     /// The button was released (`onRelease`).
     pub fn release(&mut self) {
@@ -2959,13 +2959,14 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         false
     }
     /// The pointer moved with the button held (`EditBox.onDrag`).
-    pub fn drag_field(&mut self, atlas: &HudAtlas, x: f32) {
+    pub fn drag_field(&mut self, atlas: &HudAtlas, x: f32) -> bool {
         if self.rules.get_mut().is_some() {
-            return;
+            return false;
         }
         if let Some(field) = caret_field(&mut self.mode, self.search_focused, &mut self.search) {
-            self.caret.get_mut().drag(atlas, field, x);
+            return self.caret.get_mut().drag(atlas, field, x);
         }
+        false
     }
     /// The button was released: drags stop selecting.
     pub fn release_field(&mut self) {

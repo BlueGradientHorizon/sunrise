@@ -614,9 +614,9 @@ impl Game<'_> {
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
-    pub(super) fn pack_prompt_click(&mut self) -> Result<()> {
+    pub(super) fn pack_prompt_click(&mut self) -> Result<bool> {
         let Some(prompt) = &self.server_packs.prompt else {
-            return Ok(());
+            return Ok(false);
         };
         let answer = prompt
             .layout(&self.gui.atlas, self.gui_size())
@@ -624,9 +624,10 @@ impl Game<'_> {
         match answer {
             Some(yes) => {
                 self.audio.play_button_click();
-                self.answer_pack_prompt(yes)
+                self.answer_pack_prompt(yes)?;
+                Ok(true)
             }
-            None => Ok(()),
+            None => Ok(false),
         }
     }
 }

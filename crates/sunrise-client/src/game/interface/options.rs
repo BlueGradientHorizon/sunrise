@@ -138,7 +138,6 @@ impl Game<'_> {
         if to_game && self.title.is_none() {
             self.capture(true);
         }
-        self.dragging = false;
         // Closed from calibration (sunrise-ctl, a lost window): out of it.
         self.show_calibration((0.0, 0.0));
     }
@@ -284,13 +283,9 @@ impl Game<'_> {
                 return Ok(false);
             }
             let events = self.ui.options.release();
-            self.dragging = false;
             let handled = !events.is_empty();
             self.handle_option_events(events)?;
             return Ok(handled);
-        }
-        if !right {
-            self.dragging = true;
         }
         let size = self.gui_size();
         let framebuffer = self.renderer.as_ref().map_or([1280, 720], |r| {
@@ -313,24 +308,23 @@ impl Game<'_> {
         self.handle_option_events(events)?;
         Ok(handled)
     }
-    pub(super) fn options_drag(&mut self) -> Result<()> {
+    pub(super) fn options_drag(&mut self) -> Result<bool> {
         let size = self.gui_size();
         let framebuffer = self.renderer.as_ref().map_or([1280, 720], |r| {
             [r.config.width as i32, r.config.height as i32]
         });
         let mut ui = std::mem::take(&mut self.ui.options);
-        let events = ui.click(
+        let (handled, events) = ui.drag(
             &mut self.settings,
             &self.gui.atlas,
-            self.cursor.0,
-            self.cursor.1,
+            self.cursor,
             size,
             framebuffer,
-            true,
             false,
         );
         self.ui.options = ui;
-        self.handle_option_events(events)
+        self.handle_option_events(events)?;
+        Ok(handled)
     }
     pub(super) fn options_key(&mut self, key: KeyCode, text: Option<&str>) -> Result<bool> {
         let size = self.gui_size();

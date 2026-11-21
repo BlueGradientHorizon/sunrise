@@ -624,7 +624,7 @@ pub(super) fn wheel(state: &mut State, delta: f32, cursor: (f32, f32), size: (f3
     };
     true
 }
-pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) {
+pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) -> bool {
     let (top, bottom, _, content) = list_area(state, size);
     match state.page {
         Page::Layers => state.scroll.drag(cursor.1, top, bottom, content),

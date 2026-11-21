@@ -1789,7 +1789,7 @@ impl Screen {
     /// The pointer moved: a held scrollbar follows it, and a held server
     /// moves to the saved server's row under the pointer, the others closing
     /// up behind it; it stays selected.
-    pub fn drag(&mut self, y: f32, size: (f32, f32)) {
+    pub fn drag(&mut self, y: f32, size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             selected,
@@ -1802,7 +1802,7 @@ impl Screen {
             let (w, h) = (size.0.ceil(), size.1.ceil());
             let (top, bottom, left) = list_area(w, h);
             let games = lan.games().len();
-            scroll.drag(y, top, bottom, content_height(servers.len(), games));
+            let scrolled = scroll.drag(y, top, bottom, content_height(servers.len(), games));
             if let Some(held) = held
                 && let Some(Row::Server(to)) =
                     row_at(servers.len(), games, (left + 1.0, y), (w, h), scroll.amount)
@@ -1816,7 +1816,9 @@ impl Screen {
                 };
                 *selected = Some(to);
             }
+            return scrolled || held.is_some();
         }
+        false
     }
     /// The button was released: a server that was dragged somewhere else is
     /// saved there.

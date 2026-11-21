@@ -135,8 +135,8 @@ impl Scroll {
         bar.clamp(32, (view - 8).max(32)).min(view.max(0))
     }
     /// `AbstractScrollArea.mouseDragged` while the scrollbar is held.
-    fn drag(&mut self, y: f64, top: i32, content: i32, view: i32) {
-        let Some(last) = self.held else { return };
+    fn drag(&mut self, y: f64, top: i32, content: i32, view: i32) -> bool {
+        let Some(last) = self.held else { return false };
         if y < f64::from(top) {
             self.set(0.0, content, view);
         } else if y > f64::from(top + view) {
@@ -151,6 +151,7 @@ impl Scroll {
             );
         }
         self.held = Some(y);
+        true
     }
     /// The scrollbar's sprites, when there is anything to scroll.
     fn draw(&self, out: &mut Vec<Draw>, x: i32, top: i32, content: i32, view: i32) {
@@ -805,17 +806,19 @@ impl ModsScreen {
         (Action::None, false)
     }
     /// The pointer moved with the button held: a held scrollbar follows it.
-    pub fn drag(&mut self, y: f64) {
+    pub fn drag(&mut self, y: f64) -> bool {
         let g = self.geo();
         let content = self.list_content();
-        self.list.drag(y, g.list[1], content, g.list[3]);
+        if self.list.drag(y, g.list[1], content, g.list[3]) {
+            return true;
+        }
         let pinned = self.panel_pinned.get();
         self.panel.drag(
             y,
             g.panel[1] + pinned,
             self.panel_content.get() - pinned,
             g.panel[3] - pinned,
-        );
+        )
     }
     pub fn release(&mut self) {
         self.list.held = None;

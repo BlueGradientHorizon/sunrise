@@ -311,13 +311,15 @@ impl Game<'_> {
             && self.recipe_ui.search.as_ref().is_some_and(|s| s.focused)
     }
     /// `keyChat` focuses the search box.
-    pub(super) fn recipe_focus_search(&mut self) {
+    pub(super) fn recipe_focus_search(&mut self) -> bool {
         if (self.mod_book_open() || self.active_book().is_some_and(|b| self.book_open(b)))
             && let Some(s) = self.recipe_ui.search.as_mut()
         {
             s.focused = true;
             s.reset_blink();
+            return true;
         }
+        false
     }
     /// Text typed (or one backspace) into the search box.
     pub(super) fn recipe_text(&mut self, text: Option<&str>, backspace: bool) {

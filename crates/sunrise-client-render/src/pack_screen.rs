@@ -316,8 +316,8 @@ impl List {
         ((self.height * self.height) as f32 / self.content_height() as f32) as i32
     }
     /// `AbstractScrollArea.mouseDragged` while the scrollbar is held.
-    fn drag(&mut self, y: f64) {
-        let Some(last) = self.held else { return };
+    fn drag(&mut self, y: f64) -> bool {
+        let Some(last) = self.held else { return false };
         if y < self.y as f64 {
             self.set_scroll(0.0);
         } else if y > self.bottom() as f64 {
@@ -329,6 +329,7 @@ impl List {
             self.set_scroll(self.scroll + (y - last) * scale);
         }
         self.held = Some(y);
+        true
     }
 }
 
@@ -970,10 +971,8 @@ impl PackScreen {
     }
     /// The mouse wheel (`AbstractScrollArea.mouseScrolled`).
     /// The pointer moved with the button held: a held scrollbar follows it.
-    pub fn drag(&mut self, y: f64) {
-        for l in &mut self.lists {
-            l.drag(y);
-        }
+    pub fn drag(&mut self, y: f64) -> bool {
+        self.lists.iter_mut().any(|l| l.drag(y))
     }
     /// `onRelease`.
     pub fn release(&mut self) {

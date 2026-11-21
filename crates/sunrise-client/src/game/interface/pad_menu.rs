@@ -44,8 +44,6 @@ use winit::{
 const STICK_STEP: f32 = 0.55;
 /// Scrolls a step may try to reveal the next row of a list.
 const SCROLL_TRIES: u8 = 4;
-/// How far apart two rectangles may be and still be one widget found again (GUI pixels).
-const SAME_RECT: f32 = 0.5;
 /// Frames after a scroll that may still have been drawn before it: their rectangles are stale.
 const STALE_FRAMES: u64 = 1;
 
@@ -140,7 +138,7 @@ pub(super) struct MenuCursor {
     pub(super) held: [bool; 2],
     /// The focused button A went down on: letting go presses it, unless the
     /// focus moved or the input was cancelled first.
-    pub(super) armed: Option<Rect>,
+    pub(super) armed: Option<Target>,
     /// The frame count when `pad_reveal` scrolled the focused row into view: the frames drawn
     /// before it still show the row where it was, so the focus isn't looked for in them.
     pub(super) revealed: Option<u64>,
@@ -270,11 +268,8 @@ fn beside(rect: Rect, targets: &[Rect]) -> Option<usize> {
 
 /// Where letting go of A clicks: the armed button, if the focus is still on it. A row scrolled
 /// into view under A (`pad_reveal`) is found again a fraction of a pixel off.
-fn armed_click(armed: Option<Rect>, focus: Option<Target>) -> Option<(f32, f32)> {
-    let same = |a: Rect, b: Rect| a.iter().zip(b).all(|(a, b)| (a - b).abs() < SAME_RECT);
-    focus
-        .filter(|focus| armed.is_some_and(|armed| same(armed, focus.rect)))
-        .map(|focus| focus.center())
+fn armed_click(armed: Option<Target>, focus: Option<Target>) -> Option<Target> {
+    focus.filter(|focus| armed.is_some_and(|old| old.same_focus_target(*focus)))
 }
 
 impl Game<'_> {
@@ -794,8 +789,15 @@ impl Game<'_> {
                 }
                 Button::South if self.pad.menu.armed.is_some() => {
                     let armed = self.pad.menu.armed.take();
-                    if let Some(at) = armed_click(armed, self.pad.menu.focus) {
-                        self.pad_click_at(event_loop, at, false);
+                    if let Some(target) = armed_click(armed, self.pad.menu.focus) {
+                        if let Kind::Mounted { id, .. } = target.kind {
+                            self.activate_mounted_widget(
+                                mod_api::ScreenWidgetId::from_raw(id),
+                                target.center(),
+                            );
+                        } else {
+                            self.pad_click_at(event_loop, target.center(), false);
+                        }
                     }
                 }
                 Button::South if self.pad.menu.held[0] => {
@@ -936,13 +938,22 @@ impl Game<'_> {
                         self.pad.menu.slider_hold = hold;
                         self.pad.menu.nudge = None;
                     }
-                    Kind::Field | Kind::Mounted { field: true, .. } => {
+                    Kind::Mounted { id, field: true } => {
+                        if self.activate_mounted_widget(
+                            mod_api::ScreenWidgetId::from_raw(id),
+                            focus.center(),
+                        ) && self.mounted_widget_captures_input()
+                        {
+                            self.pad_open_keyboard();
+                        }
+                    }
+                    Kind::Field => {
                         self.pad_click_at(event_loop, focus.center(), false);
                         self.pad_open_keyboard();
                     }
                     Kind::Button | Kind::Tab(_) | Kind::Mounted { field: false, .. } => {
                         self.pad_pointer_to(event_loop, focus.center());
-                        self.pad.menu.armed = Some(focus.rect);
+                        self.pad.menu.armed = Some(focus);
                     }
                     _ => {
                         self.pad_pointer_to(event_loop, focus.center());
@@ -984,12 +995,14 @@ impl Game<'_> {
                     && self.title.is_none() =>
             {
                 self.pad_take_pointer(event_loop);
-                if button == Button::LeftStick {
-                    self.pad_with_modifier(KeyCode::ControlLeft, |game| {
-                        game.key_pressed(KeyCode::KeyQ, KeyCode::KeyQ)
-                    })?;
-                } else {
-                    self.key_pressed(KeyCode::KeyQ, KeyCode::KeyQ)?;
+                if self.screen != Screen::Creative || !self.creative_screen.tab().search {
+                    if button == Button::LeftStick {
+                        self.pad_with_modifier(KeyCode::ControlLeft, |game| {
+                            game.inventory_hotkey(KeyCode::KeyQ);
+                        });
+                    } else {
+                        self.inventory_hotkey(KeyCode::KeyQ);
+                    }
                 }
             }
             Button::DPadUp | Button::DPadDown | Button::DPadLeft | Button::DPadRight => {
@@ -2411,12 +2424,13 @@ impl Game<'_> {
 
     /// Enter on these goes on to a new line: a dialog's, a sign's or a book's page.
     fn pad_enter_keeps_typing(&self) -> bool {
-        self.dialog_typing_lines()
-            || self.sign_edit.is_some()
-            || matches!(
-                self.book,
-                Some(super::books::BookScreen::Edit { signing: false, .. })
-            )
+        !self.mounted_widget_captures_input()
+            && (self.dialog_typing_lines()
+                || self.sign_edit.is_some()
+                || matches!(
+                    self.book,
+                    Some(super::books::BookScreen::Edit { signing: false, .. })
+                ))
     }
 
     /// Open the on-screen keyboard over the focused field: Sunrise's, or
@@ -2461,7 +2475,7 @@ impl Game<'_> {
 
     /// What a key of the on-screen keyboard does: the same as a typed key in
     /// the field that has focus.
-    fn pad_osk_output(&mut self, out: osk::Output) {
+    pub(super) fn pad_osk_output(&mut self, out: osk::Output) {
         use osk::Output;
         let (key, text) = match &out {
             Output::Text(t) => (None, Some(t.as_str())),
@@ -2491,7 +2505,21 @@ impl Game<'_> {
             }
         };
         let backspace = key == Some(KeyCode::Backspace);
-        if self.dialog_open() {
+        if self.mounted_widget_captures_input() {
+            // These are edits from the controller keyboard, not physical keys or chars.
+            let modifiers = super::glfw_modifiers(self.modifiers);
+            if let Some(text) = text {
+                let receiver = self.screen_state.widgets.generation();
+                for c in text.chars() {
+                    self.mounted_widget_char_typed(c, modifiers);
+                    if self.screen_state.widgets.generation() != receiver {
+                        break;
+                    }
+                }
+            } else if let Some(key) = key {
+                self.mounted_widget_key_pressed(key, false, modifiers);
+            }
+        } else if self.dialog_open() {
             // Over whatever else is open. Enter only ends the typing, but for a new line.
             let result = match text {
                 Some(t) => {
@@ -2796,12 +2824,15 @@ mod tests {
         let rect = [10.0, 20.0, 100.0, 20.0];
         let kind = Kind::Button;
         let focus = Some(Target { rect, kind });
-        assert_eq!(armed_click(Some(rect), focus), Some((60.0, 30.0)));
+        assert_eq!(
+            armed_click(focus, focus).as_ref().map(Target::center),
+            Some((60.0, 30.0))
+        );
         let refound = Some(Target {
             rect: [10.0, 20.000_002, 100.0, 20.0],
             kind,
         });
-        assert!(armed_click(Some(rect), refound).is_some());
+        assert!(armed_click(focus, refound).is_some());
         // A row scrolled into view at frame 10 is looked for again from frame 12.
         assert!(!reveal_pending(None, 10));
         assert!(reveal_pending(Some(10), 10) && reveal_pending(Some(10), 11));
@@ -2810,8 +2841,8 @@ mod tests {
             rect: [10.0, 44.0, 100.0, 20.0],
             kind,
         });
-        assert_eq!(armed_click(Some(rect), moved), None);
-        assert_eq!(armed_click(Some(rect), None), None);
+        assert_eq!(armed_click(focus, moved), None);
+        assert_eq!(armed_click(focus, None), None);
         assert_eq!(armed_click(None, focus), None);
     }
 

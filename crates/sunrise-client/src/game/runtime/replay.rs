@@ -674,7 +674,6 @@ impl Game<'_> {
         self.title = None;
         self.screen = Screen::Playing;
         self.capture(false);
-        self.dragging = false;
         // Apply timestamp-zero login, player pose, and chunk packets before the first rendered
         // frame so playback opens at the recorded player's viewpoint.
         let _ = self.advance_studio_replay();
