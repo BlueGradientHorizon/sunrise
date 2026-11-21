@@ -1,7 +1,7 @@
 #!/bin/sh
-# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (the
-# only build Sunrise ships; GitHub's latest release while there is none), downloaded from GitHub Releases and
-# checked against the release's signed SHA256SUMS when OpenSSL 3 is installed (docs/release-flow.md, "Signed
+# Installs sunrise-server (docs/server.md) on Linux or macOS: the current Sunrise Nightly for this computer (GitHub's
+# latest release while there is none), or the newest stable release (--version stable), downloaded from GitHub
+# Releases and checked against the release's signed SHA256SUMS when OpenSSL 3 is installed (docs/release-flow.md, "Signed
 # checksums"), else against the SHA-256 GitHub publishes for it. On Linux that is the server build (sunrise-server-linux-x86_64.tar.gz), which needs neither ALSA nor udev.
 #
 #   curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
     --dir) [ $# -ge 2 ] || die "--dir needs a folder"; DIR=$2; shift 2 ;;
     --bin) [ $# -ge 2 ] || die "--bin needs a folder"; BIN=$2; shift 2 ;;
     --archive) [ $# -ge 2 ] || die "--archive needs a file"; ARCHIVE=$2; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0" 2>/dev/null || true; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0" 2>/dev/null || true; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
 done
@@ -76,27 +76,45 @@ else
   else die "sha256sum or shasum is needed"; fi
 
   api() { curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/$1"; }
-  # The newest stable release, `<Minecraft version>-<semver>` (docs/release-flow.md, "Release branches"), from every
-  # page of the release list: a full release, never a pre-release. Its line is what `sunrise-server update` follows.
-  newest_stable() {
+  # Every release's tag, from every page of the release list (one field per line whatever GitHub's layout: a tag holds
+  # no comma or quote). A page that fails stops the install: a short list could
+  # pick an older stable release.
+  release_tags() {
     PAGE=1
-    while LIST=$(curl -fsSL -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/$REPO/releases?per_page=100&page=$PAGE") && printf '%s\n' "$LIST" | grep -q '^    "tag_name": '; do
-      printf '%s\n' "$LIST" | awk '
-        /^    "tag_name": / { tag = $0; sub(/^    "tag_name": "/, "", tag); sub(/".*/, "", tag) }
-        /^    "prerelease": false/ && tag ~ /^[0-9]+\.[0-9]+(\.[0-9]+)?-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ {
-          split(tag, halves, "-"); n = split(halves[1], game, "."); split(halves[2], version, ".")
-          printf "%09d.%09d.%09d.%09d.%09d.%09d %s\n", game[1], game[2], n == 3 ? game[3] + 1 : 0, version[1], version[2], version[3], tag
-        }'
+    while :; do
+      LIST=$(curl -fsSL -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/$REPO/releases?per_page=100&page=$PAGE") \
+        || die "could not list the releases on GitHub (page $PAGE)"
+      NAMES=$(printf '%s\n' "$LIST" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')
+      [ -n "$NAMES" ] || break
+      printf '%s\n' "$NAMES"
       PAGE=$((PAGE + 1))
-    done | sort | tail -n 1 | cut -d' ' -f2
+    done
+  }
+  # The stable tags among them (`<Minecraft version>-<semver>`, docs/release-flow.md "Release branches"), newest first,
+  # each number compared as a number, as release_train.stable_key and `sunrise-server update` order them.
+  stable_newest_first() {
+    printf '%s\n' "$1" | awk -F'[.-]' '
+      /^[0-9]+\.[0-9]+(\.[0-9]+)?-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ {
+        if (NF == 5) print $1, $2, -1, $3, $4, $5, $0; else print $1, $2, $3, $4, $5, $6, $0 }' \
+      | sort -k1,1nr -k2,2nr -k3,3nr -k4,4nr -k5,5nr -k6,6nr | cut -d' ' -f7
   }
   if [ "$VERSION" = latest ]; then
     JSON=$(api tags/nightly) || JSON=$(api latest) || die "no release on GitHub"
   elif [ "$VERSION" = stable ]; then
-    STABLE=$(newest_stable)
-    [ -n "$STABLE" ] || die "no stable release on GitHub yet: install the Nightly (--version latest)"
-    JSON=$(api "tags/$STABLE") || die "no release $STABLE on GitHub"
+    # The newest stable release that is published (not a pre-release or draft) under exactly its own tag. Its line is
+    # what `sunrise-server update` then follows.
+    TAGS=$(release_tags)
+    JSON=
+    for STABLE in $(stable_newest_first "$TAGS"); do
+      FOUND=$(api "tags/$STABLE") || die "could not read release $STABLE on GitHub"
+      [ "$(printf '%s\n' "$FOUND" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)" = "$STABLE" ] \
+        || die "GitHub's release $STABLE names another tag: not installed"
+      if printf '%s\n' "$FOUND" | grep -q '"prerelease": *false' && ! printf '%s\n' "$FOUND" | grep -q '"draft": *true'; then
+        JSON=$FOUND; break
+      fi
+    done
+    [ -n "$JSON" ] || die "no stable release on GitHub yet: install the Nightly (--version latest)"
   else
     JSON=$(api "tags/$VERSION") || die "no release $VERSION on GitHub"
   fi

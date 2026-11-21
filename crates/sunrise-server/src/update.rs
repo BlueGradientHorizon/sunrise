@@ -1,8 +1,9 @@
 //! Updates and rollbacks (docs/server.md, section 7) for a `sunrise-server` installed by install.sh or
 //! install.ps1: each release in `<dir>/releases/<tag>`, `<dir>/current` pointing at the one in use, and
-//! `<dir>/previous` naming the one before it. An update downloads the current Nightly from GitHub (the only build
-//! Sunrise ships since 2026-10-28; GitHub's latest release while there is none), checks it against the SHA-256 in
-//! its signed SHA256SUMS (docs/security.md), unpacks it beside the others as `nightly-<date>-<commit>` and switches
+//! `<dir>/previous` naming the one before it. An update downloads the newest build of the server's channel from
+//! GitHub ([`newest`]: on a stable release the newest stable release of its line, otherwise the current Nightly),
+//! checks it against the SHA-256 in its signed SHA256SUMS (docs/security.md), unpacks it beside the others under its
+//! tag (a Nightly as `nightly-<date>-<commit>`) and switches
 //! `current`; the supervisor then restarts the game on it and switches back by itself if the new game doesn't come
 //! up.
 
@@ -317,7 +318,12 @@ fn newest_on_line(
                 serde_json::from_slice(&found?).map_err(|e| format!("GitHub's answer: {e}"))?
             }
         };
-        if release["prerelease"] == true || release["draft"] == true {
+        // Verified below for the tag it names: it must be the tag selected, or another signed release could
+        // stand in for it and move the server off its line.
+        if release["tag_name"] != tag {
+            return Err(format!("GitHub's release {tag} names another tag"));
+        }
+        if release["prerelease"] != false || release["draft"] != false {
             continue;
         }
         return pick(&release, &fetch, keys);
@@ -767,7 +773,13 @@ pub fn command(dir: &Path, args: &[String]) -> Result<(), String> {
                 return Ok(());
             }
             if check {
-                if update_available(&release.tag, &current) {
+                if version.is_some() && release.tag != current {
+                    println!(
+                        "Sunrise {} is on GitHub; this server runs {current}. `sunrise-server update --version {}` \
+                         installs it.",
+                        release.tag, release.tag
+                    );
+                } else if update_available(&release.tag, &current) {
                     println!(
                         "Sunrise {} is out; this server runs {current}. `sunrise-server update` installs it.",
                         release.tag
@@ -1249,6 +1261,20 @@ mod tests {
         assert!(update_available(&picked.tag, "26.3-0.1.0"));
         // On the newest release already: it is what GitHub has, so no update.
         assert!(!update_available(&picked.tag, "26.3-0.2.0"));
+        // The release served for 26.3-0.2.0 names another, validly signed tag: refused, never installed.
+        let swapped = |url: &str| -> Result<Vec<u8>, String> {
+            let body = fetch(url)?;
+            Ok(if url == api("26.3-0.2.0") {
+                String::from_utf8(body)
+                    .unwrap()
+                    .replace("26.3-0.2.0", "26.4-1.0.0")
+                    .into_bytes()
+            } else {
+                body
+            })
+        };
+        let err = newest_on_line("26.3-0.1.0", swapped, &[key.public()]).unwrap_err();
+        assert!(err.contains("names another tag"), "{err}");
     }
 
     #[test]

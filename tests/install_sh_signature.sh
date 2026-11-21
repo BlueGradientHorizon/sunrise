@@ -40,7 +40,7 @@ json() {  # dir tag with-sums [title]: GitHub's release JSON, as install.sh read
   local d=$1 tag=$2 sums=$3 name=${4:-$2} sha
   sha=$(sha256sum "$d/files/sunrise-server-linux-x86_64.tar.gz" | cut -d' ' -f1)
   {
-    printf '{\n  "tag_name": "%s",\n  "name": "%s",\n  "assets": [\n' "$tag" "$name"
+    printf '{\n  "tag_name": "%s",\n  "name": "%s",\n  "draft": false,\n  "prerelease": false,\n  "assets": [\n' "$tag" "$name"
     printf '    {\n      "name": "sunrise-server-linux-x86_64.tar.gz",\n      "digest": "sha256:%s",\n      "browser_download_url": "https://dl.test/sunrise-server-linux-x86_64.tar.gz"\n    }' "$sha"
     if [ "$sums" = yes ]; then for f in SHA256SUMS SHA256SUMS.sig SHA256SUMS.v2.sig; do
       [ -f "$d/files/$f" ] || continue
@@ -60,6 +60,11 @@ cat > "$W/fake/curl" <<'CURL'
 out=; url=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) url=$1; shift ;; esac; done
 case "$url" in
+  # The release list, page by page (page-<n>.json); a page with no file fails as GitHub's error would.
+  *"/releases?per_page=100&page="*) src=$REL/page-${url##*page=}.json ;;
+  # One release by tag: tag-<tag>.json when the case has one, else release.json.
+  https://api.github.com/*/releases/tags/*)
+    src=$REL/tag-${url##*/tags/}.json; [ -f "$src" ] || src=$REL/release.json ;;
   https://api.github.com/*) src=$REL/release.json ;;
   *) src=$REL/files/$(basename "$url") ;;
 esac
@@ -163,5 +168,33 @@ done
 # 9. A release published before signing (no SHA256SUMS): says so, keeps the SHA-256 check.
 d=$W/legacy; make_release "$d" v1.2.3; with_key "$d"; json "$d" v1.2.3 no
 run "$d" "$P" --version v1.2.3; verdict "unsigned release: installs, says so" 0 "no signed checksums" "$d"
+
+# 10. --version stable: the newest stable release from every page, numbers compared as numbers (0.1.1000000000 is newer
+# than 0.1.999999999, which a padded-string sort gets wrong), whatever the JSON's layout; not an rc or a nightly.
+d=$W/stable; make_release "$d" 26.3-0.1.1000000000; with_key "$d"
+printf '[{"tag_name":"26.3-0.1.999999999","prerelease":false},{"tag_name":"nightly","prerelease":true}]\n' > "$d/page-1.json"
+printf '[\n  {\n    "tag_name": "26.3-0.1.1000000000"\n  },\n  {\n    "tag_name": "26.3-0.2.0-rc.1"\n  },\n  {\n    "tag_name": "26.3-01.0.0"\n  }\n]\n' > "$d/page-2.json"
+printf '[]\n' > "$d/page-3.json"
+run "$d" "$P" --version stable; verdict "--version stable: the newest stable release, from a later page" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
+
+# 10b. The newest stable tag is a pre-release when asked by tag: the next one installs.
+d=$W/stable-pre; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+printf '[{"tag_name":"26.3-0.3.0"}]\n' > "$d/page-3.json"; printf '[]\n' > "$d/page-4.json"
+sed -e 's/26.3-0.1.1000000000/26.3-0.3.0/' -e 's/"prerelease": false/"prerelease": true/' "$d/release.json" > "$d/tag-26.3-0.3.0.json"
+run "$d" "$P" --version stable; verdict "--version stable: a pre-release is passed over" 0 "Downloading Sunrise 26.3-0.1.1000000000 " "$d"
+
+# 10c. A later page that fails stops the install, rather than picking from a short list.
+d=$W/stable-short; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin" "$d/page-2.json"; with_key "$d"
+run "$d" "$P" --version stable; verdict "--version stable: a failed page stops the install" 1 "could not list the releases on GitHub (page 2)" "$d"
+[ ! -e "$d/inst/current" ] || { echo "FAIL installed from a short list"; fails=$((fails+1)); }
+
+# 10d. The release served for the chosen tag names another one: refused before any download.
+d=$W/stable-swap; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+sed 's/26.3-0.1.1000000000/26.4-1.0.0/' "$d/release.json" > "$d/tag-26.3-0.1.1000000000.json"
+run "$d" "$P" --version stable; verdict "--version stable: a release under another tag refused" 1 "names another tag" "$d"
+
+# 11. A Dev build is refused by name: servers don't install one.
+d=$W/dev; make_release "$d" dev-2026-11-21-0c02067; with_key "$d"
+run "$d" "$P" --version dev-2026-11-21-0c02067; verdict "a Dev build refused by name" 1 "is a Dev build" "$d"
 
 echo "$fails case(s) failed"; [ "$fails" = 0 ]
