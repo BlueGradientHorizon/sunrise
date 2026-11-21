@@ -7,6 +7,9 @@ pub trait Hooks {
     /// IDs are checked together at startup: invalid IDs, the `minecraft` namespace and
     /// duplicate IDs are refused before the component registry is frozen.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_component_types",
+        receiver = "associated",
+        dispatch = "flat",
         side = "both",
         contract = "collect",
         out = "types",
@@ -15,5 +18,5 @@ pub trait Hooks {
         neoforge = "RegisterEvent",
         version = 2
     )]
-    fn component_types();
+    fn component_types(types: &mut Vec<String>);
 }

@@ -9,11 +9,18 @@ pub trait Hooks {
     /// set it wins, so answer only for your blocks. The player's state is not
     /// swapped in.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "replace",
         out = "data",
         neoforge = "IPlayerExtension.openMenu",
         cancellable = false
     )]
-    fn menu_extra_data();
+    fn menu_extra_data(
+        player: u128,
+        menu: &str,
+        block: &str,
+        pos: [i32; 3],
+        data: &mut Option<Vec<u8>>,
+    );
 }

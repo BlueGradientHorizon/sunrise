@@ -8,6 +8,8 @@ pub trait Hooks {
     /// water's textures when it has none. Asked at startup and on resource reload before baking, and
     /// only on the client.
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "models",
@@ -16,5 +18,5 @@ pub trait Hooks {
         neoforge = "RegisterFluidModelsEvent",
         version = 2
     )]
-    fn register_fluid_models();
+    fn register_fluid_models(models: &mut Vec<mod_api::FluidModel>);
 }

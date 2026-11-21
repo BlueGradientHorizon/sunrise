@@ -39,5 +39,5 @@ pub trait Hooks {
         target = "sunrise_client_lib::crafting::native_hooks::native_ingredient",
         neoforge = "ICustomIngredient"
     )]
-    fn ingredient();
+    fn ingredient(kind: &str, data: &sunrise_core::nbt::Compound, items: &mut Vec<String>);
 }

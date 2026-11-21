@@ -18,6 +18,8 @@ pub trait Hooks {
     /// writes to engine-managed slots emit `contents_changed` at root commit. A provider
     /// writing its own storage can issue an explicit `set_changed` or seed the filter itself.
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "server",
         contract = "replace",
         out = "allowed",
@@ -25,5 +27,10 @@ pub trait Hooks {
         key = "entity",
         neoforge = "none (vanilla Container.canPlaceItem; the item capability wraps this decision)"
     )]
-    fn can_place_item();
+    fn can_place_item(
+        entity: &ModBlockEntity,
+        slot: usize,
+        stack: &mod_api::ItemStack,
+        allowed: &mut Option<bool>,
+    );
 }

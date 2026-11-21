@@ -8,6 +8,7 @@ pub trait Hooks {
     /// Draw from the level's live stream with
     /// `host.with_random(|rng| rng.next_int_bound(bound))`.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
@@ -15,5 +16,10 @@ pub trait Hooks {
         cancellable = true,
         target = "sunrise_client::game::native_hooks::block_grow_feature::GameLevel<'_>::native_block_grow_feature"
     )]
-    fn block_grow_feature();
+    fn block_grow_feature(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        feature: &mut Option<String>,
+        cancel: &mut bool,
+    );
 }

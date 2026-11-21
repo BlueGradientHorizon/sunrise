@@ -4,11 +4,19 @@
 pub trait Hooks {
     /// A player took an anvil's result at `pos` (`AnvilCraftEvent.Pre`), before the levels are charged, the inputs used up and the anvil worn. `craft` holds the inputs and the result as they were before. Set `cancel` to refuse the take: the result stays in its slot and the inputs, levels, inventory and cursor are as before the click.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_anvil_craft_pre",
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
         neoforge = "AnvilCraftEvent.Pre",
         cancellable = true
     )]
-    fn anvil_craft_pre();
+    fn anvil_craft_pre(
+        player: u128,
+        name: &str,
+        pos: [i32; 3],
+        craft: &mod_api::item::menu::AnvilCraft,
+        cancel: &mut bool,
+    );
 }

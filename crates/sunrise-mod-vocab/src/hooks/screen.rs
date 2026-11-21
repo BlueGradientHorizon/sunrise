@@ -16,6 +16,9 @@ pub trait Hooks {
     /// shift-click there. A recipe-book menu's registered screen opens only
     /// for its block's menu.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_screen",
+        receiver = "read",
+        dispatch = "flat",
         version = 2,
         side = "both",
         contract = "replace",
@@ -25,5 +28,5 @@ pub trait Hooks {
         host = "read",
         neoforge = "RegisterMenuScreensEvent.register (one screen per menu type, whatever opened the menu; Sunrise's is a layout value and three drawing and input hooks, not a Screen class)"
     )]
-    fn screen();
+    fn screen(menu: &str, block: Option<&str>, screen: &mut Option<mod_api::Screen>);
 }

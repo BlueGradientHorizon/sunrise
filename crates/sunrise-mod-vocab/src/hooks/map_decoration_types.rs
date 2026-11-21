@@ -26,6 +26,8 @@ server's map data names that a client did not register is not drawn. Map data a 
 sends to a client (`ClientboundMapItemData`) numbers vanilla's types only, so a mod type reaches a
 client through the item's component, not through that packet."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "both",
         contract = "collect",
         out = "types",
@@ -34,5 +36,5 @@ client through the item's component, not through that packet."#]
         neoforge = "RegisterEvent",
         version = 2
     )]
-    fn map_decoration_types();
+    fn map_decoration_types(types: &mut Vec<MapDecorationType>);
 }

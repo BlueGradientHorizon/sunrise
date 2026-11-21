@@ -20,11 +20,14 @@ pub trait Hooks {
     /// and `gui_layer_post` too, with its own id, in its place among
     /// these.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_gui_layer_pre",
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderGuiLayerEvent.Pre",
         cancellable = true
     )]
-    fn gui_layer_pre();
+    fn gui_layer_pre(layer: &str, draw: &mut dyn DrawContext, canceled: &mut bool);
 }

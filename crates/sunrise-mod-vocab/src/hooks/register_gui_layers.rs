@@ -31,11 +31,13 @@ next layer that is. As for vanilla's layers, F1 and a canceled `Hooks::render_gu
 every mod layer; a mod that
 draws under F1 uses `Hooks::gui_render_post`."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "layers",
         context = "registration",
         neoforge = "RegisterGuiLayersEvent"
     )]
-    fn register_gui_layers();
+    fn register_gui_layers(layers: &mut Vec<GuiLayer>);
 }

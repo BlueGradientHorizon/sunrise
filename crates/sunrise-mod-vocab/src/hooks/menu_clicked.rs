@@ -17,10 +17,12 @@ pub trait Hooks {
     /// returns, and is undone, with the rest of the action, when a listener fails (panics or
     /// traps). A click drained after its player left is still told, outside an action.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_clicked",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "none (vanilla AbstractContainerMenu.clicked; NeoForge adds no event or extension for it)",
         version = 2
     )]
-    fn menu_clicked();
+    fn menu_clicked(uuid: u128, window: i32, slot: i32, button: i32, mode: i32);
 }

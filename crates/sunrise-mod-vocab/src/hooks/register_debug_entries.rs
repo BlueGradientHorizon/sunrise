@@ -27,11 +27,13 @@ An entry in `DebugGroup::Renderer` is vanilla's `DebugEntryNoop`: it has no line
 in the renderer section instead. It is the switch of the `DebugRenderer` with its id, see
 [debug renderers](#debug-renderers)."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "entries",
         context = "registration",
         neoforge = "RegisterDebugEntriesEvent"
     )]
-    fn register_debug_entries();
+    fn register_debug_entries(entries: &mut Vec<DebugEntry>);
 }

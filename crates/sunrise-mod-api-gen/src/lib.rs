@@ -1,15 +1,13 @@
-//! Generate the typed mod interface from native hook signatures and catalog contracts.
+//! Generate the typed mod interface from catalog contracts and signatures.
 mod catalog;
 mod dispatch_fixtures;
 mod exports;
 mod game_modules;
 #[doc(hidden)]
 pub use dispatch_fixtures::layout as dispatch_fixture_layout;
-pub use game_modules::materialize_game_modules;
-mod hook_targets;
+pub use game_modules::materialize_generated_host;
 mod host;
 mod layout;
-mod named_hooks;
 mod parts;
 pub use catalog::DECLARATIONS;
 use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseContext, Side};
@@ -126,20 +124,6 @@ fn has_call(block: &syn::Block, expected: &str) -> bool {
     calls.found
 }
 
-fn one_function<'a>(
-    items: impl Iterator<Item = &'a syn::ItemFn>,
-    name: &str,
-) -> Result<&'a syn::ItemFn, String> {
-    let mut matches = items.filter(|item| item.sig.ident == name);
-    let first = matches
-        .next()
-        .ok_or_else(|| format!("expected one {name} signature"))?;
-    if matches.next().is_some() {
-        return Err(format!("expected one {name} signature"));
-    }
-    Ok(first)
-}
-
 fn fresh_name(base: &str, used: &mut HashSet<String>) -> String {
     let mut name = base.to_owned();
     while !used.insert(name.clone()) {
@@ -221,19 +205,25 @@ impl VisitMut for EventLifetimes {
 }
 
 impl DrawContext {
-    /// The context whose surface `ty` borrows, and whether it borrows it mutably.
-    fn of<'a>(contexts: &'a [DrawContext], ty: &Type) -> Option<(&'a DrawContext, bool)> {
+    /// A declared borrowed draw trait whose backing game surface is known to the catalog.
+    fn of<'a>(contexts: &'a [DrawContext], ty: &Type) -> Option<&'a DrawContext> {
         let Type::Reference(reference) = ty else {
             return None;
         };
-        let Type::Path(path) = &*reference.elem else {
+        reference.mutability?;
+        let Type::TraitObject(object) = &*reference.elem else {
             return None;
         };
-        let ident = path.path.segments.last()?.ident.to_string();
+        let mut bounds = object.bounds.iter();
+        let Some(syn::TypeParamBound::Trait(bound)) = bounds.next() else {
+            return None;
+        };
+        if bounds.next().is_some() {
+            return None;
+        }
         contexts
             .iter()
-            .find(|context| context.surface.rsplit("::").next() == Some(ident.as_str()))
-            .map(|context| (context, reference.mutability.is_some()))
+            .find(|context| bound.path.is_ident(context.trait_name.as_str()))
     }
     /// The game struct implementing the trait.
     fn game_struct(&self) -> String {
@@ -451,11 +441,52 @@ pub enum Target {
     Client,
 }
 
-/// Fill new hooks' placeholders in `game/native_hooks/`. Never writes generated files.
-/// Named hooks in other logical game modules must already call their own dispatch;
-/// this command validates them but never fills or rewrites their bodies.
+/// Fill new hooks' placeholders in `game/native_hooks/`. This explicit authoring command
+/// reads game bodies; build scripts and API generation never do.
 pub fn fill_hooks(root: &Path) -> Result<(), String> {
-    sources(root, FillMode::Fill).map(|_| ())
+    let fills: BTreeMap<_, _> = game_hook_sources(root)?
+        .fills
+        .into_iter()
+        .map(|fill| (fill.native.clone(), fill))
+        .collect();
+    let mut outputs = Vec::new();
+    for path in sunrise_game_discovery::native_hook_files(root)? {
+        let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let file = syn::parse_file(&source).map_err(|e| e.to_string())?;
+        let mut local = Vec::new();
+        for item in file.items {
+            if let Item::Impl(item) = item {
+                for method in impl_functions(item) {
+                    let name = method.sig.ident.to_string();
+                    if let Some(hook) = name.strip_prefix("native_")
+                        && let Some(fill) = fills.get(&name)
+                        && needs_fill(&method, &format!("dispatch_{hook}"), true)?
+                    {
+                        local.push(fill.clone());
+                    }
+                }
+            }
+        }
+        if !local.is_empty() {
+            outputs.push((path, filled_hooks(&source, &local)?));
+        }
+    }
+    for (path, output) in outputs {
+        fs::write(&path, output).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn game_hook_sources(root: &Path) -> Result<dispatch::HookSources, String> {
+    let catalog = Catalog::load(root)?;
+    dispatch::emit(
+        catalog
+            .hooks
+            .iter()
+            .filter(|hook| !dispatch::is_render(hook)),
+        &catalog.draw_contexts,
+        true,
+    )
 }
 
 #[derive(Debug)]
@@ -464,36 +495,15 @@ struct Sources {
     host: String,
     /// The area modules `host.rs` includes.
     areas: String,
-    fire: String,
-    goal_view: String,
 }
 
-/// Parse and validate the catalog and hook/helper signatures.
-fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
-    #[allow(unused_mut)]
+/// Generate the vocabulary from declarations without consulting their engine implementations.
+fn sources(root: &Path) -> Result<Sources, String> {
     let catalog = Catalog::load(root)?;
-    let mut files = Vec::new();
-    let mut methods = Vec::new();
-    for path in sunrise_game_discovery::native_hook_files(root)? {
-        let source = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let file = syn::parse_file(&source).map_err(|e| e.to_string())?;
-        let mut names = HashSet::new();
-        for item in file.items {
-            if let Item::Impl(item) = item {
-                for method in impl_functions(item) {
-                    names.insert(method.sig.ident.to_string());
-                    methods.push(method);
-                }
-            }
-        }
-        files.push((path, source, names));
-    }
     let dispatch::HookSources {
         traits,
         dispatch,
         part_traits,
-        fills,
-        fire,
         hook_ids,
         hook_constants,
         cancel_hooks,
@@ -501,13 +511,12 @@ fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
         hook_count,
         ..
     } = dispatch::emit(
-        root,
         catalog
             .hooks
             .iter()
             .filter(|hook| !dispatch::is_render(hook)),
-        &methods,
         &catalog.draw_contexts,
+        false,
     )?;
     if catalog.hooks.is_empty() {
         return Err(catalog::CatalogError::NoHooks.into());
@@ -524,52 +533,16 @@ fn sources(root: &Path, fill: FillMode) -> Result<Sources, String> {
         part("EntityPart"),
     );
     let code = complete_hook_constants(code, "Hooks", "hook_ids", "HookId")?;
-    let (host, goal_view) = host::generate(root)?;
+    let host = host::generate(root)?;
     let areas = host::areas_source(root)?;
-    // A new hook's placeholder body becomes its dispatch call.
-    if !fills.is_empty() && matches!(fill, FillMode::Require) {
-        let natives = fills
-            .iter()
-            .map(|fill| fill.native.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(format!(
-            "{natives}: the let _ = (…); placeholder needs its dispatch call; run cargo run -p xtask -- mod-api"
-        ));
-    }
-    for code in [&code, &host, &areas, &goal_view] {
+    for code in [&code, &host, &areas] {
         syn::parse_file(code).map_err(|e| format!("generated Rust: {e}"))?;
-    }
-    if matches!(fill, FillMode::Fill) {
-        let mut outputs = Vec::new();
-        for (path, source, names) in &files {
-            let local = fills
-                .iter()
-                .filter(|fill| names.contains(&fill.native))
-                .cloned()
-                .collect::<Vec<_>>();
-            if !local.is_empty() {
-                outputs.push((path, filled_hooks(source, &local)?));
-            }
-        }
-        for (path, output) in outputs {
-            fs::write(path, output).map_err(|e| format!("{}: {e}", path.display()))?;
-        }
     }
     Ok(Sources {
         hooks: code,
         host,
         areas,
-        fire,
-        goal_view,
     })
-}
-
-#[derive(Clone, Copy)]
-enum FillMode {
-    Fill,
-    Require,
-    Ignore,
 }
 
 mod build;
@@ -636,9 +609,9 @@ pub use notes::generate as generate_hook_notes;
 /// Generate the dispatch test fixture without preventing xtask from filling new placeholders.
 #[doc(hidden)]
 pub fn generate_test_hooks(root: &Path, out_dir: &Path) -> Result<(), String> {
-    build::track(root, true)?;
+    build::track(root)?;
     dispatch_fixtures::generate(root, out_dir)?;
-    let code = sources(root, FillMode::Ignore)?.hooks;
+    let code = sources(root)?.hooks;
     fs::write(out_dir.join("mod_api_generated.rs"), code).map_err(|e| e.to_string())
 }
 
@@ -683,9 +656,7 @@ mod tests {
             .find(|h| h.name == "recipes_received")
             .unwrap();
         assert_eq!(hook.contract, super::Contract::Listen);
-        let generated = super::sources(&root, super::FillMode::Require)
-            .unwrap()
-            .hooks;
+        let generated = super::sources(&root).unwrap().hooks;
         assert!(generated.contains("fn recipes_received("));
         assert!(generated.contains("/// Side: client."));
     }
@@ -941,8 +912,7 @@ mod tests {
     }
 
     /// `item_picked_up` taken back to how a new hook arrives (its body the
-    /// placeholder) in a copy of the sources: the check reports it, any other
-    /// body is left alone, a hook without its attribute fails by name, and the
+    /// placeholder) in a copy of the sources: any other body is left alone, a hook without its attribute fails by name, and the
     /// generator brings back the shipped file byte for byte with the generated
     /// code unchanged.
     #[test]
@@ -995,15 +965,13 @@ mod tests {
                 .find(|path| {
                     std::fs::read_to_string(path)
                         .unwrap()
-                        .contains(&format!("fn {name}();"))
+                        .contains(&format!("fn {name}("))
                 })
                 .unwrap()
         };
         let first = declaring(&catalog.hooks[0].name);
         let original = std::fs::read_to_string(&first).unwrap();
-        let without_counterparts = super::sources(&root, super::FillMode::Require)
-            .unwrap()
-            .hooks;
+        let without_counterparts = super::sources(&root).unwrap().hooks;
         std::fs::write(
             &first,
             original.replacen(
@@ -1013,12 +981,7 @@ mod tests {
             ),
         )
         .unwrap();
-        assert_eq!(
-            super::sources(&root, super::FillMode::Require)
-                .unwrap()
-                .hooks,
-            without_counterparts
-        );
+        assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
         std::fs::write(&first, original).unwrap();
         let hooks = root.join("crates/sunrise-client/src/game/native_hooks/item_picked_up.rs");
         let shipped = std::fs::read_to_string(&hooks).unwrap();
@@ -1034,15 +997,12 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&hooks).unwrap(), unfinished);
         let placeholder = shipped.replace(call, "let _ = (player, item, can_pickup);");
         std::fs::write(&hooks, &placeholder).unwrap();
-        assert_eq!(
-            super::sources(&root, super::FillMode::Require).unwrap_err(),
-            "native_item_picked_up: the let _ = (…); placeholder needs its dispatch call; run cargo run -p xtask -- mod-api"
-        );
+        assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
         assert_eq!(std::fs::read_to_string(&hooks).unwrap(), placeholder);
         // A hook without its attribute fails by name.
         let declared = declaring("item_picked_up");
         let shipped_declarations = std::fs::read_to_string(&declared).unwrap();
-        let declaration = shipped_declarations.find("fn item_picked_up();").unwrap();
+        let declaration = shipped_declarations.find("fn item_picked_up(").unwrap();
         let attribute = shipped_declarations[..declaration]
             .rfind("#[hook(")
             .unwrap();
@@ -1081,12 +1041,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(decoy).unwrap(), decoy_source);
         assert_eq!(lf(&std::fs::read_to_string(&hooks).unwrap()), lf(&shipped));
         assert_eq!(
-            super::sources(&root, super::FillMode::Require)
-                .unwrap()
-                .hooks,
-            super::sources(&real, super::FillMode::Require)
-                .unwrap()
-                .hooks,
+            super::sources(&root).unwrap().hooks,
+            super::sources(&real).unwrap().hooks,
         );
         std::fs::remove_dir_all(root).unwrap();
     }

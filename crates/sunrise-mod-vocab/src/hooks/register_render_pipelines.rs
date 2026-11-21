@@ -69,6 +69,8 @@ stage they draw after that stage's plain quads and lines, in the order submitted
 pack they follow the plain quads: a stage the pack draws itself is drawn with the next stage the
 game reaches."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "pipelines",
@@ -78,5 +80,5 @@ game reaches."#]
         neoforge = "RegisterRenderPipelinesEvent",
         version = 2
     )]
-    fn register_render_pipelines();
+    fn register_render_pipelines(pipelines: &mut Vec<mod_api::RenderPipeline>);
 }

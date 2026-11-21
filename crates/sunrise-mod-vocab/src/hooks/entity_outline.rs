@@ -12,9 +12,11 @@ pub trait Hooks {
     /// player (yourself in third person), dropped item and projectile drawn.
     /// API @API:entity_outline@.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "none (NeoForge 26.3 has no glowing or team colour override)"
     )]
-    fn entity_outline();
+    fn entity_outline(entity_id: u32, kind: &str, outline: &mut Option<u32>);
 }

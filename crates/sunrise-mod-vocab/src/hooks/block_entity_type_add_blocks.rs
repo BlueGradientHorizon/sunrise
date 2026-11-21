@@ -28,6 +28,8 @@ classes fail startup, duplicate additions are idempotent, and a resource reload 
 change the frozen validity sets or wire IDs. No listener means no added memberships.
 "#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "both",
         context = "registration",
         contract = "collect",
@@ -36,5 +38,8 @@ change the frozen validity sets or wire IDs. No listener means no added membersh
         neoforge = "BlockEntityTypeAddBlocksEvent",
         version = 2
     )]
-    fn block_entity_type_add_blocks();
+    fn block_entity_type_add_blocks(
+        types: &[mod_api::BlockEntityTypeKey],
+        additions: &mut Vec<(mod_api::BlockEntityTypeKey, mod_api::BlockKey)>,
+    );
 }

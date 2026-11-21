@@ -30,10 +30,12 @@ pub trait Hooks {
     /// Block and use drops retain their tool meaning.
     /// Server-side, for every player.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_loot_drops",
+        dispatch = "flat",
         side = "server",
         contract = "collect",
         out = "drops",
         neoforge = "LivingDropsEvent, BlockDropsEvent"
     )]
-    fn loot_drops();
+    fn loot_drops(context: &LootDrops<'_>, drops: &mut Vec<ItemStack>);
 }

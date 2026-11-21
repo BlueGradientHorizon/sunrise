@@ -12,6 +12,8 @@ pub trait Hooks {
     /// The Host is read-only. No frame deduplication: layers that actually animate
     /// again get another invocation; copying parent poses does not dispatch.
     #[hook(
+        receiver = "read",
+        dispatch = "api_carrier",
         side = "client",
         contract = "listen",
         version = 2,

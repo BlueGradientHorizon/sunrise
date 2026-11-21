@@ -80,10 +80,12 @@ is logged once with its type and asked no more until resources reload. Its speci
 missing model until then. A part naming a model no pack has makes that
 answer draw the missing model, logged once for the model."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         context = "registration",
         neoforge = "RegisterSpecialModelRendererEvent"
     )]
-    fn register_special_model_renderer();
+    fn register_special_model_renderer(renderers: &mut dyn SpecialModelRenderers);
 }

@@ -38,6 +38,8 @@ fn register_entity_spectator_shaders(
 }
 ```"#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "shaders",
@@ -46,5 +48,5 @@ fn register_entity_spectator_shaders(
         neoforge = "RegisterEntitySpectatorShadersEvent",
         version = 2
     )]
-    fn register_entity_spectator_shaders();
+    fn register_entity_spectator_shaders(shaders: &mut Vec<mod_api::EntitySpectatorShader>);
 }

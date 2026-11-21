@@ -22,9 +22,11 @@ pub trait Hooks {
     /// player who leaves before the move ends, and a move that ends where it
     /// started (a respawn in the dimension of the death).
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_changed_dimension",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "PlayerEvent.PlayerChangedDimensionEvent"
     )]
-    fn player_changed_dimension();
+    fn player_changed_dimension(player: u128, name: &str, from: &str, to: &str);
 }

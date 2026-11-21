@@ -46,6 +46,8 @@ engine-owned definitions. A spawn, a tick and a draw use the resolved group hand
 up by group name and scan no mod. Live provider-driven particles are dropped when resources reload, in
 a group as in the built-in one."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "groups",
@@ -55,5 +57,5 @@ a group as in the built-in one."#]
         neoforge = "RegisterParticleGroupsEvent",
         version = 2
     )]
-    fn register_particle_groups();
+    fn register_particle_groups(groups: &mut Vec<Answered<ParticleGroupRegistration>>);
 }

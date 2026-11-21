@@ -12,10 +12,11 @@ pub trait Hooks {
     /// `set_mapping_down` and `click_mapping`, which are no physical input. No NeoForge counterpart.
     /// Client-side.
     #[hook(
+        dispatch = "flat",
         side = "client",
         contract = "cancel",
         out = "canceled",
         neoforge = "InputEvent.InteractionKeyMappingTriggered, InputEvent.Key"
     )]
-    fn key_mapping_pre();
+    fn key_mapping_pre(mapping: &str, pressed: bool, canceled: &mut bool);
 }

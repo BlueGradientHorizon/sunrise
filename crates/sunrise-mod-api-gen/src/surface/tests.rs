@@ -1042,7 +1042,7 @@ fn a_hidden_type_named_only_by_an_impl_gets_its_record() {
 fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
     const PINNED: &str = "2a820c6483512899fd944f85a2669524";
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let generated = crate::sources(&root, crate::FillMode::Require).unwrap();
+    let generated = crate::sources(&root).unwrap();
     let providers = crate::capability_providers::generate(&root, &[]).unwrap().0;
     let included = [
         ("mod_api_generated.rs", generated.hooks.as_str()),

@@ -9,10 +9,16 @@ pub trait Hooks {
     /// There is no task timeout: answering keep-alives can hold configuration
     /// indefinitely. A silent or disconnected connection still ends normally.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         version = 2,
         neoforge = "RegisterConfigurationTasksEvent"
     )]
-    fn register_configuration_tasks();
+    fn register_configuration_tasks(
+        connection: mod_api::ConfigurationConnection,
+        player: u128,
+        name: &str,
+        registration: &mut mod_api::__private::ConfigurationTaskRegistration,
+    );
 }

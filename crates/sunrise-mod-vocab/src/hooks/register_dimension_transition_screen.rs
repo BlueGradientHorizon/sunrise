@@ -46,11 +46,13 @@ fn dimension_transition_screen_draw(
 }
 ```"#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "screens",
         context = "registration",
         neoforge = "RegisterDimensionTransitionScreenEvent"
     )]
-    fn register_dimension_transition_screen();
+    fn register_dimension_transition_screen(screens: &mut Vec<mod_api::DimensionTransitionScreen>);
 }
