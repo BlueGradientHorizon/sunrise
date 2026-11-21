@@ -82,6 +82,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn custom_enchantment_changes_real_hit_damage_and_observes_hit_context() {
+        // Startup publishes damage-effect slots and callbacks process-wide.
+        if crate::game::native_entity_refs::tests::run_fresh_cases(
+            "game::native_hooks::register_enchantment_damage_effects::tests::custom_enchantment_changes_real_hit_damage_and_observes_hit_context",
+            "SUNRISE_ENCHANTMENT_DAMAGE_CHILD",
+            &["combat"],
+        ) {
+            return;
+        }
         let reads: Observations = Default::default();
         with_mods(
             vec![ModEntry::new(
