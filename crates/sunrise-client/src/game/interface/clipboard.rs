@@ -133,6 +133,12 @@ impl Game<'_> {
     /// Typing or a backspace in a title-screen field. A field that still only
     /// appends replaces a Select All selection before the edit.
     pub(super) fn title_edit(&mut self, typed: Option<&str>, backspace: bool) {
+        if !backspace
+            && let Some(text) = typed
+            && self.preset_editor_type_text(text)
+        {
+            return;
+        }
         let Some(title) = self.title.as_mut() else {
             return;
         };

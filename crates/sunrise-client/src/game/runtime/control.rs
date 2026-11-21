@@ -301,13 +301,17 @@ impl Game<'_> {
             self.sign_input(None, Some(text));
             return Ok(());
         }
-        // The title's screens: the world name, the seed, a server's address.
-        // A screen opened over the title (Options, say) keeps its own text.
-        if title_owns_text(&self.screen, self.title.is_some())
-            && let Some(title) = &mut self.title
-        {
-            title.type_text(text);
-            return Ok(());
+        // The title's screens: the world name, the seed, a server's address,
+        // or an open bound preset editor. A screen opened over the title
+        // (Options, say) keeps its own text.
+        if title_owns_text(&self.screen, self.title.is_some()) {
+            if self.preset_editor_type_text(text) {
+                return Ok(());
+            }
+            if let Some(title) = &mut self.title {
+                title.type_text(text);
+                return Ok(());
+            }
         }
         match self.screen {
             Screen::Chat => self.chat_type(text),

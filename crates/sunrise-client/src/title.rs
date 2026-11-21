@@ -364,8 +364,7 @@ pub enum Mode {
     /// A registered preset editor over an unchanged copy of Create World.
     CreatePreset {
         parent: Box<Mode>,
-        editor: mod_api::PresetEditor,
-        dimensions: RefCell<sunrise_core::nbt::Tag>,
+        session: preset_editors::PresetEditorSession,
     },
     /// AccessibilityOnboardingScreen: the first screen of a first launch.
     Onboarding(Onboarding),
@@ -2383,15 +2382,21 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         }
         if hit == Some(26)
             && self.preset_data.is_some()
-            && let Mode::Create { options, .. } = &self.mode
-            && let Some(editor) = preset_editors::editor(options.preset_id())
-            && let Some(dimensions) = options.editor_dimensions()
+            && let Mode::Create { seed, options, .. } = &self.mode
+            && preset_editors::has_editor(options.preset_id())
         {
-            self.set_mode(Mode::CreatePreset {
-                parent: Box::new(self.mode.clone()),
-                editor,
-                dimensions: RefCell::new(dimensions),
-            });
+            if let Some(sunrise_core::nbt::Tag::Compound(dimensions)) = options.editor_dimensions()
+            {
+                match preset_editors::open_session(options.preset_id(), dimensions, seed) {
+                    Ok(Some(session)) => {
+                        self.set_mode(Mode::CreatePreset {
+                            parent: Box::new(self.mode.clone()),
+                            session,
+                        });
+                    }
+                    Ok(None) | Err(_) => {}
+                }
+            }
             return Action::None;
         }
         match (&mut self.mode, hit) {
@@ -2765,7 +2770,9 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                     options,
                 },
                 Some(26),
-            ) if options.world_type == crate::save::WorldPreset::SingleBiomeSurface => {
+            ) if options.custom_preset.is_none()
+                && options.world_type == crate::save::WorldPreset::SingleBiomeSurface =>
+            {
                 let buffet = buffet::State::new(&self.resources, &options.single_biome);
                 let mode = Mode::CreateBuffet {
                     name: name.clone(),
@@ -2788,7 +2795,9 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                     options,
                 },
                 Some(26),
-            ) => {
+            ) if options.custom_preset.is_none()
+                && options.world_type == crate::save::WorldPreset::Flat =>
+            {
                 let flat = flat::State::new(&self.resources, options.flat_settings.clone());
                 let mode = Mode::CreateFlat {
                     name: name.clone(),

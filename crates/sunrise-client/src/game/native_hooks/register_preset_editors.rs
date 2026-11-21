@@ -1,25 +1,22 @@
 use super::*;
 
 impl Game<'_> {
-    /// Collect world-preset editor registrations once at client startup.
+    /// Collect attributed world-preset editor factories once at client startup
+    /// (NeoForge's `RegisterPresetEditorsEvent`).
     pub(in crate::game) fn native_register_preset_editors(
         context: &mod_api::RegistrationContext,
-        editors: &mut Vec<mod_api::PresetEditor>,
+        editors: &mut Vec<Answered<PresetEditorFactoryRegistration>>,
     ) {
         Self::fire_register_preset_editors(context, editors);
     }
 
-    fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
+    pub(super) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
         if self.screen != Screen::Playing || self.screen_over_playing() || self.remote_loading() {
             return None;
         }
         self.title
             .as_ref()
-            .filter(|title| title.preset_editor().is_some())
-    }
-
-    pub(in crate::game) fn preset_editor(&self) -> Option<mod_api::PresetEditor> {
-        self.preset_editor_title()?.preset_editor().cloned()
+            .filter(|title| title.preset_editor_session().is_some())
     }
 
     pub(in crate::game) fn preset_editor_dimensions(&self) -> Option<mod_api::Compound> {
@@ -45,12 +42,76 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use mod_api::{
-        Hooks, ModEntry, RegisterPresetEditorsEvent, ScreenKeyPressedPreEvent,
-        ScreenRenderPostEvent,
+        DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
+        RegisterPresetEditorsEvent, ScreenKeyPressedPreEvent, ScreenRenderPostEvent,
+    };
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
     };
     use sunrise_client::title::{Mode, WorldOptions};
 
-    struct EditorMod;
+    struct IslandsEditor {
+        clicks: Arc<AtomicUsize>,
+        typed: Arc<Mutex<String>>,
+    }
+
+    impl PresetEditor for IslandsEditor {
+        fn title(&self) -> Option<String> {
+            Some("Islands Editor".into())
+        }
+
+        fn render(
+            &mut self,
+            draw: &mut dyn DrawContext,
+            rect: [f32; 4],
+            _draft: &mut PresetEditorDraft<'_>,
+        ) {
+            draw.fill([rect[0] + 10.0, rect[1] + 24.0, 40.0, 16.0], 0xFF336699);
+        }
+
+        fn mouse_clicked(
+            &mut self,
+            _x: f32,
+            _y: f32,
+            button: u8,
+            draft: &mut PresetEditorDraft<'_>,
+        ) -> bool {
+            if button != 0 {
+                return false;
+            }
+            self.clicks.fetch_add(1, Ordering::Relaxed);
+            let mut dimensions = draft.dimensions().clone();
+            if let Some(sunrise_core::nbt::Tag::Compound(overworld)) =
+                dimensions.get_mut(&"minecraft:overworld".into())
+            {
+                overworld.insert(
+                    "type".into(),
+                    sunrise_core::nbt::Tag::String("minecraft:the_nether".into()),
+                );
+            }
+            assert!(draft.set_dimensions(dimensions));
+            true
+        }
+
+        fn char_typed(
+            &mut self,
+            ch: char,
+            _modifiers: u32,
+            _draft: &mut PresetEditorDraft<'_>,
+        ) -> bool {
+            self.typed
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(ch);
+            true
+        }
+    }
+
+    struct EditorMod {
+        clicks: Arc<AtomicUsize>,
+        typed: Arc<Mutex<String>>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for EditorMod {
         fn register_preset_editors(
@@ -58,9 +119,15 @@ mod tests {
             _: &mod_api::RegistrationContext,
             event: &mut RegisterPresetEditorsEvent<'_>,
         ) {
-            event.editors.push(mod_api::PresetEditor {
-                preset: "example:islands".into(),
-                screen: "example:editor".into(),
+            let clicks = Arc::clone(&self.clicks);
+            let typed = Arc::clone(&self.typed);
+            event.register(Identifier::parse("example:islands").unwrap(), move |ctx| {
+                assert_eq!(ctx.preset(), &Identifier::parse("example:islands").unwrap());
+                assert_eq!(ctx.seed(), "1");
+                Ok(Box::new(IslandsEditor {
+                    clicks: Arc::clone(&clicks),
+                    typed: Arc::clone(&typed),
+                }))
             });
         }
         fn screen_render_post(
@@ -68,9 +135,7 @@ mod tests {
             host: &dyn mod_api::ClientHost,
             event: &mut ScreenRenderPostEvent<'_>,
         ) {
-            if host
-                .preset_editor()
-                .is_some_and(|editor| editor.screen == "example:editor")
+            if event.screen.id == "world_preset_editor" && host.preset_editor_dimensions().is_some()
             {
                 event.draw.fill([20.0, 20.0, 50.0, 20.0], 0xFF00FF00);
             }
@@ -80,7 +145,7 @@ mod tests {
             host: &dyn mod_api::ClientHost,
             event: &mut ScreenKeyPressedPreEvent<'_>,
         ) -> mod_api::Flow {
-            if event.key != "key.keyboard.space" || host.preset_editor().is_none() {
+            if event.key != "key.keyboard.space" || event.screen.id != "world_preset_editor" {
                 return mod_api::Flow::Continue;
             }
             let mut dimensions = host.preset_editor_dimensions().unwrap();
@@ -101,8 +166,17 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn preset_editor_test_mod_draws_and_edits_through_real_client_hooks() {
+        let clicks = Arc::new(AtomicUsize::new(0));
+        let typed = Arc::new(Mutex::new(String::new()));
         mod_platform::testing::with_mods(
-            vec![ModEntry::new("example", Box::new(EditorMod))].into(),
+            vec![ModEntry::new(
+                "example",
+                Box::new(EditorMod {
+                    clicks: Arc::clone(&clicks),
+                    typed: Arc::clone(&typed),
+                }),
+            )]
+            .into(),
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
                     use mod_api::__private::game::RegistrationContextNew;
@@ -147,6 +221,10 @@ mod tests {
                     title.focused_button = Some(26);
                     title.confirm_key_size((320.0, 240.0));
                     assert_eq!(title.mode.id(), "world_preset_editor");
+                    assert_eq!(
+                        title.preset_editor_session().unwrap().title(),
+                        Some("Islands Editor")
+                    );
                     game.title = Some(title);
                     game.screen = Screen::Playing;
                     let mut batch = HudBatch::new([640, 480], game.settings.gui_scale_inputs());
@@ -158,19 +236,42 @@ mod tests {
                         &mut |phase, batch| game.draw_screen_phase(batch, phase),
                     );
                     let stock_vertices = batch.vertices.len();
+                    game.draw_preset_editor(&mut batch);
+                    let after_editor_vertices = batch.vertices.len();
+                    assert!(after_editor_vertices > stock_vertices);
                     let view = game.title_screen_render_view(&batch).unwrap();
                     assert_eq!(view.id, "world_preset_editor");
                     game.native_screen_render_post(&mut batch, &view);
-                    assert!(batch.vertices.len() > stock_vertices);
-                    let mut cancelled = false;
+                    assert!(batch.vertices.len() > after_editor_vertices);
+                    assert!(game.preset_editor_mouse_clicked(MouseButton::Left));
+                    assert!(game.preset_editor_type_text("a"));
+                    assert_eq!(clicks.load(Ordering::Relaxed), 1);
+                    assert_eq!(
+                        typed
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .as_str(),
+                        "a"
+                    );
+                    let after_click = game.preset_editor_dimensions().unwrap();
+                    assert_eq!(
+                        after_click
+                            .get(&"minecraft:overworld".into())
+                            .unwrap()
+                            .get("type"),
+                        Some(&sunrise_core::nbt::Tag::String(
+                            "minecraft:the_nether".into()
+                        ))
+                    );
+                    let mut canceled = false;
                     game.native_screen_key_pressed_pre(
                         &view,
                         "key.keyboard.space",
                         false,
                         0,
-                        &mut cancelled,
+                        &mut canceled,
                     );
-                    assert!(cancelled);
+                    assert!(canceled);
                     let dimensions = game.preset_editor_dimensions().unwrap();
                     assert_eq!(
                         dimensions
@@ -182,9 +283,9 @@ mod tests {
                         ))
                     );
                     game.screen = Screen::Options;
-                    assert!(game.preset_editor().is_none());
                     assert!(game.preset_editor_dimensions().is_none());
                     assert!(!game.set_preset_editor_dimensions(dimensions));
+                    sunrise_client::title::preset_editors::register(Vec::new());
                 });
             },
         );

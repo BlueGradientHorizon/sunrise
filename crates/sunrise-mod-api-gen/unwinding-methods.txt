@@ -1101,7 +1101,6 @@ screens::mod_screen_close
 screens::mod_screen_open
 screens::observed_screen_id
 screens::open_inventory
-screens::preset_editor
 screens::preset_editor_dimensions
 screens::screen_exclusion
 screens::screen_hovered_item

@@ -685,8 +685,8 @@ impl Game<'_> {
                 "biome": buffet.biome(),
                 "query": buffet.query(),
             }),
-            Mode::CreatePreset { editor, .. } => json!({
-                "mode": "world-preset-editor", "preset": editor.preset, "editor": editor.screen,
+            Mode::CreatePreset { session, .. } => json!({
+                "mode": "world-preset-editor", "preset": session.preset,
             }),
             Mode::Edit {
                 world,

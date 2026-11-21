@@ -7197,6 +7197,7 @@ impl Game<'_> {
                     self.settings.file.bool("hideServerAddress"),
                     &mut |phase, batch| self.draw_screen_phase(batch, phase),
                 );
+                self.draw_preset_editor(&mut batch);
             }
             // ScreenEvent.Render.Post over the title's own screens: a mod draws
             // over them here (a pack browser over Create New World, say), and the
@@ -12263,6 +12264,9 @@ impl Game<'_> {
                         let rules = t.press_rules(atlas, self.cursor, (b.width, b.height));
                         (clicked.0, clicked.1 || rules)
                     });
+                    if !sound {
+                        self.preset_editor_mouse_clicked(MouseButton::Left);
+                    }
                     self.save_title_options();
                     if sound {
                         self.audio.play_button_click();
@@ -12285,9 +12289,18 @@ impl Game<'_> {
                         .map(|r| [r.config.width, r.config.height])
                         .unwrap_or([1, 1]);
                     let b = HudBatch::new(size, self.settings.gui_scale_inputs());
-                    if let Some(title) = self.title.as_mut() {
+                    if !self.preset_editor_mouse_clicked(MouseButton::Middle)
+                        && let Some(title) = self.title.as_mut()
+                    {
                         title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height));
                     }
+                }
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button,
+                    ..
+                } if self.title_input_active() && self.screen != Screen::Options => {
+                    self.preset_editor_mouse_clicked(button);
                 }
                 WindowEvent::MouseInput { .. } if self.title_input_active() => {}
                 WindowEvent::MouseInput { state, button, .. } if self.book.is_some() => {
@@ -12646,6 +12659,14 @@ impl Game<'_> {
                 }
                 WindowEvent::KeyboardInput { event, .. } if self.title_input_active() => {
                     if event.state == ElementState::Pressed {
+                        if self.preset_editor_key_pressed(event.physical_key) {
+                            if self.types_text()
+                                && let Some(text) = event.text.as_deref()
+                            {
+                                self.preset_editor_type_text(text);
+                            }
+                            return Ok(());
+                        }
                         if let Some(shortcut) = self.edit_shortcut(&event) {
                             self.title_shortcut(shortcut);
                             return Ok(());

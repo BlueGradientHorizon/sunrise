@@ -29,8 +29,8 @@ use super::{
 use mod_api::__private::game::{
     BlockStateDefinitionRegistration, ItemModelRegistration, ItemTintSourceRegistration,
     JsonAnimationTypeRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
-    ParticleGroupRegistration, RangeSelectPropertyRegistration, SelectPropertyRegistration,
-    SpriteSourceRegistration, StandaloneModelRegistration,
+    ParticleGroupRegistration, PresetEditorFactoryRegistration, RangeSelectPropertyRegistration,
+    SelectPropertyRegistration, SpriteSourceRegistration, StandaloneModelRegistration,
 };
 use mod_api::CommandSource;
 use mod_api::GameMode;
