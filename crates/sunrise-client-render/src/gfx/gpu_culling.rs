@@ -2944,14 +2944,8 @@ mod tests {
                 (shapes.below(3) > 0).then_some(center)
             };
             let (cx, cz) = resident::camera_column(camera);
-            // None in a quarter of the cases (cave culling off). Else around the
-            // camera's column, as wide as the walk's search (the distance and 2)
-            // or anything from 1 column to past the distance, full height or
-            // clamped as over low ground, its sky band reached in half the cases,
-            // three quarters of its cells reached. Cases 11 and 18 bring the
-            // graph of the case before: the pass reads the copy it holds, 18
-            // through a bind group made anew. Case 7's is new and comes first with
-            // a frame the CPU draws; case 20's, 131 KB, is past the copy's room.
+            let cam_sy = resident::camera_section_y(camera, min_y);
+            // None in a quarter of cases; else around camera XZ/Y, full height or clamped.
             if !matches!(case, 11 | 18) {
                 let given = matches!(case, 4 | 7 | 10 | 17 | 20) || rng.below(4) != 0;
                 graph = given.then(|| {
@@ -2961,8 +2955,13 @@ mod tests {
                         _ => rng.range(1, radius + 3),
                     };
                     let (y0, rows) = if case % 4 < 2 && case != 20 {
-                        let rows = rng.range(3, 8);
-                        (rng.range(0, height - rows), rows)
+                        let (lo, hi) = resident::vertical_section_range(
+                            cam_sy + rng.range(-1, 1),
+                            rng.range(2, radius + 1),
+                            height,
+                        )
+                        .expect("positive height");
+                        (lo, hi - lo + 1)
                     } else {
                         (0, height)
                     };
@@ -3008,13 +3007,15 @@ mod tests {
                 let (placed, _) = held.get_mut(&id).expect("a live id");
                 (placed.1, placed.2) = (page, start);
             }
-            // New sections around the camera, within the distance and past it.
+            // New sections around the camera, within the distance and past it on all three axes.
+            let y_lo = (cam_sy - radius - 3).clamp(0, height - 1);
+            let y_hi = (cam_sy + radius + 3).clamp(0, height - 1);
             let place = |gpu: &mut GpuCulling,
                          held: &mut BTreeMap<u32, (Placed, Sides)>,
                          rng: &mut Rng,
                          shapes: &mut Rng| {
                 let near = |rng: &mut Rng| rng.range(-radius - 3, radius + 3);
-                let key = (cx + near(rng), rng.range(0, height - 1), cz + near(rng));
+                let key = (cx + near(rng), rng.range(y_lo, y_hi), cz + near(rng));
                 let (page, start) = (rng.below(3), u64::from(rng.below(40_000)) * 256);
                 let quads = 1 + rng.below(2_000);
                 let boxed = rounded_box(bounds(rng));
