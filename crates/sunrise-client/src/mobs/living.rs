@@ -259,85 +259,6 @@ impl MobWorld<'_> {
     pub fn block_collision_boxes(&self, x: i32, y: i32, z: i32) -> Vec<Aabb> {
         collision_boxes_in(self.world, self.collision, x, y, z)
     }
-    /// Whether the block's collision shape (empty context) has a box meeting `area`.
-    fn block_collides_with(&self, x: i32, y: i32, z: i32, area: Aabb) -> bool {
-        let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
-        self.block_shape(x, y, z).is_some_and(|shape| {
-            shape
-                .boxes()
-                .iter()
-                .any(|b| b.move_by(offset).intersects(area))
-        })
-    }
-    fn block_shape(&self, x: i32, y: i32, z: i32) -> Option<sunrise_core::geometry::VoxelShape> {
-        block_shape_in(self.world, self.collision, x, y, z)
-    }
-    /// `Level.findSupportingBlock`: of the blocks whose collision shape
-    /// meets `area`, the one whose centre is nearest `from` (ties: the
-    /// greatest by `Vec3i.compareTo`, y then z then x).
-    ///
-    /// Like `BlockCollisions`' cursor, a block whose shape stays inside its
-    /// own cell (not `hasLargeCollisionShape`, not a moving piston) is only
-    /// shaped when that cell meets `area`: elsewhere it cannot. The pick is
-    /// a total order, so the column-by-column visit finds the same block.
-    pub fn supporting_block(&self, area: Aabb, from: Vec3) -> Option<[i32; 3]> {
-        use sunrise_core::geometry::Axis;
-        let range = |axis| {
-            (area.min(axis) - 1.0e-7).floor() as i32 - 1
-                ..=(area.max(axis) + 1.0e-7).floor() as i32 + 1
-        };
-        // Aabb.intersects of the unit cell at `c` along one axis.
-        let meets = |axis, c: i32| {
-            let c = f64::from(c);
-            c < area.max(axis) && c + 1.0 > area.min(axis)
-        };
-        // Where no section of the cursor holds a block reaching out of its
-        // cell, only the cells meeting `area` can hold the support.
-        let (rx, ry, rz) = (range(Axis::X), range(Axis::Y), range(Axis::Z));
-        let outer = self.world.may_hold(
-            [*rx.start(), *ry.start(), *rz.start()],
-            [*rx.end(), *ry.end(), *rz.end()],
-            |s| self.collision.reaches_out(s),
-        );
-        let mut best: Option<(f64, [i32; 3])> = None;
-        for x in rx {
-            for z in rz.clone() {
-                let column = meets(Axis::X, x) && meets(Axis::Z, z);
-                if !outer && !column {
-                    continue;
-                }
-                let Some(chunk) = self.world.chunks.get(&(x >> 4, z >> 4)) else {
-                    continue;
-                };
-                for y in ry.clone() {
-                    if !outer && !meets(Axis::Y, y) {
-                        continue;
-                    }
-                    let state = chunk.block(x & 15, y, z & 15);
-                    let Ok(block) = self.collision.collision_block(state) else {
-                        continue;
-                    };
-                    if !(block.large_collision_shape
-                        || block.moving_piston
-                        || (column && meets(Axis::Y, y)))
-                    {
-                        continue;
-                    }
-                    if !self.block_collides_with(x, y, z, area) {
-                        continue;
-                    }
-                    let d = (f64::from(x) + 0.5 - from.x).powi(2)
-                        + (f64::from(y) + 0.5 - from.y).powi(2)
-                        + (f64::from(z) + 0.5 - from.z).powi(2);
-                    let greater = |b: [i32; 3]| (y, z, x) > (b[1], b[2], b[0]);
-                    if best.is_none_or(|(bd, b)| d < bd || d == bd && greater(b)) {
-                        best = Some((d, [x, y, z]));
-                    }
-                }
-            }
-        }
-        best.map(|(_, p)| p)
-    }
     pub fn no_collision(&self, b: Aabb) -> bool {
         let mut scene = SceneCollisions {
             world: self.world,
@@ -991,9 +912,7 @@ impl Mob {
         self.ground.on_ground = self.vertical_collision_below;
         // Entity.setOnGroundWithMovement's checkSupportingBlock, before
         // checkFallDamage reads the landing block (getOnPosLegacy).
-        self.ground.supporting_block = self
-            .supporting_block(w, moved)
-            .map(|[x, y, z]| BlockPos::new(x, y, z));
+        self.update_ground_support(w, moved);
         if let Some(trample) = self.species_check_fall_damage(w, level, moved, events, pause) {
             return Some(MoveTrample {
                 trample,
@@ -1127,9 +1046,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
     ) -> Option<FarmlandTrample> {
         self.ground.on_ground = on_ground;
-        self.ground.supporting_block = self
-            .supporting_block(w, delta)
-            .map(|[x, y, z]| BlockPos::new(x, y, z));
+        self.update_ground_support(w, delta);
         self.species_check_fall_damage(w, level, delta, events, true)
     }
     /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
@@ -1362,35 +1279,23 @@ impl Mob {
     fn fluids_swimming(&self) -> bool {
         false
     }
-    /// `Entity.checkSupportingBlock` after a move: on the ground, the block
-    /// under the feet (`mainSupportingBlockPos`), looked for again where
-    /// the mob came from if none is under it now.
-    fn supporting_block(&self, w: &MobWorld, moved: Vec3) -> Option<[i32; 3]> {
-        if !self.ground.on_ground {
-            return None;
-        }
-        let b = self.bounds();
-        use sunrise_core::geometry::Axis;
-        let area = Aabb::new(
-            Vec3::new(b.min(Axis::X), b.min(Axis::Y) - 1.0e-6, b.min(Axis::Z)),
-            Vec3::new(b.max(Axis::X), b.min(Axis::Y), b.max(Axis::Z)),
+    /// `Entity.checkSupportingBlock` uses the post-move bounds and live collision context.
+    fn update_ground_support(&mut self, w: &MobWorld, moved: Vec3) {
+        let mut ground = self.ground;
+        let (context, subject) = self.support_collision();
+        let mut scene = SceneCollisions {
+            world: w.world,
+            binding: w.collision,
+            subject: Some(subject),
+        };
+        let _ = scene.update_ground_support(
+            &mut ground,
+            self.position,
+            self.bounds(),
+            Some(moved),
+            context,
         );
-        w.supporting_block(area, self.position).or_else(|| {
-            let back = Vec3::new(-moved.x, 0.0, -moved.z);
-            let shifted = Aabb::new(
-                Vec3::new(
-                    area.min(Axis::X) + back.x,
-                    area.min(Axis::Y),
-                    area.min(Axis::Z) + back.z,
-                ),
-                Vec3::new(
-                    area.max(Axis::X) + back.x,
-                    area.max(Axis::Y),
-                    area.max(Axis::Z) + back.z,
-                ),
-            );
-            w.supporting_block(shifted, self.position)
-        })
+        self.ground = ground;
     }
     /// `Entity.getBlockStateOnLegacy`'s position: 0.2 below the feet, or the
     /// supporting block.

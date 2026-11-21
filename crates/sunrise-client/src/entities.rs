@@ -2251,6 +2251,44 @@ impl ArmorStand {
             .as_ref()
             .is_some_and(|s| &*s.item == "minecraft:leather_boots")
     }
+    /// The stand's live collision context for `Level.findSupportingBlock`.
+    pub fn support_collision(
+        &self,
+    ) -> (
+        sunrise_world::collision_context::CollisionContext<'_>,
+        crate::collisions::PowderSnowSubject<'_>,
+    ) {
+        use sunrise_world::{
+            collision_context::{
+                CollisionContext, CollisionEntity, CollisionItem, EntityContextKind,
+            },
+            entity_obstruction::EntityIdentity,
+        };
+        let subject = crate::collisions::PowderSnowSubject {
+            leather_boots: self.feet_are_leather_boots(),
+            fall_distance: self.enchantment_fall_distance,
+            main_hand: Some(
+                self.equipment[sunrise_items::equipment::MAINHAND]
+                    .as_ref()
+                    .map_or(CollisionItem::EMPTY, |stack| CollisionItem {
+                        item: &stack.item,
+                        count: stack.count.min(i32::MAX as u32) as i32,
+                    }),
+            ),
+            ..Default::default()
+        };
+        let context = CollisionContext::for_entity(
+            CollisionEntity {
+                identity: EntityIdentity(u64::from(self.id)),
+                kind: EntityContextKind::Living,
+                y: self.position.y,
+                descending: false,
+                main_hand: subject.main_hand,
+            },
+            false,
+        );
+        (context, subject)
+    }
     /// LivingEntity.travel (armor stands have no other movement): clamp tiny
     /// velocity components (`LivingEntity.aiStep`), move by the velocity (a
     /// landing stops the fall, `Block.updateEntityMovementAfterFallOn`, and a
@@ -2373,9 +2411,7 @@ impl ArmorStand {
                 self.position.y + moved.y,
                 self.position.z + moved.z,
             );
-            self.ground.on_ground = wanted.y < 0.0 && moved.y > wanted.y;
-            // Entity.setOnGroundWithMovement: the block under the feet.
-            self.ground_support(scene, wanted);
+            self.ground.on_ground = wanted.y < 0.0 && moved.y != wanted.y;
             if (wanted.x - moved.x).abs() >= f64::from(1.0e-5_f32) {
                 horizontal_collision = true;
                 velocity.x = 0.0;
@@ -2387,6 +2423,9 @@ impl ArmorStand {
                 horizontal_collision = true;
                 velocity.z = 0.0;
             }
+            self.ground.horizontal_collision = horizontal_collision;
+            // Entity.setOnGroundWithMovement uses the resolved move on a support miss.
+            self.ground_support(scene, moved);
         }
         if !in_water && horizontal_collision && on_climbable(self.position) {
             velocity.y = 0.2;
@@ -2431,7 +2470,7 @@ impl ArmorStand {
         mover: sunrise_world::entity_move::MoverType,
         context: &sunrise_world::native_load_context::LoopContext,
     ) {
-        let mut scene = SceneCollisions {
+        let scene = SceneCollisions {
             subject: self.feet_are_leather_boots().then_some(
                 crate::collisions::PowderSnowSubject {
                     leather_boots: true,
@@ -2466,10 +2505,13 @@ impl ArmorStand {
             self.position = self.position.add_vector(moved);
         }
         // Mth.equal on x and z; y only when the push had a vertical part.
-        if (delta.x - moved.x).abs() >= f64::from(1.0e-5_f32) {
+        let x_hit = sunrise_world::entity_move::different(delta.x, moved.x);
+        let z_hit = sunrise_world::entity_move::different(delta.z, moved.z);
+        self.ground.horizontal_collision = x_hit || z_hit;
+        if x_hit {
             self.velocity.x = -self.velocity.x * 0.0;
         }
-        if (delta.z - moved.z).abs() >= f64::from(1.0e-5_f32) {
+        if z_hit {
             self.velocity.z = -self.velocity.z * 0.0;
         }
         let vertical = moved.y != delta.y;
@@ -2479,37 +2521,34 @@ impl ArmorStand {
                 if delta.y > 0.0 {
                     self.velocity.y = -self.velocity.y * 0.0;
                 }
-                self.ground_support(&mut scene, moved);
+                self.ground_support(&scene, moved);
             }
         } else {
             if vertical && delta.y != 0.0 {
                 self.velocity.y = -self.velocity.y * 0.0;
             }
             self.ground.on_ground = vertical && delta.y < 0.0;
-            self.ground_support(&mut scene, moved);
+            self.ground_support(&scene, moved);
         }
     }
     /// `Entity.checkSupportingBlock` after a move by `movement`: the block
     /// under the feet while `on_ground`, none otherwise.
-    fn ground_support(&mut self, scene: &mut SceneCollisions, movement: Vec3) {
-        let context = sunrise_world::collision_context::CollisionContext::for_entity(
-            sunrise_world::collision_context::CollisionEntity {
-                identity: sunrise_world::entity_obstruction::EntityIdentity(u64::from(self.id)),
-                kind: sunrise_world::collision_context::EntityContextKind::Living,
-                y: self.position.y,
-                descending: false,
-                main_hand: Some(sunrise_world::collision_context::CollisionItem::EMPTY),
-            },
-            false,
+    fn ground_support(&mut self, scene: &SceneCollisions, movement: Vec3) {
+        let mut ground = self.ground;
+        let (context, subject) = self.support_collision();
+        let mut scene = SceneCollisions {
+            world: scene.world,
+            binding: scene.binding,
+            subject: Some(subject),
+        };
+        let _ = scene.update_ground_support(
+            &mut ground,
+            self.position,
+            self.bounds(),
+            Some(movement),
+            context,
         );
-        let (position, bounds) = (self.position, self.bounds());
-        let _ = self
-            .ground
-            .check_support(self.ground.on_ground, bounds, Some(movement), |area| {
-                sunrise_world::ground_support::find_supporting_block(
-                    scene, context, position, area, 1_000_000,
-                )
-            });
+        self.ground = ground;
     }
     /// `HoneyBlock.entityInside`: side-slide movement after the stand's travel.
     /// `ArmorStand.hasPhysics` / `Entity.isAffectedByBlocks` exclude markers
@@ -4541,6 +4580,10 @@ mod armor_stand_motion_tests {
             (booted.position.y - start.y).abs() < 1.0e-6,
             "leather boots must walk on powder snow, y={}",
             booted.position.y
+        );
+        assert_eq!(
+            booted.ground.supporting_block,
+            Some(BlockPos::new(20, 10, 20))
         );
     }
 }

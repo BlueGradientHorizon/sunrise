@@ -765,12 +765,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_on_block(&self, mob: &Mob) -> [i32; 3] {
-        let support = mob
-            .ground
-            .on_ground
-            .then(|| self.supporting_block(mob.position, mob.bounds()))
-            .flatten();
-        super::native_entity_motion::on_block_position(support, mob.position)
+        super::native_entity_motion::on_block_position(mob.ground.supporting_block, mob.position)
     }
 
     fn entities_team_damage_allowed(

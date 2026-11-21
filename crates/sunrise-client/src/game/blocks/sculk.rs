@@ -2443,8 +2443,7 @@ impl Game<'_> {
             Who::Player => self.player.as_ref()?.ground.supporting_block,
             Who::Mob(id) => {
                 let slot = self.mob_slot(id)?;
-                let mob = &self.mobs[slot];
-                self.supporting_block(mob.position, mob.bounds())
+                self.mobs[slot].ground.supporting_block
             }
         }
     }

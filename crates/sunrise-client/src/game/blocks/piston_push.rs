@@ -594,7 +594,7 @@ impl Game<'_> {
         if moved.length_squared() > 0.0 {
             self.apply_push(&mut gate, target, moved);
         }
-        self.set_pushed_on_ground(target, movement, moved, None);
+        self.set_pushed_on_ground(target, movement, moved);
     }
 
     /// A mod's `Entity.move(cause, movement)` for the listed entity `handle` (never the player
@@ -1266,12 +1266,6 @@ impl Game<'_> {
         } else {
             None
         };
-        // Entity.move updates ground before its tiny-collision return.
-        if let Some(i) = mob
-            && self.mobs[i].no_ai
-        {
-            self.mobs[i].ground.on_ground = limited.y < 0.0 && limited.y != resolved.y;
-        }
         let moved = resolved.length_squared() > 1.0e-7
             || limited.length_squared() - resolved.length_squared() < 1.0e-7;
         if moved {
@@ -1280,7 +1274,7 @@ impl Game<'_> {
             // A move the collisions cut to nothing still ends in the check.
             self.release_after_block_move(target);
         }
-        self.set_pushed_on_ground(target, limited, resolved, tnt.map(|(_, _, s, c)| (s, c)));
+        self.set_pushed_on_ground(target, limited, resolved);
         // Restitution reads the new landing block even when the push was blocked.
         if let Some(i) = mob {
             let mut mobs = self.mobs.lift();
@@ -1407,38 +1401,21 @@ impl Game<'_> {
     }
 
     /// The ground recorded after placing the body during `Entity.move`.
-    fn set_pushed_on_ground(
-        &mut self,
-        target: MoveWho,
-        wanted: Vec3,
-        moved: Vec3,
-        tnt: Option<(
-            sunrise_client::collisions::PowderSnowSubject<'static>,
-            sunrise_world::collision_context::CollisionContext<'static>,
-        )>,
-    ) {
+    fn set_pushed_on_ground(&mut self, target: MoveWho, wanted: Vec3, moved: Vec3) {
+        use sunrise_world::entity_move::different;
         let MoveWho::Entity(handle) = target else {
             return;
         };
         let authoritative = !self.options.execution_role.is_client() && self.remote.is_none();
-        let motion = sunrise_client::motion::BodyMotion {
-            world: &self.world,
-            collision: self.collision,
-            facts: self.res.facts(),
-            blocks: Some(&self.res.motion().blocks),
-            context: &self.loop_context,
-            side: None,
-        };
+        let on_ground = wanted.y < 0.0 && wanted.y != moved.y;
         with_entity_mut!(self, handle, entity => {
-            let (at, bounds) = (entity.position(), entity.bounds());
             if let Some(ground) = entity.ground_state_mut() {
-                let (subject, context) = tnt.map_or_else(
-                    || (None, sunrise_world::collision_context::CollisionContext::empty(false)),
-                    |(subject, context)| (Some(subject), context),
-                );
-                motion.record_move(at, bounds, wanted, moved, authoritative, context, subject, ground);
+                ground.horizontal_collision = different(wanted.x, moved.x) || different(wanted.z, moved.z);
+                if authoritative || wanted.y.abs() > 0.0 {
+                    entity.update_retained_ground(&self.world, self.collision, on_ground, Some(moved));
+                }
             } else {
-                entity.set_piston_on_ground(wanted.y < 0.0 && wanted.y != moved.y);
+                entity.set_piston_on_ground(on_ground);
             }
         });
     }

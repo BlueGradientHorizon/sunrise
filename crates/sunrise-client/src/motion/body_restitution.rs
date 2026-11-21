@@ -15,7 +15,7 @@ use sunrise_world::{
     block_collision::BlockCollisionRegistry,
     collision_context::CollisionContext,
     entity_move::different,
-    ground_support::{GroundState, find_supporting_block},
+    ground_support::GroundState,
     movement_properties::BoundMovementProperties,
     movement_restitution::{RestitutionInput, RestitutionWorld, restitute_movement},
     movement_support::{LEGACY_SUPPORT_OFFSET, MOVEMENT_SUPPORT_OFFSET},
@@ -99,9 +99,7 @@ impl BodyMotion<'_> {
             binding: self.collision,
             subject,
         };
-        let _ = ground.check_support(ground.on_ground, bounds, movement, |bounds| {
-            find_supporting_block(&mut scene, context, feet, bounds, 1_000_000)
-        });
+        let _ = scene.update_ground_support(ground, feet, bounds, movement, context);
     }
 
     /// Read the legacy effect pair from the retained support, with no new collision scan.
