@@ -3,3 +3,4 @@
 sunrise-client game::shader_packs::player_status_tests::pack_status_follows_the_player lib daily resources
 sunrise-client game::shader_packs::player_status_tests::pack_status_leaves_queued_effects_alone lib daily resources
 sunrise-client game::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent lib daily resources
+sunrise-client game::shader_packs::player_status_tests::pack_status_starts_over_with_a_new_local_player lib daily resources

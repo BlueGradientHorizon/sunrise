@@ -46,7 +46,8 @@ the full list.
   - `is_child`: `LivingEntity.isBaby`, which `Player` keeps, so always 0;
   - `is_glowing`: `Entity.isCurrentlyGlowing` on a client, which skips the effect check and reads shared flag 6: the
     flag a server sends, or in single player the Glowing effect the flag is set from (a local `Glowing` tag is not
-    modelled);
+    modelled). A server's flag resets with a new `LocalPlayer` (a login, a respawn without `KEEP_ENTITY_DATA`), as
+    the player's other shared flags do;
   - `is_in_lava`: `Entity.isInLava` (`!firstTick && isInFluid(LAVA)`);
   - `is_in_water`: `Entity.isInWater` (`wasTouchingWater`), not `isUnderWater`;
   - `is_ridden`: `Entity.isVehicle` (`!passengers.isEmpty()`), so a dying passenger counts until it is removed;
@@ -62,5 +63,6 @@ the full list.
   `gfx::pack_uniforms::initial_history_tests::programs_read_only_six_player_booleans` and
   `gfx::pack_post::player_boolean_tests::compute_and_quad_programs_read_only_the_listed_player_booleans`
   (`sunrise-client-render`); the daily `game::shader_packs::player_status_tests::pack_status_follows_the_player`,
-  `game::shader_packs::player_status_tests::pack_status_leaves_queued_effects_alone` and
-  `game::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent` (`sunrise-client`).
+  `game::shader_packs::player_status_tests::pack_status_leaves_queued_effects_alone`,
+  `game::shader_packs::player_status_tests::pack_status_on_a_server_follows_what_it_sent` and
+  `game::shader_packs::player_status_tests::pack_status_starts_over_with_a_new_local_player` (`sunrise-client`).

@@ -593,21 +593,14 @@ impl Game<'_> {
     /// The window's player's state for the player booleans and the status uniforms: the six
     /// Iris also gives programs and the vitals read as the HUD reads them, and the eight only
     /// custom uniforms read (D-2 in `docs/cleanroom/decisions.md`), each as its vanilla method
-    /// answers on a client. `is_alive`, `is_glowing`, `is_ridden` and `is_wet` are asked only
-    /// while a pack is loaded: no one reads them otherwise, and the rain `is_wet` asks for costs a
-    /// column walk. `is_in_lava`, `is_in_water`, `is_riding` and `is_child` are field reads (or a
-    /// constant), given always.
+    /// answers on a client. Asked only while a pack is picked ([`Self::shader_pack_inputs`]
+    /// returns before it otherwise).
     fn pack_player_status(&mut self) -> PlayerStatus {
         let spectator = self.spectator();
         let survival = !self.creative && !spectator;
         let invisible = self.own_invisible();
         let riding = self.riding.is_some();
-        let pack = self.pack_ids.is_some();
-        let (glowing, ridden, wet) = if pack {
-            self.pack_player_booleans()
-        } else {
-            Default::default()
-        };
+        let (glowing, ridden, wet) = self.pack_player_booleans();
         let Some(p) = &mut self.player else {
             return PlayerStatus::default();
         };
@@ -632,7 +625,7 @@ impl Game<'_> {
             sprinting: p.sprinting,
             // `LivingEntity.isAlive`: the window's player is never removed while it is the
             // camera.
-            alive: pack && p.health.health() > 0.0,
+            alive: p.health.health() > 0.0,
             glowing,
             in_lava: p.is_in_lava(),
             ridden,
@@ -654,14 +647,10 @@ impl Game<'_> {
             Some(r) => r.has_passengers(id),
             None => self.has_seated_passengers(id),
         };
-        // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`. Its `Level.isRainingAt`
-        // (`precipitationAt`) asks `Level.isRaining` first (`canHaveWeather`, which
-        // `weather_levels` folds in, and `getRainLevel(1) > 0.2`), so the
-        // positions are only looked at while it rains.
+        // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
         let wet = self.player.as_ref().is_some_and(|p| {
             p.fluids.was_touching_water
-                || (self.weather_levels(1.0).0 > 0.2
-                    && self.rain_falls_on(p.position, p.bounds().max_position().y))
+                || self.rain_falls_on(p.position, p.bounds().max_position().y)
         });
         (glowing, ridden, wet)
     }
@@ -1490,7 +1479,7 @@ mod toggle_tests {
 
 #[cfg(test)]
 mod player_status_tests {
-    use super::{Game, PackIds};
+    use super::Game;
     use std::sync::Arc;
     use sunrise_client::{
         chunk::Chunk,
@@ -1521,8 +1510,7 @@ mod player_status_tests {
 
     /// The player booleans only custom uniforms read follow the window's player (spec 3.4):
     /// `LivingEntity.isAlive`, `Entity.isCurrentlyGlowing` (the Glowing effect),
-    /// `Entity.isInLava`, `Entity.isVehicle` and `Entity.isInWaterOrRain`, and only while a
-    /// pack is loaded.
+    /// `Entity.isInLava`, `Entity.isVehicle` and `Entity.isInWaterOrRain`.
     #[test]
     #[ignore = "daily"]
     fn pack_status_follows_the_player() {
@@ -1532,21 +1520,6 @@ mod player_status_tests {
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.install_live_features();
 
-            // No pack: nothing reads the eight, so none is asked.
-            game.player.as_mut().unwrap().fluids.was_touching_water = true;
-            game.potions
-                .effects
-                .add(EffectInstance::new("glowing", 200, 0));
-            let status = game.pack_player_status();
-            assert!(status.feet_in_water, "the six are still read");
-            assert!(
-                !status.alive && !status.glowing && !status.wet,
-                "{status:?}"
-            );
-            game.player.as_mut().unwrap().fluids.was_touching_water = false;
-            game.potions.effects.clear();
-
-            game.pack_ids = Some(PackIds::default());
             let status = game.pack_player_status();
             assert!(status.alive);
             assert!(!status.glowing && !status.in_lava && !status.ridden && !status.wet);
@@ -1624,7 +1597,6 @@ mod player_status_tests {
             stand_player(game);
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             game.install_live_features();
-            game.pack_ids = Some(PackIds::default());
             let (hub, _near, _far) =
                 crate::game::lan_particles::tests::test_hub("PackStatusTest", Vec::new(), None);
             game.lan = Some(crate::game::lan::LanHost::for_test(hub));
@@ -1684,7 +1656,6 @@ mod player_status_tests {
             let _server = logged_client(game);
             let own = game.remote.as_ref().unwrap().entity_id;
             stand_player(game);
-            game.pack_ids = Some(PackIds::default());
             let flags = |game: &mut Game<'_>, flags: i8| {
                 game.handle_packet(C::SetEntityData(play::SetEntityData {
                     id: own,
@@ -1750,5 +1721,111 @@ mod player_status_tests {
             rain_on_the_player(game, false);
             assert!(!game.pack_player_status().wet);
         });
+    }
+
+    /// A new `LocalPlayer` starts with default shared flags: after a login, and after a respawn
+    /// without `KEEP_ENTITY_DATA`, `Entity.isCurrentlyGlowing` is false until the server sets
+    /// flag 6 again; a respawn that keeps the data keeps it. `LivingEntity.isAlive` follows the
+    /// health the server sent, and the new player is alive.
+    #[test]
+    #[ignore = "daily"]
+    fn pack_status_starts_over_with_a_new_local_player() {
+        use crate::game::game_tests::tests::server_game;
+        use sunrise_protocol::{
+            entity_data::{Value, serializer},
+            packets::play::{self, Clientbound as C},
+        };
+        let mut resources = None;
+        let mut game = server_game(&mut resources);
+        game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Steve").unwrap();
+        let spawn = || play::SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 1,
+            game_type: 0,
+            previous_game_type: None,
+            debug: false,
+            flat: false,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        };
+        let login = |game: &mut Game<'_>| {
+            game.handle_packet(C::Login(play::Login {
+                player_id: 7,
+                hardcore: false,
+                levels: vec!["minecraft:overworld".into()],
+                max_players: 20,
+                chunk_radius: 8,
+                simulation_distance: 8,
+                reduced_debug_info: false,
+                show_death_screen: true,
+                limited_crafting: false,
+                spawn: spawn(),
+                online_mode: false,
+                enforces_secure_chat: false,
+            }))
+            .unwrap();
+        };
+        let mut teleport = 0;
+        let mut place = |game: &mut Game<'_>| {
+            teleport += 1;
+            game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                teleport,
+                position: [0.5, 65.0, 0.5],
+                delta: [0.0; 3],
+                yaw: 0.0,
+                pitch: 0.0,
+                relatives: 0,
+            }))
+            .unwrap();
+        };
+        let glow = |game: &mut Game<'_>| {
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id: 7,
+                values: vec![(0, serializer::BYTE, Value::Byte(0x40))],
+            }))
+            .unwrap();
+        };
+        let respawn = |game: &mut Game<'_>, keep| {
+            game.handle_packet(C::Respawn(play::Respawn {
+                spawn: spawn(),
+                keep,
+            }))
+            .unwrap();
+        };
+        login(&mut game);
+        place(&mut game);
+        let status = game.pack_player_status();
+        assert!(status.alive && !status.glowing, "{status:?}");
+        glow(&mut game);
+        assert!(game.pack_player_status().glowing, "flag 6");
+
+        respawn(&mut game, 2);
+        place(&mut game);
+        assert!(
+            game.pack_player_status().glowing,
+            "KEEP_ENTITY_DATA keeps flag 6"
+        );
+
+        game.handle_packet(C::SetHealth(play::SetHealth {
+            health: 0.0,
+            food: 20,
+            saturation: 5.0,
+        }))
+        .unwrap();
+        assert!(!game.pack_player_status().alive, "dead");
+        respawn(&mut game, 0);
+        place(&mut game);
+        let status = game.pack_player_status();
+        assert!(!status.glowing, "a respawn without the data resets flag 6");
+        assert!(status.alive, "the new player is alive");
+
+        glow(&mut game);
+        login(&mut game);
+        place(&mut game);
+        assert!(!game.pack_player_status().glowing, "a login resets flag 6");
     }
 }
