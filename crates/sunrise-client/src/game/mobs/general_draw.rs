@@ -119,10 +119,12 @@ impl Game<'_> {
         }
         for row in visible.drain(..) {
             if let Some(resolved) = renderers.general(row.type_slot) {
+                let key = catalog.key(row.type_slot);
+                self.mark_entity(out.len(), key);
                 self.mod_entity_renderer_geometry(
                     resolved,
                     &row.entity,
-                    catalog.key(row.type_slot),
+                    key,
                     row.at - camera,
                     Some(row.at),
                     row.block,

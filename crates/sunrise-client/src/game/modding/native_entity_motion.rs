@@ -283,23 +283,22 @@ impl Game<'_> {
     /// as it moved, or the one `Entity.checkSupportingBlock` finds under the box of any
     /// other that stands.
     fn native_supporting_block(&self, entity: EntityRef, t: Target) -> Option<BlockPos> {
-        if t == Target::Player
-            && let Some(player) = &self.player
-        {
-            return player.ground.supporting_block;
+        match t {
+            Target::Player => return self.player.as_ref()?.ground.supporting_block,
+            Target::Guest(_) => {
+                return self
+                    .native_target_guest(t)?
+                    .motion
+                    .as_ref()?
+                    .ground
+                    .supporting_block;
+            }
+            _ => {}
         }
         if !self.entity_on_ground(entity)? {
             return None;
         }
-        let (position, bounds) = match self.native_target_guest(t) {
-            Some(g) => (
-                Vec3::new(g.position[0], g.position[1], g.position[2]),
-                g.bounds(),
-            ),
-            None => {
-                with_entity!(self, self.native_walk_entity(entity.id())?, e => (e.position(), e.bounds()))
-            }
-        };
+        let (position, bounds) = with_entity!(self, self.native_walk_entity(entity.id())?, e => (e.position(), e.bounds()));
         self.supporting_block(position, bounds)
     }
     /// The block the entity stands on (`Entity.getOnPos`). API 379.

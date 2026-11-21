@@ -889,6 +889,38 @@ impl Guest {
             Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
+    /// Send the complete committed data of this guest's current blockless menu.
+    pub fn send_menu_data_snapshot(&self) {
+        let Some(menu) = &self.menu else { return };
+        for (index, &value) in menu.blockless_data.iter().enumerate() {
+            self.send_menu_data(menu.window, index as u16, value);
+        }
+    }
+
+    /// Commit one blockless-menu data slot. The caller resolves the window generation
+    /// and validates the index before supplying a write.
+    pub fn set_menu_data(&mut self, index: u16, value: i32) {
+        let Some(menu) = &mut self.menu else { return };
+        let slot = &mut menu.blockless_data[usize::from(index)];
+        if *slot != value {
+            *slot = value;
+            let window = menu.window;
+            self.send_menu_data(window, index, value);
+        }
+    }
+
+    fn send_menu_data(&self, window: i32, index: u16, value: i32) {
+        use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
+        self.send(&play::Clientbound::CustomPayload(CustomPayload {
+            channel: DATA_CHANNEL.into(),
+            data: DataSlot {
+                window,
+                index,
+                value,
+            }
+            .encode(),
+        }));
+    }
     /// Whether this connection reads collider sync (`sunrise:collider_sync`).
     pub fn negotiated_collider_sync(&self) -> bool {
         crate::raw_payloads::negotiated(
@@ -1157,7 +1189,9 @@ impl Guest {
         let slot = 36 + self.selected;
         self.menu_sent[slot] = self.menu_slot(slot);
         let told = self.inventory.get(self.selected).cloned().flatten();
-        if let Some(m) = self.menu.as_mut() {
+        if let Some(m) = self.menu.as_mut()
+            && m.player_slots() != 0
+        {
             let at = m.size + 27 + self.selected;
             if m.sent.len() <= at {
                 m.sent.resize(at + 1, None);

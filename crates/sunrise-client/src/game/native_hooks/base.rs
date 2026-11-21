@@ -639,14 +639,15 @@ impl Game<'_> {
     }
     /// Before one of vanilla's HUD layers is drawn (`RenderGuiLayerEvent.Pre`):
     /// draw here to put something below the layer, or set `canceled` to hide
-    /// it. `layer` is the layer's id, in the order Sunrise draws them:
+    /// it. `layer` is the layer's id. The built-in registration anchors, in registration order, are:
     /// `minecraft:crosshair`, `hotbar`, `effects`, `boss_overlay`,
     /// `vehicle_health` (only riding a mount), `contextual_info_bar` (the
     /// mount's jump bar, the locator bar or the experience bar, with the level
     /// number), `player_health` (the health, armor, food and air rows, drawn in
     /// one pass), `selected_item_name`, `sleep_overlay`, `overlay_message`
     /// (the action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. A layer F1 hides fires nothing, and the chat
+    /// `chat` and `tab_list`. In the render pass, `player_health` fires before
+    /// `contextual_info_bar`. A layer F1 hides fires nothing, and the chat
     /// screen draws the focused chat itself, so `chat` is only the unfocused
     /// lines. The camera overlays and the debug screen are not layers here:
     /// they are not drawn in this pass. Draw with `native_fill`, `native_text`
@@ -1095,10 +1096,10 @@ impl Game<'_> {
     /// Draw the screen of mod menu type `menu` (`block` as in
     /// `native_screen`) at `origin` (its top left, GUI pixels),
     /// over a plain panel with its slots' frames and under the items and
-    /// labels, from the menu's data slots `data` (the block entity's `data`
-    /// on the server): data slots are 16-bit on the wire as in vanilla (a
-    /// bigger value wraps), and `data` is empty until the server's first
-    /// values arrive, so read it with `get`. Draw with `native_sprite`, `native_fill` and
+    /// labels, from the menu's data slots `data`. Block-backed data is 16-bit
+    /// on the wire as in vanilla; blockless mod-menu data preserves full `i32`
+    /// values. `data` is empty until the first values arrive; read with `get`.
+    /// Draw with `native_sprite`, `native_fill` and
     /// `native_text`.
     pub(in crate::game) fn native_screen_draw(&self, call: mod_api::__private::ScreenDrawCall<'_>) {
         self.fire_screen_draw(call);
@@ -1472,7 +1473,7 @@ impl Game<'_> {
     /// The player's state is swapped in for the call, as for
     /// `native_run_mod_command`, so `native_acting_player`, `native_tell` and
     /// the item helpers reach them. Not heard: a menu a mod opens
-    /// (`open_menu`), the inventory screen, and the editors (sign,
+    /// (`open_menu`, unlike `open_mod_menu`), the inventory screen, and the editors (sign,
     /// book, command block). Server-side, for every player of the world.
     pub(in crate::game) fn native_container_opened(
         &mut self,
@@ -3112,26 +3113,24 @@ impl Game<'_> {
     ) {
         self.fire_player_level_change(player, name, from, to);
     }
-    /// A click in a menu a mod opened (`open_menu`), which moved
-    /// nothing: the menu's `slot` (its own first, then the player's
-    /// inventory, `native_menu_inventory_slot`; -999 outside), the `button`
-    /// and the click's `mode` (`ClickType`'s id) of the player `uuid`.
-    /// No player's state is swapped in: the menu helpers take the player's
-    /// UUID.
+    /// A server click in a mod menu before the default slot action. A listener sets
+    /// `handled` after doing the click itself.
     pub(in crate::game) fn native_menu_clicked(
         &mut self,
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
+        call: mod_api::__private::MenuClickedCall<'_>,
     ) {
-        self.fire_menu_clicked(uuid, window, slot, button, mode);
+        self.fire_menu_clicked(call);
     }
     /// A menu a mod opened closed: the player closed it, the server or a mod
     /// opened another, or the player left.
-    pub(in crate::game) fn native_menu_closed(&mut self, uuid: u128, window: i32) {
-        self.fire_menu_closed(uuid, window);
+    pub(in crate::game) fn native_menu_closed(
+        &mut self,
+        uuid: u128,
+        window: i32,
+        opening_hand: Option<mod_api::Hand>,
+        owned_slots: &[Option<mod_api::ItemStack>],
+    ) {
+        self.fire_menu_closed(uuid, window, opening_hand, owned_slots);
     }
     /// `Item.appendHoverText`: an item's own lines in its tooltip, after its
     /// name and before its components' (enchantments, lore, attributes). Add

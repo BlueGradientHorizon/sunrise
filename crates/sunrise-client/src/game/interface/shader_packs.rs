@@ -1292,6 +1292,51 @@ mod native_pack_tests {
 }
 
 #[cfg(test)]
+#[test]
+#[ignore = "daily"]
+fn projectile_body_uses_its_own_shader_entity_id() {
+    use sunrise_client::projectiles::{Projectile, ProjectileKind};
+
+    super::native_entity_refs::tests::with_client_game(|game| {
+        game.pack_ids = Some(PackIds {
+            entities: [
+                ("minecraft:snowball".into(), 41),
+                ("minecraft:ominous_item_spawner".into(), 42),
+                ("minecraft:arrow".into(), 43),
+                ("minecraft:spectral_arrow".into(), 44),
+            ]
+            .into(),
+            ..Default::default()
+        });
+        let arrow = |effect| ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect,
+        };
+        for kind in [
+            ProjectileKind::Snowball,
+            arrow(None),
+            arrow(Some(("minecraft:glowing", 200))),
+        ] {
+            game.creatures.projectiles.push(Projectile::new(
+                kind,
+                sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                None,
+            ));
+        }
+        game.entity_geometry(glam::DVec3::new(0.5, 64.0, -4.5), 1.0, None, Vec::new());
+        let ids: Vec<_> = game
+            .entity_spans
+            .borrow()
+            .windows(2)
+            .filter(|span| span[0].start < span[1].start && (41..=44).contains(&span[0].id))
+            .map(|span| span[0].id)
+            .collect();
+        assert_eq!(ids, [41, 43, 44]);
+    });
+}
+
+#[cfg(test)]
 mod toggle_tests {
     use super::{TogglePlan, plan_shader_toggle};
     use sunrise_client::settings::Settings;
