@@ -709,7 +709,7 @@ pub(crate) fn replaceable(
     if let Some(why) = check.refusal {
         return Err(why);
     }
-    reexports::check_body(source, &found.module, sig, &found.function.block)
+    reexports::check_paths(source, found)
 }
 
 /// An item's own definition, before filtering for re-export.
