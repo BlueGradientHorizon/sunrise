@@ -133,16 +133,17 @@ impl Game<'_> {
                     }
                 });
             }
-            step.apply(
-                &phase,
-                HookId::AddClientReloadListeners,
-                "client_reload_apply",
-                |()| {
-                    publish_models.take().expect("one model manager")(self);
-                    Ok::<_, std::convert::Infallible>(())
-                },
-            )
-            .unwrap();
+            let _ = step
+                .apply(
+                    &phase,
+                    HookId::AddClientReloadListeners,
+                    "client_reload_apply",
+                    |()| {
+                        publish_models.take().expect("one model manager")(self);
+                        Ok::<_, std::convert::Infallible>(())
+                    },
+                )
+                .unwrap();
         }
     }
 }

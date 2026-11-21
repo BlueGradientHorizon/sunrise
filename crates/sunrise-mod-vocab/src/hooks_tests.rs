@@ -1141,9 +1141,7 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             _: &mut dyn ServerHost,
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
-            event
-                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
-                .unwrap();
+            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
             panic!("panic after staging configuration task");
         }
     }
@@ -1155,9 +1153,7 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             _: &mut dyn ServerHost,
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
-            event
-                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
-                .unwrap();
+            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
         }
     }
 
@@ -1172,12 +1168,11 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             let mut registration = crate::__private::ConfigurationTaskRegistration::default();
             dispatch_register_configuration_tasks(
                 &mut host,
-                crate::__private::configuration_connection(1),
+                crate::__private::configuration_connection(1, 1),
                 42,
                 "Steve",
                 &mut registration,
             );
-            assert!(registration.refusal().is_none());
             let tasks = registration.into_tasks();
             assert_eq!(tasks.len(), 1);
             assert_eq!(tasks[0].owner, Some("healthy"));

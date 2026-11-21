@@ -172,7 +172,7 @@ pub struct Hook {
     pub collect_validator: Option<String>,
     /// Hide the output vector of a registration collector behind append-only methods.
     pub registration_append: Option<RegistrationAppend>,
-    /// Mutable registrar field whose engine owner stages each listener's edits.
+    /// Mutable registrar field, or `host` for a direct listener whose owner journals its writes.
     pub staged_surface: Option<String>,
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.

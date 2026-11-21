@@ -33,7 +33,13 @@ impl Game<'_> {
                 operation,
                 || callback(self),
             )
-            .unwrap_or_else(Err)
+            .and_then(|result| {
+                result.inspect_err(|reason| {
+                    log::warn!(
+                        "mod {owner}: {operation} for {task_type} failed this peer: {reason}"
+                    );
+                })
+            })
         } else {
             callback(self)
         };
@@ -41,9 +47,6 @@ impl Game<'_> {
             Ok(ordinal) => ordinal,
             Err(reason) => {
                 self.transaction_close(&seal, false);
-                if let Some((owner, kind, operation)) = owner {
-                    log::error!("mod {owner}: {operation} for {kind} failed this peer: {reason}");
-                }
                 session.fail(reason);
                 return false;
             }

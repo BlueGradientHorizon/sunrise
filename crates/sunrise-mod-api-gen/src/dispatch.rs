@@ -204,7 +204,9 @@ pub(super) fn emit<'a>(
         let staged_host = hook.staged_surface.as_deref() == Some("host")
             && !args.iter().any(|(arg, _)| arg == "host");
         let staged = if staged_host {
-            let (name, param) = host.as_ref().ok_or("staged host needs a Host")?;
+            let (host_name, param) = host
+                .as_ref()
+                .ok_or_else(|| format!("{name}: staged host needs a Host"))?;
             if hook.dispatch != DispatchStyle::Direct
                 || !in_game
                 || is_render
@@ -220,7 +222,7 @@ pub(super) fn emit<'a>(
             }
             let stage = fresh_name("stage_listener", &mut used);
             Some((
-                name,
+                host_name,
                 stage,
                 format!("impl FnMut(&mut dyn FnMut({}) -> bool)", param.ty),
             ))
@@ -1101,7 +1103,10 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(name, "contents_changed" | "farmland_trample") {
+            if matches!(
+                name,
+                "contents_changed" | "farmland_trample" | "register_configuration_tasks"
+            ) {
                 // Let the existing journal see the unwind before invoke catches it. In World a
                 // successful child merges into the owning action's frame; outside World use
                 // the normal typed phase-refusal path.

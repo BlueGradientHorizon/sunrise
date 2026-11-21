@@ -524,10 +524,24 @@ fn a_panicking_publication_notice_does_not_stop_later_subscribers_or_recur() {
     .into();
     with_mods(mods, || {
         with_client_game(|game| {
+            let journal = Arc::new(Mutex::new(Vec::new()));
+            game.transactions.trace = Some(journal.clone());
             let mut reports = Vec::new();
-            for _ in 0..2 {
+            for reload in 0..2 {
                 game.texture_atlases_stitched();
                 game.native_model_baking_completed();
+                let journal = std::mem::take(&mut *journal.lock().unwrap());
+                let mut expected = Vec::new();
+                for notification in 0..3 {
+                    if reload == 0 && notification != 1 {
+                        expected.extend(["open", "abort"]);
+                    }
+                    expected.extend(["open", "commit"]);
+                }
+                assert_eq!(
+                    journal, expected,
+                    "journal closes each subscriber separately"
+                );
                 reports.extend(
                     mod_api::__private::take_hook_panics()
                         .into_iter()
