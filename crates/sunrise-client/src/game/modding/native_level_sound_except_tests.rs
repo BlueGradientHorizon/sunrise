@@ -1420,3 +1420,268 @@ fn always_producing_sound_listener_stops_at_one_nested_sound_in_and_out_of_trans
         });
     });
 }
+
+/// Regression for cross-level transactional writes during synchronous level-sound dispatch:
+/// an Overworld transaction plays a sound in the Nether, whose listener writes a block at the
+/// exact same coordinates in the Nether (directly or via a nested transaction merged into the
+/// Overworld parent). Abort must restore both dimensions untouched; commit must apply only each
+/// dimension's own writes without cross-dimension corruption or deduplication.
+#[test]
+#[ignore = "daily"]
+fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_and_nested_merge() {
+    use super::api_values::TryIntoApi;
+    use mod_api::{BlockUpdateFlags, Flow, HostSide};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use sunrise_client::chunk::Chunk;
+
+    struct NetherBlockHook {
+        pos: [i32; 3],
+        write_state: mod_api::BlockState,
+        nested_tx: Arc<AtomicBool>,
+        calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for NetherBlockHook {
+        fn play_level_sound_at_position(
+            &self,
+            host: HostSide<'_>,
+            e: &mut mod_api::PlayLevelSoundAtPositionEvent,
+        ) -> Flow {
+            if e.level.dimension_id() != "minecraft:the_nether" {
+                return Flow::Continue;
+            }
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if let HostSide::Server(server) = host {
+                let write = |server: &mut dyn mod_api::ServerHost| {
+                    assert_eq!(
+                        e.level.set_block(
+                            server,
+                            self.pos,
+                            self.write_state,
+                            BlockUpdateFlags::NEIGHBORS,
+                        ),
+                        Ok(true)
+                    );
+                };
+                if self.nested_tx.load(Ordering::SeqCst) {
+                    let merged = mod_api::run_transaction(server, |server, _| {
+                        write(server);
+                        Ok::<(), ()>(())
+                    });
+                    assert!(merged.is_ok());
+                } else {
+                    write(server);
+                }
+            }
+            Flow::Continue
+        }
+    }
+
+    with_guests(|game| {
+        game.options.dedicated = Some(Vec::new());
+        let pos = [3, 64, 5];
+        let at = [3.0, 64.0, 5.0];
+        let bell = "minecraft:block.bell.use";
+        let state = |game: &super::Game<'_>, name: &str| {
+            game.pack
+                .assets
+                .registry
+                .default_state(name)
+                .unwrap_or_else(|| panic!("missing block state {name}"))
+        };
+        let diamond = state(game, "minecraft:diamond_block");
+        let netherrack = state(game, "minecraft:netherrack");
+        let emerald = state(game, "minecraft:emerald_block");
+        let gold = state(game, "minecraft:gold_block");
+        let emerald_api = emerald.try_into_api().unwrap();
+
+        // Populate chunk (0, 0) in both dimensions with distinct blocks at the exact same coords.
+        if !game.world.chunks.contains_key(&(0, 0)) {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        }
+        game.world.set(pos[0], pos[1], pos[2], diamond).unwrap();
+
+        game.enter_level(super::Dim::Nether).unwrap();
+        if !game.world.chunks.contains_key(&(0, 0)) {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        }
+        game.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
+        game.enter_level(super::Dim::Overworld).unwrap();
+
+        let overworld = game.level("minecraft:overworld").unwrap();
+        let nether = game.level("minecraft:the_nether").unwrap();
+
+        let block_in = |game: &mut super::Game<'_>, dim: super::Dim| {
+            game.with_effect_level(dim, |g| g.world.block(pos[0], pos[1], pos[2]))
+                .unwrap()
+        };
+        assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+        assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+        let nested_tx = Arc::new(AtomicBool::new(false));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mods = vec![mod_api::ModEntry::new(
+            "cross_level_sound_block_journal_test",
+            Box::new(NetherBlockHook {
+                pos,
+                write_state: emerald_api,
+                nested_tx: Arc::clone(&nested_tx),
+                calls: Arc::clone(&calls),
+            }),
+        )]
+        .into();
+
+        mod_platform::testing::with_mods(mods, || {
+            // 1. Direct listener write in Nether during an Overworld transaction that ABORTS:
+            // neither dimension changes (Nether's old netherrack must not overwrite Overworld's
+            // diamond_block, and Nether's emerald_block edit must roll back).
+            let aborted = mod_api::run_transaction(game, |game, _| {
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                assert_eq!(game.dim, super::Dim::Overworld);
+                assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+                assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                Err::<(), ()>(())
+            });
+            assert!(aborted.is_err());
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert_eq!(game.dim, super::Dim::Overworld);
+            assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+            assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+            // 2. Direct listener write in Nether when the Overworld transaction ALSO edits the
+            // same coordinates, then ABORTS: both dimensions restore their own original blocks.
+            let aborted_both = mod_api::run_transaction(game, |game, _| {
+                assert_eq!(
+                    game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                Err::<(), ()>(())
+            });
+            assert!(aborted_both.is_err());
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+            assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+            // 3. Direct listener write in Nether during an Overworld transaction that COMMITS:
+            // Overworld stays diamond_block and only Nether changes to emerald_block.
+            let committed = mod_api::run_transaction(game, |game, _| {
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                Ok::<(), ()>(())
+            });
+            assert!(committed.is_ok());
+            assert_eq!(calls.load(Ordering::SeqCst), 3);
+            assert_eq!(game.dim, super::Dim::Overworld);
+            assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+            assert_eq!(block_in(game, super::Dim::Nether), emerald);
+
+            // Reset Nether back to netherrack for the nested-transaction merge cases.
+            game.with_effect_level(super::Dim::Nether, |g| {
+                g.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
+            })
+            .unwrap();
+
+            // 4. Nested transaction in Nether merges into its Overworld parent, then the parent
+            // ABORTS (even while Overworld also wrote to `pos`): both dimensions stay unchanged.
+            nested_tx.store(true, Ordering::SeqCst);
+            let nested_abort = mod_api::run_transaction(game, |game, _| {
+                assert_eq!(
+                    game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                assert_eq!(block_in(game, super::Dim::Overworld), gold);
+                assert_eq!(block_in(game, super::Dim::Nether), emerald);
+                Err::<(), ()>(())
+            });
+            assert!(nested_abort.is_err());
+            assert_eq!(calls.load(Ordering::SeqCst), 4);
+            assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+            assert_eq!(block_in(game, super::Dim::Nether), netherrack);
+
+            // 5. Nested transaction in Nether merges into its Overworld parent, then the parent
+            // COMMITS: Overworld stays diamond_block and only Nether changes to emerald_block.
+            let nested_commit = mod_api::run_transaction(game, |game, _| {
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                Ok::<(), ()>(())
+            });
+            assert!(nested_commit.is_ok());
+            assert_eq!(calls.load(Ordering::SeqCst), 5);
+            assert_eq!(block_in(game, super::Dim::Overworld), diamond);
+            assert_eq!(block_in(game, super::Dim::Nether), emerald);
+
+            // 6. Nested Nether commit + same-coordinate Overworld write both commit without
+            // deduplicating or clobbering each other across dimensions.
+            game.with_effect_level(super::Dim::Nether, |g| {
+                g.world.set(pos[0], pos[1], pos[2], netherrack).unwrap();
+            })
+            .unwrap();
+            let both_commit = mod_api::run_transaction(game, |game, _| {
+                assert_eq!(
+                    game.level_set_block(overworld, pos, gold, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                assert!(game.level_play_sound(
+                    nether,
+                    bell,
+                    at,
+                    SoundSource::Blocks,
+                    1.0,
+                    1.0,
+                    None,
+                ));
+                Ok::<(), ()>(())
+            });
+            assert!(both_commit.is_ok());
+            assert_eq!(calls.load(Ordering::SeqCst), 6);
+            assert_eq!(block_in(game, super::Dim::Overworld), gold);
+            assert_eq!(block_in(game, super::Dim::Nether), emerald);
+        });
+    });
+}

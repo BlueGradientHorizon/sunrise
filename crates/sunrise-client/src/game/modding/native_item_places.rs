@@ -48,8 +48,9 @@ impl Game<'_> {
                 .find(|m| m.id == id && m.extra.chested)?;
             let size = super::mount_menu::mount_columns(m) * 3;
             if m.extra.items.len() < size {
+                let dim = self.dim;
                 if let Some(level) = self.transactions.last_mut() {
-                    level.keep_mob_length(id, m.extra.items.len());
+                    level.keep_mob_length(dim, id, m.extra.items.len());
                 }
                 m.extra.items.resize(size, None);
             }

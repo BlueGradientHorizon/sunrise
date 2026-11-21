@@ -14,8 +14,9 @@ impl Game<'_> {
                 .stage_tick_item(id, (stack.count != 0).then_some(stack))
                 .unwrap_or(false);
         }
+        let dim = self.dim;
         let Some(level) = self.transactions.last_mut() else {
-            let dimension = self.dim.id();
+            let dimension = dim.id();
             return self.native_set_item_entity(dimension, id, stack);
         };
         let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) else {
@@ -23,10 +24,10 @@ impl Game<'_> {
         };
         level
             .item_entities
-            .entry(id)
+            .entry((dim, id))
             .or_insert_with(|| e.stack.clone());
         if stack.count == 0 {
-            level.after.push(After::Emptied(id));
+            level.after.push((dim, After::Emptied(id)));
         }
         e.stack = stack;
         true
