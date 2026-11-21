@@ -770,7 +770,7 @@ pub struct PackPost {
     dummy_normal: wgpu::TextureView,
     dummy_3d: wgpu::TextureView,
     dummy_1d: wgpu::TextureView,
-    /// `image.*` and `bufferObject.*`.
+    /// `image.*` (the storage buffers, `bufferObject.*`, are `buffers`).
     images: Vec<pack_images::PackImage>,
     /// The shadowcolor buffers a pass outside the shadow group binds as images (bit n:
     /// shadowcolor n): such a pass changes them after the shadow pass, so the Shadow Cache
@@ -783,6 +783,10 @@ pub struct PackPost {
     /// into, flips or binds as an image: the Shadow Cache keeps the pass only while all of them
     /// are cleared every frame.
     shadow_writes: u16,
+    /// A shadow program, or a compute stage attached to one, binds the pack's storage buffers
+    /// (`bufferObject.*`, set 4): they are zeroed once and then kept between frames, and the
+    /// cache key doesn't hold them, so the Shadow Cache never keeps such a pass.
+    shadow_buffers: bool,
     /// Set 5 of programs with a geometry stage.
     indices: Option<wgpu::BindGroupLayout>,
     shadow_culling: sunrise_shaders::ShadowCulling,
@@ -1824,14 +1828,19 @@ fn bindings(
             }
             (None, None) => stand_in(&i.name, notes),
         };
-        // The shadowcolor buffers are plain 2D textures: an `image3D` (or 1D, array, cube...)
-        // declaration would bind a 2D view to a layout of another dimension, which wgpu
-        // refuses. A dispatch's copy is declared as the image it copies.
-        if let Image::ShadowColor(n) | Image::ShadowColorBefore(n) = target
+        // The colortex and shadowcolor buffers are plain 2D textures: an `image3D` (or 1D,
+        // array, cube...) declaration would bind a 2D view to a layout of another dimension,
+        // which wgpu refuses. A dispatch's copy is declared as the image it copies.
+        let built_in = match target {
+            Image::Color(n) | Image::ColorBefore(n) => Some(("colortex", n)),
+            Image::ShadowColor(n) | Image::ShadowColorBefore(n) => Some(("shadowcolor", n)),
+            _ => None,
+        };
+        if let Some((kind, n)) = built_in
             && !i.ty.ends_with("image2D")
         {
             notes.push(format!(
-                "{name}: `{}` is declared {} but shadowcolor{n} is 2D; skipped",
+                "{name}: `{}` is declared {} but {kind}{n} is 2D; skipped",
                 i.name, i.ty
             ));
             return None;
@@ -2521,6 +2530,7 @@ impl PackPost {
         let (mut shadow_storage, mut shadow_copied) = (0u16, 0u16);
         let (mut shadow_images_outside, mut shadow_pass_images) = (0u16, 0u16);
         let mut shadow_writes = 0u16;
+        let mut shadow_buffers = false;
         let draws = DrawUniforms::new(device);
         // The shadow buffers' formats when the shadow pass runs; their programs see them as
         // buffers 0 to 7.
@@ -2757,6 +2767,7 @@ impl PackPost {
                 if in_shadow {
                     shadow_pass_images |= own | before;
                     shadow_writes |= p.written | p.flip | own;
+                    shadow_buffers |= p.buffers;
                 } else {
                     shadow_images_outside |= own | before;
                 }
@@ -3570,6 +3581,7 @@ impl PackPost {
             shadow_images_outside,
             shadow_pass_images,
             shadow_writes,
+            shadow_buffers,
         };
         Ok((built, jobs))
     }
@@ -5156,11 +5168,13 @@ impl PackPost {
         // pass that binds a shadowcolor buffer as an image may change it, so the map kept isn't
         // the shadow pass's any more. And a shadow program writing a buffer that isn't cleared
         // every frame builds on the frame before (an accumulating `shadowcomp` dispatch): the
-        // same inputs give another result, so only a pass whose writes all start from a clear
-        // is kept.
+        // same inputs give another result. The pack's storage buffers (`bufferObject.*`) are
+        // never cleared and aren't in the key, so a shadow program that binds them, reading or
+        // writing, is never kept either.
         let cache_hit = !has_shadow_entities
             && self.images.is_empty()
             && self.shadow_images_outside == 0
+            && !self.shadow_buffers
             && self.shadow_cache.key == Some(cache_key)
             && self
                 .shadow_targets

@@ -731,7 +731,7 @@ fn bind_images(
 }
 
 #[test]
-fn a_shadowcolor_image_or_its_copy_of_another_dimension_is_refused() {
+fn a_buffer_image_or_its_copy_of_another_dimension_is_refused() {
     let _gpu = crate::gfx::test_gpu::lock();
     let image = |name: &str, ty: &str, before: Option<&str>| sunrise_shaders::Image {
         name: name.into(),
@@ -756,6 +756,8 @@ fn a_shadowcolor_image_or_its_copy_of_another_dimension_is_refused() {
         bound == Some(vec![(1, Image::ShadowColorBefore(1))]),
         "{notes:?}"
     );
+    let (bound, notes) = bind_images(vec![image("colorimg2", "image2D", None)]).expect("a GPU");
+    assert!(bound == Some(vec![(1, Image::Color(2))]), "{notes:?}");
     // Any other dimension would bind a 2D view to a layout wgpu then refuses to match: the
     // program is refused while the pack loads. A copy is checked on its own, as a dispatch
     // loads from it.
@@ -773,6 +775,12 @@ fn a_shadowcolor_image_or_its_copy_of_another_dimension_is_refused() {
                 Some("shadowcolorimg1"),
             ),
             "shadowcolor1",
+        ),
+        // colortex buffers are 2D as well, with their copies.
+        (image("colorimg0", "image3D", None), "colortex0"),
+        (
+            image("hz_before_colorimg1", "image2DArray", Some("colorimg1")),
+            "colortex1",
         ),
     ] {
         let name = img.name.clone();
@@ -879,14 +887,29 @@ fn the_shadow_cache_counts_every_kind_of_shadow_program_write() {
     );
     let post = gpu.build(pack(&[("composite.csh", &composite)]));
     assert_eq!((post.shadow_writes, post.shadow_images_outside), (0, 1));
+    // Only shadow programs' storage buffers count: a composite one's don't stop the cache.
+    let composite = format!(
+        "{COMPUTE}layout(std430, binding = 0) buffer Counter {{ uint n; }} counter;\n\
+         void main() {{ atomicAdd(counter.n, 1u); }}\n"
+    );
+    let post = gpu.build(pack(&[
+        ("composite.csh", &composite),
+        ("shaders.properties", "bufferObject.0 = 4\n"),
+    ]));
+    assert!(!post.shadow_buffers);
 }
 
 /// Two frames of the pack of `files` and `final` with `directives`, with the Shadow Cache off
 /// and then on (a new [`PackPost`] each): pixels (0, 0) and (1, 0) of each frame.
 fn cache_off_and_on(files: &[(&str, &str)], directives: &str) -> Option<[Vec<[[u8; 4]; 2]>; 2]> {
+    cache_off_and_on_of(|| pack_with(files, directives))
+}
+
+/// [`cache_off_and_on`] of the pack `post` makes.
+fn cache_off_and_on_of(post: impl Fn() -> Post) -> Option<[Vec<[[u8; 4]; 2]>; 2]> {
     let gpu = Fixture::new()?;
     Some([false, true].map(|cached| {
-        let mut post = gpu.build(pack_with(files, directives));
+        let mut post = gpu.build(post());
         (0..2)
             .map(|_| {
                 let pixels = if cached {
@@ -950,4 +973,79 @@ fn the_shadow_cache_key_has_the_uniforms_of_an_attached_compute_stage() {
     // The frames differ, as the counter does, with the cache off and on alike.
     assert_ne!(off[0][1], off[1][1], "{off:?}");
     assert_eq!(on, off);
+}
+
+#[test]
+fn the_shadow_cache_reruns_a_shadowcomp_pass_that_builds_on_its_buffers_other_side() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    // shadowcomp draws shadowcolor0 + 0.2 into its "alt" side, then flips: the buffer isn't
+    // cleared, so it reads 0.2 on the first frame and 0.4 on the second. A kept map would read
+    // 0.2 twice: no image is bound, only the draw and the flip say the pass builds on the frame
+    // before.
+    let Some([off, on]) = cache_off_and_on(
+        &[
+            ("shadowcomp.vsh", VERTEX),
+            (
+                "shadowcomp.fsh",
+                "#version 330 compatibility\nuniform sampler2D shadowcolor0;\n/* RENDERTARGETS: 0 */\n\
+                 void main() {\n    float r = texelFetch(shadowcolor0, ivec2(gl_FragCoord.xy), 0).r;\n\
+                     gl_FragData[0] = vec4(r + 0.2, 0.0, 0.0, 1.0);\n}\n",
+            ),
+        ],
+        "const bool shadowcolor0Clear = false;\n",
+    ) else {
+        return;
+    };
+    assert_eq!(
+        off,
+        [[[51, 0, 0, 255], [255; 4]], [[102, 0, 0, 255], [255; 4]]]
+    );
+    assert_eq!(on, off);
+}
+
+#[test]
+fn the_shadow_cache_reruns_a_shadow_dispatch_that_binds_the_storage_buffers() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    // shadowcomp.csh adds 1 to a counter in `bufferObject.0`, which is zeroed once and then
+    // kept; `final` shows the counter / 5 in the even columns: 0.2 on the first frame, 0.4 on
+    // the second. Nothing in the cache key changes, but a kept pass would leave it at 0.2. The
+    // dispatch runs on its own, then as the stage attached to shadowcomp.fsh's pass.
+    let shadowcomp = format!(
+        "{COMPUTE}layout(std430, binding = 0) buffer Counter {{ uint n; }} counter;\n\
+         void main() {{\n    if (gl_GlobalInvocationID.xy == uvec2(0)) atomicAdd(counter.n, 1u);\n}}\n"
+    );
+    let fragment = "#version 430 compatibility\nconst int shadowMapResolution = 8;\n\
+         uniform sampler2D shadowcolor0;\n\
+         layout(std430, binding = 0) buffer Counter { uint n; } counter;\n\
+         void main() {\n    ivec2 p = ivec2(gl_FragCoord.xy);\n\
+             gl_FragColor = p.x % 2 == 0 ? vec4(float(counter.n) * 0.2, 0.0, 0.0, 1.0)\n\
+                 : texelFetch(shadowcolor0, p, 0);\n}\n";
+    let attached = [
+        ("shadowcomp.vsh", VERTEX),
+        (
+            "shadowcomp.fsh",
+            "#version 120\n/* RENDERTARGETS: 0 */\nvoid main() { gl_FragData[0] = vec4(1.0); }\n",
+        ),
+    ];
+    for extra in [&[][..], &attached[..]] {
+        let Some([off, on]) = cache_off_and_on_of(|| {
+            let files = [
+                ("shaders.properties", "bufferObject.0 = 4\n"),
+                ("shadowcomp.csh", &shadowcomp),
+                ("final.vsh", VERTEX),
+                ("final.fsh", fragment),
+            ];
+            let all: Vec<_> = files.iter().chain(extra).copied().collect();
+            pack_of(&all, &Default::default())
+        }) else {
+            return;
+        };
+        assert_eq!(
+            off,
+            [[[51, 0, 0, 255], [255; 4]], [[102, 0, 0, 255], [255; 4]]],
+            "{} programs",
+            4 + extra.len()
+        );
+        assert_eq!(on, off, "{} programs", 4 + extra.len());
+    }
 }
