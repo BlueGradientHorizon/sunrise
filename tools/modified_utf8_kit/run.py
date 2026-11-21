@@ -247,7 +247,7 @@ def main():
     parser.add_argument("--copies", type=int, default=4, help="byte-identical copies of the module (default 4)")
     parser.add_argument("--confidence-starts", type=int, default=8, help="fresh JVMs per row (default 8)")
     parser.add_argument("--confidence-rounds", type=int, default=5, help="rounds per JVM (default 5)")
-    parser.add_argument("--rows", default="", help="comma-separated 'op set' filters, e.g. 'encode ascii-8'")
+    parser.add_argument("--rows", default=None, help="comma-separated 'op set' filters, e.g. 'encode ascii-8'")
     parser.add_argument("--java", default="java", help="the java to time (default: java on PATH)")
     args = parser.parse_args()
     BUILD.mkdir(parents=True, exist_ok=True)
@@ -265,8 +265,8 @@ def main():
     pin = ["taskset", "-c", str(cpu)] if shutil.which("taskset") else []
     log(f"pinned to CPU {cpu}: {why}" if pin else "not pinned (no taskset)")
     rows = [(op, s) for op in OPS for s in SETS]
-    if args.rows:
-        wanted = [w.strip() for w in args.rows.split(",")]
+    if args.rows is not None:
+        wanted = [part for raw in args.rows.split(",") if (part := raw.strip())]
         rows = [r for r in rows if any(f"{r[0]} {r[1]}".startswith(w) for w in wanted)]
     if not rows:
         sys.exit(f"--rows {args.rows!r} selects no cases")
