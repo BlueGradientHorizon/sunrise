@@ -189,19 +189,21 @@ impl Game<'_> {
     /// `KeyMapping.isDown`: held, while its conflict context and modifiers are active. Nothing is
     /// down behind a screen, which released them all.
     pub(in crate::game) fn is_down(&self, mod_id: &str, id: &str) -> bool {
+        let mappings = &self.native_input.mappings;
         !self.mod_mappings_screen_open()
-            && self
-                .native_input
-                .mappings
-                .is_down(mod_id, id, glfw_modifiers(self.modifiers), false)
+            && mappings
+                .resolve(mod_id, id)
+                .and_then(|slot| mappings.is_down(slot, glfw_modifiers(self.modifiers), false))
+                .unwrap_or(false)
     }
     /// `KeyMapping.consumeClick`. Behind a screen there is none: the screen released them all.
     pub(in crate::game) fn consume_click(&mut self, mod_id: &str, id: &str) -> bool {
-        if self.mod_mappings_screen_open() {
-            self.native_input.mappings.release_all();
-            return false;
-        }
-        self.native_input.mappings.consume_click(mod_id, id)
+        let screen_open = self.mod_mappings_screen_open();
+        let mappings = &mut self.native_input.mappings;
+        mappings
+            .resolve(mod_id, id)
+            .and_then(|slot| mappings.consume_click(slot, screen_open))
+            .unwrap_or(false)
     }
 }
 
