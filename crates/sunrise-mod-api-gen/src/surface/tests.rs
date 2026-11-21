@@ -984,9 +984,10 @@ fn an_unreadable_workspace_generated_include_stops_the_surface_audit() {
     )
     .unwrap();
     std::fs::create_dir_all(root.join("outside/src")).unwrap();
-    std::fs::create_dir_all(root.join("crates/sunrise-mod-vocab")).unwrap();
+    let vocabulary = root.join("crates/sunrise-mod-vocab/Cargo.toml");
+    std::fs::create_dir_all(vocabulary.parent().unwrap()).unwrap();
     std::fs::write(
-        root.join("crates/sunrise-mod-vocab/Cargo.toml"),
+        vocabulary,
         "[package]\nname = \"sunrise-mod-vocab\"\n[dependencies]\noutside = { path = \"../../outside\" }\n",
     )
     .unwrap();
@@ -1019,9 +1020,10 @@ fn an_unreadable_dev_dependency_does_not_stop_the_surface_audit() {
     )
     .unwrap();
     std::fs::create_dir_all(root.join("outside/src")).unwrap();
-    std::fs::create_dir_all(root.join("crates/sunrise-mod-vocab")).unwrap();
+    let vocabulary = root.join("crates/sunrise-mod-vocab/Cargo.toml");
+    std::fs::create_dir_all(vocabulary.parent().unwrap()).unwrap();
     std::fs::write(
-        root.join("crates/sunrise-mod-vocab/Cargo.toml"),
+        vocabulary,
         "[package]\nname = \"sunrise-mod-vocab\"\n[dev-dependencies]\noutside = { path = \"../../outside\" }\n",
     )
     .unwrap();

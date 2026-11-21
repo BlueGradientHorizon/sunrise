@@ -116,8 +116,6 @@ NOT_READS = {
         "crates/sunrise-client/src/entry.rs", "crates/sunrise-client/src/game.rs", "crates/sunrise-client/src/lib.rs",
         "crates/sunrise-mod-api-gen/internals.txt",
     },
-    # The scanner uses this path to exclude the macro crate from the indexed seam; it reads its manifest, not source.
-    "sunrise-mod-api-gen": {"crates/sunrise-mod-api-macros", "crates/sunrise-mod-vocab"},
 }
 
 

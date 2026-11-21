@@ -65,6 +65,10 @@ impl OutsideSeam {
                 .and_then(|package| package.get("name"))
                 .and_then(toml::Value::as_str)
                 .ok_or_else(|| format!("{member}/Cargo.toml: no package name"))?;
+            // The walk records this crate's re-exported procedural macros as opaque names.
+            if package_name == "sunrise-mod-api-macros" {
+                continue;
+            }
             let crate_name = package
                 .get("lib")
                 .and_then(|lib| lib.get("name"))
@@ -83,7 +87,6 @@ impl OutsideSeam {
                 })
                 .unwrap_or_else(|| crate_name.clone());
             let seam = member == "crates/sunrise-mod-api"
-                || member == "crates/sunrise-mod-api-macros"
                 || CRATES
                     .iter()
                     .any(|(_, src)| Path::new(src).parent() == Some(Path::new(member)));
@@ -118,7 +121,7 @@ impl OutsideSeam {
                     });
                     packages.insert(package_name.to_owned(), (crate_name, indexed_name.clone()));
                 }
-            } else if member != "crates/sunrise-mod-api-macros" {
+            } else {
                 packages.insert(package_name.to_owned(), (crate_name, indexed_name.clone()));
             }
             member_manifests.push((indexed_name, package));
