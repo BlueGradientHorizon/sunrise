@@ -234,8 +234,8 @@ fn drive<T>(
     loop {
         host.tick();
         for receipt in session.1.poll() {
-            let (queued, _credit) = receipt.into_parts();
-            if let Some(found) = done(host, queued.event) {
+            let (_serial, event, _credit) = receipt.into_parts();
+            if let Some(found) = done(host, event) {
                 return found;
             }
         }

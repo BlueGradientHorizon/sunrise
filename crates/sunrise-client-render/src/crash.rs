@@ -78,7 +78,21 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
             mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
             f,
         )
-    }));
+    }))
+    .map_err(|payload| {
+        let message = CAUGHT
+            .with(|c| c.borrow_mut().take())
+            .unwrap_or_else(|| payload_text(&*payload));
+        // Payloads can own mod destructors. Keep the panic hook in containment while
+        // dropping this one, and don't run a destructor on a second panic's payload.
+        if let Err(secondary) =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+        {
+            std::mem::forget(secondary);
+        }
+        CAUGHT.with(|c| *c.borrow_mut() = None);
+        message
+    });
     CONTAINED.with(|c| c.set(c.get() - 1));
     match result {
         Ok(Ok(value)) => Ok(value),
@@ -87,9 +101,7 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
             refusal.report();
             Err(refusal.to_string())
         }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
+        Err(message) => Err(message),
     }
 }
 

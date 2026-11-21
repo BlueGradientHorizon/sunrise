@@ -106,6 +106,13 @@ mod tests {
     };
     use sunrise_client::net::Event;
 
+    struct PanickingPayload;
+    impl Drop for PanickingPayload {
+        fn drop(&mut self) {
+            panic!("panic payload's destructor ran");
+        }
+    }
+
     fn executor(host: &dyn ClientHost, id: &'static str) -> ClientExecutor {
         let _call = crash::enter_native_mod(ModCall {
             id,
@@ -166,6 +173,12 @@ mod tests {
             }
             fn set_control_flow(&self, _: ControlFlow) {}
         }
+        struct PanicOnDiscard;
+        impl Drop for PanicOnDiscard {
+            fn drop(&mut self) {
+                std::panic::panic_any(PanickingPayload);
+            }
+        }
 
         with_client_game(|game| {
             let executor = executor(game, "producer");
@@ -195,13 +208,14 @@ mod tests {
             assert_eq!(Arc::strong_count(&captured), 1);
             let late = captured.clone();
             thread::spawn(move || {
+                let panicking_capture = PanicOnDiscard;
                 executor.execute(Box::new(move |_| {
                     drop(late);
-                    panic!("late client task ran after shutdown");
+                    drop(panicking_capture);
                 }));
             })
             .join()
-            .unwrap();
+            .expect("dropping a late client task must not unwind from execute");
             assert_eq!(Arc::strong_count(&captured), 1);
             game.poll_remote().unwrap();
             assert!(game.client_executor.errors.is_empty());
@@ -215,7 +229,7 @@ mod tests {
             let failed = executor(game, "failed");
             let other = executor(game, "other");
             let (record, calls) = std::sync::mpsc::channel();
-            failed.execute(Box::new(|_| panic!("mod's task panicked")));
+            failed.execute(Box::new(|_| std::panic::panic_any(PanickingPayload)));
             let same_mod = record.clone();
             failed.execute(Box::new(move |_| same_mod.send("failed").unwrap()));
             other.execute(Box::new(move |_| record.send("other").unwrap()));

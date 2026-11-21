@@ -1,9 +1,10 @@
 ids = ["type:ClientExecutor", "handle:ClientExecutor::execute", "method:prelude::ServicesClientHost::client_executor"]
 why = """
-Vanilla's `BlockableEventLoop.execute` (`Minecraft.execute`) moves work to the client thread; \
-`Minecraft.runTick` runs scheduled executables after the packet processor, and `Minecraft.shouldRun` \
-accepts every runnable. NeoForge uses this hop in its `ConnectScreen` patch, and \
-`ClientPayloadContext.enqueueWork` uses the packet processor for payload-scoped work. Sunrise's \
+Vanilla's `BlockableEventLoop.execute` (`Minecraft.execute`) moves work to the client thread, as in the \
+connector started by `ConnectScreen.startConnecting`. `Minecraft.runTick` runs scheduled executables \
+after the packet processor, and `Minecraft.shouldRun` accepts every runnable. NeoForge dispatches \
+payload-scoped work through `MainThreadPayloadHandler` and `ClientPayloadContext.enqueueWork`, which \
+schedules off-thread submissions on the packet processor. Sunrise's \
 executor submits one-shot closures to the same ingress as queued payload work, even when called on the \
 client thread. Deferred packets and disconnects do not defer this turn's tasks. Each task gets a live \
 host. `Minecraft.stop` ends the loop; Sunrise drops work as soon as the client starts quitting. \
@@ -16,8 +17,10 @@ client-side `entity_entering_section` host return `None`. Replace an off-thread 
 `executor.execute(Box::new(move |host| { /* use the live client host */ }))`. Keep \
 `IPayloadContext::enqueue_work` when the task needs that payload's epoch or reply context.
 
-Native replacements of `net::Session::poll` move to `net::ClientInbox::poll(&self) -> Vec<QueuedEvent>`. \
-Use `QueuedEvent::into_parts()` to split the optional physical session serial, event and optional receive \
-credit; executor work has neither a serial nor receive credit. Native replacements of `net::receive_brand` \
-now take `fn receive_brand(payload: &sunrise_protocol::packets::configuration::CustomPayload, \
-send: &sunrise_client::net::EventSender)` instead of taking `&ingress::Producer<Event>` as argument two."""
+In a `[[native.mixin]]` row, change the target from `sunrise_client_lib::net::Session::poll` to \
+`sunrise_client_lib::net::client_inbox::ClientInbox::poll`. The Rust signature for the new target is \
+`fn poll(&self) -> Vec<sunrise_client_lib::net::QueuedEvent>`. Use `QueuedEvent::into_parts()` to split \
+the optional physical session serial, event and optional receive credit; executor work has neither a \
+serial nor receive credit. Keep the manifest target `sunrise_client_lib::net::receive_brand`; its Rust \
+signature is now `fn receive_brand(payload: &sunrise_protocol::packets::configuration::CustomPayload, \
+send: &sunrise_client_lib::net::EventSender)`, replacing `&ingress::Producer<Event>` as argument two."""

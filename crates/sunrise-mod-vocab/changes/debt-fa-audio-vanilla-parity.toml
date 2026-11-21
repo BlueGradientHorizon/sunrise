@@ -46,13 +46,13 @@ configuration re-entry, dimension change, or sound engine stop/reload. NeoForge'
 in `Minecraft.setLevel` and disconnect precedes the sound stop, so it includes streams opened during \
 teardown.
 - Placement controls: `set_flat` and `set_position` are host-free; `set_entity(host, entity)` needs the \
-client thread's `&dyn ClientHost` to resolve the entity immediately. Vanilla hands work across threads \
-with `Minecraft.execute` and checks the client thread before touching sounds in \
-`ClientPacketListener.handleStopSoundEvent`. In `client_setup`, take the `Some(executor)` from \
-`host.client_executor()` and clone it into the network-thread producer holding an `EntityRef`. \
-The producer calls `executor.execute(Box::new(move |host| { \
-stream.set_entity(host, entity); }))`, the Sunrise equivalent of the client-thread hop in NeoForge's \
-`ConnectScreen` patch using `Minecraft.execute`.
+client thread's `&dyn ClientHost` to resolve the entity immediately. The vanilla connector started by \
+`ConnectScreen.startConnecting` hands work to the client thread with `Minecraft.execute`, and \
+`ClientPacketListener.handleStopSoundEvent` checks the client thread before touching sounds. NeoForge \
+dispatches payload-scoped work via `MainThreadPayloadHandler` and `ClientPayloadContext.enqueueWork`, \
+which uses the packet processor for off-thread submissions. In `client_setup`, take the `Some(executor)` \
+from `host.client_executor()` and clone it into the network-thread producer holding an `EntityRef`. \
+The producer calls `executor.execute(Box::new(move |host| { stream.set_entity(host, entity); }))`.
 - Starvation guards: raised the scalar constants `AUDIO_STREAMS_PER_MOD` (32 -> 256) and \
 `AUDIO_STREAMS_TOTAL` (64 -> 1,024), keep counting stopped streams against their owner until the pull \
 worker retires their job, and bound both per-mod and aggregate PCM ring storage \
