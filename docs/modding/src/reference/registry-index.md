@@ -131,9 +131,10 @@ newer build can tell whether the mod still fits ([SDK fit](sdk/04-fit.md)). `car
 when it can read the mod's source against the pinned SDK, and says what stops it when it cannot.
 
 `cargo sunrise-mod check <file>` refuses a native mod file with no list, or with one made for another build than the
-mod pins; `publish` and `registry release` run the same check on the file they are given. `registry check` applies
-it to files whose hash is new in the pull request. `registry build` and installs do not apply it, so files already
-listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
+mod pins. `publish` checks new source submissions; on a build append it verifies the original reviewed source
+and checks fit without requiring a new list for that source. `registry release` checks new files, and `registry check`
+applies the rule to files whose hash is new in the pull request. `registry build` and installs do not apply it,
+so files already listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
 this rule: no list can describe those rows, so its file needs none.
 
 ## Dependency checks
