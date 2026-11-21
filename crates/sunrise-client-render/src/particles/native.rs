@@ -197,9 +197,9 @@ impl Provided {
         particle: &Particle,
         view: &mod_api::ParticleExtractView,
         output: &mut dyn mod_api::QuadParticleRenderState,
-    ) {
+    ) -> Result<(), String> {
         self.provider
-            .extract(&particle.provider_view(self), view, output);
+            .extract(&particle.provider_view(self), view, output)
     }
 
     /// The quad's rotation at `partial` of a tick (`SingleQuadParticle.extract`): the facing's
@@ -676,8 +676,9 @@ pub(super) mod tests {
         assert_eq!(calls.0.lock().unwrap().len(), 1);
     }
     fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Particle {
+        let [ty] = unit_types(["fixture"]);
         let set = e.mod_sets.get_mut("example:orbit").unwrap();
-        set.provider = Some((0, bind_particle_provider(provider)));
+        set.provider = Some((0, bind_particle_provider(ty.key(), provider)));
         e.make_sprite_particle(&e.mod_sets["example:orbit"], [1.0; 3], [0.0; 3], 5)
     }
 
@@ -735,24 +736,22 @@ pub(super) mod tests {
                     + (p.position[0] - p.previous[0]) * f64::from(view.partial_tick)
                     - view.camera[0]) as f32;
                 for frame in 0..1025 {
-                    out.add(ParticleQuad {
-                        layer: ParticleBlend::Opaque,
-                        center: if frame == 0 {
-                            [x, 0.0, -5.0]
-                        } else {
-                            [4.0, 1.0, -8.0]
-                        },
-                        rotation: if frame == 0 {
-                            [0.0, 0.0, 0.0, 1.0]
-                        } else {
-                            [0.0, 0.0, 2.0, 0.0]
-                        },
-                        half_size: if frame == 0 { 0.5 } else { 2.0 },
-                        frame: u32::from(frame != 0),
-                        uv: [0.25, 0.0, 0.75, 0.5],
-                        color: 0xc9_12_45_67,
-                        light_coords: 0x73_0081,
-                    });
+                    let mut quad = ParticleQuad::default();
+                    quad.layer = ParticleBlend::Opaque;
+                    quad.center = if frame == 0 {
+                        [x, 0.0, -5.0]
+                    } else {
+                        [4.0, 1.0, -8.0]
+                    };
+                    if frame != 0 {
+                        quad.rotation = [0.0, 0.0, 2.0, 0.0];
+                    }
+                    quad.half_size = if frame == 0 { 0.5 } else { 2.0 };
+                    quad.frame = u32::from(frame != 0);
+                    quad.uv = [0.25, 0.0, 0.75, 0.5];
+                    quad.color = 0xc9_12_45_67;
+                    quad.light_coords = 0x73_0081;
+                    out.add(quad);
                 }
             }
         }));
@@ -762,14 +761,19 @@ pub(super) mod tests {
         particle.o_roll = 0.25;
         particle.rgba[3] = 0.5;
         engine.particles.push(particle);
-        let mut vertices = Vec::new();
-        engine.render(
-            DVec3::new(10.0, 20.0, 30.0),
+        let camera = DVec3::new(10.0, 20.0, 30.0);
+        let cull = ParticleCullView::new(camera, [180.0, 0.0], [512, 512], 70.0, 70.0, 128.0);
+        let mut explicit = ParticleQuads::default();
+        engine.render_world(
+            camera,
             Quat::from_xyzw(0.0, 1.0, 0.0, 0.0),
             0.5,
+            Some((&cull, &mut explicit)),
+            None,
             &|_| 0xb4,
-            &mut vertices,
+            &mut Vec::new(),
         );
+        let vertices = explicit.opaque;
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         assert_eq!(vertices.len(), 1025 * 4);
         assert_eq!(
@@ -793,17 +797,14 @@ pub(super) mod tests {
         assert_eq!(vertices[0].uv, [0.75, 0.5]);
         assert_eq!(vertices[4].uv, [0.4375, 0.625]);
         assert_eq!(vertices[6].uv, [0.3125, 0.5]);
-        assert!(
-            vertices
-                .iter()
-                .all(|v| (v.layer, v.color, v.light) == (0, 0xc9_67_45_12, 0x8173))
-        );
+        assert!(vertices.iter().all(|v| (v.layer, v.color, v.light)
+            == (crate::gfx::EXPLICIT_PARTICLE_OVERLAY, 0xc9_67_45_12, 0x8173)));
     }
 
     #[test]
-    fn provider_extracts_only_live_points_in_view_but_not_the_stock_quad_bounds() {
+    fn provider_extracts_live_points_in_the_wider_cull_view_with_both_settings() {
         use crate::gfx::{Frustum, JoinedFrusta, world_projection};
-        use mod_api::{ParticleBlend, ParticleExtractView, ParticleQuad, QuadParticleRenderState};
+        use mod_api::{ParticleExtractView, ParticleQuad, QuadParticleRenderState};
         let mut engine = engine();
         let calls = Arc::new(AtomicUsize::new(0));
         let provider = Arc::new(Extract({
@@ -812,62 +813,102 @@ pub(super) mod tests {
                   _: &ParticleExtractView,
                   out: &mut dyn QuadParticleRenderState| {
                 calls.fetch_add(1, Ordering::Relaxed);
-                if p.position[2] == -5.0 {
-                    return; // Nothing, not even the inherited quad.
-                }
-                out.add_default(); // At subpixel size the ordinary quad may be culled.
-                out.add(ParticleQuad {
-                    layer: ParticleBlend::Translucent,
-                    center: [5.0, 1.0, -3.0],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
-                    half_size: 4.0,
-                    frame: 0,
-                    uv: [0.0, 0.0, 1.0, 1.0],
-                    color: u32::MAX,
-                    light_coords: 0,
-                });
+                assert_eq!(p.position, [3.0, 0.0, -10.0]);
+                out.add_default();
+                let mut quad = ParticleQuad::default();
+                quad.center = [0.0, 0.0, -10.0];
+                quad.half_size = 0.5;
+                out.add(quad);
             }
         }));
-        for (point, removed) in [(-5.0, false), (-100.0, false), (10.0, false), (-5.0, true)] {
+        for (position, removed) in [
+            ([3.0, 0.0, -10.0], false), // Outside the 10° picture but inside the 70° cull view.
+            ([50.0, 0.0, -10.0], false),
+            ([0.0, 0.0, 10.0], false),
+            ([3.0, 0.0, -10.0], true),
+        ] {
             let mut p = provided(&mut engine, provider.clone());
-            // A behind-camera point is rejected even if its interpolated center is visible.
-            p.previous = [0.0, 0.0, -100.0];
-            p.position = [0.0, 0.0, point];
+            p.previous = [0.0, 0.0, -10.0]; // This does not decide whether extract runs.
+            p.position = position;
             p.size = 0.0;
             p.removed = removed;
             engine.particles.push(p);
         }
-        let frustum = JoinedFrusta::from(Frustum::from_view_projection(world_projection(
-            70.0, 1.0, 512.0,
+        let cull = ParticleCullView::new(DVec3::ZERO, [180.0, 0.0], [512, 512], 70.0, 10.0, 512.0);
+        let narrow = JoinedFrusta::from(Frustum::from_view_projection(world_projection(
+            10.0, 1.0, 512.0,
         )));
-        let mut vertices = Vec::new();
-        engine.render_with_provider_view(
+        assert!(!narrow.contains_point(FVec3::new(3.0, 0.0, -10.0)));
+        let mut not_occluded = |_, _| panic!("subpixel default is rejected before terrain culling");
+        for stock in [
+            None,
+            Some(ParticleWorldCull {
+                pixel_focal_length: 10.0,
+                frustum: Some(&narrow),
+                occluded: &mut not_occluded,
+            }),
+        ] {
+            let mut explicit = ParticleQuads::default();
+            let mut vertices = Vec::new();
+            let stock_expected = if stock.is_none() { 4 } else { 0 };
+            engine.render_world(
+                DVec3::ZERO,
+                Quat::IDENTITY,
+                0.5,
+                Some((&cull, &mut explicit)),
+                stock,
+                &|_| 0,
+                &mut vertices,
+            );
+            assert_eq!(vertices.len(), stock_expected);
+            assert_eq!(explicit.translucent.len(), 4);
+            assert_eq!(explicit.translucent[0].pos, [0.5, -0.5, -10.0]);
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn a_failed_extract_keeps_the_next_providers_quad_and_scene_draw_is_stock() {
+        use mod_api::{ParticleExtractView, ParticleQuad, QuadParticleRenderState};
+        let mut engine = engine();
+        let fail = Arc::new(Extract(
+            |_: &ModParticle, _: &ParticleExtractView, _: &mut dyn QuadParticleRenderState| {
+                panic!("provider cannot finish extracting");
+            },
+        ));
+        let healthy = Arc::new(Extract(
+            |_: &ModParticle, _: &ParticleExtractView, output: &mut dyn QuadParticleRenderState| {
+                let mut quad = ParticleQuad::default();
+                quad.center = [0.0, 0.0, 10.0];
+                quad.half_size = 1.0;
+                output.add(quad);
+            },
+        ));
+        let first = provided(&mut engine, fail);
+        let second = provided(&mut engine, healthy);
+        engine.particles.extend([first, second]);
+        let mut scene = Vec::new();
+        engine.render(DVec3::ZERO, Quat::IDENTITY, 0.0, &|_| 0, &mut scene);
+        assert_eq!(
+            scene.len(),
+            8,
+            "the regular scene render uses the two stock quads"
+        );
+        let cull = ParticleCullView::new(DVec3::ZERO, [0.0, 0.0], [512, 512], 70.0, 70.0, 128.0);
+        let mut quads = ParticleQuads::default();
+        let mut stock = Vec::new();
+        engine.render_world(
             DVec3::ZERO,
             Quat::IDENTITY,
-            0.5,
-            Some(&frustum),
+            0.0,
+            Some((&cull, &mut quads)),
+            None,
             &|_| 0,
-            &mut vertices,
+            &mut stock,
         );
-        assert_eq!(calls.load(Ordering::Relaxed), 2);
-        assert_eq!(vertices.len(), 8); // Both stock and explicit quads on the second particle.
-        calls.store(0, Ordering::Relaxed);
-        vertices.clear();
-        engine.render_culled(
-            DVec3::ZERO,
-            Quat::IDENTITY,
-            0.5,
-            10.0,
-            true,
-            Some(&frustum),
-            |_, _| panic!("subpixel default is rejected before terrain culling"),
-            &|_| 0,
-            &mut vertices,
-        );
-        assert_eq!(calls.load(Ordering::Relaxed), 2);
-        assert_eq!(vertices.len(), 4); // The stock quad is now subpixel; the explicit one is not culled.
-        assert_eq!(vertices[0].pos, [9.0, -3.0, -3.0]);
-        assert_eq!(vertices[0].layer, crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY);
+        assert!(stock.is_empty());
+        assert_eq!(quads.translucent.len(), 4);
+        assert_eq!(quads.translucent[0].pos, [1.0, -1.0, 10.0]);
     }
 
     #[test]
@@ -877,23 +918,29 @@ pub(super) mod tests {
         let provider = Arc::new(Extract(
             |_: &ModParticle, _: &ParticleExtractView, output: &mut dyn QuadParticleRenderState| {
                 for (frame, x) in [(0, 1.0), (5, 2.0), (1, f32::INFINITY), (1, 3.0)] {
-                    output.add(ParticleQuad {
-                        layer: ParticleBlend::Opaque,
-                        center: [x, 0.0, 0.0],
-                        rotation: [0.0, 0.0, 0.0, 1.0],
-                        half_size: 1.0,
-                        frame,
-                        uv: [0.0, 0.0, 1.0, 1.0],
-                        color: u32::MAX,
-                        light_coords: 0,
-                    });
+                    let mut quad = ParticleQuad::default();
+                    quad.layer = ParticleBlend::Opaque;
+                    quad.center = [x, 0.0, 0.0];
+                    quad.half_size = 1.0;
+                    quad.frame = frame;
+                    output.add(quad);
                 }
             },
         ));
         let particle = provided(&mut engine, provider);
         engine.particles.push(particle);
-        let mut vertices = Vec::new();
-        engine.render(DVec3::ZERO, Quat::IDENTITY, 0.5, &|_| 0, &mut vertices);
+        let cull = ParticleCullView::new(DVec3::ZERO, [0.0, 0.0], [512, 512], 70.0, 70.0, 128.0);
+        let mut quads = ParticleQuads::default();
+        engine.render_world(
+            DVec3::ZERO,
+            Quat::IDENTITY,
+            0.5,
+            Some((&cull, &mut quads)),
+            None,
+            &|_| 0,
+            &mut Vec::new(),
+        );
+        let vertices = quads.opaque;
         assert_eq!(vertices.len(), 8);
         assert_eq!(
             (vertices[0].pos, vertices[4].pos),
@@ -1013,7 +1060,10 @@ pub(super) mod tests {
             ModSet {
                 set: 0,
                 behaviour: None,
-                provider: Some((0, bind_particle_provider(Arc::new(Factory(calls.clone()))))),
+                provider: Some((
+                    0,
+                    bind_particle_provider(ty.key(), Arc::new(Factory(calls.clone()))),
+                )),
                 group: None,
             },
         );
@@ -1113,10 +1163,13 @@ pub(super) mod tests {
                     behaviour: None,
                     provider: Some((
                         0,
-                        bind_particle_provider(Arc::new(Factory {
-                            calls: calls.clone(),
-                            panic,
-                        })),
+                        bind_particle_provider(
+                            ty.key(),
+                            Arc::new(Factory {
+                                calls: calls.clone(),
+                                panic,
+                            }),
+                        ),
                     )),
                     group: None,
                 },
@@ -1502,8 +1555,10 @@ pub(super) mod tests {
         e.set_block_state_source(counting);
         // A provider is registered, and no particle of it lives.
         let [ty] = unit_types(["orbit"]);
-        e.providers
-            .insert(ty.key(), bind_particle_provider(Arc::new(Probe::default())));
+        e.providers.insert(
+            ty.key(),
+            bind_particle_provider(ty.key(), Arc::new(Probe::default())),
+        );
         e.tick_providers(&mut [], &level);
         assert_eq!(asked(), 0);
         // One lives and the engine has not aged it.
@@ -1612,8 +1667,10 @@ pub(super) mod tests {
         let [orbit, unmatched] = unit_types(["orbit", "unmatched"]);
         let mut e = engine();
         for ty in [orbit, unmatched] {
-            e.providers
-                .insert(ty.key(), bind_particle_provider(Arc::new(Probe::default())));
+            e.providers.insert(
+                ty.key(),
+                bind_particle_provider(ty.key(), Arc::new(Probe::default())),
+            );
         }
         let missing = e.rects[0].unwrap();
         e.reload(

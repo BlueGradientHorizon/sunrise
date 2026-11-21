@@ -1205,6 +1205,7 @@ impl ParticleLightCache {
 
 mod view_cull;
 use view_cull::{PARTICLE_FRUSTUM_OFFSET, ParticleSectionFrustumCache, SectionFrustumResult};
+pub use view_cull::{ParticleCullView, ParticleWorldCull};
 
 fn below_half_pixel(radius: f64, distance_squared: f64, pixel_focal_length: f32) -> bool {
     let projected_limit = 4.0 * radius * f64::from(pixel_focal_length);
@@ -3708,14 +3709,17 @@ impl ParticleEngine {
             }
         }
     }
+    /// Whether the frame needs a separate world extraction view for live providers.
+    pub fn has_provider_particles(&self) -> bool {
+        self.provided_live
+            .load(std::sync::atomic::Ordering::Relaxed)
+            != 0
+    }
+
     /// The providers' part of a tick: each provider once with every particle of its type that
     /// `tick_particle` aged. Nothing runs while no provider particle lives.
     fn tick_providers(&mut self, particles: &mut [Particle], level: &ParticleLevel) {
-        if self
-            .provided_live
-            .load(std::sync::atomic::Ordering::Relaxed)
-            == 0
-        {
+        if !self.has_provider_particles() {
             return;
         }
         let mut batch = std::mem::take(&mut self.batch);
@@ -4553,7 +4557,7 @@ impl ParticleEngine {
             partial,
             pixel_focal_length,
             frustum,
-            false,
+            None,
             &mut occluded,
             light_at,
             out,
@@ -4577,7 +4581,7 @@ impl ParticleEngine {
         partial: f32,
         pixel_focal_length: f32,
         frustum: Option<&crate::gfx::JoinedFrusta>,
-        view_providers_only: bool,
+        mut provider_pass: Option<(&ParticleCullView, &mut ParticleQuads)>,
         occluded: &mut dyn FnMut([f64; 3], [f64; 3]) -> bool,
         light_at: &dyn Fn([i32; 3]) -> u8,
         out: &mut Vec<Vertex>,
@@ -4604,14 +4608,10 @@ impl ParticleEngine {
             if p.no_render {
                 continue;
             }
-            if (!view_providers_only || p.provided.is_some())
-                && let Some(view) = &view
-                && !view_cull::in_view(view, p, camera)
+            if let Some(provided) = &p.provided
+                && let Some((cull_view, explicit)) = &mut provider_pass
             {
-                continue;
-            }
-            if let Some(provided) = &p.provided {
-                if p.removed {
+                if p.removed || !cull_view.contains(p.position) {
                     continue;
                 }
                 let view = mod_api::ParticleExtractView::new(
@@ -4626,9 +4626,16 @@ impl ParticleEngine {
                     particle: p,
                     blend,
                     light_coords: view.light_coords,
+                    explicit,
                 };
-                provided.extract(p, &view, &mut output);
-            } else {
+                if let Err(error) = provided.extract(p, &view, &mut output) {
+                    log::warn!("Could not extract particle: {error}");
+                }
+            } else if !p.removed
+                && view
+                    .as_ref()
+                    .is_none_or(|view| view_cull::in_view(view, p, camera))
+            {
                 quads.draw_default::<CULL>(p, blend, None);
             }
         }
@@ -4644,7 +4651,21 @@ impl ParticleEngine {
             .render(&frame, &mut light_cache, out, &mut additive);
     }
 }
-/// Shared frame context: custom and ordinary quads reuse the same vertex stream and light cache.
+/// Explicit provider vertices, kept out of the entity upload. Each layer preserves submission order.
+#[derive(Default)]
+pub struct ParticleQuads {
+    pub opaque: Vec<Vertex>,
+    pub translucent: Vec<Vertex>,
+}
+
+impl ParticleQuads {
+    pub fn clear(&mut self) {
+        self.opaque.clear();
+        self.translucent.clear();
+    }
+}
+
+/// Shared frame context for stock quads and for native extraction's light and default draw.
 struct ParticleQuadFrame<'a> {
     engine: &'a ParticleEngine,
     camera: DVec3,
@@ -4898,6 +4919,7 @@ struct ProviderQuadSink<'frame, 'a, const CULL: bool> {
     particle: &'a Particle,
     blend: Option<ParticleBlend>,
     light_coords: u32,
+    explicit: &'frame mut ParticleQuads,
 }
 
 impl<const CULL: bool> mod_api::QuadParticleRenderState for ProviderQuadSink<'_, '_, CULL> {
@@ -4923,20 +4945,20 @@ impl<const CULL: bool> mod_api::QuadParticleRenderState for ProviderQuadSink<'_,
             rect.u0 + du * u1,
             rect.v0 + dv * v1,
         ];
-        let layer = match quad.layer {
-            ParticleBlend::Opaque => 0,
-            ParticleBlend::Translucent => crate::gfx::TRANSLUCENT_PARTICLE_OVERLAY,
+        let target = match quad.layer {
+            ParticleBlend::Opaque => &mut self.explicit.opaque,
+            ParticleBlend::Translucent => &mut self.explicit.translucent,
         };
         let [a, r, g, b] = quad.color.to_be_bytes();
         if !write_particle_quad::<true, true>(
-            self.quads.out,
+            target,
             FVec3::from_array(quad.center),
             Quat::from_array(quad.rotation),
             quad.half_size,
             uv,
             u32::from_be_bytes([a, b, g, r]),
             quad_vertex_light(quad.light_coords),
-            layer | u32::from(hdr_tier(self.particle.ty)) << 16,
+            crate::gfx::EXPLICIT_PARTICLE_OVERLAY | u32::from(hdr_tier(self.particle.ty)) << 16,
         ) {
             log::warn!("Particle provider emitted non-finite quad geometry or UVs");
         }

@@ -163,10 +163,10 @@ impl ParticleExtractView {
     }
 }
 
-/// One `SingleQuadParticle` quad submitted to the current frame's particle-atlas pass.
-/// Construct it with `..ParticleQuad::default()` so new properties can be added later.
+/// One `SingleQuadParticle` quad submitted to the world's particle-atlas pass.
+/// Start from `ParticleQuad::default()` and set the fields the quad needs.
 // no wire: frame-local geometry.
-// exhaustive: mods construct this record to submit a quad.
+#[non_exhaustive]
 pub struct ParticleQuad {
     /// The draw layer. This wins over the sprite alpha and the particle's group blend.
     pub layer: ParticleBlend,
@@ -243,9 +243,10 @@ pub trait ParticleProvider<T = ()>: Send + Sync + 'static {
     /// expires the batch's particles. Not called when no particle of the type is alive.
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
 
-    /// `SingleQuadParticle.extract`: called once per visible particle per frame, separate from
-    /// ticking. The default emits the ordinary quad. An override may submit zero or more
+    /// `SingleQuadParticle.extract`: called once per visible particle per world frame, separate
+    /// from ticking. The default emits the ordinary quad. An override may submit zero or more
     /// quads, and only emits the ordinary quad if it calls `output.add_default()`.
+    /// Live scenes only draw the ordinary quad; they do not call this method.
     fn extract(
         &self,
         _particle: &ModParticle,
@@ -273,7 +274,7 @@ impl dyn ParticleProviders + '_ {
         ty: ParticleType<T>,
         provider: Arc<dyn ParticleProvider<T>>,
     ) {
-        self.add_sprite_set(ty.key(), bind_particle_provider(provider));
+        self.add_sprite_set(ty.key(), bind_particle_provider(ty.key(), provider));
     }
 }
 
@@ -295,9 +296,10 @@ pub trait BoundParticleProvider: Send + Sync {
         particle: &ModParticle,
         view: &ParticleExtractView,
         output: &mut dyn QuadParticleRenderState,
-    );
+    ) -> Result<(), String>;
 }
 struct BoundProvider<T> {
+    key: ParticleKey,
     provider: Arc<dyn ParticleProvider<T>>,
     callback: ParticleCallback,
 }
@@ -326,19 +328,24 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
         particle: &ModParticle,
         view: &ParticleExtractView,
         output: &mut dyn QuadParticleRenderState,
-    ) {
-        self.provider.extract(particle, view, output);
+    ) -> Result<(), String> {
+        self.callback.call(self.key, "extract particle", || {
+            self.provider.extract(particle, view, output);
+            Ok(())
+        })
     }
 }
 
 // hidden: the renderer binds the typed provider to its erased dispatch.
 #[doc(hidden)]
 pub fn bind_particle_provider<T: 'static>(
+    key: ParticleKey,
     provider: Arc<dyn ParticleProvider<T>>,
 ) -> Arc<dyn BoundParticleProvider> {
     let owner = crate::content::crash::current_native_mod().unwrap_or("unowned provider");
     let index = crate::runtime::mod_index(owner).unwrap_or(usize::MAX);
     Arc::new(BoundProvider {
+        key,
         provider,
         callback: ParticleCallback::new(owner, index),
     })
