@@ -929,10 +929,14 @@ def parent_stage(sha: str, work: Path) -> str:
 
 
 def canonical_surface(surface: dict) -> dict:
-    """A surface.json as compared: every top-level key kept, each list sorted by its items' canonical JSON (a
-    repeated item kept), so two surfaces compare equal exactly when they differ at most in their lists' order."""
-    return {key: sorted(json.dumps(item, sort_keys=True, separators=(",", ":")) for item in value)
-            if isinstance(value, list) else value for key, value in surface.items()}
+    """A surface.json as compared: every top-level key kept, each value as canonical JSON (so `true` is not `1`),
+    a list as its items' canonical JSON sorted (a repeated item kept), so two surfaces compare equal exactly when
+    they differ at most in their lists' order."""
+    def canonical(value):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+    return {key: sorted(map(canonical, value)) if isinstance(value, list) else canonical(value)
+            for key, value in surface.items()}
 
 
 def stable_mod_api(sha: str, tag: str, notes: Path) -> None:

@@ -223,6 +223,11 @@ class StableModApiTests(unittest.TestCase):
                 # A key is kept even when its list is empty: the export says the collection is there.
                 ("26.3-0.1.11", {**SURFACE, "extension_tags": []}, SURFACE, "identical",
                  "patch release.*is not what the parent's tool exports"),
+                # Fields and collections the parent's reader doesn't know are compared as JSON, repeats counted.
+                ("26.3-0.1.11", {**SURFACE, "later": True}, {**SURFACE, "later": 1}, "identical",
+                 "patch release.*is not what the parent's tool exports"),
+                ("26.3-0.1.11", {**SURFACE, "later": [{"id": "x"}]}, {**SURFACE, "later": [{"id": "x"}, {"id": "x"}]},
+                 "identical", "patch release.*is not what the parent's tool exports"),
                 ("26.3-0.1.11", SURFACE, {**SURFACE, "hash": "other"}, "identical",
                  "patch release.*is not what the parent's tool exports"),
                 ("26.3-0.1.11", SURFACE, ADDITIVE, "additive", "patch release.*reads .* as additive"),
