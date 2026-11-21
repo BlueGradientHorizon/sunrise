@@ -214,8 +214,9 @@ check; `Default` keeps the check's own answer.
 In `mob_spawn_placement_check` version 2, `event.default_result` is the effective predicate result. It can differ
 from vanilla even for a vanilla type, because registrations can add to or replace its predicate. The hook fires
 after the predicates at `SpawnPlacements.checkSpawnRules`. For a probabilistic decision, draw from `event.random`,
-the caller's live `&mut dyn RandomSource` lent for this callback. Draws happen in predicate, listener, then caller
-order. Returning `Default` or refusing a spawn does not undo any draws, and this hook does not decide later checks.
+the caller's live `&mut dyn RandomSource` lent to each listener in turn. Reassigning `event.random` only changes that
+listener's local reference; draws from the caller's stream and writes through `event.result` carry to the next
+listener. Keeping `Default` or refusing a spawn does not undo any draws, and this hook does not decide later checks.
 Ordinary spawners with custom spawn rules bypass this placement check; trial spawners check their custom rules
 afterward. Patrols and village sieges bypass it too, and commands and spawn eggs still don't run it.
 

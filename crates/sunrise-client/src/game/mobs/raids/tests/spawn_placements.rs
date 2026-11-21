@@ -3,9 +3,9 @@ use super::{
 };
 use crate::game::{creatures::SpawnSite, native_entity_refs::tests::with_game};
 use mod_api::{
-    BlockPos, EntityTypeKey, Hooks, Host, MobSpawnPlacementCheckEvent, ModEntry, Registrar,
-    RegistrationContext, SpawnCheck, SpawnPlacementContext, SpawnPlacementOperation,
-    SpawnPlacementPredicate, SpawnReason,
+    BlockPos, EntityTypeKey, Hooks, Host, LegacyRandomSource, MobSpawnPlacementCheckEvent,
+    ModEntry, Registrar, RegistrationContext, SpawnCheck, SpawnPlacementContext,
+    SpawnPlacementOperation, SpawnPlacementPredicate, SpawnReason,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
@@ -17,7 +17,11 @@ use sunrise_client::{
 #[derive(Debug, PartialEq)]
 enum Draw {
     Predicate(i32),
-    Listener { default_result: bool, value: i32 },
+    Listener {
+        default_result: bool,
+        result: SpawnCheck,
+        value: i32,
+    },
 }
 
 struct SpawnProbe {
@@ -57,9 +61,26 @@ impl Hooks for SpawnProbe {
     fn mob_spawn_placement_check(&self, _: &dyn Host, event: &mut MobSpawnPlacementCheckEvent<'_>) {
         self.draws.lock().unwrap().push(Draw::Listener {
             default_result: event.default_result,
+            result: *event.result,
             value: event.random.next_int(),
         });
         *event.result = SpawnCheck::Fail;
+        // A mod-owned stream can outlive the event. Swapping this reference must
+        // not send the next listener to that stream.
+        event.random = Box::leak(Box::new(LegacyRandomSource::new(19)));
+    }
+}
+
+struct NextListener(Arc<Mutex<Vec<Draw>>>);
+
+#[mod_api::__subscriptions]
+impl Hooks for NextListener {
+    fn mob_spawn_placement_check(&self, _: &dyn Host, event: &mut MobSpawnPlacementCheckEvent<'_>) {
+        self.0.lock().unwrap().push(Draw::Listener {
+            default_result: event.default_result,
+            result: *event.result,
+            value: event.random.next_int(),
+        });
     }
 }
 
@@ -72,7 +93,11 @@ fn placement_listener_draws_after_the_registered_predicate_on_the_callers_stream
         draws: draws.clone(),
     };
     mod_platform::testing::with_mods(
-        vec![ModEntry::new("spawn-probe", Box::new(probe))].into(),
+        vec![
+            ModEntry::new("spawn-probe", Box::new(probe)),
+            ModEntry::new("next-listener", Box::new(NextListener(draws.clone()))),
+        ]
+        .into(),
         || {
             with_game(|game| {
                 game.set_difficulty_forced(2);
@@ -86,21 +111,27 @@ fn placement_listener_draws_after_the_registered_predicate_on_the_callers_stream
                     &mut random,
                     [0, 64, 0]
                 ));
-                // The first three nextInt() values of Java's Random(7), in order.
+                // The first four nextInt() values of Java's Random(7), in order.
                 assert_eq!(
                     *draws.lock().unwrap(),
                     [
                         Draw::Predicate(-1_156_638_823),
                         Draw::Listener {
                             default_result: true,
-                            value: -1_552_468_968
+                            result: SpawnCheck::Default,
+                            value: -1_552_468_968,
+                        },
+                        Draw::Listener {
+                            default_result: true,
+                            result: SpawnCheck::Fail,
+                            value: -1_077_308_326,
                         },
                     ]
                 );
                 assert_eq!(
                     random.next_int(),
-                    -1_077_308_326,
-                    "Fail did not rewind the stream"
+                    41_356_089,
+                    "both listeners advanced the caller's stream despite Fail"
                 );
             });
         },
