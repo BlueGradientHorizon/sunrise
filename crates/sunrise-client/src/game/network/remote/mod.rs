@@ -98,7 +98,6 @@ mod abilities;
 mod chat;
 mod chat_received;
 mod commands;
-use chat::chat_type_decorate;
 pub(in crate::game) use chat::{ChatTrust, Decoration};
 use chat_received::QueuedChat;
 pub(in crate::game) mod client_level_tick;
@@ -117,7 +116,9 @@ mod packets_player;
 mod packets_world;
 mod queued_keys;
 mod remote_attributes;
+mod remote_state;
 mod session;
+mod skin;
 mod status;
 mod sync;
 mod tab_entries;
@@ -717,82 +718,11 @@ impl Game<'_> {
             None => sunrise_client::health::hurt_sound("hurt"),
         }
     }
-
-    /// Leave the title for a server (ConnectScreen): an empty world fed by the connection.
-    pub(super) fn connect_server(&mut self, address: &str, name: &str) -> Result<()> {
-        self.connect_server_with_cookies(address, name, None)
-    }
-
-    /// `connect_server` carrying a transfer's stored server cookies
-    /// (`TransferState`); None on an ordinary join.
-    pub(super) fn connect_server_with_cookies(
-        &mut self,
-        address: &str,
-        name: &str,
-        cookies: Option<sunrise_client::net::Cookies>,
-    ) -> Result<()> {
-        self.connect_server_with_options(address, name, cookies, false, false)
-    }
-
-    /// `ConnectScreen.startConnecting`: keep LAN discovery's server kind through loading.
-    pub(super) fn connect_server_with_options(
-        &mut self,
-        address: &str,
-        name: &str,
-        cookies: Option<sunrise_client::net::Cookies>,
-        lan: bool,
-        realm: bool,
-    ) -> Result<()> {
-        super::world_loading::world_data_used();
-        if self.defer_world_entry(super::PendingWorldEntry::Server {
-            address: address.to_owned(),
-            name: name.to_owned(),
-            cookies: cookies.clone(),
-            lan,
-            realm,
-        })? {
-            return Ok(());
-        }
-        self.join_world_rest()?;
-        self.client_logging_out();
-        if let Err(error) = self.join_server(address, name, None, cookies, lan, realm) {
-            log::warn!("Sunrise: could not join server: {error}");
-            let skip = self.settings.file.bool("skipMultiplayerWarning");
-            match &mut self.title {
-                Some(title) => {
-                    title.skip_multiplayer_warning = skip;
-                    title.failed(error);
-                }
-                None => {
-                    let mut title = self
-                        .new_title(std::env::current_dir()?.join("saves"))
-                        .with_user(|| self.options.player_name());
-                    title.skip_multiplayer_warning = skip;
-                    title.failed(error);
-                    self.show_title(title);
-                }
-            }
-            self.capture(false);
-        }
-        Ok(())
-    }
     // connect_remote_session: remote/session.rs
 
     // init_remote_for_replay: remote/session.rs
 
     // leave_server: remote/session.rs
-
-    /// `Hud.onDisconnected`, from `Minecraft.disconnect` and `clearClientLevel`
-    /// (a proxy's reconfiguration too), but the chat: joining clears it and a
-    /// reconfiguration keeps it (`ChatComponent.storeState`).
-    fn hud_disconnected(&mut self) {
-        self.tab_list.reset();
-        self.boss_overlay.reset();
-        self.adv.toasts.clear();
-        self.debug_charts.reset();
-        self.titles.clear();
-        self.titles.reset_times();
-    }
 
     pub(super) fn send(&self, packet: S) {
         if self.remote.is_some() {
@@ -876,52 +806,6 @@ impl Game<'_> {
         ))
     }
 
-    /// A stack to the server (`SetCreativeModeSlot`): the same component
-    /// patch a Sunrise server sends its clients, with the registries' ids, so
-    /// the server's echo doesn't hand back a bare item.
-    fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
-        let r = self.remote.as_ref()?;
-        // A stack as the server sent it, only its count changed: its own
-        // components go back, as a vanilla client keeps them.
-        if let Some((stack, patch)) = s.as_ref().and_then(|s| Some((s, s.wire_patch()?))) {
-            let mut out = Stack::new(self.item_id(&stack.item), stack.count as i32);
-            let safe = r.registries.custom_components
-                || sunrise_protocol::item::custom::entries().next().is_none()
-                || sunrise_protocol::item::WirePatch::decode(&patch)
-                    .and_then(|(added, removed)| {
-                        let decoded = Stack {
-                            added,
-                            removed,
-                            ..Stack::new(out.item, out.count)
-                        };
-                        sunrise_protocol::item::custom::permitted(&decoded, false)
-                    })
-                    .unwrap_or(false);
-            if safe {
-                out.wire = sunrise_protocol::item::WirePatch(Some(patch));
-                return Some(out);
-            }
-            log::warn!("Cannot send cached custom components to this peer");
-        }
-        sunrise_client::lan::guest::stack_to_network(
-            |name| self.item_id(name),
-            // Built-in first, as a hub's `SyncData::id` does: potions are one.
-            |registry, name| {
-                r.builtin
-                    .get(registry)
-                    .and_then(|ids| ids.id(name))
-                    .or_else(|| r.registries.id(registry, name))
-                    .or_else(|| {
-                        (r.registries.custom_components
-                            && registry == "minecraft:data_component_type")
-                            .then(|| sunrise_protocol::item::custom::id(name))
-                            .flatten()
-                    })
-            },
-            s,
-        )
-    }
-
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
     fn hashed_stack(&self, s: &Option<ItemStack>) -> sunrise_protocol::Result<Option<Hashed>> {
@@ -942,230 +826,6 @@ impl Game<'_> {
         Hashed::create(&stack, &names)
             .map(Some)
             .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
-    }
-
-    /// A line in the connection's chat, with its styles, click and hover
-    /// events (ChatComponent.addMessage). The lines the Chat option hides
-    /// are dropped there (its `visibleMessageFilter`).
-    pub(super) fn add_chat_line(
-        &mut self,
-        content: sunrise_client::text::Text,
-        source: sunrise_client::chat::ChatSource,
-    ) -> bool {
-        self.signed_chat_line(content, source, None, ChatTrust::Secure)
-    }
-
-    /// `chat_line` of a player message, keeping its signature for a
-    /// deletion (`GuiMessage.signature`).
-    fn signed_chat_line(
-        &mut self,
-        content: sunrise_client::text::Text,
-        source: sunrise_client::chat::ChatSource,
-        signature: Option<Signature>,
-        trust: ChatTrust,
-    ) -> bool {
-        if !self.ui.chat.shows(source) {
-            return false;
-        }
-        let text = content.plain();
-        let focused = self.screen == Screen::Chat;
-        if source == sunrise_client::chat::ChatSource::Player {
-            self.ui.chat.add_signed(
-                &self.gui.atlas,
-                content,
-                signature,
-                trust.tag(),
-                self.visual_ticks(),
-                focused,
-            );
-        } else {
-            // addServerSystemMessage and addClientSystemMessage both carry
-            // GuiMessageTag.systemSinglePlayer: the grey bar at the line's left.
-            let indicator = Some(sunrise_client::chat::SYSTEM_INDICATOR);
-            self.ui.chat.add(
-                &self.gui.atlas,
-                content,
-                indicator,
-                source,
-                self.visual_ticks(),
-                focused,
-            );
-        }
-        if let Some(r) = self.remote.as_mut() {
-            r.chat.push((text, Instant::now()));
-            r.chat_received += 1;
-            if r.chat.len() > 100 {
-                r.chat.remove(0);
-            }
-        }
-        true
-    }
-
-    /// `ChatListener.handleMessage` for player and disguised chat: held in the
-    /// queue while Chat Delay is set, shown at once otherwise. `narration` is
-    /// the chat type's narration of it (`decorateNarration`).
-    fn handle_player_chat(&mut self, chat: QueuedChat) {
-        if self.chat_delay_ms() > 0 {
-            if let Some(r) = self.remote.as_mut() {
-                r.chat_queue.push_back(chat);
-            }
-        } else {
-            self.accept_chat(chat);
-        }
-    }
-
-    /// `ChatListener.handleChatMessageError`: a message that fails validation shows as the red,
-    /// italic `chat.validation_error` in its chat type (queued under Chat Delay as any
-    /// message). Its signature counts as processed but not shown, for the acknowledgement the
-    /// client sends the server. Vanilla also
-    /// skips a blocked sender and one restricted to friends (not kept here either) and
-    /// narrates the line.
-    fn handle_chat_message_error(
-        &mut self,
-        chat_type: &play::ChatTypeBound,
-        signature: Option<&Signature>,
-    ) {
-        if let Some(signature) = signature {
-            self.mark_message_processed(signature, false);
-        }
-        let error = serde_json::json!({
-            "translate": "chat.validation_error",
-            "color": "red",
-            "italic": true,
-        });
-        let line = self.decorate_chat(chat_type, &error, Decoration::Chat);
-        // saySystemChatQueued(boundChatType.decorateNarration(CHAT_VALIDATION_ERROR)).
-        let narration = self
-            .decorate_chat(chat_type, &error, Decoration::Narration)
-            .plain();
-        self.handle_player_chat(QueuedChat {
-            line,
-            signature: None,
-            trust: ChatTrust::Error,
-            narration,
-            sender: 0,
-            chat_type: chat_type.chat_type,
-            player: None,
-        });
-    }
-
-    /// `ChatTrustLevel.evaluate` of a player message, with
-    /// `ChatListener.evaluateTrustLevel`: the player's own message on their
-    /// own server is secure. `decorated` is the line shown, `unsigned` the
-    /// server's replacement for the signed content.
-    fn chat_trust(
-        &self,
-        sender: u128,
-        signed: bool,
-        timestamp: i64,
-        content: &str,
-        unsigned: Option<&Tag>,
-        decorated: &sunrise_client::text::Text,
-    ) -> ChatTrust {
-        use sunrise_client::scoreboard::{comp_text, tag_to_json};
-        if self.integrated.is_some() && self.remote.as_ref().is_some_and(|r| r.profile == sender) {
-            return ChatTrust::Secure;
-        }
-        // PlayerChatMessage.hasExpiredClient: MESSAGE_EXPIRES_AFTER_CLIENT is
-        // the server's five minutes and two more.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as i64);
-        let expired = now
-            > timestamp.saturating_add(
-                sunrise_protocol::secure_chat::EXPIRES_AFTER_SERVER + 2 * 60 * 1000,
-            );
-        if !signed || expired {
-            return ChatTrust::NotSecure;
-        }
-        // ChatTrustLevel.isModified: the signed content is not in the line, or
-        // the replacement uses a font other than the default.
-        let font_changed = unsigned.is_some_and(|tag| {
-            comp_text(&tag_to_json(tag)).spans.iter().any(|span| {
-                span.style
-                    .font
-                    .as_deref()
-                    .is_some_and(|font| font != "minecraft:default")
-            })
-        });
-        if !decorated.plain().contains(content) || font_changed {
-            ChatTrust::Modified(content.to_owned())
-        } else {
-            ChatTrust::Secure
-        }
-    }
-
-    /// `ClientPacketListener.handleDeleteChat`: the packed signature names a
-    /// message; one still held back by Chat Delay never shows
-    /// (`ChatListener.removeFromDelayedMessageQueue`), a shown one is
-    /// replaced (`ChatComponent.deleteMessage`). A signature the cache
-    /// doesn't hold is an invalid packet.
-    fn handle_delete_chat(&mut self, packed: &(i32, Option<Vec<u8>>)) -> Result<()> {
-        let Some(r) = self.remote.as_mut() else {
-            return Ok(());
-        };
-        let Some(signature) = r.signatures.unpack(packed) else {
-            let reason = Text::translate("multiplayer.disconnect.invalid_packet", &[]);
-            return self.leave_server(Some(reason));
-        };
-        r.secure_chat.ignore_pending(&signature);
-        let queued = r.chat_queue.len();
-        r.chat_queue
-            .retain(|chat| chat.signature.as_ref() != Some(&signature));
-        if r.chat_queue.len() == queued {
-            let ticks = self.visual_ticks();
-            self.ui
-                .chat
-                .delete_message(&self.gui.atlas, &signature, ticks);
-        }
-        Ok(())
-    }
-
-    /// A message's `accept`: shown, it is narrated (`narrateChatMessage`) and
-    /// starts the Chat Delay wait again.
-    fn accept_chat(&mut self, chat: QueuedChat) -> bool {
-        let signature = chat.signature;
-        let shown = self.player_chat_line(chat);
-        if let Some(signature) = &signature {
-            self.mark_message_processed(signature, shown);
-        }
-        if shown && let Some(r) = self.remote.as_mut() {
-            r.chat_previous = Some(Instant::now());
-        }
-        shown
-    }
-
-    /// `showMessageToPlayer`: the line joins the chat if Only Show Secure
-    /// Chat, mods and the Chat option let it through, and the narrator says
-    /// it (`sayChatQueued`).
-    fn player_chat_line(&mut self, chat: QueuedChat) -> bool {
-        let QueuedChat {
-            mut line,
-            signature,
-            trust,
-            narration,
-            sender,
-            chat_type,
-            player,
-        } = chat;
-        // ChatListener.showMessageToPlayer: Only Show Secure Chat drops what is not secure.
-        if matches!(trust, ChatTrust::NotSecure) && self.settings.file.bool("onlyShowSecureChat") {
-            return false;
-        }
-        // handleChatMessageError says its line as system chat, and mods are not told of it.
-        let error = matches!(trust, ChatTrust::Error);
-        let (system, kind, player) = (false, Some(chat_type), player.as_ref());
-        if !error && !self.chat_received(system, false, sender, kind, player, &mut line) {
-            return false;
-        }
-        let source = sunrise_client::chat::ChatSource::Player;
-        let shown = self.signed_chat_line(line, source, signature, trust);
-        if shown && error {
-            self.say_system_chat_queued(&sunrise_client::text::Text::untrusted(&narration));
-        } else if shown {
-            self.say_chat_queued(&narration);
-        }
-        shown
     }
 
     /// The minecarts the server sent, for the control socket's `status`
@@ -1212,20 +872,6 @@ impl Game<'_> {
         Some(names)
     }
 
-    /// The open menu's window id (0: the inventory).
-    pub(super) fn remote_menu_id(&self) -> i32 {
-        self.remote
-            .as_ref()
-            .and_then(|r| r.menu.as_ref())
-            .map_or(0, |m| m.0)
-    }
-
-    /// The server's last `n` chat lines, newest first.
-    pub(super) fn remote_chat(&self, n: usize) -> Option<Vec<String>> {
-        let r = self.remote.as_ref()?;
-        Some(r.chat.iter().rev().take(n).map(|l| l.0.clone()).collect())
-    }
-
     /// Received events left for the next frame (`poll_remote`): until they
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
@@ -1238,25 +884,6 @@ impl Game<'_> {
             r.input
                 .queued(sunrise_client::interaction_input::Button::Attack)
         })
-    }
-
-    /// A headless command oracle has a real connection but no movement tick.
-    /// Acknowledge loaded terrain without predicting or sending movement.
-    pub(super) fn poll_stationary_client(&mut self) -> Result<()> {
-        self.poll_remote()?;
-        let loaded = self.player.as_ref().is_some_and(|p| {
-            self.streaming.is_lit(
-                (p.position.x.floor() as i32) >> 4,
-                (p.position.z.floor() as i32) >> 4,
-            )
-        });
-        if loaded && self.remote.as_ref().is_some_and(|r| !r.loaded_sent) {
-            self.send(S::PlayerLoaded(Empty));
-            let r = self.remote.as_mut().unwrap();
-            r.loaded_sent = true;
-            r.level_load.finish();
-        }
-        Ok(())
     }
 
     /// Process what the network thread received (once per frame, like the
@@ -1314,71 +941,6 @@ impl Game<'_> {
             sunrise_protocol::ids::play::serverbound::COMMAND_SUGGESTION,
             w.data,
         ));
-    }
-
-    // handle_command_suggestions: remote/commands.rs
-    pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
-        let entries: Vec<(&str, serde_json::Value)> = registries
-            .registries
-            .get("minecraft:enchantment")
-            .into_iter()
-            .flatten()
-            .filter_map(|(name, data)| {
-                Some((
-                    name.as_str(),
-                    sunrise_client::scoreboard::tag_to_json(data.as_ref()?),
-                ))
-            })
-            .collect();
-        let enchantments = match self
-            .stations()
-            .enchantments
-            .with_entries(entries.iter().map(|(n, v)| (*n, v)))
-        {
-            Ok(table) => table.map(Arc::new),
-            Err(error) => {
-                log::warn!("Sunrise: refused enchantment registry: {error}");
-                return;
-            }
-        };
-        // The server's biomes the game lacks (a world data pack's) join the
-        // game's table, from the data it sent: colours, meshing and the
-        // chunk format all go through that table. The window's own server
-        // thread set the world's table already.
-        if self.integrated.is_none() {
-            let table = registries
-                .registries
-                .get(BIOME_REGISTRY)
-                .and_then(|list| client_biomes(self.res.biomes(), list))
-                .map(Arc::new);
-            if table.is_some() || self.world_biomes.is_some() {
-                self.world_biomes_base = table.clone();
-                self.world_biomes = table;
-                let context = self.worker_context();
-                self.streaming.reload_resources(&mut self.world, context);
-            }
-        }
-        let biomes: Vec<u16> = registries
-            .registries
-            .get(BIOME_REGISTRY)
-            .map(|list| {
-                list.iter()
-                    .map(|(name, _)| world_biomes!(self).id(name))
-                    .collect()
-            })
-            .unwrap_or_default();
-        self.server_items = self.server_items(&registries);
-        if let Some(r) = self.remote.as_mut() {
-            r.enchantments = enchantments;
-            let bits = ceil_log2(biomes.len());
-            let column = r.chunk_format.layout();
-            r.chunk_format =
-                Arc::new(ChunkFormat::new(&r.dimension, biomes, bits).in_column(column));
-            r.registries = registries;
-            r.resolve_clocks();
-            self.reset_creative_contents();
-            self.refresh_creative_search_tags();
-        }
     }
 
     /// `ClientChunkCache.Storage.inRange`: within the storage around the
@@ -1468,30 +1030,6 @@ impl Game<'_> {
         }
         gone.clear();
         freed_at
-    }
-
-    /// `handleAnimate`: a player wakes up, or an entity gets the critical
-    /// hit (`CRIT`) or magic critical hit (`ENCHANTED_HIT`) emitter.
-    fn remote_animate(&mut self, id: i32, action: u8) {
-        use sunrise_client::particles::{ParticleOptions, ParticleType};
-        let Some((target, body)) = self.remote_tracking_body(id) else {
-            return;
-        };
-        let particle = match action {
-            // Player.stopSleepInBed.
-            0 => {
-                if target == TrackingTarget::LocalPlayer {
-                    self.sleeping = None;
-                    self.sleep_timer = 100;
-                }
-                return;
-            }
-            1 => ParticleType::Crit,
-            2 => ParticleType::EnchantedHit,
-            _ => return,
-        };
-        self.particles
-            .tracking_emitter(ParticleOptions::simple(particle), target, body);
     }
 
     /// `handleServerData`: the server list entry of the server joined keeps
@@ -1703,72 +1241,6 @@ impl Game<'_> {
                 index.get(mobs, id as u32).map(mob_tracking_body)
             });
     }
-
-    /// Find a game slot in the menu's complete, contiguous slot mapping.
-    pub(super) fn menu_slot_index(menu: &str, internal: usize) -> Option<usize> {
-        (0..)
-            .map_while(|slot| Self::inventory_screen_slot(menu, slot))
-            .position(|slot| slot == internal)
-    }
-
-    /// The workstation screen of a menu type a server opens.
-    pub(super) fn remote_station_kind(menu: &str) -> Option<super::stations::Kind> {
-        use super::stations::Kind;
-        Some(match menu {
-            "minecraft:loom" => Kind::Loom,
-            "minecraft:stonecutter" => Kind::Stonecutter,
-            "minecraft:grindstone" => Kind::Grindstone,
-            "minecraft:anvil" => Kind::Anvil,
-            "minecraft:smithing" => Kind::Smithing,
-            "minecraft:enchantment" => Kind::Enchanting,
-            "minecraft:beacon" => Kind::Beacon,
-            "minecraft:cartography_table" => Kind::Cartography,
-            _ => return None,
-        })
-    }
-    fn open_menu_name(&self, container: i32) -> String {
-        match self.remote.as_ref().and_then(|r| r.menu.as_ref()) {
-            Some((id, name)) if *id == container && container != 0 => name.clone(),
-            _ => "inventory".into(),
-        }
-    }
-    fn set_menu_slot(&mut self, container: i32, slot: i32, item: Option<ItemStack>) {
-        let menu = self.open_menu_name(container);
-        if menu == "minecraft:lectern" {
-            if slot == 0 {
-                self.remote_lectern_book(item);
-            }
-            return;
-        }
-        if container != 0 && menu == "inventory" {
-            return;
-        }
-        let Some(internal) = Self::inventory_screen_slot(&menu, slot) else {
-            return;
-        };
-        if internal == 200 {
-            // ClientboundContainerSetSlotPacket for the open menu's slot 0: the
-            // server's result of its own recipes (a world's data packs' too).
-            if container == self.remote_menu().0
-                && let Some(r) = self.remote.as_mut()
-            {
-                r.craft_result = item;
-            }
-            return;
-        }
-        let slot = self.slot_mut(internal);
-        let changed = !super::hand::matches_for_swap(slot.as_ref(), item.as_ref());
-        *slot = item;
-        if internal < 36 {
-            self.remote_hand_slot_set(internal, changed);
-        } else if internal == 504 {
-            self.remote_hand_slot_set(super::shield::OFFHAND_SLOT, changed);
-        }
-        if internal >= super::stations::INPUT && self.station.is_some() {
-            self.remote_station_slot_changed(internal);
-        }
-    }
-
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
@@ -2100,208 +1572,8 @@ impl Game<'_> {
 
     // remote_objective: remote/sync.rs
 
-    /// The player list's view of the connection: the listed players (with
-    /// their downloaded skins once ready), online mode, and which players
-    /// are in the level with an upside-down name.
-    pub(super) fn publish_tab_object_skins(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let fingerprint = (
-            r.listed.len(),
-            r.listed.iter().fold(0, |xor, uuid| xor ^ uuid),
-            r.skins_revision,
-            self.gui.atlas.object_skins_revision,
-        );
-        if r.published_skins == Some(fingerprint) {
-            return;
-        }
-        for uuid in &r.listed {
-            let Some(p) = r.tab_players.get(uuid) else {
-                continue;
-            };
-            let skin = r.skins.get(uuid).map_or_else(
-                || sunrise_client::tab_list::default_skin(*uuid),
-                String::as_str,
-            );
-            for key in [
-                format!("id:{uuid:032x}"),
-                format!("name:{}", p.name.to_ascii_lowercase()),
-            ] {
-                if object_skin_changed(&self.gui.atlas.object_skins, &key, skin) {
-                    self.gui.atlas.set_object_skin(key, skin.to_owned());
-                }
-            }
-        }
-        // Publication itself mutates the atlas; cache its final revision.
-        r.published_skins = Some((
-            fingerprint.0,
-            fingerprint.1,
-            fingerprint.2,
-            self.gui.atlas.object_skins_revision,
-        ));
-    }
-
     // remote_tab_players: remote/sync.rs
-
-    /// Resolve inline `object:player` profiles through the same skin cache as
-    /// player heads on items. The next frame uses the uploaded atlas texture.
-    pub(super) fn resolve_inline_profiles(
-        &mut self,
-        profiles: &[std::sync::Arc<serde_json::Value>],
-    ) {
-        use sunrise_client::skins;
-        for profile in profiles {
-            let skin = skins::head_skin(
-                profile,
-                &mut self.skin_profiles.borrow_mut(),
-                &mut self.skin_downloads.borrow_mut(),
-                |location| self.gui.atlas.sprites.contains_key(location),
-            );
-            let id = skins::parse_profile(profile).id;
-            let name = profile
-                .as_str()
-                .or_else(|| profile.get("name").and_then(serde_json::Value::as_str));
-            // The player list's skin for the same profile is drawn too.
-            let keys = [
-                Some(format!("id:{id:032x}")),
-                name.map(|n| format!("name:{}", n.to_ascii_lowercase())),
-            ];
-            for key in keys.iter().flatten() {
-                if let Some(listed) = self.gui.atlas.object_skins.get(key)
-                    && listed.starts_with("skins/")
-                {
-                    let listed = listed.clone();
-                    self.again_skin(&listed);
-                }
-            }
-            self.gui
-                .atlas
-                .set_object_skin(format!("id:{id:032x}"), skin.clone());
-            if let Some(name) = name {
-                self.gui
-                    .atlas
-                    .set_object_skin(format!("name:{}", name.to_ascii_lowercase()), skin);
-            }
-        }
-    }
-    fn poll_own_profile(&mut self) {
-        let auth = self.auth();
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        match &mut r.own_profile {
-            OwnProfile::Idle => {
-                let Some(auth) = auth else {
-                    r.own_profile = OwnProfile::Done(None);
-                    return;
-                };
-                let (send, recv) = std::sync::mpsc::channel();
-                std::thread::Builder::new()
-                    .name("Own profile".into())
-                    .spawn(move || {
-                        let _ = send.send(sunrise_client::auth::own_textures(auth.as_ref()));
-                    })
-                    .ok();
-                r.own_profile = OwnProfile::Fetching(recv);
-            }
-            OwnProfile::Fetching(recv) => {
-                if let Ok(own) = recv.try_recv() {
-                    r.own_profile = OwnProfile::Done(own);
-                }
-            }
-            OwnProfile::Done(_) => {}
-        }
-    }
-
     // update_remote_skins: remote/status.rs
-
-    /// Puts a downloaded skin in an atlas skin slot (`SkinSlots::place`),
-    /// unless every slot holds a skin drawn in the last frame.
-    pub(super) fn store_skin(&mut self, location: String, rgba: Vec<u8>) {
-        let Some((slot, evicted)) = self.skin_slots.place(location.clone()) else {
-            return;
-        };
-        if let Some(old) = evicted {
-            self.gui.atlas.sprites.remove(&old);
-        }
-        let Some(mut rect) = self
-            .gui
-            .atlas
-            .sprites
-            .get(&format!("sunrise/skin{slot}"))
-            .copied()
-        else {
-            return;
-        };
-        let (w, h) = (self.gui.atlas.width as f32, self.gui.atlas.height as f32);
-        self.map_patches.push(sunrise_client::font::Patch {
-            x: (rect.u0 * w).round() as u32,
-            y: (rect.v0 * h).round() as u32,
-            width: 64,
-            height: 64,
-            rgba,
-        });
-        // A cape is a 64x32 texture in the top half of the slot (skins::process_cape).
-        if location.starts_with("capes/") {
-            rect.v1 = (rect.v0 + rect.v1) / 2.0;
-        }
-        self.gui.atlas.sprites.insert(location, rect);
-    }
-
-    /// Whether a downloaded skin or cape is in the atlas to draw, marking it
-    /// drawn; if not (new, or its slot taken), its image is queued for upload
-    /// again and it is drawn from the next frame.
-    fn again_skin(&mut self, location: &str) -> bool {
-        let mut downloads = self.skin_downloads.borrow_mut();
-        // A slot without its sprite (the atlas was rebuilt, or the upload
-        // never happened) counts as missing, so the skin is stored again.
-        if self.skin_slots.contains(location) && self.gui.atlas.sprites.contains_key(location) {
-            downloads.drawn(location);
-            true
-        } else {
-            downloads.again(location);
-            false
-        }
-    }
-
-    /// A player's skin and model as drawn: the downloaded skin once it is in
-    /// the atlas, until then the profile's default (`DefaultPlayerSkin.get`),
-    /// as `PlayerInfo.getSkin` gives before the texture has loaded.
-    pub(super) fn drawn_skin(
-        &mut self,
-        uuid: u128,
-        (skin, slim): (String, bool),
-    ) -> (String, bool) {
-        if (skin.starts_with("skins/") || skin == "sunrise/offline_skin") && !self.again_skin(&skin)
-        {
-            let skin = sunrise_client::tab_list::default_skin(uuid);
-            return (skin.to_owned(), skin.contains("/slim/"));
-        }
-        (skin, slim)
-    }
-
-    /// `drawn_skin` for a face in the player list or spectator menu.
-    pub(super) fn face_skin(&mut self, uuid: u128, skin: &str) -> String {
-        self.drawn_skin(uuid, (skin.to_owned(), false)).0
-    }
-
-    /// ChatType.Bound.decorate (`Decoration::Chat`) and `decorateNarration`
-    /// (`Decoration::Narration`): the chat type's decoration from the
-    /// server's registry, applied to `content`.
-    pub(super) fn decorate_chat(
-        &self,
-        bound: &play::ChatTypeBound,
-        content: &serde_json::Value,
-        decoration: Decoration,
-    ) -> sunrise_client::text::Text {
-        use sunrise_client::scoreboard::comp_text;
-        let Some(r) = self.remote.as_ref() else {
-            return comp_text(content);
-        };
-        let chat_type = r.registries.data("minecraft:chat_type", bound.chat_type);
-        comp_text(&chat_type_decorate(chat_type, decoration, bound, content))
-    }
     fn remote_item_data(&mut self, id: i32, stack: &Option<Stack>) {
         let Some(stack) = self.to_stack(stack) else {
             return;
@@ -2338,67 +1610,6 @@ impl Game<'_> {
             p.health.food.food = food;
             p.health.food.saturation = saturation;
         }
-    }
-
-    /// `ServerPlayer.dismountTo` lands a rider at the ghast's own (x, maxY, z)
-    /// (`HappyGhast.getDismountLocationForPassenger`). A vanilla client
-    /// simulates the ghast it rides, so its copy is where the server has it;
-    /// this window's copy trails the server's by the stepped interpolation and
-    /// would rise into the rider's feet, which lets the rider fall through.
-    /// Put the copy under the landing spot.
-    fn place_ghast_under(&mut self, id: u32, spot: Vec3) {
-        let Some(m) = self
-            .mobs
-            .iter_mut()
-            .find(|m| m.id == id && m.species() == sunrise_client::mobs::Species::HappyGhast)
-        else {
-            return;
-        };
-        let at = Vec3::new(spot.x, spot.y - f64::from(m.height()), spot.z);
-        // Only a teleport that is that dismount: right above the ghast.
-        if (at.x - m.position.x).powi(2) + (at.z - m.position.z).powi(2) > 25.0
-            || (at.y - m.position.y).abs() > 5.0
-        {
-            return;
-        }
-        m.position = at;
-        m.previous = at;
-        if let Some(handler) = self
-            .remote
-            .as_mut()
-            .and_then(|r| r.stepped.get_mut(&(id as i32)))
-        {
-            handler.cancel();
-        }
-    }
-
-    /// `ClientPacketListener.handleLookAt`: `Entity.lookAt` from this
-    /// player's feet or eyes, towards the packet's entity (its feet or eyes)
-    /// when this client tracks it, else towards the packet's point.
-    fn remote_look_at(&mut self, p: &play::PlayerLookAt) {
-        // `EntityAnchorArgument.Anchor`: 0 feet, 1 eyes.
-        const EYES: i32 = 1;
-        let Some(player) = self.player.as_ref() else {
-            return;
-        };
-        let mut from = [player.position.x, player.position.y, player.position.z];
-        if p.from == EYES {
-            from[1] += f64::from(player.dimensions.eye_height);
-        }
-        let to = p
-            .entity
-            .as_ref()
-            .and_then(|e| {
-                let m = self.mobs.iter().find(|m| m.id == e.id as u32)?;
-                let y = if e.anchor == EYES {
-                    m.eye_y()
-                } else {
-                    m.position.y
-                };
-                Some([m.position.x, y, m.position.z])
-            })
-            .unwrap_or(p.target);
-        (self.yaw, self.pitch) = look_at_rotation(from, to);
     }
 
     // remote_teleport: remote/sync.rs
@@ -2544,24 +1755,6 @@ impl Game<'_> {
     }
 
     // remote_player_eating: remote/use.rs
-
-    // remote_send_state: remote/sync.rs
-    /// `MultiPlayerGameMode.handleCreativeModeItemAdd` for inventory slot `i` (0 to 35): the
-    /// stack goes out now and counts as synced. Nothing without a server.
-    pub(in crate::game) fn remote_creative_slot_add(&mut self, i: usize) {
-        let stack = self.inventory.get(i).cloned().flatten();
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        if let Some(synced) = r.synced.get_mut(i) {
-            *synced = stack.clone();
-        }
-        let item = self.to_network(&stack);
-        self.send(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
-            slot: creative_sync_slot(i),
-            item,
-        }));
-    }
     /// Inventory as the server last described it.
     fn remote_synced(&mut self) {
         let stacks = self.creative_stacks();
@@ -2723,13 +1916,6 @@ impl Game<'_> {
         }
     }
 
-    /// Another player of this level, whose copy passes every click (`Player.interactOn`).
-    pub(super) fn is_level_player(&self, id: i32) -> bool {
-        self.remote
-            .as_ref()
-            .is_some_and(|r| r.level_players.contains_key(&id))
-    }
-
     /// Whether a main-hand right click with `held` would end on the block hit, for the gameplay
     /// guide: what `remote_block_reacts` answers on its dry level, by the templates' rules alone,
     /// so looking asks no mod's placement or survival hook.
@@ -2754,85 +1940,7 @@ impl Game<'_> {
     }
 
     // remote_block_reacts: remote/use.rs
-
-    /// The shared dry-level boundary for a normal block use or the empty
-    /// method requested by a canceled `BLOCK` phase's `TryWithEmptyHand`.
-    /// The `useItemOn` answers a client level gives without changing a block, for either hand:
-    /// - VaultBlock: something in the hand on an ACTIVE vault is SUCCESS_SERVER (no swing here);
-    /// - RedStoneOreBlock: SUCCESS, unless a block item goes in the cell beside it
-    ///   (`BlockPlaceContext.canPlace`), PASS;
-    /// - PumpkinBlock: shears are SUCCESS (only the server carves it);
-    /// - WeatheringCopperGolemStatueBlock: an axe on an unaffected statue is SUCCESS (the server
-    ///   lets the golem out).
-    pub(super) fn client_block_answer(
-        &self,
-        hit: &super::Hit,
-        held: Option<&ItemStack>,
-    ) -> Option<InteractionResult> {
-        if self.vault_takes_click(hit.pos, held) {
-            return Some(InteractionResult::Consume);
-        }
-        let name = self.block_name(hit.pos);
-        match &*name {
-            "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore" => {
-                let beside = [0, 1, 2].map(|i| hit.pos[i] + hit.face[i]);
-                let takes = self
-                    .res
-                    .facts()
-                    .get(self.world.block(beside[0], beside[1], beside[2]))
-                    .replaceable;
-                let places =
-                    held.is_some_and(|s| self.res.items().block_items.contains_key(&*s.item));
-                Some(if places && takes {
-                    InteractionResult::Pass
-                } else {
-                    InteractionResult::Success
-                })
-            }
-            "minecraft:pumpkin" => held
-                .is_some_and(|s| &*s.item == "minecraft:shears")
-                .then_some(InteractionResult::Success),
-            "minecraft:copper_golem_statue" => held
-                .is_some_and(|s| self.item_in_tag("minecraft:axes", &s.item))
-                .then_some(InteractionResult::Success),
-            _ => None,
-        }
-    }
     // remote_block_template: remote/use.rs
-
-    /// MultiPlayerGameMode.useItemOn inside startPrediction, for a block item:
-    /// the blocks `BlockItem.place` set at `pos` are placed on this client's
-    /// level at once, so the next click of a fast bridge aims at them rather
-    /// than past them (the server would refuse it). Its place sound is the
-    /// placer's own (`playSound(player, ...)`: the server sends it to the
-    /// others only).
-    fn predict_place(&mut self, placed: &DryPlace, stack: &ItemStack, seq: i32) {
-        let pos = placed.pos;
-        let at = [pos.x, pos.y, pos.z];
-        // The dry simulation puts the stack state in the primary write. The
-        // live copy takes item components before replaying the other cells.
-        let Some((primary, rest)) = placed.changes.split_first() else {
-            return;
-        };
-        self.predict_blocks(std::slice::from_ref(primary), seq);
-        if placed.matches_candidate {
-            self.apply_predicted_item(at, stack);
-        }
-        self.predict_blocks(rest, seq);
-        let state = primary.1;
-        if !self.res.facts().is_air(state) {
-            let sound = self.own_sound_type(at, state, mod_api::BlockSoundCause::Place);
-            self.play_client_local_sound(
-                LevelSound::new(
-                    &sound.place,
-                    at.map(|n| f64::from(n) + 0.5),
-                    (sound.volume + 1.0) / 2.0,
-                    sound.pitch * 0.8,
-                )
-                .in_source(mod_api::SoundSource::Blocks),
-            );
-        }
-    }
 
     /// The idle controller guide cannot know what these Parts will decide on a click.
     pub(super) fn can_hint_block_placement(stack: &ItemStack) -> bool {
@@ -2864,88 +1972,9 @@ impl Game<'_> {
 
     // remote_use_bucket: remote/use.rs
 
-    /// Whether `held`'s `Item.use` needs a target this client sees none of
-    /// (not SUCCESS): BucketItem.use (a fluid source or powder snow to pick
-    /// up through `ClipContext.Fluid.SOURCE_ONLY`, a block to empty a full
-    /// one against, `mayUseItemAt`), BottleItem.use (water to fill from) and
-    /// BoatItem.use (a block or fluid surface with room for the boat).
-    fn use_finds_no_target(&self, held: &ItemStack) -> bool {
-        let id = &*held.item;
-        let facts = |pos: [i32; 3]| {
-            self.res
-                .facts()
-                .get(self.world.block(pos[0], pos[1], pos[2]))
-        };
-        let source = |want: Option<Fluid>| {
-            let fluid_hit = self.pick_fluid();
-            // pick_fluid steps through waterlogged blocks, but their water is
-            // a source the SOURCE_ONLY ray stops at (and a BucketPickup).
-            if let Some(hit) = self.pick()
-                && facts(hit.pos).waterlogged
-            {
-                let eye = self.aim().map_or(hit.point, |(eye, _)| eye);
-                let d = |p: [f64; 3]| (0..3).map(|a| (p[a] - eye[a]).powi(2)).sum::<f64>();
-                if fluid_hit
-                    .as_ref()
-                    .is_none_or(|fluid| d(fluid.point) >= d(hit.point))
-                {
-                    return want.is_none_or(|want| want == Fluid::Water);
-                }
-            }
-            fluid_hit.is_some_and(|hit| {
-                let f = facts(hit.pos);
-                let fluid = f.fluid != Fluid::None && f.fluid_level == 8 && !f.fluid_falling;
-                match want {
-                    Some(want) => fluid && f.fluid == want,
-                    None => fluid || self.is_powder_snow(hit.pos),
-                }
-            })
-        };
-        // SolidBucketItem only has useOn: its use is Item.use's PASS.
-        if id == "minecraft:powder_snow_bucket" {
-            return true;
-        }
-        if id == "minecraft:bucket" {
-            return !self.may_build() || !source(None);
-        }
-        if sunrise_client::items::bucket_contents(id).is_some() {
-            return !self.may_build() || self.pick().is_none();
-        }
-        if id == "minecraft:glass_bottle" {
-            // A dragon's breath cloud never counts here: its owner is not
-            // synced, so this client's BottleItem.use finds none and PASSes;
-            // the packet still goes and the server fills the bottle.
-            return !source(Some(Fluid::Water));
-        }
-        if super::boats::any_boat_wood(id).is_some() {
-            return self.boat_to_place(held).is_none();
-        }
-        false
-    }
-
     // remote_start_held_use: remote/use.rs
 
     // remote_use_instrument: remote/use.rs
-
-    /// Whether `stack` stays in use until the button lets go (bows,
-    /// crossbows, tridents, spyglasses, shields, eyes of ender, whose
-    /// `getUseDuration` 0 never counts down to the end) or the server ends
-    /// it (a mod's item): its use only counts ticks here.
-    fn held_until_released(&self, stack: &ItemStack) -> bool {
-        if self.mod_use(stack) {
-            return true;
-        }
-        matches!(
-            &*stack.item,
-            "minecraft:bow"
-                | "minecraft:crossbow"
-                | "minecraft:trident"
-                | "minecraft:spyglass"
-                | "minecraft:ender_eye"
-        ) || sunrise_client::spear::Kinetic::of(&stack.item).is_some()
-            || self.blocks_attacks(stack).is_some()
-            || self.patched_held_use(stack)
-    }
 
     /// Whether the server's patch gives `stack`, an item with no consumable
     /// of its own, a `consumable` with a use time or `blocks_attacks` (a
@@ -2968,46 +1997,6 @@ impl Game<'_> {
     pub(super) fn request_remote_mining_stop(&mut self) {
         if let Some(r) = self.remote.as_mut() {
             r.stop_mining = true;
-        }
-    }
-
-    pub(in crate::game) fn remote_handle_input(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let mut input = r.input.take_queued();
-        let stop = std::mem::take(&mut r.stop_mining);
-        // Minecraft.tick runs handleKeybinds only while `gui.screen() == null`: a
-        // book, a sign editor, a dialog or a prompt over the world (each a
-        // `Screen` in vanilla) stops the attack and use mappings from acting,
-        // and `KeyMapping.releaseAll` let go of the buttons when it opened
-        // (`track_toggle_screens`), so a dig held into a book ends (#9729).
-        let ready = r.loaded_sent
-            && self.screen == Screen::Playing
-            && self.sleeping.is_none()
-            && !self.screen_over_playing();
-        self.refresh_client_pick(1.0);
-        if stop || !ready {
-            self.stop_remote_mining();
-        }
-        if !ready {
-            // A screen's opening released the keys (`KeyMapping.releaseAll`).
-            self.hotbar_presses
-                .iter_mut()
-                .for_each(sunrise_client::input_queue::ClickQueue::clear);
-            self.agent_attack_clicks_left(0);
-            return;
-        }
-        let (attack, use_item) = (self.left, self.right);
-        input.tick(&mut RemoteInputWorld(self), attack, use_item);
-        // An item in use drains the queues without acting on them.
-        self.agent_attack_clicks_left(
-            input.queued(sunrise_client::interaction_input::Button::Attack),
-        );
-        self.remote_count_miss_time();
-        if let Some(r) = self.remote.as_mut() {
-            input.merge_queued(std::mem::take(&mut r.input));
-            r.input = input;
         }
     }
 
@@ -3073,82 +2062,6 @@ impl Game<'_> {
 
     // remote_key: remote/ui.rs
 
-    /// `Minecraft.handleKeybinds`: a key that opens a screen runs
-    /// `Gui.setScreen`, whose `KeyMapping.releaseAll` clears the use key, and
-    /// the same invocation then releases an active use
-    /// (`player.isUsingItem() && !keyUse.isDown()` → `releaseUsingItem`).
-    /// Only the screens opened from those keybinds do this (inventory, chat,
-    /// advancements); the pause menu, server containers, mount inventories and
-    /// dialogs release on the first tick after closing instead, as vanilla
-    /// does.
-    pub(super) fn release_use_for_keybind_screen(&mut self) {
-        // Only a server's client holds a use to release.
-        if self.remote.is_none() {
-            return;
-        }
-        // `KeyMapping.releaseAll` clears key.use; without this the button still
-        // reads held and a use would start again on the first tick back.
-        self.right = false;
-        sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
-    }
-
-    /// `MultiPlayerGameMode.releaseUsingItem`: sends `RELEASE_USE_ITEM` and
-    /// runs the client half of `Item.releaseUsing` (a Riptide launch moves the
-    /// player itself). Vanilla reaches it both when the use key is let go and,
-    /// in the same tick, when a keybind opens a screen.
-    fn release_remote_use(&mut self) {
-        self.send_action(6);
-        // a mod's Stop may skip the item's release, and a mod's own release follows.
-        let hand = self.used_hand();
-        if let Some((slot, ticks)) = self.using.take()
-            && let Some(hand) = hand
-            && let Some(stack) = self.stack_in(slot).cloned()
-        {
-            self.with_hand(hand, |g| {
-                if !g.use_item_stopped(&stack, ticks) {
-                    return;
-                }
-                if &*stack.item == "minecraft:trident" {
-                    g.release_trident(g.ticks_held(&stack, ticks));
-                }
-                g.mod_release_using(&stack, ticks);
-            });
-        }
-    }
-
-    /// ClientPacketListener.sendChat / sendCommand, signed with a chat
-    /// session (game/network/remote_chat.rs). The Chat option's Hidden and System
-    /// levels keep chat out and Hidden keeps the commands out (ChatAbilities).
-    pub(super) fn send_signed_chat_input(&mut self, message: &str) {
-        let message = message.trim();
-        if message.is_empty() || !self.chat_abilities().allows(message) {
-            return;
-        }
-        if let Some(command) = message.strip_prefix('/') {
-            if self.studio_command(command) {
-                return;
-            }
-            self.send_command(command);
-        } else {
-            self.send_signed_chat(message);
-        }
-    }
-
-    /// ChatScreen.handleChatInput fires the client event for chat, not commands.
-    pub(super) fn send_chat_from_screen(&mut self, message: &str) {
-        if message.starts_with('/') || !mod_api::__private::listened(mod_api::HookId::ClientChat) {
-            self.send_signed_chat_input(message);
-        } else if let Some(uuid) = self.remote.as_ref().map(|r| r.profile) {
-            let id = self.own_entity_id();
-            let sent = chat_after_event(message, |outgoing, cancel| {
-                self.native_client_chat(id, uuid, message, outgoing, cancel);
-            });
-            if let Some(outgoing) = sent {
-                self.send_signed_chat(&outgoing);
-            }
-        }
-    }
-
     /// MultiPlayerGameMode.dropItem (key.drop): predict the removal, then send
     /// the action; swing only if a nonempty stack was removed.
     pub(super) fn remote_drop(&mut self, all: bool) {
@@ -3176,30 +2089,6 @@ impl Game<'_> {
         let moves = !super::hand::matches_for_swap(main, off);
         if let Some(r) = self.remote.as_mut() {
             r.swap_answer = [moves; 2];
-        }
-    }
-
-    /// The server set inventory `slot` (`shield::OFFHAND_SLOT` for the off
-    /// hand), `changed` from the stack this client held there. The stack
-    /// that answers a swap (`setItemInHand`) is another object, which the
-    /// hand shows after the swap animation (`hand_stack_replaced`); other
-    /// updates of a hand's slot count as the held stack changing in place,
-    /// as this client doesn't predict every use the way vanilla's does
-    /// (a thrown snowball's stack shrinks only when the server says so).
-    fn remote_hand_slot_set(&mut self, slot: usize, changed: bool) {
-        let hand = if slot == super::shield::OFFHAND_SLOT {
-            1
-        } else if slot == self.selected {
-            0
-        } else {
-            return;
-        };
-        let answer = self
-            .remote
-            .as_mut()
-            .is_some_and(|r| std::mem::take(&mut r.swap_answer[hand]));
-        if answer && changed {
-            self.hand_stack_replaced(slot);
         }
     }
 
@@ -3277,60 +2166,6 @@ impl Game<'_> {
         let active = self.ticks.saturating_sub(since) >= 600;
         let hover = sunrise_client::ui::hovered(self.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
-    }
-
-    /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
-    /// joined through `ConnectScreen`), until the login is done.
-    fn connect_cancel(&self, (w, h): (f32, f32)) -> Option<(f32, f32)> {
-        let r = self.remote.as_ref()?;
-        (self.player.is_none() && !r.joined && self.integrated.is_none())
-            .then(|| sunrise_client::level_loading::connect_cancel(w, h))
-    }
-
-    /// A click on `ConnectScreen`: Cancel aborts the connection
-    /// (`connect.aborted`) and goes back. Escape does nothing there
-    /// (`shouldCloseOnEsc` is false).
-    pub(super) fn connect_screen_click(&mut self) -> Result<()> {
-        // ServerReconfigScreen's Disconnect, once it is active.
-        if let Some(since) = self.remote.as_ref().and_then(|r| r.reconfiguring) {
-            let (_, (x, y)) = self.reconfigure_layout(self.gui_size());
-            if self.ticks.saturating_sub(since) >= 600
-                && sunrise_client::ui::hovered(self.cursor, x, y, 150.0, 20.0)
-            {
-                self.audio.play_button_click();
-                self.leave_server(None)?;
-            }
-            return Ok(());
-        }
-        let Some((x, y)) = self.connect_cancel(self.gui_size()) else {
-            return Ok(());
-        };
-        if sunrise_client::ui::hovered(self.cursor, x, y, 200.0, 20.0) {
-            self.audio.play_button_click();
-            self.leave_server(None)?;
-        }
-        Ok(())
-    }
-
-    /// The server's death message; chat uses the shared ChatComponent.
-    pub(super) fn remote_hud(&self, batch: &mut HudBatch) {
-        let Some(r) = &self.remote else { return };
-        let atlas = &self.gui.atlas;
-        let w = batch.width;
-        if self.screen == Screen::Dead
-            && let Some(message) = &r.death_message
-        {
-            // DeathScreen draws the styled cause component.
-            let tw = atlas.font.width_text(message);
-            batch.text_styled(
-                atlas,
-                message,
-                ((w - tw) / 2.0).floor(),
-                85.0,
-                u32::MAX,
-                true,
-            );
-        }
     }
 
     /// Shared flag 6 of an entity on a server's client (`None` without a server).
@@ -3756,211 +2591,6 @@ impl ClientMenu {
 
     pub(super) fn as_ref(&self) -> Option<&(i32, String)> {
         self.current.as_ref()
-    }
-}
-
-impl Remote {
-    /// The interpolation a boat or other object `id` had toward the server's
-    /// position, taken out: its target, rotation and steps to go.
-    pub(super) fn take_object_lerp(
-        &mut self,
-        id: u32,
-    ) -> Option<([f64; 3], Option<(f32, f32)>, u32)> {
-        self.lerps
-            .remove(&(id as i32))
-            .map(|l| (l.target, l.rotation, l.steps))
-    }
-    pub(super) fn set_menu_title(&mut self, title: Option<sunrise_client::text::Text>) {
-        self.menu_title_snapshot = title.try_into_api().ok().flatten().map(Arc::new);
-        self.menu_title = title;
-    }
-
-    pub(super) fn menu_title_snapshot(&self) -> Option<&mod_api::Text> {
-        self.menu_title_snapshot.as_deref()
-    }
-
-    pub(super) fn shared_menu_title_snapshot(&self) -> Option<Arc<mod_api::Text>> {
-        self.menu_title_snapshot.clone()
-    }
-
-    /// Resolve registry keys only when registries or the dimension change.
-    fn resolve_clocks(&mut self) {
-        self.overworld_clock = self
-            .registries
-            .id("minecraft:world_clock", "minecraft:overworld");
-        self.default_clock = self
-            .dimension
-            .default_clock
-            .as_deref()
-            .and_then(|name| self.registries.id("minecraft:world_clock", name));
-        for id in [self.overworld_clock, self.default_clock]
-            .into_iter()
-            .flatten()
-        {
-            self.clocks.entry(id).or_insert(play::ClockState {
-                clock: id,
-                total_ticks: 0,
-                partial_tick: 0.0,
-                rate: 1.0,
-            });
-        }
-    }
-
-    fn clock_time(&self, id: Option<i32>) -> i64 {
-        id.and_then(|id| self.clocks.get(&id))
-            .map_or(0, |c| c.total_ticks)
-    }
-
-    pub(super) fn overworld_clock_time(&self) -> i64 {
-        self.clock_time(self.overworld_clock)
-    }
-
-    /// `Minecraft.level != null`: from `handleLogin` until the next
-    /// `handleConfigurationStart` (`clearClientLevel`). Minecraft.tick sends
-    /// CLIENT_TICK_END only then, so a client waiting for the server's Login
-    /// (a busy server takes seconds to place a new player) sends nothing.
-    pub(in crate::game) fn has_level(&self) -> bool {
-        client_has_level(self.logged_in, self.reconfiguring)
-    }
-
-    /// An entity the server added to this client level: its type
-    /// (`minecraft:text_display`) and its position as last sent.
-    pub(super) fn tracked_entity(&self, id: i32) -> Option<(&str, [f64; 3])> {
-        if let Some(row) = self.general.rows.get(&id) {
-            return row.shown.then(|| (row.kind(), row.position));
-        }
-        self.entities
-            .get(&id)
-            .map(|t| (t.kind.as_str(), t.position))
-    }
-
-    /// The profile of the player entity `id`: this window's own player, or
-    /// another one by the UUID it was added with and its profile name.
-    pub(super) fn level_player(&self, id: i32) -> Option<(u128, Option<&str>)> {
-        if id == self.entity_id {
-            return Some((self.profile, Some(self.profile_name.as_str())));
-        }
-        let uuid = *self.level_players.get(&id)?;
-        Some((uuid, self.level_player_names.get(&id).map(String::as_str)))
-    }
-
-    /// `PlayerInfo.getMessageValidator().updateAndValidate(message)` for `message.sender`.
-    fn validate_chat(
-        &mut self,
-        message: &secure_chat::Incoming,
-        now: i64,
-    ) -> Option<secure_chat::Validated> {
-        let sender = message.sender;
-        if let Some(validator) = self.chat_validators.get_mut(&sender) {
-            return validator.update_and_validate(message, now);
-        }
-        let (mut validator, settled) = self.new_chat_validator(sender);
-        let validated = validator.update_and_validate(message, now);
-        // While the services' keys are still on their way the validator is a stopgap, not kept.
-        if settled {
-            self.chat_validators.insert(sender, validator);
-        }
-        validated
-    }
-
-    /// `ClientPacketListener.initializeChatSession` for `sender`'s entry: a session the services'
-    /// keys vouch for makes a keyed validator, anything else the fallback of
-    /// `enforcesSecureChat()` (`canValidateProfileKeys() && serverEnforcesSecureChat`). `false`
-    /// while the keys are not known yet.
-    fn new_chat_validator(&self, sender: u128) -> (secure_chat::MessageValidator, bool) {
-        let keys = self.services_keys.lock().unwrap_or_else(|e| e.into_inner());
-        let (can_validate, settled) = match &*keys {
-            ServicesKeys::Ready(_) => (true, true),
-            ServicesKeys::Missing => (false, true),
-            ServicesKeys::Pending => (false, false),
-        };
-        let fallback =
-            secure_chat::MessageValidator::fallback(can_validate && self.enforces_secure_chat);
-        let (ServicesKeys::Ready(keys), Some(Some((id, expires_at, key, signature)))) =
-            (&*keys, self.chat_sessions.get(&sender))
-        else {
-            if matches!(&*keys, ServicesKeys::Missing)
-                && self.chat_sessions.get(&sender).is_some_and(Option::is_some)
-            {
-                log::warn!(
-                    "Ignoring chat session from {sender:032x} due to missing Services public key"
-                );
-            }
-            return (fallback, settled);
-        };
-        let profile_key = secure_chat::ProfileKey {
-            expires_at: *expires_at,
-            key: key.clone(),
-            signature: signature.clone(),
-        };
-        match secure_chat::ChatSession::validate(*id, profile_key, keys, sender) {
-            Ok(session) => (secure_chat::MessageValidator::keyed(session), true),
-            Err(why) => {
-                log::error!("Failed to validate profile key for player {sender:032x}: {why}");
-                (fallback, true)
-            }
-        }
-    }
-
-    /// How far the server sends chunks: its view distance and the ring
-    /// around (`ChunkTrackingView`), at least two.
-    pub(super) fn sent_radius(&self) -> i32 {
-        self.view_distance.max(2).saturating_add(1)
-    }
-
-    /// A player entity's profile name: the one it was created with, else its
-    /// player-list entry's (an entity the list named after it spawned).
-    fn level_player_name(&self, id: i32, uuid: &u128) -> Option<&str> {
-        self.level_player_names
-            .get(&id)
-            .or_else(|| self.players.get(uuid))
-            .map(String::as_str)
-    }
-
-    /// Listed UUIDs always have a tab entry; removal clears both together.
-    pub(super) fn listed_player_count(&self) -> usize {
-        self.listed.len()
-    }
-
-    /// The local player's profile UUID.
-    pub(super) fn profile(&self) -> u128 {
-        self.profile
-    }
-
-    /// Another player's profile UUID, by their entity id (None for the local player).
-    pub(super) fn player_uuid(&self, id: u32) -> Option<u128> {
-        let uuid = *self.level_players.get(&(id as i32))?;
-        (uuid != self.profile).then_some(uuid)
-    }
-
-    /// The entity id of a player in the level, by profile UUID.
-    pub(super) fn player_entity(&self, uuid: u128) -> Option<u32> {
-        self.level_players
-            .iter()
-            .find(|(_, u)| **u == uuid)
-            .map(|(id, _)| *id as u32)
-    }
-
-    /// The client's synced Entity shared flag 0, including the local player.
-    pub(in crate::game) fn entity_on_fire(&self, id: i32) -> Option<bool> {
-        if id == self.entity_id {
-            Some(self.own_on_fire)
-        } else {
-            self.entities.get(&id).map(|t| t.on_fire)
-        }
-    }
-    pub(in crate::game) fn tracked_fire_immunity(&self, id: i32) -> Option<bool> {
-        Some(self.entities.get(&id)?.mod_fire_immune)
-    }
-    pub(in crate::game) fn set_tracked_fire_immunity(&mut self, id: i32, immune: bool) -> bool {
-        self.entities.get_mut(&id).is_some_and(|entity| {
-            entity.mod_fire_immune = immune;
-            true
-        })
-    }
-    /// The kind and last sent position of a tracked server entity.
-    pub(in crate::game) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
-        self.entities.get(&id).map(|t| (&*t.kind, t.position))
     }
 }
 
