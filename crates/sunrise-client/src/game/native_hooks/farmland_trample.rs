@@ -463,7 +463,11 @@ mod tests {
                 if player {
                     game.tick_lan_packets();
                     let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
-                    assert_eq!(guest.moves.len(), 1);
+                    assert_eq!(
+                        guest.moves.len(),
+                        usize::from(!converted),
+                        "only a committed lift discards the saved landing travel"
+                    );
                     if matches!(later, Some(S::PlayerInput(_))) {
                         assert!(!guest.sneaking, "the later release still runs");
                     }

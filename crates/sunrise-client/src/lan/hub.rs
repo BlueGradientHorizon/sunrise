@@ -2150,6 +2150,9 @@ impl Hub {
         self.guests.update(i, |g| {
             g.teleport_tick = ticks;
             g.held_ticket_chunk = Some(g.ticket_chunk()); // teleport has no move
+            // Entity.teleportSetPosition clears movementThisTick. The body
+            // must not walk or glide along the old path after a teleport.
+            g.moves.clear();
             g.pending_move = None;
             g.on_collider = None;
             g.carry_hint = None;
