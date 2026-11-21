@@ -114,7 +114,8 @@ cargo sunrise-mod run --resources <folder> -- --world Greeter --creative
 ```
 
 `run` builds, stages the game with your mod in `target/sunrise-mod/run/` and starts it, with its game folder and its
-logs inside that folder, so nothing of a player's is touched. Everything after `--` goes to the game. Join a world;
+logs inside that folder, so nothing of a player's is touched. The game's `logs/latest.log` includes native mods' and
+their dependencies' `log` records through INFO, prefixed with `[target]`. Everything after `--` goes to the game. Join a world;
 the greeting appears in chat, and the mod is listed on the game's **Mods** screen. On Linux without a display, start
 `run` under `xvfb-run`. If your mod uses [`[[jar]]` originals](../how-to/content-mods.md#java-jars-as-external-assets),
 `run` stages them in its development home. Use `--jars <dir>` to choose a different source folder.
