@@ -124,10 +124,11 @@ pub trait Notes {
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
   `block_entity_tick` receives `&mut BlockEntityTickEvent<'_>` without a separate Host.
-  `event.subject.with_view` lends the resident type ID, saved data, and slots; it returns `None`
-  if the subject is no longer available. To edit Part state, get the handle with
-  `event.subject.with_view(|view| view.handle())`, then use `event.subject.host()` for `edit_state`.
-  To commit edits to the subject and other objects together, use `event.subject.transaction`.
+  `event.subject.with_view` lends the resident type ID, saved data, item slots, and transient
+  data slots for the closure; it returns `None` if the subject is no longer available. To edit
+  Part state, return the handle from `event.subject.with_view(|view| view.handle())`. After the
+  view borrow ends, borrow `event.subject.host()` separately for `edit_state`.
+  Use `event.subject.transaction` to commit edits to the subject and other objects together.
 
 - Item slots for those block entities (`r.block_container(&block, container)`): hoppers, comparators and breaking the
   block use them as they use vanilla's containers, and the tick's resident view lends the slots.
