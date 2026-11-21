@@ -311,11 +311,11 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
             }
             event
                 .listeners
-                .add_dependency(id("anchor:before"), VanillaClientListeners::first())
+                .add_dependency(id("anchor:before"), VanillaClientListeners::model_manager())
                 .unwrap();
             event
                 .listeners
-                .add_dependency(VanillaClientListeners::last(), id("anchor:after"))
+                .add_dependency(VanillaClientListeners::model_manager(), id("anchor:after"))
                 .unwrap();
         }
         fn standalone_models(

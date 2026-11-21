@@ -10,8 +10,6 @@ fn files() -> FileToIdConverter {
 fn registry_views_and_explicit_order_before_vanilla() {
     let mut listeners = ClientListenerRegistry::new();
     let model_manager = VanillaClientListeners::model_manager();
-    assert_eq!(VanillaClientListeners::first(), model_manager);
-    assert_eq!(VanillaClientListeners::last(), model_manager);
     assert_eq!(listeners.get_registry(), [model_manager.clone()]);
     assert!(listeners.get_graph().is_empty());
 
@@ -38,10 +36,10 @@ fn registry_views_and_explicit_order_before_vanilla() {
         ]
     );
     listeners
-        .add_dependency(id("test_mod:second"), VanillaClientListeners::first())
+        .add_dependency(id("test_mod:second"), VanillaClientListeners::model_manager())
         .unwrap();
     listeners
-        .add_dependency(VanillaClientListeners::last(), id("test_mod:after"))
+        .add_dependency(VanillaClientListeners::model_manager(), id("test_mod:after"))
         .unwrap();
     assert_eq!(
         listeners.get_graph(),
