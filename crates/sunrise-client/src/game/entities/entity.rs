@@ -137,7 +137,10 @@ pub(super) trait Entity: EntityRules {
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
         (
             sunrise_client::motion::BodyMotion::entity_context(self.id(), self.position()),
-            None,
+            Some(PowderSnowSubject {
+                fall_distance: self.body_fall_distance(),
+                ..Default::default()
+            }),
         )
     }
     /// Update the live owner's retained support. None is `Entity.setOnGround`'s null movement.
@@ -158,16 +161,17 @@ pub(super) trait Entity: EntityRules {
             binding,
             subject,
         };
-        scene.update_ground_support(
+        let scan = scene.update_ground_support(
             &mut ground,
             self.position(),
             self.bounds(),
             movement,
             context,
-        )?;
+        );
         if let Some(owner) = self.ground_state_mut() {
+            // Entity.setOnGround writes the flag before checking support.
             *owner = ground;
-            return Ok(true);
+            return scan.map(|()| true);
         }
         Ok(false)
     }
@@ -791,6 +795,9 @@ macro_rules! stored_ground {
         fn body_fall_distance(&self) -> f64 {
             self.$fall_distance
         }
+        stored_ground!(@state);
+    };
+    (@state) => {
         fn ground_state(&self) -> Option<&sunrise_world::ground_support::GroundState> {
             Some(&self.ground)
         }
@@ -2113,7 +2120,13 @@ impl Entity for Mob {
 impl Entity for ItemEntity {
     stored_ground!();
     fn support_collision(&self) -> (CollisionContext<'_>, Option<PowderSnowSubject<'_>>) {
-        (self.collision_context(), None)
+        (
+            self.collision_context(),
+            Some(PowderSnowSubject {
+                fall_distance: self.fall_distance,
+                ..Default::default()
+            }),
+        )
     }
     fn reset_fall_distance(&mut self) {
         self.fall_distance = 0.0;
@@ -2759,7 +2772,12 @@ impl Entity for FallingBlock {
 }
 
 impl Entity for Projectile {
-    stored_ground!();
+    stored_ground!(@state);
+    fn body_fall_distance(&self) -> f64 {
+        self.arrow
+            .as_ref()
+            .map_or(self.fall_distance, |arrow| arrow.fall_distance)
+    }
     fn reset_fall_distance(&mut self) {
         if let Some(arrow) = self.arrow.as_deref_mut() {
             arrow.fall_distance = 0.0;

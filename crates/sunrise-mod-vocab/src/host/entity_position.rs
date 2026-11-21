@@ -69,6 +69,8 @@ pub trait EntityPositionBackendMut {
     /// support; true retains the previous block on the first miss and clears it on
     /// a second miss. Does not change velocity, fall distance, or collision flags.
     /// `Ok(false)` for stale handles and bodies that don't keep ground state.
+    /// If the support scan fails, returns `Err(LevelWriteError::Unavailable)`;
+    /// the flag is still written, and the previous supporting block is retained.
     #[access(WorldOnly)]
     fn entity_set_on_ground(
         &mut self,

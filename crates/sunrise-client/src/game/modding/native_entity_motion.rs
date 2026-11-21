@@ -257,14 +257,18 @@ impl Game<'_> {
         let Some(body) = self.native_player_body(target) else {
             return Ok(false);
         };
-        let (world, position, bounds, descending, held, armor) = match target {
+        let (world, position, bounds, descending, held, armor, conn) = match target {
             Target::Player => (
                 &self.world,
                 body.position,
                 body.bounds(),
-                body.shift_key_down,
+                // PlayerInput updates the guest row before the sneak callback and the body tick.
+                self.lan_acting
+                    .and_then(|conn| self.command_guest(conn))
+                    .map_or(body.shift_key_down, |guest| guest.sneaking),
                 self.inventory.get(self.selected).and_then(Option::as_ref),
                 &self.armor,
+                self.lan_acting,
             ),
             Target::Guest(conn) => {
                 let Some(guest) = self.command_guest(conn) else {
@@ -285,6 +289,7 @@ impl Game<'_> {
                     guest.sneaking,
                     guest.inventory.get(guest.selected).and_then(Option::as_ref),
                     &guest.armor,
+                    Some(conn),
                 )
             }
             _ => return Ok(false),
@@ -298,34 +303,28 @@ impl Game<'_> {
         };
         let mut ground = body.ground;
         ground.on_ground = on_ground;
-        scene
-            .update_ground_support(
-                &mut ground,
-                position,
-                bounds,
-                None,
-                player_context(
-                    entity_id,
-                    position.y,
-                    descending,
-                    held.map(|s| s.item.as_ref()),
-                ),
-            )
-            .map_err(|_| LevelWriteError::Unavailable)?;
+        let scan = scene.update_ground_support(
+            &mut ground,
+            position,
+            bounds,
+            None,
+            player_context(
+                entity_id,
+                position.y,
+                descending,
+                held.map(|s| s.item.as_ref()),
+            ),
+        );
         let Some(body) = self.native_player_body_mut(target) else {
             return Ok(false);
         };
         body.ground = ground;
-        let conn = match target {
-            Target::Player => self.lan_acting,
-            Target::Guest(conn) => Some(conn),
-            _ => None,
-        };
         if let Some((conn, host)) = conn.zip(self.lan.as_mut()) {
             host.hub
                 .update_guest(conn, |guest| guest.on_ground = on_ground);
         }
-        Ok(true)
+        scan.map(|()| true)
+            .map_err(|_| LevelWriteError::Unavailable)
     }
 
     /// The entity's box (`Entity.getBoundingBox`): its lowest and highest
@@ -632,7 +631,12 @@ mod tests {
     fn set_on_ground_refreshes_the_live_footprint_without_moving_the_body() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use std::sync::Arc;
-        use sunrise_client::{chunk::Chunk, entities::ArmorStand, items::ItemStack};
+        use sunrise_client::{
+            chunk::Chunk,
+            entities::{ArmorStand, ItemEntity},
+            items::ItemStack,
+            projectiles::{Projectile, ProjectileKind},
+        };
         use sunrise_core::position::BlockPos;
 
         if run_fresh_cases(
@@ -691,6 +695,51 @@ mod tests {
             let stale = EntityRef::new(mod_api::WorldEpoch::new(entity.epoch().get() + 1), 40);
             assert_eq!(stale.set_on_ground(game, true), Ok(false));
             assert_eq!(entity.on_ground(game), Some(false));
+
+            // A scan with invalid bounds fails, but vanilla sets the flag before the query.
+            game.armor_stands[0].position.y = f64::INFINITY;
+            assert_eq!(
+                entity.set_on_ground(game, true),
+                Err(mod_api::LevelWriteError::Unavailable)
+            );
+            assert_eq!(entity.on_ground(game), Some(true));
+
+            // A fall over 2.5 blocks selects PowderSnowBlock's 0.9f-high shape.
+            // Only the edge of either body overlaps the snow.
+            let feet = Vec3::new(0.95, 64.0 + f64::from(0.9_f32), 0.5);
+            let mut shot = Projectile::new(
+                ProjectileKind::Arrow {
+                    base_damage: 2.0,
+                    critical: false,
+                    effect: None,
+                },
+                feet,
+                None,
+            );
+            shot.id = 41;
+            shot.arrow.as_mut().unwrap().fall_distance = 3.0;
+            game.creatures.projectiles.push(shot);
+            let projectile = game.entity(41).unwrap();
+            assert_eq!(projectile.on_ground(game), Some(false));
+            assert_eq!(projectile.set_on_ground(game, true), Ok(true));
+            assert_eq!(projectile.on_ground(game), Some(true));
+            assert_eq!(projectile.on_block(game), Some(supported));
+            assert_eq!(projectile.set_on_ground(game, false), Ok(true));
+            assert_eq!(projectile.on_ground(game), Some(false));
+            assert_eq!(projectile.on_block(game), Some(under_feet));
+
+            let mut drop = ItemEntity::new(
+                42,
+                ItemStack::new("minecraft:stone", 1),
+                feet,
+                Vec3::ZERO,
+                0.0,
+            );
+            drop.fall_distance = 3.0;
+            game.dropped.push(drop);
+            let item = game.entity(42).unwrap();
+            assert_eq!(item.set_on_ground(game, true), Ok(true));
+            assert_eq!(item.on_block(game), Some(supported));
         });
     }
 
@@ -714,12 +763,9 @@ mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
+            let registry = game.pack.assets.registry;
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let scaffolding = registry.default_state("minecraft:scaffolding").unwrap();
             let entity = game.entity(12).unwrap();
             assert_eq!(entity.set_on_ground(game, true), Ok(false), "no body yet");
             game.as_guest(12, |_| {}).unwrap();
@@ -747,6 +793,28 @@ mod tests {
                     assert_eq!(entity.on_block(game), Some([1, 64, 0]));
                     assert_eq!(entity.set_on_ground(game, false), Ok(true));
                     assert_eq!(entity.on_ground(game), Some(false));
+                    // The sneak callback runs after assigning the hub flag, before the body tick.
+                    game.world.set(1, 64, 0, scaffolding).unwrap();
+                    assert!(!game.player.as_ref().unwrap().shift_key_down);
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(12, |guest| guest.sneaking = true)
+                        .unwrap();
+                    assert_eq!(entity.set_on_ground(game, true), Ok(true));
+                    assert_eq!(entity.on_block(game), Some([0, 64, 0]));
+                    game.lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(12, |guest| guest.sneaking = false)
+                        .unwrap();
+                    assert_eq!(entity.set_on_ground(game, true), Ok(true));
+                    assert_eq!(entity.on_block(game), Some([1, 64, 0]));
+                    assert_eq!(entity.set_on_ground(game, false), Ok(true));
+                    game.world.set(1, 64, 0, stone).unwrap();
+
                     // The caster's live hook moves between the acting slot and the hub.
                     game.install_fishing_hook(super::super::fishing::Hook::remote(
                         900,

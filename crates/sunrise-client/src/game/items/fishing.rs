@@ -1692,15 +1692,13 @@ impl Game<'_> {
             binding: self.collision,
             subject: None,
         };
-        scene
-            .update_ground_support(
-                &mut ground,
-                at,
-                bounds,
-                None,
-                sunrise_client::motion::BodyMotion::entity_context(id, at),
-            )
-            .map_err(|_| mod_api::LevelWriteError::Unavailable)?;
+        let scan = scene.update_ground_support(
+            &mut ground,
+            at,
+            bounds,
+            None,
+            sunrise_client::motion::BodyMotion::entity_context(id, at),
+        );
         let hook = match caster {
             super::commands::Target::Guest(conn) if Some(conn) != self.lan_acting => self
                 .lan
@@ -1716,7 +1714,8 @@ impl Game<'_> {
             return Ok(false);
         };
         hook.ground = ground;
-        Ok(true)
+        scan.map(|()| true)
+            .map_err(|_| mod_api::LevelWriteError::Unavailable)
     }
 
     /// Takes a cast hook out of the level (`Entity.discard`).
