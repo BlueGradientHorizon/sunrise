@@ -2964,6 +2964,13 @@ pub(super) mod tests {
                 .hub
                 .update_guest(12, |guest| guest.motion = None)
                 .unwrap();
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.food(), None, "the guest has no body");
+                    assert_eq!(view.can_eat(false), None);
+                    assert_eq!(view.can_eat(true), Some(true));
+                })
+                .unwrap();
             // Body and saddle are stored on a guest like on a mob.
             let living = game.living(player.fields().entity).unwrap();
             let saddle = ItemStack::new("minecraft:saddle", 1);
@@ -2998,26 +3005,22 @@ pub(super) mod tests {
             assert_eq!(game.player_previous_game_mode(player), Some(None));
             assert!(game.player_set_game_mode(player, GameMode::Creative));
             assert_eq!(
-                player.with_view(game, |view| view.game_mode()).flatten(),
-                Some(GameMode::Creative)
-            );
-            assert_eq!(
                 game.player_previous_game_mode(player),
                 Some(Some(GameMode::Survival))
             );
-            let abilities = player
-                .with_view(game, |view| view.abilities())
-                .flatten()
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.game_mode(), Some(GameMode::Creative));
+                    let abilities = view.abilities().unwrap();
+                    assert!(abilities.invulnerable && abilities.may_fly && abilities.instabuild);
+                })
                 .unwrap();
-            assert!(abilities.invulnerable && abilities.may_fly && abilities.instabuild);
             assert!(game.player_set_game_mode(player, GameMode::Survival));
-            assert_eq!(
-                player.with_view(game, |view| view.game_mode()).flatten(),
-                Some(GameMode::Survival)
-            );
             let abilities = player
-                .with_view(game, |view| view.abilities())
-                .flatten()
+                .with_view(game, |view| {
+                    assert_eq!(view.game_mode(), Some(GameMode::Survival));
+                    view.abilities().unwrap()
+                })
                 .unwrap();
             assert!(!abilities.invulnerable && !abilities.may_fly && !abilities.instabuild);
             // A write sticks, is refused for a speed that is not a number, and a
@@ -3027,11 +3030,12 @@ pub(super) mod tests {
             written.walk_speed = 0.2;
             written.fly_speed = 0.1;
             assert!(game.player_set_abilities(player, written));
-            assert_eq!(
-                player.with_view(game, |view| view.abilities()).flatten(),
-                Some(written)
-            );
-            assert_eq!(player.with_view(game, |view| view.may_build()), Some(false));
+            player
+                .with_view(game, |view| {
+                    assert_eq!(view.abilities(), Some(written));
+                    assert!(!view.may_build());
+                })
+                .unwrap();
             let mut bad = written;
             bad.walk_speed = f32::NAN;
             assert!(!game.player_set_abilities(player, bad));
@@ -3445,28 +3449,15 @@ pub(super) mod tests {
                 .unwrap();
             abilities.may_fly = true;
             assert!(game.player_set_abilities(made, abilities));
-            assert!(
-                made.with_view(game, |view| view.abilities())
-                    .flatten()
-                    .unwrap()
-                    .may_fly
-            );
             assert!(game.player_set_food_level(made, 10));
             assert!(game.player_feed(made, 3, 0.0));
-            assert_eq!(
-                made.with_view(game, |view| view.food())
-                    .flatten()
-                    .unwrap()
-                    .level,
-                13
-            );
             assert!(game.player_set_experience_levels(made, 7));
-            assert_eq!(
-                made.with_view(game, |view| view.experience())
-                    .unwrap()
-                    .level,
-                7
-            );
+            made.with_view(game, |view| {
+                assert!(view.abilities().unwrap().may_fly);
+                assert_eq!(view.food().unwrap().level, 13);
+                assert_eq!(view.experience().level, 7);
+            })
+            .unwrap();
             assert!(game.player_set_item_cooldown(made, "minecraft:stone", 20));
             assert_eq!(
                 game.player_has_item_cooldown(made, "minecraft:stone"),
@@ -3613,18 +3604,12 @@ pub(super) mod tests {
             assert!(game.player_set_experience_levels(nether_actor, 8));
             assert!(game.player_set_experience_levels(overworld_actor, 3));
             assert_eq!(
-                nether_actor
-                    .with_view(game, |view| view.experience())
-                    .unwrap()
-                    .level,
-                8
+                nether_actor.with_view(game, |view| view.experience().level),
+                Some(8)
             );
             assert_eq!(
-                overworld_actor
-                    .with_view(game, |view| view.experience())
-                    .unwrap()
-                    .level,
-                3
+                overworld_actor.with_view(game, |view| view.experience().level),
+                Some(3)
             );
             assert!(
                 game.enter_command_level(super::super::Dim::Overworld)

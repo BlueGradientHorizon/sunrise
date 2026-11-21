@@ -1109,11 +1109,7 @@ fn server_services_preserve_identity_and_message_delivery() {
                 assert_eq!(b.address(game), Some("2001:db8::13"));
                 assert_eq!(a.client_brand(game), Some("test client"));
                 assert!(Arc::ptr_eq(&channels, &a.announced_channels(game).unwrap()));
-                assert_eq!(
-                    a.with_view(game, |view| view.game_mode()).flatten(),
-                    None,
-                    "body remains displaced"
-                );
+                assert_eq!(a.with_view(game, |_| ()), None, "body remains displaced");
                 assert_eq!(a.can_use_game_master_blocks(game), None);
                 for invalid in [stale, wrong_entity, wrong_uuid] {
                     assert_eq!(invalid.address(game), None);

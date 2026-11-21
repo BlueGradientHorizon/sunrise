@@ -55,8 +55,8 @@ impl Log {
                 })
                 .unwrap_or_default(),
             xp: player
-                .with_view(host, |view| view.experience())
-                .map_or(0, |xp| xp.total),
+                .with_view(host, |view| view.experience().total)
+                .unwrap_or(0),
             cooldown,
         });
     }
