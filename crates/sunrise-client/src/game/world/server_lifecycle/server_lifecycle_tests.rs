@@ -1,5 +1,5 @@
 use crate::game::{
-    execution_role::ExecutionRole, native_entity_refs::tests::with_game,
+    Dim, execution_role::ExecutionRole, native_entity_refs::tests::with_game,
     native_guest_turn_tests::with_guests,
 };
 use mod_api::{Hooks, ModEntry, ServerHost};
@@ -26,7 +26,7 @@ struct StoppedProbe {
 #[ignore = "daily"]
 fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     struct Log(
-        Arc<Mutex<Vec<&'static str>>>,
+        Arc<Mutex<Vec<String>>>,
         Arc<PanicAt>,
         Arc<Mutex<Option<StoppedProbe>>>,
     );
@@ -37,9 +37,32 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: mod_api::HostSide,
             e: &mut mod_api::RegisterConfigsEvent<'_>,
         ) {
-            if self.1.config_unloading.load(Ordering::Relaxed) {
-                e.configs
-                    .push(mod_api::Config::new("log", mod_api::ConfigKind::Server, ""));
+            e.configs
+                .push(mod_api::Config::new("log", mod_api::ConfigKind::Server, ""));
+        }
+        fn server_about_to_start(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &mut mod_api::ServerAboutToStartEvent,
+        ) {
+            self.0.lock().unwrap().push("about-to-start".into());
+        }
+        fn level_load(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelLoadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("level-load:{}", e.dimension));
+        }
+        fn server_starting(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartingEvent) {
+            self.0.lock().unwrap().push("starting".into());
+        }
+        fn server_started(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartedEvent) {
+            self.0.lock().unwrap().push("started".into());
+        }
+        fn server_stopping(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppingEvent) {
+            self.0.lock().unwrap().push("stopping".into());
+            if self.1.stopping.load(Ordering::Relaxed) {
+                panic!("stopping listener");
             }
         }
         fn config_unloading(
@@ -47,20 +70,19 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: &mut dyn ServerHost,
             _: &mut mod_api::ConfigUnloadingEvent<'_>,
         ) {
-            self.0.lock().unwrap().push("config-unloading");
-            panic!("config unloading listener");
-        }
-        fn server_starting(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStartingEvent) {
-            self.0.lock().unwrap().push("starting");
-        }
-        fn server_stopping(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppingEvent) {
-            self.0.lock().unwrap().push("stopping");
-            if self.1.stopping.load(Ordering::Relaxed) {
-                panic!("stopping listener");
+            self.0.lock().unwrap().push("config-unloading".into());
+            if self.1.config_unloading.load(Ordering::Relaxed) {
+                panic!("config unloading listener");
             }
         }
+        fn level_save(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelSaveEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("level-save:{}", e.dimension));
+        }
         fn world_saved(&self, _: &mut dyn ServerHost, _: &mut mod_api::WorldSavedEvent) {
-            self.0.lock().unwrap().push("saved");
+            self.0.lock().unwrap().push("saved".into());
             if self.1.save.load(Ordering::Relaxed) {
                 panic!("save listener");
             }
@@ -71,9 +93,15 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: &mut mod_api::PlayerLoggedOutEvent<'_>,
         ) {
             if self.1.logout.load(Ordering::Relaxed) {
-                self.0.lock().unwrap().push("logout");
+                self.0.lock().unwrap().push("logout".into());
                 panic!("logout listener");
             }
+        }
+        fn level_unload(&self, _: &mut dyn ServerHost, e: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("level-unload:{}", e.dimension));
         }
         fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
             if let Some(probe) = self.2.lock().unwrap().as_ref() {
@@ -85,17 +113,15 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     probe.save.raw_chunk(0, 0).is_some(),
                     "dirty chunk saved before Stopped"
                 );
-                let last = if self.1.logout.load(Ordering::Relaxed) {
-                    "logout"
-                } else {
-                    "saved"
-                };
-                assert_eq!(self.0.lock().unwrap().last(), Some(&last));
+                assert_eq!(
+                    self.0.lock().unwrap().last().map(String::as_str),
+                    Some("level-unload:minecraft:overworld")
+                );
                 // Storage is released before the notification, even if the
                 // final-save listener itself panicked after writing metadata.
                 let _lock = sunrise_client::save::SessionLock::acquire(&probe.root).unwrap();
             }
-            self.0.lock().unwrap().push("stopped");
+            self.0.lock().unwrap().push("stopped".into());
         }
     }
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -117,6 +143,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 for case in [
                     "normal",
                     "startup-error",
+                    "opening-early-ok",
+                    "runtime-extra-level",
                     "tick-error",
                     "panic",
                     "save-error",
@@ -156,6 +184,9 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             std::process::id()
                         ));
                         std::fs::create_dir_all(&root).unwrap();
+                        let serverconfig = root.join("serverconfig");
+                        std::fs::create_dir_all(&serverconfig).unwrap();
+                        std::fs::write(serverconfig.join("log"), "").unwrap();
                         game.world_root = root.clone();
                         game.save = Arc::new(sunrise_client::save::SaveDir::new(
                             root.clone(),
@@ -211,20 +242,33 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 root: root.clone(),
                                 save: game.save.clone(),
                             });
-                            game.native_configs_server_start(&root, dedicated);
                         }
                         let result = game.run_server_lifecycle(dedicated, |game, began| {
                             if case == "before-start" {
                                 return Err("before startup".into());
                             }
                             *began = true;
+                            game.native_configs_server_start(&root, dedicated);
                             game.native_server_about_to_start(dedicated);
-                            game.native_server_starting(dedicated);
                             game.native_lifecycle_open_started();
-                            if matches!(case, "startup-error" | "unopened" | "locked-unadopted") {
+                            if case == "unopened" {
                                 return Err("failed init".into());
                             }
+                            game.native_level_opened(game.dim);
+                            if matches!(case, "startup-error" | "locked-unadopted") {
+                                return Err("failed init".into());
+                            }
+                            if case == "opening-early-ok" {
+                                // Models dedicated port-bind failure returning Ok(()) while still Opening.
+                                return Ok(());
+                            }
+                            game.native_server_starting(dedicated);
                             game.native_lifecycle_world_ready();
+                            if case == "runtime-extra-level" {
+                                game.native_level_opened(Dim::Extra(
+                                    mod_api::__private::dimension_key("test:pocket"),
+                                ));
+                            }
                             match case {
                                 "tick-error" => Err("failed tick".into()),
                                 "panic" => panic!("failed tick"),
@@ -237,7 +281,11 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 _ => Ok(()),
                             }
                         });
-                        assert_eq!(result.is_ok(), case == "normal", "{dedicated} {case}");
+                        assert_eq!(
+                            result.is_ok(),
+                            matches!(case, "normal" | "opening-early-ok" | "runtime-extra-level"),
+                            "{dedicated} {case}"
+                        );
                         if config_panic || matches!(case, "stopping-panic" | "save-panic") {
                             let message = result.unwrap_err().to_string();
                             let needle = if config_panic {
@@ -257,27 +305,92 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         }
                         let expected: &[&str] = match case {
                             "before-start" => &[],
-                            "unopened" | "save-error" | "locked-unadopted" => {
-                                &["starting", "stopping", "stopped"]
-                            }
-                            "config-unloading-panic" | "config-unloading-save-panic" => &[
+                            "unopened" => &["about-to-start", "config-unloading", "stopped"],
+                            "locked-unadopted" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "config-unloading",
+                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "startup-error" | "opening-early-ok" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "saved",
+                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "tick-error" | "panic" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
                                 "starting",
+                                "started",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "saved",
+                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "save-error" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "starting",
+                                "started",
                                 "stopping",
                                 "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
+                            "runtime-extra-level" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "starting",
+                                "started",
+                                "level-load:test:pocket",
+                                "stopping",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
                                 "saved",
+                                "level-unload:minecraft:overworld",
+                                "level-unload:test:pocket",
                                 "stopped",
                             ],
                             "config-unloading-logout-panic" => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
                                 "starting",
+                                "started",
                                 "stopping",
                                 "config-unloading",
+                                "level-save:minecraft:overworld",
                                 "saved",
                                 "logout",
+                                "level-unload:minecraft:overworld",
                                 "stopped",
                             ],
-                            _ => &["starting", "stopping", "saved", "stopped"],
+                            _ => &[
+                                "about-to-start",
+                                "level-load:minecraft:overworld",
+                                "starting",
+                                "started",
+                                "stopping",
+                                "config-unloading",
+                                "level-save:minecraft:overworld",
+                                "saved",
+                                "level-unload:minecraft:overworld",
+                                "stopped",
+                            ],
                         };
                         assert_eq!(*log.lock().unwrap(), expected, "{dedicated} {case}");
+                        game.native_lifecycle_world_closed();
+                        assert_eq!(
+                            *log.lock().unwrap(),
+                            expected,
+                            "second close is a no-op after {case}"
+                        );
                         assert!(game.session_lock.is_none(), "storage released after {case}");
                         assert!(!game.world_adopted, "adoption cleared after {case}");
                         assert!(game.serving.is_none(), "serving retired after {case}");
