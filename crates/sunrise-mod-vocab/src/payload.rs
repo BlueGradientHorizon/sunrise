@@ -269,7 +269,9 @@ pub trait IPayloadHandler: Send + Sync + 'static {
     ) -> Result<(), PayloadHandleError>;
 }
 
-/// Work scheduled on the logical receiving main thread.
+/// Work scheduled on the logical receiving main thread. It retains the handler's owner and
+/// disablement guard: a panic aborts the work's transaction and disables that receiving callback
+/// for the session, without disconnecting the peer.
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;

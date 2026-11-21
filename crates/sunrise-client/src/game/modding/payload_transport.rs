@@ -300,6 +300,9 @@ mod config_tests;
 #[path = "payload_transport/disconnect_tests.rs"]
 mod disconnect_tests;
 #[cfg(test)]
+#[path = "payload_transport/main_panic_tests.rs"]
+mod main_panic_tests;
+#[cfg(test)]
 #[path = "payload_transport/phase_refusal_tests.rs"]
 mod phase_refusal_tests;
 #[cfg(test)]
