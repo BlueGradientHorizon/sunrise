@@ -116,7 +116,7 @@ impl TagLayers {
             let (namespace, path) = name.split_once(':').unwrap_or(("minecraft", name));
             (format!("{path}.json"), namespace)
         });
-        let sorted = dependency_order(names.into_iter(), |name| {
+        let sorted = dependency_order(names, |name| {
             raw[name].0.iter().filter_map(|entry| {
                 Some((entry.id.strip_prefix('#')?, entry.required && !entry.remove))
             })
