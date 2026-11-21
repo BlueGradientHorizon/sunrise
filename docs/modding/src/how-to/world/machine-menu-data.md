@@ -1,8 +1,8 @@
 # Declaring a machine's menu data
 
 A mod block entity has two different kinds of storage: external item access uses
-transactional Parts, while internal slots use the handle methods below; integer menu data is read with
-`BlockEntityRef::data_slots` and changed on a server Host. Menu data is transient:
+transactional Parts, while the machine's own ticker uses its resident view. Outside the ticker,
+use a `BlockEntityRef` and the Host to read or write internal slots and menu data. Menu data is transient:
 creation and loading both start with an empty data vector, even when the saved
 payload contains the machine's progress.
 
@@ -36,7 +36,8 @@ handle cannot reach a writable mod holder in the server level in place.
 
 After sizing, call `entity.set_data_slot(host, index, value)` for scalar updates.
 This method does not resize: an absent index returns `Ok(false)`. Both methods use the
-same silent storage write target and journal; call `set_changed` explicitly if needed. Transactions retain their
+same silent storage write target and journal. Successful writes mark the chunk unsaved without sending a block
+update or a neighbor notice; call `set_changed` explicitly if needed. Transactions retain their
 ordinary behavior; an aborted outer transaction restores the vector that existed
 before its first write, including writes committed by children. The normal menu
 broadcast delivers committed changes to viewers. To draw those values on the client, see
@@ -66,32 +67,42 @@ component-overridden maximum return `BlockEntityItemError`, never a partial writ
 or silent count clamp. A stale handle refuses a replacement rather than accessing
 its container; acquire a new handle for the replacement.
 
-## Skip unchanged tick write-back
+## Borrow the ticking machine
 
-A tick with no `BlockEntityPart::block_entity_tick` subscriber for the entity's
-registered type does not snapshot the row, resize its items or mark its chunk
-unsaved. Pending load notices are still delivered before the tick.
-
-The `BlockEntityPart::block_entity_tick` reply defaults to `Changed`, retaining full checked payload write-back.
-When no payload should be written back, set:
+`BlockEntityPart::block_entity_tick` receives a `BlockEntityTickEvent<'_>` and no
+separate Host argument. Its `subject` lends the live row. Use the view for the
+machine's own data, saved fields and internal slots. Derive owned values from the
+view before taking the Host for other objects. A second loan checks that the same
+entity is still loaded in the same level and block state; it returns `None` on loss.
 
 ```rust,ignore
-*event.reply = BlockEntityTickReply::Unchanged;
+fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+    let tick = &mut event.subject;
+    let Some((level, pos)) = tick.with_view(|view| (view.level(), view.position())) else {
+        return;
+    };
+    let above = [pos[0], pos[1] + 1, pos[2]];
+    let obstructed = level.block(tick.host(), above) != Some(self.air);
+    tick.with_view(|mut view| view.set_data_slot(0, i32::from(obstructed)));
+}
 ```
 
-This discards all edits to `event.entity`, omits the reply snapshot encode/decode,
-preserves the original revision, and causes no tick-only chunk dirty mark or
-container/comparator effects. Removal or replacement during the callback prevents
-restoring the original entity. Independent Host writes still have their own normal
-effects. The input snapshot is still sent; this is not batching or a validity cache.
+`item_slot` lends a read-only stack; call `to_owned` only if you need it after
+releasing the view. `set_nbt` edits a saved field without reloading the entity.
+Successful edits mark the chunk unsaved once per loan, and the normal menu sync
+still runs. No edit sends a block update or a neighbor notice automatically.
+If a neighbor write must commit with the subject edit, use `tick.transaction` and
+return `Err` if reacquiring the subject or checking its inputs fails. A read-only
+or no-op loan does not copy storage or mark the chunk unsaved. A type with no
+subscriber skips the tick entirely; pending load notices still come first.
 
 ## One-shot client effects
 
 To tell clients about something that happened once, such as a burst of particles, queue
-fields instead of writing them to the saved `nbt`. In `block_entity_tick`, or another
-event with a mutable entity, call
-`event.entity.set_client_update_fields(fields)`, then `host.block_entity_sync(event.pos)`.
-A later call replaces the batch; an empty compound clears it.
+fields instead of writing them to the saved `nbt`. In `block_entity_tick`, queue
+fields with `tick.with_view(|mut view| view.set_client_update_fields(fields))`, then
+request a sync through `tick.host().block_entity_sync(pos)`. A later call replaces
+the batch; an empty compound clears it.
 
 The next block change that reaches a viewer puts the fields over what
 `block_entity_update_tag` gives, or sends them alone without one, in one packet for every

@@ -15,8 +15,9 @@ struct Ticker(bool);
 impl BlockPart for Ticker {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Ticker {
-    fn block_entity_tick(&self, host: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
+    fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
         if self.0 {
+            let host = event.subject.host();
             let level = host.level("minecraft:overworld").unwrap();
             let sink = host.block_entity(level, [0, 63, 0]).unwrap();
             let value = sink.data_slots(host).unwrap()[0];
@@ -26,7 +27,7 @@ impl BlockEntityPart for Ticker {
             });
             result.unwrap();
         }
-        std::hint::black_box(event.pos);
+        std::hint::black_box(event.subject.with_view(|entity| entity.position()));
     }
 }
 struct BenchMod(&'static str);
@@ -284,8 +285,12 @@ impl BlockEntityPart for BothPaths {
             event.ticks = true;
         }
     }
-    fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-        event.entity.data.push(1);
+    fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+        event.subject.with_view(|mut entity| {
+            let mut data = entity.data_slots().to_vec();
+            data.push(1);
+            entity.set_data_slots(&data).unwrap();
+        });
     }
 }
 

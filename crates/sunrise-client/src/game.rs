@@ -98,7 +98,7 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
-pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+pub use hot_paths::{HotPathsMods, hot_paths_next_block_entity, note_hot_paths_listener_call};
 
 mod host;
 mod native_hooks;
@@ -2088,8 +2088,6 @@ struct Game<'a> {
     fangs: fangs::FangState,
     /// The local player as a model (third person, the inventory).
     player_model: Option<Mob>,
-    block_entity_tick_key: Option<block_entity_tick_items::Key>,
-    block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -11274,8 +11272,6 @@ impl<'a> Game<'a> {
             tnts: Default::default(),
             hoppers: HashMap::new(),
             transactions: Default::default(),
-            block_entity_tick_key: None,
-            block_entity_tick_items: None,
             contents_changing: Vec::new(),
             mod_screen: None,
             mod_container_viewers: HashMap::new(),

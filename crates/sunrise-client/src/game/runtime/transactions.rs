@@ -103,6 +103,44 @@ impl OpenTransactions {
         }
     }
 
+    /// Keep a resident row just before its first write, without relinquishing the loan.
+    pub(in crate::game) fn journal_block_entity_loan(
+        &mut self,
+        pos: Pos,
+        loan: &sunrise_client::block_entities::BlockEntityLoan<'_>,
+        chunks: &sunrise_client::chunk_map::ChunkMap,
+        name: Option<&sunrise_core::nbt::Tag>,
+        hopper: Option<HopperState>,
+    ) {
+        self.writes = self.writes.wrapping_add(1);
+        if let Some(level) = self.last_mut() {
+            level.block_entities.entry(pos).or_insert_with(|| Kept {
+                entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
+                generation: Some(loan.identity.generation),
+                attachments: loan.attachments.cloned(),
+                hopper,
+                name: name.cloned(),
+                extras: BlockEntityExtras::capture(chunks, pos),
+                contents_watches: loan.contents_watches.snapshot(loan.identity),
+            });
+        }
+    }
+
+    /// Publish a storage-only save mark, deferring it to the root commit if needed.
+    pub(in crate::game) fn mark_block_entity_saved(
+        &mut self,
+        dim: super::Dim,
+        modified: &mut sunrise_client::world::ModifiedChunks,
+        pos: Pos,
+    ) {
+        let chunk = (pos.0 >> 4, pos.2 >> 4);
+        if let Some(level) = self.last_mut() {
+            level.save_chunks.insert((dim, chunk));
+        } else {
+            modified.insert(chunk);
+        }
+    }
+
     /// The journaled-write epoch.
     pub(in crate::game) fn writes(&self) -> u64 {
         self.writes
@@ -524,9 +562,6 @@ impl Game<'_> {
     }
     /// Opens a transaction and gives back its write and close tokens.
     fn open_storage_transaction(&mut self) -> (u64, u64) {
-        if let Some(scope) = &mut self.block_entity_tick_items {
-            scope.open_transaction();
-        }
         let (token, close_token) = (frame_token(), frame_token());
         if self.transactions.is_empty() {
             self.world.block_entities.defer_retirement();
@@ -542,9 +577,6 @@ impl Game<'_> {
         });
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
-        if let Some(key) = &mut self.block_entity_tick_key {
-            key.unbalanced = true;
-        }
         (token, close_token)
     }
     /// Closes the transaction `seal` ends, first aborting every one opened inside it and left
@@ -642,12 +674,6 @@ impl Game<'_> {
             merchant_corrections.append(&mut level.trades.correct_on_abort);
         }
         let departed = std::mem::take(&mut level.departed);
-        if let Some(scope) = &mut self.block_entity_tick_items {
-            scope.close_transaction(commit);
-        }
-        if let Some(key) = &mut self.block_entity_tick_key {
-            key.unbalanced = self.transactions.len() != key.transaction_depth;
-        }
         debug_assert_eq!(
             level.dimension,
             Some(self.dim),

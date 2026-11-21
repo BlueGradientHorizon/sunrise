@@ -1,0 +1,12 @@
+ids = [
+    "hook:block_entity_tick",
+    "type:BlockEntityTickEvent",
+    "type:BlockEntityTickReply",
+    "type:BlockEntityTickScope",
+    "type:BlockEntityView",
+    "type:BlockEntityStackView",
+    "handle:BlockEntityRef::set_data_slot",
+    "handle:BlockEntityRef::set_data_slots",
+]
+why = "A resident server block entity can be read and edited in place without a payload snapshot, reply, or per-listener savepoint. Taking the Host and borrowing the subject are sequential operations; any later subject loan verifies that the original entity still occupies the same level and state. Every successful storage write follows one save-mark rule."
+migrate = "Change `fn block_entity_tick(&self, host, event: &mut BlockEntityTickEvent)` to `fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>)`. Instead of reading a handle through `host` or modifying `event.entity` and setting `event.reply`, call `event.subject.with_view(|mut subject| { ... })`. Use `subject.set_data_slot` for existing menu data, `set_data_slots` to initialize or resize it, `set_item_slot` for internal stacks, and `set_nbt` for saved fields. To use another object, return any owned input from the view closure, then borrow `event.subject.host()`. Reborrow using `with_view` and handle `None` instead of writing to the replacement. To commit both subject and neighbor or dropped-item edits together, wrap the sequence in `event.subject.transaction`, recheck any source values after taking the Host, and return `Err` on a stale subject or failed write. Keep `subject.handle()` only for later calls. A tick no longer commits a reply or opens a transaction for you. Menu-data writes through a handle now mark the chunk unsaved just like the view does; those slots remain transient and are not serialized."

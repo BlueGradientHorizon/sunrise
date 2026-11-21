@@ -2003,10 +2003,6 @@ impl super::GameLevel<'_> {
 mod block_entity_snapshot_tests {
     use super::*;
     #[test]
-    fn rejected_writebacks_invalidate_tick() {
-        assert_rejected_writeback("block_entity_tick");
-    }
-    #[test]
     fn rejected_writebacks_invalidate_menu_button() {
         assert_rejected_writeback("menu_button");
     }
@@ -2022,26 +2018,13 @@ mod block_entity_snapshot_tests {
         let before = snapshot.revision();
         snapshot.data.push(42);
         let claimed = snapshot.revision().changes();
-        // Tick rejection: wrong identity. Menu rejection: invalid cursor/held output.
-        let output = if hook == "block_entity_tick" {
-            snapshot = mod_api::ModBlockEntity::new("other:type".into(), Default::default());
-            Ok(())
-        } else {
-            Err(BlockEntitySnapshotError::InvalidStack)
-        };
+        let output: Result<(), _> = Err(BlockEntitySnapshotError::InvalidStack);
         assert!(
             finish_block_entity_writeback(&mut entity, &snapshot, before, &items, hook, output)
                 .is_err()
         );
         assert!(entity.data.is_empty());
-        assert_eq!(
-            entity.revision().changes(),
-            if hook == "block_entity_tick" {
-                1
-            } else {
-                claimed + 1
-            }
-        );
+        assert_eq!(entity.revision().changes(), claimed + 1);
     }
 
     #[test]

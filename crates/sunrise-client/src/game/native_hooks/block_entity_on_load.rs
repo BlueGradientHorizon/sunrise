@@ -21,7 +21,7 @@ impl Game<'_> {
     }
 
     /// A replacement can inherit a ticker slot later in the current pass.
-    /// Deliver its attachment notice before taking it out for that tick.
+    /// Deliver its attachment notice before lending its resident row to that tick.
     pub(in crate::game) fn tick_mod_block_entity(&mut self, pos: Pos) {
         if mod_api::__private::any_mod_disabled()
             && let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos)

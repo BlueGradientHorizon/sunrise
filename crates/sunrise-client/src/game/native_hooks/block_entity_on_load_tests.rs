@@ -23,12 +23,10 @@ mod tests {
             event.ticks = true;
         }
 
-        fn block_entity_tick(
-            &self,
-            _: &mut dyn mod_api::ServerHost,
-            event: &mut mod_api::BlockEntityTickEvent<'_>,
-        ) {
-            self.0.lock().unwrap().push((event.pos[0], -1));
+        fn block_entity_tick(&self, event: &mut mod_api::BlockEntityTickEvent<'_>) {
+            event.subject.with_view(|entity| {
+                self.0.lock().unwrap().push((entity.position()[0], -1));
+            });
         }
 
         fn block_entity_on_load(&self, host: HostSide, event: &mut BlockEntityOnLoadEvent) {
