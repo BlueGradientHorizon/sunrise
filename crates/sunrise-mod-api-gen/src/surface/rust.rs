@@ -3,7 +3,7 @@
 //! for the shape function.
 use crate::index::{Found, Index, ItemId, OutsideSeam};
 use mod_source::index::Binding;
-use mod_source::layouts::{WireForm, Wires, param_names};
+use mod_source::layouts::{GenericName, WireForm, Wires, param_names};
 use mod_surface::shape::Shape;
 use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 use quote::ToTokens;
@@ -128,8 +128,8 @@ pub(super) struct Paths<'p, 'a> {
     pub(super) index: &'p mut Index<'a>,
     pub(super) public: &'p HashMap<ItemId, Vec<String>>,
     pub(super) module: usize,
-    /// Generic parameters in scope (and `Self`), written as they are.
-    pub(super) params: Vec<String>,
+    /// Generic parameters in scope, written as they are.
+    pub(super) params: Vec<GenericName>,
     pub(super) refs: BTreeSet<String>,
     pub(super) check: Option<(&'p ExternalTypes<'p>, ItemId)>,
     /// Private aliases already followed while checking this public item's types.
@@ -296,10 +296,16 @@ impl Paths<'_, '_> {
     fn rewrite(&mut self, path: &mut syn::Path) {
         let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
         let rooted = path.leading_colon.is_some();
+        // Syn parses a bare const argument as a type path. It can name a const
+        // parameter, but the head of a qualified type path is in the type namespace.
         if !rooted
-            && segments
-                .first()
-                .is_some_and(|first| first == "Self" || self.params.contains(first))
+            && segments.first().is_some_and(|first| {
+                first == "Self"
+                    || self
+                        .params
+                        .iter()
+                        .any(|param| param.name == *first && (param.is_type || segments.len() == 1))
+            })
         {
             return;
         }
@@ -452,7 +458,13 @@ impl Wires for GameWires<'_> {
     fn path(&self, id: ItemId) -> Option<&[String]> {
         self.ids.get(&id).map(Vec::as_slice)
     }
-    fn opaque(&self, index: &mut Index<'_>, module: usize, ty: &Type, params: &[String]) -> Shape {
+    fn opaque(
+        &self,
+        index: &mut Index<'_>,
+        module: usize,
+        ty: &Type,
+        params: &[GenericName],
+    ) -> Shape {
         let mut ty = ty.clone();
         let mut paths = Paths {
             index,

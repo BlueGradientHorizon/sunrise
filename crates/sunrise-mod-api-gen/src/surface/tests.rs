@@ -1312,17 +1312,12 @@ fn a_generic_projection_does_not_resolve_to_a_same_named_workspace_module() {
         pub trait LocalTrait { type Out; }
         pub fn project<T: LocalTrait>(_: T) -> T::Out { unimplemented!() }
         /// A colour.";
-    let export = export_fixture(
-        &[
-            (LIB, "/// A colour.", edited),
-            (
-                "engine-fixture/src/lib.rs",
-                "pub struct Secret;",
-                "pub mod T { pub struct Out; }",
-            ),
-        ],
-        HOOKS,
+    let engine = (
+        "engine-fixture/src/lib.rs",
+        "pub struct Secret;",
+        "pub mod T { pub struct Out; }",
     );
+    let export = export_fixture(&[(LIB, "/// A colour.", edited), engine], HOOKS);
     let project = export
         .surface
         .functions
@@ -1334,6 +1329,13 @@ fn a_generic_projection_does_not_resolve_to_a_same_named_workspace_module() {
         "{project:?}"
     );
     assert_eq!(project.contract.refs, ["trait:LocalTrait"]);
+
+    let leak = format!("pub fn leak<const T: usize>() -> T::Out {{ unimplemented!() }}\n{edited}");
+    let error = try_export_fixture(&[(LIB, "/// A colour.", &leak), engine], HOOKS)
+        .err()
+        .expect("a const parameter must not shadow the module in a qualified type path");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::T::Out"), "{error}");
 }
 
 #[test]
