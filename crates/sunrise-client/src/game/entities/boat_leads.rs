@@ -284,7 +284,7 @@ impl Game<'_> {
 
     /// `Leashable.angularFriction`.
     fn boat_angular_friction(&self, b: &Boat) -> f32 {
-        if b.on_ground {
+        if b.ground.on_ground {
             let (x, z) = (b.position.x.floor() as i32, b.position.z.floor() as i32);
             let y = (b.position.y - 0.500_001).floor() as i32;
             let state = self.world.block(x, y, z);

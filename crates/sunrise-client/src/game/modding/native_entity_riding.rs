@@ -253,7 +253,7 @@ impl Game<'_> {
     /// handle.
     pub(super) fn entity_controlling_passenger(&self, entity: EntityRef) -> Option<LivingRef> {
         let vehicle = self.native_entity_target(entity)?;
-        let first_id = self.seated_passengers(entity.id()).first()?.1;
+        let first_id = self.first_seated_passenger(entity.id())?.1;
         let first = self.entity(first_id)?;
         let rider = self.native_entity_target(first)?;
         let is_player = matches!(rider, Target::Player | Target::Guest(_));

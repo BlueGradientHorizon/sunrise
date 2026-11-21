@@ -98,11 +98,15 @@ veto. Only a panic disables that mod's callback for this hook for the session.
 
 A mod moves an entity through the same moment with `EntityRef::move_by(host, delta, cause)`
 (`Entity.move(cause, delta)`, server only): the collision scan stops it at blocks, the world border and
-entities, it steps up, and its ground flag follows; its velocity is left as it is, and it is no teleport. The
-`entity_move` hook fires once for it with `cause`, and a cancelled move returns `[0.0; 3]`. It returns how
-far the entity moved, and None for a stale handle, on a client, for a player (teleport it), for an entity
-outside the game's entity walk (a display, a painting, a frame, an End crystal, a dragon part) and for a delta
-that is not finite or beyond 64 blocks on an axis. Fall damage and block effects stay with the entity's tick.
+entities, it steps up, and its ground flag follows. This is not a teleport or a velocity setter, but
+collision response can change the body's velocity through block restitution. If the base fall handling
+removes the body, no restitution query runs. The `entity_move` hook fires once with `cause`, and a
+cancelled move returns `[0.0; 3]`. See the generated reference for which bodies the handle can move
+and for the relative-teleport semantics of player moves.
+
+`EntityRef::on_block(host)` uses the supporting block retained by the last move for players and the
+nonliving bodies that keep ground support, including items, boats and minecarts. It does not rerun
+collision detection. If there is no retained support, it reads the block at vanilla's feet offset.
 
 `living_travel` runs on the server, after the player's swim steering or at a
 mob's travel entry. It receives the loop context, not a `Host`, and lets a

@@ -1,5 +1,5 @@
-# Installs sunrise-server (docs/server.md) on Windows: the current Sunrise Nightly (the only build Sunrise ships;
-# GitHub's latest release while there is none), downloaded from GitHub Releases and checked against the release's
+# Installs sunrise-server (docs/server.md) on Windows: by default the current Sunrise Nightly (GitHub's latest release
+# while there is none), or the release -Version names, downloaded from GitHub Releases and checked against the release's
 # signed SHA256SUMS (docs/release-flow.md, "Signed checksums") by sunrise-verify, a small program this script
 # downloads and checks against the SHA-256 pinned below before it runs it. A download that can't be verified is not
 # installed.

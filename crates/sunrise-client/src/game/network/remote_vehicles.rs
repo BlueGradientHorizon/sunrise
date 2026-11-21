@@ -685,7 +685,7 @@ impl Game<'_> {
                 position: [at.x, at.y, at.z],
                 yaw,
                 pitch,
-                on_ground: b.on_ground,
+                on_ground: b.ground.on_ground,
             }),
             S::PaddleBoat(play::PaddleBoat {
                 left: b.paddling[0],
@@ -784,7 +784,7 @@ impl Game<'_> {
                 b.interpolate_to(at, rotation.0, rotation.1);
             }
             b.velocity = velocity;
-            b.on_ground = on_ground;
+            b.ground.on_ground = on_ground;
         });
         if far {
             self.entity_section_moved_id(id);
@@ -880,7 +880,7 @@ impl Game<'_> {
     /// Whether this client moves `m`, the mount the player rides: as its
     /// first passenger (`AbstractHorse.getControllingPassenger`), on its
     /// saddle (`isLocalInstanceAuthoritative`).
-    fn drives(&self, m: &Mob) -> bool {
+    pub(super) fn drives(&self, m: &Mob) -> bool {
         self.riding == Some(m.id)
             && client_moves(
                 m,

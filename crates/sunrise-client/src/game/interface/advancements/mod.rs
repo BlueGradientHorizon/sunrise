@@ -739,7 +739,7 @@ impl Game<'_> {
         EntityView {
             kind: b.entity_type(),
             position: [b.position.x, b.position.y, b.position.z],
-            on_ground: b.on_ground,
+            on_ground: b.ground.on_ground,
             passengers: self
                 .mobs
                 .iter()
@@ -755,7 +755,7 @@ impl Game<'_> {
         EntityView {
             kind: "minecraft:item".into(),
             position: [e.position.x, e.position.y, e.position.z],
-            on_ground: e.on_ground,
+            on_ground: e.ground.on_ground,
             on_fire: e.fire_ticks > 0,
             ..Default::default()
         }

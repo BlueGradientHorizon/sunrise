@@ -2628,7 +2628,7 @@ mod tests {
             velocity: sunrise_core::geometry::Vec3::ZERO,
             value: 3,
             age: 0,
-            on_ground: true,
+            ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
             count: 1,
             fire_ticks: 0,
             ticks: 0,
