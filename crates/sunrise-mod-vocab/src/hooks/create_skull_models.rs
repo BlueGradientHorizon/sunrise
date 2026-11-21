@@ -5,9 +5,13 @@ pub trait Hooks {
     /// `EntityRenderersEvent.CreateSkullModels`): call `event.register(model)` with one
     /// `SkullModel` per type, giving its `kind`, model layer and default texture. A
     /// `minecraft:head` item model may then name the kind, so the head draws in hand, in a GUI
-    /// and in an item frame. Called once at client startup. A kind in vanilla's namespace,
-    /// not `<namespace>:<path>`, registered already, with a layer neither a mod nor vanilla
-    /// has, or with an empty texture is logged and left out. API @API:create_skull_models@.
+    /// and in an item frame. Called once at client startup. Any valid canonical
+    /// `<namespace>:<path>` identifier (including `minecraft:` for non-vanilla paths) is accepted;
+    /// invalid identifiers, the seven built-in vanilla skull types (`minecraft:skeleton`,
+    /// `minecraft:wither_skeleton`, `minecraft:player`, `minecraft:zombie`, `minecraft:creeper`,
+    /// `minecraft:piglin`, `minecraft:dragon`), duplicate registrations, entries with a layer
+    /// neither a mod nor vanilla has, or entries with an empty texture are logged and left out.
+    /// API @API:create_skull_models@.
     #[notes = r#"## Skull models
 
 `Hooks::create_skull_models` is the client registration-phase counterpart of NeoForge 26.3's
@@ -41,11 +45,14 @@ skull block. The model's optional `texture` replaces the default as it does for
 vanilla's kinds. A kind nobody registered is refused when the item model loads, as an unknown
 vanilla kind is.
 
-A kind in vanilla's namespace, not `<namespace>:<path>`, or registered already (by any mod) is
-logged and left out, as `registerSkullModel` refuses a type registered twice. So is an entry whose
-layer neither a mod nor vanilla has, or whose texture is empty. Skull types are frozen once at
-startup. Placed skull blocks of a mod type are not drawn by this hook: a mod block declaring that
-it is a skull is not covered yet."#]
+Any valid canonical `<namespace>:<path>` identifier (including `minecraft:` for non-vanilla paths)
+is accepted. An invalid identifier, one of the seven built-in vanilla skull types
+(`minecraft:skeleton`, `minecraft:wither_skeleton`, `minecraft:player`, `minecraft:zombie`,
+`minecraft:creeper`, `minecraft:piglin`, `minecraft:dragon`), or a kind registered already (by any
+mod) is logged as an error and left out, as `registerSkullModel` refuses duplicate types. So is an
+entry whose layer neither a mod nor vanilla has, or whose texture is empty. Skull types are frozen
+once at startup. Placed skull blocks of a mod type are not drawn by this hook: a mod block
+declaring that it is a skull is not covered yet."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

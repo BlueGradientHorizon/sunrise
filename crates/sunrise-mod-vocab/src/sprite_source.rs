@@ -8,6 +8,7 @@ use std::sync::Arc;
 /// own, the mods' and the player's. Names are full resource paths
 /// (`assets/<namespace>/textures/<path>.png`). It is borrowed by a registered sprite source
 /// provider (`register_sprite_sources`) for the duration of that call only.
+// no wire: borrowed read-only resource pack reader for one sprite source call.
 pub trait ResourceReader: Send + Sync + 'static {
     /// The winning copy of `path`, the topmost pack's (`ResourceManager.getResource`); `None`
     /// where no pack provides it.
