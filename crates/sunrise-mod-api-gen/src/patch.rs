@@ -711,60 +711,21 @@ pub(crate) fn replaceable(
     reexports::check_body(source, &found.module, sig, &found.function.block)
 }
 
-/// The names a module's own items define, for explicit re-export (an explicit name outranks the
-/// module's glob imports, as the item itself did).
-fn defined(items: &[Item]) -> Vec<(syn::Ident, Vec<syn::Attribute>)> {
-    let cfg = |attrs: &[syn::Attribute]| {
-        attrs
-            .iter()
-            .filter(|attr| attr.path().is_ident("cfg"))
-            .cloned()
-            .collect::<Vec<_>>()
+/// An item's own definition, before filtering for re-export.
+fn definition(item: &Item) -> Option<(&syn::Ident, &[syn::Attribute])> {
+    let (ident, attrs) = match item {
+        Item::Fn(item) => (&item.sig.ident, &item.attrs),
+        Item::Struct(item) => (&item.ident, &item.attrs),
+        Item::Enum(item) => (&item.ident, &item.attrs),
+        Item::Union(item) => (&item.ident, &item.attrs),
+        Item::Const(item) => (&item.ident, &item.attrs),
+        Item::Static(item) => (&item.ident, &item.attrs),
+        Item::Type(item) => (&item.ident, &item.attrs),
+        Item::Trait(item) => (&item.ident, &item.attrs),
+        Item::Mod(item) => (&item.ident, &item.attrs),
+        _ => return None,
     };
-    // Test-only items are not in the prebuilt game.
-    let test_only = |attrs: &[syn::Attribute]| {
-        attrs.iter().any(|attr| {
-            attr.path().is_ident("test")
-                || (attr.path().is_ident("cfg")
-                    && attr.to_token_stream().to_string().contains("test"))
-        })
-    };
-    items
-        .iter()
-        .filter(|item| {
-            let attrs = match item {
-                Item::Fn(item) => &item.attrs,
-                Item::Mod(item) => &item.attrs,
-                Item::Struct(item) => &item.attrs,
-                Item::Enum(item) => &item.attrs,
-                Item::Const(item) => &item.attrs,
-                Item::Static(item) => &item.attrs,
-                Item::Type(item) => &item.attrs,
-                Item::Trait(item) => &item.attrs,
-                Item::Union(item) => &item.attrs,
-                _ => return true,
-            };
-            !test_only(attrs)
-        })
-        .filter_map(|item| match item {
-            Item::Fn(item) => Some((item.sig.ident.clone(), cfg(&item.attrs))),
-            Item::Struct(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Enum(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Union(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Const(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Static(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Type(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Trait(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            Item::Mod(item) => Some((item.ident.clone(), cfg(&item.attrs))),
-            _ => None,
-        })
-        .filter(|(ident, attrs)| {
-            ident != "tests"
-                && !attrs
-                    .iter()
-                    .any(|a| a.to_token_stream().to_string().contains("test"))
-        })
-        .collect()
+    Some((ident, attrs))
 }
 
 /// A module's own `macro_rules!` items that it does not export.
@@ -1567,6 +1528,7 @@ fn mirror(
     // Which `thread_local!` is std's: a bare one unless another macro of that name may be in
     // scope, and `std::thread_local!` unless the module may bind `std` to something else.
     // `::std::thread_local!` always is. Unresolved, the module keeps the glob.
+    let defined = items.iter().filter_map(definition);
     let bare_is_std = !source.local_macros.contains("thread_local")
         && !macro_may_be_in_scope(source, path, "thread_local")
         && !uses(&items)
@@ -1575,7 +1537,7 @@ fn mirror(
     let std_is_std = !uses(&items)
         .iter()
         .any(|item| may_import(&item.tree, "std"))
-        && !defined(&items).iter().any(|(ident, _)| ident == "std")
+        && !defined.clone().any(|(ident, _)| ident == "std")
         && !items.iter().any(|item| {
             matches!(item, Item::ExternCrate(krate)
                 if krate.rename.as_ref().is_some_and(|(_, name)| name == "std"))
@@ -1613,8 +1575,18 @@ fn mirror(
     // One `pub use` brings every namespace a name has: `pub mod render;` beside
     // `pub fn render` is one re-export, under the cfg either item is compiled under.
     let mut names: Vec<(syn::Ident, Vec<Vec<syn::Attribute>>)> = Vec::new();
-    for (ident, cfg) in defined(&items)
-        .into_iter()
+    // Keep the prebuilt game's test-item filter on re-exports, not on binding detection.
+    let re_exported = defined
+        .filter(|(ident, attrs)| {
+            *ident != "tests"
+                && !attrs.iter().any(|attr| {
+                    attr.path().is_ident("test")
+                        || (attr.path().is_ident("cfg")
+                            && attr.to_token_stream().to_string().contains("test"))
+                })
+        })
+        .map(|(ident, attrs)| (ident.clone(), cfgs(attrs)));
+    for (ident, cfg) in re_exported
         .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
         .filter(|(ident, _)| !only_public || public.contains(&ident.to_string()))
@@ -2330,6 +2302,21 @@ mod tests {
             out.contains("#[cfg(unix)]#[cfg(not(test))]pubuse::lower::anim::RELEASED;"),
             "{out}"
         );
+    }
+
+    #[test]
+    fn a_thread_local_under_a_gated_std_module_keeps_the_glob() {
+        let mut source = source_of(
+            "lower::anim",
+            "#[cfg(not(test))] mod std {}
+             std::thread_local! { pub static SHARED: u8 = 0; }",
+        );
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
+        assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
     }
 
     #[test]
