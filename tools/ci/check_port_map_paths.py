@@ -6,9 +6,9 @@ with the rows of `tools/port_map/*.tsv`. A `port` or `inline` row's third column
 that ports the method, as `path::owner::fn`. Nothing read that column, so a refactor that moved a function
 and left its row behind turned the ledger's answer into a file that no longer holds it.
 
-A row resolves when its file declares the function (`fn name`, whatever the visibility) or a `use` in that
-file imports the name, which is how a file re-exports a child module's function; a call to the name is not a
-definition, and neither is a mention in a comment or a string. `tools/port_map_known_stale.txt` lists the rows
+A row resolves when its file declares the function with a body (`fn name`, whatever the visibility), which
+is what the ledger indexes; a `use` that re-exports the name from another module is not a definition there,
+and neither is a call or a mention in a comment or a string. `tools/port_map_known_stale.txt` lists the rows
 that do not resolve today, one `map file<TAB>vanilla name<TAB>path::owner::fn` per line, and it only shrinks
 (as `crates/sunrise-mod-api-gen/unwinding-methods.txt` does): a row that does not resolve and is not listed
 fails, a listed row that resolves now (or whose row is gone) fails until its line is deleted, and a line added
@@ -38,10 +38,8 @@ NAMED = ("port", "inline")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 # A declared function's name, in source with comments and strings blanked by `source()`.
 DEFINITION = re.compile(r"\bfn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)")
-USE = re.compile(r"(?m)^\s*(?:pub(?:\s*\([^)]*\))?\s+)?use\s+([^;]+);")
 # The starts of what `source()` blanks: comments, raw strings, strings, char literals.
 SPECIAL = re.compile(r"""//|/\*|(?:b|br)?r(#*)"|b"|"|'(?:\\.|[^\\'])'""")
-INCLUDE = re.compile(r"\binclude!\s*\(")
 BLANK = re.compile(r"[^\n]")
 
 
@@ -89,107 +87,46 @@ def source(text):
         i = end
 
 
-def expanded(path, seen=frozenset()):
-    """A file's text with its `include!`d files spliced in, which is what the module holds."""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    if "include!" not in text:
-        return text
-    stripped = source(text)
-    pieces, last, here = [], 0, path.resolve()
-    for found in INCLUDE.finditer(stripped):
-        start = found.end()
-        while start < len(text) and text[start].isspace():
-            start += 1
-        if text[start:start + 1] != '"':
-            continue
-        end = text.find('"', start + 1)
-        if end < 0:
-            continue
-        included = (path.parent / text[start + 1:end]).resolve()
-        if not included.is_file() or included in seen or included == here:
-            continue
-        pieces.append(text[last:found.start()])
-        pieces.append(expanded(included, seen | {here}))
-        last = end + 1
-    pieces.append(text[last:])
-    return "".join(pieces)
-
-
-def _split_top(spec):
-    """The comma-separated pieces of a `use` brace group, nested groups left whole."""
-    parts, depth, current = [], 0, ""
-    for char in spec:
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-        if char == "," and depth == 0:
-            parts.append(current)
-            current = ""
-        else:
-            current += char
-    if current.strip():
-        parts.append(current)
-    return parts
-
-
-def _last_segment(path):
-    if " as " in path:
-        return path.split(" as ", 1)[1].strip()
-    return path.rpartition("::")[2].strip()
-
-
-def _use_names(spec):
-    """The names a `use` spec imports: `a::b`, `a::{b, c::d as e}`, `a::{self, *}`."""
-    spec = spec.strip()
-    brace = spec.find("{")
-    if brace >= 0:
-        head = spec[:brace].strip().rstrip(":").strip()
-        names = set()
-        for part in _split_top(spec[brace + 1:spec.rfind("}")]):
-            part = part.strip()
-            if not part or part == "*":
-                continue
-            if part == "self":
-                if head:
-                    names.add(_last_segment(head))
-                continue
-            names |= _use_names(part)
-        return names
-    if spec == "*" or spec.endswith("::*"):
-        return set()
-    if " as " in spec:
-        return {spec.split(" as ", 1)[1].strip()}
-    name = _last_segment(spec)
-    return {name} if name else set()
-
-
-def imported(text):
-    """The names the file's `use` declarations bring into its own scope."""
+def definitions(text):
+    """The functions the file declares with a body: the ledger indexes these, not a bare `fn name;`."""
     names = set()
-    for use in USE.finditer(text):
-        names |= _use_names(use.group(1))
+    for found in DEFINITION.finditer(text):
+        i, brackets = found.end(), 0
+        while i < len(text):
+            char = text[i]
+            if char in "([":
+                brackets += 1
+            elif char in ")]":
+                brackets = max(0, brackets - 1)
+            elif char == "{" and brackets == 0:
+                names.add(found.group(1))
+                break
+            elif char == ";" and brackets == 0:
+                break
+            i += 1
     return names
 
 
 def target_problem(target):
-    """Why a named row's third column is not one or more `path::owner::fn`, or None."""
+    """Why a named row's third column is not one `path::owner::fn`, or None.
+
+    The ledger reads the whole column as one target, so a second citation separated by a comma belongs in
+    the row's note, not here.
+    """
     if not target.strip():
         return "the verdict names no target"
-    for piece in target.split(","):
-        piece = piece.strip()
-        if not piece:
-            return f"{target!r} has an empty target"
-        file_, separator, rest = piece.partition("::")
-        name = rest.rpartition("::")[2].strip()
-        if not separator:
-            return f"{piece!r} is not `path::owner::fn`"
-        if not file_:
-            return f"{piece!r} names no file"
-        if not name:
-            return f"{piece!r} names no function"
-        if not IDENT.fullmatch(name):
-            return f"{piece!r} ends in {name!r}, not a function name"
+    if "," in target:
+        return f"{target!r} names more than one target; the ledger reads one, so cite the other in the note"
+    file_, separator, rest = target.partition("::")
+    name = rest.rpartition("::")[2].strip()
+    if not separator:
+        return f"{target!r} is not `path::owner::fn`"
+    if not file_:
+        return f"{target!r} names no file"
+    if not name:
+        return f"{target!r} names no function"
+    if not IDENT.fullmatch(name):
+        return f"{target!r} ends in {name!r}, not a function name"
     return None
 
 
@@ -219,31 +156,23 @@ def rows(root=ROOT):
 
 
 def unresolved(refs, root=ROOT):
-    """Identity -> why, for each row whose file is missing or does not name its function.
+    """Identity -> why, for each row whose file is missing or does not declare its function.
 
     An identity is the row's `(map file, vanilla name, path::owner::fn)`: the line number is left out because
-    rows move down their file, and the path is in because repointing a row is writing a new one. A target may
-    list several `path::owner::fn`, and the row resolves when one of them does.
+    rows move down their file, and the path is in because repointing a row is writing a new one.
     """
     sources, out = {}, {}
     for map_file, _, name, where in refs:
-        reasons = []
-        for target in (part.strip() for part in where.split(",")):
-            file_, _, rest = target.partition("::")
-            fn = rest.rpartition("::")[2].strip()
-            target_path = root / file_
-            if not target_path.is_file():
-                reasons.append(f"no file {file_}")
-                continue
-            if file_ not in sources:
-                text = source(expanded(target_path))
-                sources[file_] = (set(DEFINITION.findall(text)), imported(text))
-            declared, names = sources[file_]
-            if fn in declared or fn in names:
-                break
-            reasons.append(f"{file_} does not define or re-export {fn}")
-        else:
-            out[(map_file, name, where)] = "; ".join(reasons)
+        file_, _, rest = where.partition("::")
+        fn = rest.rpartition("::")[2].strip()
+        target = root / file_
+        if not target.is_file():
+            out[(map_file, name, where)] = f"no file {file_}"
+            continue
+        if file_ not in sources:
+            sources[file_] = definitions(source(target.read_text(encoding="utf-8", errors="replace")))
+        if fn not in sources[file_]:
+            out[(map_file, name, where)] = f"{file_} does not declare fn {fn}"
     return out
 
 
@@ -304,7 +233,11 @@ def main(argv=None, root=ROOT):
     refs, malformed = parse(root)
     stale = unresolved(refs, root)
     path = root / LIST
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    text = ""
+    if path.exists():
+        # newline="" keeps each retained line's own ending when --refresh writes the file back.
+        with path.open(encoding="utf-8", newline="") as list_file:
+            text = list_file.read()
     known, list_lines = listed(text), numbered(text)
     lines = {(map_file, name, where): number for map_file, number, name, where in refs}
     unexplained = {identity: why for identity, why in stale.items() if identity not in known}
@@ -315,7 +248,8 @@ def main(argv=None, root=ROOT):
         kept = [line for line in text.splitlines(keepends=True)
                 if not (line.strip() and not line.lstrip().startswith("#")
                         and tuple(line.rstrip("\r\n").split("\t")) in obsolete)]
-        path.write_text("".join(kept), encoding="utf-8")
+        with path.open("w", encoding="utf-8", newline="") as list_file:
+            list_file.write("".join(kept))
         print(f"port map: {len(obsolete)} line(s) removed from {LIST}.")
         known -= obsolete
         obsolete = set()
