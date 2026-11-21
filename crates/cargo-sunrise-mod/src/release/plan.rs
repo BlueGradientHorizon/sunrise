@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::{
     collections::BTreeMap,
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 use sunrise_mod_package::{
     index::{
@@ -385,49 +385,46 @@ fn rebuild<'a>(
     no_pair()
 }
 
-/// Resolve aliases in existing parents, then compare the names that the write will create.
-/// A future SDK subdirectory does not exist yet, so canonicalizing the whole path would miss it.
-fn output_identity(path: &Path) -> Result<PathBuf, String> {
-    let invalid = |error| format!("{}: {error}", path.display());
+/// The parent must resolve before either output is made. In particular a dangling link must
+/// not become usable when SDK data appears. The leaf is replaced rather than followed.
+fn through_existing_parent(flag: &str, path: &Path) -> Result<PathBuf, String> {
+    let invalid = |error| format!("{flag} {}: {error}", path.display());
     let absolute = std::path::absolute(path).map_err(invalid)?;
     let leaf = absolute
         .file_name()
-        .ok_or_else(|| format!("{}: name an output", path.display()))?;
+        .ok_or_else(|| format!("{flag} {}: name an output", path.display()))?;
     let parent = absolute
         .parent()
         .expect("an absolute path with a file name has a parent");
-    for ancestor in parent.ancestors() {
-        match dunce::canonicalize(ancestor) {
-            Ok(mut resolved) => {
-                let suffix = parent.strip_prefix(ancestor).expect("from ancestors");
-                for part in suffix.components() {
-                    match part {
-                        Component::ParentDir => {
-                            resolved.pop();
-                        }
-                        Component::Normal(part) => resolved.push(part),
-                        Component::CurDir => (),
-                        _ => unreachable!("a relative suffix"),
-                    }
-                }
-                resolved.push(leaf);
-                #[cfg(windows)]
-                let resolved = resolved
-                    .components()
-                    .map(|part| {
-                        part.as_os_str()
-                            .to_string_lossy()
-                            .trim_end_matches(['.', ' '])
-                            .to_uppercase()
-                    })
-                    .collect();
-                return Ok(resolved);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
-            Err(error) => return Err(invalid(error)),
-        }
+    fs::symlink_metadata(parent).map_err(invalid)?;
+    let parent = dunce::canonicalize(parent).map_err(invalid)?;
+    if !parent.is_dir() {
+        return Err(format!(
+            "{flag} {}: the parent is not a directory",
+            path.display()
+        ));
     }
-    Err(format!("{}: no existing parent", path.display()))
+    Ok(parent.join(leaf))
+}
+
+fn inside(out: &Path, data: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        // Win32 aliases case and trailing spaces/dots. Fold only for comparison, not I/O.
+        let folded = |path: &Path| {
+            path.components()
+                .map(|part| {
+                    part.as_os_str()
+                        .to_string_lossy()
+                        .trim_end_matches(['.', ' '])
+                        .to_uppercase()
+                })
+                .collect::<PathBuf>()
+        };
+        folded(out).starts_with(folded(data))
+    }
+    #[cfg(not(windows))]
+    out.starts_with(data)
 }
 
 fn stage(
@@ -437,7 +434,8 @@ fn stage(
     data: &Path,
     out: &Path,
 ) -> Result<(), String> {
-    if output_identity(out)?.starts_with(output_identity(data)?) {
+    let out = through_existing_parent("--out", out)?;
+    if inside(&out, &through_existing_parent("--sdk-data", data)?) {
         return Err("--out must be outside --sdk-data".into());
     }
     let (mut output, mut staged) = (
@@ -490,7 +488,7 @@ fn stage(
     if let Some((stage, data)) = &staged {
         fs::rename(stage.path(), data).map_err(|e| format!("{}: {e}", data.display()))?;
     }
-    if let Err(error) = atomic_write(out, bytes) {
+    if let Err(error) = atomic_write(&out, bytes) {
         if let Some((_, data)) = staged {
             let _ = fs::remove_dir_all(data);
         }

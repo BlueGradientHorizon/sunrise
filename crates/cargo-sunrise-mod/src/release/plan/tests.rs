@@ -520,6 +520,35 @@ fn the_plan_output_cannot_replace_any_sdk_data() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn a_dangling_plan_parent_cannot_become_valid_when_sdk_data_is_written() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let data = root.join("sdk-data");
+    let alias = root.join("future");
+    let target = data.join(SOURCE);
+    std::os::unix::fs::symlink(&target, &alias).unwrap();
+    let out = alias.join("sdk.json");
+    let key = signed_sdk(root, SOURCE, &[(LINUX, sdk::Side::Client)]);
+    let at = root.join(ID);
+    project(&at);
+    let releases = stable_list(&[(GAME_TAG, SOURCE)]);
+    let selection = initial(&at, "v0.1.0", &releases).unwrap();
+    let error = stage(
+        Some(selection),
+        &sdk_fetch::Base::Folder(root.to_owned()),
+        &[key],
+        &data,
+        &out,
+    )
+    .unwrap_err();
+    assert!(error.contains("--out"), "{error}");
+    assert!(!out.exists());
+    assert!(!data.exists());
+    assert_eq!(fs::read_link(alias).unwrap(), target);
+}
+
 #[test]
 fn no_rebuild_writes_a_null_plan_without_reading_an_sdk() {
     let scratch = tempfile::tempdir().unwrap();

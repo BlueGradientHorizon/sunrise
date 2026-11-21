@@ -79,8 +79,8 @@ Each host records its `name`, Rust `triple`, Actions `runner`, `side`, optional 
 for a release with binaries, `source-only` for a release with just one client job and a `reason`, or `rebuild` for a
 binary append with `reviewed_source` (author asset URL, size, SHA-256, key, signature and owners).
 
-`--sdk-data` must be a new directory under an existing parent. Release discovery supplies tags and commits; it does
-not authenticate an SDK. The command checks the signature for each `sdk-<commit>` tag, its SDK index, and the assets
+`--sdk-data` must be a new directory under an existing parent. `--out` must also have an existing parent, outside
+that SDK-data directory. Release discovery supplies tags and commits; it does not authenticate an SDK. The command checks the signature for each `sdk-<commit>` tag, its SDK index, and the assets
 it fetches. It writes `sdk.json` and `surface.json` under `sdk-data/<commit>/` and extracts `build-data/` there for each
 SDK needed by a binary plan. It does not fetch compiled SDK slices. Failed verification leaves any existing plan
 file unchanged.
