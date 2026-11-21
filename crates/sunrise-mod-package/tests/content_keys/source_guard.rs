@@ -5,11 +5,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 // Workspace types used in declaration inputs, by the paths the reader names them with
-// (re-exports included). The guard finds the files that define each type itself.
+// (re-exports included). The guard follows each path to the file that defines its type.
 // Registry crates such as semver, serde_json and toml are out of scope.
 const EXTERNAL_DECLARATIONS: &[&str] = &[
     "sunrise_core::arm_pose::ArmPose",
@@ -101,11 +101,25 @@ pub(crate) fn serde_blind_spots_are_reviewed() {
         .iter()
         .map(|file| (file.clone(), Path::new("src").join(file)))
         .collect();
-    let mut external = BTreeSet::new();
-    for path in EXTERNAL_DECLARATIONS {
-        external.extend(defining_files(path));
-    }
-    paths.extend(external.into_iter().map(|file| (file.clone(), file.into())));
+    let external: BTreeSet<_> = EXTERNAL_DECLARATIONS
+        .iter()
+        .map(|path| {
+            let mut segments = path.split("::");
+            let krate = segments.next().unwrap();
+            let src = EXTERNAL_CRATES
+                .iter()
+                .find(|&&(name, _)| name == krate)
+                .unwrap_or_else(|| panic!("{path}: no source folder listed for {krate}"))
+                .1;
+            defining_file(Path::new(src), &segments.collect::<Vec<_>>())
+                .unwrap_or_else(|e| panic!("{path}: {e}, so its Serde form can't be audited"))
+        })
+        .collect();
+    paths.extend(
+        external
+            .into_iter()
+            .map(|file| (file.to_str().unwrap().replace('\\', "/"), file)),
+    );
     let known_paths: BTreeSet<_> = EXTERNAL_DECLARATIONS
         .iter()
         .copied()
@@ -183,46 +197,163 @@ fn sources(root: &Path, dir: &Path, files: &mut Vec<String>) {
     }
 }
 
-/// The files that define the type a path names. A re-export says nothing about where its type
-/// lives, and `mod_vocab`'s root is assembled by its build script, so this does not follow the
-/// path: it takes every file of the crate that defines a type of that name, at any depth. Two
-/// types of one name are both audited. A type no file defines by name (a macro's, a build
-/// script's, a renamed re-export's) fails here instead of going unaudited.
-fn defining_files(path: &str) -> Vec<String> {
-    let (krate, rest) = path.split_once("::").expect("crate::Type");
-    let root = EXTERNAL_CRATES
-        .iter()
-        .find(|&&(name, _)| name == krate)
-        .unwrap_or_else(|| panic!("{path}: no source folder listed for {krate}"))
-        .1;
-    let mut files = Vec::new();
-    sources(Path::new(root), Path::new(""), &mut files);
-    let sources: Vec<_> = files
-        .into_iter()
-        .map(|file| {
-            let file = format!("{root}/{file}");
-            let text = fs::read_to_string(&file).unwrap_or_else(|e| panic!("{file}: {e}"));
-            (file, text)
-        })
-        .collect();
-    // Modules lead, then the type; a variant or associated item may follow it.
-    for name in rest.split("::") {
-        let mut found: Vec<_> = sources
-            .iter()
-            .filter(|(_, text)| {
-                text.contains(name)
-                    && tokens(text).windows(2).any(|pair| {
-                        matches!(pair[0], "struct" | "enum" | "union" | "type") && pair[1] == name
-                    })
-            })
-            .map(|(file, _)| file.clone())
-            .collect();
-        if !found.is_empty() {
-            found.sort();
-            return found;
+/// The file that defines the type a declaration path names, by following the path: modules from
+/// the crate root, then the type, with any variant or associated item after it left over. A name
+/// the root does not define is followed through the root's re-exports, which for `mod_vocab` are
+/// the fragments in `exports/` its build script assembles. Anything else (an alias, a re-export
+/// below the root, a name no traced file defines) is an error: a type of the same name elsewhere
+/// in the crate is not the declaration.
+fn defining_file(src: &Path, path: &[&str]) -> Result<PathBuf, String> {
+    definition(src, path, true)
+}
+
+fn definition(src: &Path, path: &[&str], at_root: bool) -> Result<PathBuf, String> {
+    let (mut module, mut file, mut rest) = (src.to_path_buf(), src.join("lib.rs"), path);
+    while let [name, tail @ ..] = rest {
+        let inner = [format!("{name}.rs"), format!("{name}/mod.rs")]
+            .into_iter()
+            .map(|file| module.join(file))
+            .find(|file| file.is_file());
+        let Some(inner) = inner else { break };
+        (module, file, rest) = (module.join(name), inner, tail);
+    }
+    let Some(&name) = rest.first() else {
+        return Err(format!("{} is a module", file.display()));
+    };
+    let read = |file: &Path| {
+        fs::read_to_string(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()))
+    };
+    let text = read(&file);
+    let source_tokens = tokens(&text);
+    for pair in source_tokens.windows(2) {
+        match pair {
+            ["struct" | "enum" | "union", found] if *found == name => return Ok(file),
+            ["type", found] if *found == name => {
+                return Err(format!(
+                    "{} makes {name} an alias; name its target",
+                    file.display()
+                ));
+            }
+            _ => {}
         }
     }
-    panic!("{path}: no file under {root} defines this type, so its Serde form can't be audited")
+    // One hop: what the root re-exports must be defined where the re-export points.
+    if module != src || !at_root {
+        return Err(format!("{} does not define {name}", file.display()));
+    }
+    let mut fragments = vec![text];
+    if let Ok(entries) = fs::read_dir(src.join("exports")) {
+        fragments.extend(entries.map(|entry| read(&entry.unwrap().path())));
+    }
+    let mut exports = Vec::new();
+    for fragment in &fragments {
+        root_exports(&tokens(fragment), &mut exports);
+    }
+    let named: BTreeSet<_> = exports
+        .iter()
+        .filter(|(exported, target)| *exported == name && target.len() > 1)
+        .map(|(_, target)| target)
+        .collect();
+    let mut found: BTreeSet<_> = match named.len() {
+        0 => exports
+            .iter()
+            .filter(|(exported, _)| *exported == "*")
+            .filter_map(|(_, module)| {
+                definition(src, &[module.as_slice(), &[name]].concat(), false).ok()
+            })
+            .collect(),
+        _ => named
+            .into_iter()
+            .map(|target| definition(src, target, false))
+            .collect::<Result<_, _>>()?,
+    };
+    match (found.pop_first(), found.is_empty()) {
+        (Some(file), true) => Ok(file),
+        (Some(_), false) => Err(format!("the crate root exports more than one {name}")),
+        (None, _) => Err(format!(
+            "the crate root neither defines nor traceably re-exports {name}"
+        )),
+    }
+}
+
+/// What a file's own `use` items bring into its scope: the name each binds (`*` for a glob) and
+/// the path it comes from, without `crate` and `self`.
+fn root_exports<'a>(tokens: &[&'a str], out: &mut Vec<(&'a str, Vec<&'a str>)>) {
+    let mut depth = 0;
+    let mut rest = tokens;
+    while let [token, tail @ ..] = rest {
+        rest = tail;
+        match *token {
+            "{" => depth += 1,
+            "}" => depth -= 1,
+            "use" if depth == 0 => use_tree(&mut rest, &mut Vec::new(), out),
+            _ => {}
+        }
+    }
+}
+
+fn use_tree<'a>(
+    tokens: &mut &[&'a str],
+    prefix: &mut Vec<&'a str>,
+    out: &mut Vec<(&'a str, Vec<&'a str>)>,
+) {
+    if let ["{", tail @ ..] = *tokens {
+        *tokens = tail;
+        while !tokens.starts_with(&["}"]) {
+            use_tree(tokens, prefix, out);
+            if let [",", tail @ ..] = *tokens {
+                *tokens = tail;
+            }
+        }
+        *tokens = &tokens[1..];
+        return;
+    }
+    let (&segment, tail) = tokens.split_first().expect("use path segment");
+    *tokens = tail;
+    if let [":", ":", tail @ ..] = *tokens {
+        *tokens = tail;
+        let named = !matches!(segment, "crate" | "self");
+        if named {
+            prefix.push(segment);
+        }
+        use_tree(tokens, prefix, out);
+        if named {
+            prefix.pop();
+        }
+        return;
+    }
+    let mut target = prefix.clone();
+    let mut name = segment;
+    match segment {
+        "*" => {}
+        "self" => name = prefix.last().copied().unwrap_or("self"),
+        _ => target.push(segment),
+    }
+    if let ["as", renamed, tail @ ..] = *tokens {
+        (name, *tokens) = (renamed, tail);
+    }
+    out.push((name, target));
+}
+
+#[test]
+fn a_same_named_type_elsewhere_is_not_the_declaration() {
+    let src = Path::new(env!("CARGO_TARGET_TMPDIR")).join("source-guard-decoy");
+    let _ = fs::remove_dir_all(&src);
+    fs::create_dir_all(src.join("exports")).unwrap();
+    fs::create_dir_all(src.join("content")).unwrap();
+    fs::write(src.join("lib.rs"), "mod content; mod decoy;").unwrap();
+    fs::write(src.join("exports/sides.rs"), "pub use content::side::Side;").unwrap();
+    fs::write(src.join("decoy.rs"), "pub enum Side {}").unwrap();
+    fs::write(src.join("content/mod.rs"), "pub(crate) mod side;").unwrap();
+    let side = src.join("content/side.rs");
+
+    fs::write(&side, "pub enum Side {}").unwrap();
+    assert_eq!(defining_file(&src, &["Side", "Client"]), Ok(side.clone()));
+    // The referenced definition moved out of reach: the decoy must not stand in for it.
+    fs::write(&side, "pub use elsewhere::Side;").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
+    fs::write(&side, "pub type Side = crate::decoy::Side;").unwrap();
+    assert!(defining_file(&src, &["Side"]).is_err());
 }
 
 fn workspace_paths(tokens: &[&str]) -> BTreeSet<String> {
