@@ -1290,7 +1290,7 @@ sunrise-client game::native_entity_refs::tests::shearing_llama_and_happy_ghast_r
 sunrise-client game::native_entity_refs::tests::side_guards_agree_across_integrated_dedicated_and_client lib daily resources
 sunrise-client game::native_entity_refs::tests::sulfur_cube_absorbs_one_complete_stack_by_hand_and_pickup lib daily resources
 sunrise-client game::native_entity_refs::tests::typed_uuid_and_nbt_reads_follow_the_entity_level lib daily resources
-sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_after_the_removal_flush lib daily resources
+sunrise-client game::native_entity_remove::tests::destroying_a_cart_spills_all_slots_before_removing_its_row lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_mob_and_refuse_players_and_stale_handles lib daily resources
 sunrise-client game::native_entity_remove::tests::discard_other_clears_nbt_and_saved_entity lib daily resources
 sunrise-client game::native_entity_remove::tests::kill_command_forgets_other_entity_data lib daily resources

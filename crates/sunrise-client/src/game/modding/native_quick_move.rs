@@ -92,47 +92,37 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerClick` for a quick move
     /// in a guest's open mod container menu (on a vanilla menu type or the
     /// mod's own): the mods' `native_menu_quick_move` first, as the clicking
-    /// player. True when a mod took it: the slot keeps what the mod left and
-    /// the guest's client gets the whole menu again. False for every other
-    /// click, and for one no mod took, so the game's own routing runs.
-    pub(super) fn lan_mod_quick_move(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+    /// player. `Some` reports whether this route applied; `None` lets ordinary routing run.
+    pub(super) fn lan_mod_quick_move(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> Option<bool> {
+        use super::lan_menus::ClickReply;
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuQuickMove) {
-            return false;
+            return None;
         }
-        let Some(host) = self.lan.as_ref() else {
-            return false;
-        };
-        let Some(g) = host.hub.guest(conn) else {
-            return false;
-        };
-        let Some(menu) = g
-            .menu
-            .as_ref()
-            .filter(|m| p.container != 0 && m.window == p.container)
-        else {
-            return false;
-        };
+        let host = self.lan.as_ref()?;
+        let g = host.hub.guest(conn)?;
+        let menu = g.menu.as_ref().filter(|m| {
+            p.container != 0
+                && m.window == p.container
+                && usize::try_from(p.slot).is_ok_and(|slot| slot < m.slot_count())
+        })?;
         let Slots::Block(pos) = menu.slots else {
-            return false;
+            return None;
         };
-        let Some(at) = quick_move_slot(
+        let at = quick_move_slot(
             p.input,
             i32::from(p.button),
             i32::from(p.slot),
             menu.size,
             &menu.hidden,
-        ) else {
-            return false;
-        };
-        // A spectator's or a dead player's click and a menu no longer valid
-        // change nothing, and a shift-click during a drag only ends the drag
-        // (`doClick`'s resetQuickCraft): the game's own path answers them.
-        if g.spectator()
-            || g.dead
-            || menu.drag.is_some()
-            || !menu.still_valid(&host.hub.loop_context, &self.world, g)
-        {
-            return false;
+        )?;
+        // A shift-click during a drag only ends the drag (`doClick`'s resetQuickCraft).
+        // The ordinary path also answers spectators and dead players.
+        if g.spectator() || g.dead || menu.drag.is_some() {
+            return None;
         }
         let (size, window, menu_type) = (menu.size, menu.window, menu.mod_type);
         // A mod menu type keeps its drag in the connection's machine menu
@@ -144,13 +134,13 @@ impl Game<'_> {
             .and_then(|play| play.crafting.machine.as_ref())
             .is_some_and(|(w, m)| *w == window && m.quick_crafting())
         {
-            return false;
+            return None;
         }
         if !matches!(
             self.world.block_entities.get(&pos),
             Some(BlockEntity::Mod(m)) if !m.id().is_empty()
         ) {
-            return false;
+            return None;
         }
         let slot = p.slot as usize;
         // The game's own routing reuses the pickup rule's answer asked before the hook, so the
@@ -159,18 +149,18 @@ impl Game<'_> {
             self.decided_mod_quick_move(conn, pos, size, menu_type, slot, at, window)
         else {
             // The client predicted the game's routing: it gets the menu as it is.
-            if let Some(host) = self.lan.as_mut() {
-                host.hub.resend_menu(conn, window, &self.world);
-            }
-            return true;
+            self.reply_menu_click(conn, ClickReply::Resend(window));
+            return Some(false);
         };
         if !handled {
-            return !asked.is_empty() && self.lan_machine_click_asked(conn, p, asked);
+            return if asked.is_empty() {
+                None
+            } else {
+                self.lan_machine_click_asked(conn, p, asked)
+            };
         }
         // The mod menu type's engine starts over from the block entity next click.
-        let Some(host) = self.lan.as_mut() else {
-            return false;
-        };
+        let host = self.lan.as_mut()?;
         if let Some(play) = host.menus.get_mut(&conn)
             && play
                 .crafting
@@ -183,16 +173,16 @@ impl Game<'_> {
         // sendAllDataToRemote: the client predicted the game's routing. A mod
         // that removed its own block leaves no menu to send: it closes, and
         // the inventory goes out on its own.
-        if matches!(
+        let reply = if matches!(
             self.world.block_entities.get(&pos),
             Some(BlockEntity::Mod(_))
         ) {
-            host.hub.resend_menu(conn, window, &self.world);
-        } else if let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) {
-            host.hub.close_container(conn);
-            host.hub.send_inventory(gi);
-        }
-        true
+            ClickReply::Resend(window)
+        } else {
+            ClickReply::Close(window)
+        };
+        self.reply_menu_click(conn, reply);
+        Some(true)
     }
 
     /// Dispatch `MenuQuickMove`: the block entity is taken out of the world (journaled
