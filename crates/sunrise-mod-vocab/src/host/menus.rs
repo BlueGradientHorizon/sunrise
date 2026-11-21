@@ -16,6 +16,7 @@ pub trait MenusServerHost {
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
     /// opening it again.
+    #[serialize_text]
     fn open_menu(
         &mut self,
         uuid: u128,

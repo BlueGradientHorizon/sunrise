@@ -246,6 +246,8 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 /// borrowed view at `path`, which implements the trait, and `Game` forwards to it. Methods can
 /// opt out of generated conversion in either direction with `#[forward_api_inputs]` or
 /// `#[forward_api_output]` when the implementation accepts or returns the API types directly.
+/// `#[serialize_text]` validates Text arguments at a forwarding boundary that writes a packet
+/// or a saved component; unmarked text arguments are converted only for in-process use.
 /// Use `#[manual_handle]` for an inherent handle wrapper written by hand.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
@@ -285,6 +287,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
                 && !attr.path().is_ident("read_stack")
                 && !attr.path().is_ident("forward_api_inputs")
                 && !attr.path().is_ident("forward_api_output")
+                && !attr.path().is_ident("serialize_text")
                 && !attr.path().is_ident("decline_unavailable")
                 && !attr.path().is_ident("manual_handle")
         });

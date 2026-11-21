@@ -51,6 +51,7 @@ pub trait PlayerMenusBackendMut {
     /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
+    #[serialize_text]
     fn player_open_mod_menu(
         &mut self,
         player: PlayerRef,
@@ -101,6 +102,7 @@ pub trait PlayerMenusBackendMut {
     /// immediate cancellation by a mod. Errors:
     /// `PlayerUnavailable` (stale, dead, fake, or on a client), or `Title` for a title that
     /// could not cross; nothing opens then.
+    #[serialize_text]
     fn player_open_ender_chest(
         &mut self,
         player: PlayerRef,

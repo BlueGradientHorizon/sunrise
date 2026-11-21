@@ -24,6 +24,7 @@ pub trait ScoreboardServerHost {
     ///
     /// `display_name` is bounded as every `Text` is: one deeper than 512 component nodes is
     /// refused with [`ObjectiveError::Text`] before any change.
+    #[serialize_text]
     fn add_objective(
         &mut self,
         name: &str,
@@ -160,6 +161,7 @@ pub trait ScoreboardBackendMut {
     ///
     /// `name` is bounded as every `Text` is: one deeper than 512 component nodes is refused with
     /// [`ObjectiveError::Text`] before any change.
+    #[serialize_text]
     fn objective_set_display_name(
         &mut self,
         objective: ObjectiveRef,
@@ -221,15 +223,18 @@ pub trait ScoreboardBackendMut {
     ///
     /// `name` is bounded as every `Text` is: one deeper than 512 component nodes is refused with
     /// [`TeamError::Text`] before any change.
+    #[serialize_text]
     fn team_set_display_name(&mut self, team: TeamRef, name: Text) -> Result<(), TeamError>;
     /// Side: server.
     /// `PlayerTeam.setColor`: None clears it. False for a stale handle.
     fn team_set_color(&mut self, team: TeamRef, color: Option<TeamColor>) -> bool;
     /// Side: server.
     /// `PlayerTeam.setPlayerPrefix`, with the bound on `Text` of `set_display_name`.
+    #[serialize_text]
     fn team_set_prefix(&mut self, team: TeamRef, prefix: Text) -> Result<(), TeamError>;
     /// Side: server.
     /// `PlayerTeam.setPlayerSuffix`, with the bound on `Text` of `set_display_name`.
+    #[serialize_text]
     fn team_set_suffix(&mut self, team: TeamRef, suffix: Text) -> Result<(), TeamError>;
     /// Side: server.
     /// `PlayerTeam.setAllowFriendlyFire`. False for a stale handle.

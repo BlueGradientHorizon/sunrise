@@ -473,7 +473,11 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                     } else {
                         let read_stack =
                             entry.attrs.iter().any(|a| a.path().is_ident("read_stack"));
-                        boundary_arguments(&entry.sig, name, read_stack)?
+                        let serialize_text = entry
+                            .attrs
+                            .iter()
+                            .any(|a| a.path().is_ident("serialize_text"));
+                        boundary_arguments(&entry.sig, name, read_stack, serialize_text)?
                     };
                     let static_call = entry.attrs.iter().any(|a| a.path().is_ident("static_call"));
                     let view_args = args.clone();
@@ -720,6 +724,7 @@ fn boundary_arguments(
     sig: &syn::Signature,
     method: &str,
     read_stack: bool,
+    serialize_text: bool,
 ) -> Result<(String, String, bool), String> {
     let mutable = sig
         .receiver()
@@ -755,7 +760,14 @@ fn boundary_arguments(
             if outer_type(&arg.ty, "Option") && path.path.segments.last().is_some_and(|segment|
                 matches!(&segment.arguments, syn::PathArguments::AngleBracketed(args)
                     if matches!(args.args.first(), Some(syn::GenericArgument::Type(ty)) if is_borrowed_stack(ty)))));
-        let conversion = if text {
+        let conversion = if text && serialize_text {
+            let reference = if matches!(&*arg.ty, Type::Reference(_)) {
+                ""
+            } else {
+                "&"
+            };
+            format!("sunrise_client_lib::api_text::to_serialized_engine({reference}{name})")
+        } else if text {
             format!("{name}.try_into_engine(&())")
         } else if optional_read_stack {
             format!("{name}.map(crate::game::api_values::stack_value).transpose()")
@@ -1267,7 +1279,8 @@ mod tests {
         let method = entry(
             "fn read(&self, ingredient: &Ingredient) -> Result<Arc<[ItemKey]>, IngredientKeysError>;",
         );
-        let (setup, _, checked_write) = boundary_arguments(&method.sig, "read", false).unwrap();
+        let (setup, _, checked_write) =
+            boundary_arguments(&method.sig, "read", false, false).unwrap();
         assert!(!checked_write);
         assert!(setup.contains("return Err(mod_api::NoBackend::no_backend())"));
         assert!(!setup.contains("Default::default()"));
@@ -1278,7 +1291,8 @@ mod tests {
         let read = entry(
             "fn visit(&self, at: BlockSide, visitor: &mut dyn FnMut(&ItemResource, u64) -> std::ops::ControlFlow<()>) -> Result<(), StorageReadError>;",
         );
-        let (setup, args, checked_write) = boundary_arguments(&read.sig, "visit", false).unwrap();
+        let (setup, args, checked_write) =
+            boundary_arguments(&read.sig, "visit", false, false).unwrap();
         assert!(setup.is_empty());
         assert_eq!(args, "at, visitor");
         assert!(!checked_write);
@@ -1287,7 +1301,8 @@ mod tests {
     #[test]
     fn borrowed_stacks_are_read_without_write_validation_outside_checked_writes() {
         let read = entry("fn item_resource_damageable(&self, stack: &ItemStack) -> bool;");
-        let (setup, args, checked_write) = boundary_arguments(&read.sig, "read", false).unwrap();
+        let (setup, args, checked_write) =
+            boundary_arguments(&read.sig, "read", false, false).unwrap();
         assert!(!checked_write);
         assert!(setup.contains("crate::game::api_values::stack_value(stack)"));
         assert!(!setup.contains("try_into_engine"));
@@ -1295,11 +1310,12 @@ mod tests {
         let write = entry(
             "fn living_apply_consume_effect(&mut self, stack: &ItemStack) -> Result<bool, StackWriteError>;",
         );
-        let (setup, _, checked_write) = boundary_arguments(&write.sig, "write", false).unwrap();
+        let (setup, _, checked_write) =
+            boundary_arguments(&write.sig, "write", false, false).unwrap();
         assert!(checked_write);
         assert!(setup.contains("stack.try_into_engine(self.items())?"));
         let owned = entry("fn drop_at(&mut self, stack: ItemStack) -> bool;");
-        let (setup, _, _) = boundary_arguments(&owned.sig, "owned", false).unwrap();
+        let (setup, _, _) = boundary_arguments(&owned.sig, "owned", false, false).unwrap();
         assert!(setup.contains("stack.try_into_engine(self.items())"));
     }
 
@@ -1443,14 +1459,16 @@ mod tests {
     #[test]
     fn text_arguments_refuse_before_even_checked_stack_writes() {
         let text = entry("fn set_text(&mut self, text: &Text) -> Result<(), TextFormError>;");
-        let (setup, args, checked) = boundary_arguments(&text.sig, "set_text", false).unwrap();
+        let (setup, args, checked) =
+            boundary_arguments(&text.sig, "set_text", false, false).unwrap();
         assert!(!checked);
         assert!(setup.contains("text.try_into_engine(&())?"));
         assert_eq!(args, "&text");
         let mixed = entry(
             "fn update(&mut self, stack: ItemStack, text: Option<&Text>) -> Result<Text, Refused>;",
         );
-        let (setup, args, checked) = boundary_arguments(&mixed.sig, "update", false).unwrap();
+        let (setup, args, checked) =
+            boundary_arguments(&mixed.sig, "update", false, false).unwrap();
         assert!(checked);
         assert!(setup.contains("stack.try_into_engine(self.items())?"));
         assert!(setup.contains("text.try_into_engine(&())?"));

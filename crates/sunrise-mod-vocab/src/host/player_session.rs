@@ -104,6 +104,7 @@ pub trait PlayerSessionBackendMut {
     /// `player_kicked`: the first reason stands).
     /// A second disconnect on a guest already leaving is a no-op and keeps the first reason.
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn player_disconnect(&mut self, player: PlayerRef, reason: Text)
     -> Result<bool, TextFormError>;
     /// Side: server.

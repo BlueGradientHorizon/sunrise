@@ -17,6 +17,7 @@ pub trait BossBarsServerHost {
     /// `/bossbar add`: a new bar, visible, white, `progress`, at 0 of 100, with
     /// nobody added. None if the id is taken or invalid, or outside a server.
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn create_boss_bar(
         &mut self,
         id: &str,
@@ -71,6 +72,7 @@ pub trait BossBarsBackendMut {
     /// Side: server.
     /// `ServerBossEvent.setName`: viewers are sent the new name.
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn boss_bar_set_name(&mut self, bar: BossBarRef, name: Text) -> Result<bool, TextFormError>;
     /// Side: server.
     /// `ServerBossEvent.setColor`.

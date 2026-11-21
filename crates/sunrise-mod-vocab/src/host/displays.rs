@@ -144,6 +144,7 @@ pub trait DisplaysBackendMut {
     /// Side: server.
     /// `TextDisplay.setText`; false for another kind of display.
     /// Refuses text deeper than 512 component nodes before applying any changes.
+    #[serialize_text]
     fn display_set_text(&mut self, display: DisplayRef, text: Text) -> Result<bool, TextFormError>;
     /// Side: server.
     /// `TextDisplay.setLineWidth`; false for another kind of display.
