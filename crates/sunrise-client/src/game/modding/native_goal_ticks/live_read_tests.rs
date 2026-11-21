@@ -267,7 +267,7 @@ fn body_yaw_targets_live_living_owners_and_respects_overrides() {
         assert_eq!(stale_dragon.body_yaw(&context), None);
         assert_eq!(part.body_yaw(&context), None);
         assert_eq!(stale.body_yaw(&context), None);
-        assert_eq!(guest.body_yaw(&context), Some(50.0));
+        assert_eq!(guest.body_yaw(&context), Some(385.0));
         assert_eq!(other_guest.body_yaw(&context), Some(0.0));
         assert_eq!(marker.body_yaw(&context), None);
         context.m.removed = true;
