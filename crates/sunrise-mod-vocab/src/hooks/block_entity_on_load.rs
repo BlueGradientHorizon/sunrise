@@ -10,12 +10,14 @@ pub trait Hooks {
     /// `block_entity_save_additional` is the separate server-side serialization hook.
     #[notes = "`block_entity_on_load` is the per-instance attachment notice, after saved data is applied and before ticking. It also runs for fresh placement and for client chunk instances. The factory remains a separate creation step. Its counterpart is `IBlockEntityExtension.onLoad`."]
     #[hook(
+        receiver = "associated",
         dispatch = "api_carrier",
         side = "both",
         contract = "listen",
         scope = "block_entity",
         key = "id",
-        neoforge = "IBlockEntityExtension.onLoad"
+        neoforge = "IBlockEntityExtension.onLoad",
+        version = 2
     )]
-    fn block_entity_on_load(id: BlockEntityTypeKey, entity: BlockEntityRef);
+    fn block_entity_on_load(id: BlockEntityTypeKey, subject: mod_api::BlockEntitySideScope<'_>);
 }

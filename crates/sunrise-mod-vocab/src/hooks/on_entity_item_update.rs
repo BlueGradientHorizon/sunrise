@@ -12,13 +12,19 @@ pub trait Hooks {
     /// none costs one table lookup, and a game with no such part none at all.
     /// Server-side, for every dropped item that ticks.
     #[hook(
+        receiver = "associated",
         dispatch = "api_carrier",
         side = "server",
         contract = "cancel",
         out = "canceled",
         scope = "item",
         key = "stack",
-        neoforge = "IItemExtension.onEntityItemUpdate"
+        neoforge = "IItemExtension.onEntityItemUpdate",
+        version = 2
     )]
-    fn on_entity_item_update(stack: &ItemStack, item: ItemEntityRef, canceled: &mut bool);
+    fn on_entity_item_update(
+        stack: &ItemStack,
+        subject: mod_api::ItemEntityServerScope<'_>,
+        canceled: &mut bool,
+    );
 }

@@ -16,7 +16,7 @@ pub trait Hooks {
     /// transaction restores do not emit this notice. Client network updates
     /// use `block_entity_data_received` instead.
     #[hook(
-        receiver = "read",
+        receiver = "associated",
         dispatch = "flat",
         side = "server",
         contract = "listen",
@@ -25,13 +25,11 @@ pub trait Hooks {
         key = "id",
         target = "sunrise_client::game::native_hooks::block_entity_load_additional::GameLevel<'_>::native_block_entity_load_additional",
         neoforge = "none (vanilla BlockEntity.loadAdditional; NeoForge adds no event for this moment)",
-        version = 2
+        version = 3
     )]
     fn block_entity_load_additional(
         id: mod_api::BlockEntityTypeKey,
-        entity: BlockEntityRef,
-        pos: [i32; 3],
-        level: LevelRef,
+        subject: mod_api::BlockEntityLevelReadScope<'_>,
         tag: &Compound,
     );
 }

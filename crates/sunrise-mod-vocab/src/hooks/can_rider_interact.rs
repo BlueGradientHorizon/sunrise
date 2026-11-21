@@ -14,13 +14,15 @@ pub trait Hooks {
     /// interaction checks change.
     #[hook(
         target = "sunrise_client::game::native_hooks::client_pick::Game<'_>::native_can_rider_interact",
+        receiver = "associated",
         dispatch = "api_carrier",
         side = "client",
         contract = "collect",
         out = "allowed",
         scope = "entity",
-        key = "entity",
-        neoforge = "IEntityExtension.canRiderInteract"
+        key = "subject",
+        neoforge = "IEntityExtension.canRiderInteract",
+        version = 2
     )]
-    fn can_rider_interact(entity: EntityRef, allowed: &mut bool);
+    fn can_rider_interact(subject: mod_api::EntityClientScope<'_>, allowed: &mut bool);
 }
