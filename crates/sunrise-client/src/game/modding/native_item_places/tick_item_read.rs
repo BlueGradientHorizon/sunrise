@@ -53,21 +53,8 @@ impl Game<'_> {
                             &guest.offhand,
                         ),
                     };
-                match place {
-                    ItemPlace::PlayerSlot { slot, .. } => match *slot {
-                        100..=103 => armor[103 - *slot as usize].as_ref(),
-                        -106 => offhand.as_ref(),
-                        0.. => inventory.get(*slot as usize)?.as_ref(),
-                        _ => None,
-                    },
-                    ItemPlace::PlayerHand {
-                        hand: Hand::Main, ..
-                    } => inventory.get(selected)?.as_ref(),
-                    ItemPlace::PlayerHand {
-                        hand: Hand::Off, ..
-                    } => offhand.as_ref(),
-                    _ => None,
-                }
+                return PlayerStackSlot::borrow(place, inventory, armor, selected, offhand)
+                    .map(|(_, read)| read);
             }
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
