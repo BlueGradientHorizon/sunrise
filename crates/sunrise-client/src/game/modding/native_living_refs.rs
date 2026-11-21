@@ -167,6 +167,18 @@ impl Game<'_> {
         self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
     }
 
+    /// An entity type's default value of an attribute, from its attribute
+    /// supplier (`DefaultAttributes.getSupplier(type).getBaseValue`): the
+    /// catalog's row for the type, mods' declared rows included. None for a
+    /// type with no row, an attribute it lacks or an unknown name.
+    pub(super) fn entity_type_default_attribute(
+        &self,
+        entity_type: &str,
+        attribute: &str,
+    ) -> Result<Option<f64>, mod_api::EntityTypeReadError> {
+        Ok(self.motion.attributes.type_default(entity_type, attribute))
+    }
+
     /// The ids of the attributes the entity's type has
     /// (`AttributeMap`'s holder's attribute set), in registry order: the same
     /// set the value and base reads answer for. None for a stale handle or an

@@ -1281,6 +1281,27 @@ impl From<crate::text::TextFormError> for OpenMenuError {
     }
 }
 
+/// Why an entity type's default could not be read ([`LivingHost::entity_type_default_attribute`]).
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+pub enum EntityTypeReadError {
+    /// Called outside a running world (setup, a reload, config loading) or with no game: the
+    /// types' attribute suppliers, mods' rows included, are known once a world is open.
+    Unavailable,
+}
+
+impl crate::AccessRefusal for EntityTypeReadError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
+impl NoBackend for EntityTypeReadError {
+    fn no_backend() -> Self {
+        Self::Unavailable
+    }
+}
+
 impl crate::AccessRefusal for OpenMenuError {
     fn unavailable() -> Self {
         Self::PlayerUnavailable

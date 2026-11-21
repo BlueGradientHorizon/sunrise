@@ -208,3 +208,19 @@ riding relationships are unlinked even when a listener cancels. Each mob keeps i
 resident or off-level classification, and descendant state remains frozen.
 Cancellation can prevent ejection while the vehicle remains live, including
 underwater or activator ejection.
+
+## A type's default attributes
+
+`host.entity_type_default_attribute(entity_type, attribute)` reads what a new entity of a type starts with, with no
+entity spawned: `DefaultAttributes.getSupplier(type).getBaseValue(attribute)`. It works for vanilla's types and mods'
+(a mod type's declared row, with the attributes other mods added to it), on both sides, from any world-phase hook.
+
+```rust,ignore
+// The Zombie's 20 health and 2 armor, for a screen that lists a mob's stats.
+let health = host.entity_type_default_attribute("minecraft:zombie", "minecraft:max_health")?;
+let armor = host.entity_type_default_attribute("minecraft:zombie", "minecraft:armor")?;
+```
+
+`Ok(None)` means the type has no attribute supplier (it isn't a living type), doesn't have that attribute, or a
+name is unknown. A bare name is `minecraft:`'s. Outside a running world (setup, a reload) it refuses with
+`EntityTypeReadError::Unavailable`.

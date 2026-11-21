@@ -194,6 +194,21 @@ impl Catalog {
             defaults,
         })
     }
+    /// An entity type's default of an attribute, by name
+    /// (`DefaultAttributes.getSupplier(type).getBaseValue(attribute)`): a bare
+    /// entity or attribute name is `minecraft:`'s. None for a type with no
+    /// supplier, an attribute it lacks or an unknown name.
+    pub fn type_default(&self, entity: &str, attribute: &str) -> Option<f64> {
+        let qualify = |name: &str| {
+            if name.contains(':') {
+                name.to_owned()
+            } else {
+                format!("minecraft:{name}")
+            }
+        };
+        let id = self.id(&qualify(attribute))?;
+        self.default_base(&qualify(entity), id)
+    }
     /// The entity type's supplier base of an attribute, if the type has it.
     pub fn default_base(&self, entity: &str, id: AttributeId) -> Option<f64> {
         self.defaults.get(entity).and_then(|b| b[id.0])
@@ -558,6 +573,32 @@ mod row_tests {
             }
         }))
         .unwrap()
+    }
+
+    /// #3944: a type's default by name, bare names being `minecraft:`'s; a type
+    /// without the attribute, an unknown attribute or a type without a supplier
+    /// has none. Expected values are the fixture's rows (vanilla's Zombie: 20
+    /// health, 2 armor).
+    #[test]
+    fn a_types_default_by_name() {
+        let catalog = catalog();
+        assert_eq!(
+            catalog.type_default("minecraft:zombie", "minecraft:max_health"),
+            Some(20.0)
+        );
+        assert_eq!(catalog.type_default("zombie", "armor"), Some(2.0));
+        assert_eq!(
+            catalog.type_default("minecraft:zombie", "minecraft:luck"),
+            None
+        );
+        assert_eq!(
+            catalog.type_default("minecraft:zombie", "minecraft:no_such"),
+            None
+        );
+        assert_eq!(
+            catalog.type_default("minecraft:boat", "minecraft:max_health"),
+            None
+        );
     }
 
     /// #3728: asks to widen bounds join as their union, in either order; a
