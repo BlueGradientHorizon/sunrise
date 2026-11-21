@@ -581,11 +581,17 @@ impl Index {
             if p.versions.is_empty() && p.nightly.is_none() {
                 return Err(format!("{}: has no version", p.id));
             }
+            if p.nightly.is_some() && self.taken_down(&p.id) {
+                return Err(format!(
+                    "{}: the project was taken down, so it lists no Nightly source",
+                    p.id
+                ));
+            }
             for (j, v) in p.versions.iter().enumerate() {
                 if p.versions[..j].iter().any(|w| w.version == v.version) {
                     return Err(format!("{} {}: empty or repeated version", p.id, v.version));
                 }
-                check_version(p, v, local_files)?;
+                check_version(p, v, self.releases.as_deref(), local_files)?;
                 let mut pairs = std::collections::HashSet::new();
                 for binary in &v.native_binaries {
                     let at = |e| {
@@ -649,12 +655,23 @@ impl Index {
             }
             reason.is_none()
         });
+        let whole_takedowns: Vec<String> = self
+            .revoked
+            .iter()
+            .filter(|r| r.sha256.is_none())
+            .map(|r| r.id.clone())
+            .collect();
+        let releases = self.releases.as_deref();
         for p in &mut self.projects {
+            // A takedown of the whole project covers its unreviewed source as well as its files.
+            if whole_takedowns.contains(&p.id) {
+                p.nightly = None;
+            }
             let mut seen: Vec<String> = Vec::new();
             for v in std::mem::take(&mut p.versions) {
                 let checked = match seen.contains(&v.version) {
                     true => Err(format!("{} {}: empty or repeated version", p.id, v.version)),
-                    false => check_version(p, &v, local_files),
+                    false => check_version(p, &v, releases, local_files),
                 };
                 seen.push(v.version.clone());
                 match checked {
@@ -786,6 +803,13 @@ impl Index {
         self.collections.iter().find(|c| c.id == id)
     }
 
+    /// Whether the whole project `id` was taken down: a takedown that names no hash.
+    pub fn taken_down(&self, id: &str) -> bool {
+        self.revoked
+            .iter()
+            .any(|r| r.id == id && r.sha256.is_none())
+    }
+
     /// Why the file of `id` with this hash was taken down, if it was.
     pub fn revoked(&self, id: &str, sha256: &str) -> Option<&Revoked> {
         self.revoked.iter().find(|r| r.covers(id, sha256))
@@ -849,10 +873,16 @@ fn check_project(p: &Project) -> Result<(), String> {
     Ok(())
 }
 
-/// A source version's rules: a name, a plain file name with the kind's
+/// A source version's rules: a name, a stable release that is in `releases` when the index lists
+/// them, a plain file name with the kind's
 /// extension, an `https` address, a hex hash, a size in bounds and a signature as the project's
 /// key asks.
-fn check_version(p: &Project, v: &Version, local_files: bool) -> Result<(), String> {
+fn check_version(
+    p: &Project,
+    v: &Version,
+    releases: Option<&[SunriseRelease]>,
+    local_files: bool,
+) -> Result<(), String> {
     let at = |e: String| format!("{} {}: {e}", p.id, v.version);
     if v.version.trim().is_empty() {
         return Err(at("empty or repeated version".into()));
@@ -860,6 +890,7 @@ fn check_version(p: &Project, v: &Version, local_files: bool) -> Result<(), Stri
     if let Some(tag) = &v.sunrise {
         check_stable_tag(tag, &v.game).map_err(at)?;
     }
+    find_release(releases, v.sunrise.as_deref()).map_err(at)?;
     dependencies::check_shape(p, v)?;
     let f = &v.file;
     let extension_ok = p

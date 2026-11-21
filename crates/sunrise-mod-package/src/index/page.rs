@@ -236,15 +236,16 @@ pub fn check_required(
         errors.push(format!("pick 1 to {MAX_CATEGORIES} categories"));
     }
     errors.extend(check_icon_path(id, icon));
-    for s in screenshots
+    errors.extend(check_screenshot_paths(screenshots));
+    errors
+}
+
+/// A page's screenshots are always local to the registry checkout.
+pub(super) fn check_screenshot_paths(screenshots: &[String]) -> impl Iterator<Item = String> {
+    screenshots
         .iter()
         .filter(|s| !s.starts_with("screenshots/"))
-    {
-        errors.push(format!(
-            "screenshot {s:?} must be kept in the registry, screenshots/<id>/"
-        ));
-    }
-    errors
+        .map(|s| format!("screenshot {s:?} must be kept in the registry, screenshots/<id>/"))
 }
 
 /// An image's format.
