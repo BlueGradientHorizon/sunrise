@@ -1747,7 +1747,7 @@ mod own_block_entity_tests {
                     pos,
                     entity,
                     kind,
-                    &Default::default(),
+                    game.items(),
                 );
                 assert!(sunrise_client::block_entity_nbt::canonical(&saved).is_some());
                 let (at, decoded) =
