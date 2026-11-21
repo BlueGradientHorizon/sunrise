@@ -22,13 +22,14 @@ use crate::game::collision_source::Mover;
 use sunrise_client::collisions::{
     EntityCollisions, SceneCollisions, no_collision_empty, with_piston_noclip,
 };
+use sunrise_client::join_seq::{JoinSeq, Joined};
 use sunrise_client::mobs::Species;
 use sunrise_client::motion::MotionWorld;
 use sunrise_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::BorderGeometry};
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
     block_collision_scan::BlockCollisionWorld, collision_context::CollisionContext,
-    entity_move::MoverType, level::data::PushReaction::IgnoreEntity, level::pistons::MovingPiston,
+    entity_move::MoverType, level::data::PushReaction, level::pistons::MovingPiston,
     move_gate::MoveGate, piston_movement::PistonMovement, piston_push,
     world_movement::EntityMovementWorld,
 };
@@ -90,6 +91,7 @@ struct Body {
     position: Vec3,
     on_ground: bool,
     step_height: f32,
+    piston_reaction: PushReaction,
     /// Standing on the piston's own block (`Entity.isSupportedBy`).
     supported: bool,
 }
@@ -197,7 +199,7 @@ impl Game<'_> {
         let at = pushes[0].0;
         self.push_targets()
             .filter(|&target| {
-                self.push_body(target, Some(at), steps)
+                self.piston_body(target, Some(at), steps)
                     .is_some_and(|body| body.bounds.intersects(reach))
             })
             .collect()
@@ -378,7 +380,7 @@ impl Game<'_> {
     /// at the blocks, the world border and the entities a body collides
     /// with), without a piston's per-tick travel limit or its noclip; a
     /// `noPhysics` body moves the whole way. The local player takes the
-    /// client's own move (`block_push_player`), an armor stand its own
+    /// client's own move (`move_local_player`), an armor stand its own
     /// (`shoves_armor_stand`), and a painting, an item frame or a cushion
     /// breaks (`lid_breaks_attached`).
     ///
@@ -392,7 +394,11 @@ impl Game<'_> {
         // The armor stands' obstacles, built at the first stand the lid meets.
         let mut stand_grid = None;
         self.push_targets().for_each(|target| {
-            let Some(body) = self.push_body(target, None, &steps) else {
+            let body = match lid {
+                Lid::Box => self.piston_body(target, None, &steps),
+                Lid::Shulker(_) => self.push_body(target, None, &steps),
+            };
+            let Some(body) = body else {
                 return;
             };
             if !body.bounds.intersects(area) {
@@ -431,7 +437,7 @@ impl Game<'_> {
         if self.lid_spares(lid, self.lid_root(lid), MoveWho::Player, false) {
             return;
         }
-        self.block_push_player(lid.mover(), movement);
+        let _ = self.move_local_player(lid.mover(), movement);
     }
 
     /// [`Self::lid_push_local`] for this tick's shulker box lids.
@@ -488,10 +494,8 @@ impl Game<'_> {
         let mut i = 0;
         while i < self.cushions.len() {
             let c = &self.cushions[i];
-            if root == Some(c.id) || !meets(c.bounds()) {
+            if root == Some(c.id) || !meets(c.bounds()) || !self.break_cushion_by(i, None) {
                 i += 1;
-            } else {
-                self.break_cushion_by(i, None);
             }
         }
     }
@@ -548,7 +552,7 @@ impl Game<'_> {
         stand_grid: &mut Option<sunrise_client::entities::ObstacleGrid>,
     ) {
         if target == MoveWho::Player {
-            self.block_push_player(mover, movement);
+            let _ = self.move_local_player(mover, movement);
             return;
         }
         // Armor stands arm their gate in their own collided shove.
@@ -642,29 +646,37 @@ impl Game<'_> {
         with_entity!(self, handle, entity => entity.position()).subtract(from)
     }
 
-    /// `Entity.move(mover, …)` for the local player, pushed by a lid or a
-    /// piston: an ordinary move, so the collision scan stops and steps it and
-    /// its end writes the ground state (`Entity.setOnGroundWithMovement`). A
-    /// push lifting the body off the ground leaves it airborne, and the next
-    /// tick's gravity lands it instead of a stale ground flag holding it.
-    fn block_push_player(&mut self, mover: MoverType, movement: Vec3) {
+    /// The local player's ordinary `Entity.move(mover, …)`: the collision scan stops
+    /// and steps it, and the end of the move updates its ground, fall and velocity state.
+    pub(in crate::game) fn move_local_player(
+        &mut self,
+        mover: MoverType,
+        movement: Vec3,
+    ) -> sunrise_client::Result<Option<Vec3>> {
         let entities = self.entity_collisions(Mover::Player);
-        if let Some(player) = self.player.as_mut() {
-            let _ = MotionWorld {
-                entities: &entities,
-                player,
-                scene: &mut self.world,
-                assets: &self.pack.assets,
-                collision_binding: self.collision,
-                resources: self.motion,
-                health: &self.health_resources,
-                loop_context: &self.loop_context,
-                damage_hooks: &self.damage_hooks,
-                tag_items: Some(world_items!(self)),
-                block_registries: Some(&self.pack.block_registries),
-            }
-            .block_push(mover, movement);
+        let section_scope = self.player_section_scope();
+        let Some(player) = self.player.as_mut() else {
+            return Ok(None);
+        };
+        let side = game_side!(self);
+        let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+        let before = player.position;
+        MotionWorld {
+            side: &side,
+            entities: &entities,
+            player,
+            scene: &mut self.world,
+            assets: &self.pack.assets,
+            collision_binding: self.collision,
+            resources: self.motion,
+            health: &self.health_resources,
+            loop_context: &self.loop_context,
+            damage_hooks: &self.damage_hooks,
+            tag_items: Some(world_items!(self)),
+            block_registries: Some(&self.pack.block_registries),
         }
+        .move_with_cause(mover, movement)?;
+        Ok(Some(player.position.subtract(before)))
     }
 
     fn push_for_piston(
@@ -728,7 +740,7 @@ impl Game<'_> {
             )
         });
         targets.iter().copied().for_each(|target| {
-            let Some(body) = self.push_body(target, Some(pos), steps) else {
+            let Some(body) = self.piston_body(target, Some(pos), steps) else {
                 return;
             };
             // `level.getEntities(null, area)`: a body outside the search area
@@ -766,7 +778,7 @@ impl Game<'_> {
                 // an entity that is still inside its own block.
                 if !piston.extending
                     && piston.source
-                    && let Some(after) = self.push_body(target, Some(pos), steps)
+                    && let Some(after) = self.piston_body(target, Some(pos), steps)
                     && let Some(fix) = piston_push::fix_within_piston_base(
                         pos,
                         after.bounds,
@@ -793,13 +805,13 @@ impl Game<'_> {
         if honey && movement.normal()[1] == 0 {
             let area = piston_push::sticky_area(pos, piston.shape_state(), sticky_top);
             for &target in targets {
-                let Some(body) = self.push_body(target, Some(pos), steps) else {
+                let Some(body) = self.piston_body(target, Some(pos), steps) else {
                     continue;
                 };
                 if piston_push::sticky_entity_selected(
                     area,
                     body.bounds,
-                    sunrise_world::level::data::PushReaction::PushPull,
+                    body.piston_reaction,
                     body.on_ground,
                     body.supported,
                     body.position,
@@ -820,18 +832,20 @@ impl Game<'_> {
         }
     }
 
-    /// `Block.pushEntitiesUp(old, new, level, pos)` for the block now at `pos`
-    /// (`FarmlandBlock.turnToBaseBlock`, `PathBlock.turnToBaseBlock`): every body
+    /// `Block.pushEntitiesUp(old, new, level, pos)` before the block at `pos`
+    /// changes (`FarmlandBlock.turnToBaseBlock`): every body
     /// touching the collision that the new state adds over `old` is lifted
-    /// onto it with `teleportRelative`, no collision scan.
+    /// onto it with `teleportRelative`, no collision scan. If the write refuses
+    /// after section listeners have run, put the tentative positions back quietly.
     pub(super) fn push_entities_up(
         &mut self,
         pos: BlockPos,
         old: sunrise_world::registry::BlockStateId,
-    ) {
-        let new = self.world.block(pos.x, pos.y, pos.z);
+        new: sunrise_world::registry::BlockStateId,
+        write: impl FnOnce(&mut Self) -> bool,
+    ) -> bool {
         if new == old {
-            return;
+            return write(self);
         }
         let at = [pos.x, pos.y, pos.z];
         let shape = |state| {
@@ -843,10 +857,10 @@ impl Game<'_> {
             self.collision.collision_shape(&mut scene, state, at).ok()
         };
         let (Some(old_shape), Some(new_shape)) = (shape(old), shape(new)) else {
-            return;
+            return write(self);
         };
         let Ok(added) = old_shape.join_unoptimized(&new_shape, ShapeOp::ONLY_SECOND) else {
-            return;
+            return write(self);
         };
         let added = added.moved(Vec3::new(
             f64::from(pos.x),
@@ -854,20 +868,156 @@ impl Game<'_> {
             f64::from(pos.z),
         ));
         let Some(bounds) = added.bounds() else {
-            return;
+            return write(self);
         };
-        let steps = self.push_step_heights();
-        for target in self.push_targets() {
-            let Some(body) = self.push_body(target, Some(pos), &steps) else {
+        // Like the level query in `Block.pushEntitiesUp`, take the intersecting
+        // bodies before any lift dispatches a section-change listener. A listener
+        // can remove another entity, so a saved slot alone is not an identity.
+        let mut lift: Vec<_> = self
+            .push_targets()
+            .filter_map(|target| {
+                let (body, id, join) = match target {
+                    MoveWho::Player => {
+                        let p = self.player.as_ref().filter(|p| !p.spectator)?;
+                        (p.bounds(), p.entity_id as u32, None)
+                    }
+                    MoveWho::Guest(conn) if Some(conn) != self.lan_acting => {
+                        let g = self
+                            .lan
+                            .as_ref()?
+                            .hub
+                            .guest(conn)
+                            .filter(|g| !g.spectator())?;
+                        let [x, y, z] = g.position;
+                        (
+                            g.dimensions().bounds(Vec3::new(x, y, z)),
+                            g.entity_id as u32,
+                            None,
+                        )
+                    }
+                    MoveWho::Guest(_) => return None,
+                    MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
+                        if entity.is_removed() {
+                            return None;
+                        }
+                        (Entity::bounds(entity), entity.id(), Some(entity.join_seq()))
+                    }),
+                };
+                body.intersects(bounds).then_some((target, id, join, None))
+            })
+            .collect();
+        for &mut (hint, id, join, ref mut moved) in &mut lift {
+            let Some(target) = self.resolve_lift_target(hint, id, join) else {
                 continue;
             };
-            if !body.bounds.intersects(bounds) {
-                continue;
+            let body = match target {
+                MoveWho::Player => self.player.as_ref().unwrap().bounds(),
+                MoveWho::Guest(conn) => {
+                    let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                    let [x, y, z] = g.position;
+                    g.dimensions().bounds(Vec3::new(x, y, z))
+                }
+                MoveWho::Entity(handle) => {
+                    with_entity!(self, handle, entity => Entity::bounds(entity))
+                }
+            };
+            let dy = 1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
+            // `teleportRelative` writes the position only. It does not run an
+            // entity move or release projectiles embedded in the old block.
+            let (from, motion_y) = match target {
+                MoveWho::Player => {
+                    let p = self.player.as_mut().unwrap();
+                    let from = p.position;
+                    p.position.y += dy;
+                    (from, None)
+                }
+                MoveWho::Guest(conn) => self
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(conn, |g| {
+                        let [x, y, z] = g.position;
+                        g.position[1] += dy;
+                        let motion_y = g.motion.as_mut().map(|m| {
+                            let y = m.position.y;
+                            m.position.y += dy;
+                            y
+                        });
+                        (Vec3::new(x, y, z), motion_y)
+                    })
+                    .unwrap(),
+                MoveWho::Entity(handle) => with_entity_mut!(self, handle, entity => {
+                    let pos = entity.position_mut();
+                    let from = *pos;
+                    pos.y += dy;
+                    (from, None)
+                }),
+            };
+            let to = [from.x, from.y + dy, from.z];
+            *moved = Some((from, to, motion_y));
+            self.entity_section_moved_id(id);
+        }
+        if write(self) {
+            for (_, id, _, moved) in lift {
+                if let Some((from, to, _)) = moved {
+                    self.entity_section_entered(id, from.components(), to);
+                }
             }
-            let dy = added.collide(Axis::Y, body.bounds.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
-            // `teleportRelative`, a position assignment the design excludes
-            // from `entity_move` (#2414): a pending gate, never armed.
-            self.apply_push(&mut MoveGate::new(), target, Vec3::new(0.0, 1.0 + dy, 0.0));
+            return true;
+        }
+        for (target, id, join, moved) in lift.into_iter().rev() {
+            let Some((from, _, motion_y)) = moved else {
+                continue;
+            };
+            let Some(target) = self.resolve_lift_target(target, id, join) else {
+                continue;
+            };
+            match target {
+                MoveWho::Player => self.player.as_mut().unwrap().position = from,
+                MoveWho::Guest(conn) => {
+                    self.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                        g.position = from.components();
+                        if let (Some(m), Some(y)) = (&mut g.motion, motion_y) {
+                            m.position.y = y;
+                        }
+                    });
+                }
+                MoveWho::Entity(handle) => with_entity_mut!(self, handle, entity => {
+                    *entity.position_mut() = from;
+                }),
+            }
+            self.entity_section_joined(id, from.components());
+        }
+        false
+    }
+
+    fn resolve_lift_target(
+        &self,
+        hint: MoveWho,
+        id: u32,
+        join: Option<JoinSeq>,
+    ) -> Option<MoveWho> {
+        match hint {
+            MoveWho::Player => self
+                .player
+                .as_ref()
+                .filter(|p| p.entity_id as u32 == id)
+                .map(|_| hint),
+            MoveWho::Guest(conn) => {
+                let hub = &self.lan.as_ref()?.hub;
+                hub.guest(conn)
+                    .filter(|g| {
+                        g.entity_id as u32 == id && hub.here(g) && self.lan_acting != Some(conn)
+                    })
+                    .map(|_| hint)
+            }
+            MoveWho::Entity(handle) => {
+                let handle = self.refresh_entity_handle(id, handle)?;
+                with_entity!(self, handle, entity => {
+                    (!entity.is_removed() && Some(entity.join_seq()) == join).then_some(MoveWho::Entity(handle))
+                })
+            }
         }
     }
 
@@ -912,8 +1062,24 @@ impl Game<'_> {
             .chain(self.entity_handles().map(MoveWho::Entity))
     }
 
-    /// What the push needs from one entity, or `None` when it is not pushed:
-    /// removed, dead, a spectator, or an armor-stand marker. `pos` is the
+    /// Pistons and shulker boxes skip bodies that ignore piston reactions.
+    fn piston_body(
+        &self,
+        target: MoveWho,
+        pos: Option<BlockPos>,
+        steps: &StepHeights,
+    ) -> Option<Body> {
+        let body = match target {
+            // PistonMovingBlockEntity collects a resident stand regardless of health.
+            MoveWho::Entity(handle @ EntityHandle::ArmorStand(i)) if pos.is_some() => {
+                (!self.armor_stands[i].is_removed()).then(|| self.listed_body(handle, pos))
+            }
+            _ => self.push_body(target, pos, steps),
+        }?;
+        (body.piston_reaction != PushReaction::IgnoreEntity).then_some(body)
+    }
+
+    /// What the push needs from a live, non-spectating body. `pos` is the
     /// pushing block a body can stand on (none for a lid).
     fn push_body(
         &self,
@@ -932,6 +1098,7 @@ impl Game<'_> {
                     position: p.position,
                     on_ground: p.ground.on_ground,
                     step_height: steps.player,
+                    piston_reaction: PushReaction::PushPull,
                     supported: pos.is_some() && p.ground.supporting_block == pos,
                 })
             }
@@ -948,16 +1115,15 @@ impl Game<'_> {
                     position: Vec3::new(p[0], p[1], p[2]),
                     on_ground: g.on_ground,
                     step_height: steps.guests.get(&conn).copied().unwrap_or(0.6),
+                    piston_reaction: PushReaction::PushPull,
                     supported: g
                         .motion
                         .as_ref()
                         .is_some_and(|m| pos.is_some() && m.ground.supporting_block == pos),
                 })
             }
-            MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
-                entity.is_alive() && entity.get_piston_push_reaction() != IgnoreEntity
-            })
-            .then(|| self.listed_body(handle, pos)),
+            MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.is_alive())
+                .then(|| self.listed_body(handle, pos)),
         }
     }
 
@@ -968,6 +1134,7 @@ impl Game<'_> {
             position: entity.position(),
             on_ground: entity.on_ground(),
             step_height: entity.get_step_height(),
+            piston_reaction: entity.get_piston_push_reaction(),
             supported: pos.is_some_and(|pos| entity.is_supported_by(pos)),
         })
     }
@@ -995,15 +1162,9 @@ impl Game<'_> {
         // check, restitution and block speed).
         if target == MoveWho::Player {
             with_piston_noclip(piston_direction, || {
-                self.block_push_player(cause, movement);
+                let _ = self.move_local_player(cause, movement);
             });
             let after = self.player.as_ref().map_or(before, |p| p.bounds());
-            if after != before
-                && let Ok(id) = u32::try_from(self.own_entity_id())
-            {
-                self.entity_section_moved_id(id);
-                self.tell_entity_sections();
-            }
             self.piston_block_triggers(before, after);
             self.piston_cactus_contact(target, before, after, pricked);
             return;
@@ -1481,6 +1642,47 @@ mod order_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_core::{geometry::Direction, position::BlockPos};
     use sunrise_world::level::pistons::MovingPiston;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_piston_pushes_a_resident_armor_stand_with_zero_health() {
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.build_registries();
+            game.set_allow_commands(true);
+            let registry = &game.pack.assets.registry;
+            let stone = registry.default_state("minecraft:stone").unwrap();
+            let moving = registry.default_state("minecraft:moving_piston").unwrap();
+            let mut chunk = Chunk::empty(0, 0);
+            chunk.set(5, 200, 5, moving.0);
+            game.world.chunks.insert((0, 0), Arc::new(chunk));
+            assert!(game.run_command("summon armor_stand 5.5 200 5.5 {Health:0f}"));
+            assert_eq!(game.armor_stands[0].health, 0.0);
+
+            let pos = BlockPos::new(5, 200, 5);
+            let piston = MovingPiston {
+                moved_state: stone,
+                direction: Direction::East,
+                extending: true,
+                source: false,
+                progress: 0.0,
+                progress_o: 0.0,
+                last_ticked: 0,
+                death_ticks: 0,
+                id: 1,
+            };
+            game.block_ticks.moving_pistons = vec![(
+                pos,
+                MovingPiston {
+                    progress: 0.5,
+                    ..piston
+                },
+            )];
+            game.sync_moving_pistons();
+            game.push_piston_entities(vec![(pos, piston, 0.5)]);
+            // The face reaches the stand's centre; its half-width and the piston offset clear it.
+            assert_eq!(game.armor_stands[0].position.x, 5.5 + (0.25 + 0.01));
+        });
+    }
 
     /// A stone pushes a primed TNT east, into the cell a second stone is
     /// sliding north out of (half way there). The TNT collides with that

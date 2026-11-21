@@ -58,7 +58,7 @@ class GateTests(unittest.TestCase):
         self.assertEqual(ours, {"heavy": "true", "pr_sha": SHA, "trusted": "true"})
 
     def test_a_dispatch_on_our_rollup_or_sync_is_refused_since_its_pushes_run_the_gate(self):
-        for ref, labels in (("sunrise-review-rollup-43", []), ("sync-upstream-7", []), ("integration", ["rollup"])):
+        for ref, labels in (("sunrise-review-rollup-43", []), ("sync-upstream-7", []), ("sync/upstream-acbd", []), ("integration", ["rollup"])):
             head = {"sha": SHA, "ref": ref, "labels": labels, "same_repository": True}
             with self.subTest(ref=ref, labels=labels), self.assertRaisesRegex(SystemExit, "rollup or sync"):
                 pr_gate.outputs("workflow_dispatch", True, "2833", lambda n, head=head: head)
@@ -86,7 +86,7 @@ class WorkflowTests(unittest.TestCase):
     def test_cheap_jobs_run_without_the_heavy_gate(self):
         # verify-static runs outside the gate too: only where it runs depends on the gate.
         self.assertNotIn("outputs.heavy", self.job("verify-static").split("\n", 2)[1])
-        self.assertIn("needs.changes.outputs.heavy != 'true'", self.job("format"))
+        self.assertIn("needs.changes.outputs.heavy == 'false'", self.job("format"))
         self.assertNotRegex(self.job("format"), r"cargo (clippy|build|test|check)")
 
     def test_a_dispatched_head_is_checked_out_with_a_read_only_token_and_reported_apart(self):
@@ -163,8 +163,8 @@ class WorkflowTests(unittest.TestCase):
         # Outside the gate, the first term decides (Actions' || and && short-circuit): no switch, paid pool or boat
         # label reached through the later terms can move verify-static, and boat's watcher never starts.
         static = self.job("verify-static")
-        self.assertIn("runs-on: ${{ needs.changes.outputs.heavy != 'true' && 'ubuntu-latest' || ", static)
-        self.assertIn("RUNNER_KIND: ${{ needs.changes.outputs.heavy != 'true' && 'github' || ", static)
+        self.assertIn("runs-on: ${{ needs.changes.outputs.heavy == 'false' && 'ubuntu-latest' || ", static)
+        self.assertIn("RUNNER_KIND: ${{ needs.changes.outputs.heavy == 'false' && 'github' || ", static)
         self.assertIn("if: needs.changes.outputs.heavy == 'true' && ", self.job("boat-watch"))
         # A contributor's dispatched pull request is heavy but untrusted: GitHub's runner too.
         self.assertIn("needs.changes.outputs.trusted != 'true' && 'ubuntu-latest' ||", static)
@@ -181,12 +181,50 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(jobs[name]["if"], "inputs.commit != '' || github.event_name == 'workflow_dispatch'")
 
     def test_other_pull_request_workflows_skip_what_compiles_for_forks(self):
-        for workflow, jobs in (("cargo-sunrise-mod.yml", ("build",)), ("modding-book.yml", ("book",))):
+        for workflow, jobs in (("cargo-sunrise-mod-build.yml", ("build",)), ("modding-book.yml", ("book",))):
             text = (ROOT / ".github/workflows" / workflow).read_text()
             for name in jobs:
                 with self.subTest(workflow=workflow, job=name):
                     body = re.search(rf"^  {name}:\n(.*?)(?=^  [a-z0-9_-]+:\n|\Z)", text, re.M | re.S)[1]
                     self.assertIn(f"if: {SAME_REPO}\n", body)
+
+    def test_a_pull_request_builds_the_mod_tool_for_linux_only(self):
+        import yaml
+
+        workflow = yaml.safe_load((ROOT / ".github/workflows/cargo-sunrise-mod-build.yml").read_text())
+        # Every other archive is the daily run's (and a tag's): a pull request push holds no macOS or Windows runner.
+        self.assertEqual(set(workflow[True]), {"workflow_call"})
+        step = next(step for step in workflow["jobs"]["plan"]["steps"] if step.get("id") == "platforms")
+        def targets(event):
+            import tempfile
+            with tempfile.NamedTemporaryFile("r") as output:
+                subprocess.run(["bash", "-e", "-c", step["run"]], cwd=ROOT, check=True,
+                               env={**os.environ, "EVENT_NAME": event, "GITHUB_OUTPUT": output.name})
+                return [platform["target"] for platform in json.loads(output.read().split("=", 1)[1])]
+        self.assertEqual(targets("pull_request"), ["x86_64-unknown-linux-gnu"])
+        from tools import sunrise_mod_binstall
+        self.assertEqual(targets("workflow_dispatch"), [platform["target"] for platform in sunrise_mod_binstall.PLATFORMS])
+
+
+    def test_only_a_version_tag_push_publishes_the_mod_tool_archives(self):
+        import yaml
+
+        build = yaml.safe_load((ROOT / ".github/workflows/cargo-sunrise-mod-build.yml").read_text())
+        entry = yaml.safe_load((ROOT / ".github/workflows/cargo-sunrise-mod.yml").read_text())
+        daily = yaml.safe_load((ROOT / ".github/workflows/daily.yml").read_text())
+        # The daily calls the build alone, read-only: nothing it runs can publish.
+        self.assertEqual(daily["jobs"]["cargo-sunrise-mod"]["uses"], "./.github/workflows/cargo-sunrise-mod-build.yml")
+        self.assertEqual(daily["jobs"]["cargo-sunrise-mod"]["permissions"], {"contents": "read"})
+        self.assertEqual(build["permissions"], {"contents": "read"})
+        self.assertTrue(all("permissions" not in job for job in build["jobs"].values()))
+        # The entry point publishes the archives it built itself, and only for the push of a version tag: a dispatch
+        # may name a tag too.
+        self.assertEqual(entry["jobs"]["build"]["uses"], "./.github/workflows/cargo-sunrise-mod-build.yml")
+        self.assertNotIn("with", entry["jobs"]["build"])
+        self.assertEqual(entry["jobs"]["publish"]["needs"], "build")
+        self.assertEqual(entry["jobs"]["publish"]["if"],
+                         "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/cargo-sunrise-mod-v')")
+        self.assertEqual(set(entry["jobs"]), {"build", "publish"})
 
 
 if __name__ == "__main__":

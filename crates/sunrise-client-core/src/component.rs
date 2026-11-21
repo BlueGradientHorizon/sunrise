@@ -31,31 +31,24 @@ pub fn style_flag(v: Option<&Value>) -> Option<bool> {
     }
 }
 
-/// ExtraCodecs.UNTRUSTED_URI / Util.parseAndValidateUntrustedUri: http and
-/// https only, scheme case-insensitive. Every `open_url` a server sends must
-/// pass it: anything else (`file:`, a UNC path, a custom protocol handler)
-/// could start a program through the system's URL handler.
-pub fn untrusted_http_url(url: &str) -> bool {
-    url.split_once(':').is_some_and(|(scheme, _)| {
-        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
-    })
-}
+pub use sunrise_core::text::untrusted_http_url;
 
-/// `ClickEvent.CODEC` plus the legacy `value` field TextComponentHoverAndClickEventFix
-/// renames (`url` / `command` / `page`).
+/// A current `ClickEvent.CODEC` value, with no legacy field fallbacks.
 pub fn parse_click_event(
     e: &serde_json::Map<String, Value>,
 ) -> Result<Option<crate::text::ClickEvent>, sunrise_core::json_nbt::JsonNbtError> {
-    parse_click_event_origin(e, Origin::Remote)
+    parse_click_event_origin(e, Origin::Remote, false)
 }
 fn parse_click_event_origin(
     e: &serde_json::Map<String, Value>,
     origin: Origin,
+    legacy_fields: bool,
 ) -> Result<Option<crate::text::ClickEvent>, sunrise_core::json_nbt::JsonNbtError> {
     use crate::text::ClickEvent;
     use sunrise_core::json_nbt::json_to_tag;
     let text = |k: &str| e.get(k).and_then(Value::as_str).map(str::to_owned);
-    let legacy = || text("value");
+    // Rendering also reads pre-DataFixer chat and SNBT. The current codec does not.
+    let legacy = || legacy_fields.then(|| text("value")).flatten();
     let event = match e.get("action").and_then(Value::as_str) {
         Some("open_file") if origin == Origin::Local => text("path").map(ClickEvent::OpenFile),
         Some("open_url") => text("url")
@@ -65,11 +58,12 @@ fn parse_click_event_origin(
         Some("change_page") => e
             .get("page")
             .and_then(Value::as_i64)
-            .or_else(|| e.get("value").and_then(Value::as_i64))
             .or_else(|| {
-                e.get("value")
-                    .and_then(Value::as_str)
-                    .and_then(|s| s.parse().ok())
+                if !legacy_fields {
+                    return None;
+                }
+                let value = e.get("value")?;
+                value.as_i64().or_else(|| value.as_str()?.parse().ok())
             })
             .and_then(|p| i32::try_from(p).ok())
             .filter(|p| origin == Origin::Local || *p >= 1)
@@ -162,10 +156,11 @@ fn object_style<'a>(
     o: &'a serde_json::Map<String, Value>,
     child: &mut dyn FnMut(&'a Value) -> Text,
     origin: Origin,
+    decoded_clicks: Option<&[crate::text::ClickEvent]>,
 ) -> Style {
     let mut style = Style::default();
     if let Some(c) = o.get("color").and_then(Value::as_str) {
-        style.color = named_color(c).or_else(|| hex_color(c));
+        style.color = parse_color(c);
     }
     style.shadow_color = o.get("shadow_color").and_then(shadow_color);
     style.bold = style_flag(o.get("bold"));
@@ -176,8 +171,14 @@ fn object_style<'a>(
     style.font = o.get("font").and_then(crate::text::font_id);
     // ClickEvent.CODEC: the actions a chat line acts on here. A component
     // from a server never opens a file.
-    if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
-        style.click = parse_click_event_origin(e, origin).ok().flatten();
+    if let Some(clicks) = decoded_clicks {
+        style.click = o
+            .get("click_event")
+            .and_then(Value::as_u64)
+            .and_then(|index| clicks.get(index as usize))
+            .cloned();
+    } else if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
+        style.click = parse_click_event_origin(e, origin, true).ok().flatten();
     }
     // HoverEvent.ShowText, ShowItem and ShowEntity.
     if let Some(e) = style_event_object(o, "hover_event", "hoverEvent") {
@@ -216,8 +217,8 @@ pub(crate) fn hex_color(c: &str) -> Option<u32> {
 }
 
 /// Whether `c` is a style `color` (`TextColor.parseColor`): a named colour or `#` and hex.
-pub fn is_color(c: &str) -> bool {
-    named_color(c).is_some() || hex_color(c).is_some()
+pub fn parse_color(c: &str) -> Option<u32> {
+    named_color(c).or_else(|| hex_color(c))
 }
 
 /// `Style.shadow_color`: a packed ARGB int or normalized RGBA array.
@@ -259,6 +260,22 @@ pub fn to_text_with(
         Sourced(true, Origin::Remote),
         &|_| Origin::Remote,
         None,
+        None,
+    )
+    .unwrap_or_default()
+}
+
+/// Project an already checked network component. Its `click_event` fields are
+/// indices into `clicks`, so opaque NBT never passes through the JSON renderer.
+pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -> Text {
+    build(
+        v,
+        &mut |s| Text::literal(s),
+        &mut |_| None,
+        Sourced(true, Origin::Remote),
+        &|_| Origin::Remote,
+        None,
+        Some(clicks),
     )
     .unwrap_or_default()
 }
@@ -296,6 +313,7 @@ fn build_source(
         Sourced(false, Origin::Remote),
         origin,
         language,
+        None,
     )
 }
 
@@ -597,6 +615,7 @@ fn build(
     sourced: Sourced,
     origin: &dyn Fn(&Value) -> Origin,
     language: Option<&crate::lang::Language>,
+    decoded_clicks: Option<&[crate::text::ClickEvent]>,
 ) -> Option<Text> {
     enum Content<'a> {
         Decode(Option<Text>),
@@ -657,7 +676,8 @@ fn build(
                 let Value::Object(o) = value else {
                     unreachable!()
                 };
-                let style = object_style(o, &mut |v| done.take_text(v), origin(value));
+                let style =
+                    object_style(o, &mut |v| done.take_text(v), origin(value), decoded_clicks);
                 let overridden = if hover { None } else { contents(o) };
                 let needs_content = overridden.is_none();
                 let translation = o.get("translate").and_then(Value::as_str).filter(|_| {
@@ -798,6 +818,7 @@ fn build(
                     piece = Piece::new(text, language.is_some());
                 }
                 if mode.0
+                    && decoded_clicks.is_none()
                     && (o.contains_key("object")
                         || o.contains_key("player")
                         || o.contains_key("sprite"))
@@ -921,7 +942,7 @@ pub fn inline_object_fields(
         Some("player") | None if object.contains_key("player") => {
             Some(InlineObjectFields::Player {
                 profile: object.get("player")?,
-                hat: object.get("hat").and_then(Value::as_bool).unwrap_or(true),
+                hat: style_flag(object.get("hat")).unwrap_or(true),
             })
         }
         Some("atlas") | None if object.contains_key("sprite") => Some(InlineObjectFields::Atlas {
@@ -1390,6 +1411,17 @@ mod tests {
             to_text(&gui, &mut |_| Text::empty()).plain(),
             "[hud/heart/full@gui]"
         );
+    }
+
+    #[test]
+    fn snbt_player_object_preserves_false_hat() {
+        let (component, _) =
+            parse_snbt(r#"{object:"player",player:{name:"Steve"},hat:false}"#).unwrap();
+        let text = to_text(&component, &mut |_| Text::empty());
+        assert!(matches!(
+            &text.rendered.spans[0].style.inline_object,
+            Some(InlineObject::Player { hat: false, .. })
+        ));
     }
 
     #[test]

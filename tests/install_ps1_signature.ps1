@@ -38,9 +38,6 @@ $VerifySha = (Get-FileHash -Algorithm SHA256 -LiteralPath $VerifyBin).Hash.ToLow
 
 $W = Join-Path ([IO.Path]::GetTempPath()) ("sunrise-ps1-test-" + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path $W | Out-Null
-# install.ps1 honours the tests' pin overrides only for a -Dir inside this root.
-$env:SUNRISE_INSTALL_TEST_ROOT = $W
-$env:SUNRISE_INSTALL_TEST_VERIFIER_VERSION = "test"
 # The installer always picks the x64 archive, the one these releases hold, whatever this machine is.
 $env:PROCESSOR_ARCHITECTURE = "AMD64"
 $env:PROCESSOR_ARCHITEW6432 = $null
@@ -58,11 +55,17 @@ public static class FakeEnvironment {
 }
 "@
 
-# The fakes: the API answers with the case's release, any download with the case's file of that name.
+# The fakes: the API answers with the case's release, the verifier only at its pinned release's address (the
+# case's VerifierVersion), any other download with the case's file of that name.
 function Invoke-RestMethod { param($Uri, $Headers) $global:SunriseTestRel.Release }
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing)
-    $Source = Join-Path $global:SunriseTestRel.Files ($Uri -split "/")[-1]
+    $Name = ($Uri -split "/")[-1]
+    if ($Name.StartsWith("sunrise-verify-") -and
+        $Uri -cne "https://github.com/sunrise-org/sunrise/releases/download/verifier%40$($global:SunriseTestRel.VerifierVersion)/$Name") {
+        throw "404 $Uri"
+    }
+    $Source = Join-Path $global:SunriseTestRel.Files $Name
     if (-not (Test-Path -LiteralPath $Source)) { throw "404 $Uri" }
     Copy-Item -LiteralPath $Source -Destination $OutFile
 }
@@ -97,7 +100,6 @@ function New-Release([string]$Dir, [string]$Tag, [string]$Also = "") {
     Write-Ascii (Join-Path $Dir "files\SHA256SUMS.sig") (New-SignatureLine $Dir $Tag)
     if ($Also) { Write-Ascii (Join-Path $Dir "files\SHA256SUMS.v2.sig") (New-SignatureLine $Dir $Also) }
     Set-Release $Dir $Tag $true (Get-Title $Tag $Also)
-    Set-Installer $Dir
 }
 $script:Keys = @{}
 
@@ -118,20 +120,36 @@ function Set-Release([string]$Dir, [string]$Tag, [bool]$Sums, [string]$Title = $
 }
 $script:Releases = @{}
 
-# install.ps1 with the fake environment: the user's PATH is never written.
-function Set-Installer([string]$Dir) {
+# Replaces the one line of Text that Pattern matches with Line, and fails unless exactly one does.
+function Set-OneLine([string]$Text, [string]$Pattern, [string]$Line) {
+    $Found = [regex]::Matches($Text, $Pattern).Count
+    if ($Found -ne 1) { throw "install.ps1 has $Found lines matching $Pattern, expected 1" }
+    [regex]::Replace($Text, $Pattern, $Line.Replace('$', '$$'))
+}
+
+# install.ps1 as published but for two things: the user's PATH is never written, and its pin block pins Pin as
+# verifier@Version for every platform.
+function Set-Installer([string]$Dir, [string]$Version, [string]$Pin) {
     $Text = [IO.File]::ReadAllText($Installer)
     $Patched = $Text -replace '\[Environment\]::', '[FakeEnvironment]::'
     if ($Patched.Contains("[Environment]::")) { throw "could not patch install.ps1" }
+    $Patched = Set-OneLine $Patched '(?m)^\$VerifierVersion = [^\r\n]*' "`$VerifierVersion = '$Version'"
+    $Rows = [regex]::Matches($Patched, "(?m)^    '[a-z0-9_-]+' = '[^'\r\n]*'").Count
+    if ($Rows -ne 6) { throw "install.ps1 has $Rows pin rows, expected 6" }
+    $Patched = [regex]::Replace($Patched, "(?m)^(    '[a-z0-9_-]+' = )'[^'\r\n]*'", "`$1'$Pin'")
     Write-Ascii (Join-Path $Dir "install.ps1") $Patched
 }
 
 # Runs the case's install.ps1; returns @{ Ok; Out }. The verifier is the test build, which trusts the case's throwaway
-# key (SUNRISE_VERIFY_TEST_KEY, or Key); Pin replaces its pin.
-function Invoke-Case([string]$Dir, [hashtable]$Arguments = @{}, [string]$Key = "", [string]$Pin = $VerifySha) {
-    $global:SunriseTestRel = [pscustomobject]@{ Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files" }
+# key (SUNRISE_VERIFY_TEST_KEY, or Key); Pin and VerifierVersion replace its pin. The fake serves the verifier only
+# from release Served (by default the pinned one).
+function Invoke-Case([string]$Dir, [hashtable]$Arguments = @{}, [string]$Key = "", [string]$Pin = $VerifySha,
+                     [string]$VerifierVersion = "test", [string]$Served = $VerifierVersion) {
+    Set-Installer $Dir $VerifierVersion $Pin
+    $global:SunriseTestRel = [pscustomobject]@{
+        Release = $script:Releases[$Dir]; Files = Join-Path $Dir "files"; VerifierVersion = $Served
+    }
     $env:SUNRISE_VERIFY_TEST_KEY = if ($Key) { $Key } else { $script:Keys[$Dir] }
-    $env:SUNRISE_INSTALL_TEST_VERIFIER_SHA256 = $Pin
     $Ok = $true
     $Out = try {
         $Arguments.Dir = Join-Path $Dir "inst"
@@ -195,8 +213,12 @@ try {
 
     # T3. The .sig missing from the release.
     $d = Join-Path $W "nosig"; New-Release $d "v1.2.3"; Remove-Item (Join-Path $d "files\SHA256SUMS.sig"); Set-Release $d "v1.2.3" $true
-    $r = Invoke-Case $d $v; Test-Case "T3 missing SHA256SUMS.sig refused" $false "has no signed checksums (SHA256SUMS.sig)" $r
+    $r = Invoke-Case $d $v; Test-Case "T3 missing SHA256SUMS.sig refused" $false "has no SHA256SUMS.sig (the signature" $r
     Test-That "missing .sig was installed" (-not (Test-Path (Join-Path $d "inst\current")))
+    # T3b. SHA256SUMS missing, its signature present: named as the missing list, not a missing signature.
+    $d = Join-Path $W "nosums"; New-Release $d "v1.2.3"; Remove-Item (Join-Path $d "files\SHA256SUMS"); Set-Release $d "v1.2.3" $true
+    $r = Invoke-Case $d $v; Test-Case "T3b missing SHA256SUMS refused" $false "has no SHA256SUMS (its checksum list)" $r
+    Test-That "missing SHA256SUMS was installed" (-not (Test-Path (Join-Path $d "inst\current")))
 
     # T4. The verifier swapped for another binary: its hash isn't the pinned one, so it never runs.
     $d = Join-Path $W "swap"; New-Release $d "v1.2.3"
@@ -211,18 +233,24 @@ try {
     $r = Invoke-Case $d $v; Test-Case "T5 verifier download failure refused" $false "Could not download sunrise-verify" $r
     Test-That "no verifier download was installed" (-not (Test-Path (Join-Path $d "inst\current")))
 
-    # The placeholder pin refuses, and the test overrides apply only to a -Dir inside SUNRISE_INSTALL_TEST_ROOT.
+    # T6. A pinned verifier that can't start (not a program), right after another program exited 0: refused, never
+    # taken as a pass from that earlier exit code.
+    $d = Join-Path $W "nostart"; New-Release $d "v1.2.3"
+    Write-Ascii (Join-Path $d "files\$VerifierAsset") "not a program"
+    $NoStart = Get-Sha (Join-Path $d "files\$VerifierAsset")
+    cmd /c "exit 0"
+    Test-That "a program before T6 left exit code 0" ($LASTEXITCODE -eq 0)
+    $r = Invoke-Case $d $v "" $NoStart; Test-Case "T6 verifier that can't start refused" $false "The release check failed (SHA256SUMS.sig for v1.2.3)" $r
+    Test-That "a verifier that can't start was installed" (-not (Test-Path (Join-Path $d "inst\current")))
+
+    # The placeholder pin refuses.
     $d = Join-Path $W "unpinned"; New-Release $d "v1.2.3"
-    $Text = [IO.File]::ReadAllText((Join-Path $d "install.ps1")) -replace "(?m)^\$VerifierVersion = .*$", "`$VerifierVersion = 'unpinned'"
-    Write-Ascii (Join-Path $d "install.ps1") $Text
-    $env:SUNRISE_INSTALL_TEST_VERIFIER_VERSION = $null
-    $r = Invoke-Case $d $v; Test-Case "unpinned script refused" $false "has no pinned sunrise-verify" $r
-    $env:SUNRISE_INSTALL_TEST_VERIFIER_VERSION = "test"
-    $d = Join-Path $W "outside"; New-Release $d "v1.2.3"
-    $env:SUNRISE_INSTALL_TEST_ROOT = Join-Path $W "elsewhere"
-    $r = Invoke-Case $d $v; Test-Case "a pin override outside the test root is ignored" $false "" $r
-    Test-That "override outside the root was honoured" (-not $r.Out.Contains("Release signature OK"))
-    $env:SUNRISE_INSTALL_TEST_ROOT = $W
+    $r = Invoke-Case $d $v "" $VerifySha "unpinned"; Test-Case "unpinned script refused" $false "has no pinned sunrise-verify" $r
+    Test-That "unpinned script was installed" (-not (Test-Path (Join-Path $d "inst\current")))
+    # A verifier asked for from another release than the pinned one is not served (the fake checks the address).
+    $d = Join-Path $W "elsewhere"; New-Release $d "v1.2.3"
+    $r = Invoke-Case $d $v "" $VerifySha "9.9.9" "test"
+    Test-Case "verifier from another release than the pinned one not fetched" $false "Could not download sunrise-verify 9.9.9" $r
 
     # Nightly and replay cases from before.
     # N1. A Nightly with only the channel's signature (published before v2): refused, never the channel's signature.
@@ -245,7 +273,11 @@ try {
 
     # N5. A release published before signing (no SHA256SUMS): refused now; the escape hatch is the flag above.
     $d = Join-Path $W "legacy"; New-Release $d "v1.2.3"; Set-Release $d "v1.2.3" $false
-    $r = Invoke-Case $d $v; Test-Case "release without signed checksums refused" $false "has no signed checksums" $r
+    $r = Invoke-Case $d $v; Test-Case "release without signed checksums refused" $false "has no SHA256SUMS" $r
+
+    # N6. A Dev build is refused by name: servers don't install one.
+    $d = Join-Path $W "dev"; New-Release $d "dev-2026-11-21-0c02067"
+    $r = Invoke-Case $d @{ Version = "dev-2026-11-21-0c02067" }; Test-Case "a Dev build refused by name" $false "is a Dev build" $r
 } finally {
     Remove-Item -Recurse -Force $W -ErrorAction SilentlyContinue
 }

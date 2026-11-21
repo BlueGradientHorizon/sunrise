@@ -142,12 +142,16 @@ only the workflow token (`actions: read`, `issues: write`). What the Team and th
 GitHub reruns a failed job only after its whole run has ended: while another job of the run (often `lint`) is still
 going, "Re-run failed jobs" is refused ("already running"). Wait for the run to finish, then rerun the failed job.
 
+For daily parity, rerun the entire workflow ("Re-run all jobs"), or dispatch a fresh daily for the same commit.
+The merged verdict reads only the plan and share artifacts from the current attempt; an earlier attempt's
+artifacts cannot fill a gap.
+
 ## Rust version
 
-CI, the launcher's native-mod toolchain and the wasm mods' toolchain use one Rust release, written once in
+CI and the launcher's native-mod toolchain use one Rust release, written once in
 `tools/ci/rust-version`: the prebuilt game must be built by the compiler that builds native mods against it, and a
 floating `stable` changed the lints and the build layout under running jobs. `tools/ci/rustup_install.sh` installs it
-and makes it each job's toolchain; `https://github.com/sunrise-org/sunrise-launcher/blob/main/src/rust_toolchain.rs` and `crates/cargo-sunrise-mod/src/wasm.rs` read it
+and makes it each job's toolchain; `https://github.com/sunrise-org/sunrise-launcher/blob/main/src/rust_toolchain.rs` reads it
 at compile time; `tests/test_rust_pin.py` fails on a workflow that names a channel or a release of its own.
 
 To move to a new release, in one pull request:

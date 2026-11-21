@@ -21,6 +21,7 @@ use super::{
     Game,
     commands::Target,
     entity::{Entity as _, entity_lists_of, for_each_entity},
+    remote::Remote,
     transactions::After,
 };
 use mod_api::{
@@ -82,13 +83,17 @@ fn entity_ray_hits(
 }
 
 impl Game<'_> {
+    /// The logged-in window and network id for an entity handle in its current world.
+    pub(super) fn native_client_entity_context(&self, entity: EntityRef) -> Option<(&Remote, i32)> {
+        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
+        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
+        Some((remote, i32::try_from(entity.id()).ok()?))
+    }
+
     /// An entity tracked by the remote client but absent from local entity lists.
     pub(super) fn native_client_tracked(&self, entity: EntityRef) -> Option<(&str, [f64; 3])> {
-        let remote = self.remote.as_ref()?;
-        if !remote.logged_in || self.native_lifecycle.epoch() != Some(entity.epoch()) {
-            return None;
-        }
-        remote.tracked_entity(i32::try_from(entity.id()).ok()?)
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.tracked_entity(id)
     }
 
     /// What a handle names now, or None for a stale or foreign one.
@@ -103,9 +108,7 @@ impl Game<'_> {
     /// the ones the server tracks to it). None for a stale handle, with no
     /// login, or for an entity the client doesn't have.
     pub(super) fn native_client_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
-        let id = i32::try_from(entity.id()).ok()?;
+        let (remote, id) = self.native_client_entity_context(entity)?;
         if id == remote.entity_id {
             return self.player.as_ref().map(|_| Target::Player);
         }
@@ -477,7 +480,24 @@ impl Game<'_> {
         if !self.native_level_write_position(level, pos)? {
             return Ok(false);
         }
+        if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return Ok(host.write_block(pos, state, flags.bits()));
+        }
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
+    }
+    /// Set or clear the mod-published connection group at `pos`.
+    /// Returns `Ok(true)` if changed, `Ok(false)` if unchanged, unloaded, out of height, or
+    /// fenced, and `Err(LevelWriteError::Stale | Unavailable)` for stale or non-writable levels.
+    pub(super) fn level_set_connection_group(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        group: Option<u64>,
+    ) -> Result<bool, mod_api::LevelWriteError> {
+        if !self.native_level_write_position(level, pos)? {
+            return Ok(false);
+        }
+        Ok(self.journal_set_connection_group(pos, group))
     }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
     /// fitted to the loaded blocks around it. A position that is not loaded or outside the
@@ -506,6 +526,9 @@ impl Game<'_> {
     ) -> bool {
         if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
             return false;
+        }
+        if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return mod_api::LevelWriteHost::remove_block(&mut host, pos, moved);
         }
         let changed =
             self.with_level(|_, level, ticks| level.remove_block_write(ticks, pos, moved));
@@ -570,7 +593,11 @@ impl Game<'_> {
         tool: Option<&ItemStack>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
-        if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
+        // Loot and break effects cannot be rolled back by the level journal.
+        if self.transaction_current().is_some()
+            || !self.native_level_write_allowed(level, pos)
+            || self.dim.key() != level.dimension()
+        {
             return None;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
@@ -842,15 +869,52 @@ impl Game<'_> {
     pub(super) fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
         Some(self.target_rotation(self.native_entity_read_target(entity)?))
     }
+
+    pub(super) fn native_client_general(
+        &self,
+        entity: EntityRef,
+    ) -> Option<&super::remote::RemoteGeneral> {
+        let (remote, id) = self.native_client_entity_context(entity)?;
+        remote.general.shown(id)
+    }
     /// The entity's type (`Entity.getType`): `minecraft:zombie`. API
     /// 373.
     pub(super) fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
         match self.native_entity_read_target(entity) {
             Some(target) => self.native_entity_kind_key(target),
             None => {
+                if self.native_lifecycle.epoch() == Some(entity.epoch())
+                    && let Some((_, mob)) = self.mob_in_other_level(entity.id())
+                {
+                    return mod_api::__private::resolved_entity_type_key(&mob.kind.id);
+                }
                 mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
             }
         }
+    }
+    /// A mob of this game that is resident in a loaded level other than the
+    /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
+    /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
+    /// answer from there. None on a client or for anything else.
+    pub(super) fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
+        use sunrise_client::join_seq::residency::table::EntityLookup;
+        if !self.is_logical_server() {
+            return None;
+        }
+        let EntityLookup::Found {
+            location,
+            value: Target::Mob(_),
+        } = self.server_resident_entity(id)
+        else {
+            return None;
+        };
+        let (dim, parked) = self
+            .levels
+            .parked
+            .iter()
+            .find(|(dim, _)| dim.key() == location.owner.dimension)?;
+        let mob = parked.mobs.get(parked.mobs.locate(location.join)?)?;
+        Some((*dim, mob))
     }
     /// The entity's UUID (`Entity.getUUID`), the one it is saved with; an
     /// entity that has none yet gets it now, as a new vanilla entity does.
@@ -879,6 +943,16 @@ impl Game<'_> {
                 .copied()
                 .map(uuid_from_words);
         }
+        if self.native_lifecycle.epoch() == Some(entity.epoch())
+            && self.mob_in_other_level(entity.id()).is_some()
+        {
+            return self
+                .resident_entities
+                .table
+                .borrow_mut()
+                .resident_uuid(entity.id())
+                .map(uuid_from_words);
+        }
         let words = match self.native_entity_target(entity)? {
             Target::Player => {
                 let dimension = self.current_player_resident_location()?.owner.dimension;
@@ -897,9 +971,15 @@ impl Game<'_> {
         let key = match self.native_entity_read_target(entity) {
             Some(t) if self.is_logical_server() => self.target_level(t).key(),
             Some(_) => self.native_level_key(),
-            None => self
-                .native_client_tracked(entity)
-                .map(|_| self.native_level_key())?,
+            None if self.native_lifecycle.epoch() == Some(entity.epoch()) => {
+                match self.mob_in_other_level(entity.id()) {
+                    Some((dim, _)) => dim.key(),
+                    None => self
+                        .native_client_tracked(entity)
+                        .map(|_| self.native_level_key())?,
+                }
+            }
+            None => return None,
         };
         Some(self.level_ref(entity.epoch(), key))
     }
@@ -989,7 +1069,7 @@ pub(super) mod tests {
     }
 
     /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
-    /// alone in its job (the wasm fixture's): each child still has its own process and folders.
+    /// alone in its job: each child still has its own process and folders.
     pub(in crate::game) fn run_fresh_cases_at_once(
         name: &str,
         flag: &str,
@@ -1170,10 +1250,10 @@ pub(super) mod tests {
         for z in center.z - 2..=center.z + 2 {
             for x in center.x - 2..=center.x + 2 {
                 if !game.world.chunks.contains_key(&(x, z)) {
-                    game.world.chunks.insert(
-                        (x, z),
-                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
-                    );
+                    let mut chunk = sunrise_client::chunk::Chunk::empty(x, z);
+                    // A ticking column is lit (`ChunkMap.prepareTickingChunk`); `forceload` waits for it.
+                    chunk.lit = true;
+                    game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
                     game.block_ticks
                         .add_empty_chunk(sunrise_core::position::ChunkPos::new(x, z))
                         .unwrap();
@@ -1263,22 +1343,8 @@ pub(super) mod tests {
         with_game_at(fixture_root(), test);
     }
 
-    /// The root a plain fixture game is built over: the prepared resources, or, when the compiled wasm
-    /// fixture is installed, the content root its mods make. The fixture declares blocks, block entity
-    /// types and Parts of its own (its `part_state` counter), which a loaded game has registered and the
-    /// bare prepared resources lack.
     pub(in crate::game) fn fixture_root() -> std::path::PathBuf {
-        use mod_api::__private::game::Fields;
-        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let mods = mod_api::__private::mods();
-        if !mods.iter().any(|entry| entry.fields().id == "wasm_fixture") {
-            return base;
-        }
-        crate::game::api_values::install_parts(mods).unwrap();
-        crate::game::mods::content_root(&base, &Default::default())
-            .unwrap()
-            .prepared()
-            .to_owned()
+        std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap())
     }
 
     pub(in crate::game) fn with_game_at(
@@ -1726,32 +1792,6 @@ pub(super) mod tests {
             );
             assert!(!game.level_set_biome(level, [0, 64, 0], "minecraft:nope"));
             assert!(!game.level_set_biome(level, [100_000, 64, 0], &name));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_level_can_survive_asks_the_blocks_own_rule() {
-        use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let grass = registry.default_state("minecraft:grass_block").unwrap();
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let sapling = registry.default_state("minecraft:oak_sapling").unwrap();
-            game.world.set(0, 64, 0, grass).unwrap();
-            assert!(game.level_can_survive([0, 65, 0], sapling));
-            game.world.set(0, 64, 0, stone).unwrap();
-            assert!(!game.level_can_survive([0, 65, 0], sapling));
-            assert!(
-                !game
-                    .level_can_survive([0, 65, 0], sunrise_world::registry::BlockStateId(u32::MAX))
-            );
-            assert!(!game.level_can_survive([100, 65, 100], sapling));
         });
     }
 

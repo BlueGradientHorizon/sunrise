@@ -341,16 +341,36 @@ impl Settings {
             .and_then(|mode| self.video_modes.iter().position(|m| *m == mode))
             .map_or(-1, |i| i as i32)
     }
-    /// Loads only the crates' settings stores (`sunrise_hooks::settings`) from the files next to
-    /// `path`, into the local-instance index [`sunrise_hooks::seat`] reports.
-    pub fn load_stores(path: &Path) {
-        let dir = path.parent();
-        sunrise_hooks::settings::engine::load(&mut |file| fs::read_to_string(dir?.join(file)).ok());
-    }
     pub fn load(path: &Path) -> Self {
+        let (extras_text, keep_extras) = path
+            .parent()
+            .map_or((String::new(), false), crate::extras::Extras::read_text);
+        let graphics_text = path.parent().and_then(|dir| {
+            sunrise_hooks::settings::engine::read(&dir.join(crate::graphics::FILE))
+                .ok()
+                .flatten()
+                .map(|read| read.text)
+        });
+        // The settings stores of the crates above the engine: their lines of `sunrise-extras.txt`
+        // and `sunrise-graphics.txt`, or of their own files (docs/layers.md, "Platform
+        // registries"). First, as the graphics settings below may be saved again with them.
+        sunrise_hooks::settings::engine::load(&mut |file| match path.parent() {
+            _ if file == crate::extras::FILE => Some(extras_text.clone()),
+            _ if file == crate::graphics::FILE => graphics_text.clone(),
+            Some(dir) => sunrise_hooks::settings::engine::read(&dir.join(file))
+                .ok()
+                .flatten()
+                .map(|read| read.text),
+            None => None,
+        });
         let mut sunrise = path
             .parent()
-            .map(crate::graphics::Graphics::load)
+            .map(|dir| {
+                crate::graphics::Graphics::load_text(
+                    dir,
+                    graphics_text.as_deref().unwrap_or_default(),
+                )
+            })
             .unwrap_or_default();
         crate::mipmap::set_dither_cutouts(sunrise.dither_cutout_mips);
         if let Some(dir) = path.parent() {
@@ -367,20 +387,7 @@ impl Settings {
             .parent()
             .map(crate::gamepad::PadSettings::load)
             .unwrap_or_default();
-        let (extras_text, keep_extras) = path
-            .parent()
-            .map_or((String::new(), false), crate::extras::Extras::read_text);
         let extras = crate::extras::Extras::from_text(&extras_text, keep_extras);
-        // The settings stores of the crates above the engine: their lines of this file, or of
-        // their own (docs/layers.md, "Platform registries").
-        sunrise_hooks::settings::engine::load(&mut |file| match path.parent() {
-            _ if file == crate::extras::FILE => Some(extras_text.clone()),
-            Some(dir) => sunrise_hooks::settings::engine::read(&dir.join(file))
-                .ok()
-                .flatten()
-                .map(|read| read.text),
-            None => None,
-        });
         // The enabled mods are the game folder's, shared by its players (`--player-dir`).
         let mods = path
             .parent()
@@ -701,11 +708,29 @@ impl Settings {
             self.sunrise.save(dir);
             self.controller.save(dir);
             self.extras.save(dir);
-            for (file, e) in sunrise_hooks::settings::engine::save_own(dir, &[crate::extras::FILE])
-            {
+            for (file, e) in sunrise_hooks::settings::engine::save_own(
+                dir,
+                &[crate::extras::FILE, crate::graphics::FILE],
+            ) {
                 log::warn!("Sunrise: {file} is not saved: {e}");
             }
-            self.mods.save(&crate::logging::shared_dir(dir));
+            if let Err(e) = self.mods.save(&crate::logging::shared_dir(dir)) {
+                log::warn!("Sunrise: {} is not saved: {e}", crate::mod_list::FILE);
+            }
+        }
+    }
+    /// Sets the picked shader pack, for the pack list and the toggle key alike: an empty pick
+    /// turns shaders off and keeps the last non-empty pick, a non-empty pick (or a switch to
+    /// another pack) becomes the last one too. The toggle key resumes exactly this last pick.
+    pub fn set_shader_pick(&mut self, new_key: &str) {
+        if new_key.is_empty() {
+            if !self.sunrise.shader_pack.is_empty() {
+                self.extras.last_shader_pack = self.sunrise.shader_pack.clone();
+            }
+            self.sunrise.shader_pack.clear();
+        } else {
+            self.sunrise.shader_pack = new_key.to_owned();
+            self.extras.last_shader_pack = new_key.to_owned();
         }
     }
     /// Volume of a sound source (master excluded).

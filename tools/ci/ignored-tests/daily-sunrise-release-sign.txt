@@ -6,7 +6,5 @@ sunrise-release-sign cli::keygen_writes_the_secret_to_a_pipe_and_the_public_key_
 sunrise-release-sign cli::publishing_never_bypasses_signatures_for_fork_or_unknown_repositories test:it daily child-process
 sunrise-release-sign cli::the_openssl_script_signs_what_the_launcher_checks test:it daily child-process
 sunrise-release-sign cli::unsigned_releases_go_out_only_until_a_key_is_listed test:it daily child-process
-sunrise-release-sign install::install_sh_installs_only_what_the_verifier_checked test:it daily child-process
-sunrise-release-sign install_ps1_installs_only_what_the_verifier_checked test:install_ps1 daily windows # #![cfg(windows)]; starts processes
 sunrise-release-sign native_build::a_key_launchers_would_refuse_or_a_misnamed_archive_signs_nothing test:it daily child-process
 sunrise-release-sign native_build::the_workflows_signature_is_what_the_launcher_checks test:it daily child-process

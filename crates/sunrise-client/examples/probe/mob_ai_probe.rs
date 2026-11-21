@@ -1204,6 +1204,7 @@ pub fn main() -> sunrise_client::Result<()> {
             };
             ($snapshot:expr, $grid:expr) => {
                 MobWorld {
+                    side: sunrise_client::motion::dry_side(),
                     mob_maps: sunrise_client::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
                     goal_host: None,
                     teams: Default::default(),
@@ -1227,6 +1228,7 @@ pub fn main() -> sunrise_client::Result<()> {
                     others: $snapshot,
                     live_mobs: None,
                     dragon: None,
+                    armor_stands: &[],
                     leash_boats: &[],
                     who_lookup: None,
                     others_grid: $grid,

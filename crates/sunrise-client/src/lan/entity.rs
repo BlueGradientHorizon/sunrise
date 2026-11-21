@@ -82,6 +82,9 @@ pub struct EntityState {
     /// `Entity.syncPosition`: a living entity bounced this tick; where it is
     /// becomes a step of the next move sent (`SteppedInterpolationTracker`).
     pub sync_position: bool,
+    /// `Entity.syncVelocity` (`markHurt`): its motion goes to every client
+    /// tracking it once its changes are sent, due or not.
+    pub sync_velocity: bool,
     /// `LivingEntity.createInterpolationHandler`: a `SteppedInterpolationTracker`
     /// on the server, so its moves are sent as stepped paths. Every other entity
     /// has a no-op tracker and sends a linear one.
@@ -137,6 +140,7 @@ impl EntityState {
         self.horizontal_collision = false;
         self.needs_sync = false;
         self.sync_position = false;
+        self.sync_velocity = false;
         self.stepped = false;
         self.idle = false;
         self.bare = false;
@@ -537,8 +541,20 @@ impl ServerEntity {
     /// Changes since the last update (ServerEntity.sendChanges): movement and
     /// rotation every update interval (positions at least every 60 ticks, a
     /// full position sync every 400 or when the entity lands or leaves the
-    /// ground), velocity for types that track it, changed data at once.
+    /// ground), velocity for types that track it, changed data at once; then
+    /// the motion of an entity marked hurt (`Entity.syncVelocity`).
     fn send_changes(&mut self, e: &EntityState, riding: &Riding, out: &mut Vec<play::Clientbound>) {
+        self.send_update(e, riding, out);
+        if e.sync_velocity {
+            out.push(play::Clientbound::SetEntityMotion(SetEntityMotion {
+                id: e.id,
+                velocity: e.velocity,
+            }));
+        }
+    }
+
+    /// `ServerEntity.sendChanges` up to its `tickCount++`: see [`Self::send_changes`].
+    fn send_update(&mut self, e: &EntityState, riding: &Riding, out: &mut Vec<play::Clientbound>) {
         if let Some(steps) = &e.minecart_steps {
             self.minecart_steps.extend_from_slice(steps);
         } else {
@@ -991,8 +1007,6 @@ pub struct Viewer<'a> {
     pub tracker: &'a mut Tracker,
     /// What the tick sends it, in order.
     pub out: &'a mut Vec<super::Body>,
-    /// Where the entities it stops tracking were last sent, when asked (the prediction's replay).
-    pub gone: Option<&'a mut Vec<[f64; 3]>>,
 }
 
 /// One entity as this tick's range checks read it: where it is
@@ -1305,6 +1319,7 @@ impl Entities {
                 let e = now.get(&j.id)?;
                 j.minecart_steps.clone_from(&e.minecart_steps);
                 j.needs_sync = e.needs_sync;
+                j.sync_velocity = e.sync_velocity;
                 Some((j.id, j))
             })
             .collect()
@@ -1566,10 +1581,7 @@ impl Entities {
                         let Tracker { seen, events, .. } = &mut *v.tracker;
                         seen.retain(|id, tracked| match states.get(id) {
                             Some(s) if s.seen == now && flags[s.index] & TRACKS != 0 => true,
-                            other => {
-                                if let (Some(gone), Some(s)) = (v.gone.as_deref_mut(), other) {
-                                    gone.push(s.base);
-                                }
+                            _ => {
                                 removed.push(*id);
                                 events.push(TrackEvent {
                                     start: false,
@@ -1885,6 +1897,7 @@ mod tests {
             horizontal_collision: false,
             needs_sync: false,
             sync_position: false,
+            sync_velocity: false,
             stepped: false,
             idle: false,
             bare: false,
@@ -1998,7 +2011,6 @@ mod tests {
                             chunks: &chunks,
                             tracker,
                             out,
-                            gone: None,
                         })
                         .collect();
                     level_side.tick(&refs, &Riding::default(), &mut viewers, |_| Some(5));
@@ -2157,6 +2169,26 @@ mod tests {
                 play::Clientbound::MoveEntityPos(_)
             ]
         ));
+    }
+
+    /// `Entity.markHurt` (lava's hurt of a snowball) sets `syncVelocity`:
+    /// `ServerEntity.sendChanges` sends the motion after its update, due or not.
+    #[test]
+    fn a_projectile_marked_hurt_sends_its_motion_after_its_update() {
+        let mut e = state(0.0);
+        e.kind = "minecraft:snowball".into();
+        let mut s = added(&e);
+        changes(&mut s, &e);
+        // Tick 1 of 10: nothing else is due.
+        e.velocity = [0.0, -0.03, 0.0];
+        e.sync_velocity = true;
+        let out = changes(&mut s, &e);
+        assert!(
+            matches!(&out[..], [play::Clientbound::SetEntityMotion(m)] if m.velocity == [0.0, -0.03, 0.0]),
+            "{out:?}"
+        );
+        e.sync_velocity = false;
+        assert!(changes(&mut s, &e).is_empty());
     }
 
     /// `ServerEntity.getRequiresPrecisePosition` is false for an item, so a
@@ -2558,8 +2590,6 @@ mod tests {
         moved: [bool; 2],
         spectators: [bool; 2],
         permissions: [u8; 2],
-        /// The first client's entities gone, where they were last sent.
-        gone: Vec<[f64; 3]>,
     }
 
     impl Clients {
@@ -2573,7 +2603,6 @@ mod tests {
                 moved: [false; 2],
                 spectators: [false; 2],
                 permissions: [0; 2],
-                gone: Vec::new(),
             }
         }
         fn tick(&mut self, level: &mut Entities, entities: &[&EntityState]) {
@@ -2596,7 +2625,6 @@ mod tests {
                     sources: None,
                     tracker: t0,
                     out: o0,
-                    gone: Some(&mut self.gone),
                 },
                 Viewer {
                     entity_id: 2,
@@ -2611,7 +2639,6 @@ mod tests {
                     sources: None,
                     tracker: t1,
                     out: o1,
-                    gone: None,
                 },
             ];
             level.tick(entities, &Riding::default(), &mut viewers, |_| Some(100));
@@ -2957,12 +2984,10 @@ mod tests {
         c.tick(&mut level, &[&me, &e]);
         assert!(!c.trackers[0].is_tracking(1) && c.trackers[1].is_tracking(1));
         assert!(c.trackers[0].is_tracking(7));
-        // Out of the zombie's 8 chunks: the client last had it where it started.
-        let start = e.position;
+        // Out of the zombie's 8 chunks.
         e.position[0] = 200.0;
         c.tick(&mut level, &[&me, &e]);
         assert!(!c.trackers[0].is_tracking(7));
-        assert_eq!(c.gone, [start]);
         let removed = body(play::Clientbound::RemoveEntities(play::RemoveEntities {
             ids: vec![7],
         }));

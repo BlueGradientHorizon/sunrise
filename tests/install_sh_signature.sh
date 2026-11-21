@@ -8,9 +8,9 @@
 # READS-BY: tests/it/install.rs in sunrise-release-sign (daily), tests/test_install_sh_signature.py (skips unless
 # SUNRISE_VERIFY_TEST_BIN is set), by hand: SUNRISE_VERIFY_TEST_BIN=target/debug/sunrise-verify bash tests/install_sh_signature.sh
 # ENDS-WHEN: it ends by itself; leaves nothing outside its own mktemp folder.
-# Needs OpenSSL 3 (to sign the throwaway release; install.sh itself uses none) and SUNRISE_VERIFY_TEST_BIN, a
-# sunrise-verify built with `--features test-key`; skips (exit 77) without them. curl is replaced by a fake that
-# serves local files, so nothing touches the network.
+# Needs OpenSSL 3 (to sign the throwaway release; install.sh runs with a PATH that has no openssl) and
+# SUNRISE_VERIFY_TEST_BIN, a sunrise-verify built with `--features test-key`; skips (exit 77) without them. curl is
+# replaced by a fake that serves local files, so nothing touches the network.
 set -u
 root=$(cd "$(dirname "$0")/.." && pwd)
 openssl version | grep -Eq '^OpenSSL [3-9]\.' || { echo "skip: OpenSSL 3 needed"; exit 77; }
@@ -30,13 +30,14 @@ check() {  # name, expected exit (0 or 1), output grep (may be empty), then the 
 # A fake release: an archive holding sunrise-server, signed for TAG with a throwaway key. A Nightly (TAG nightly)
 # is also signed for its own version ALSO (nightly-<date>-<commit>) in SHA256SUMS.v2.sig, titled as
 # nightly-build.yml titles it.
+# The archive and verifier are the Linux x86-64 ones unless ARCHIVE and VERIFIER name others (the macOS case).
 make_release() {  # dir tag [also]
-  local d=$1 tag=$2 also=${3:-}
+  local d=$1 tag=$2 also=${3:-} archive=${ARCHIVE:-sunrise-server-linux-x86_64.tar.gz}
   mkdir -p "$d/src/sunrise-server-x" "$d/files"
   printf '#!/bin/sh\necho fake\n' > "$d/src/sunrise-server-x/sunrise-server"; chmod +x "$d/src/sunrise-server-x/sunrise-server"
-  tar -czf "$d/files/sunrise-server-linux-x86_64.tar.gz" -C "$d/src" sunrise-server-x
-  cp "$VERIFY_BIN" "$d/files/sunrise-verify-linux-x86_64"
-  ALSO_FOR=$also EPHEMERAL=yes bash "$root/tools/ci/sign_release.sh" "$tag" "$d/files/sunrise-server-linux-x86_64.tar.gz" > /dev/null
+  tar -czf "$d/files/$archive" -C "$d/src" sunrise-server-x
+  cp "$VERIFY_BIN" "$d/files/${VERIFIER:-sunrise-verify-linux-x86_64}"
+  ALSO_FOR=$also EPHEMERAL=yes bash "$root/tools/ci/sign_release.sh" "$tag" "$d/files/$archive" > /dev/null
   json "$d" "$tag" yes "$(title "$tag" "$also")"
 }
 title() {  # tag also: the release's GitHub title
@@ -44,48 +45,72 @@ title() {  # tag also: the release's GitHub title
   else printf '%s' "$1"; fi
 }
 json() {  # dir tag with-sums [title]: GitHub's release JSON, as install.sh reads it
-  local d=$1 tag=$2 sums=$3 name=${4:-$2} sha
-  sha=$(sha256sum "$d/files/sunrise-server-linux-x86_64.tar.gz" | cut -d' ' -f1)
+  local d=$1 tag=$2 sums=$3 name=${4:-$2} archive=${ARCHIVE:-sunrise-server-linux-x86_64.tar.gz} sha
+  sha=$(sha256sum "$d/files/$archive" | cut -d' ' -f1)
   {
     printf '{\n  "tag_name": "%s",\n  "name": "%s",\n  "assets": [\n' "$tag" "$name"
-    printf '    {\n      "name": "sunrise-server-linux-x86_64.tar.gz",\n      "digest": "sha256:%s",\n      "browser_download_url": "https://dl.test/sunrise-server-linux-x86_64.tar.gz"\n    }' "$sha"
+    printf '    {\n      "name": "%s",\n      "digest": "sha256:%s",\n      "browser_download_url": "https://dl.test/%s"\n    }' "$archive" "$sha" "$archive"
     if [ "$sums" = yes ]; then for f in SHA256SUMS SHA256SUMS.sig SHA256SUMS.v2.sig; do
       [ -f "$d/files/$f" ] || continue
       printf ',\n    {\n      "name": "%s",\n      "browser_download_url": "https://dl.test/%s"\n    }' "$f" "$f"; done; fi
     printf '\n  ]\n}\n'
   } > "$d/release.json"
 }
-# The fake curl: the API address answers with release.json, any other address with the file of that name.
+# The fake curl: the API address answers with release.json, the verifier only at its pinned release's address
+# (the case's VER), any other address with the file of that name. Every address asked for goes to $REL/urls.
 mkdir "$W/fake"
 cat > "$W/fake/curl" <<'CURL'
 #!/bin/sh
 out=; url=
 while [ $# -gt 0 ]; do case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) url=$1; shift ;; esac; done
+echo "$url" >> "$REL/urls"
 case "$url" in
   https://api.github.com/*) src=$REL/release.json ;;
+  */sunrise-verify-*)
+    [ "${url%/*}" = "https://github.com/sunrise-org/sunrise/releases/download/verifier%40$WANT_VERIFIER" ] || exit 22
+    src=$REL/files/$(basename "$url") ;;
   *) src=$REL/files/$(basename "$url") ;;
 esac
 [ -f "$src" ] || exit 22
 if [ -n "$out" ]; then cp "$src" "$out"; else cat "$src"; fi
 CURL
 chmod +x "$W/fake/curl"
-# The fake uname: install.sh picks the Linux x86-64 archive, the one these releases hold, on any machine.
+# The fake uname: install.sh picks the Linux x86-64 archive, the one these releases hold, on any machine
+# (FAKE_OS and FAKE_ARCH name another).
 cat > "$W/fake/uname" <<'UNAME'
 #!/bin/sh
-case "$1" in -m) echo x86_64 ;; *) echo Linux ;; esac
+case "$1" in -m) echo "${FAKE_ARCH:-x86_64}" ;; *) echo "${FAKE_OS:-Linux}" ;; esac
 UNAME
 chmod +x "$W/fake/uname"
+# The system's programs without openssl: install.sh must need none.
+mkdir "$W/sys"
+for f in /usr/bin/* /bin/*; do
+  case "${f##*/}" in openssl|uname|curl) continue ;; esac
+  [ -e "$W/sys/${f##*/}" ] || ln -s "$f" "$W/sys/${f##*/}"
+done
+if PATH="$W/fake:$W/sys" command -v openssl > /dev/null; then echo "FAIL openssl is reachable from the installer's PATH"; fails=$((fails+1)); fi
 
-# Every case runs the real install.sh. The verifier is the test build, which trusts the case's throwaway key
-# (SUNRISE_VERIFY_TEST_KEY); its pin is replaced, as install.sh allows only for a --dir inside SUNRISE_INSTALL_TEST_ROOT.
+# Every case runs install.sh as published, but for its pin block: a copy pins the test build (or the case's PIN)
+# as verifier@VER (default test), for every platform, or only for FIXTURE_PIN_PLATFORM (e.g. macos_arm64) with every other
+# platform pinned to a digest nothing matches. The verifier trusts the case's throwaway key (SUNRISE_VERIFY_TEST_KEY).
 VERIFY_SHA=$(sha256sum "$VERIFY_BIN" | cut -d' ' -f1)
-export SUNRISE_INSTALL_TEST_ROOT=$W
-run() {  # dir, ...install args: runs install.sh with the fake curl; KEY and PIN override the case's key and pin
+NOTHING=0000000000000000000000000000000000000000000000000000000000000000
+FIXTURE_PIN_PLATFORM=  # only the macOS case sets it, never the environment
+pinned_copy() {  # out version sha
+  local others=$3 want=6
+  [ -z "${FIXTURE_PIN_PLATFORM:-}" ] || { others=$NOTHING; want=1; }
+  sed -e "s/^VERIFIER_VERSION=.*/VERIFIER_VERSION=$2/" -e "s/^VERIFIER_SHA256_\([a-z0-9_]*\)=.*/VERIFIER_SHA256_\1=$others/" \
+    -e "s/^VERIFIER_SHA256_${FIXTURE_PIN_PLATFORM:-none}=.*/VERIFIER_SHA256_${FIXTURE_PIN_PLATFORM:-none}=$3/" "$root/packaging/server/install.sh" > "$1"
+  [ "$(grep -c "^VERIFIER_VERSION=$2\$" "$1")" = 1 ] && [ "$(grep -c "^VERIFIER_SHA256_[a-z0-9_]*=$3\$" "$1")" = "$want" ] \
+    && [ "$(grep -c "^VERIFIER_SHA256_[a-z0-9_]*=" "$1")" = 6 ] \
+    || { echo "FAIL could not pin the fixture copy of install.sh (one version line, $want of six hash lines)"; exit 1; }
+}
+run() {  # dir, ...install args: KEY, PIN and VER override the case's key, pin and pinned version
   local d=$1; shift
-  REL=$d PATH="$W/fake:/usr/bin:/bin" HOME="$W/home" \
+  pinned_copy "$d/install.sh" "${VER-test}" "${PIN-$VERIFY_SHA}"
+  REL=$d WANT_VERIFIER=${VER-test} PATH="$W/fake:$W/sys" HOME="$W/home" \
     SUNRISE_VERIFY_TEST_KEY="${KEY:-$(cat "$d/files/ephemeral.pub")}" \
-    SUNRISE_INSTALL_TEST_VERIFIER_VERSION=test SUNRISE_INSTALL_TEST_VERIFIER_SHA256="${PIN-$VERIFY_SHA}" \
-    sh "${INSTALLER:-$root/packaging/server/install.sh}" --dir "$d/inst" --bin "$d/bin" "$@" > "$d/out" 2>&1
+    sh "$d/install.sh" --dir "$d/inst" --bin "$d/bin" "$@" > "$d/out" 2>&1
   echo $? > "$d/rc"
 }
 verdict() { check "$1" "$2" "$3" "$(cat "$4/rc")" "$4/out"; }
@@ -136,7 +161,10 @@ run "$d" --version v1.2.3; verdict "T2b tampered SHA256SUMS refused" 1 "signatur
 
 # T3. The .sig missing from the release.
 d=$W/nosig; make_release "$d" v1.2.3; rm "$d/files/SHA256SUMS.sig"; json "$d" v1.2.3 yes
-run "$d" --version v1.2.3; verdict "T3 missing SHA256SUMS.sig refused" 1 "has no signed checksums (SHA256SUMS.sig)" "$d"; refused "$d" "missing .sig"
+run "$d" --version v1.2.3; verdict "T3 missing SHA256SUMS.sig refused" 1 "has no SHA256SUMS.sig (the signature" "$d"; refused "$d" "missing .sig"
+# T3b. SHA256SUMS missing, its signature present: named as the missing list, not a missing signature.
+d=$W/nosums; make_release "$d" v1.2.3; rm "$d/files/SHA256SUMS"; json "$d" v1.2.3 yes
+run "$d" --version v1.2.3; verdict "T3b missing SHA256SUMS refused" 1 "has no SHA256SUMS (its checksum list)" "$d"; refused "$d" "missing SHA256SUMS"
 
 # T4. The verifier swapped for another binary: its hash isn't the pinned one, so it never runs.
 d=$W/swap; make_release "$d" v1.2.3
@@ -148,16 +176,29 @@ d=$W/nopin; make_release "$d" v1.2.3
 PIN= run "$d" --version v1.2.3; verdict "T5 no verifier for the platform refused" 1 "there is no sunrise-verify for linux-x86_64" "$d"; refused "$d" "no verifier"
 d=$W/nodl; make_release "$d" v1.2.3; rm "$d/files/sunrise-verify-linux-x86_64"
 run "$d" --version v1.2.3; verdict "T5 verifier download failure refused" 1 "could not download sunrise-verify" "$d"; refused "$d" "no verifier download"
-# The placeholder pin: a script that pins no verifier refuses; and the test overrides apply only to a --dir inside
-# SUNRISE_INSTALL_TEST_ROOT, so with another root the script's own pin decides (the test build isn't it).
+# T6. A pinned verifier that can't run (not a program): refused, never taken as a pass.
+d=$W/nostart; make_release "$d" v1.2.3
+printf 'not a program\001\n' > "$d/files/sunrise-verify-linux-x86_64"
+PIN=$(sha256sum "$d/files/sunrise-verify-linux-x86_64" | cut -d' ' -f1) run "$d" --version v1.2.3
+verdict "T6 verifier that can't run refused" 1 "the release check failed (SHA256SUMS.sig for v1.2.3)" "$d"; refused "$d" "verifier that can't run"
+# The placeholder pin: a script that pins no verifier refuses.
 d=$W/unpinned; make_release "$d" v1.2.3
-sed 's/^VERIFIER_VERSION=.*/VERIFIER_VERSION=unpinned/' "$root/packaging/server/install.sh" > "$d/install.sh"
-REL=$d PATH="$W/fake:/usr/bin:/bin" HOME="$W/home" sh "$d/install.sh" --dir "$d/inst" --bin "$d/bin" --version v1.2.3 > "$d/out" 2>&1; echo $? > "$d/rc"
-verdict "unpinned script refused" 1 "has no pinned sunrise-verify" "$d"; refused "$d" "unpinned script"
-d=$W/outside; make_release "$d" v1.2.3
-REL=$d PATH="$W/fake:/usr/bin:/bin" HOME="$W/home" SUNRISE_INSTALL_TEST_ROOT="$W/elsewhere" SUNRISE_INSTALL_TEST_VERIFIER_VERSION=test \
-  SUNRISE_INSTALL_TEST_VERIFIER_SHA256="$VERIFY_SHA" sh "$root/packaging/server/install.sh" --dir "$d/inst" --bin "$d/bin" --version v1.2.3 > "$d/out" 2>&1; echo $? > "$d/rc"
-verdict "a pin override outside the test root is ignored" 1 "isn't the pinned build\|has no pinned sunrise-verify\|could not download sunrise-verify" "$d"; refused "$d" "override outside the test root"
+VER=unpinned run "$d" --version v1.2.3; verdict "unpinned script refused" 1 "has no pinned sunrise-verify" "$d"; refused "$d" "unpinned script"
+# A verifier asked for from another release than the pinned one is not served (the fake curl checks the address).
+d=$W/elsewhere; make_release "$d" v1.2.3
+pinned_copy "$d/install.sh" 9.9.9 "$VERIFY_SHA"
+REL=$d WANT_VERIFIER=test PATH="$W/fake:$W/sys" HOME="$W/home" SUNRISE_VERIFY_TEST_KEY="$(cat "$d/files/ephemeral.pub")" \
+  sh "$d/install.sh" --dir "$d/inst" --bin "$d/bin" --version v1.2.3 > "$d/out" 2>&1; echo $? > "$d/rc"
+verdict "verifier from another release than the pinned one not fetched" 1 "could not download sunrise-verify 9.9.9" "$d"
+# M1. On Apple Silicon the macOS arm64 archive is checked with the macOS arm64 verifier from the pinned release, under
+# the macOS arm64 pin (the only one the test build matches). The
+# fake archive isn't a real zip, so the install stops after the check; the check passing is what this case proves.
+d=$W/mac; ARCHIVE=sunrise-macos-arm64.zip VERIFIER=sunrise-verify-macos-arm64 make_release "$d" v1.2.3
+ARCHIVE=sunrise-macos-arm64.zip json "$d" v1.2.3 yes
+FAKE_OS=Darwin FAKE_ARCH=arm64 FIXTURE_PIN_PLATFORM=macos_arm64 run "$d" --version v1.2.3
+check "M1 macOS arm64 verifier selected and the archive checked" 1 "Release signature OK" "$(cat "$d/rc")" "$d/out"
+grep -qx "https://github.com/sunrise-org/sunrise/releases/download/verifier%40test/sunrise-verify-macos-arm64" "$d/urls" \
+  || { echo "FAIL M1 the macOS arm64 verifier was not fetched from the pinned release"; fails=$((fails+1)); }
 
 # Nightly and replay cases from before.
 # N1. A Nightly with only the channel's signature (published before v2): refused, never the channel's signature.
@@ -180,6 +221,10 @@ run "$d" --version v9.9.9; verdict "signature replayed under another tag refused
 
 # N5. A release published before signing (no SHA256SUMS): refused now; the escape hatch is the flag above.
 d=$W/legacy; make_release "$d" v1.2.3; json "$d" v1.2.3 no
-run "$d" --version v1.2.3; verdict "release without signed checksums refused" 1 "has no signed checksums" "$d"
+run "$d" --version v1.2.3; verdict "release without signed checksums refused" 1 "has no SHA256SUMS" "$d"
+
+# N6. A Dev build is refused by name: servers don't install one.
+d=$W/dev; make_release "$d" dev-2026-11-21-0c02067
+run "$d" --version dev-2026-11-21-0c02067; verdict "a Dev build refused by name" 1 "is a Dev build" "$d"
 
 echo "$fails case(s) failed"; [ "$fails" = 0 ]

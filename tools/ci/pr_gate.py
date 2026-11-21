@@ -25,7 +25,7 @@ def integration(labels, head_ref: str) -> bool:
     label added after the pull request opens misses its first event, so the branch name alone counts too.
     """
     return bool({"rollup", "sync"}.intersection(labels)) or head_ref.startswith(
-        ("fork-review-rollup-", "sunrise-review-rollup-", "rollup-", "sync-"))
+        ("fork-review-rollup-", "sunrise-review-rollup-", "rollup-", "sync-", "sync/upstream-"))
 
 
 def outputs(event: str, same_repository: bool, pr: str, read_pr, *, labels: tuple[str, ...] | list[str] = (), head_ref: str = "") -> dict[str, str]:

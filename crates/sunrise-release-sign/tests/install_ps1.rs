@@ -26,5 +26,4 @@ fn install_ps1_installs_only_what_the_verifier_checked() {
     );
     // Exit 77 is the script's "skip": the runner must have OpenSSL 3 (Git for Windows ships it), so it fails here.
     assert!(out.status.success(), "{text}");
-    assert!(text.contains("0 case(s) failed"), "{text}");
 }

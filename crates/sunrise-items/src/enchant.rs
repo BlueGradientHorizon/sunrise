@@ -138,10 +138,16 @@ pub struct Cost {
     pub per_level: i32,
 }
 impl Cost {
+    fn decoded_fields(v: &Value) -> (Option<i32>, Option<i32>) {
+        let int = |name| v[name].as_i64().and_then(|n| i32::try_from(n).ok());
+        (int("base"), int("per_level_above_first"))
+    }
+
     fn parse(v: &Value) -> Self {
+        let (base, per_level) = Self::decoded_fields(v);
         Self {
-            base: v["base"].as_i64().unwrap_or(1) as i32,
-            per_level: v["per_level_above_first"].as_i64().unwrap_or(0) as i32,
+            base: base.unwrap_or(1),
+            per_level: per_level.unwrap_or(0),
         }
     }
     pub fn calculate(self, level: u32) -> i32 {
@@ -213,65 +219,118 @@ fn string_list(v: &Value) -> Vec<String> {
         _ => vec![],
     }
 }
-fn read_tag_dir(dir: &Path) -> HashMap<String, sunrise_world::tag_layers::TagLayers> {
-    read_tag_dir_in(dir, "minecraft")
-}
-/// The resource root's `data/` namespaces other than `minecraft`, in name
-/// order: content mods' files land there (`sunrise_client::mod_content`'s
-/// overlay), as a data pack's namespaces do in `RegistryDataLoader`.
-fn other_namespaces(root: &Path) -> Vec<String> {
-    let mut out = sunrise_world::json_folder::namespaces(&root.join("data"));
-    out.retain(|ns| ns != "minecraft");
-    out
-}
-fn read_tag_dir_in(
-    dir: &Path,
-    namespace: &str,
-) -> HashMap<String, sunrise_world::tag_layers::TagLayers> {
-    let Ok(folder) = sunrise_world::json_folder::read(dir) else {
-        return HashMap::new();
-    };
-    folder
-        .files
-        .iter()
-        .filter_map(|file| {
-            let v = serde_json::from_slice::<Value>(file.bytes().ok()?).ok()?;
-            Some((
-                format!("{namespace}:{}", file.name),
-                sunrise_world::tag_layers::TagLayers::from_file(&v),
-            ))
-        })
-        .collect()
-}
-/// Expand a tag keeping first-seen order and applying removals before its parent uses it.
-fn expand_ordered(
-    name: &str,
-    raw: &HashMap<String, sunrise_world::tag_layers::TagLayers>,
-    out: &mut Vec<String>,
-    depth: u32,
-) {
-    if depth > 16 {
-        return;
-    }
-    if let Some(layers) = raw.get(name) {
-        let members = layers.build(|tag| {
-            let mut child = Vec::new();
-            expand_ordered(tag, raw, &mut child, depth + 1);
-            child
-        });
-        for member in members {
-            if !out.contains(&member) {
-                out.push(member);
-            }
-        }
-    }
-}
 /// Roman numerals as in `enchantment.level.N` (falls back to the number).
 pub fn level_name(level: u32) -> String {
     const NAMES: [&str; 10] = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
     NAMES
         .get(level.wrapping_sub(1) as usize)
         .map_or_else(|| level.to_string(), |s| (*s).to_owned())
+}
+
+/// `Enchantment.getFullname`: append the level unless both it and the holder's maximum are one.
+pub fn format_full_name(
+    mut description: String,
+    level: u32,
+    max_level: u32,
+    suffix: impl FnOnce(u32) -> String,
+) -> String {
+    if level != 1 || max_level != 1 {
+        description.push(' ');
+        description.push_str(&suffix(level));
+    }
+    description
+}
+
+/// Decode a winning pack definition's top-level fields for registry sync.
+/// Holder sets and effect payloads are bound after the registry phase.
+pub fn decode_pack_definition(mut value: Value) -> Result<Value, String> {
+    let fields = value
+        .as_object_mut()
+        .ok_or("expected an enchantment object")?;
+    for (name, range) in [
+        ("max_level", 1..=255),
+        ("weight", 1..=1024),
+        ("anvil_cost", 0..=i64::from(i32::MAX)),
+    ] {
+        let n = fields
+            .get(name)
+            .and_then(Value::as_i64)
+            .filter(|n| range.contains(n))
+            .ok_or_else(|| format!("{name} must be an integer in {range:?}"))?;
+        fields.insert(name.into(), Value::from(n));
+    }
+    for name in ["min_cost", "max_cost"] {
+        let cost = fields
+            .get(name)
+            .ok_or_else(|| format!("{name} is required"))?;
+        let (base, per_level) = Cost::decoded_fields(cost);
+        let cost = Cost {
+            base: base.ok_or_else(|| format!("{name}.base must be an integer"))?,
+            per_level: per_level
+                .ok_or_else(|| format!("{name}.per_level_above_first must be an integer"))?,
+        };
+        fields.insert(
+            name.into(),
+            serde_json::json!({"base": cost.base,"per_level_above_first": cost.per_level}),
+        );
+    }
+    for name in ["supported_items", "primary_items", "exclusive_set"] {
+        match fields.get(name) {
+            Some(Value::String(_) | Value::Array(_) | Value::Object(_)) => {}
+            None | Some(Value::Null) if name != "supported_items" => {
+                fields.remove(name);
+            }
+            _ => return Err(format!("{name} must be a holder set")),
+        }
+    }
+    let slots = fields
+        .get("slots")
+        .and_then(Value::as_array)
+        .ok_or("slots must be a list of equipment slot groups")?;
+    for slot in slots {
+        if !matches!(
+            slot.as_str(),
+            Some(
+                "any"
+                    | "mainhand"
+                    | "offhand"
+                    | "hand"
+                    | "feet"
+                    | "legs"
+                    | "chest"
+                    | "head"
+                    | "armor"
+                    | "body"
+                    | "saddle"
+            )
+        ) {
+            return Err("slots must contain equipment slot groups".into());
+        }
+    }
+    match fields.get("effects") {
+        Some(Value::Null) => {
+            fields.remove("effects");
+        }
+        Some(Value::Object(_)) | None => {}
+        _ => return Err("effects must be a component map".into()),
+    }
+    fields.retain(|name, _| {
+        matches!(
+            name.as_str(),
+            "description"
+                | "max_level"
+                | "weight"
+                | "anvil_cost"
+                | "min_cost"
+                | "max_cost"
+                | "supported_items"
+                | "primary_items"
+                | "exclusive_set"
+                | "slots"
+                | "effects"
+        )
+    });
+    Ok(value)
 }
 
 /// One registry entry from its definition (`Enchantment.DIRECT_CODEC`).
@@ -374,59 +433,6 @@ impl Enchantments {
         overlay: &sunrise_world::loot::PackOverlay,
         defaults: &sunrise_world::item_defaults::ItemDefaults,
     ) -> crate::Result<Self> {
-        let data = root.join("data/minecraft");
-        let mut raw_tags = read_tag_dir(&data.join("tags/enchantment"));
-        let namespaces = other_namespaces(root);
-        // Mods' own enchantment tags (`data/<ns>/tags/enchantment/`): an
-        // `exclusive_set` or a tag of the mod's enchantments.
-        for ns in &namespaces {
-            let dir = root.join("data").join(ns).join("tags/enchantment");
-            for (id, values) in read_tag_dir_in(&dir, ns) {
-                raw_tags.insert(id, values);
-            }
-        }
-        for (id, files) in overlay.tag_kind("enchantment") {
-            for bytes in files {
-                let Ok(v) = serde_json::from_slice::<Value>(bytes) else {
-                    continue;
-                };
-                raw_tags.entry(id.clone()).or_default().push(&v);
-            }
-        }
-        let tags: HashMap<String, Vec<Arc<str>>> = raw_tags
-            .keys()
-            .map(|k| {
-                let mut v = Vec::new();
-                expand_ordered(k, &raw_tags, &mut v, 0);
-                (
-                    k.clone(),
-                    v.into_iter().map(|s| Arc::from(s.as_str())).collect(),
-                )
-            })
-            .collect();
-        let unordered = |raw: HashMap<String, sunrise_world::tag_layers::TagLayers>| -> HashMap<String, HashSet<String>> {
-            raw.keys()
-                .map(|k| {
-                    let mut v = Vec::new();
-                    expand_ordered(k, &raw, &mut v, 0);
-                    (k.clone(), v.into_iter().collect())
-                })
-                .collect()
-        };
-        let entity_tags = unordered(read_tag_dir(&data.join("tags/entity_type")));
-        let damage_tags = match sunrise_world::damage_source::Catalog::load(root, overlay) {
-            Ok(catalog) => catalog
-                .tags()
-                .map(|tag| {
-                    (
-                        tag.to_owned(),
-                        catalog.tag_members(tag).map(str::to_owned).collect(),
-                    )
-                })
-                .collect(),
-            // Small tools/fixtures may not carry the prepared catalog.
-            Err(_) => unordered(read_tag_dir(&data.join("tags/damage_type"))),
-        };
         // The registry lists entries sorted by id, like the data-pack loader.
         let mut files: BTreeMap<String, Value> =
             crate::items::data_files(root, "enchantment", overlay)
@@ -439,6 +445,43 @@ impl Enchantments {
                 binding.bind(id, value)?;
             }
         }
+        Self::load_selected(
+            root,
+            overlay,
+            defaults,
+            files.iter().map(|(id, value)| (id.as_str(), value)),
+        )
+    }
+
+    /// Assemble gameplay behavior from the selected, holder-bound definitions in id order.
+    pub fn load_selected<'a>(
+        root: &Path,
+        overlay: &sunrise_world::loot::PackOverlay,
+        defaults: &sunrise_world::item_defaults::ItemDefaults,
+        files: impl IntoIterator<Item = (&'a str, &'a Value)>,
+    ) -> crate::Result<Self> {
+        let files: Vec<_> = files.into_iter().collect();
+        let admitted: HashSet<_> = files.iter().map(|&(id, _)| id).collect();
+        let tags = sunrise_world::tag_layers::load(root, "enchantment", overlay, |id| {
+            admitted.contains(id)
+        })?
+        .into_iter()
+        .map(|(name, ids)| (name, ids.into_iter().map(Arc::from).collect()))
+        .collect();
+        let entity_tags = crate::items::load_tags(root, "entity_type", overlay)?;
+        let damage_tags = match sunrise_world::damage_source::Catalog::load(root, overlay) {
+            Ok(catalog) => catalog
+                .tags()
+                .map(|tag| {
+                    (
+                        tag.to_owned(),
+                        catalog.tag_members(tag).map(str::to_owned).collect(),
+                    )
+                })
+                .collect(),
+            // Small tools/fixtures may not carry the prepared catalog.
+            Err(_) => crate::items::load_tags(root, "damage_type", overlay)?,
+        };
         let lang: HashMap<String, String> =
             sunrise_core::prepared_files::read(&root.join("assets/minecraft/lang/en_us.json"))
                 .ok()
@@ -470,7 +513,10 @@ impl Enchantments {
         // Mods' English names for their enchantments (`assets/<ns>/lang/`),
         // under vanilla's, which win a clash.
         let mut lang = lang;
-        for ns in &namespaces {
+        for ns in sunrise_world::json_folder::namespaces(&root.join("data"))
+            .into_iter()
+            .filter(|ns| ns != "minecraft")
+        {
             let path = root.join("assets").join(ns).join("lang/en_us.json");
             let Some(map) = sunrise_core::prepared_files::read(&path)
                 .ok()
@@ -486,14 +532,14 @@ impl Enchantments {
         }
         let mut custom_damage = HashMap::new();
         let list = files
-            .iter()
+            .into_iter()
             .filter_map(|(id, v)| {
                 match resolve_damage_effects(
                     &v["effects"],
                     DAMAGE_EFFECT_IDS.get().map_or(&[], Vec::as_slice),
                 ) {
                     Ok(Some(nodes)) => {
-                        custom_damage.insert(Arc::from(id.as_str()), nodes);
+                        custom_damage.insert(Arc::from(id), nodes);
                     }
                     Ok(None) => {}
                     Err(error) => {
@@ -725,14 +771,13 @@ impl Enchantments {
         let Some(e) = self.get(id) else {
             return (format!("{id} {}", level_name(level)), false);
         };
-        let mut name = tr(&e.description_key).unwrap_or_else(|| e.description.clone());
-        if (level != 1 || e.max_level != 1) && numeric {
-            name.push(' ');
-            name.push_str(&level.to_string());
-        } else if level != 1 || e.max_level != 1 {
-            name.push(' ');
+        let description = tr(&e.description_key).unwrap_or_else(|| e.description.clone());
+        let name = format_full_name(description, level, e.max_level, |level| {
+            if numeric {
+                return level.to_string();
+            }
             let key = format!("enchantment.level.{level}");
-            let suffix = tr(&key)
+            tr(&key)
                 .or_else(|| self.lang.get(&key).cloned())
                 .unwrap_or_else(|| {
                     if (1..=10).contains(&level) {
@@ -740,9 +785,8 @@ impl Enchantments {
                     } else {
                         key
                     }
-                });
-            name.push_str(&suffix);
-        }
+                })
+        });
         (name, self.is_curse(id))
     }
     /// Tooltip lines for a level list, in `#tooltip_order` then remaining order.
@@ -1537,7 +1581,7 @@ pub mod tests {
             &root,
             &sunrise_world::loot::PackOverlay {
                 files: &files,
-                ..sunrise_world::loot::PackOverlay::NONE
+                ..sunrise_world::loot::PackOverlay::default()
             },
             &defaults,
         )
@@ -1737,7 +1781,7 @@ pub mod tests {
         )];
         let overlay = sunrise_world::loot::PackOverlay {
             files: &files,
-            ..sunrise_world::loot::PackOverlay::NONE
+            ..sunrise_world::loot::PackOverlay::default()
         };
         let loaded = Enchantments::load_with(&root, &overlay, &defaults).unwrap();
         assert_eq!(
@@ -1750,7 +1794,7 @@ pub mod tests {
         )];
         let overlay = sunrise_world::loot::PackOverlay {
             files: &files,
-            ..sunrise_world::loot::PackOverlay::NONE
+            ..sunrise_world::loot::PackOverlay::default()
         };
         assert!(
             Enchantments::load_with(&root, &overlay, &defaults)
@@ -2297,6 +2341,11 @@ mod ignite_tests {
             std::process::id()
         ));
         std::fs::create_dir_all(root.join("data/minecraft/tags/enchantment")).unwrap();
+        let entries = root.join("data/minecraft/enchantment");
+        std::fs::create_dir_all(&entries).unwrap();
+        for id in ["sharpness", "smite"] {
+            std::fs::write(entries.join(format!("{id}.json")), "{}").unwrap();
+        }
         std::fs::write(root.join("items.json"), "{}").unwrap();
         std::fs::write(root.join("data/minecraft/tags/enchantment/conditional.json"), json!({"neoforge:conditions":[{"type":"neoforge:never"}],"values":["minecraft:sharpness"]}).to_string()).unwrap();
         let files = vec![("tags/minecraft:enchantment/conditional".into(), vec![json!({"neoforge:conditions":[{"type":"neoforge:never"}],"values":["minecraft:smite"],"remove":["minecraft:sharpness"]}).to_string().into_bytes()])];

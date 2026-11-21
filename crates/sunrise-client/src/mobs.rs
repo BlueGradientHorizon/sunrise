@@ -6,7 +6,6 @@
 pub mod ai;
 mod ai_pause;
 pub mod allay;
-pub mod ambient;
 pub mod anim;
 pub mod animal_brain;
 pub mod aquatic;
@@ -29,7 +28,6 @@ pub mod copper_golem;
 pub mod creaking;
 pub mod creaking_heart;
 pub mod cube;
-pub mod dab;
 pub mod data;
 pub mod dolphin;
 pub mod doors;
@@ -129,7 +127,6 @@ mod invisible_follow_tests;
 mod template_mob_tests;
 mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
-pub mod dragon_contacts;
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -265,6 +262,11 @@ pub struct MobType {
     pub passenger_attachments: Vec<[f32; 3]>,
 }
 impl MobType {
+    /// `EntityType.isAllowedInPeaceful`, including a living mod type's override.
+    pub fn allowed_in_peaceful(&self) -> bool {
+        !self.flags.not_in_peaceful
+    }
+
     pub fn inventory_stack_limit(&self, stack: &crate::items::ItemStack) -> u32 {
         stack
             .data()
@@ -390,6 +392,7 @@ impl MobTypes {
             .transpose()?;
         let entity_type_tags =
             crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)?;
+        let burn_in_daylight = entity_type_tags.get("minecraft:burn_in_daylight");
         let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
@@ -492,9 +495,13 @@ impl MobTypes {
             }
             let category = t["category"].as_str().unwrap_or("creature").to_owned();
             let mut flags = def.flags(t["fire_immune"].as_bool().unwrap_or(false));
+            if let Some(allowed) = t["allowed_in_peaceful"].as_bool() {
+                flags.not_in_peaceful = !allowed;
+            }
             flags.powder_snow_walkable = entity_type_tags
                 .get("minecraft:powder_snow_walkable_mobs")
                 .is_some_and(|members| members.contains(&id));
+            flags.burns_in_day = burn_in_daylight.is_some_and(|members| members.contains(&id));
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
             out.insert(
@@ -564,12 +571,11 @@ impl MobTypes {
     }
 }
 pub use sunrise_client_core::who::Who;
-/// A native damage type's registry name and the tags consumed by mob combat.
+/// A damage type's registry name and the tags consumed by mob combat.
 ///
-/// Native code supplies a static name and flags matching its data-pack damage
-/// tags; `NamedDamage::registered` builds both from a damage registry entry,
-/// interning its name. Register the same name/data for player damage, death
-/// messages and loot predicates. Unset tags are false.
+/// `NamedDamage::registered` builds both from a registry entry, interning
+/// its name. Code constructing a source directly supplies a static name and
+/// flags matching its registry entry. Unset tags are false.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NamedDamage {
     pub name: &'static str,
@@ -592,9 +598,11 @@ impl NamedDamage {
     pub const IS_FREEZING: u32 = 1 << 13;
     pub const WITCH_RESISTANT_TO: u32 = 1 << 14;
     pub const NO_ANGER: u32 = 1 << 15;
+    pub const BYPASSES_WOLF_ARMOR: u32 = 1 << 16;
+    pub const SULFUR_CUBE_WITH_BLOCK_IMMUNE_TO: u32 = 1 << 17;
 
     /// Each flag with the damage tag it stands for.
-    const TAG_FLAGS: [(u32, &'static str); 16] = [
+    const TAG_FLAGS: [(u32, &'static str); 18] = [
         (Self::IS_FIRE, "minecraft:is_fire"),
         (Self::BYPASSES_ARMOR, "minecraft:bypasses_armor"),
         (Self::NO_KNOCKBACK, "minecraft:no_knockback"),
@@ -617,6 +625,11 @@ impl NamedDamage {
         (Self::IS_FREEZING, "minecraft:is_freezing"),
         (Self::WITCH_RESISTANT_TO, "minecraft:witch_resistant_to"),
         (Self::NO_ANGER, "minecraft:no_anger"),
+        (Self::BYPASSES_WOLF_ARMOR, "minecraft:bypasses_wolf_armor"),
+        (
+            Self::SULFUR_CUBE_WITH_BLOCK_IMMUNE_TO,
+            "minecraft:sulfur_cube_with_block_immune_to",
+        ),
     ];
 
     pub const fn new(name: &'static str, tags: u32) -> Self {
@@ -653,7 +666,7 @@ impl NamedDamage {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DamageKind {
-    /// A registered native damage type; vanilla kinds keep their existing tags.
+    /// An exact registry type and its tags, vanilla or modded.
     Named(NamedDamage),
     PlayerAttack,
     /// `mace_smash`: a mace hit after a fall (the player attack tags too).
@@ -726,6 +739,15 @@ pub enum DamageKind {
     WitherSkull,
 }
 impl DamageKind {
+    /// DamageTypeTags.IS_EXPLOSION.
+    fn is_explosion(self) -> bool {
+        match self {
+            Self::Named(named) => named.has(NamedDamage::IS_EXPLOSION),
+            Self::Explosion | Self::Fireworks => true,
+            _ => false,
+        }
+    }
+
     /// DamageTypeTags.BYPASSES_INVULNERABILITY
     pub fn bypasses_invulnerability(self) -> bool {
         if let Self::Named(named) = self {
@@ -897,6 +919,7 @@ impl Damage {
         !matches!(
             self.kind,
             DamageKind::Fall
+                | DamageKind::FlyIntoWall
                 | DamageKind::Drown
                 | DamageKind::DryOut
                 | DamageKind::Generic
@@ -1551,8 +1574,6 @@ pub struct Mob {
     /// `Entity.needsSync`: knocked back, pushed or jumped since its server
     /// last sent it, so the next update goes out at once.
     pub needs_sync: bool,
-    /// The mobs it pushed this turn, kept while the collision cap is on (`push::Cap`).
-    pub pushed: Vec<u32>,
     /// `Entity.syncPosition`: it bounced this tick (`restituteMovementAfterCollisions`),
     /// so its tracker keeps this position as a step of the next move it sends.
     pub sync_position: bool,
@@ -1691,9 +1712,6 @@ pub struct Mob {
     /// `PlayerSkin.cape`: a player's cape texture, once every download of
     /// its skin is ready.
     pub cape: Option<String>,
-    /// A pose laid over this player's body after the vanilla animation (`anim::setup`), timed on
-    /// `age`, given by a hook (`sunrise_hooks::players::BodyPose`). Visual only.
-    pub emote: Option<Arc<dyn anim::BodyPose>>,
     /// A mannequin's `DATA_PROFILE` (ResolvableProfile): the profile's
     /// `textures` property resolves to `skin` like a player's.
     pub profile: Option<sunrise_protocol::entity_data::Profile>,
@@ -2888,7 +2906,6 @@ impl Mob {
             is_vehicle: equine::is_vehicle(m),
             still: m.species() == Species::HappyGhast && happy_ghast::on_still_timeout(m),
             carrying: m.rider.is_some() || m.extra.rider.is_some(),
-            collisions: 0,
             knockback_resistance: m.attrs.knockback_resistance,
             effects: m
                 .extra
@@ -3292,6 +3309,8 @@ pub struct MobWorld<'a> {
     /// What the motion value hooks are given: the loop context of the side that
     /// ticks these mobs.
     pub loop_context: &'a sunrise_world::native_load_context::LoopContext,
+    /// The side's level data beyond blocks: weather, features, tags and block entities.
+    pub side: &'a dyn crate::motion::SideLevel,
     pub world: &'a World,
     pub registry: &'a sunrise_world::registry::BlockRegistry,
     pub facts: &'a BlockFacts,
@@ -3325,6 +3344,8 @@ pub struct MobWorld<'a> {
     pub live_mobs: Option<&'a dyn LiveMobs>,
     /// The separately simulated dragon, visible to revenge and melee goals.
     pub dragon: Option<(u32, TargetInfo)>,
+    /// The separately simulated armor stands (`LivingEntity` causes for `Warden.hurtServer`).
+    pub armor_stands: &'a [crate::entities::ArmorStand],
     /// The boats and rafts a lead can hang on (`Holder::Boat`): id and state.
     pub leash_boats: &'a [(u32, leash::HolderState)],
     /// `others` by position, when the caller keeps one (the mob ticks).
@@ -3458,22 +3479,6 @@ impl MobWorld<'_> {
             && let Some(selection) = self.player_selection
             && selection.has_switched()
             && let Some(player) = selection.selected()
-        {
-            return MobEvent::ForPlayer {
-                conn: player.connection,
-                event: Box::new(event),
-            };
-        }
-        event
-    }
-
-    /// An action directed at the player already bound at tick start, such as
-    /// retaliation against the attacker, must not follow a later target change.
-    pub fn route_initial_player_event(&self, event: MobEvent) -> MobEvent {
-        if event.targets_player()
-            && let Some(selection) = self.player_selection
-            && selection.has_switched()
-            && let Some(player) = selection.initial()
         {
             return MobEvent::ForPlayer {
                 conn: player.connection,
@@ -3655,7 +3660,6 @@ impl Mob {
         random: LegacyRandom,
     ) -> Self {
         let mut mob = Self {
-            emote: None,
             attachment_lifetime: Default::default(),
             join: Default::default(),
             id,
@@ -3675,7 +3679,6 @@ impl Mob {
             horizontal_collision: false,
             vertical_collision_below: false,
             needs_sync: false,
-            pushed: Vec::new(),
             sync_position: false,
             movement_emission: None,
             gear_knockback_resistance: None,
@@ -3971,6 +3974,7 @@ impl Mob {
         // follows `super.hurtServer` whatever it answered (a hurt cooldown, a
         // dead enderman), its hurt sound's pitch included.
         let enderman = self.species() == Species::Enderman;
+        let warden = self.species() == Species::Warden;
         let mut passed_invulnerability = false;
         let hurt = self.hurt_server(
             level,
@@ -3980,7 +3984,13 @@ impl Mob {
             &mut passed_invulnerability,
         );
         if enderman && passed_invulnerability {
-            enderman::after_hurt(self, &source);
+            enderman::after_hurt(self, &source, level.attack().direct.is_some());
+        }
+        // `Warden.hurtServer` runs its own anger/targeting reaction after
+        // `super.hurtServer` regardless of whether `super.hurtServer` accepted
+        // the hit (e.g. when the hit was rejected on hurt cooldown).
+        if warden && !self.extra.client_side {
+            warden::hurt(self, &source, level.attack());
         }
         hurt
     }
@@ -4009,13 +4019,20 @@ impl Mob {
         if self.extra.client_side {
             return false;
         }
-        let reflected = self.reflected_fireball(&source);
+        let reflected = self.reflected_fireball(&source, level.attack());
         if self.invulnerable_to_attempt(level, &source) {
             return reflected;
         }
         *passed_invulnerability = true;
         if !self.alive() {
-            return false;
+            return reflected;
+        }
+        if self.species() == Species::Creaking {
+            match creaking::hurt_server(self, &source, level) {
+                creaking::HurtOutcome::Proceed => {}
+                creaking::HurtOutcome::Reacted => return true,
+                creaking::HurtOutcome::Refused => return false,
+            }
         }
         if !self.attacker_allows_damage(&source)
             || !ai::accepts_damage(self, &source, amount, level.attack())
@@ -4090,7 +4107,9 @@ impl Mob {
         let cooldown = self.invulnerable as f32 > 10.0 && !source.kind.bypasses_cooldown();
         if cooldown {
             if incoming <= self.last_hurt {
-                return false;
+                // `Ghast.hurtServer` returns true for a reflected large fireball
+                // even when `super.hurtServer` refuses it on hurt cooldown.
+                return reflected;
             }
             amount = incoming - self.last_hurt;
         }
@@ -4353,7 +4372,9 @@ impl Mob {
         }
         // Squid.hurtServer (also GlowSquid's result): parent health damage has
         // happened, but without a last living attacker the subclass returns false.
-        success
+        // Ghast.hurtServer returns true for a reflected large fireball whatever
+        // super.hurtServer did.
+        (success || reflected)
             && (!matches!(self.species(), Species::Squid | Species::GlowSquid)
                 || self.ai.last_hurt_by.is_some())
     }
@@ -4388,21 +4409,24 @@ impl Mob {
     fn wolf_armor_absorbs(&self, source: &Damage) -> bool {
         self.species() == Species::Wolf
             && self.extra.body_id() == Some("minecraft:wolf_armor")
-            && !matches!(
-                source.kind,
-                DamageKind::Drown
-                    | DamageKind::Magic
-                    | DamageKind::IndirectMagic
-                    | DamageKind::InWall
-                    | DamageKind::Thorns
-                    | DamageKind::OutOfWorld
-                    | DamageKind::Cramming
-                    | DamageKind::Generic
-                    | DamageKind::GenericKill
-                    | DamageKind::OutsideBorder
-                    | DamageKind::Starve
-                    | DamageKind::Wither
-            )
+            && !match source.kind {
+                DamageKind::Named(named) => named.has(NamedDamage::BYPASSES_WOLF_ARMOR),
+                kind => matches!(
+                    kind,
+                    DamageKind::Drown
+                        | DamageKind::Magic
+                        | DamageKind::IndirectMagic
+                        | DamageKind::InWall
+                        | DamageKind::Thorns
+                        | DamageKind::OutOfWorld
+                        | DamageKind::Cramming
+                        | DamageKind::Generic
+                        | DamageKind::GenericKill
+                        | DamageKind::OutsideBorder
+                        | DamageKind::Starve
+                        | DamageKind::Wither
+                ),
+            }
     }
     /// `Wolf.actuallyHurt`: the armor loses `ceil(damage)` durability, cracks
     /// at `Crackiness.WOLF_ARMOR` steps and breaks at its maximum.
@@ -4450,9 +4474,10 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
+        trample: &mut Option<ai::MobTrample>,
     ) -> ai::TickProgress {
         self.prepare_tick();
-        neutral_anger::tick_until_consumption(self, w, level, events)
+        neutral_anger::tick_until_consumption(self, w, level, events, trample)
     }
     fn prepare_tick(&mut self) {
         self.track_section();
@@ -5361,13 +5386,14 @@ mod teams_tests {
         }
     }
 }
-#[cfg(test)]
-pub(crate) mod sensor_scan_tests {
+#[cfg(any(test, feature = "test-mob-kind"))]
+#[cfg_attr(not(test), allow(dead_code))] // only kind() is used by the gameplay crates' tests
+pub mod sensor_scan_tests {
     use super::*;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
 
-    pub(crate) fn kind() -> Arc<MobType> {
+    pub fn kind() -> Arc<MobType> {
         Arc::new(MobType {
             shadow: None,
             id: "minecraft:cow".into(),
@@ -5898,24 +5924,136 @@ mod fire_resistance_damage_tests {
     }
 
     #[test]
-    fn reflected_ghast_fireball_still_reports_success_when_fire_resistance_refuses_health_damage() {
+    fn reflected_ghast_fireball_checks_large_fireball_and_player_not_damage_type() {
         let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        let mut mob = pig();
-        let kind = Arc::make_mut(&mut mob.kind);
-        kind.id = "minecraft:ghast".into();
-        kind.species = Species::Ghast;
-        kind.flags.fire_immune = true;
-        mob.add_effect("minecraft:fire_resistance", -1, 0);
-        let source = Damage {
-            kind: DamageKind::Fireball,
-            attacker: Some(Who::Player),
-            from: None,
-            attacker_species: None,
+        let ghast = || {
+            let mut mob = pig();
+            let kind = Arc::make_mut(&mut mob.kind);
+            kind.id = "minecraft:ghast".into();
+            kind.species = Species::Ghast;
+            kind.flags.fire_immune = true;
+            mob
         };
-        assert!(mob.damage(level, 1.0, source));
-        assert_eq!(mob.health, 10.0);
-        assert_eq!(mob.invulnerable, 0);
+        let large_fireball = crate::health::Attack {
+            attacker: 7,
+            direct: Some(15),
+            direct_kind: Some(crate::health::DirectEntity::LargeFireball),
+            ..Default::default()
+        };
+        let small_fireball = crate::health::Attack {
+            attacker: 7,
+            direct: Some(16),
+            direct_kind: Some(crate::health::DirectEntity::Projectile),
+            ..Default::default()
+        };
+        let player_direct = crate::health::Attack {
+            attacker: 7,
+            direct: Some(7),
+            direct_kind: Some(crate::health::DirectEntity::Living),
+            ..Default::default()
+        };
+        let unattributed = DamageKind::Named(NamedDamage::new(
+            "minecraft:unattributed_fireball",
+            NamedDamage::IS_FIRE,
+        ));
+        let custom_fire =
+            DamageKind::Named(NamedDamage::new("example:flame", NamedDamage::IS_FIRE));
+
+        // Varying damage type with fixed LargeFireball + Player still counts as reflected:
+        // bypasses fire immunity, deals 1000 damage, and reports success even under Fire Resistance.
+        for kind in [
+            DamageKind::Fireball,
+            unattributed,
+            DamageKind::InFire,
+            custom_fire,
+            DamageKind::Generic,
+        ] {
+            let source = Damage {
+                kind,
+                attacker: Some(Who::Player),
+                from: None,
+                attacker_species: None,
+            };
+            let mut mob = ghast();
+            assert!(
+                mob.damage(
+                    &mut test_level.level().attacked_by(&large_fireball),
+                    1.0,
+                    source
+                ),
+                "LargeFireball + Player must hurt ghast for {kind:?}"
+            );
+            assert_eq!(
+                mob.health, 0.0,
+                "reflected LargeFireball deals 1000 damage for {kind:?}"
+            );
+
+            if source.is_fire() {
+                let mut resistant = ghast();
+                resistant.add_effect("minecraft:fire_resistance", -1, 0);
+                assert!(resistant.damage(
+                    &mut test_level.level().attacked_by(&large_fireball),
+                    1.0,
+                    source,
+                ));
+                assert_eq!(resistant.health, 10.0);
+                assert_eq!(resistant.invulnerable, 0);
+            }
+
+            // Even when `super.hurtServer` refuses on hurt cooldown, `Ghast.hurtServer` still
+            // reports success for a reflected large fireball.
+            let mut cooling = ghast();
+            cooling.invulnerable = 20;
+            cooling.last_hurt = 2000.0;
+            assert!(
+                cooling.damage(
+                    &mut test_level.level().attacked_by(&large_fireball),
+                    1.0,
+                    source,
+                ),
+                "reflected LargeFireball must return true on hurt cooldown for {kind:?}"
+            );
+            assert_eq!(cooling.health, 10.0);
+        }
+
+        // Varying entities with fixed fireball damage type: non-LargeFireball direct entity or
+        // non-player cause does NOT bypass fire immunity or trigger the 1000-damage reflection.
+        for kind in [DamageKind::Fireball, unattributed] {
+            let by_player = Damage {
+                kind,
+                attacker: Some(Who::Player),
+                from: None,
+                attacker_species: None,
+            };
+            for attack in [&small_fireball, &player_direct, &crate::health::NO_ATTACK] {
+                let mut mob = ghast();
+                assert!(
+                    !mob.damage(&mut test_level.level().attacked_by(attack), 1.0, by_player),
+                    "non-LargeFireball must not bypass ghast fire immunity for {kind:?}"
+                );
+                assert_eq!(mob.health, 10.0);
+            }
+
+            let by_mob = Damage {
+                kind,
+                attacker: Some(Who::Mob(5)),
+                from: None,
+                attacker_species: None,
+            };
+            let mob_fireball = crate::health::Attack {
+                attacker: 5,
+                direct: Some(15),
+                direct_kind: Some(crate::health::DirectEntity::LargeFireball),
+                ..Default::default()
+            };
+            let mut mob = ghast();
+            assert!(!mob.damage(
+                &mut test_level.level().attacked_by(&mob_fireball),
+                1.0,
+                by_mob
+            ));
+            assert_eq!(mob.health, 10.0);
+        }
     }
 }
 
@@ -7002,6 +7140,26 @@ mod named_damage_tests {
         assert!(still.damage(level, 2.0, fire(NamedDamage::NO_KNOCKBACK)));
         assert_eq!(still.velocity, Vec3::ZERO);
     }
+    #[test]
+    fn named_damage_uses_the_wolf_armor_bypass_tag() {
+        let mut test_level = crate::health::TestLevel::new(0);
+        let level = &mut test_level.level();
+        for (tags, health, armor_damage) in
+            [(0, 10.0, 2), (NamedDamage::BYPASSES_WOLF_ARMOR, 8.0, 0)]
+        {
+            let mut wolf = pig();
+            Arc::make_mut(&mut wolf.kind).species = Species::Wolf;
+            wolf.extra.set_body(Some("minecraft:wolf_armor".into()));
+            let kind = DamageKind::Named(NamedDamage::new(
+                "example:hit",
+                NamedDamage::BYPASSES_ARMOR | tags,
+            ));
+            assert!(wolf.damage(level, 2.0, Damage::of(kind)));
+            assert_eq!(wolf.health, health);
+            assert_eq!(wolf.extra.body_damage(), armor_damage);
+        }
+    }
+
     #[test]
     fn named_tags_control_resistance_and_specialist_enchantments() {
         let mut test_level = crate::health::TestLevel::new(0);

@@ -16,8 +16,11 @@ impl mod_api::Hooks for Declare {
                 GeneralEntityCategory::Misc,
                 0.5,
                 0.5,
+                None,
                 GeneralSavePolicy::Save,
                 true,
+                false,
+                None,
                 chunks,
                 interval,
                 1,
@@ -179,7 +182,6 @@ fn pass(level: &mut Entities, clients: &mut [Client], at: &[[f64; 3]], states: &
             sources: c.sources.as_deref(),
             tracker: &mut c.tracker,
             out,
-            gone: None,
         })
         .collect();
     let refs: Vec<&EntityState> = states.iter().collect();

@@ -5,7 +5,8 @@
 # installed.
 #
 #   irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex
-#   & ([scriptblock]::Create((irm .../install.ps1))) -Version v0.5.0 -Dir D:\Sunrise
+#   & ([scriptblock]::Create((irm .../install.ps1))) -Version 26.3-0.1.0 -Dir D:\Sunrise    (a stable release, whose line
+#   updates then follow)
 #
 # Releases go to <Dir>\releases\<version>, <Dir>\current points at the one in use, and <Dir>\bin (added to
 # your PATH) holds sunrise-server.cmd and sunrise-prepare.cmd. The game files you prepare from your own
@@ -53,6 +54,9 @@ if ($Version -eq "latest") {
 }
 $Tag = $Release.tag_name
 $RawTag = $Tag
+if ($Tag -ceq "dev" -or $Tag.StartsWith("dev-")) {
+    throw "$Tag is a Dev build, made to test main: servers don't install it. Install the Nightly (the default) or a stable release (-Version <tag>)."
+}
 # A Nightly installs under its date and commit, as `sunrise-server update` names it:
 # "Nightly 2026-10-28 <middle dot> 0c02067" is nightly-2026-10-28-0c02067 ([char]0xB7: this file stays ASCII).
 # Its signature is checked for exactly that version, so the title must name it (as
@@ -96,16 +100,9 @@ try {
         }
     } else {
         # The verifier: the pinned version's binary for this platform, run only when its SHA-256 is the pinned one.
-        # The pin is the trust anchor (tools/ci/pin_verifier.py). Tests may replace it, only with their own root as -Dir.
+        # The pin is the trust anchor (tools/ci/pin_verifier.py); nothing outside this file can change it.
         $Pin = $VerifierSha256[$Platform]
         $VerifierFrom = $VerifierVersion
-        if ($env:SUNRISE_INSTALL_TEST_ROOT) {
-            $TestRoot = [IO.Path]::GetFullPath($env:SUNRISE_INSTALL_TEST_ROOT).TrimEnd("\") + "\"
-            if ([IO.Path]::GetFullPath($Dir).StartsWith($TestRoot, [StringComparison]::OrdinalIgnoreCase)) {
-                if ($null -ne $env:SUNRISE_INSTALL_TEST_VERIFIER_SHA256) { $Pin = $env:SUNRISE_INSTALL_TEST_VERIFIER_SHA256 }
-                if ($null -ne $env:SUNRISE_INSTALL_TEST_VERIFIER_VERSION) { $VerifierFrom = $env:SUNRISE_INSTALL_TEST_VERIFIER_VERSION }
-            }
-        }
         if (-not $VerifierFrom -or $VerifierFrom -eq "unpinned") {
             throw "This script has no pinned sunrise-verify yet, so it can't check the release signature: not installed. Use the install.ps1 from Sunrise's main branch."
         }
@@ -123,10 +120,12 @@ try {
 
         $SumsItem = $Release.assets | Where-Object { $_.name -eq "SHA256SUMS" } | Select-Object -First 1
         $SigItem = $Release.assets | Where-Object { $_.name -eq $SigFile } | Select-Object -First 1
-        if ($Nightly -and (-not $SumsItem -or -not $SigItem)) {
+        if (-not $SumsItem) {
+            throw "Release $Tag has no SHA256SUMS (its checksum list), so it can't be checked: not installed"
+        } elseif (-not $SigItem -and $Nightly) {
             throw "$Tag has no $SigFile (its signature for this exact build): it was published before Nightlies were signed for their own version, so it can't be checked: not installed. Install the current Nightly (-Version latest) instead."
-        } elseif (-not $SumsItem -or -not $SigItem) {
-            throw "Release $Tag has no signed checksums ($SigFile), so it can't be checked: not installed"
+        } elseif (-not $SigItem) {
+            throw "Release $Tag has no $SigFile (the signature of its checksum list), so it can't be checked: not installed"
         }
         try {
             Invoke-WebRequest -UseBasicParsing -Uri $SumsItem.browser_download_url -OutFile (Join-Path $Files "SHA256SUMS")
@@ -134,13 +133,22 @@ try {
         } catch { throw "Could not download SHA256SUMS and ${SigFile}: not installed" }
         Write-Host "Downloading Sunrise $Tag ($Asset)..."
         try { Invoke-WebRequest -Uri $Item.browser_download_url -OutFile $Zip } catch { throw "Could not download ${Asset}: not installed" }
-        # The same check the launcher and `sunrise-server update` make, with the keys built into the verifier.
+        # The same check the launcher and `sunrise-server update` make, with the keys built into the verifier. Only an
+        # exit code of 0 from this very run passes: the code from any earlier program is cleared first, and a verifier
+        # that fails to start leaves none.
+        $global:LASTEXITCODE = $null
+        $Code = $null
         $ErrorActionPreference = "Continue"
-        $Said = (& $Verifier verify --tag $SigTag --signature $SigFile --only $Asset $Files 2>&1 | Out-String).Trim()
-        $Code = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        if ($Code -ne 0) {
-            throw "The release check failed, so $Tag was not installed: $Said. The download may have been tampered with; please report it on Discord or GitHub."
+        try {
+            $Said = (& $Verifier verify --tag $SigTag --signature $SigFile --only $Asset $Files 2>&1 | Out-String).Trim()
+            $Code = $global:LASTEXITCODE
+        } catch {
+            $Said = "sunrise-verify could not run: $($_.Exception.Message)"
+        } finally {
+            $ErrorActionPreference = "Stop"
+        }
+        if ($Code -isnot [int] -or $Code -ne 0) {
+            throw "The release check failed ($SigFile for $SigTag), so $Tag was not installed: $Said. The download may have been tampered with; please report it on Discord or GitHub."
         }
         Write-Host "Release signature OK (Sunrise release key)."
     }

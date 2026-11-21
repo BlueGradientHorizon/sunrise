@@ -5,6 +5,7 @@
 
 use super::{Game, Result, log};
 use sunrise_client::save::level_mods;
+use sunrise_server_files::missing_mods::MissingMods as Settings;
 
 /// An intentional refusal to open a world without its saved mods, not a crash.
 #[derive(Debug)]
@@ -20,15 +21,6 @@ impl std::error::Error for MissingModsRefusal {}
 /// Whether this error is the already-explained, intentional world refusal.
 pub(crate) fn is_missing_mods_refusal(error: &(dyn std::error::Error + 'static)) -> bool {
     error.is::<MissingModsRefusal>()
-}
-
-/// `server.toml`'s `[missing_mods]`.
-#[derive(Debug, Default, PartialEq, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Settings {
-    /// Open a world whose saved mods are missing, as `--allowMissingMods` does.
-    #[serde(default)]
-    allow: bool,
 }
 
 /// The section in `server.toml`'s text; the default (refuse) without it.

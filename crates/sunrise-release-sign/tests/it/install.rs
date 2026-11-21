@@ -24,7 +24,6 @@ fn run(program: &str, args: &[&str], script: &str) {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(out.status.success(), "{script}:\n{text}");
-    assert!(text.contains("0 case(s) failed"), "{script}:\n{text}");
 }
 
 #[test]

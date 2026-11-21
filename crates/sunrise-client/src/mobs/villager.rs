@@ -379,11 +379,7 @@ pub struct Ext {
     pub brain: Option<Box<super::villager_brain::Brain>>,
     /// Saved memories awaiting the first brain initialization.
     pub saved_memories: Option<Box<super::villager_brain::Memories>>,
-    /// `[entities] villager_lobotomize`: whether the last check found the villager stuck
-    /// (`villager_lobotomy`). Not saved; `None` until the first check.
-    pub lobotomized: Option<bool>,
 }
-pub mod lobotomy;
 pub fn ext(m: &Mob) -> Option<&Ext> {
     m.extra.villager.as_deref()
 }
@@ -499,16 +495,6 @@ pub fn gift_table(m: &Mob, maps: &crate::neoforge_mob_maps::NeoForgeMobMaps) -> 
 /// Reads the stack's effective component, including overrides and removals.
 pub fn food_points(items: &Items, stack: &ItemStack) -> i32 {
     stack.villager_food(items.get(&stack.item)).unwrap_or(0)
-}
-/// The farmer's `requestedItems` (`VillagerProfession.FARMER`). Food is picked
-/// up and traded separately, through its villager food value.
-pub fn farmer_items() -> &'static [&'static str] {
-    &[
-        "minecraft:wheat",
-        "minecraft:wheat_seeds",
-        "minecraft:beetroot_seeds",
-        "minecraft:bone_meal",
-    ]
 }
 /// A villager's `requestedItems` by profession.
 pub fn requested_items<'a>(m: &Mob, table: &'a ResolvedProfessions) -> &'a [String] {
@@ -1005,31 +991,47 @@ pub fn eat_and_digest_in(m: &mut Mob, w: &MobWorld) {
     }
 }
 
-/// The saved fields (`FoodLevel`, `Gossips`, `LastGossipDecay`, `Inventory`,
-/// `LivingEntity`'s `sleeping_pos` and the sleep and golem memories).
-pub fn write_nbt(m: &Mob, map: &mut sunrise_core::nbt::Compound, items: &crate::items::Items) {
+/// `AbstractVillager` writes inventory after offers, before the `Villager` fields.
+pub fn write_nbt(
+    m: &Mob,
+    map: &mut crate::entity_nbt::EntityTagWriter,
+    items: &crate::items::Items,
+) {
     use sunrise_core::nbt::Tag;
-    if let Some(p) = sleeping_pos(m) {
-        map.insert("sleeping_pos".into(), Tag::IntArray(p.to_vec()));
-    } else {
-        // LivingEntity.addAdditionalSaveData omits an absent modeled position.
-        map.remove(&"sleeping_pos".into());
+    let extra = ext(m);
+    if let Some(e) = extra {
+        map.insert(
+            "Inventory".into(),
+            Tag::List(
+                e.inventory
+                    .iter()
+                    .map(|stack| crate::save::item_to_nbt(stack, items))
+                    .collect(),
+            ),
+        );
     }
-    let Some(e) = ext(m) else { return };
+    map.insert("VillagerData".into(), professions::save::villager_data(m));
+    // A loaded villager with VillagerData is finalized.
+    map.insert("VillagerDataFinalized".into(), Tag::Byte(1));
+    if let Some(e) = extra {
+        map.insert(
+            "FoodLevel".into(),
+            Tag::Byte(e.food_level.clamp(-128, 127) as i8),
+        );
+        map.insert("Gossips".into(), e.gossips.to_nbt());
+    }
+    let trade = m.extra.trade.as_deref();
+    map.insert("Xp".into(), Tag::Int(trade.map_or(0, |t| t.xp)));
     map.insert(
-        "FoodLevel".into(),
-        Tag::Byte(e.food_level.clamp(-128, 127) as i8),
+        "LastRestock".into(),
+        Tag::Long(trade.map_or(0, |t| t.last_restock)),
     );
-    map.insert("Gossips".into(), e.gossips.to_nbt());
-    map.insert("LastGossipDecay".into(), Tag::Long(e.last_gossip_decay));
+    if let Some(e) = extra {
+        map.insert("LastGossipDecay".into(), Tag::Long(e.last_gossip_decay));
+    }
     map.insert(
-        "Inventory".into(),
-        Tag::List(
-            e.inventory
-                .iter()
-                .map(|stack| crate::save::item_to_nbt(stack, items))
-                .collect(),
-        ),
+        "RestocksToday".into(),
+        Tag::Int(trade.map_or(0, |t| t.restocks_today)),
     );
 }
 /// The memories of `Brain.memories` the villager keeps besides positions.
@@ -1189,52 +1191,14 @@ pub fn read_nbt(m: &mut Mob, tag: &sunrise_core::nbt::Tag) {
     }
 }
 
-/// The villager's brain tick. While the parallel mob tick is on it draws from a random of its own, so
-/// that no other mob's turn is waited for (`parallel::villagers_own_random`); the level's random otherwise.
-/// The seed comes from the mob's id and the game time, not from a draw, so the villager's entity random
-/// (movement, looks, sounds) keeps vanilla's sequence.
+/// `Villager.customServerAiStep`'s brain tick, on the level's random.
 pub fn tick_brain(
     m: &mut Mob,
     w: &MobWorld,
     level_random: &mut crate::health::DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
-    tick_brain_with(
-        crate::parallel::villagers_own_random(),
-        m,
-        w,
-        level_random,
-        events,
-    );
-}
-
-fn tick_brain_with(
-    own_random: bool,
-    m: &mut Mob,
-    w: &MobWorld,
-    level_random: &mut crate::health::DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    if own_random {
-        let mut own = sunrise_core::random::LegacyRandom::new(brain_seed(m.id, w.game_time));
-        super::villager_brain::tick(
-            m,
-            w,
-            &mut level_random.reborrow_with_random(&mut own),
-            events,
-        );
-    } else {
-        super::villager_brain::tick(m, w, level_random, events);
-    }
-}
-
-/// A seed for one villager's brain tick: a splitmix64 mix of the mob's id and the game time.
-fn brain_seed(id: u32, game_time: i64) -> i64 {
-    let mut z = (u64::from(id) << 32) ^ (game_time as u64);
-    z = z.wrapping_add(0x9e37_79b9_7f4a_7c15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    (z ^ (z >> 31)) as i64
+    super::villager_brain::tick(m, w, level_random, events);
 }
 
 #[cfg(test)]
@@ -1488,46 +1452,6 @@ mod tests {
         assert!(!mm.golem_detected_recently.present());
     }
 
-    /// On its own random, a villager's brain tick leaves the level random alone and takes no draw
-    /// from the villager's entity random that the level random's tick would not take.
-    #[test]
-    #[ignore = "daily"]
-    fn own_random_brain_tick_keeps_the_entity_random_sequence() {
-        use std::sync::Arc;
-        use sunrise_core::geometry::Vec3;
-        use sunrise_core::random::LegacyRandom;
-        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
-            let make = || {
-                Mob::new(
-                    1,
-                    Arc::new(types.types["minecraft:villager"].clone()),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                )
-            };
-            let (mut shared, mut own) = (make(), make());
-            let (mut level_shared, mut level_own) = (
-                crate::health::TestLevel::new(9),
-                crate::health::TestLevel::new(9),
-            );
-            tick_brain_with(
-                false,
-                &mut shared,
-                w,
-                &mut level_shared.level(),
-                &mut Vec::new(),
-            );
-            tick_brain_with(true, &mut own, w, &mut level_own.level(), &mut Vec::new());
-            assert_eq!(
-                level_own.random().next_long(),
-                LegacyRandom::new(9).next_long(),
-                "the level random is not drawn from"
-            );
-            assert_eq!(own.random.next_long(), shared.random.next_long());
-        });
-        assert!(ran, "vanilla data is missing");
-    }
-
     fn villager() -> Mob {
         use crate::mobs::{Anim, Brain, Flags, MobType, Part, Species};
         use std::sync::Arc;
@@ -1608,17 +1532,17 @@ mod tests {
         let mut m = villager();
         m.extra.ints[1] = bed_facing_code(Some("north"));
         ext_mut(&mut m).sleeping_pos = Some([3, 64, -7]);
-        let mut map = sunrise_core::nbt::Compound::new();
-        write_nbt(&m, &mut map, &Default::default());
+        let save = |m: &Mob| {
+            crate::entity_nbt::mob_to_nbt(m, [0; 4], None, None, |_| None, &Default::default())
+        };
         let mut loaded = villager();
-        read_nbt(&mut loaded, &sunrise_core::nbt::Tag::Compound(map));
+        read_nbt(&mut loaded, &save(&m));
         assert!(sleeping(&loaded));
         assert_eq!(sleeping_pos(&loaded), Some([3, 64, -7]));
         let mut awake = villager();
-        let mut map = sunrise_core::nbt::Compound::new();
-        write_nbt(&awake, &mut map, &Default::default());
-        assert!(!map.contains_key(&"sleeping_pos".into()));
-        read_nbt(&mut awake, &sunrise_core::nbt::Tag::Compound(map));
+        let saved = save(&awake);
+        assert!(saved.get("sleeping_pos").is_none());
+        read_nbt(&mut awake, &saved);
         assert!(!sleeping(&awake));
     }
     #[test]
@@ -1637,19 +1561,17 @@ mod tests {
                 if stale {
                     map.insert("sleeping_pos".into(), Tag::IntArray(vec![9, 90, 9]));
                 }
-                write_nbt(&m, &mut map, &Default::default());
-                assert_eq!(map.get(&"sleeping_pos".into()), expected.as_ref());
-                assert_eq!(map.get(&"h232_control".into()), Some(&Tag::Int(42)));
+                let saved = crate::entity_nbt::mob_to_nbt(
+                    &m,
+                    [0; 4],
+                    Some(&Tag::Compound(map)),
+                    None,
+                    |_| None,
+                    &Default::default(),
+                );
+                assert_eq!(saved.get("sleeping_pos"), expected.as_ref());
+                assert_eq!(saved.get("h232_control"), Some(&Tag::Int(42)));
             }
-            let saved = crate::entity_nbt::mob_to_nbt(
-                &m,
-                [0; 4],
-                None,
-                None,
-                |_| None,
-                &Default::default(),
-            );
-            assert_eq!(saved.get("sleeping_pos"), expected.as_ref());
         }
     }
     /// `Villager.setUnhappy` -> `Mob.makeSound(VILLAGER_NO)` plays with

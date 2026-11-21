@@ -16,7 +16,7 @@ pub trait TextHost {
     /// `server_starting`. Keybind components there return the literal ID.
     /// On a dedicated server, a component-valued translation replaces its
     /// arguments and fallback.
-    /// Available outside drawing, including setup on a game-backed host, on native and wasm.
+    /// Available outside drawing, including setup on a game-backed host.
     /// Pack discovery before game resources are available returns `TextFormError::Unavailable`.
     #[access(Metadata)]
     fn text_string(&self, text: &Text) -> Result<String, TextFormError>;
@@ -27,7 +27,12 @@ pub trait TextHost {
     /// (Paper's `GsonComponentSerializer.deserialize`). None when it does not parse as one component:
     /// an object needs one content key (a `type` binds alone, a null `type` counts as absent),
     /// `text` must be a string, `extra` a non-empty list, and a style field that is present and
-    /// wrong refuses the whole component. An object whose only content key is `index` is refused,
+    /// wrong refuses the whole component. Command, URL and page click actions use `command`, `url`
+    /// and `page`, respectively; a legacy `value`-only click for those actions is refused.
+    /// `open_url` requires a well-formed HTTP(S) URI; a malformed URI or another scheme
+    /// refuses the component (`Ok(None)`).
+    /// `show_item` refuses `minecraft:air`; a component removal (`!id`) requires an object value.
+    /// An object whose only content key is `index` is refused,
     /// as in vanilla's codec; Sunrise follows vanilla there.
     #[access(Metadata)]
     fn text_from_json(&self, json: &str) -> Result<Option<Text>, TextFormError>;
