@@ -50,8 +50,9 @@ impl Game<'_> {
         result.and(shutdown)
     }
 
-    /// Vanilla's nested `stopServer` finally: a listener panic still reaches
+    /// Vanilla's nested `stopServer` finally: an engine failure still reaches
     /// cleanup, storage release and `server_stopped`, and the error is kept.
+    /// Mod callback panics are handled by their dispatchers, not as stop errors.
     fn shutdown_started_server(
         &mut self,
         dedicated: bool,
@@ -256,8 +257,8 @@ impl Game<'_> {
         result = result.and(saved);
 
         // 4. `MinecraftServer.stopServer`'s `level.close()` loop: only reached
-        // when the world save did not fail or panic, matching vanilla's control
-        // flow where a failed `saveAllChunks` unwinds before `level.close()`.
+        // when the engine's save succeeds. A failed `saveAllChunks` unwinds
+        // before `level.close()`; a mod notice's panic never escapes its dispatcher.
         if save_ok
             && (self.world_adopted || self.levels.has_loaded_levels())
             && let Err(payload) =

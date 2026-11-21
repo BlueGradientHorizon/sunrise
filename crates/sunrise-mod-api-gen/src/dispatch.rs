@@ -1074,24 +1074,54 @@ pub(super) fn emit<'a>(
         };
         let listener_call = |callee: &str| {
             let expression = format!("{callee}.{name}({invoke})");
-            if matches!(name, "contents_changed" | "farmland_trample") {
-                // Let the existing journal see the unwind before invoke catches it. In World a
-                // successful child merges into the owning action's frame; outside World use
-                // the normal typed phase-refusal path.
-                let (host, _) = host.as_ref().unwrap();
-                let commit = if contract == Contract::Listen {
-                    format!("{expression}; Ok(())")
-                } else {
-                    format!("Ok({expression})")
-                };
-                format!(
-                    "if contained {{ {expression} }} else {{\
-                     super::item::transaction::run_transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{\
-                         {commit}\
-                     }}).unwrap_or_else(|never| match never {{}}) }}"
-                )
-            } else {
-                expression
+            match name {
+                "contents_changed"
+                | "farmland_trample"
+                | "server_about_to_start"
+                | "server_starting"
+                | "server_started"
+                | "server_stopping"
+                | "server_stopped"
+                | "config_unloading"
+                | "level_load"
+                | "level_save"
+                | "level_unload"
+                | "create_spawn_position"
+                | "player_save_to_file"
+                | "world_saved" => {
+                    // Let the existing journal see the unwind before invoke catches it. In World a
+                    // successful child merges into the owning action's frame; outside World use
+                    // the normal typed phase-refusal path.
+                    let (host, _) = host.as_ref().unwrap();
+                    let commit = if contract == Contract::Listen {
+                        format!("{expression}; Ok(())")
+                    } else {
+                        format!("Ok({expression})")
+                    };
+                    format!(
+                        "if contained {{ {expression} }} else {{\
+                         super::item::transaction::run_transaction(&mut *{host}, |{host}, _| -> Result<_, core::convert::Infallible> {{\
+                             {commit}\
+                         }}).unwrap_or_else(|never| match never {{}}) }}"
+                    )
+                }
+                "level_tick_pre" | "level_tick_post" => {
+                    // Only the server Host owns a journal. The client side still uses invoke
+                    // for panic/phase refusal handling, as do the client Load and Unload hooks.
+                    let (host, _) = host.as_ref().unwrap();
+                    format!(
+                        "match {host}.reborrow() {{\
+                            HostSide::Server({host}) if !contained => {{\
+                                super::item::transaction::run_transaction({host}, |{host}, _| -> Result<(), core::convert::Infallible> {{\
+                                    let mut {host} = HostSide::Server({host});\
+                                    {expression}; Ok(())\
+                                }}).unwrap_or_else(|never| match never {{}})\
+                            }}\
+                            mut {host} => {expression},\
+                        }}"
+                    )
+                }
+                _ => expression,
             }
         };
         // One callee's call: a mod's, or a scoped hook's part's.

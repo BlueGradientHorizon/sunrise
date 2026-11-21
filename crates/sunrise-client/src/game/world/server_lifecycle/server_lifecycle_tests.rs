@@ -4,14 +4,12 @@ use crate::game::{
 };
 use mod_api::{Hooks, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 struct PanicAt {
-    stopping: AtomicBool,
-    save: AtomicBool,
-    config_unloading: AtomicBool,
-    logout: AtomicBool,
+    stopping: bool,
+    config_unloading: bool,
+    logout: bool,
 }
 
 struct StoppedProbe {
@@ -19,7 +17,6 @@ struct StoppedProbe {
     lan: std::sync::Weak<sunrise_client::lan::Shared>,
     root: std::path::PathBuf,
     save: Arc<sunrise_client::save::SaveDir>,
-    expected_last: &'static str,
 }
 
 /// Exercise the real stop/save paths, not just direct calls to hook dispatch.
@@ -28,7 +25,7 @@ struct StoppedProbe {
 fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     struct Log(
         Arc<Mutex<Vec<String>>>,
-        Arc<PanicAt>,
+        PanicAt,
         Arc<Mutex<Option<StoppedProbe>>>,
     );
     #[mod_api::__subscriptions]
@@ -62,7 +59,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
         fn server_stopping(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppingEvent) {
             self.0.lock().unwrap().push("stopping".into());
-            if self.1.stopping.load(Ordering::Relaxed) {
+            if self.1.stopping {
                 panic!("stopping listener");
             }
         }
@@ -72,7 +69,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
             _: &mut mod_api::ConfigUnloadingEvent<'_>,
         ) {
             self.0.lock().unwrap().push("config-unloading".into());
-            if self.1.config_unloading.load(Ordering::Relaxed) {
+            if self.1.config_unloading {
                 panic!("config unloading listener");
             }
         }
@@ -84,16 +81,13 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
         fn world_saved(&self, _: &mut dyn ServerHost, _: &mut mod_api::WorldSavedEvent) {
             self.0.lock().unwrap().push("saved".into());
-            if self.1.save.load(Ordering::Relaxed) {
-                panic!("save listener");
-            }
         }
         fn player_logged_out(
             &self,
             _: &mut dyn ServerHost,
             _: &mut mod_api::PlayerLoggedOutEvent<'_>,
         ) {
-            if self.1.logout.load(Ordering::Relaxed) {
+            if self.1.logout {
                 self.0.lock().unwrap().push("logout".into());
                 panic!("logout listener");
             }
@@ -116,64 +110,45 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 );
                 assert_eq!(
                     self.0.lock().unwrap().last().map(String::as_str),
-                    Some(probe.expected_last)
+                    Some("level-unload:minecraft:overworld")
                 );
-                // Storage is released before the notification, even if the
-                // final-save listener itself panicked after writing metadata.
+                // Storage is released before the notification.
                 let _lock = sunrise_client::save::SessionLock::acquire(&probe.root).unwrap();
             }
             self.0.lock().unwrap().push("stopped".into());
         }
     }
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let panic_at = Arc::new(PanicAt {
-        stopping: AtomicBool::new(false),
-        save: AtomicBool::new(false),
-        config_unloading: AtomicBool::new(false),
-        logout: AtomicBool::new(false),
-    });
-    let stopped_probe = Arc::new(Mutex::new(None));
-    with_mods(
-        vec![ModEntry::new(
-            "log",
-            Box::new(Log(log.clone(), panic_at.clone(), stopped_probe.clone())),
-        )]
-        .into(),
-        || {
-            for dedicated in [false, true] {
-                for case in [
-                    "normal",
-                    "startup-error",
-                    "opening-failed-init",
-                    "bind-failed-init",
-                    "runtime-extra-level",
-                    "tick-error",
-                    "panic",
-                    "save-error",
-                    "unopened",
-                    "locked-unadopted",
-                    "stopping-panic",
-                    "save-panic",
-                    "config-unloading-panic",
-                    "config-unloading-save-panic",
-                    "config-unloading-logout-panic",
-                ] {
-                    log.lock().unwrap().clear();
-                    panic_at
-                        .stopping
-                        .store(case == "stopping-panic", Ordering::Relaxed);
-                    panic_at.save.store(
-                        matches!(case, "save-panic" | "config-unloading-save-panic"),
-                        Ordering::Relaxed,
-                    );
-                    panic_at
-                        .logout
-                        .store(case == "config-unloading-logout-panic", Ordering::Relaxed);
-                    let config_panic = case.starts_with("config-unloading");
-                    panic_at
-                        .config_unloading
-                        .store(config_panic, Ordering::Relaxed);
-                    *stopped_probe.lock().unwrap() = None;
+    for dedicated in [false, true] {
+        for case in [
+            "normal",
+            "startup-error",
+            "opening-failed-init",
+            "bind-failed-init",
+            "runtime-extra-level",
+            "tick-error",
+            "panic",
+            "save-error",
+            "unopened",
+            "locked-unadopted",
+            "stopping-panic",
+            "config-unloading-panic",
+            "config-unloading-logout-panic",
+        ] {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let stopped_probe = Arc::new(Mutex::new(None));
+            let config_panic = case.starts_with("config-unloading");
+            let panic_at = PanicAt {
+                stopping: case == "stopping-panic",
+                config_unloading: config_panic,
+                logout: case == "config-unloading-logout-panic",
+            };
+            with_mods(
+                vec![ModEntry::new(
+                    "log",
+                    Box::new(Log(log.clone(), panic_at, stopped_probe.clone())),
+                )]
+                .into(),
+                || {
                     let run_case = |game: &mut crate::game::Game<'_>| {
                         game.options.execution_role = if dedicated {
                             ExecutionRole::DedicatedServer
@@ -233,7 +208,7 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 // server. Neither may merely unpublish on shutdown.
                                 Box::new(super::super::integrated::tests::install_serving(
                                     game,
-                                    case == "config-unloading-save-panic",
+                                    case == "config-unloading-logout-panic",
                                 ))
                             };
                             let lan = Arc::downgrade(&game.lan.as_ref().unwrap().hub.lan.shared);
@@ -242,11 +217,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 lan,
                                 root: root.clone(),
                                 save: game.save.clone(),
-                                expected_last: if case == "config-unloading-save-panic" {
-                                    "saved"
-                                } else {
-                                    "level-unload:minecraft:overworld"
-                                },
                             });
                         }
                         let result = game.run_server_lifecycle(dedicated, |game| {
@@ -294,19 +264,29 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                         });
                         assert_eq!(
                             result.is_ok(),
-                            matches!(case, "normal" | "runtime-extra-level"),
+                            matches!(case, "normal" | "runtime-extra-level" | "stopping-panic")
+                                || config_panic,
+                            "{dedicated} {case}: {result:?}"
+                        );
+                        let expected_panics: &[&str] = match case {
+                            "stopping-panic" => &["server_stopping"],
+                            "config-unloading-panic" => &["config_unloading"],
+                            "config-unloading-logout-panic" => {
+                                &["player_logged_out", "config_unloading"]
+                            }
+                            _ => &[],
+                        };
+                        assert_eq!(
+                            mod_api::__private::take_hook_panics(),
+                            expected_panics
+                                .iter()
+                                .map(|&hook| mod_api::__private::HookPanicReport {
+                                    mod_id: "log",
+                                    hook
+                                })
+                                .collect::<Vec<_>>(),
                             "{dedicated} {case}"
                         );
-                        if config_panic || matches!(case, "stopping-panic" | "save-panic") {
-                            let message = result.unwrap_err().to_string();
-                            let needle = match case {
-                                "stopping-panic" => "stopping listener",
-                                "save-panic" | "config-unloading-save-panic" => "save listener",
-                                "config-unloading-logout-panic" => "logout listener",
-                                _ => "config unloading listener",
-                            };
-                            assert!(message.contains(needle), "{dedicated} {case}: {message}");
-                        }
                         let expected: &[&str] = match case {
                             "bind-failed-init" => &["stopped"],
                             "unopened" => &["about-to-start", "stopped", "config-unloading"],
@@ -347,17 +327,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "stopped",
                                 "config-unloading",
                             ],
-                            "save-panic" => &[
-                                "about-to-start",
-                                "level-load:minecraft:overworld",
-                                "starting",
-                                "started",
-                                "stopping",
-                                "level-save:minecraft:overworld",
-                                "saved",
-                                "stopped",
-                                "config-unloading",
-                            ],
                             "runtime-extra-level" => &[
                                 "about-to-start",
                                 "level-load:minecraft:overworld",
@@ -383,17 +352,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 "level-save:minecraft:overworld",
                                 "saved",
                                 "level-unload:minecraft:overworld",
-                                "stopped",
-                                "config-unloading",
-                            ],
-                            "config-unloading-save-panic" => &[
-                                "about-to-start",
-                                "level-load:minecraft:overworld",
-                                "starting",
-                                "started",
-                                "stopping",
-                                "level-save:minecraft:overworld",
-                                "saved",
                                 "stopped",
                                 "config-unloading",
                             ],
@@ -450,8 +408,164 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                     } else {
                         with_game(run_case);
                     }
-                }
-            }
+                },
+            );
+        }
+    }
+}
+
+/// A failed notice cannot turn a successful `saveAllChunks` into a save error or skip
+/// the `stopServer` level-close loop.
+#[test]
+#[ignore = "daily"]
+fn a_world_saved_panic_discards_only_its_listeners_journal() {
+    // The save gate observes process-wide visibility leases from other tests.
+    crate::game::in_own_process(
+        "game::server_lifecycle::tests::a_world_saved_panic_discards_only_its_listeners_journal",
+        world_saved_panic_during_shutdown,
+    );
+}
+
+fn world_saved_panic_during_shutdown() {
+    use mod_api::__private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics};
+    use mod_api::{BlockState, BlockUpdateFlags, HostTransaction, WorldSavedEvent};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use sunrise_client::{chunk::Chunk, save};
+
+    const POS: [i32; 3] = [1, 64, 1];
+    const LEVEL: &str = "minecraft:overworld";
+
+    struct Panics {
+        calls: Arc<AtomicUsize>,
+        writes: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Panics {
+        #[listener(priority = 100)]
+        fn world_saved(&self, host: &mut dyn ServerHost, _: &mut WorldSavedEvent) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            let level = host.level(LEVEL).unwrap();
+            let gold = host.block_state_id("minecraft:gold_block").unwrap();
+            host.transaction(|host, _| {
+                assert_eq!(
+                    level.set_block(host, POS, gold, BlockUpdateFlags::NONE),
+                    Ok(true)
+                );
+                Ok::<_, std::convert::Infallible>(())
+            })
+            .unwrap();
+            assert_eq!(level.block_state(host, POS), Some(gold));
+            self.writes.fetch_add(1, Ordering::Relaxed);
+            panic!("after committing a nested write");
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Notice {
+        Saved(Option<BlockState>),
+        Unloaded(String),
+        Stopped,
+    }
+    struct Observer(Arc<Mutex<Vec<Notice>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observer {
+        fn world_saved(&self, host: &mut dyn ServerHost, _: &mut WorldSavedEvent) {
+            self.0.lock().unwrap().push(Notice::Saved(
+                host.level(LEVEL)
+                    .and_then(|level| level.block_state(host, POS)),
+            ));
+        }
+        fn level_unload(&self, _: &mut dyn ServerHost, event: &mut mod_api::LevelUnloadEvent<'_>) {
+            self.0
+                .lock()
+                .unwrap()
+                .push(Notice::Unloaded(event.dimension.into()));
+        }
+        fn server_stopped(&self, _: &mut dyn ServerHost, _: &mut mod_api::ServerStoppedEvent) {
+            self.0.lock().unwrap().push(Notice::Stopped);
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let writes = Arc::new(AtomicUsize::new(0));
+    let notices = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![
+            ModEntry::new(
+                "broken-save",
+                Box::new(Panics {
+                    calls: calls.clone(),
+                    writes: writes.clone(),
+                }),
+            ),
+            ModEntry::new("observer", Box::new(Observer(notices.clone()))),
+        ]
+        .into(),
+        || {
+            with_game(|game| {
+                let _world = PhaseOwner::scope(ModPhase::World);
+                let root = tempfile::tempdir().unwrap();
+                game.join_world_rest().unwrap();
+                game.world_root = root.path().to_path_buf();
+                game.save = Arc::new(save::SaveDir::new(
+                    game.world_root.clone(),
+                    save::LevelShape::OVERWORLD,
+                    Some(Default::default()),
+                ));
+                game.session_lock = Some(save::SessionLock::acquire(root.path()).unwrap());
+                game.world_adopted = true;
+                game.level.name = "saved despite listener panic".into();
+                game.native_level_opened(Dim::Overworld);
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let registry = game.pack.assets.registry;
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                game.world.set(POS[0], POS[1], POS[2], stone).unwrap();
+                let stone_api = (&*game as &dyn ServerHost)
+                    .block_state_id("minecraft:stone")
+                    .unwrap();
+
+                game.run_server_lifecycle(false, |_| Ok(super::ServerRunOutcome::Orderly))
+                    .unwrap();
+
+                assert_eq!(
+                    writes.load(Ordering::Relaxed),
+                    1,
+                    "the callback reached its deliberate panic"
+                );
+                assert_eq!(
+                    take_hook_panics(),
+                    [HookPanicReport {
+                        mod_id: "broken-save",
+                        hook: "world_saved"
+                    }]
+                );
+                assert_eq!(
+                    notices.lock().unwrap().as_slice(),
+                    [
+                        Notice::Saved(Some(stone_api)),
+                        Notice::Unloaded(LEVEL.into()),
+                        Notice::Stopped
+                    ]
+                );
+                assert_eq!(
+                    save::Level::read(root.path()).unwrap().name,
+                    "saved despite listener panic"
+                );
+                let saved = game.save.load(0, 0, registry, world_biomes!(game)).unwrap();
+                assert_eq!(saved.block(1, 64, 1), stone);
+                assert!(game.session_lock.is_none());
+
+                game.native_world_saved(true);
+                assert_eq!(
+                    calls.load(Ordering::Relaxed),
+                    1,
+                    "the panicking callback stays disabled"
+                );
+                assert_eq!(notices.lock().unwrap().last(), Some(&Notice::Saved(None)));
+                assert!(take_hook_panics().is_empty());
+            })
         },
     );
 }

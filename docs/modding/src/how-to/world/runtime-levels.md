@@ -68,6 +68,12 @@ come before `level_save`, then `world_saved` follows the world metadata write. S
 save before `server_starting` writes levels and world metadata, naming a known profile for a new
 world without creating or overwriting the owner's player file.
 
+Lifecycle hooks follow the [shared failure rules](../../concepts/hooks-and-the-host.md#failures-and-panics).
+A panicking listener does not fail a successful save or skip another listener's level close
+notice. On the server, the existing transaction journal discards that callback's journaled
+writes, including edits committed by a nested `host.transaction`. Effects outside the journal,
+such as a mod writing its own file or editing client state, are not undone.
+
 On the client, resolve the level in `client_level_load` with `host.level(event.dimension)` before it
 is installed. Its chunks arrive later, but it can already read the datapack registries synchronized
 by its server for that configuration. On dimension replacement, `client_level_unload` follows

@@ -18,13 +18,17 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
         native_entity_refs::tests::with_client_game,
         remote::{Received, RemoteDimensionEntry},
     };
+    use mod_api::__private::{HookPanicReport, take_hook_panics};
     use mod_api::{
         BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, DatapackCandidate,
         DatapackField, DatapackFieldKind, DatapackReadError, DatapackRegistrySet,
         DatapackRegistrySync, DatapackValue, Hooks, LevelRef, ModEntry, Registrar,
         RegistrationContext,
     };
-    use std::sync::{Arc, Mutex};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
     use sunrise_client::{
         datapack_net,
         level_loading::Reason,
@@ -101,9 +105,35 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
             self.record("unload", host, event.dimension);
         }
     }
+    #[derive(Default)]
+    struct Panics {
+        loads: AtomicUsize,
+        unloads: AtomicUsize,
+    }
+    struct Broken(Arc<Panics>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Broken {
+        #[listener(priority = 100)]
+        fn client_level_load(&self, _: &mut dyn ClientHost, _: &mut ClientLevelLoadEvent<'_>) {
+            self.0.loads.fetch_add(1, Ordering::Relaxed);
+            panic!("client Load listener");
+        }
+
+        #[listener(priority = 100)]
+        fn client_level_unload(&self, _: &mut dyn ClientHost, _: &mut ClientLevelUnloadEvent<'_>) {
+            self.0.unloads.fetch_add(1, Ordering::Relaxed);
+            panic!("client Unload listener");
+        }
+    }
+
     let log = Arc::new(Mutex::new(Vec::new()));
+    let panics = Arc::new(Panics::default());
     mod_platform::testing::with_mods(
-        vec![ModEntry::new("levels", Box::new(Log(log.clone())))].into(),
+        vec![
+            ModEntry::new("broken-client-lifecycle", Box::new(Broken(panics.clone()))),
+            ModEntry::new("levels", Box::new(Log(log.clone()))),
+        ]
+        .into(),
         || {
             with_client_game(|game| {
                 let login = SpawnInfo {
@@ -233,6 +263,21 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 game.begin_closing_save(true).unwrap();
                 assert!(game.poll_closing_save().unwrap());
                 game.save_for_exit().unwrap();
+                assert_eq!(panics.loads.load(Ordering::Relaxed), 1);
+                assert_eq!(panics.unloads.load(Ordering::Relaxed), 1);
+                assert_eq!(
+                    take_hook_panics(),
+                    [
+                        HookPanicReport {
+                            mod_id: "broken-client-lifecycle",
+                            hook: "client_level_load"
+                        },
+                        HookPanicReport {
+                            mod_id: "broken-client-lifecycle",
+                            hook: "client_level_unload"
+                        },
+                    ]
+                );
             });
         },
     );

@@ -635,11 +635,11 @@ impl Game<'_> {
     ) {
         self.fire_server_tick(context, phase);
     }
-    /// Before an authoritative server level's tick pass. `dimension` is its ID.
+    /// Before a level's tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_pre(&mut self, level: LevelRef) {
         self.fire_level_tick_pre(level);
     }
-    /// After a successful authoritative server level tick pass.
+    /// After a successful level tick pass on either logical side.
     pub(in crate::game) fn native_level_tick_post(&mut self, level: LevelRef) {
         self.fire_level_tick_post(level);
     }
@@ -3444,24 +3444,21 @@ impl Game<'_> {
     /// `dimension`'s level opened on the server (NeoForge's `LevelEvent.Load`,
     /// posted in `MinecraftServer.createLevels`): before any of its chunks
     /// (`native_chunk_load`), so a mod sets up what it keeps for the level
-    /// here. At startup the Overworld, Nether and End are published and
-    /// announced in that order, before `server_started`, with each level in
-    /// place. A level closed while idle fires this again when it reopens.
+    /// here. The Overworld opens first, then the other configured levels in
+    /// LEVEL_STEM registry traversal order, before `server_started`.
     /// An explicitly opened runtime level can fire while parked: `dimension`
     /// names that level, not the Host's current one. Once for each open;
-    /// `native_level_unload` follows. Server-side.
+    /// `native_level_unload` follows a successful close. Server-side.
     pub(in crate::game) fn native_level_load(&mut self, dimension: &str) {
         self.fire_level_load(dimension);
     }
     /// `dimension`'s level closed (NeoForge's `LevelEvent.Unload`, posted after
     /// `level.close()` in `MinecraftServer.stopServer`), after its last save:
-    /// drop what the mod kept for it. A level other than the Overworld closes
-    /// once nobody has been in it for 300 ticks, after its chunks' unloads;
-    /// every level still open closes during server teardown after the final
-    /// save attempt and network teardown, before storage release and
-    /// `native_server_stopped` (including after a failed open, tick failure, or
-    /// save failure). Once for each `native_level_load`. Don't read its blocks.
-    /// Server-side.
+    /// drop what the mod kept for it. Idle chunk eviction does not close the level.
+    /// Server teardown closes the remaining levels after network teardown and a
+    /// successful final save, before storage release and `native_server_stopped`.
+    /// A failed save or a level's own close failure does not fire this hook.
+    /// Don't read its blocks. Server-side.
     pub(in crate::game) fn native_level_unload(&mut self, dimension: &str) {
         self.fire_level_unload(dimension);
     }

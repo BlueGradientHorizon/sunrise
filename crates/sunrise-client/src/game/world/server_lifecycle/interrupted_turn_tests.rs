@@ -18,9 +18,9 @@ impl mod_api::Hooks for Logouts {
     }
 }
 
-/// A mod whose logout listener enters a new turn for guest 13 via `set_game_mode`,
-/// which panics in `player_game_mode_changed` during `stop_dedicated` before
-/// `finish_server_save` runs.
+/// A mod whose logout listener enters a new turn for guest 13 via `set_game_mode`.
+/// Its inner callback panics in `player_game_mode_changed`, but the dispatch boundary
+/// catches it before the turn unwinds.
 struct PanicsInShutdown;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for PanicsInShutdown {
@@ -67,10 +67,10 @@ fn taking_turn(game: &mut crate::game::Game<'_>) {
     panic!("mod panic in a turn");
 }
 
-/// Runs the scenario: the panic goes through the real turn helpers, then the real stop path
-/// saves. `nested` puts guest 13's turn inside guest 12's; `callback` has `player_logged_out`
-/// enter a new turn for guest 13 that panics during `stop_dedicated` before `finish_server_save`.
-fn scenario(nested: bool, callback: bool) {
+/// An engine unwind goes through the real turn helpers, then the real stop path saves.
+/// `nested` puts guest 13's turn inside guest 12's; `mode_panic` instead checks that a contained
+/// callback panic during logout is not an interrupted turn and does not exclude guest 13.
+fn scenario(nested: bool, mode_panic: bool) {
     with_guests(|game| {
         game.options.execution_role = ExecutionRole::DedicatedServer;
         let root = tempfile::tempdir().unwrap();
@@ -144,16 +144,28 @@ fn scenario(nested: bool, callback: bool) {
 
         // The stop path saves; no tick has run since, so the record stands.
         let logouts = std::sync::Arc::new(Mutex::new(Vec::new()));
-        let entry = if callback {
+        let entry = if mode_panic {
             mod_api::ModEntry::new("panics", Box::new(PanicsInShutdown))
         } else {
             mod_api::ModEntry::new("logouts", Box::new(Logouts(logouts.clone())))
         };
         mod_platform::testing::with_mods(vec![entry].into(), || {
-            let result = game.run_server_lifecycle(true, |_| Ok(super::ServerRunOutcome::Orderly));
-            assert_eq!(result.is_err(), callback, "{result:?}");
+            game.run_server_lifecycle(true, |_| Ok(super::ServerRunOutcome::Orderly))
+                .unwrap();
+            let panics = mod_api::__private::take_hook_panics();
+            if mode_panic {
+                assert_eq!(
+                    panics,
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "panics",
+                        hook: "player_game_mode_changed",
+                    }]
+                );
+            } else {
+                assert!(panics.is_empty());
+            }
         });
-        if !callback {
+        if !mode_panic {
             // An interrupted player stays online: each login still gets its one logout.
             let mut left = logouts.lock().unwrap().clone();
             left.sort_unstable();
@@ -173,11 +185,11 @@ fn scenario(nested: bool, callback: bool) {
             game.boats.iter().any(|b| b.id == boat),
             "the interrupted player's boat stays in the world, not in a file nobody writes"
         );
-        if nested || callback {
+        if nested {
             assert_eq!(
                 read(13),
                 before_13,
-                "so does the player whose turn it was inside, or whom a shutdown callback's turn interrupted"
+                "the inner turn unwound too, so its last saved files are kept"
             );
         } else {
             assert_ne!(

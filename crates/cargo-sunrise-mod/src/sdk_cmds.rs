@@ -930,10 +930,17 @@ mod tests {
             }],
         };
         let note: ChangeNote = toml::from_str(include_str!(
-            "../../sunrise-mod-vocab/changes/debt-wl-world-lifecycle.toml"
+            "../../sunrise-mod-vocab/changes/debt-re-wl-re-wl.toml"
         ))
         .unwrap();
         let notes = migrate_notes(&[note]);
+        for handle in [
+            "handle:LevelRef::datapack_entries",
+            "handle:LevelRef::datapack_handle",
+            "handle:LevelRef::datapack_read",
+        ] {
+            assert!(notes.contains_key(handle), "missing migration for {handle}");
+        }
         let pinned = |name: &str, build: &str| PinnedSdk {
             name: name.into(),
             build: build.into(),
