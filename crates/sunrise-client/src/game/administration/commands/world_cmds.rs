@@ -4,7 +4,7 @@ use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
 use crate::game::minecarts::CartHit;
 use sunrise_client::{
-    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who, finalize},
+    mobs::{Damage, DamageKind, MobEvent, Who, finalize},
     scoreboard_cmd::{Holder, Tracker},
     settings::SOUND_SOURCES,
     text::Text,
@@ -140,51 +140,8 @@ impl Game<'_> {
     /// factory chooses the type based on the attacker; an explicit registry
     /// type must not. Other registered types keep their id and tags as `Named`.
     pub(in crate::game) fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
-        match ty.strip_prefix("minecraft:").unwrap_or(ty) {
-            "player_attack" => DamageKind::PlayerAttack,
-            "mace_smash" => DamageKind::MaceSmash,
-            "spear" => DamageKind::Spear,
-            "mob_attack" => DamageKind::MobAttack,
-            "mob_attack_no_aggro" => DamageKind::MobAttackNoAggro,
-            "arrow" => DamageKind::Arrow,
-            "thrown" => DamageKind::Thrown,
-            "fireball" => DamageKind::Fireball,
-            "wither_skull" => DamageKind::WitherSkull,
-            "fall" => DamageKind::Fall,
-            "on_fire" => DamageKind::OnFire,
-            "in_fire" => DamageKind::InFire,
-            "hot_floor" => DamageKind::HotFloor,
-            "campfire" => DamageKind::Campfire,
-            "lava" => DamageKind::Lava,
-            "drown" => DamageKind::Drown,
-            "dry_out" => DamageKind::DryOut,
-            "magic" => DamageKind::Magic,
-            "sting" => DamageKind::Sting,
-            "cactus" => DamageKind::Cactus,
-            "sweet_berry_bush" => DamageKind::SweetBerryBush,
-            "freeze" => DamageKind::Freeze,
-            "in_wall" => DamageKind::InWall,
-            "thorns" => DamageKind::Thorns,
-            "cramming" => DamageKind::Cramming,
-            "falling_anvil" => DamageKind::FallingAnvil,
-            "falling_block" => DamageKind::FallingBlock,
-            "fireworks" => DamageKind::Fireworks,
-            "generic_kill" => DamageKind::GenericKill,
-            "lightning_bolt" => DamageKind::LightningBolt,
-            "out_of_world" => DamageKind::OutOfWorld,
-            "outside_border" => DamageKind::OutsideBorder,
-            "sonic_boom" => DamageKind::SonicBoom,
-            "spit" => DamageKind::Spit,
-            "stalagmite" => DamageKind::Stalagmite,
-            "starve" => DamageKind::Starve,
-            "sulfur_cube_hot" => DamageKind::SulfurCubeHot,
-            "wind_charge" => DamageKind::WindCharge,
-            "wither" => DamageKind::Wither,
-            "generic" => DamageKind::Generic,
-            _ => {
-                NamedDamage::registered(catalog, ty).map_or(DamageKind::Generic, DamageKind::Named)
-            }
-        }
+        sunrise_client::health::resolve_damage_kind(Some(catalog), ty)
+            .unwrap_or(DamageKind::Generic)
     }
     /// `DamageCommand.damage`: apply its source and report an accepted hit.
     pub(super) fn cmd_damage(&mut self, ctx: &Context) -> R<i32> {

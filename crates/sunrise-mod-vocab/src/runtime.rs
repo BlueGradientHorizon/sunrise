@@ -158,23 +158,81 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
+/// A panicking mod callback disabled for the rest of this session, queued for the
+/// client's error toast.
+// no wire: process-local panic report queued for the client error toast.
+// exhaustive: engine-only diagnostic record.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallbackPanicNotice {
+    /// The `[mod] id` of the mod whose callback panicked.
+    pub mod_id: &'static str,
+    /// The hook name whose callback panicked.
+    pub hook: &'static str,
+    /// The panic message payload, or `"panic"` when the payload was not a string.
+    pub detail: String,
+}
+
+static CALLBACK_PANICS: std::sync::Mutex<Vec<CallbackPanicNotice>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Extract a human-readable summary from a `catch_unwind` panic payload.
+#[allow(dead_code)]
+pub(crate) fn panic_summary(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_owned()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panic".to_owned()
+    }
+}
+
+/// Poison `mod_id`'s callback for `hook`, log the panic, and queue a notice for the client toast.
+#[allow(dead_code)]
+pub(crate) fn record_callback_panic(
+    hook: generated::HookId,
+    mod_id: &'static str,
+    hook_name: &'static str,
+    detail: String,
+) {
+    poison(hook, mod_id);
+    log::error!(
+        "mod {mod_id} callback for hook {hook_name} panicked and is disabled for this session: {detail}"
+    );
+    CALLBACK_PANICS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(CallbackPanicNotice {
+            mod_id,
+            hook: hook_name,
+            detail,
+        });
+}
+
+/// Drain the process-wide queue of callback panic notices.
+pub(crate) fn take_callback_panics() -> Vec<CallbackPanicNotice> {
+    std::mem::take(&mut *CALLBACK_PANICS.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
 /// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling):
 /// it is skipped by that one hook alone — its other hooks and Parts are
-/// untouched, unlike a whole-mod disable. Called only from a listener's
-/// `catch_unwind` handler, so an installation is always in place.
+/// untouched, unlike a whole-mod disable. Tolerates calls when no `Mods` are
+/// installed (such as pure unit tests) without panicking inside a `catch_unwind`
+/// handler.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
-    let installed = installed().expect("a poison lands inside a dispatch");
-    let mut poisons = installed.poisons.lock().unwrap();
-    let sets =
-        poisons.get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT].into_boxed_slice());
-    sets[hook as usize]
-        .get_or_insert_with(std::collections::HashSet::new)
-        .insert(id);
-    installed
-        .poison_free
-        .store(false, std::sync::atomic::Ordering::Release);
+    if let Some(installed) = installed() {
+        let mut poisons = installed.poisons.lock().unwrap_or_else(|e| e.into_inner());
+        let sets = poisons
+            .get_or_insert_with(|| std::vec![None; generated::HOOK_COUNT].into_boxed_slice());
+        sets[hook as usize]
+            .get_or_insert_with(std::collections::HashSet::new)
+            .insert(id);
+        installed
+            .poison_free
+            .store(false, std::sync::atomic::Ordering::Release);
+    }
 }
 
 /// Whether `id`'s listener of `hook` is poisoned for the session.
@@ -438,6 +496,35 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
         })
 }
 
+/// The enabled, non-poisoned parts in `parts` for `hook`, each paired with its mod's
+/// `[mod] id` and marked as running `hook_name` until the next one is (or the loop ends).
+#[allow(dead_code)]
+pub(crate) fn entered_parts_with_id<'a, P: ?Sized>(
+    parts: &'a [Attached<P>],
+    hook: generated::HookId,
+    hook_name: &'static str,
+) -> impl Iterator<Item = (&'static str, &'a P)> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    parts
+        .iter()
+        .filter(move |attached| {
+            mod_index_on(attached.mod_index) && !poisoned(hook, attached.mod_id)
+        })
+        .map(move |attached| {
+            // The last part's mark goes first, as in `Entered`.
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook: hook_name,
+                    part: Some(attached.type_name),
+                },
+            );
+            (attached.mod_id, &*attached.part)
+        })
+}
+
 pub(crate) struct Entered<'a> {
     pub(crate) mods: std::slice::Iter<'a, ModEntry>,
     pub(crate) hook: &'static str,
@@ -677,6 +764,75 @@ mod toggle_tests {
                 assert!(any_mod_disabled());
                 assert!(set_mod_enabled("b", true));
                 assert!(!any_mod_disabled());
+            },
+        );
+    }
+
+    #[test]
+    fn callback_panic_reporting_poisons_and_drains_notices() {
+        assert_eq!(panic_summary(&"boom"), "boom");
+        assert_eq!(panic_summary(&String::from("owned")), "owned");
+        assert_eq!(panic_summary(&42u32), "panic");
+
+        // Tolerates poisoning when no Mods are installed on this thread.
+        let prev = TEST_MODS.replace(None);
+        let before = isolated_failures();
+        poison(generated::HookId::EntityInside, "uninstalled");
+        TEST_MODS.set(prev);
+        assert_eq!(isolated_failures(), before.wrapping_add(1));
+
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for Quiet {}
+        crate::testing::with_dispatch(
+            vec![
+                ModEntry::new("bad", Box::new(Quiet)),
+                ModEntry::new("good", Box::new(Quiet)),
+            ]
+            .into(),
+            || {
+                let _ = take_callback_panics();
+                record_callback_panic(
+                    generated::HookId::EntityInside,
+                    "bad",
+                    "entity_inside",
+                    "exploded".to_owned(),
+                );
+                assert!(poisoned(generated::HookId::EntityInside, "bad"));
+                assert!(!poisoned(generated::HookId::EntityInside, "good"));
+
+                let notices = take_callback_panics();
+                assert!(notices.contains(&CallbackPanicNotice {
+                    mod_id: "bad",
+                    hook: "entity_inside",
+                    detail: "exploded".to_owned(),
+                }));
+                assert!(take_callback_panics().is_empty());
+
+                let attached = [
+                    Attached {
+                        mod_id: "bad",
+                        mod_index: 0,
+                        order: 0,
+                        type_name: "BadPart",
+                        part: Arc::new(1u32),
+                    },
+                    Attached {
+                        mod_id: "good",
+                        mod_index: 1,
+                        order: 1,
+                        type_name: "GoodPart",
+                        part: Arc::new(2u32),
+                    },
+                ];
+                let visited: Vec<(&'static str, u32)> = entered_parts_with_id(
+                    &attached,
+                    generated::HookId::EntityInside,
+                    "entity_inside",
+                )
+                .map(|(id, v)| (id, *v))
+                .collect();
+                assert_eq!(visited, vec![("good", 2)]);
             },
         );
     }

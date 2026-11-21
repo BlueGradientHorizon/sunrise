@@ -337,6 +337,18 @@ pub enum MotionEvent {
         duration: i32,
         amplifier: u8,
     },
+    /// An `entity_inside` callback's `InsideEntityView::set_block`: the server
+    /// applies `Level.setBlockAndUpdate` directly.
+    InsideSetBlock {
+        pos: [i32; 3],
+        state: BlockStateId,
+    },
+    /// An `entity_inside` callback's `InsideEntityView::destroy_block`: the
+    /// server applies `Level.destroyBlock` directly.
+    InsideDestroyBlock {
+        pos: [i32; 3],
+        drop: bool,
+    },
     /// `ServerPlayer.checkFallDamage` after a mace smash: block particles
     /// from the landing block, more the further the fall.
     SmashLanding {

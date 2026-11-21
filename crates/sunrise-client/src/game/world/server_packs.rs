@@ -74,6 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
+            .chain(self.mod_panics.iter())
             .filter_map(|t| t.slot)
     }
 }
@@ -98,6 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
+    /// Error toasts for mod callbacks that panicked and were disabled for this session.
+    pub(super) mod_panics: Vec<SystemToast>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -527,26 +530,47 @@ impl Game<'_> {
         }
     }
 
+    /// Build the red error toast shown when a mod callback panics and is disabled for this session.
+    pub(in crate::game) fn mod_callback_panic_toast(
+        notice: &mod_api::__private::CallbackPanicNotice,
+    ) -> SystemToast {
+        SystemToast::new(
+            Text::tr(
+                "sunrise.toast.mod_callback_disabled.title",
+                &[&notice.mod_id],
+            ),
+            Some(Text::tr(
+                "sunrise.toast.mod_callback_disabled.description",
+                &[&notice.hook],
+            )),
+        )
+        .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255))
+        .with_display_time(SystemToast::LONG_DISPLAY_TIME)
+    }
+
+    /// Drain queued mod callback panic notices into player-visible error toasts.
+    pub(in crate::game) fn add_mod_panic_toasts(&mut self) {
+        for notice in mod_api::__private::take_callback_panics() {
+            if let Some(toast) = self.add_system_toast(Self::mod_callback_panic_toast(&notice)) {
+                self.server_packs.mod_panics.push(toast);
+            }
+        }
+    }
+
     /// The download notifiers' toasts, each in a free 32-pixel slot of the
     /// `ToastManager` (`hidden`, F1, keeps them timing out undrawn).
     pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
+        self.add_mod_panic_toasts();
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
-        for slot_toast in packs
-            .notifiers
-            .iter_mut()
-            .map(|n| &mut n.toast)
-            .chain(std::iter::once(&mut packs.load_fail))
-            .chain(packs.chunk_io.iter_mut())
-        {
-            let Some(toast) = slot_toast else {
-                continue;
-            };
+        let audio = &mut self.audio;
+        let atlas = &self.gui.atlas;
+        let mut drive_toast = |toast: &mut SystemToast| -> bool {
             if toast.slot.is_none() {
                 let Some(slot) = (0..Self::TOAST_SLOTS).find(|s| used & (1 << s) == 0) else {
-                    continue;
+                    return true;
                 };
                 used |= 1 << slot;
                 toast.slot = Some(slot);
@@ -554,17 +578,30 @@ impl Game<'_> {
             let (sound, finished) = toast.update(multiplier);
             if let Some(show) = sound {
                 let event = if show { "ui.toast.in" } else { "ui.toast.out" };
-                self.audio
-                    .play(&format!("minecraft:{event}"), None, 1.0, 1.0);
+                audio.play(&format!("minecraft:{event}"), None, 1.0, 1.0);
             }
             if finished {
-                *slot_toast = None;
-                continue;
+                return false;
             }
             if let (false, Some(slot)) = (hidden, toast.slot) {
-                toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
+                toast.draw(atlas, batch, 32.0 * slot as f32);
+            }
+            true
+        };
+        for slot_toast in packs
+            .notifiers
+            .iter_mut()
+            .map(|n| &mut n.toast)
+            .chain(std::iter::once(&mut packs.load_fail))
+            .chain(packs.chunk_io.iter_mut())
+        {
+            if let Some(toast) = slot_toast
+                && !drive_toast(toast)
+            {
+                *slot_toast = None;
             }
         }
+        packs.mod_panics.retain_mut(drive_toast);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.
@@ -672,5 +709,30 @@ mod tests {
         let (send, receive) = std::sync::mpsc::channel::<download::Progress>();
         drop(send);
         assert!(!PackNotifier::new(receive, 1).poll(Some));
+    }
+
+    #[test]
+    fn mod_callback_panic_toast_uses_translation_keys_and_long_display_time() {
+        let notice = mod_api::__private::CallbackPanicNotice {
+            mod_id: "demo",
+            hook: "entity_inside",
+            detail: "boom".to_owned(),
+        };
+        let toast = Game::mod_callback_panic_toast(&notice);
+        assert_eq!(
+            toast.title.component(),
+            serde_json::json!({
+                "translate": "sunrise.toast.mod_callback_disabled.title",
+                "with": [{"text": "demo"}]
+            })
+        );
+        assert_eq!(
+            toast.message.as_ref().map(Text::component),
+            Some(serde_json::json!({
+                "translate": "sunrise.toast.mod_callback_disabled.description",
+                "with": [{"text": "entity_inside"}]
+            }))
+        );
+        assert_eq!(toast.display_time(), SystemToast::LONG_DISPLAY_TIME);
     }
 }

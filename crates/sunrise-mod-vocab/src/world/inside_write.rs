@@ -6,7 +6,164 @@
 //! entity directly. A part here names those writes as [`EntityWrite`] values on the
 //! same collector, and its level writes as [`InsideWrite`] requests, so the walk's
 //! order and the entity's own tick are kept.
-use crate::{BlockState, EffectKey};
+use crate::{BlockState, EffectKey, EntityRef};
+
+/// Exclusive loan of the swept entity and its live level, lent to queued `run_before`
+/// and `run_after` callbacks when `InsideBlockEffectApplier.StepBasedCollector.applyAndClear`
+/// flushes them.
+// exhaustive: only the engine constructs a view.
+// no wire: an exclusive loan of the swept entity and live level during apply_and_clear, not a payload.
+pub struct InsideEntityView<'a> {
+    access: &'a mut dyn InsideEntityAccess,
+}
+
+impl<'a> InsideEntityView<'a> {
+    // hidden: the engine constructs the view when flushing queued inside-block callbacks.
+    #[doc(hidden)]
+    pub fn new(access: &'a mut dyn InsideEntityAccess) -> Self {
+        Self { access }
+    }
+
+    /// The swept entity's numeric id (`Entity.getId`).
+    pub fn id(&self) -> u32 {
+        self.access.id()
+    }
+
+    /// The swept entity's registry type id (for example `"minecraft:player"`).
+    pub fn kind(&self) -> &str {
+        self.access.kind()
+    }
+
+    /// Whether the swept entity is still alive (`Entity.isAlive`).
+    pub fn is_alive(&self) -> bool {
+        self.access.is_alive()
+    }
+
+    /// The swept entity's current world position (`Entity.position`).
+    pub fn position(&self) -> [f64; 3] {
+        self.access.position()
+    }
+
+    /// The swept entity's current velocity (`Entity.getDeltaMovement`).
+    pub fn velocity(&self) -> [f64; 3] {
+        self.access.velocity()
+    }
+
+    /// Remaining fire ticks (`Entity.getRemainingFireTicks`); positive values mean burning.
+    pub fn fire_ticks(&self) -> i32 {
+        self.access.fire_ticks()
+    }
+
+    /// Whether the swept entity currently has positive remaining fire ticks.
+    pub fn is_on_fire(&self) -> bool {
+        self.fire_ticks() > 0
+    }
+
+    /// The swept entity's accumulated fall distance (`Entity.fallDistance`).
+    pub fn fall_distance(&self) -> f64 {
+        self.access.fall_distance()
+    }
+
+    /// Read the block state at `pos` in the swept entity's live level, or `None` if unloaded
+    /// or outside world height.
+    pub fn block_state(&self, pos: [i32; 3]) -> Option<BlockState> {
+        self.access.block_state(pos)
+    }
+
+    /// Add `delta` to the swept entity's velocity (`Entity.push`). Returns `false` if any
+    /// component is non-finite.
+    pub fn push(&mut self, delta: [f64; 3]) -> bool {
+        self.access.push(delta)
+    }
+
+    /// Replace the swept entity's velocity (`Entity.setDeltaMovement`). Returns `false` if
+    /// any component is non-finite.
+    pub fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        self.access.set_velocity(velocity)
+    }
+
+    /// Apply `Entity.makeStuckInBlock` with `speed_multiplier`, resetting fall distance as
+    /// vanilla stuck blocks do. Returns `false` if any component is non-finite.
+    pub fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool {
+        self.access.make_stuck_in_block(speed_multiplier)
+    }
+
+    /// Reset the swept entity's accumulated fall distance (`Entity.resetFallDistance`).
+    pub fn reset_fall_distance(&mut self) {
+        self.access.reset_fall_distance();
+    }
+
+    /// Set the swept entity's remaining fire ticks (`Entity.setRemainingFireTicks`).
+    pub fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+        self.access.set_remaining_fire_ticks(ticks);
+    }
+
+    /// Apply `LivingEntity.addEffect` to the swept entity. Returns `false` for non-living
+    /// entities or if the effect could not be applied.
+    pub fn add_effect(&mut self, effect: EffectKey, duration: i32, amplifier: u8) -> bool {
+        self.access.add_effect(effect, duration, amplifier)
+    }
+
+    /// Hurt the swept entity with `damage_type` and `amount` (`Entity.hurt`), with no
+    /// direct or causing entity source.
+    pub fn hurt(&mut self, damage_type: &str, amount: f32) -> bool {
+        self.hurt_with_source(damage_type, amount, None, None)
+    }
+
+    /// Hurt the swept entity with `damage_type`, `amount`, and optional `direct` / `causing`
+    /// source entity handles (`Entity.hurt`).
+    pub fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<EntityRef>,
+        causing: Option<EntityRef>,
+    ) -> bool {
+        self.access
+            .hurt_with_source(damage_type, amount, direct, causing)
+    }
+
+    /// Replace the block at `pos` with `state` in the live level (`Level.setBlockAndUpdate`).
+    pub fn set_block(&mut self, pos: [i32; 3], state: BlockState) -> bool {
+        self.access.set_block(pos, state)
+    }
+
+    /// Destroy the block at `pos` in the live level (`Level.destroyBlock`), optionally
+    /// dropping its resources.
+    pub fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool {
+        self.access.destroy_block(pos, drop)
+    }
+}
+
+/// Engine backing for [`InsideEntityView`] and queued [`InsideEffect`] flushing.
+// hidden: engine backend behind InsideEntityView; mods call InsideEntityView methods.
+#[doc(hidden)]
+pub trait InsideEntityAccess {
+    fn id(&self) -> u32;
+    fn kind(&self) -> &str;
+    fn is_alive(&self) -> bool;
+    fn position(&self) -> [f64; 3];
+    fn velocity(&self) -> [f64; 3];
+    fn fire_ticks(&self) -> i32;
+    fn fall_distance(&self) -> f64;
+    fn block_state(&self, pos: [i32; 3]) -> Option<BlockState>;
+    fn push(&mut self, delta: [f64; 3]) -> bool;
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool;
+    fn make_stuck_in_block(&mut self, speed_multiplier: [f64; 3]) -> bool;
+    fn reset_fall_distance(&mut self);
+    fn set_remaining_fire_ticks(&mut self, ticks: i32);
+    fn add_effect(&mut self, effect: EffectKey, duration: i32, amplifier: u8) -> bool;
+    fn hurt_with_source(
+        &mut self,
+        damage_type: &str,
+        amount: f32,
+        direct: Option<EntityRef>,
+        causing: Option<EntityRef>,
+    ) -> bool;
+    fn set_block(&mut self, pos: [i32; 3], state: BlockState) -> bool;
+    fn destroy_block(&mut self, pos: [i32; 3], drop: bool) -> bool;
+    fn apply_effect(&mut self, effect: InsideEffect);
+}
 
 /// Vanilla `InsideBlockEffectType`: what a block does to the entity inside it, beyond
 /// the writes it makes directly. The collector flushes them per step in this order.

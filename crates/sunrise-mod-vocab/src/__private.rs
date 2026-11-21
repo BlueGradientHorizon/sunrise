@@ -35,6 +35,11 @@ pub mod native {
     }
 }
 
+/// Drain the process-wide queue of callback panic notices so the client can show error toasts.
+pub fn take_callback_panics() -> Vec<CallbackPanicNotice> {
+    crate::runtime::take_callback_panics()
+}
+
 /// Switch an installed mod's dispatches on or off, returning whether it was found.
 pub fn set_mod_enabled(id: &str, on: bool) -> bool {
     crate::set_mod_enabled(id, on)

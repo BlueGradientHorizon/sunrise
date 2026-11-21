@@ -1146,5 +1146,7 @@
   "sunrise.studio.topbar.view_short": "View",
   "sunrise.studio.unknown_server": "Unknown",
   "sunrise.title.not_affiliated": "Not affiliated with Mojang or Microsoft",
-  "sunrise.title.playing_offline": "Playing offline"
+  "sunrise.title.playing_offline": "Playing offline",
+  "sunrise.toast.mod_callback_disabled.description": "%s panicked; check the log for details",
+  "sunrise.toast.mod_callback_disabled.title": "Mod callback disabled: %s"
 }

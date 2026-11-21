@@ -345,20 +345,8 @@ impl Game<'_> {
             // Entity.baseTick: rain puts out a burning player.
             game.rain_extinguish_player();
             // WitherRoseBlock.entityInside along those moves, and an
-            // `entity_inside` part's typed effect writes.
-            for event in &events {
-                match event {
-                    MotionEvent::InsideWitherRose => game.wither_rose_contact(),
-                    MotionEvent::InsideEffect {
-                        id,
-                        duration,
-                        amplifier,
-                    } if game.remote.is_none() && game.ui.difficulty != 0 => {
-                        game.give_player_effect(id, *duration, i32::from(*amplifier));
-                    }
-                    _ => {}
-                }
-            }
+            // `entity_inside` part's queued effects and level writes.
+            game.apply_player_inside_events(&events);
             // ServerGamePacketListenerImpl.handleMovePlayer:
             // Player.checkMovementStatistics for each move.
             for accepted in moves {
@@ -646,6 +634,41 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
+    /// `WitherRoseBlock.entityInside` and `entity_inside` callback effects and live-level
+    /// writes queued along a server player's moves. Level writes apply directly without a
+    /// touched-block state guard, matching vanilla `InsideBlockEffectApplier`.
+    pub(in crate::game) fn apply_player_inside_events(&mut self, events: &[MotionEvent]) {
+        for event in events {
+            match event {
+                MotionEvent::InsideWitherRose => self.wither_rose_contact(),
+                MotionEvent::InsideEffect {
+                    id,
+                    duration,
+                    amplifier,
+                } if self.remote.is_none() && self.ui.difficulty != 0 => {
+                    self.give_player_effect(id, *duration, i32::from(*amplifier));
+                }
+                MotionEvent::InsideSetBlock { pos, state } => {
+                    if let Some(level) = self.level(self.dim.id()) {
+                        let _ = self.level_set_block(
+                            level,
+                            *pos,
+                            *state,
+                            mod_api::BlockUpdateFlags::NEIGHBORS
+                                | mod_api::BlockUpdateFlags::CLIENTS,
+                        );
+                    }
+                }
+                MotionEvent::InsideDestroyBlock { pos, drop } => {
+                    if let Some(level) = self.level(self.dim.id()) {
+                        self.level_destroy_block(level, *pos, *drop, None, false);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// `ServerPlayer.resetFallDistance` for a move that went up: the tracked fall ends, and
     /// `fall_from_height` measures it from where it began to `at`, where that move ended. A
     /// later move of the same tick may have taken the player further. `alive` is the player's
