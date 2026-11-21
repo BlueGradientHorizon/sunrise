@@ -897,11 +897,23 @@ mod tests {
             check(root.path(), &hooks).unwrap_err(),
             "apply_effect_tick (mod_api::parts::effects::dispatch_mob_effect_tick): target does not call apply_effect_tick"
         );
-        fixture(
-            root.path(),
-            EFFECTS,
-            "fn dispatch_mob_effect_tick() { part.should_apply_effect_tick_this_tick(); part.apply_effect_tick(); }",
-        );
-        check(root.path(), &hooks).unwrap();
+        for (advance, expected) in [("", false), ("due.next();", true)] {
+            fixture(root.path(), EFFECTS, &format!("
+                fn dispatch_mob_effect_tick() {{
+                    let mut due = crate::entered_parts().filter(|part| part.should_apply_effect_tick_this_tick());
+                    {advance}
+                    part.apply_effect_tick();
+                }}
+            "));
+            let result = check(root.path(), &hooks);
+            if expected {
+                result.unwrap();
+            } else {
+                assert_eq!(
+                    result.unwrap_err(),
+                    "should_apply_effect_tick_this_tick (mod_api::parts::effects::dispatch_mob_effect_tick): target does not call should_apply_effect_tick_this_tick"
+                );
+            }
+        }
     }
 }

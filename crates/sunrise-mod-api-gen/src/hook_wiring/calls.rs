@@ -249,6 +249,23 @@ impl<'ast, F: FnMut(&syn::Path, usize) -> bool> Visit<'ast> for Calls<'_, 'ast, 
                     {
                         self.invoke(closure);
                     }
+                    // The effect dispatcher filters its parts by cadence. Creating that iterator
+                    // does not ask the parts; advancing it runs the predicate.
+                    if call.method == "next" {
+                        let receiver = function_path(&call.receiver)
+                            .and_then(|path| self.local(path).flatten())
+                            .unwrap_or(&call.receiver);
+                        if let Expr::MethodCall(filter) = ungroup(receiver)
+                            && filter.method == "filter"
+                            && let Expr::Call(parts) = ungroup(&filter.receiver)
+                            && function_path(&parts.func)
+                                .is_some_and(|path| path_is(path, "crate::entered_parts"))
+                            && let Some(closure) =
+                                filter.args.first().and_then(|arg| self.closure(arg))
+                        {
+                            self.invoke(closure);
+                        }
+                    }
                 }
                 _ => {}
             }
