@@ -1,0 +1,54 @@
+ids = [
+    "hook:camera_pose",
+    "method:Hooks::camera_pose",
+    "type:CameraPoseEvent",
+    "hook:camera_shake",
+    "method:Hooks::camera_shake",
+    "type:CameraShakeEvent",
+    "type:Shake",
+    "hook:compute_camera_angles",
+    "method:Hooks::compute_camera_angles",
+    "type:ComputeCameraAnglesEvent",
+    "hook:camera_position",
+    "method:Hooks::camera_position",
+    "type:CameraPositionEvent",
+    "hook:render_view_transform",
+    "method:Hooks::render_view_transform",
+    "type:RenderViewTransformEvent",
+    "type:ViewTransform",
+    "type:Camera",
+    "type:Camera.roll",
+    "type:ClientGuiOptions",
+    "type:ClientGuiOptions.screen_effect_scale",
+]
+why = """
+`camera_pose` conflated camera angles with camera position and ran after `Camera.alignWithEntity`
+had already performed third-person mirroring, detached back-off, and sleeping rotation; meanwhile
+`camera_shake` was a Sunrise-only presentation hook with unsourced 10-degree and 0.5-block caps
+(`SHAKE_MAX_DEGREES`, `SHAKE_MAX_OFFSET`) and no general view-transform composition.
+
+This replaces `camera_pose` and `camera_shake` (along with `Shake`) with three distinct hooks
+anchored to vanilla 26.3 and NeoForge:
+- `compute_camera_angles` matches NeoForge `ViewportEvent.ComputeCameraAngles` inside
+  `Camera.alignWithEntity`, firing with `(view_y_rot(partial), view_x_rot(partial), 0.0)` before
+  `Camera.setRotation`, third-person front mirroring (`yaw + 180`, `-pitch`, `-roll`), detached
+  back-off, and sleeping bed rotation, and propagates `roll` through `Camera`, view/frustum/shader
+  matrices, billboards, particles, and `ClientHost::project`.
+- `camera_position` fires after `Camera.alignWithEntity` sets vanilla's placed world position
+  (`Camera.setPosition`) for render-only camera position overrides without moving the player.
+- `render_view_transform` runs at vanilla `GameRenderer.bobHurt` / `bobView` with a composable
+  `ViewTransform` matrix and no artificial degree/offset caps; `ClientGuiOptions::screen_effect_scale`
+  exposes vanilla `Options.screenEffectScale` so mods can scale distortion/shake effects themselves.
+"""
+migrate = """
+- Replace `Hooks::camera_pose` angle overrides with `Hooks::compute_camera_angles` (`*event.yaw`,
+  `*event.pitch`, `*event.roll`). Note that it runs before third-person front mirroring and detached
+  back-off, matching NeoForge's `ViewportEvent.ComputeCameraAngles`.
+- Replace `Hooks::camera_pose` world position overrides with `Hooks::camera_position`
+  (`*event.position`).
+- Replace `Hooks::camera_shake` and `Shake` with `Hooks::render_view_transform` and
+  `ViewTransform` methods (`translate`, `rotate_x`, `rotate_y`, `rotate_z`, `scale`, `mul`). Read
+  `host.gui_options().screen_effect_scale` when scaling effects by the Distortion Effects setting.
+- Update any exhaustive struct literal or pattern on `Camera` or `ClientGuiOptions` for the new
+  `roll: f32` and `screen_effect_scale: f32` fields.
+"""

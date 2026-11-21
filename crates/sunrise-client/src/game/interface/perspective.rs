@@ -311,26 +311,23 @@ impl Game<'_> {
         self.apply_camera_type(camera_type);
         changed
     }
-    /// `Camera.update` (`alignWithEntity` and `getMaxZoom`): the
-    /// interpolated eye, or a point up to the camera distance behind (or in
-    /// front of) it, pulled in where visual shapes are in the way. Returns the
-    /// position, yaw and pitch to render from.
-    pub(super) fn camera_view(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32)> {
-        if self.studio.flying() {
-            return Some((
-                self.studio.freecam.position,
-                self.studio.freecam.yaw,
-                self.studio.freecam.pitch,
-            ));
-        }
+    /// Resolve the camera entity snapshot and collision context inputs for `Camera.alignWithEntity`.
+    fn camera_alignment_source(
+        &mut self,
+        partial: f32,
+    ) -> Option<(
+        CameraEntity,
+        bool,
+        sunrise_world::collision_context::EntityContextKind,
+    )> {
         // Minecraft.cameraEntity: a server's spectator camera on a mob or
         // another player.
-        let (entity, descending, entity_kind) = match self.spectated_camera_snapshot() {
-            Some(e) => (
+        match self.spectated_camera_snapshot() {
+            Some(e) => Some((
                 e,
                 false,
                 sunrise_world::collision_context::EntityContextKind::Living,
-            ),
+            )),
             None => {
                 let mut entity = self.player_camera_entity()?;
                 if let Some(position) = self.remote_minecart_rider_position(partial) {
@@ -339,16 +336,25 @@ impl Game<'_> {
                     entity.position = position;
                     entity.previous = position;
                 }
-                (
+                Some((
                     entity,
                     self.player.as_ref()?.shift_key_down,
                     sunrise_world::collision_context::EntityContextKind::Player,
-                )
+                ))
             }
-        };
+        }
+    }
+
+    fn align_view_with_angles(
+        &mut self,
+        entity: &CameraEntity,
+        descending: bool,
+        entity_kind: sunrise_world::collision_context::EntityContextKind,
+        partial: f32,
+        angles: (f32, f32, f32),
+    ) -> sunrise_client::camera::Camera {
         let mut view = self.view;
         let kind = self.camera_type;
-
         let context = CollisionContext::for_entity(
             CollisionEntity {
                 identity: EntityIdentity(0),
@@ -371,12 +377,13 @@ impl Game<'_> {
             },
             facts: self.res.facts(),
         };
-        view.align_with_entity_distance(
-            &entity,
+        view.align_with_entity_angles(
+            entity,
             partial,
             kind,
+            angles,
             |mut distance| {
-                self.native_camera_distance(partial, kind.is_mirrored(), &entity, &mut distance);
+                self.native_camera_distance(partial, kind.is_mirrored(), entity, &mut distance);
                 distance
             },
             |from, to| {
@@ -393,22 +400,96 @@ impl Game<'_> {
             },
         );
         self.view = view;
+        view
+    }
+
+    /// `Camera.update` (`alignWithEntity` and `getMaxZoom`): the
+    /// interpolated eye, or a point up to the camera distance behind (or in
+    /// front of) it, pulled in where visual shapes are in the way. Returns the
+    /// position, yaw and pitch to render from (without `compute_camera_angles`
+    /// or `camera_position` mod hooks).
+    pub(super) fn camera_view(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32)> {
+        if self.studio.flying() {
+            return Some((
+                self.studio.freecam.position,
+                self.studio.freecam.yaw,
+                self.studio.freecam.pitch,
+            ));
+        }
+        let (entity, descending, entity_kind) = self.camera_alignment_source(partial)?;
+        let angles = (entity.view_y_rot(partial), entity.view_x_rot(partial), 0.0);
+        let view = self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
         Some((
             glam::DVec3::from_array(view.position),
             view.y_rot,
             view.x_rot,
         ))
     }
+
+    /// Full frame camera alignment (`Camera.alignWithEntity`): fires `compute_camera_angles`
+    /// (`ViewportEvent.ComputeCameraAngles`) before `setRotation`, mirroring, detached back-off,
+    /// and sleeping; then fires `camera_position` (`Camera.setPosition`) on the placed world
+    /// position. Skips both hooks on the title panorama and during studio freecam.
+    ///
+    /// Returns `(position, yaw, pitch, roll)` and keeps `self.view` in sync.
+    pub(super) fn frame_camera(&mut self, partial: f32) -> Option<(glam::DVec3, f32, f32, f32)> {
+        if self.studio.flying() {
+            return Some((
+                self.studio.freecam.position,
+                self.studio.freecam.yaw,
+                self.studio.freecam.pitch,
+                self.studio.freecam.roll,
+            ));
+        }
+        self.apply_requested_camera_type();
+        let (entity, descending, entity_kind) = self.camera_alignment_source(partial)?;
+        let vanilla_angles = (entity.view_y_rot(partial), entity.view_x_rot(partial), 0.0);
+        let run_hooks = !self.shows_panorama();
+        let angles = if run_hooks {
+            let (mut yaw, mut pitch, mut roll) = vanilla_angles;
+            self.native_compute_camera_angles(partial, &mut yaw, &mut pitch, &mut roll);
+            self.apply_requested_camera_type();
+            super::native_hooks::finite_camera_angles(vanilla_angles, yaw, pitch, roll)
+        } else {
+            vanilla_angles
+        };
+        let mut view =
+            self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
+        if run_hooks {
+            let placed = view.position;
+            let mut position = placed;
+            self.native_camera_position(partial, &mut position);
+            let final_position = super::native_hooks::finite_camera_position(placed, position);
+            if self.apply_requested_camera_type() {
+                view =
+                    self.align_view_with_angles(&entity, descending, entity_kind, partial, angles);
+                if final_position != placed {
+                    view.position = final_position;
+                    self.view = view;
+                }
+            } else if final_position != placed {
+                view.position = final_position;
+                self.view = view;
+            }
+        }
+        Some((
+            glam::DVec3::from_array(view.position),
+            view.y_rot,
+            view.x_rot,
+            view.roll,
+        ))
+    }
+
     /// `Camera.rotation()` as the quads of particles take it: the frame's camera (a
     /// bed's, a front view's, a mod's), not the player's own yaw and pitch.
     pub(super) fn particle_rotation(&self) -> glam::Quat {
         if self.studio.flying() {
             return self.camera_orientation();
         }
-        let (yaw, pitch) = self
-            .posed_rotation
-            .unwrap_or((self.view.y_rot, self.view.x_rot));
-        super::camera_rotation(CameraType::FirstPerson, yaw, pitch)
+        let (yaw, pitch, roll) =
+            self.posed_rotation
+                .unwrap_or((self.view.y_rot, self.view.x_rot, self.view.roll));
+        super::camera_rotation_rolled(CameraType::FirstPerson, yaw, pitch, roll)
     }
     /// The player as `Camera.alignWithEntity` sees it.
     pub(super) fn player_camera_entity(&mut self) -> Option<CameraEntity> {

@@ -49,7 +49,7 @@ has no such rule: Sunrise adds it.
 
 ## Camera snapshots and perspective
 
-The `ClientHost::camera()` helper returns the most recently extracted world frame's camera, or none before one exists. Its position, interpolated eye height, partial tick, angles, final FOV, near/far planes and dimension accompany column-major view and projection matrices. The view is camera-relative and includes bob and spin; projection uses reversed Z. Earlier callbacks in a frame can see the previous frame. `block_collision(pos)` returns block-local `[min_x, min_y, min_z, max_x, max_y, max_z]` boxes with an empty collision context; unloaded blocks and collision errors give no boxes.
+The `ClientHost::camera()` helper returns the most recently extracted world frame's camera, or none before one exists. Its position, interpolated eye height, partial tick, angles (`yaw`, `pitch`, and `roll`), final FOV, near/far planes and dimension accompany column-major view and projection matrices. The view is camera-relative and includes roll, bob and spin; projection uses reversed Z. Earlier callbacks in a frame can see the previous frame. `block_collision(pos)` returns block-local `[min_x, min_y, min_z, max_x, max_y, max_z]` boxes with an empty collision context; unloaded blocks and collision errors give no boxes.
 
 `ClientHost::project(at)` places a world point on this frame's screen, as vanilla's
 `GameRenderer.projectPointToScreen`: normalised device x and y (-1 to 1, x right, y up) and a
@@ -68,14 +68,38 @@ next tick. NaN or infinity returns `NotFinite` and changes nothing; outside a wo
 `NoWorld`. The server sees an ordinary client look, at tick granularity, as from a mouse.
 `calculate_player_turn` changes how far the mouse turns the view; `set_local_rotation` sets it directly.
 
+### Camera angles, camera position, and view transforms
+
+Three separate client hooks match vanilla's and NeoForge's distinct camera stages:
+
+- `compute_camera_angles(partial, yaw, pitch, roll)` matches NeoForge's
+  `ViewportEvent.ComputeCameraAngles` inside `Camera.alignWithEntity`. It starts from the camera
+  entity's interpolated `(view_y_rot(partial), view_x_rot(partial), 0.0)` and runs **before**
+  `Camera.setRotation`, third-person front mirroring (`yaw + 180`, `-pitch`, `-roll`), detached
+  back-off along the rotated look vector, and sleeping bed rotation. Any non-finite component falls
+  back to vanilla's value for that component.
+- `camera_position(partial, position)` runs after `Camera.alignWithEntity` places the camera
+  (`Camera.setPosition`) for render-only world-space position overrides (such as freecam or replays)
+  without moving the player entity. Eye/audio consumers that follow the player keep following the
+  player; consumers that read the camera (`ClientHost::camera()`, world rendering, audio listener)
+  see the overridden position. Any non-finite coordinate falls back to vanilla's value for that axis.
+- `render_view_transform(partial, transform)` runs at vanilla's `GameRenderer.bobHurt` / `bobView`
+  stage, after hurt tilt and view bobbing, with a [`ViewTransform`] that starts at
+  `ViewTransform::IDENTITY` each frame. Compose local translations, rotations, or scales onto it in
+  dependency order for presentation-only effects such as camera shake, recoil, or lean without moving
+  the camera or player. Read `ClientHost::gui_options().screen_effect_scale` (`Options.screenEffectScale`)
+  when your effect should respect the player's Distortion Effects slider. Sunrise applies no artificial
+  angle or offset caps.
+
 `ClientHost::set_camera_type(type)` is a queued client-only effect and takes `&self`, so
-shared callbacks such as `camera_pose` can request a perspective. `camera_type()` reports
-the latest request immediately; several requests coalesce to the last one. Requests before
-or during `camera_pose` apply before that frame's final camera, FOV and spectator post effects.
-The pose hook runs only once: its explicit position or angle overrides survive a refreshed
-vanilla camera. Requests from later render callbacks apply at the next frame's extraction.
-Setting a type never emits `camera_type_cycle`; F5 alone cycles, and its final event choice
-wins over requests made inside the cycle callback.
+shared callbacks such as `compute_camera_angles` or `camera_position` can request a perspective.
+`camera_type()` reports the latest request immediately; several requests coalesce to the last one.
+Requests before or during `compute_camera_angles` apply before that frame's detached camera
+placement, FOV and spectator post effects. Requests during `camera_position` refresh the vanilla
+alignment using the already-computed angles while keeping explicit position overrides. Requests from
+later render callbacks apply at the next frame's extraction. Setting a type never emits
+`camera_type_cycle`; F5 alone cycles, and its final event choice wins over requests made inside the
+cycle callback.
 
 ## The fluid the camera is in
 

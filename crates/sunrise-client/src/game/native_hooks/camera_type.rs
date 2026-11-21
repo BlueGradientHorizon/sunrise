@@ -96,21 +96,32 @@ mod camera_type_tests {
 
     #[derive(Default)]
     struct Calls {
-        poses: std::sync::atomic::AtomicUsize,
+        angles: std::sync::atomic::AtomicUsize,
+        positions: std::sync::atomic::AtomicUsize,
         cycles: std::sync::atomic::AtomicUsize,
     }
     struct SharedCamera(Arc<Calls>);
     #[mod_api::__subscriptions]
     impl Hooks for SharedCamera {
-        fn camera_pose(&self, host: &dyn ClientHost, event: &mut mod_api::CameraPoseEvent<'_>) {
+        fn compute_camera_angles(
+            &self,
+            host: &dyn ClientHost,
+            event: &mut mod_api::ComputeCameraAnglesEvent<'_>,
+        ) {
             self.0
-                .poses
+                .angles
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             host.set_camera_type(CameraType::ThirdPersonFront);
             assert_eq!(host.camera_type(), CameraType::ThirdPersonFront);
             host.set_camera_type(CameraType::ThirdPersonBack);
             assert_eq!(host.camera_type(), CameraType::ThirdPersonBack);
-            event.yaw += 15.0;
+            *event.yaw += 15.0;
+            *event.roll = 10.0;
+        }
+        fn camera_position(&self, _: &dyn ClientHost, _: &mut mod_api::CameraPositionEvent<'_>) {
+            self.0
+                .positions
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         fn camera_type_cycle(&self, _: &mut dyn ClientHost, _: &mut CameraTypeCycleEvent<'_>) {
             self.0
@@ -137,18 +148,22 @@ mod camera_type_tests {
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 game.title = None;
                 game.spectated_post_effect = Some("minecraft:creeper");
-                let vanilla = game.camera_view(1.0).unwrap();
-                assert_eq!(vanilla.0.z, 0.0);
-                let posed = game.native_camera_pose_now(1.0, vanilla);
+                let posed = game.frame_camera(1.0).unwrap();
                 assert_eq!(game.camera_type, CameraType::ThirdPersonBack);
                 assert_eq!(game.camera_type(), CameraType::ThirdPersonBack);
                 assert_eq!(game.spectated_post_effect, None);
-                assert!((posed.0.z + 4.0).abs() < 1e-6, "refresh unchanged position");
+                // Detached back-off runs along the overridden yaw (15°), moving 4 blocks behind.
+                let expected_x = 4.0 * 15.0_f64.to_radians().sin();
+                let expected_z = -4.0 * 15.0_f64.to_radians().cos();
+                assert!((posed.0.x - expected_x).abs() < 1e-5, "{:?}", posed.0);
+                assert!((posed.0.z - expected_z).abs() < 1e-5, "{:?}", posed.0);
                 assert_eq!(posed.1, 15.0, "preserve the explicit yaw override");
-                assert_eq!(posed.2, vanilla.2);
+                assert_eq!(posed.2, 0.0);
+                assert_eq!(posed.3, 10.0, "preserve the explicit roll override");
             });
         });
-        assert_eq!(calls.poses.load(Ordering::Relaxed), 1);
+        assert_eq!(calls.angles.load(Ordering::Relaxed), 1);
+        assert_eq!(calls.positions.load(Ordering::Relaxed), 1);
         assert_eq!(calls.cycles.load(Ordering::Relaxed), 0);
     }
 }

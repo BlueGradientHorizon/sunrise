@@ -24,11 +24,11 @@ use client::{
     },
 };
 use glam::DVec3;
-use sunrise_client_render as client;
 use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
+use sunrise_client_render as client;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -901,6 +901,7 @@ fn fixture_frame(hud: &HudBatch) -> Frame<'_> {
         camera: glam::DVec3::new(8.0, 104.0, 0.5),
         yaw: 0.0,
         pitch: 0.0,
+        roll: 0.0,
         fov_degrees: 85.0,
         eye: glam::DVec3::new(8.0, 104.0, 0.5),
         eye_rotation: [0.0, 0.0],

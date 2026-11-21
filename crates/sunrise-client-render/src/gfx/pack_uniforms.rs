@@ -821,7 +821,7 @@ impl FrameUniforms {
         // match it bit for bit in our probes): fragments on a texel boundary of the shadow map
         // then read the same texel as in Iris (#8464).
         let (rotation, rotation_inverse) =
-            crate::camera::view_rotation_matrix(frame.yaw, frame.pitch);
+            crate::camera::view_rotation_matrix_rolled(frame.yaw, frame.pitch, frame.roll);
         let (view, view_inverse) = if frame.bob == Mat4::IDENTITY && frame.spin == Mat4::IDENTITY {
             (rotation, rotation_inverse)
         } else {
@@ -2889,6 +2889,7 @@ pub(super) mod initial_history_tests {
             camera: glam::DVec3::new(0.5, 100.0, 0.5),
             yaw: 0.0,
             pitch: 10.0,
+            roll: 0.0,
             fov_degrees: 85.0,
             bob: glam::Mat4::IDENTITY,
             spin: glam::Mat4::IDENTITY,
