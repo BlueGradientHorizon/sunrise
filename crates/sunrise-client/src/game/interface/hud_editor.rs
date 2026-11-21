@@ -65,7 +65,7 @@ impl Game<'_> {
             from_options,
             ..HudEditor::default()
         });
-        self.screen = Screen::HudEditor;
+        self.activate_screen(Screen::HudEditor);
         self.capture(false);
     }
     pub(in crate::game) fn close_hud_editor(&mut self) {
@@ -74,7 +74,7 @@ impl Game<'_> {
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);
         } else {
-            self.screen = Screen::Playing;
+            self.activate_screen(Screen::Playing);
             self.capture(true);
         }
     }

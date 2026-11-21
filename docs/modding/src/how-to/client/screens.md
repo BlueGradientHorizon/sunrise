@@ -56,9 +56,19 @@ is open, keys consumed by the input method during composition do not reach `Pres
 or the editor's Done and Cancel buttons. Committed characters go through the usual character hooks
 and `PresetEditor::char_typed`, separately from key presses.
 
-The editor's Done and Cancel buttons take a left click before `PresetEditor::mouse_clicked`.
-The mouse button Post hook still sees `world_preset_editor` for that click, even when Create World
-is already open again. A cancelled mouse Pre reaches neither the editor nor its Post hook.
+The editor's Done and Cancel buttons take a left click before `PresetEditor::mouse_clicked(x, y,
+button, double_click, draft)`. The editor receives the same `i32` GLFW button index as the screen
+hooks. Press Pre, the editor, and press Post get the same `double_click`: the last handled press
+must have been on the same screen instance with the same button, less than 250 ms earlier.
+Synthetic clicks pass `false` and do not change the history.
+
+Button Post runs whether the screen took or declined the event. Done and Cancel report
+`world_preset_editor` with `was_click_handled = true`, even when Create World is already open.
+A release instead reports the screen receiving that release and its `was_release_handled`.
+Post listeners share `*event.result`: `TriState::Default` keeps the original answer, `True`
+forces handled, and `False` forces unhandled. The final answer determines whether a press counts
+for the next double-click and whether the event can go on to gameplay mappings if no screen is open.
+A cancelled mouse Pre reaches neither the editor nor Post, but a cancelled press counts as handled.
 
 The control socket sends `screen_key_released_pre` to the currently open title screen, even if
 that screen did not receive the matching press. For example, when Escape closes the preset editor,

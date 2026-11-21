@@ -1,4 +1,8 @@
 ids = [
+    "method:PresetEditor::mouse_clicked",
+    "hook:screen_mouse_button_pressed_pre",
+    "method:Hooks::screen_mouse_button_pressed_pre",
+    "type:ScreenMouseButtonPressedPreEvent",
     "hook:screen_mouse_button_pressed_post",
     "method:Hooks::screen_mouse_button_pressed_post",
     "type:ScreenMouseButtonPressedPostEvent",
@@ -6,5 +10,5 @@ ids = [
     "method:Hooks::screen_mouse_button_released_post",
     "type:ScreenMouseButtonReleasedPostEvent",
 ]
-why = "Vanilla MouseHandler.onButton and ContainerEventHandler.mouseClicked/mouseReleased dispatch to one receiving screen and return whether it took the input. NeoForge's MouseHandler patch sends button Post for that same receiver when Pre passes, even if the click closes it. Sunrise now carries that original view and uses the screen's handled result to gate gameplay input."
-migrate = "The two Post callbacks keep the same parameters in this routing change. Read event.screen as the press or release's original screen, not the screen left open afterward. Done/Cancel now reach Post as world_preset_editor, and a container hook taking the edge no longer suppresses Post. A cancelled Pre still skips the screen and Post. Keyboard Post is unchanged."
+why = "Vanilla MouseHandler.onButton detects a double-click on the same screen instance and button within 250 ms of the last handled press. NeoForge's ClientHooks.onScreenMouseClickedPre/Post and onScreenMouseReleasedPre/Post pass one original receiver and let ScreenEvent.MouseButtonPressed.Post and MouseButtonReleased.Post override the receiver's handled answer; a cancelled press Pre counts as handled without running Post. The editor now receives the same button and double-click flag as the press hooks."
+migrate = "Change PresetEditor::mouse_clicked(&mut self, x, y, button: u8, draft) to mouse_clicked(&mut self, x, y, button: i32, double_click: bool, draft); do not narrow platform button indices. The pressed Pre and both button Post Hooks callbacks keep their host and event parameters. Read event.double_click on press Pre and Post. Read event.was_click_handled on press Post and event.was_release_handled on release Post for the original screen's answer; Post includes already handled edges and retains the original screen even when Done or Cancel opens Create World. Set *event.result to TriState::True to force handled, TriState::False to force unhandled, or TriState::Default to keep the original answer. A cancelled Pre skips the screen and Post; keyboard Post is unchanged."

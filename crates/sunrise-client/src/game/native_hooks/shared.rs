@@ -298,6 +298,12 @@ impl Game<'_> {
         self.capture(false);
         self.screen_state.replacing = false;
     }
+    /// Install a screen instance without firing hooks or rebuilding its layout.
+    pub(super) fn activate_screen(&mut self, screen: Screen) {
+        self.screen = screen;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
+    }
+
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
@@ -306,7 +312,7 @@ impl Game<'_> {
         if screen != Screen::Inventory && self.active_native_screen().is_some() {
             self.remote_close_container();
         }
-        self.screen = screen;
+        self.activate_screen(screen);
         if let Some(owner) = owner {
             self.native_mod_screen = Some(owner.to_owned());
         }
@@ -497,7 +503,7 @@ impl Game<'_> {
             ScreenDecision::Vanilla(target) => self.open_screen_target(target),
             ScreenDecision::Open => {
                 if let Some(title) = self.title.as_mut() {
-                    title.mode = mode;
+                    title.activate_mode(mode);
                 }
                 self.build_screen();
             }
@@ -540,6 +546,7 @@ impl Game<'_> {
             self.title_change(None);
         }
         self.title = None;
+        self.screen_activation = self.screen_activation.wrapping_add(1);
         self.build_screen();
         self.screen_state.observed = self.observed_now();
     }
@@ -1024,12 +1031,36 @@ pub(crate) struct NativeRecipes {
     pub(crate) recipes: Vec<NativeRecipe>,
 }
 
+/// A physical press and its original receiver. Activation counters, unlike screen IDs or
+/// layout revisions, distinguish same-kind replacements but do not change on resize.
+#[derive(Clone, Copy)]
+pub(super) struct ScreenPress {
+    pub(super) activation: u64,
+    pub(super) screen: Screen,
+    pub(super) title_mode: Option<u64>,
+    pub(super) button: i32,
+    pub(super) millis: u64,
+}
+
+impl ScreenPress {
+    pub(super) fn is_double_click(self, last: Option<Self>) -> bool {
+        last.is_some_and(|last| {
+            self.activation == last.activation
+                && self.screen == last.screen
+                && self.title_mode == last.title_mode
+                && self.button == last.button
+                && self.millis - last.millis < 250 // MouseHandler.DOUBLE_CLICK_THRESHOLD_MS
+        })
+    }
+}
+
 /// The button event and its original receiver, retained across a handler that may replace it.
 pub(super) struct ScreenButtonPost {
     pub(super) screen: ObservedScreen,
     pub(super) button: i32,
     pub(super) pressed: bool,
     pub(super) modifiers: u32,
+    pub(super) double_click: bool,
 }
 
 /// A scroll/drag notice owed after its Pre let the input through.
@@ -1296,14 +1327,29 @@ impl Game<'_> {
             ScreenMousePre::Passed(ScreenMousePost::Drag { button, delta })
         }
     }
-    /// Button Post goes to the event's original receiver, even if it was closed by the event.
-    pub(super) fn screen_button_post(&self, post: &ScreenButtonPost) {
+    /// Button Post sees the original receiver and its answer; return the final handled bit.
+    pub(super) fn screen_button_post(&self, post: &ScreenButtonPost, handled: bool) -> bool {
         let screen = post.screen.view();
+        let mut result = TriState::Default;
         if post.pressed {
-            self.native_screen_mouse_button_pressed_post(&screen, post.button, post.modifiers);
+            self.native_screen_mouse_button_pressed_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                post.double_click,
+                handled,
+                &mut result,
+            );
         } else {
-            self.native_screen_mouse_button_released_post(&screen, post.button, post.modifiers);
+            self.native_screen_mouse_button_released_post(
+                &screen,
+                post.button,
+                post.modifiers,
+                handled,
+                &mut result,
+            );
         }
+        result.or(handled)
     }
 
     /// Scroll/drag Post is a notice to the screen still open after the input.

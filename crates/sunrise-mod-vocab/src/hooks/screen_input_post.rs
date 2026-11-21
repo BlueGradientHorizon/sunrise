@@ -1,26 +1,45 @@
 //! The `screen_input_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// A real mouse press after the receiving screen handled or declined it (`ScreenEvent.MouseButtonPressed.Post`). `screen`, `button` and `modifiers` are the original Pre values, even if the press opened or closed a screen. Fires only if the matching Pre let the press through, including when a container hook took it. It is a notice and does not change handling.
+    /// A mouse press after the receiving screen handled or declined it (`ScreenEvent.MouseButtonPressed.Post`). Fires only if Pre did not cancel. `screen`, `button`, `modifiers` and `double_click` are the original Pre values, even if the press opened or closed a screen. Every listener sees the original `was_click_handled`. Listeners share `result`: `Default` preserves the original answer, `True` forces handled and `False` forces unhandled. The final answer controls whether this press counts for double-click detection and whether it can reach gameplay mappings if no screen remains open.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        contract = "listen",
+        contract = "collect",
+        out = "result",
+        event_per_listener = true,
         neoforge = "ScreenEvent.MouseButtonPressed.Post",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
-    fn screen_mouse_button_pressed_post(screen: &ScreenView<'_>, button: i32, modifiers: u32);
-    /// A real mouse release after the receiving screen handled or declined it (`ScreenEvent.MouseButtonReleased.Post`). `screen`, `button` and `modifiers` are the original Pre values for this release, not those of its matching press, even if the release opened or closed a screen. Fires only if the matching Pre let the release through, including when a container hook took it. It is a notice and does not change handling.
+    fn screen_mouse_button_pressed_post(
+        screen: &ScreenView<'_>,
+        button: i32,
+        modifiers: u32,
+        double_click: bool,
+        was_click_handled: bool,
+        result: &mut TriState,
+    );
+    /// A mouse release after the receiving screen handled or declined it (`ScreenEvent.MouseButtonReleased.Post`). Fires only if the release's Pre did not cancel. `screen`, `button` and `modifiers` are the release's Pre values, not the press's. Every listener sees the original `was_release_handled`. Listeners share `result`: `Default` preserves the original answer, `True` forces handled and `False` forces unhandled. An unhandled release can reach gameplay mappings if no screen remains open.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        contract = "listen",
+        contract = "collect",
+        out = "result",
+        event_per_listener = true,
         neoforge = "ScreenEvent.MouseButtonReleased.Post",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
-    fn screen_mouse_button_released_post(screen: &ScreenView<'_>, button: i32, modifiers: u32);
+    fn screen_mouse_button_released_post(
+        screen: &ScreenView<'_>,
+        button: i32,
+        modifiers: u32,
+        was_release_handled: bool,
+        result: &mut TriState,
+    );
     /// A held-button pointer movement has gone through the open screen's drag handlers (`ScreenEvent.MouseDragged.Post`, vanilla's `Screen.mouseDragged`): `button`, `delta` (GUI pixels, `screen.mouse` the new position) and `modifiers` as in `screen_mouse_dragged_pre`. Not cancellable. Sunrise's drag handlers report nothing back, so it fires whether or not one of them used the drag. Fires on the window only, while a screen of the game's or the title's is open (the screens the `_pre` input hooks cover), for real mouse or keyboard input and not a pad's or the keyboard focus's, and only when the matching Pre did not cancel it. It fires on the screen open after the game handled the input, so an input that closed the screen fires nothing.
     #[hook(
         receiver = "read",

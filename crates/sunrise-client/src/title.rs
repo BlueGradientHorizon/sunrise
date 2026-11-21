@@ -413,8 +413,9 @@ pub enum Action {
 }
 pub struct Title {
     rule_registry: std::sync::Arc<crate::gamerules::RuleRegistry>,
-    /// The screen shown. Code here changes it through `set_mode`.
+    /// The screen shown. Code here changes it through `set_mode` or `activate_mode`.
     pub mode: Mode,
+    mode_activation: u64,
     /// Set by the game while a mod listens to the screen hooks: `set_mode` then leaves
     /// a new screen in `requested` for the game to announce
     /// (`screen_opening`) and apply, so a mod's answer can keep it shut.
@@ -802,8 +803,8 @@ impl Mode {
 
 impl Title {
     /// Opens `mode` (`Minecraft.setScreen`). While `gated`, a screen with a
-    /// different id waits in `requested` for the game; the same screen again
-    /// (its id unchanged) is applied at once.
+    /// different id waits in `requested` for the game; a screen of the same
+    /// kind (its id unchanged) is applied at once.
     pub fn set_mode(&mut self, mut mode: Mode) {
         if let Mode::Create { options, .. } = &mut mode {
             options.set_additional_data_packs(self.additional_data_packs.clone());
@@ -813,8 +814,17 @@ impl Title {
             self.requested = Some(mode);
         } else {
             self.requested = None;
-            self.mode = mode;
+            self.activate_mode(mode);
         }
+    }
+    /// Apply a mode already accepted by the game (or one that bypasses the gate).
+    pub fn activate_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.mode_activation = self.mode_activation.wrapping_add(1);
+    }
+    /// Which activation is shown, independent of the screen's layout or id.
+    pub fn mode_activation(&self) -> u64 {
+        self.mode_activation
     }
     /// The screen `set_mode` left for the game to announce and apply.
     pub fn take_requested(&mut self) -> Option<Mode> {
@@ -893,6 +903,7 @@ impl Title {
         Self {
             rule_registry: crate::gamerules::rule_registry(),
             mode,
+            mode_activation: 0,
             gated: false,
             requested: None,
             last_server: String::new(),
@@ -1030,7 +1041,7 @@ impl Title {
             // opened from (the configuration screen, or the list for a new Realm).
             let mut screen = crate::realms::Screen::with_saves(Some(self.saves.clone()));
             screen.cancel_create_world(request);
-            self.mode = Mode::Realms(screen);
+            self.activate_mode(Mode::Realms(screen));
             return;
         }
         if self.create_return_to_main {
@@ -1916,7 +1927,7 @@ impl Title {
         };
         let mut screen = crate::realms::Screen::with_saves(Some(self.saves.clone()));
         screen.start_create_world_upload(request, world);
-        self.mode = Mode::Realms(screen);
+        self.activate_mode(Mode::Realms(screen));
         Action::None
     }
     /// The folder a new world named `name` gets (`findResultFolder`).
@@ -2470,8 +2481,9 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             }
             (Mode::Main, Some(8)) => {
                 // The upload screen lists the game's own worlds (`saves`).
-                self.mode =
-                    Mode::Realms(crate::realms::Screen::from_title(Some(self.saves.clone())));
+                self.activate_mode(Mode::Realms(crate::realms::Screen::from_title(Some(
+                    self.saves.clone(),
+                ))));
                 Action::None
             }
             (Mode::Realms(screen), hit) => {
@@ -2485,7 +2497,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                 *handled |= !matches!(&outcome, crate::realms::Outcome::None);
                 match outcome {
                     crate::realms::Outcome::Back => {
-                        self.mode = Mode::Main;
+                        self.activate_mode(Mode::Main);
                         Action::None
                     }
                     crate::realms::Outcome::Connect(address) => Action::Connect {
@@ -2500,7 +2512,7 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
                         // upload into the Realm's slot instead of a local world.
                         self.realms_create = Some(request);
                         self.create_return_to_main = false;
-                        self.mode = self.new_world();
+                        self.activate_mode(self.new_world());
                         Action::None
                     }
                     crate::realms::Outcome::None => Action::None,

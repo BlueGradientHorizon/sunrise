@@ -30,12 +30,12 @@ impl Game<'_> {
                 if let Some(c) = self.carried.take() {
                     let _ = self.add_stack_to_inventory(c);
                 }
-                self.screen = Screen::Creative;
+                self.activate_screen(Screen::Creative);
                 self.refresh_creative_tabs();
                 self.creative_screen.reopen();
                 self.refresh_saved_hotbars();
             }
-            next if next != self.screen => self.screen = next,
+            next if next != self.screen => self.activate_screen(next),
             _ => {}
         }
     }

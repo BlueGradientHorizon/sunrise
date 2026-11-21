@@ -3324,6 +3324,8 @@ struct Game<'a> {
     rejected_keys: HashSet<KeyCode>,
     physical_buttons: HashSet<MouseButton>,
     drag_button: Option<MouseButton>,
+    screen_activation: u64,
+    last_screen_press: Option<native_hooks::ScreenPress>,
     /// Control + left click as a right click (macOS).
     right_click_emulation: sunrise_client_input::mouse::RightClickEmulation,
     left: bool,
@@ -11817,7 +11819,9 @@ impl Game<'_> {
         &mut self,
         event_loop: &dyn EventLoopCtl,
         button: MouseButton,
+        code: i32,
         pressed: bool,
+        double_click: bool,
     ) -> Result<bool> {
         let left = button == MouseButton::Left;
         let left_press = pressed && left;
@@ -11868,7 +11872,7 @@ impl Game<'_> {
                     }));
             }
             if !matches!(button, MouseButton::Left | MouseButton::Middle) {
-                return Ok(self.preset_editor_mouse_clicked(button));
+                return Ok(self.preset_editor_mouse_clicked(code, double_click));
             }
             let size = self
                 .renderer
@@ -11877,7 +11881,7 @@ impl Game<'_> {
             let b = HudBatch::new(size, self.settings.gui_scale_inputs());
             if button == MouseButton::Middle {
                 // The world list takes any button; middle selects without joining.
-                return Ok(self.preset_editor_mouse_clicked(button)
+                return Ok(self.preset_editor_mouse_clicked(code, double_click)
                     || self.title.as_mut().is_some_and(|title| {
                         title.select_world_at(self.cursor.0, self.cursor.1, (b.width, b.height))
                     }));
@@ -11901,7 +11905,7 @@ impl Game<'_> {
                     });
             // Done/Cancel are the bound editor's normal widgets. They take the click even
             // when the actual mode change is deferred to `settle_title_mode`.
-            let handled = widget || self.preset_editor_mouse_clicked(button);
+            let handled = widget || self.preset_editor_mouse_clicked(code, double_click);
             self.save_title_options();
             if sound {
                 self.audio.play_button_click();
@@ -12030,12 +12034,15 @@ impl Game<'_> {
     /// shortcut, a special case) never reaches a controller. If a player could want it on one, give
     /// it a handler both can call and a `gamepad::Route` (screenshot and fullscreen do this). A
     /// screen's own raw keys, text and mods' key hooks stay raw on purpose.
+    /// `mouse_press_millis` is the monotonic timestamp of a physical press, absent for synthetic
+    /// inputs and all other events.
     /// Returns true when button routing already settled the title before its Post.
     fn handle_window_event_inner(
         &mut self,
         event_loop: &dyn EventLoopCtl,
         mut event: WindowEvent,
         cursor_sample: Option<sunrise_client::window::PointerSample>,
+        mouse_press_millis: Option<u64>,
     ) -> bool {
         let before_screen =
             |game: &mut Self| game.prepare_window_event(event_loop, &event, cursor_sample);
@@ -12163,60 +12170,6 @@ impl Game<'_> {
                 self.ui.options.modifiers = self.modifiers().bits;
                 let events = self.ui.options.key_released(&mut self.settings, key);
                 self.handle_option_events(events)?;
-            }
-            // ScreenEvent.MouseButtonPressed.Pre / MouseButtonReleased.Pre:
-            // the open screen hears of the press before anything reads it, and
-            // a cancelled one goes no further — no hotbar key, no slot, no
-            // button, no sort, no drag. First in the event, so none of the
-            // arms below (which hold the container hotkey and the sort and
-            // header buttons too) see it. A click the pad or the keyboard's
-            // focus made up is not the mouse: it fires nothing.
-            // Set by the outer handler at the physical button-up (`container_owned_up`).
-            let owned_release = matches!(&event, WindowEvent::MouseInput { .. })
-                && std::mem::take(&mut self.container_owned_up);
-            let had_screen = matches!(&event, WindowEvent::MouseInput { .. })
-                && (self.mod_mappings_screen_open() || self.remote_loading());
-            let mut container_handled = owned_release;
-            let mut button_post = None;
-            if let WindowEvent::MouseInput { state, button, .. } = &event
-                && !self.pad_synthetic_input()
-                && let Some(screen) = self.screen_view_now()
-            {
-                let pressed = *state == ElementState::Pressed;
-                let (code, modifiers) = (glfw_button(*button), glfw_modifiers(self.modifiers));
-                let mut canceled = false;
-                let hook = if pressed {
-                    self.native_screen_mouse_button_pressed_pre(
-                        &screen,
-                        code,
-                        modifiers,
-                        &mut canceled,
-                    );
-                    mod_api::HookId::ScreenMouseButtonPressedPost
-                } else {
-                    self.native_screen_mouse_button_released_pre(
-                        &screen,
-                        code,
-                        modifiers,
-                        &mut canceled,
-                    );
-                    mod_api::HookId::ScreenMouseButtonReleasedPost
-                };
-                if canceled {
-                    return Ok(());
-                }
-                if mod_api::__private::listened(hook) {
-                    button_post = Some(native_hooks::ScreenButtonPost {
-                        screen: self.observe_view(screen),
-                        button: code,
-                        pressed,
-                        modifiers,
-                    });
-                }
-                container_handled = self.container_mouse(*button, pressed, owned_release);
-            }
-            if !container_handled {
-                self.key_focus_mouse_press(&event);
             }
             match event {
                 WindowEvent::CloseRequested => {
@@ -12507,16 +12460,95 @@ impl Game<'_> {
                         self.advancements_scroll(scaled(raw_x) as f32, d);
                     }
                 }
-                WindowEvent::MouseInput { state, button, .. } => {
+                event @ WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = state == ElementState::Pressed;
-                    let handled = container_handled
-                        || self.route_screen_button(event_loop, button, pressed)?;
+                    let code = glfw_button(button);
+                    // Set by the outer handler at physical button-up.
+                    let owned_release = std::mem::take(&mut self.container_owned_up);
+                    let had_screen = self.mod_mappings_screen_open() || self.remote_loading();
+                    let mut container_handled = owned_release;
+                    let mut button_post = None;
+                    let mut screen_press = None;
+                    let mut double_click = false;
+                    // A controller or a click made by keyboard focus does not fire screen hooks.
+                    if !self.pad_synthetic_input()
+                        && let Some(screen) = self.screen_view_now()
+                    {
+                        if let Some(millis) = mouse_press_millis {
+                            let press = native_hooks::ScreenPress {
+                                activation: self.screen_activation,
+                                screen: self.screen,
+                                title_mode: if self.screen == Screen::Playing {
+                                    self.title
+                                        .as_ref()
+                                        .map(sunrise_client::title::Title::mode_activation)
+                                } else {
+                                    None
+                                },
+                                button: code,
+                                millis,
+                            };
+                            double_click = press.is_double_click(self.last_screen_press);
+                            screen_press = Some(press);
+                        }
+                        let modifiers = glfw_modifiers(self.modifiers);
+                        let mut canceled = false;
+                        let hook = if pressed {
+                            self.native_screen_mouse_button_pressed_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                double_click,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonPressedPost
+                        } else {
+                            self.native_screen_mouse_button_released_pre(
+                                &screen,
+                                code,
+                                modifiers,
+                                &mut canceled,
+                            );
+                            mod_api::HookId::ScreenMouseButtonReleasedPost
+                        };
+                        if canceled {
+                            // NeoForge treats a cancelled Pre as handled without running Post.
+                            if let Some(press) = screen_press {
+                                self.last_screen_press = Some(press);
+                            }
+                            return Ok(());
+                        }
+                        if mod_api::__private::listened(hook) {
+                            button_post = Some(native_hooks::ScreenButtonPost {
+                                screen: self.observe_view(screen),
+                                button: code,
+                                pressed,
+                                modifiers,
+                                double_click,
+                            });
+                        }
+                        container_handled = self.container_mouse(button, pressed, owned_release);
+                    }
+                    if !container_handled {
+                        self.key_focus_mouse_press(&event);
+                    }
+                    let mut handled = container_handled
+                        || self.route_screen_button(
+                            event_loop,
+                            button,
+                            code,
+                            pressed,
+                            double_click,
+                        )?;
                     if had_screen {
                         self.settle_title_mode();
                         title_settled = true;
                     }
                     if let Some(post) = button_post {
-                        self.screen_button_post(&post);
+                        handled = self.screen_button_post(&post, handled);
+                    }
+                    if handled && let Some(press) = screen_press {
+                        self.last_screen_press = Some(press);
                     }
                     // MouseHandler.onButton: only an unhandled edge goes through to the
                     // gameplay mappings, and only once the settled state has no screen.
@@ -13295,6 +13327,8 @@ impl<'a> Game<'a> {
             rejected_keys: HashSet::new(),
             physical_buttons: HashSet::new(),
             drag_button: None,
+            screen_activation: 0,
+            last_screen_press: None,
             right_click_emulation: Default::default(),
             left: false,
             right: false,

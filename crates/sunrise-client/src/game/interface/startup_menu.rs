@@ -1782,6 +1782,7 @@ mod tests {
                 &Loop,
                 WindowEvent::DroppedFile(source.join("Game pack")),
                 None,
+                None,
             );
             assert!(game.ui.options.pack_screen.as_ref().unwrap().confirming());
             assert!(!packs::packs_dir().join("Game pack").exists());

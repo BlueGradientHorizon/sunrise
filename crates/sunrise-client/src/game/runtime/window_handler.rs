@@ -258,7 +258,11 @@ impl Game<'_> {
             }
         }
         let resized = matches!(event, WindowEvent::Resized(_));
-        let title_settled = self.handle_window_event_inner(event_loop, event, cursor_sample);
+        let mouse_press_millis = (origin == input_trace::InputOrigin::User
+            && mouse.is_some_and(|(_, pressed, _)| pressed))
+        .then(|| self.millis());
+        let title_settled =
+            self.handle_window_event_inner(event_loop, event, cursor_sample, mouse_press_millis);
         if resized {
             self.notify_window_resize();
         }

@@ -89,13 +89,17 @@ pub trait PresetEditor: Send + 'static {
     ) {
     }
 
-    /// Handle a mouse press at GUI coordinates `(x, y)` (`button`: GLFW index, 0 left, 1 right,
-    /// 2 middle). Return `true` to consume the click.
+    /// Handle a mouse press at GUI coordinates `(x, y)` (`button`: the same GLFW index as the
+    /// screen mouse hooks, 0 left, 1 right, 2 middle). `double_click` is true for a real second
+    /// press of the same button on this screen instance less than 250 ms after a handled press.
+    /// Synthetic clicks pass false. Return `true` if the editor handled the click; the screen's
+    /// mouse press Post receives that answer and may override it for subsequent input handling.
     fn mouse_clicked(
         &mut self,
         _x: f32,
         _y: f32,
-        _button: u8,
+        _button: i32,
+        _double_click: bool,
         _draft: &mut PresetEditorDraft<'_>,
     ) -> bool {
         false

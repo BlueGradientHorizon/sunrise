@@ -223,10 +223,10 @@ impl PresetEditorSession {
         self.with_editor("render", |editor, draft| editor.render(draw, rect, draft));
     }
 
-    /// Forward a mouse press (`button`: GLFW index) to the bound editor.
-    pub fn mouse_clicked(&self, x: f32, y: f32, button: u8) -> bool {
+    /// Forward a mouse press (`button`: GLFW index) and its double-click flag to the bound editor.
+    pub fn mouse_clicked(&self, x: f32, y: f32, button: i32, double_click: bool) -> bool {
         self.with_editor("mouse_clicked", |editor, draft| {
-            editor.mouse_clicked(x, y, button, draft)
+            editor.mouse_clicked(x, y, button, double_click, draft)
         })
         .unwrap_or(false)
     }
