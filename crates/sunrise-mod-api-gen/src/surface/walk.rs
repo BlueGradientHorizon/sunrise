@@ -1,7 +1,7 @@
 //! The public items of `mod_api`, each under the path a mod writes: the facade crate's root,
 //! through public modules and `pub use`s (globs included), skipping `#[doc(hidden)]`, `__`
 //! names and items compiled out of a mod's default native build.
-use crate::index::{Found, Index, ItemId, uses};
+use crate::index::{Found, Index, ItemId, OutsideSeam, uses};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use syn::{Item, Visibility};
 
@@ -106,7 +106,7 @@ pub(super) fn attrs(item: &Item) -> &[syn::Attribute] {
     }
 }
 
-fn defined(item: &Item) -> Option<(&Visibility, String)> {
+pub(super) fn defined(item: &Item) -> Option<(&Visibility, String)> {
     match item {
         Item::Const(i) => Some((&i.vis, i.ident.to_string())),
         Item::Enum(i) => Some((&i.vis, i.ident.to_string())),
@@ -325,7 +325,7 @@ impl<'i, 'a> Walker<'i, 'a> {
     /// Every public item from the facade's root, breadth first, with every public path to it
     /// (each module through at most [`PATHS_PER_MODULE`] paths, never through itself). Names
     /// starting `__` are never followed.
-    pub(super) fn public(&mut self) -> Result<Public, String> {
+    pub(super) fn public(&mut self, outside: &OutsideSeam) -> Result<Public, String> {
         let root = self.index.module(FACADE, &[])?;
         let mut public = Public::default();
         let mut all: HashMap<ItemId, BTreeSet<Vec<String>>> = HashMap::new();
@@ -373,6 +373,11 @@ impl<'i, 'a> Walker<'i, 'a> {
                             && external.len() == 2
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
+                        } else if outside.rejects(&external) {
+                            return Err(OutsideSeam::error(
+                                &format!("mod_api::{}", path.join("::")),
+                                &external,
+                            ));
                         } else {
                             public.notes.push(format!(
                                 "{} re-exports {}, outside the API's crates",

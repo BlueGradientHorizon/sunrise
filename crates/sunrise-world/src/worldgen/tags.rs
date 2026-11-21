@@ -120,7 +120,9 @@ pub enum TagBuildError {
 }
 impl std::fmt::Display for TagBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("tag definitions exceed 8192 entries")
+        f.write_str(match self {
+            Self::TooManyTags => "tag definitions exceed 8192 entries",
+        })
     }
 }
 impl std::error::Error for TagBuildError {}
@@ -173,15 +175,24 @@ impl TagDefinitions {
     pub fn definitions(&self) -> &BTreeMap<String, Vec<TagEntryWithSource>> {
         &self.entries
     }
-    /// Missing required references invalidate their own tags, not unrelated tags.
-    /// Element lookup receives the entry's required flag, as in vanilla.
+    /// Build the bounded worldgen table. Missing required references
+    /// invalidate their own tags, not unrelated tags.
     pub fn build<T: Clone + Ord>(
         &self,
-        mut lookup: impl FnMut(&str, bool) -> Option<T>,
+        lookup: impl FnMut(&str, bool) -> Option<T>,
     ) -> Result<BuiltTags<T>, TagBuildError> {
         if self.entries.len() > 8192 {
             return Err(TagBuildError::TooManyTags);
         }
+        Ok(self.bind(lookup))
+    }
+
+    /// Bind the tags of a registry without a worldgen table size limit.
+    /// Element lookup receives the entry's required flag, as in vanilla.
+    pub fn bind<T: Clone + Ord>(
+        &self,
+        mut lookup: impl FnMut(&str, bool) -> Option<T>,
+    ) -> BuiltTags<T> {
         let sorted = dependency_order(self.insertion_order.iter().map(String::as_str), |name| {
             self.entries[name].iter().filter_map(|entry| {
                 let entry = &entry.entry;
@@ -221,7 +232,7 @@ impl TagDefinitions {
                 result.missing.insert(name.into(), missing);
             }
         }
-        Ok(result)
+        result
     }
 }
 /// One entry's value into a tag being built: added at the end, or removed

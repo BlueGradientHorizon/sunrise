@@ -13,6 +13,7 @@ pub trait Hooks {
     /// layers, the cape among them, keep every part.
     #[hook(
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderPlayerEvent.Pre",

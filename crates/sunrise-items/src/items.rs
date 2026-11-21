@@ -577,6 +577,75 @@ pub fn block_tag_state_names(facts: &BlockFacts) -> Arc<[Arc<str>]> {
         .collect()
 }
 
+type StewEffects = Arc<[(Arc<str>, i32)]>;
+
+#[derive(Default, serde::Deserialize)]
+struct BlockBindings {
+    #[serde(default)]
+    items: HashMap<String, BlockItemBinding>,
+    #[serde(default)]
+    blocks: Vec<BlockBinding>,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockItemBinding {
+    #[serde(default)]
+    class: Vec<String>,
+    #[serde(default)]
+    fields: BlockItemFields,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct BlockItemFields {
+    block: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct BlockBinding {
+    name: String,
+    suspicious_stew_effects: Option<Vec<sunrise_mod_package::content::StewEffect>>,
+}
+
+impl BlockBindings {
+    fn load(root: &Path) -> Result<Self> {
+        match fs::read(root.join("block-behaviours.json")) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn item_blocks(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.items.iter().filter_map(|(item, binding)| {
+            let block = binding.fields.block.as_deref()?;
+            binding
+                .class
+                .iter()
+                .any(|name| name == "BlockItem")
+                .then_some((item.as_str(), block))
+        })
+    }
+
+    fn stew_effects_by_item(&self) -> HashMap<String, StewEffects> {
+        let mut holders: HashMap<&str, StewEffects> = crate::flowers::FLOWER_STEW_EFFECTS
+            .iter()
+            .map(|&(block, id, ticks)| (block, Arc::from([(Arc::from(id), ticks)])))
+            .collect();
+        holders.extend(self.blocks.iter().filter_map(|block| {
+            let effects = block
+                .suspicious_stew_effects
+                .as_ref()?
+                .iter()
+                .map(|effect| (Arc::from(effect.id.as_str()), effect.duration))
+                .collect();
+            Some((block.name.as_str(), effects))
+        }));
+        self.item_blocks()
+            .filter_map(|(item, block)| Some((item.to_owned(), holders.get(block)?.clone())))
+            .collect()
+    }
+}
+
 /// An empty catalog is useful for synthetic worlds without registered items;
 /// normal worlds load their catalog from the resource snapshot.
 #[derive(Clone, Default)]
@@ -584,6 +653,8 @@ pub struct Items {
     pub items: HashMap<Arc<str>, ItemInfo>,
     /// Shared Block.getItem snapshot, including blocks sharing another block's item.
     pub block_items: Arc<HashMap<String, String>>,
+    // The item -> its BlockItem block -> effect holder lookup, resolved once at load.
+    suspicious_stew_effects: Arc<HashMap<String, StewEffects>>,
     /// Registry snapshot used to validate ingredient component payloads.
     pub component_registry: Arc<sunrise_client_core::registries::Registries>,
     /// Loaded component prototypes for concrete ingredient predicates.
@@ -923,41 +994,16 @@ impl Items {
         }
         // Block.getItem is not an inverse of BlockItem.getBlock: several items
         // may place the same block. Read their normal compiled bindings too.
-        #[derive(Default, serde::Deserialize)]
-        struct Bindings {
-            #[serde(default)]
-            items: HashMap<String, Binding>,
-        }
-        #[derive(serde::Deserialize)]
-        struct Binding {
-            #[serde(default)]
-            class: Vec<String>,
-            #[serde(default)]
-            fields: Fields,
-        }
-        #[derive(Default, serde::Deserialize)]
-        struct Fields {
-            block: Option<String>,
-        }
-        let bindings = match fs::read(root.join("block-behaviours.json")) {
-            Ok(bytes) => serde_json::from_slice::<Bindings>(&bytes)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Bindings::default(),
-            Err(error) => return Err(error.into()),
-        };
-        for (item, binding) in &bindings.items {
-            if binding.class.iter().any(|name| name == "BlockItem")
-                && let Some(state) = binding
-                    .fields
-                    .block
-                    .as_deref()
-                    .and_then(|block| registry.default_state(block))
-            {
+        let bindings = BlockBindings::load(root)?;
+        for (item, block) in bindings.item_blocks() {
+            if let Some(state) = registry.default_state(block) {
                 block_for_item.entry(item).or_insert(state);
             }
         }
-        let mut items = Self::load_with(root, &block_for_item, overlay, defaults, |id| {
-            registry.default_state(id).is_some()
-        })?;
+        let mut items =
+            Self::load_with(root, &block_for_item, &bindings, overlay, defaults, |id| {
+                registry.default_state(id).is_some()
+            })?;
         items.block_items = Arc::new(
             facts
                 .states
@@ -988,6 +1034,11 @@ impl Items {
         items.rebuild_block_tag_flags(block_tag_state_names(facts));
         Ok(items)
     }
+    /// `SuspiciousEffectHolder.tryGet`: the effects supplied by the block this item places.
+    pub fn suspicious_stew_effects(&self, item: &str) -> Option<&[(Arc<str>, i32)]> {
+        self.suspicious_stew_effects.get(item).map(AsRef::as_ref)
+    }
+
     /// Every item's defaults, tags and block-to-item identities, without
     /// placement state ids (for headless tools that never place blocks).
     pub fn catalog(root: &Path, overlay: &PackOverlay, defaults: &ItemDefaults) -> Result<Self> {
@@ -1019,9 +1070,11 @@ impl Items {
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
         let block_items = ingredient_defaults::block_items(root)?;
-        let mut items = Self::load_with(root, &HashMap::new(), overlay, defaults, |id| {
-            block_items.contains_key(id)
-        })?;
+        let bindings = BlockBindings::load(root)?;
+        let mut items =
+            Self::load_with(root, &HashMap::new(), &bindings, overlay, defaults, |id| {
+                block_items.contains_key(id)
+            })?;
         load_registries(&mut items)?;
         items.block_items = Arc::new(block_items);
         items.load_table_loot(root, overlay, defaults)?;
@@ -1031,6 +1084,7 @@ impl Items {
     fn load_with(
         root: &Path,
         block_for_item: &HashMap<&str, BlockStateId>,
+        bindings: &BlockBindings,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
         contains_block: impl Fn(&str) -> bool,
@@ -1273,6 +1327,7 @@ impl Items {
         let mut table = Self {
             items,
             block_items: Default::default(),
+            suspicious_stew_effects: Arc::new(bindings.stew_effects_by_item()),
             component_registry: ingredient_defaults::component_registry(root, &entity_tags)?,
             mob_visibility,
             order,

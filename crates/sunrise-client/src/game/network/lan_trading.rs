@@ -112,7 +112,7 @@ impl Game<'_> {
             state.session.update_special_prices();
         }
         let title = self.merchant_display_name(&state);
-        if !self.guest_may_open(conn, "minecraft:merchant", None) {
+        if self.guest_may_open(conn, "minecraft:merchant", None) != Some(true) {
             self.merchant_closed(&mut state);
             return;
         }
@@ -757,7 +757,7 @@ impl Game<'_> {
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),
     ) -> bool {
-        if self.merchant_click_in_progress(conn) {
+        if self.menu_click_in_progress(conn) {
             return false;
         }
         let done = self.lan_merchant_op(conn, None, false, |menu, env| {
