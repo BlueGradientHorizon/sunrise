@@ -1,6 +1,24 @@
 //! A packet body on its way to a client: its own bytes, or bytes several clients share.
 
-use std::sync::Arc;
+use crate::raw_payloads::connection::Epoch;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
+/// One already-framed attachment sync and its prepaid outbox reservation.
+/// Kept through deferred tracking callbacks and refunded when written or dropped.
+pub struct PairingPayload {
+    pub(super) bytes: Vec<u8>,
+    pub(super) epoch: Arc<Epoch>,
+    pub(super) pending: Arc<AtomicUsize>,
+    pub(super) cost: usize,
+}
+impl Drop for PairingPayload {
+    fn drop(&mut self) {
+        self.pending.fetch_sub(self.cost, Ordering::Relaxed);
+    }
+}
 
 /// A packet body (VarInt id and payload) on its way to one client. Entity tracking sends the
 /// same bodies to every client tracking an entity: those hold one shared copy, where a
@@ -12,7 +30,7 @@ pub enum Body {
     Shared(Arc<[u8]>),
     /// Already framed and compressed payload bytes (`PreparedPayload`), written
     /// straight into the outgoing wire buffer without re-framing.
-    Prepared(Vec<u8>),
+    Prepared(Arc<PairingPayload>),
 }
 
 impl Body {
@@ -20,25 +38,29 @@ impl Body {
     pub fn shared(bytes: Vec<u8>) -> Self {
         Self::Shared(bytes.into())
     }
-    /// Already framed and compressed payload bytes.
-    pub fn prepared(bytes: Vec<u8>) -> Self {
-        Self::Prepared(bytes)
-    }
     /// Whether this body was already framed by `PreparedPayload`.
     pub fn is_prepared(&self) -> bool {
         matches!(self, Self::Prepared(_))
     }
+    pub(super) fn pairing_epoch(&self) -> Option<&Arc<Epoch>> {
+        match self {
+            Self::Prepared(payload) => Some(&payload.epoch),
+            _ => None,
+        }
+    }
     /// The bytes this body keeps alive: an owned vector's capacity, a shared copy's length.
     pub fn retained(&self) -> usize {
         match self {
-            Self::Owned(bytes) | Self::Prepared(bytes) => bytes.capacity(),
+            Self::Owned(bytes) => bytes.capacity(),
+            Self::Prepared(payload) => payload.bytes.capacity(),
             Self::Shared(bytes) => bytes.len(),
         }
     }
     /// The bytes as a vector of their own (copied when shared).
     pub fn into_vec(self) -> Vec<u8> {
         match self {
-            Self::Owned(bytes) | Self::Prepared(bytes) => bytes,
+            Self::Owned(bytes) => bytes,
+            Self::Prepared(payload) => payload.bytes.clone(),
             Self::Shared(bytes) => bytes.to_vec(),
         }
     }
@@ -48,7 +70,8 @@ impl std::ops::Deref for Body {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
         match self {
-            Self::Owned(bytes) | Self::Prepared(bytes) => bytes,
+            Self::Owned(bytes) => bytes,
+            Self::Prepared(payload) => &payload.bytes,
             Self::Shared(bytes) => bytes,
         }
     }

@@ -1271,7 +1271,7 @@ fn prepare_pairing_attachment_sync(
                 )
                 .map(|prepared| {
                     prepared
-                        .into_prepared_body()
+                        .into_prepared_body(epoch.clone())
                         .expect("server endpoint produces a prepared server body")
                 })
         }

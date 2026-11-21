@@ -71,9 +71,9 @@ impl Prepared {
     }
     /// Extract a server `PreparedPayload` as a `Body::Prepared` for inclusion inside
     /// an entity pairing bundle.
-    pub(crate) fn into_prepared_body(self) -> Option<crate::lan::Body> {
+    pub(crate) fn into_prepared_body(self, epoch: Arc<Epoch>) -> Option<crate::lan::Body> {
         match self {
-            Self::Server(prepared) => Some(prepared.into_prepared_body()),
+            Self::Server(prepared) => Some(prepared.into_prepared_body(epoch)),
             Self::Client(_) | Self::Droppable(..) => None,
         }
     }
@@ -246,12 +246,7 @@ impl Endpoint {
     }
     /// A failure closes this physical connection only; a client reason joins its ordered events.
     pub fn disconnect(&self, reason: Text) {
-        let reason = crate::api_text::to_engine(&reason).unwrap_or_else(|error| {
-            crate::text::Text::tr(
-                "disconnect.genericReason",
-                &[&format!("invalid payload disconnect reason: {error:?}")],
-            )
-        });
+        let reason = disconnect_text(&reason);
         self.transport().close();
         match &self.0 {
             Target::Client { writer, events, .. } => {
@@ -272,6 +267,14 @@ impl Endpoint {
             }
         }
     }
+}
+pub(crate) fn disconnect_text(reason: &Text) -> crate::text::Text {
+    crate::api_text::to_engine(reason).unwrap_or_else(|error| {
+        crate::text::Text::tr(
+            "disconnect.genericReason",
+            &[&format!("invalid payload disconnect reason: {error:?}")],
+        )
+    })
 }
 fn preflight(
     framing: Framing,

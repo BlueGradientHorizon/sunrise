@@ -87,6 +87,15 @@ pub(super) fn charge(retained: usize) -> usize {
     retained.saturating_add(std::mem::size_of::<Queued>() * 2)
 }
 
+/// A pairing payload carries its own prepaid charge until the queued body is dropped.
+pub(super) fn body_charge(body: &Body) -> usize {
+    if body.is_prepared() {
+        0
+    } else {
+        charge(body.retained())
+    }
+}
+
 pub(super) struct Queued {
     body: Body,
     prepared: bool,
@@ -173,7 +182,7 @@ impl Outbox {
         let bodies = bodies
             .into_iter()
             .map(|body| Queued {
-                cost: charge(body.retained()),
+                cost: body_charge(&body),
                 prepared: body.is_prepared(),
                 body,
                 pending: self.pending.clone(),
@@ -643,7 +652,7 @@ impl Conn {
     /// if one could not be.
     fn frame(&mut self, now: Instant, bodies: Vec<Queued>, _queued: bool) -> bool {
         for body in &bodies {
-            // A bundle's delimiters travel as bodies of their own, possibly in different batches.
+            // Do not insert a droppable packet between a bundle's delimiters.
             if self.outbox.droppable.get().is_some()
                 && !body.prepared
                 && body.body.first()

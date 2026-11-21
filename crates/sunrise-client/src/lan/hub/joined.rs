@@ -84,7 +84,7 @@ impl Hub {
                     );
                 });
             } else {
-                self.guests[i].sender.send_many(out.drain(..));
+                self.guests[i].sender.send_tracking_bodies(out);
             }
         }
     }

@@ -3473,7 +3473,7 @@ impl Hub {
             }
             let g = &self.guests[i];
             self.hold_sound_removals(g.conn, out);
-            g.sender.send_many(out.drain(..));
+            g.sender.send_tracking_bodies(out);
         }
         self.entity_out = outs;
         self.send_view_entities(views);
