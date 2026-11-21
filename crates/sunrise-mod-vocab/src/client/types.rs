@@ -635,10 +635,11 @@ pub struct SoundPlay {
     pub identifier: String,
     /// The mixer group it plays on.
     pub source: SoundSource,
-    /// Base volume, before sound-file scaling and `SoundEngine.calculateVolume`. A volume
-    /// above 1 can increase attenuation distance before the final volume is clamped.
+    /// Finite base volume, before sound-file scaling and `SoundEngine.calculateVolume`.
+    /// A volume above 1 can increase attenuation distance before the final volume is clamped.
     pub volume: f32,
-    /// Base pitch, 1.0 unchanged. `SoundEngine.calculatePitch` clamps the pitch after sound-file scaling.
+    /// Finite base pitch; 1.0 is unchanged before sound-file scaling. The engine clamps the
+    /// scaled pitch (`SoundEngine.calculatePitch`).
     pub pitch: f32,
     /// Where it plays, in world blocks or as an offset from the listener when `relative`.
     pub position: [f64; 3],
@@ -649,7 +650,7 @@ pub struct SoundPlay {
     pub delay: i32,
     /// How it fades with distance.
     pub attenuation: SoundAttenuation,
-    /// It plays at the listener, wherever they move.
+    /// Its position is an offset from the listener, wherever they move.
     pub relative: bool,
     /// How the mixer shapes it: its own gain, filters and reverb sends ([`SoundEffects`], with
     /// every field's range). [`SoundEffects::NONE`] by default, which changes nothing.
@@ -682,8 +683,8 @@ pub struct SoundPlay {
 /// The cutoffs are in hertz whatever the output's sample rate, so the same value is valid on
 /// every device. NaN, infinities and anything outside a range are refused, never clamped
 /// ([`SoundEffects::valid`]): the `play_sound` edit at the start, the live refresh of a ticking
-/// sound and `play_local_sound` all run that one check, and a refused value plays nothing, as a
-/// bad volume does. Inside the mixer, a direct-sound cutoff above the output's Nyquist frequency
+/// sound and `play_local_sound` all run that one check, and a refused value plays nothing (or
+/// stops a live sound). Inside the mixer, a direct-sound cutoff above the output's Nyquist frequency
 /// (half its sample rate; the mixer stops at 0.49 of the rate) works as that limit: on a 32 kHz
 /// output, `lowpass` 18000 filters as 15680 would. That limit depends on the device, not on the
 /// value, and is not a refusal.

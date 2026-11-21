@@ -119,12 +119,11 @@ fn tickable_and_category_updates_keep_transient_edits_and_can_cancel() {
 
 #[test]
 fn cancellation_and_invalid_edits_never_allocate_or_notify() {
-    let edits: [PlaybackHook; 6] = [
+    let edits: [PlaybackHook; 5] = [
         |_, _, _, cancel| *cancel = true,
         |_, volume, _, _| *volume = f32::NAN,
         |_, volume, _, _| *volume = f32::INFINITY,
-        |_, volume, _, _| *volume = -1.0,
-        |_, _, pitch, _| *pitch = 0.0,
+        |_, _, pitch, _| *pitch = f32::NAN,
         |_, _, pitch, _| *pitch = f32::NEG_INFINITY,
     ];
     for hook in edits {

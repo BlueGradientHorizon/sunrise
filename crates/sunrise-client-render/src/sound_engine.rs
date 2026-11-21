@@ -1105,6 +1105,15 @@ pub struct SoundEngine {
     loop_context: Option<sunrise_world::native_load_context::LoopContext>,
     unmuffled: HashSet<String>,
 }
+// Check edited base values without changing untouched engine inputs. Their sign is
+// interpreted by calculate_volume/calculate_pitch after sound-file scaling.
+fn readable_base_edit(original: [f32; 2], edited: [f32; 2]) -> bool {
+    original
+        .into_iter()
+        .zip(edited)
+        .all(|(before, after)| after.is_finite() || before.to_bits() == after.to_bits())
+}
+
 fn handle_channel(h: &Handle) -> Option<ChannelId> {
     h.channel
 }
@@ -1183,12 +1192,7 @@ impl SoundEngine {
             };
             let mut cancel = false;
             hook(&sound, &mut volume, &mut pitch, &mut cancel);
-            let volume_edited = volume.to_bits() != instance.volume.to_bits();
-            let pitch_edited = pitch.to_bits() != instance.pitch.to_bits();
-            if cancel
-                || (volume_edited && (!volume.is_finite() || volume < 0.0))
-                || (pitch_edited && (!pitch.is_finite() || pitch <= 0.0))
-            {
+            if cancel || !readable_base_edit([instance.volume, instance.pitch], [volume, pitch]) {
                 return None;
             }
         }

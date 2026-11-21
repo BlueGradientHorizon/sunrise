@@ -853,17 +853,29 @@ impl Backend for MixerBackend {
 #[cfg(test)]
 fn stereo_gains(right: f32, up: f32, forward: f32) -> [f32; 2] {
     let length = (right * right + up * up + forward * forward).sqrt();
-    stereo_gains_with_length(right, up, forward, length)
+    stereo_gains_with_length([right, up, forward].map(f64::from), f64::from(length)).unwrap()
 }
-/// `stereo_gains` for a direction of known `length`.
+/// `stereo_gains` for a direction of known `length`, or `None` for unreadable geometry.
 #[inline]
-fn stereo_gains_with_length(right: f32, up: f32, forward: f32, length: f32) -> [f32; 2] {
-    if length <= f32::EPSILON {
-        return stereo_gains_with_length(0.0, 0.0, 1.0, 1.0);
-    }
-    let u = (up / length).clamp(-1.0, 1.0);
+fn stereo_gains_with_length(direction: [f64; 3], length: f64) -> Option<[f32; 2]> {
+    let [right, up, forward] = direction;
+    let narrow = [right as f32, up as f32, forward as f32, length as f32];
+    let (u, mut azimuth) = if narrow.into_iter().all(f32::is_finite) {
+        let [right, up, forward, length] = narrow;
+        if length <= f32::EPSILON {
+            (0.0, 0.0)
+        } else {
+            (up / length, right.atan2(forward))
+        }
+    } else if length.is_finite() && direction.into_iter().all(f64::is_finite) {
+        // Finite channel coordinates can have projections or a length outside f32.
+        // Compute the direction before narrowing; ordinary pans retain f32 rounding.
+        ((up / length) as f32, right.atan2(forward) as f32)
+    } else {
+        return None;
+    };
+    let u = u.clamp(-1.0, 1.0);
     let cos_elev = (1.0 - u * u).max(0.0).sqrt();
-    let mut azimuth = right.atan2(forward);
     if azimuth.abs() < std::f32::consts::FRAC_PI_2 {
         azimuth = (azimuth.abs() * 1.5)
             .min(std::f32::consts::FRAC_PI_2)
@@ -872,14 +884,24 @@ fn stereo_gains_with_length(right: f32, up: f32, forward: f32, length: f32) -> [
     let (sin_az, cos_az) = azimuth.sin_cos();
     let side = sin_az * cos_elev;
     let front = cos_az * cos_elev * 0.095_660_8;
-    [0.5 - 0.5 * side + front, 0.5 + 0.5 * side + front]
+    Some([0.5 - 0.5 * side + front, 0.5 + 0.5 * side + front])
 }
 /// The gain OpenAL applies for distance (`AL_LINEAR_DISTANCE` with reference
 /// distance 0 and rolloff 1: the distance clamps to the max distance).
-fn distance_gain(linear: Option<f32>, distance: f32) -> f32 {
+fn distance_gain(linear: Option<f32>, distance: f64) -> f32 {
     match linear {
         None => 1.0,
-        Some(max) if max > 0.0 => (1.0 - distance.min(max) / max).clamp(0.0, 1.0),
+        Some(max) if max > 0.0 => {
+            let distance = distance.min(f64::from(max));
+            let narrow = distance as f32;
+            // An unbounded reach must not turn a finite distance into infinity / infinity.
+            let fraction = if narrow.is_finite() {
+                narrow / max
+            } else {
+                (distance / f64::from(max)) as f32
+            };
+            (1.0 - fraction).clamp(0.0, 1.0)
+        }
         Some(_) => 0.0,
     }
 }
@@ -999,7 +1021,7 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
         }),
     );
     let shared = mixer.cameras.len() > 1;
-    let dot = |a: [f64; 3], b: [f64; 3]| (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) as f32;
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     // Gains and pans per source for this buffer.
     let mut voices = std::mem::take(&mut mixer.voices);
     voices.clear();
@@ -1059,24 +1081,27 @@ fn mix(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
             if zero {
                 (0.0, [0.0, 0.0])
             } else {
-                let distance = d_sqr.sqrt() as f32;
-                let gain = c.gain.clamp(0.0, 1.0) * distance_gain(c.linear, distance);
-                let [mut left, mut right] = if c.relative {
-                    stereo_gains_with_length(d[0] as f32, d[1] as f32, -d[2] as f32, distance)
+                let distance = d_sqr.sqrt();
+                let direction = if c.relative {
+                    [d[0], d[1], -d[2]]
                 } else {
-                    stereo_gains_with_length(dot(d, right), dot(d, up), dot(d, forward), distance)
+                    [dot(d, right), dot(d, up), dot(d, forward)]
                 };
-                if shared {
-                    let middle = (left + right) * 0.5;
-                    left = middle + (left - middle) * 0.5;
-                    right = middle + (right - middle) * 0.5;
+                if let Some([mut left, mut right]) = stereo_gains_with_length(direction, distance) {
+                    let gain = c.gain.clamp(0.0, 1.0) * distance_gain(c.linear, distance);
+                    if shared {
+                        let middle = (left + right) * 0.5;
+                        left = middle + (left - middle) * 0.5;
+                        right = middle + (right - middle) * 0.5;
+                    }
+                    (gain, [left * gain, right * gain])
+                } else {
+                    (0.0, [0.0, 0.0])
                 }
-                (gain, [left * gain, right * gain])
             }
         };
-        // Extreme source distances can overflow the float panner even when each
-        // coordinate fits. Keep an unreadable voice out of the shared output and
-        // reverb buses, but keep advancing its playhead.
+        // Keep an unreadable voice out of the shared output and reverb buses,
+        // but keep advancing its playhead.
         let gains = [left, right, gain];
         let gains = if gains.into_iter().all(f32::is_finite) {
             gains
@@ -2827,21 +2852,65 @@ mod tests {
     fn an_unreadable_pan_does_not_silence_other_voices() {
         let clear = || stereo_channel(vec![0.25; 6], None, [0.0; 3], false);
         let mut mixer = Mixer::default();
-        mixer.listener_pitch = 45.0;
         mixer.channels.insert(1, clear());
         let mut plain = [0.0; 4];
         mix(&mut mixer, &mut plain, 2, 48_000);
         assert_eq!(plain, [0.25; 4]);
 
         mixer.channels.insert(1, clear());
-        let at = [f32::MAX, f32::MAX, -f32::MAX];
         mixer
             .channels
-            .insert(2, channel(vec![0.5; 4], None, at, false));
+            .insert(2, channel(vec![0.5; 4], None, [f32::NAN, 0.0, 0.0], false));
         let mut mixed = [0.0; 4];
         mix(&mut mixer, &mut mixed, 2, 48_000);
         assert_eq!(mixed, plain);
         assert_eq!(mixer.channels[&2].position, 2.0);
+    }
+
+    #[test]
+    fn a_readable_extreme_position_pans_alongside_an_ordinary_voice() {
+        let max = f64::from(f32::MAX);
+        let axis = f32::MAX * 0.75;
+        let poses = [
+            // Nearly level with the pitched listener: 2 MAX left, 0.75 sqrt(2) MAX forward.
+            // This exceeds the stereo decoder's 60-degree full-left angle.
+            (
+                [-max, 0.0, 0.0],
+                45.0,
+                [f32::MAX, -axis, axis],
+                [0.75, 0.25],
+            ),
+            // Directly left at 60 degrees elevation: 1 MAX left and sqrt(3) MAX up.
+            // The elevation halves the left-right spread, so the gains are 0.75 and 0.25.
+            (
+                [0.0, (1.0 - 3.0_f64.sqrt()) * max, 0.0],
+                0.0,
+                [f32::MAX, f32::MAX, 0.0],
+                [0.625, 0.375],
+            ),
+        ];
+        for (listener, listener_pitch, at, [left, right]) in poses {
+            for (linear, expected) in [
+                (None, [left, right, left, right]),
+                (Some(f32::MAX), [0.25; 4]),
+                (Some(f32::INFINITY), [left, right, left, right]),
+            ] {
+                let mut mixer = Mixer {
+                    listener,
+                    listener_pitch,
+                    ..Mixer::default()
+                };
+                mixer
+                    .channels
+                    .insert(1, stereo_channel(vec![0.25; 6], None, [0.0; 3], false));
+                mixer
+                    .channels
+                    .insert(2, channel(vec![0.5; 4], linear, at, false));
+                let mut mixed = [0.0; 4];
+                mix(&mut mixer, &mut mixed, 2, 48_000);
+                assert_eq!(mixed, expected);
+            }
+        }
     }
 
     /// A channel whose buffer is interleaved stereo.

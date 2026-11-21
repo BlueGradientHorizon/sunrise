@@ -104,7 +104,9 @@ without changing the output. There is no limit on the number of events in `exemp
 Play the accompanying sound with `ClientHost::play_local_sound(&sound, after)`. The `after` delay is counted from the
 next audio update in unpaused sound-engine ticks. The sound engine calculates final volume and pitch after applying the
 sound file's own settings. A finite negative base volume can start a silent sound, and a finite negative base pitch
-reaches the engine's minimum pitch. A positive repeat gap waits between plays; zero or a negative gap loops automatically.
+reaches the engine's minimum pitch. `play_sound` uses the same base volume and pitch domain on start and on live refresh;
+assign `*event.sound = None` to cancel or stop, not a negative number. A positive repeat gap waits between plays; zero or a
+negative gap loops automatically.
 
 The `SoundRef` it returns follows and controls the same instance without restarting it:
 
@@ -140,7 +142,7 @@ Every field's valid range, inclusive at both ends:
 The cutoffs are in hertz whatever the output device's sample rate, so a value valid on one device is valid on every
 device. `SoundEffects::valid` refuses NaN, infinities and any value outside its range; nothing is clamped. The same
 check runs on all three paths: a `play_sound` edit when a sound starts, the live refresh of a ticking sound, and
-`play_local_sound`. A refused value plays nothing (or stops the live sound), as a bad volume does. Inside the mixer, a
+`play_local_sound`. A refused value plays nothing (or stops the live sound). Inside the mixer, a
 `lowpass` or `highpass` above the output's Nyquist frequency (half its sample rate; the mixer stops at 0.49 of the
 rate) works as that limit: on a 32 kHz output, a `lowpass` of 18000 filters as 15680 would. That limit depends on the
 device, not on your value, and is not a refusal.
