@@ -15,7 +15,10 @@ vanilla client reload anchor), with no synthetic `minecraft:first` or `minecraft
 nodes or automatic edges. During sorting, only dangling non-`minecraft` listeners are linked after
 the anchor (matching NeoForge's `ReloadListenerSort`). A dependency orders both phases:
 `functions()` reads function files in prepare and admits the new library in apply;
-`model_manager()` builds the models in prepare and publishes them in apply.
+`model_manager()` builds the models in prepare. Its apply publishes the validated
+model generation and fires `texture_atlas_stitched` and `model_baking_completed`.
+On first load and later reloads, validation finishes before either the manager
+or mod listeners publish.
 
 A listener's `ServerReloadContext` lists namespaced IDs and reads the
 winning bytes from selected datapacks and the mod's own `data/`. Parse once in `prepare`, then return
@@ -39,8 +42,8 @@ Both prepare contexts lend converted IDs through `context.list()` and bytes thro
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
 its message. `error.resource()` borrows the failing resource ID,
 `std::error::Error::source(&error)` exposes its original cause, and its `Display` is just the
-resource ID. The reload diagnostic walks the `Error::source()` chain once for both the log
-and `/reload` reply, stopping at a circular reference and marking it. Handle an invalid registration's `Err(ReloadOrderError)` in the registration hook;
+resource ID. World-open errors, live content-mod reload logs and the `/reload` reply
+report the whole `Error::source()` chain once, stopping at a circular reference and marking it. Handle an invalid registration's `Err(ReloadOrderError)` in the registration hook;
 the failed call leaves the existing registry unchanged. To fail a reload, return a
 `ReloadResourceError` from a listener's prepare step. No listener applies until every prepare
 succeeds.

@@ -108,13 +108,15 @@ pub(super) fn stage_client_reload<V, E: From<ReloadStageError>>(
 
 /// Publish the models in order with the mod listener actions on the game-owning
 /// thread, before the resources-reloaded notice.
-pub(super) fn apply_client_reload<E>(
+pub(super) fn apply_client_reload(
     phase: &mod_api::__private::PhaseOwner,
     prepared: Vec<PreparedClientReload>,
-    publish_models: impl FnOnce() -> Result<(), E>,
-) -> Result<(), E> {
+    publish_models: impl FnOnce(),
+) {
     let mut publish_models = Some(publish_models);
     apply_listeners(prepared, phase, "client_reload_apply", |()| {
-        publish_models.take().expect("one model manager")()
+        publish_models.take().expect("one model manager")();
+        Ok::<_, std::convert::Infallible>(())
     })
+    .unwrap();
 }

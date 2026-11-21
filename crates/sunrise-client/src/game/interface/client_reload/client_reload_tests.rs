@@ -83,9 +83,8 @@ fn stage_reads_resolved_asset_bytes_without_a_directory() {
     apply_client_reload(
         &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
         prepared,
-        || Ok::<_, std::convert::Infallible>(()),
-    )
-    .unwrap();
+        || {},
+    );
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
 }
 
@@ -116,9 +115,8 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
     apply_client_reload(
         &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
         prepared,
-        || Ok::<_, std::convert::Infallible>(()),
-    )
-    .unwrap();
+        || {},
+    );
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -219,122 +217,213 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-/// The initial load runs the client reload listeners: the load itself
-/// registers and stages them against the real merged root (here the direct
-/// `--world` path; the title screen's loader thread runs the same code), and
-/// the applies it delivers run once the game exists — before any F3+T
-/// reload.
+/// First load uses the same model barrier as a reload. The model must be baked
+/// during prepare, then published to the real Game between the two applies.
 #[test]
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
-    use crate::game::{Progress, load_resources, native_entity_refs::tests::with_game};
-    use mod_api::{self, ModEntry};
-    use mod_api::{AddClientReloadListenersEvent, ClientHost, Hooks};
-    use mod_platform::testing::with_mods;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use crate::game::{
+        Audio, Game, Options, Progress, Settings, load_resources_for_mods,
+        native_entity_refs::tests::fixture_root, start_game,
+    };
+    use mod_api::{
+        __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
+        AddClientReloadListenersEvent, ClientHost, ClientItemExtensionsRegistrar, Hooks, ModEntry,
+        ModelBakingCompletedEvent, RegistrationContext, StandaloneModelsEvent,
+        VanillaClientListeners,
+    };
+    use std::{sync::Mutex, time::Instant};
+    use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
 
-    /// Counts the real root's own `post_effect` assets, like a mod reading
-    /// vanilla files on the first load.
-    struct StartupProbe {
-        applied: Arc<AtomicBool>,
-        count: Arc<AtomicUsize>,
+    struct Listener {
+        trace: Arc<Mutex<Vec<&'static str>>>,
+        before: bool,
     }
-    impl ClientReloadListener for StartupProbe {
+    impl ClientReloadListener for Listener {
         fn prepare(
             &self,
             context: &ClientReloadContext,
         ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
-            let seen = context
-                .list()
-                .filter(|id| id.namespace() == "minecraft")
-                .count();
-            let applied = self.applied.clone();
-            let count = self.count.clone();
-            Ok(Box::new(move || {
-                count.fetch_max(seen, Ordering::SeqCst);
-                applied.store(true, Ordering::SeqCst);
-            }))
+            assert!(context.list().any(|id| id.namespace() == "minecraft"));
+            let (prepare, apply) = if self.before {
+                ("prepare before", "apply before")
+            } else {
+                ("prepare after", "apply after")
+            };
+            self.trace.lock().unwrap().push(prepare);
+            let trace = self.trace.clone();
+            Ok(Box::new(move || trace.lock().unwrap().push(apply)))
         }
     }
+    thread_local! {
+        static REFUSE_EXTENSIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    struct Probe(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
-    impl Hooks for StartupProbe {
+    impl Hooks for Probe {
         fn add_client_reload_listeners(
             &self,
-            _host: &dyn ClientHost,
+            _: &dyn ClientHost,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
+            let anchor = VanillaClientListeners::model_manager();
+            let before = id("startup_anchor:before");
+            let after = id("startup_anchor:after");
+            for (key, before) in [(before.clone(), true), (after.clone(), false)] {
+                event
+                    .listeners
+                    .add_listener(
+                        key,
+                        FileToIdConverter::json("post_effect").unwrap(),
+                        Arc::new(Listener {
+                            trace: self.0.clone(),
+                            before,
+                        }),
+                    )
+                    .unwrap();
+            }
             event
                 .listeners
-                .add_listener(
-                    id("client_test:startup"),
-                    FileToIdConverter::json("post_effect").unwrap(),
-                    Arc::new(StartupProbe {
-                        applied: self.applied.clone(),
-                        count: self.count.clone(),
-                    }),
-                )
+                .add_dependency(before, anchor.clone())
                 .unwrap();
+            event.listeners.add_dependency(anchor, after).unwrap();
+        }
+
+        fn standalone_models(
+            &self,
+            _: &RegistrationContext,
+            event: &mut StandaloneModelsEvent<'_>,
+        ) {
+            let trace = self.0.clone();
+            event.register(
+                "startup_anchor:stone",
+                ["minecraft:block/stone"],
+                move |bake| {
+                    trace.lock().unwrap().push("bake model");
+                    bake.append_dependency("minecraft:block/stone", [0; 3], false)
+                },
+            );
+        }
+
+        fn register_client_item_extensions(extensions: &mut dyn ClientItemExtensionsRegistrar) {
+            if REFUSE_EXTENSIONS.get() {
+                assert!(
+                    extensions
+                        .register_texture("startup_anchor:missing")
+                        .is_err()
+                );
+            }
+        }
+
+        fn model_baking_completed(
+            &self,
+            host: &mut dyn ClientHost,
+            _: &mut ModelBakingCompletedEvent,
+        ) {
+            assert!(
+                host.render_assets()
+                    .model(&id("startup_anchor:stone"))
+                    .is_ok()
+            );
+            self.0.lock().unwrap().push("install models");
         }
     }
 
-    let applied = Arc::new(AtomicBool::new(false));
-    let count = Arc::new(AtomicUsize::new(0));
-    let mods = vec![ModEntry::new(
-        "client_test",
-        Box::new(StartupProbe {
-            applied: applied.clone(),
-            count: count.clone(),
-        }),
-    )]
-    .into();
-    with_mods(mods, || {
-        with_game(|game| {
-            let root = crate::game::packs::startup_root(
-                &game.options.resources,
-                &game.settings.resource_packs,
-                &[],
-                &game.options.mods,
-            )
-            .or_else(|error| {
-                log::warn!("Sunrise: resource packs not applied: {error}");
-                crate::game::mods::content_root(&game.options.resources, &game.options.mods)
-            })
-            .unwrap();
-            let mut loaded = load_resources(
-                root,
-                Vec::new(),
-                None,
-                &game.options.resources,
-                &game.settings,
-                std::time::Instant::now(),
-                false,
-                crate::game::execution_role::ExecutionRole::Client,
-                &Progress::new(),
-                &mut |_, _| {},
-            )
-            .expect("initial load");
-            assert!(
-                !loaded.client_applies.is_empty(),
-                "the load itself registered and staged the listener"
-            );
-            assert!(
-                !applied.load(Ordering::SeqCst),
-                "nothing applied before handoff"
-            );
-            // Its model step is already installed in this fixture's game.
-            apply_client_reload(
-                &game.mod_phase,
-                std::mem::take(&mut loaded.client_applies),
-                || Ok::<_, std::convert::Infallible>(()),
-            )
-            .unwrap();
-            assert!(applied.load(Ordering::SeqCst), "the first load applies");
-            assert!(
-                count.load(Ordering::SeqCst) >= 5,
-                "the initial stage read the real root's own assets"
-            );
-        });
-    });
+    std::thread::Builder::new()
+        .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
+        .spawn(|| {
+            let trace = Arc::new(Mutex::new(Vec::new()));
+            let mods = vec![ModEntry::new(
+                "startup_anchor",
+                Box::new(Probe(trace.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                let _phase = PhaseOwner::scope(ModPhase::Setup);
+                let mut registrations = Vec::new();
+                Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
+                let _models =
+                    sunrise_client::models::StandaloneFixture::from_registrations(registrations);
+                for reject in [true, false] {
+                    REFUSE_EXTENSIONS.set(reject);
+                    trace.lock().unwrap().clear();
+                    let root = fixture_root();
+                    let scratch = tempfile::tempdir().unwrap();
+                    let started = Instant::now();
+                    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+                    options.resources = root.clone();
+                    options.game_dir = Some(scratch.path().to_owned());
+                    options.execution_role = crate::game::execution_role::ExecutionRole::Client;
+                    let settings = Settings::default();
+
+                    let loaded = load_resources_for_mods(
+                        ResourceRoot::directory(root.clone()),
+                        Vec::new(),
+                        None,
+                        &root,
+                        &settings,
+                        started,
+                        false,
+                        options.execution_role,
+                        &Progress::new(),
+                        &mut |_, _| unreachable!(),
+                        &options.mods,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        ["prepare before", "bake model", "prepare after"]
+                    );
+                    assert!(loaded.pack_error.is_none());
+                    options.resources = loaded.root;
+                    let result = start_game(
+                        &loaded.resources,
+                        loaded.pack,
+                        loaded.gui.unwrap(),
+                        options,
+                        loaded.pack_error,
+                        Audio::silent(&ResourceSource::directory(root.clone())),
+                        root,
+                        started,
+                        loaded.rest_loader,
+                        Some(settings),
+                        loaded.game_cpu,
+                        loaded.client_applies,
+                        loaded.entity_models,
+                    );
+                    if reject {
+                        let error = result
+                            .err()
+                            .expect("startup must refuse the unknown texture");
+                        assert!(
+                            error
+                                .to_string()
+                                .contains("unknown armour texture startup_anchor:missing")
+                        );
+                        assert_eq!(
+                            *trace.lock().unwrap(),
+                            ["prepare before", "bake model", "prepare after"]
+                        );
+                        continue;
+                    }
+                    assert!(result.unwrap().is_some());
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        [
+                            "prepare before",
+                            "bake model",
+                            "prepare after",
+                            "apply before",
+                            "install models",
+                            "apply after",
+                        ]
+                    );
+                }
+            });
+        })
+        .unwrap()
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
 }
 
 /// A listener registered through the real dispatch, staged against a real
@@ -510,9 +599,8 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             apply_client_reload(
                 &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
                 prepared,
-                || Ok::<_, std::convert::Infallible>(()),
-            )
-            .unwrap();
+                || {},
+            );
             assert_eq!(live.lock().unwrap().as_slice(), ["mod"]);
             assert!(
                 vanilla.load(Ordering::SeqCst) >= 5,
@@ -535,9 +623,8 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             apply_client_reload(
                 &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
                 prepared,
-                || Ok::<_, std::convert::Infallible>(()),
-            )
-            .unwrap();
+                || {},
+            );
             assert_eq!(live.lock().unwrap().as_slice(), ["mod", "pack"]);
             // A rejected prepare aborts the reload and keeps the previous state.
             reject.store(true, Ordering::Relaxed);
@@ -1040,7 +1127,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             None,
                             Some(game.settings.clone()),
                             None,
-                            Vec::new(),
+                            vec![PreparedClientReload::Vanilla(())],
                             None,
                         )
                         .unwrap()

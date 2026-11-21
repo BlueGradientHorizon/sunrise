@@ -118,7 +118,10 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
     with_mods(mods, || {
         with_client_game(|game| {
             // The first load, as `run` fires them before `client_setup`.
-            game.publish_initial_client_models().unwrap();
+            game.publish_initial_client_models(vec![
+                crate::game::client_reload::PreparedClientReload::Vanilla(()),
+            ])
+            .unwrap();
             let first = {
                 let kept = kept.lock().unwrap();
                 assert_eq!(
@@ -174,7 +177,10 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
         super::Game::native_standalone_models(&RegistrationContext::new(), &mut staged);
         let _fixture = sunrise_client::models::StandaloneFixture::from_registrations(staged);
         with_client_game(|game| {
-            game.publish_initial_client_models().unwrap();
+            game.publish_initial_client_models(vec![
+                crate::game::client_reload::PreparedClientReload::Vanilla(()),
+            ])
+            .unwrap();
             let [Ok(turned), Ok(assembly), Err(ModelError::UnknownModel)] =
                 kept.lock().unwrap().baked[0]
             else {
@@ -244,8 +250,8 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
     use super::{Progress, packs::stage_pack};
     use mod_api::{
         AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
-        FileToIdConverter, RegisterVillagerProfessionsEvent, ReloadResourceError,
-        VanillaClientListeners,
+        FileToIdConverter, ProfessionDefinition, ProfessionKey, RegisterVillagerProfessionsEvent,
+        ReloadResourceError, VanillaClientListeners,
     };
 
     struct Listener {
@@ -264,7 +270,12 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
             Ok(Box::new(move || trace.lock().unwrap().push(apply)))
         }
     }
-    struct Probe(Arc<Mutex<Vec<&'static str>>>);
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct Probe {
+        trace: Arc<Mutex<Vec<&'static str>>>,
+        refuse: Arc<AtomicBool>,
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn add_client_reload_listeners(
@@ -282,7 +293,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                         id(name),
                         FileToIdConverter::json("anchor").unwrap(),
                         Arc::new(Listener {
-                            trace: self.0.clone(),
+                            trace: self.trace.clone(),
                             prepare,
                             apply,
                         }),
@@ -303,7 +314,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
             _: &RegistrationContext,
             event: &mut StandaloneModelsEvent<'_>,
         ) {
-            let trace = self.0.clone();
+            let trace = self.trace.clone();
             event.register("anchor:stone", ["minecraft:block/stone"], move |bake| {
                 trace.lock().unwrap().push("bake model");
                 bake.append_dependency("minecraft:block/stone", [0; 3], false)
@@ -312,54 +323,105 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
         fn register_villager_professions(
             &self,
             _: &RegistrationContext,
-            _: &mut RegisterVillagerProfessionsEvent<'_>,
+            event: &mut RegisterVillagerProfessionsEvent<'_>,
         ) {
-            // apply_staged_pack refreshes the renderer's professions after
-            // replacing its pack and villager hat models.
-            self.0.lock().unwrap().push("install model generation");
+            if self.refuse.load(Ordering::Relaxed) {
+                let definition = ProfessionDefinition {
+                    key: ProfessionKey(id("anchor:duplicate")),
+                    workstations: vec![],
+                    held_poi: vec![],
+                    acquirable_poi: vec![],
+                    requested_items: vec![],
+                    secondary_blocks: vec![],
+                    work_sound: None,
+                    trades: vec![],
+                };
+                event.professions.register(definition.clone());
+                event.professions.register(definition);
+            }
+        }
+        fn model_baking_completed(
+            &self,
+            host: &mut dyn ClientHost,
+            _: &mut ModelBakingCompletedEvent,
+        ) {
+            assert!(host.render_assets().model(&id("anchor:stone")).is_ok());
+            self.trace.lock().unwrap().push("install model generation");
         }
     }
     let trace = Arc::new(Mutex::new(Vec::new()));
+    let refuse = Arc::new(AtomicBool::new(false));
     with_mods(
-        vec![ModEntry::new("anchor", Box::new(Probe(trace.clone())))].into(),
+        vec![ModEntry::new(
+            "anchor",
+            Box::new(Probe {
+                trace: trace.clone(),
+                refuse: refuse.clone(),
+            }),
+        )]
+        .into(),
         || {
             let mut registrations = Vec::new();
             super::Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
             let _fixture =
                 sunrise_client::models::StandaloneFixture::from_registrations(registrations);
             with_client_game(|game| {
-                trace.lock().unwrap().clear();
-                let staged = stage_pack(
-                    &game.vanilla_root(),
-                    &[],
-                    &[],
-                    &game.mods,
-                    game.register_client_reload_listeners(),
-                    &[],
-                    &game.pack.assets,
-                    &game.res,
-                    &game.pack.context,
-                    game.settings.force_unicode,
-                    game.settings.japanese_glyphs,
-                    &Progress::new(),
-                )
-                .unwrap();
-                assert_eq!(
-                    *trace.lock().unwrap(),
-                    ["prepare before", "bake model", "prepare after"]
-                );
-                game.apply_staged_pack(staged).unwrap();
-                assert_eq!(
-                    *trace.lock().unwrap(),
-                    [
-                        "prepare before",
-                        "bake model",
-                        "prepare after",
-                        "apply before",
-                        "install model generation",
-                        "apply after",
-                    ]
-                );
+                for reject in [true, false] {
+                    refuse.store(reject, Ordering::Relaxed);
+                    // A clean registration snapshot for each candidate.
+                    game.mods.profession_declarations.take();
+                    trace.lock().unwrap().clear();
+                    let previous = game.pack.render.clone();
+                    let staged = stage_pack(
+                        &game.vanilla_root(),
+                        &[],
+                        &[],
+                        &game.mods,
+                        game.register_client_reload_listeners(),
+                        &[],
+                        &game.pack.assets,
+                        &game.res,
+                        &game.pack.context,
+                        game.settings.force_unicode,
+                        game.settings.japanese_glyphs,
+                        &Progress::new(),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        ["prepare before", "bake model", "prepare after"]
+                    );
+                    if reject {
+                        let error = game.apply_staged_pack(staged).unwrap_err().to_string();
+                        assert!(
+                            error.contains("client villager professions refused"),
+                            "{error}"
+                        );
+                        assert!(error.contains("duplicate"), "{error}");
+                        assert!(
+                            Arc::ptr_eq(&game.pack.render, &previous),
+                            "old model generation remains installed"
+                        );
+                        assert_eq!(
+                            *trace.lock().unwrap(),
+                            ["prepare before", "bake model", "prepare after"]
+                        );
+                        continue;
+                    }
+                    game.apply_staged_pack(staged).unwrap();
+                    assert!(!Arc::ptr_eq(&game.pack.render, &previous));
+                    assert_eq!(
+                        *trace.lock().unwrap(),
+                        [
+                            "prepare before",
+                            "bake model",
+                            "prepare after",
+                            "apply before",
+                            "install model generation",
+                            "apply after",
+                        ]
+                    );
+                }
             });
         },
     );

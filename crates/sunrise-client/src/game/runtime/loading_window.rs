@@ -320,45 +320,32 @@ pub(super) fn start_game<'a>(
             entity_models.as_deref(),
         )?),
     };
-    let mut game = None;
-    let publish = || -> Result<()> {
-        let mut loaded = Game::new(res, pack, gui, options, settings, audio, prepared)?;
-        // `new DebugRenderer()` refreshes its list.
-        loaded.refresh_debug_renderers();
-        loaded.rest_loader = rest_loader;
-        loaded.ui.vanilla_root = vanilla_root;
-        if pack_error.is_some() {
-            // Minecraft.clearResourcePacksOnError: the selection is cleared and
-            // saved, so the next launch starts without the packs.
-            loaded.settings.resource_packs.clear();
-            loaded.settings.save(&Game::options_path());
-        }
-        if loaded.options.benchmark.is_some() {
-            // The same conditions on every machine: no VSync, no frame cap, no
-            // pause or idle limit without focus. In memory only, never saved.
-            loaded.settings.vsync = false;
-            loaded.settings.max_fps = 260;
-            loaded.settings.inactivity_fps_limit = "minimized".into();
-            loaded.options.no_pause = true;
-        }
-        loaded.apply_settings();
-        // Benchmarks measure the game alone.
-        if loaded.options.benchmark.is_none() {
-            loaded.start_mods();
-        }
-        game = Some(loaded);
-        Ok(())
-    };
-    if client_applies.is_empty() {
-        publish()?;
-    } else {
-        // Game::new publishes the initial model generation. Run actions
-        // ordered before it while still in Setup; the game owns the phase
-        // for the actions that follow it.
-        let phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Setup);
-        client_reload::apply_client_reload(&phase, client_applies, publish)?;
+    // Construct the candidate before any reload listener can publish. Its model
+    // generation becomes visible to mods at the model manager's apply step.
+    let mut game = Game::new(res, pack, gui, options, settings, audio, prepared)?;
+    // `new DebugRenderer()` refreshes its list.
+    game.refresh_debug_renderers();
+    game.rest_loader = rest_loader;
+    game.ui.vanilla_root = vanilla_root;
+    if pack_error.is_some() {
+        // Minecraft.clearResourcePacksOnError: the selection is cleared and
+        // saved, so the next launch starts without the packs.
+        game.settings.resource_packs.clear();
+        game.settings.save(&Game::options_path());
     }
-    let mut game = game.expect("initial model generation published");
+    if game.options.benchmark.is_some() {
+        // The same conditions on every machine: no VSync, no frame cap, no
+        // pause or idle limit without focus. In memory only, never saved.
+        game.settings.vsync = false;
+        game.settings.max_fps = 260;
+        game.settings.inactivity_fps_limit = "minimized".into();
+        game.options.no_pause = true;
+    }
+    game.apply_settings();
+    // Benchmarks measure the game alone.
+    if game.options.benchmark.is_none() {
+        game.start_mods();
+    }
     game.refresh_loop_context()?;
     // After the mods: their templates are among the ids it lists.
     game.preload_registries();
@@ -422,9 +409,8 @@ pub(super) fn start_game<'a>(
         result?;
         return Ok(None);
     }
-    // The atlases the initial load stitched, the models it baked, then FMLClientSetupEvent: once
-    // per process, here in `run`, after the initial load applied.
-    game.publish_initial_client_models()?;
+    // Publish the prepared model generation in listener order, then finish client setup.
+    game.publish_initial_client_models(client_applies)?;
     // Finish Setup -> Config -> World before any screen, connection, input or tick hooks.
     game.native_configs_client_start();
     if let Some(error) = pack_error {

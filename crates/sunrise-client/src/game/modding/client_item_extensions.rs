@@ -212,15 +212,17 @@ fn bake_model(name: &str, model: &ModelPart) -> std::result::Result<Part, &'stat
 }
 
 impl Game<'_> {
-    pub(super) fn resolve_client_item_extensions(&mut self) -> std::result::Result<(), String> {
+    pub(super) fn prepare_client_item_extensions(
+        gui: &UiResources,
+    ) -> std::result::Result<ArmorExtensions, String> {
         use mod_api::__private::game::RegistrationContextNew;
         let mut registration = Registration {
             state: ArmorExtensions::default(),
-            sprite_exists: &|name| self.gui.atlas.sprites.contains_key(name),
+            sprite_exists: &|name| gui.atlas.sprites.contains_key(name),
             refused: None,
         };
         // Prebind every default texture once, so frame callbacks receive only integer references.
-        for name in self.gui.atlas.sprites.keys() {
+        for name in gui.atlas.sprites.keys() {
             let _ = registration.register_texture(name);
         }
         Self::native_register_client_item_extensions(
@@ -229,11 +231,9 @@ impl Game<'_> {
         );
         if let Some(why) = registration.refused {
             log::warn!("Sunrise: client item extensions refused: {why}");
-            self.armor_stand_assets.extensions = ArmorExtensions::default();
             return Err(why);
         }
-        self.armor_stand_assets.extensions = registration.state;
-        Ok(())
+        Ok(registration.state)
     }
 }
 

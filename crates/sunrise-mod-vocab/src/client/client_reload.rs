@@ -29,7 +29,8 @@ impl VanillaClientListeners {
         Self::model_manager()
     }
     /// Vanilla's model manager: building the next models in prepare and publishing
-    /// them in apply. Use this anchor rather than its string value, which need not
+    /// them in apply, with the atlas and model-baking notifications. Use this anchor
+    /// rather than its string value, which need not
     /// match NeoForge's identifier.
     pub fn model_manager() -> Identifier {
         static ID: LazyLock<Identifier> =
@@ -72,7 +73,8 @@ impl ClientReloadContext {
 /// finish before any apply, including vanilla's, runs on the game-owning thread.
 /// Prepare cannot see another listener's new published state. Dependencies order
 /// both phases deterministically; they do not remove the barrier. On a prepare
-/// error, pending actions are dropped without running, keeping the previous assets.
+/// or engine preflight error, pending actions are dropped without running, keeping
+/// the previous assets.
 pub trait ClientReloadListener: Send + Sync + 'static {
     /// Parse and validate new assets without changing the listener's live state.
     /// Return `Ok(Box::new(move || { /* publish prepared assets */ }))` with owned

@@ -1,7 +1,8 @@
 //! Client item extensions, rebuilt with the equipment resource bindings.
 pub trait Hooks {
     /// Register this load's worn equipment models, textures and item providers together.
-    /// Registration is client-only and repeats on every resource load. Models are baked once;
+    /// Registration is client-only and repeats on every resource load, before any reload listener
+    /// applies. The validated bindings are installed with the candidate models. Models are baked once;
     /// frame callbacks choose references, never geometry. A duplicate item provider or an unknown
     /// texture refuses registration with a named diagnostic. Server-only packages cannot listen.
     #[hook(
@@ -10,7 +11,8 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         context = "registration",
-        neoforge = "RegisterClientExtensionsEvent"
+        neoforge = "RegisterClientExtensionsEvent",
+        version = 2
     )]
     fn register_client_item_extensions(extensions: &mut dyn mod_api::ClientItemExtensionsRegistrar);
 }
