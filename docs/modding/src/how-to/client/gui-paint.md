@@ -45,14 +45,14 @@ Non-finite pose or scissor geometry refuses the scope with `GuiDrawError::NotFin
 
 ## Sprites and blits
 
-- `canvas.blit_sprite(name, dst, region, argb, blend)` draws a present GUI sprite by ID (with an
-  optional `GuiSpriteRegion { size, offset }` for partial blits). Accepts `Blend::Textured` and
-  `Blend::Crosshair`.
+- `canvas.blit_sprite(name, dst, region, argb, blend)` draws a present GUI sprite by ID, honouring
+  its metadata scaling (stretch or nine-slice) and an optional `GuiSpriteRegion { size, offset }`
+  for partial blits. Accepts `Blend::Textured` and `Blend::Crosshair`.
 - `canvas.atlas_sprite(name, dst, argb)` draws a sprite by its exact packed atlas name.
 - `canvas.blit(texture, dst, GuiBlitRegion { uv, src, tex }, argb, blend)` draws part of a raw
   texture (path under `textures/`, without `.png`, or a live/registered texture ID) with any
   `Blend`: `Textured`, `Vignette` (`dst * (1 - src)`), `Nausea` (additive), or `Crosshair`
-  (invert).
+  (invert). Zero or negative `src` extents mirror or repeat the sampled edge, matching vanilla.
 
 ## Refusals
 
@@ -66,7 +66,7 @@ Non-finite pose or scissor geometry refuses the scope with `GuiDrawError::NotFin
 | `UnsupportedSpriteBlend` | `blit_sprite` was called with `Blend::Vignette` or `Blend::Nausea`. |
 | `BadSpriteRegion` | `GuiSpriteRegion::size` is not positive on both axes. |
 | `UnknownTexture` | The requested raw texture is not in the GUI atlas. |
-| `BadBlitRegion` | `GuiBlitRegion::src` or `tex` is not positive on both axes. |
+| `BadBlitRegion` | `GuiBlitRegion::tex` is not positive on both axes. |
 
 The enum is `#[non_exhaustive]`. A refused call emits no vertices while earlier draws remain in the
 batch.

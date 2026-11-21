@@ -63,6 +63,9 @@ pub(crate) struct Installed {
     /// poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    /// `(mod_id, hook_name)` pairs queued when a contained mod callback panics, drained by the
+    /// client into its error toasts.
+    pending_panics: std::sync::Mutex<Vec<(&'static str, &'static str)>>,
 }
 
 impl Installed {
@@ -113,6 +116,7 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            pending_panics: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
@@ -192,6 +196,35 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
                 .as_ref()
                 .and_then(|poisons| poisons[hook as usize].as_ref())
                 .is_some_and(|poisoned| poisoned.contains(id))
+    })
+}
+
+/// Record a contained mod callback panic: poison `(hook, id)` for this session, log the
+/// failure, and queue `(id, hook_name)` for the client's red error toast.
+pub(crate) fn record_callback_panic(
+    hook: generated::HookId,
+    id: &'static str,
+    hook_name: &'static str,
+) {
+    poison(hook, id);
+    log::error!("mod {id} hook {hook_name} panicked; disabling that hook for this session");
+    if let Some(installed) = installed() {
+        installed
+            .pending_panics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((id, hook_name));
+    }
+}
+
+/// Drain `(mod_id, hook_name)` pairs queued by [`record_callback_panic`].
+pub(crate) fn take_callback_panics() -> Vec<(&'static str, &'static str)> {
+    installed().map_or_else(Vec::new, |installed| {
+        let mut pending = installed
+            .pending_panics
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        std::mem::take(&mut *pending)
     })
 }
 
@@ -436,6 +469,39 @@ pub(crate) fn entered_parts<'a, P: ?Sized>(
                 },
             );
             &*attached.part
+        })
+}
+
+/// [`entered_parts`] paired with each part's `mod_id`, skipping parts whose `(hook_id, mod_id)`
+/// is poisoned for this session.
+pub(crate) fn entered_parts_with_id<'a, P: ?Sized>(
+    hook_id: generated::HookId,
+    parts: &'a [Attached<P>],
+    hook: &'static str,
+) -> impl Iterator<Item = (&'static str, &'a P)> {
+    let mut guard = crate::dispatch_scope::ModGuard::empty();
+    let scope = crate::dispatch_scope::snapshot();
+    let has_poisons = installed().is_some_and(|installed| {
+        !installed
+            .poison_free
+            .load(std::sync::atomic::Ordering::Acquire)
+    });
+    parts
+        .iter()
+        .filter(move |attached| {
+            mod_index_on(attached.mod_index)
+                && (!has_poisons || !poisoned(hook_id, attached.mod_id))
+        })
+        .map(move |attached| {
+            scope.replace(
+                &mut guard,
+                crate::content::crash::ModCall {
+                    id: attached.mod_id,
+                    hook,
+                    part: Some(attached.type_name),
+                },
+            );
+            (attached.mod_id, &*attached.part)
         })
 }
 

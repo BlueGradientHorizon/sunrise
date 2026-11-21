@@ -184,12 +184,13 @@ pub trait Notes {
   `list(&folder, after, limit)` returns lexicographically ordered names strictly after the cursor, at most `limit` entries; start with `None`, continue with the last name, and stop on an empty page.
   `ConfigPath::root()` lists the mod's own root; `limit` must be 1 through `CONFIG_LIST_MAX` (1024), otherwise `InvalidPage` ([config and bulk storage](../how-to/mod-settings.md)).
 
-- The player-health HUD rows through `health_hud`: every frame the HUD draws them, the
-  hook hears the layout's inputs (`HealthInputs`) and the logical GUI size. The first
-  `HealthHudReplacement` answer draws all the rows (armour, hearts, food and air) directly on the
-  `minecraft:player_health` layer through `GuiCanvas`. Returning an error reports the failure
-  without rolling back prior draws or falling back to vanilla health rows; a successful empty draw
-  still replaces vanilla. Nothing answered draws Sunrise's own.
+- The player-health HUD layer (`minecraft:player_health`) through `health_hud`: every frame the HUD
+  draws player hearts, the hook hears the layout's inputs (`HealthInputs`) and the logical GUI size.
+  The first `HealthHudReplacement` answer draws directly on `minecraft:player_health` through
+  `GuiCanvas`, while armour, food, vehicle health and air stay on their own layers
+  (`minecraft:armor_level`, `minecraft:food_level`, `minecraft:vehicle_health`, `minecraft:air_level`).
+  Returning an error reports the failure without rolling back prior draws or falling back to vanilla
+  hearts; a successful empty draw still replaces vanilla. Nothing answered draws Sunrise's own.
 
 - Which hearts the player's health bar draws through `player_heart_type` (NeoForge's `PlayerHeartTypeEvent`):
   each frame the HUD draws the hearts, `kind` comes in as vanilla's pick (poisoned, withered, frozen or normal) and a mod

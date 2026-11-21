@@ -2714,6 +2714,45 @@ impl HudBatch {
     ) -> f32 {
         self.styled_text(atlas, text, x, y, color, shadow, false, None)
     }
+    /// `text_styled` transformed by `transform`, returning `false` without
+    /// appending vertices if the origin, end cursor, or any emitted vertex
+    /// transforms to a non-finite position.
+    pub fn try_text_styled_posed(
+        &mut self,
+        atlas: &HudAtlas,
+        text: &crate::text::Text,
+        x: f32,
+        y: f32,
+        color: u32,
+        shadow: bool,
+        transform: impl Fn([f32; 2]) -> [f32; 2],
+    ) -> bool {
+        let start = self.vertices.len();
+        let inline_start = self.inline_profiles.len();
+        let advance = self.styled_text(atlas, text, x, y, color, shadow, false, None);
+        let origin = transform([x, y]);
+        let end = transform([x + advance, y]);
+        let mut finite = origin[0].is_finite()
+            && origin[1].is_finite()
+            && end[0].is_finite()
+            && end[1].is_finite();
+        if finite {
+            for vertex in &mut self.vertices[start..] {
+                let pos = transform(vertex.pos);
+                if !pos[0].is_finite() || !pos[1].is_finite() {
+                    finite = false;
+                    break;
+                }
+                vertex.pos = pos;
+            }
+        }
+        if !finite {
+            self.vertices.truncate(start);
+            self.inline_profiles.truncate(inline_start);
+            return false;
+        }
+        true
+    }
     /// `text_styled` for text drawn in the world (`TextRenderable.render`
     /// with `flat` false): each quad's `depth` is its z in text units, the
     /// glyphs `Font.SHADOW_DEPTH` in front of their shadow, a bold copy 0.001

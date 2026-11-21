@@ -22,7 +22,8 @@ pub struct GuiSpriteRegion {
 pub struct GuiBlitRegion {
     /// Source `u, v` offset, which must be finite.
     pub uv: [f32; 2],
-    /// Positive source width and height.
+    /// Source width and height in texture pixels; zero or negative values mirror or repeat the
+    /// sampled edge, matching vanilla `GuiGraphicsExtractor.blit`.
     pub src: [i32; 2],
     /// Positive width and height of the whole texture.
     pub tex: [i32; 2],
@@ -50,7 +51,7 @@ pub enum GuiDrawError {
     BadSpriteRegion,
     /// No raw texture is present at the requested id.
     UnknownTexture,
-    /// The source or texture size was not positive on both axes.
+    /// The whole texture size was not positive on both axes.
     BadBlitRegion,
 }
 
@@ -65,7 +66,7 @@ impl std::fmt::Display for GuiDrawError {
             Self::UnsupportedSpriteBlend => "this blend is not supported for GUI sprites",
             Self::BadSpriteRegion => "GUI sprite size must be positive",
             Self::UnknownTexture => "unknown GUI draw texture",
-            Self::BadBlitRegion => "GUI blit source and texture sizes must be positive",
+            Self::BadBlitRegion => "GUI blit texture size must be positive",
         })
     }
 }
@@ -136,8 +137,9 @@ pub trait GuiCanvas {
         count: Option<&str>,
     ) -> Result<(), GuiDrawError>;
 
-    /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, with an optional source region.
-    /// A removed sprite is refused. Accepts `Blend::Textured` and `Blend::Crosshair`.
+    /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, honouring its metadata scaling
+    /// (stretch or nine-slice) and optional source region. A removed sprite is refused. Accepts
+    /// `Blend::Textured` and `Blend::Crosshair`.
     fn blit_sprite(
         &mut self,
         name: &str,

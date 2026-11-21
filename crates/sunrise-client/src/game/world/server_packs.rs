@@ -565,6 +565,7 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        self.flush_mod_callback_panics();
         let atlas = &self.gui.atlas;
         let audio = &mut self.audio;
         self.mod_error_toasts.retain_mut(|toast| {

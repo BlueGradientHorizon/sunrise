@@ -995,10 +995,17 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
+        let contain_callback_panic = matches!(name, "health_hud" | "item_bar" | "item_decorations");
         let run = |expression: &str| {
-            format!(
-                "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
-            )
+            if contain_callback_panic {
+                format!(
+                    "match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {expression}))) {{ Ok(Ok(answer)) => answer, Ok(Err(refusal)) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} Err(_unwound) => {{ {restore_statement}{clear_batch}super::runtime::record_callback_panic(HookId::{hook_id}, mod_id, \"{name}\"); {refused_value} }} }}"
+                )
+            } else {
+                format!(
+                    "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}{clear_batch}refusal.report(); {refused_value} }} }}"
+                )
+            }
         };
         // One callee's call: a mod's, or a scoped hook's part's.
         let call = |callee: &str, exit: &str| {
@@ -1230,6 +1237,11 @@ pub(super) fn emit<'a>(
                     format!(
                         "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
                         call(&part_item, "break 'dispatch_parts"),
+                    )
+                } else if contain_callback_panic {
+                    format!(
+                        "for (mod_id, {part_item}) in super::entered_parts_with_id(HookId::{hook_id}, {part_list}, \"{name}\") {{ {} }}",
+                        call(&part_item, "break"),
                     )
                 } else {
                     format!(

@@ -21,8 +21,10 @@ The client keeps the callback for the session and calls it as the mod that insta
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
 passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
 or `gui_layer_pre` cancels the layer.
-A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
-health, player health and contextual bar anchors follow that paint order.
+A vanilla anchor that doesn't draw that frame still determines the layer's position. The player
+health, armor, food, vehicle health, air and contextual bar anchors follow NeoForge's paint order
+(`player_health`, `armor_level`, `food_level`, `vehicle_health`, `air_level`,
+`contextual_info_bar`).
 
 ### Replacing or wrapping a layer
 

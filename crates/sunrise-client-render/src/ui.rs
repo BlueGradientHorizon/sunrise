@@ -13,10 +13,10 @@ use std::time::Instant;
 /// same units, and whether the edges and centre stretch rather than tile.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NineSlice {
-    width: u32,
-    height: u32,
-    border: [u32; 4],
-    stretch_inner: bool,
+    pub width: u32,
+    pub height: u32,
+    pub border: [u32; 4],
+    pub stretch_inner: bool,
 }
 /// A `gui.scaling` section of type `nine_slice`.
 pub(crate) fn parse_nine_slice(v: &serde_json::Value) -> Option<NineSlice> {
@@ -131,6 +131,9 @@ fn draw_nine_slice(
     [x, y, w, h]: [f32; 4],
     color: u32,
 ) {
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
     let size = [n.width as f32, n.height as f32];
     let [sw, sh] = size;
     let [l, t, rr, b] = n.border.map(|v| v as f32);

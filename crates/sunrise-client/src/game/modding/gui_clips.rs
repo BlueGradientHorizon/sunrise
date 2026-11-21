@@ -1,50 +1,53 @@
-//! One full-context scissor scope, cut on the batch like the game's own screens.
+//! Screen-space scissor intersection shared by `DrawContext::with_scissor` and `GuiCanvas::scope`.
 use crate::hud::HudBatch;
+use crate::hud_layout::{IDENTITY, Pose, pose_point};
 use mod_api::GuiClipRefusal;
 
-/// Where a clip began and its rectangle (`[x0, y0, x1, y1]`), intersected with its parent.
-/// The scoped draw context owns the clip along with the borrowed batch, and closes it on drop.
-pub(crate) struct GuiClip {
-    start: usize,
+/// Intersect `rect` (`[x, y, w, h]`) in screen space with `enclosing` (or the viewport when
+/// `enclosing` is `None`).
+pub(crate) fn intersect_scissor(
+    batch: &HudBatch,
     rect: [f32; 4],
+    enclosing: Option<[f32; 4]>,
+) -> Result<[f32; 4], GuiClipRefusal> {
+    intersect_posed_scissor(batch, IDENTITY, rect, enclosing)
 }
 
-impl GuiClip {
-    pub(crate) fn open(
-        batch: &HudBatch,
-        rect: [f32; 4],
-        outer: Option<&Self>,
-    ) -> Result<Self, GuiClipRefusal> {
-        if !rect.iter().all(|v| v.is_finite()) {
-            return Err(GuiClipRefusal::NotFinite);
-        }
-        let [x, y, w, h] = rect;
-        let (x1, y1) = (x + w.max(0.0), y + h.max(0.0));
-        if ![x1, y1].iter().all(|v| v.is_finite()) {
-            return Err(GuiClipRefusal::NotFinite);
-        }
-        let mut clip = [x, y, x1, y1];
-        if let Some(outer) = outer {
-            clip = [
-                clip[0].max(outer.rect[0]),
-                clip[1].max(outer.rect[1]),
-                clip[2].min(outer.rect[2]),
-                clip[3].min(outer.rect[3]),
-            ];
-            // Disjoint from the outer clip: an empty one, clipping everything.
-            clip[2] = clip[2].max(clip[0]);
-            clip[3] = clip[3].max(clip[1]);
-        }
-        Ok(Self {
-            start: batch.vertices.len(),
-            rect: clip,
-        })
+/// Transform `rect` (`[x, y, w, h]`) by `pose` and intersect it with `enclosing` (or the viewport
+/// `[0, 0, batch.width, batch.height]` when `enclosing` is `None`).
+///
+/// Matches vanilla's `ScreenRectangle.transformAxisAligned` and `GuiGraphicsExtractor.ScissorStack`:
+/// the two ordered corners are transformed, origin and extents are floored separately, and an
+/// empty, inverted, reflected, or disjoint result collapses to `[0.0; 4]`.
+pub(crate) fn intersect_posed_scissor(
+    batch: &HudBatch,
+    pose: Pose,
+    rect @ [x, y, w, h]: [f32; 4],
+    enclosing: Option<[f32; 4]>,
+) -> Result<[f32; 4], GuiClipRefusal> {
+    let end = [x + w, y + h];
+    if !rect.into_iter().chain(end).all(f32::is_finite) {
+        return Err(GuiClipRefusal::NotFinite);
     }
-
-    pub(crate) fn close(self, batch: &mut HudBatch) {
-        let [x0, y0, x1, y1] = self.rect;
-        batch.clip_since(self.start, x0, y0, x1, y1);
+    let [tx, ty] = pose_point(pose, [x, y]);
+    let [tright, tbottom] = pose_point(pose, end);
+    let [left, top] = [tx.floor(), ty.floor()];
+    let [width, height] = [(tright - tx).floor(), (tbottom - ty).floor()];
+    let mut clip = [left, top, left + width, top + height];
+    if !clip.into_iter().all(f32::is_finite) {
+        return Err(GuiClipRefusal::NotFinite);
     }
+    let [vx0, vy0, vx1, vy1] = enclosing.unwrap_or([0.0, 0.0, batch.width, batch.height]);
+    clip = [
+        clip[0].max(vx0),
+        clip[1].max(vy0),
+        clip[2].min(vx1),
+        clip[3].min(vy1),
+    ];
+    if w <= 0.0 || h <= 0.0 || clip[2] <= clip[0] || clip[3] <= clip[1] {
+        clip = [0.0; 4];
+    }
+    Ok(clip)
 }
 
 #[cfg(test)]
@@ -83,9 +86,10 @@ mod tests {
         let mut batch = HudBatch::scratch([640, 480]);
         square(&mut batch, 0.0, 0.0, 300.0);
         let before: Vec<_> = batch.vertices.iter().map(|v| v.pos).collect();
-        let clip = GuiClip::open(&batch, [10.0, 10.0, 100.0, 100.0], None).unwrap();
+        let [x0, y0, x1, y1] = intersect_scissor(&batch, [10.0, 10.0, 100.0, 100.0], None).unwrap();
+        let start = batch.vertices.len();
         square(&mut batch, 0.0, 0.0, 300.0);
-        clip.close(&mut batch);
+        batch.clip_since(start, x0, y0, x1, y1);
         let kept: Vec<_> = batch.vertices[..before.len()]
             .iter()
             .map(|v| v.pos)
@@ -110,11 +114,10 @@ mod tests {
             ([0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, -5.0], None),
         ] {
             batch.vertices.clear();
-            let outer = GuiClip::open(&batch, outer, None).unwrap();
-            let inner = GuiClip::open(&batch, inner, Some(&outer)).unwrap();
+            let outer = intersect_scissor(&batch, outer, None).unwrap();
+            let [x0, y0, x1, y1] = intersect_scissor(&batch, inner, Some(outer)).unwrap();
             square(&mut batch, 0.0, 0.0, 300.0);
-            inner.close(&mut batch);
-            outer.close(&mut batch);
+            batch.clip_since(0, x0, y0, x1, y1);
             assert_eq!(
                 (!batch.vertices.is_empty()).then(|| bounds(&batch)),
                 expected
@@ -125,7 +128,7 @@ mod tests {
     #[test]
     fn non_finite_rects_are_refused_and_nesting_is_unbounded() {
         let mut batch = HudBatch::scratch([640, 480]);
-        let outer = GuiClip::open(&batch, [0.0, 0.0, 200.0, 200.0], None).unwrap();
+        let outer = intersect_scissor(&batch, [0.0, 0.0, 200.0, 200.0], None).unwrap();
         for rect in [
             [f32::NAN, 0.0, 1.0, 1.0],
             [0.0, 0.0, f32::INFINITY, 1.0],
@@ -136,7 +139,7 @@ mod tests {
             [f32::MAX, 0.0, f32::MAX, 1.0],
         ] {
             assert_eq!(
-                GuiClip::open(&batch, rect, Some(&outer)).err(),
+                intersect_scissor(&batch, rect, Some(outer)).err(),
                 Some(GuiClipRefusal::NotFinite)
             );
         }
@@ -144,14 +147,18 @@ mod tests {
         let mut stack = vec![outer];
         for i in 1..=100 {
             let offset = i as f32;
-            let next = GuiClip::open(&batch, [offset, offset, 200.0, 200.0], stack.last()).unwrap();
+            let next = intersect_scissor(
+                &batch,
+                [offset, offset, 200.0, 200.0],
+                stack.last().copied(),
+            )
+            .unwrap();
             stack.push(next);
         }
         assert!(stack.len() > 64);
+        let [x0, y0, x1, y1] = *stack.last().unwrap();
         square(&mut batch, 0.0, 0.0, 300.0);
-        while let Some(clip) = stack.pop() {
-            clip.close(&mut batch);
-        }
+        batch.clip_since(0, x0, y0, x1, y1);
         assert_eq!(bounds(&batch), [100.0, 100.0, 200.0, 200.0]);
     }
 }

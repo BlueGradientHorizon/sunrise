@@ -45,6 +45,16 @@ pub fn poison_hook(hook: crate::HookId, id: &'static str) {
     crate::runtime::poison(hook, id);
 }
 
+/// Poison `(hook, id)`, log the panic, and queue `(id, hook_name)` for the client's error toast.
+pub fn record_callback_panic(hook: crate::HookId, id: &'static str, hook_name: &'static str) {
+    crate::runtime::record_callback_panic(hook, id, hook_name);
+}
+
+/// Drain `(mod_id, hook_name)` pairs queued by [`record_callback_panic`].
+pub fn take_callback_panics() -> Vec<(&'static str, &'static str)> {
+    crate::runtime::take_callback_panics()
+}
+
 /// Index the `(namespace, mod ID)` pairs admitted to the startup registries.
 pub fn install_content_owners<'a>(owners: impl IntoIterator<Item = (&'a str, &'a str)>) {
     crate::runtime::install_content_owners(owners);

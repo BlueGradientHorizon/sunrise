@@ -7325,76 +7325,138 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts.
+            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
             let vehicle_hearts = if spectator {
                 0
             } else {
-                self.draw_mount_hud(&mut batch, wi, hi)
+                self.vehicle_max_hearts()
             };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            let kind = (!self.creative && !spectator)
+            let status_inputs = (!self.creative && !spectator)
                 .then(|| self.player_heart_kind())
-                .flatten();
-            if let Some(kind) = kind
-                && let Some(p) = &mut self.player
-            {
-                let effects = &self.potions.effects;
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
+                .flatten()
+                .and_then(|kind| {
+                    let p = self.player.as_ref()?;
+                    let effects = &self.potions.effects;
+                    // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
+                    // the surface, not merely in the water block.
+                    let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
+                    let at = [p.position.x, p.position.y, p.position.z];
+                    Some((
+                        hud_layout::HealthInputs {
+                            tick: visual_ticks as i32,
+                            millis: visual_millis,
+                            health: p.health.health(),
+                            max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                            absorption: p.health.absorption(),
+                            armor: p
+                                .attribute("minecraft:armor")
+                                .or_else(|_| p.attribute("armor"))
+                                .unwrap_or(0.0) as i32,
+                            food: p.health.food.food,
+                            saturation: p.health.food.saturation,
+                            kind,
+                            regeneration: effects.get("regeneration").is_some(),
+                            hunger: effects.get("hunger").is_some(),
+                            hardcore: self.level.hardcore,
+                            damage_cooldown: p.health.hurt.cooldown > 0,
+                            air: p.air,
+                            max_air: 300,
+                            under_water,
+                            vehicle_hearts,
+                        },
+                        at,
+                    ))
+                });
+            let mut left_height = 39;
+            let mut right_height = 39;
+            let mut status_random = hud_layout::HealthHud::status_random(visual_ticks as i32);
+            self.gui_layer(
+                VanillaGuiLayer::PlayerHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    let Some((ref inputs, _)) = status_inputs else {
+                        return;
+                    };
+                    let mut chosen = None;
+                    g.native_health_hud(inputs, wi, hi, &mut chosen);
+                    if let Some(chosen) = chosen {
+                        g.invoke_health_hud_replacement(batch, inputs, chosen);
+                        left_height += g.health_hud.hearts_height(inputs);
+                    } else {
+                        let (draws, height) = g.health_hud.layout_hearts(
+                            inputs,
+                            wi,
+                            hi - left_height,
+                            &mut status_random,
+                        );
+                        g.keep_status_rows(&draws, wi, hi);
+                        hud_layout::paint(batch, &g.gui.atlas, &draws);
+                        left_height += height;
+                    }
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
+                let Some((ref inputs, _)) = status_inputs else {
+                    return;
                 };
-                let at = [p.position.x, p.position.y, p.position.z];
-                // The rows draw in one pass here, so a mod's `player_health`
-                // layer stands for the armor, food and air rows too.
-                self.gui_layer(
-                    VanillaGuiLayer::PlayerHealth,
-                    &mut batch,
-                    &mut |g, batch| {
-                        let mut chosen = None;
-                        g.native_health_hud(&inputs, wi, hi, &mut chosen);
-                        if let Some(chosen) = chosen {
-                            g.invoke_health_hud_replacement(batch, &inputs, chosen);
-                        } else {
-                            let draws = g.health_hud.layout(&inputs, wi, hi);
-                            g.keep_status_rows(&draws, wi, hi);
-                            hud_layout::paint(batch, &g.gui.atlas, &draws);
-                        }
-                    },
+                let (draws, height) =
+                    hud_layout::HealthHud::layout_armor(inputs.armor, wi, hi - left_height);
+                if height > 0 {
+                    g.keep_status_rows(&draws, wi, hi);
+                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    left_height += height;
+                }
+            });
+            self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
+                let Some((ref inputs, _)) = status_inputs else {
+                    return;
+                };
+                let (draws, height) = hud_layout::HealthHud::layout_food(
+                    inputs,
+                    wi,
+                    hi - right_height,
+                    &mut status_random,
                 );
+                if height > 0 {
+                    g.keep_status_rows(&draws, wi, hi);
+                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    right_height += height;
+                }
+            });
+            self.gui_layer(
+                VanillaGuiLayer::VehicleHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    if !spectator {
+                        right_height += g.draw_mount_hud(batch, wi, hi, hi - right_height);
+                    }
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
+                let Some((ref inputs, at)) = status_inputs else {
+                    return;
+                };
+                let (draws, height) =
+                    g.health_hud
+                        .layout_air(inputs, wi, hi - right_height, &mut status_random);
+                if height > 0 {
+                    g.keep_status_rows(&draws, wi, hi);
+                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    right_height += height;
+                }
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
                 // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
+                if let Some((volume, pitch)) = g.health_hud.bubble_pop_sound.take() {
                     let players = sunrise_client::settings::SOUND_SOURCES
                         .iter()
                         .position(|s| *s == "player")
                         .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
+                    let capture = g.audio.capture.take();
+                    g.audio
                         .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
+                    g.audio.capture = capture;
                 }
-            }
+            });
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,
@@ -7600,17 +7662,24 @@ impl Game<'_> {
         if show_hud {
             self.draw_pad_guide(&mut batch, guide_from);
         }
+        self.flush_mod_callback_panics();
         batch
     }
 
-    /// Report a panic in a mod callback loudly (error log plus long red system toast) after
-    /// disabling that mod's callback for the session.
+    /// Drain contained mod callback panics recorded during dispatch and queue a red error toast
+    /// for each.
+    pub(in crate::game) fn flush_mod_callback_panics(&mut self) {
+        for (mod_id, hook) in mod_api::__private::take_callback_panics() {
+            self.report_mod_callback_panic(mod_id, hook);
+        }
+    }
+
+    /// Queue a long red system toast naming a mod callback that panicked and was disabled.
     pub(in crate::game) fn report_mod_callback_panic(
         &mut self,
         mod_id: &'static str,
         hook: &'static str,
     ) {
-        log::error!("mod {mod_id} callback for {hook} panicked; disabled for this session");
         let toast = sunrise_client::toasts::SystemToast::new(
             sunrise_client::text::Text::tr("sunrise.mod.callback_panicked.title", &[&mod_id]),
             Some(sunrise_client::text::Text::tr(
@@ -7627,7 +7696,7 @@ impl Game<'_> {
 
     /// Run a mod's chosen `health_hud` replacement directly on the `minecraft:player_health`
     /// layer, containing phase refusals and panics at the hook boundary without rolling back
-    /// prior draws or falling back to vanilla health rows.
+    /// prior draws or falling back to vanilla health hearts.
     pub(in crate::game) fn invoke_health_hud_replacement(
         &mut self,
         batch: &mut HudBatch,
@@ -7664,10 +7733,14 @@ impl Game<'_> {
                 log::warn!("mod {mod_id} health_hud draw failed: {err}");
             }
             Err(_) => {
-                mod_api::__private::poison_hook(mod_api::HookId::HealthHud, mod_id);
-                self.report_mod_callback_panic(mod_id, "health_hud");
+                mod_api::__private::record_callback_panic(
+                    mod_api::HookId::HealthHud,
+                    mod_id,
+                    "health_hud",
+                );
             }
         }
+        self.flush_mod_callback_panics();
     }
 
     pub(super) fn close_container(&mut self) {

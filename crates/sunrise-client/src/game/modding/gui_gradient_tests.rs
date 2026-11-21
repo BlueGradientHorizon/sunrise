@@ -178,3 +178,119 @@ fn a_mods_gradients_draw_top_to_bottom_in_the_clip_and_pose_and_empty_ones_draw_
         }
     }
 }
+
+#[test]
+#[ignore = "daily"]
+fn with_scissor_around_posed_draw_gui_clips_once_against_effective_scissor() {
+    struct MixedScissor;
+    #[mod_api::__subscriptions]
+    impl Hooks for MixedScissor {
+        fn component_hover(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ComponentHoverEvent<'_>,
+        ) -> mod_api::Flow {
+            event
+                .draw
+                .with_scissor([20.0, 20.0, 20.0, 20.0], &mut |clipped| {
+                    clipped.fill([0.0, 0.0, 100.0, 100.0], 0xFFFF_0000);
+                    clipped
+                        .draw_gui(&mut |canvas| {
+                            canvas.scope(
+                                &[
+                                    PoseOp::Translate(30.0, 30.0),
+                                    PoseOp::Rotate(std::f32::consts::FRAC_PI_4),
+                                ],
+                                Some([-6.0, -6.0, 12.0, 12.0]),
+                                &mut |scoped| {
+                                    scoped.fill_gradient([-16.0, -16.0, 32.0, 32.0], TOP, BOTTOM)
+                                },
+                            )?;
+                            canvas.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_FF00)
+                        })
+                        .unwrap();
+                    clipped.fill([0.0, 0.0, 100.0, 100.0], 0xFF00_00FF);
+                })
+                .unwrap();
+            mod_api::Flow::Cancel
+        }
+    }
+
+    let text = Text::from(serde_json::json!({
+        "text": "x", "hover_event": { "action": "show_text", "value": "hi" }
+    }));
+    let style: Style = text.spans[0].style.clone();
+    let mods: mod_api::Mods = vec![ModEntry::new("mixed_scissor", Box::new(MixedScissor))].into();
+    let mut batch = HudBatch::scratch([320, 240]);
+    let mut reference = HudBatch::scratch([320, 240]);
+    with_mods(mods, || {
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.component_hover_effect(&mut batch, &style, (40.0, 30.0));
+            crate::game::host::draw::GameGuiCanvas::draw_with_scissor(
+                &mut reference,
+                &game.gui.atlas,
+                Some(game),
+                Some([20.0, 20.0, 40.0, 40.0]),
+                &mut |canvas| {
+                    canvas.scope(
+                        &[
+                            PoseOp::Translate(30.0, 30.0),
+                            PoseOp::Rotate(std::f32::consts::FRAC_PI_4),
+                        ],
+                        Some([-6.0, -6.0, 12.0, 12.0]),
+                        &mut |scoped| scoped.fill_gradient([-16.0, -16.0, 32.0, 32.0], TOP, BOTTOM),
+                    )
+                },
+            )
+            .unwrap();
+        });
+    });
+
+    // Red parent fill [0..6], rotated gradient [6..6+ref_len], green canvas fill, blue parent fill.
+    let ref_len = reference.vertices.len();
+    assert!(ref_len > 0);
+    assert_eq!(batch.vertices.len(), 18 + ref_len);
+    let rect_bounds = |slice: &[sunrise_client::hud::HudVertex]| -> [f32; 4] {
+        slice.iter().fold(
+            [
+                f32::INFINITY,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+            ],
+            |[x0, y0, x1, y1], v| {
+                [
+                    x0.min(v.pos[0]),
+                    y0.min(v.pos[1]),
+                    x1.max(v.pos[0]),
+                    y1.max(v.pos[1]),
+                ]
+            },
+        )
+    };
+    assert_eq!(rect_bounds(&batch.vertices[0..6]), [20.0, 20.0, 40.0, 40.0]);
+    assert_eq!(batch.vertices[0].color, abgr(0xFFFF_0000));
+    let actual_grad: Vec<_> = batch.vertices[6..6 + ref_len]
+        .iter()
+        .map(|v| (v.pos, v.color))
+        .collect();
+    let expected_grad: Vec<_> = reference
+        .vertices
+        .iter()
+        .map(|v| (v.pos, v.color))
+        .collect();
+    assert_eq!(
+        actual_grad, expected_grad,
+        "rotated gradient inside with_scissor + draw_gui must be clipped once, identically to single effective scissor"
+    );
+    assert_eq!(
+        rect_bounds(&batch.vertices[6 + ref_len..12 + ref_len]),
+        [20.0, 20.0, 40.0, 40.0]
+    );
+    assert_eq!(batch.vertices[6 + ref_len].color, abgr(0xFF00_FF00));
+    assert_eq!(
+        rect_bounds(&batch.vertices[12 + ref_len..18 + ref_len]),
+        [20.0, 20.0, 40.0, 40.0]
+    );
+    assert_eq!(batch.vertices[12 + ref_len].color, abgr(0xFF00_00FF));
+}

@@ -95,11 +95,11 @@ pub struct HealthHudReplacement {
 }
 
 impl HealthHudReplacement {
-    /// Share a renderer that draws the player-health HUD rows (health, armour, food and air).
+    /// Share a renderer that draws the `minecraft:player_health` HUD layer (player hearts).
     /// The selected renderer runs directly on the `minecraft:player_health` layer in the
-    /// answering mod's scope. Returning an error reports the failure without rolling back prior
-    /// draws or falling back to vanilla health rows; `Ok(())` replaces vanilla even if nothing
-    /// was drawn.
+    /// answering mod's scope while armour, food, vehicle health and air remain on their own
+    /// layers. Returning an error reports the failure without rolling back prior draws or falling
+    /// back to vanilla hearts; `Ok(())` replaces vanilla even if nothing was drawn.
     pub fn new(
         draw: impl Fn(&dyn ClientHost, &HealthInputs, &mut dyn GuiCanvas) -> Result<(), GuiDrawError>
         + Send

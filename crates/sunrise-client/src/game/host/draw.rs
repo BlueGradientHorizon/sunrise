@@ -13,23 +13,47 @@ pub(crate) use gui_canvas::GameGuiCanvas;
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
     pub(crate) surface: &'a mut crate::hud::HudBatch,
-    /// Only a scoped child owns a clip; its parent keeps the enclosing one.
-    clip: Option<crate::game::gui_clips::GuiClip>,
+    /// Effective screen-space scissor (`[x0, y0, x1, y1]`) for this context and its children.
+    scissor: Option<[f32; 4]>,
+    /// Start vertex index of vertices emitted directly into this scope since the last child scope.
+    clip_start: usize,
 }
 impl<'a, 'g> GameDrawContext<'a, 'g> {
     pub(crate) fn new(game: &'a Game<'g>, surface: &'a mut crate::hud::HudBatch) -> Self {
+        let clip_start = surface.vertices.len();
         Self {
             game,
             surface,
-            clip: None,
+            scissor: None,
+            clip_start,
         }
+    }
+
+    fn flush_clip(&mut self) {
+        let end = self.surface.vertices.len();
+        if let Some([x0, y0, x1, y1]) = self.scissor
+            && self.clip_start < end
+        {
+            self.surface.clip_since(self.clip_start, x0, y0, x1, y1);
+        }
+        self.clip_start = self.surface.vertices.len();
     }
 }
 impl Drop for GameDrawContext<'_, '_> {
     fn drop(&mut self) {
-        if let Some(clip) = self.clip.take() {
-            clip.close(self.surface);
-        }
+        self.flush_clip();
+    }
+}
+
+/// Advances a parent [`GameDrawContext`]'s `clip_start` past whatever a child scope emitted,
+/// even if the child unwinds, so the parent never clips child vertices a second time.
+struct AdvanceClipStart<'a> {
+    surface: &'a mut crate::hud::HudBatch,
+    clip_start: &'a mut usize,
+}
+impl Drop for AdvanceClipStart<'_> {
+    fn drop(&mut self) {
+        *self.clip_start = self.surface.vertices.len();
     }
 }
 impl DrawContext for GameDrawContext<'_, '_> {
@@ -82,7 +106,20 @@ impl DrawContext for GameDrawContext<'_, '_> {
         &mut self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        GameGuiCanvas::draw(self.surface, &self.game.gui.atlas, Some(self.game), draw)
+        self.flush_clip();
+        let scissor = self.scissor;
+        let game = self.game;
+        let mut guard = AdvanceClipStart {
+            surface: &mut *self.surface,
+            clip_start: &mut self.clip_start,
+        };
+        GameGuiCanvas::draw_with_scissor(
+            &mut *guard.surface,
+            &game.gui.atlas,
+            Some(game),
+            scissor,
+            draw,
+        )
     }
     fn gui_nine_slice(&mut self, sprite: &str, rect: [f32; 4], color: u32) {
         self.game
@@ -135,12 +172,23 @@ impl DrawContext for GameDrawContext<'_, '_> {
         rect: [f32; 4],
         draw: &mut dyn FnMut(&mut dyn DrawContext),
     ) -> Result<(), GuiClipRefusal> {
-        let clip = crate::game::gui_clips::GuiClip::open(self.surface, rect, self.clip.as_ref())?;
-        draw(&mut GameDrawContext {
-            game: self.game,
+        let scissor = crate::game::gui_clips::intersect_scissor(self.surface, rect, self.scissor)?;
+        self.flush_clip();
+        let game = self.game;
+        let mut guard = AdvanceClipStart {
             surface: &mut *self.surface,
-            clip: Some(clip),
-        });
+            clip_start: &mut self.clip_start,
+        };
+        let clip_start = guard.surface.vertices.len();
+        {
+            let mut child = GameDrawContext {
+                game,
+                surface: &mut *guard.surface,
+                scissor: Some(scissor),
+                clip_start,
+            };
+            draw(&mut child);
+        }
         Ok(())
     }
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {

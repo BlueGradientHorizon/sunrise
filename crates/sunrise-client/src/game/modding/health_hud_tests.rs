@@ -210,9 +210,10 @@ fn cancelling_player_health_layer_skips_health_hud_and_vanilla_rows() {
 
     assert_eq!(selected.load(Ordering::Relaxed), 0);
     assert_eq!(post_seen.load(Ordering::Relaxed), 0);
-    assert!(
-        vanilla_len >= cancelled_len + 240,
-        "vanilla health + food rows ({vanilla_len}) must be skipped when cancelled ({cancelled_len})"
+    assert_eq!(
+        vanilla_len,
+        cancelled_len + 120,
+        "cancelling minecraft:player_health must skip only player hearts (20 sprites = 120 verts) while food stays drawn"
     );
 }
 
@@ -453,6 +454,227 @@ fn panicking_health_hud_disables_only_that_hook_and_queues_error_toast() {
                 vanilla_len,
                 "vanilla health rows must draw on the next frame once the sole listener is poisoned"
             );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn status_layers_fire_independently_in_neoforge_order_and_stack_heights() {
+    const STATUS_LAYERS: [&str; 5] = [
+        "minecraft:player_health",
+        "minecraft:armor_level",
+        "minecraft:food_level",
+        "minecraft:vehicle_health",
+        "minecraft:air_level",
+    ];
+    let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    struct StatusObserver(Arc<Mutex<Vec<String>>>, Option<&'static str>);
+    #[mod_api::__subscriptions]
+    impl Hooks for StatusObserver {
+        fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+            if STATUS_LAYERS.contains(&event.layer) {
+                self.0.lock().unwrap().push(event.layer.into());
+            }
+            if self.1 == Some(event.layer) {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+    }
+
+    with_client_game(|game| {
+        prepare_survival_hud(game);
+        let mut full_len = 0;
+        let mut no_food_len = 0;
+
+        let observe_all: mod_api::Mods = vec![ModEntry::new(
+            "observer",
+            Box::new(StatusObserver(Arc::clone(&seen), None)),
+        )]
+        .into();
+        with_mods(observe_all, || {
+            full_len = game.hud_layers(SIZE).vertices.len();
+        });
+        assert_eq!(
+            *seen.lock().unwrap(),
+            STATUS_LAYERS,
+            "all five status layers must fire in NeoForge order"
+        );
+
+        // Cancelling minecraft:food_level skips only the 10 food icons (20 sprites = 120 verts).
+        seen.lock().unwrap().clear();
+        let cancel_food: mod_api::Mods = vec![ModEntry::new(
+            "cancel_food",
+            Box::new(StatusObserver(
+                Arc::clone(&seen),
+                Some("minecraft:food_level"),
+            )),
+        )]
+        .into();
+        with_mods(cancel_food, || {
+            no_food_len = game.hud_layers(SIZE).vertices.len();
+        });
+        assert_eq!(full_len, no_food_len + 120);
+
+        // Status layers still fire their pre/post hooks in creative mode (matching NeoForge),
+        // while their vanilla bodies skip drawing.
+        seen.lock().unwrap().clear();
+        game.creative = true;
+        let observe_creative: mod_api::Mods = vec![ModEntry::new(
+            "observer_creative",
+            Box::new(StatusObserver(Arc::clone(&seen), None)),
+        )]
+        .into();
+        with_mods(observe_creative, || {
+            let _ = game.hud_layers(SIZE);
+        });
+        assert_eq!(*seen.lock().unwrap(), STATUS_LAYERS);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn panicking_selector_and_item_decorator_contain_only_offending_mod_and_hook() {
+    crate::game::in_own_process(
+        "game::health_hud_tests::panicking_selector_and_item_decorator_contain_only_offending_mod_and_hook",
+        panicking_selector_and_item_decorator_isolated,
+    );
+}
+
+fn panicking_selector_and_item_decorator_isolated() {
+    use mod_api::{
+        Identifier, ItemBarEvent, ItemDecorationsEvent, ItemPart, ItemStack, Registrar,
+        RegistrationContext,
+    };
+
+    static SELECTOR_CALLS: AtomicUsize = AtomicUsize::new(0);
+    static HEALTHY_HUD_CALLS: AtomicUsize = AtomicUsize::new(0);
+    static BAD_BAR_CALLS: AtomicUsize = AtomicUsize::new(0);
+    static BAD_DECORATOR_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+    struct PanickingSelector;
+    #[mod_api::__subscriptions]
+    impl Hooks for PanickingSelector {
+        fn health_hud(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut HealthHudEvent<'_>,
+        ) -> Option<HealthHudReplacement> {
+            SELECTOR_CALLS.fetch_add(1, Ordering::Relaxed);
+            panic!("boom inside health_hud selector");
+        }
+    }
+
+    struct BadItemPart;
+    #[mod_api::__subscriptions]
+    impl ItemPart for BadItemPart {
+        fn item_bar(&self, _: &dyn ClientHost, _: &mut ItemBarEvent<'_>) {
+            BAD_BAR_CALLS.fetch_add(1, Ordering::Relaxed);
+            panic!("boom inside item_bar");
+        }
+        fn item_decorations(&self, _: &dyn ClientHost, event: &mut ItemDecorationsEvent<'_>) {
+            BAD_DECORATOR_CALLS.fetch_add(1, Ordering::Relaxed);
+            let _ = event.draw.fill([40.0, 10.0, 4.0, 4.0], 0xFFDD_2244);
+            panic!("boom inside item_decorations");
+        }
+    }
+
+    struct BadItemMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for BadItemMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let key = r.item_key("minecraft:iron_sword");
+            r.item_part(key, BadItemPart);
+        }
+    }
+
+    struct HealthyHudMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for HealthyHudMod {
+        fn health_hud(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut HealthHudEvent<'_>,
+        ) -> Option<HealthHudReplacement> {
+            Some(HealthHudReplacement::new(|host, _, canvas| {
+                HEALTHY_HUD_CALLS.fetch_add(1, Ordering::Relaxed);
+                canvas.fill([12.0, 12.0, 4.0, 4.0], 0xFF22_CC44)?;
+                let sword_key = host
+                    .item_key(&Identifier::parse("minecraft:iron_sword").unwrap())
+                    .unwrap();
+                let mut sword = ItemStack::new(sword_key, 1).unwrap();
+                sword.set_damage(10);
+                canvas.item_decorations(&sword, [16.0, 16.0], None)
+            }))
+        }
+    }
+
+    let mods: mod_api::Mods = vec![
+        ModEntry::new("bad_selector", Box::new(PanickingSelector)),
+        ModEntry::new("healthy_hud", Box::new(HealthyHudMod)),
+        ModEntry::new("bad_item", Box::new(BadItemMod)),
+    ]
+    .into();
+
+    with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_client_game(|game| {
+            prepare_survival_hud(game);
+            let frame1 = game.hud_layers(SIZE);
+            assert_eq!(SELECTOR_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(HEALTHY_HUD_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(BAD_BAR_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(BAD_DECORATOR_CALLS.load(Ordering::Relaxed), 1);
+            // Both healthy HUD's draw and bad_item's draw before its panic stay in the batch.
+            assert!(frame1.vertices.iter().any(|v| v.color == abgr(0xFF22_CC44)));
+            assert!(frame1.vertices.iter().any(|v| v.color == abgr(0xFFDD_2244)));
+            // Three separate error toasts: bad_selector/health_hud, bad_item/item_bar,
+            // bad_item/item_decorations. Healthy HUD is never blamed.
+            assert_eq!(game.mod_error_toasts.len(), 3);
+            let pairs: Vec<(String, String)> = game
+                .mod_error_toasts
+                .iter()
+                .map(|t| {
+                    (
+                        t.title.plain(),
+                        t.message.as_ref().map(|m| m.plain()).unwrap_or_default(),
+                    )
+                })
+                .collect();
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(t, m)| t.contains("bad_selector") && m.contains("health_hud")),
+                "missing selector panic toast: {pairs:?}"
+            );
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(t, m)| t.contains("bad_item") && m.contains("item_bar")),
+                "missing item_bar panic toast: {pairs:?}"
+            );
+            assert!(
+                pairs
+                    .iter()
+                    .any(|(t, m)| t.contains("bad_item") && m.contains("item_decorations")),
+                "missing item_decorations panic toast: {pairs:?}"
+            );
+            assert!(
+                pairs.iter().all(|(t, _)| !t.contains("healthy_hud")),
+                "healthy_hud must not be blamed for bad_item's panic: {pairs:?}"
+            );
+
+            // Next frame: all three panicking hooks stay poisoned, while healthy_hud keeps running.
+            let frame2 = game.hud_layers(SIZE);
+            assert_eq!(SELECTOR_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(BAD_BAR_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(BAD_DECORATOR_CALLS.load(Ordering::Relaxed), 1);
+            assert_eq!(HEALTHY_HUD_CALLS.load(Ordering::Relaxed), 2);
+            assert_eq!(game.mod_error_toasts.len(), 3);
+            assert!(frame2.vertices.iter().any(|v| v.color == abgr(0xFF22_CC44)));
+            assert!(frame2.vertices.iter().all(|v| v.color != abgr(0xFFDD_2244)));
         });
     });
 }

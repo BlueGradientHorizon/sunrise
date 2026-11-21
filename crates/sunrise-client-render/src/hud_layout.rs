@@ -518,15 +518,21 @@ pub fn vehicle_max_hearts(max_health: f32) -> i32 {
 
 /// `Hud.extractVehicleHealth`.
 pub fn vehicle_health(w: i32, h: i32, hearts: i32, health: f32) -> Vec<GuiDraw> {
+    vehicle_health_at(w, h - 39, hearts, health).0
+}
+
+/// `Hud.extractVehicleHealth` anchored at `y_line`, returning `(draws, height_delta)`.
+pub fn vehicle_health_at(w: i32, y_line: i32, hearts: i32, health: f32) -> (Vec<GuiDraw>, i32) {
     let mut out = Vec::new();
     let current = f64::from(health).ceil() as i32;
     let x_right = w / 2 + 91;
-    let mut yo = h - 39;
-    let mut hearts = hearts;
+    let mut yo = y_line;
+    let mut remaining = hearts;
     let mut base = 0;
-    while hearts > 0 {
-        let row = hearts.min(10);
-        hearts -= row;
+    let mut rows = 0;
+    while remaining > 0 {
+        let row = remaining.min(10);
+        remaining -= row;
         for i in 0..row {
             let xo = x_right - i * 8 - 9;
             out.push(sprite("hud/heart/vehicle_container", xo, yo, 9, 9));
@@ -539,8 +545,9 @@ pub fn vehicle_health(w: i32, h: i32, hearts: i32, health: f32) -> Vec<GuiDraw> 
         }
         yo -= 10;
         base += 20;
+        rows += 1;
     }
-    out
+    (out, rows * 10)
 }
 
 fn heart(
@@ -617,8 +624,31 @@ fn heart(
 }
 
 impl HealthHud {
-    /// `Hud.extractPlayerHealth` for a screen of `w` x `h` GUI pixels.
-    pub fn layout(&mut self, i: &HealthInputs, w: i32, h: i32) -> Vec<GuiDraw> {
+    /// Seed for the per-tick status HUD jitter RNG (`Hud.random.setSeed(tickCount * 312871)`).
+    pub fn status_random(tick: i32) -> LegacyRandom {
+        LegacyRandom::new(i64::from(tick.wrapping_mul(312_871)))
+    }
+
+    /// Vertical space (in GUI pixels) the player's health rows occupy (`leftHeight` delta in
+    /// NeoForge's `Hud.renderHealthLevel`).
+    pub fn hearts_height(&self, i: &HealthInputs) -> i32 {
+        let current = ceil(i.health);
+        let max_health = i.max_health.max(self.display_health.max(current) as f32);
+        let absorption = ceil(i.absorption);
+        let rows = ceil((max_health + absorption as f32) / 2.0 / 10.0);
+        let row_height = (10 - (rows - 2)).max(3);
+        (rows - 1) * row_height + 10
+    }
+
+    /// `Hud.extractHearts` (`minecraft:player_health`) anchored at `y_base`, returning
+    /// `(draws, left_height_delta)`.
+    pub fn layout_hearts(
+        &mut self,
+        i: &HealthInputs,
+        w: i32,
+        y_base: i32,
+        random: &mut LegacyRandom,
+    ) -> (Vec<GuiDraw>, i32) {
         let mut out = Vec::new();
         let tick = i64::from(i.tick);
         let current = ceil(i.health);
@@ -636,34 +666,16 @@ impl HealthHud {
         }
         self.last_health = current;
         let old = self.display_health;
-        let mut random = LegacyRandom::new(i64::from(i.tick.wrapping_mul(312_871)));
-        let mut next = |bound: i32| random.next_int_bound(bound).unwrap_or(0);
-        let (x_left, x_right, y_base) = (w / 2 - 91, w / 2 + 91, h - 39);
+        let x_left = w / 2 - 91;
         let max_health = i.max_health.max(old.max(current) as f32);
         let absorption = ceil(i.absorption);
         let rows = ceil((max_health + absorption as f32) / 2.0 / 10.0);
         let row_height = (10 - (rows - 2)).max(3);
-        let mut y_air = y_base - 10;
         let offset_index = if i.regeneration {
             i.tick % ceil(max_health + 5.0)
         } else {
             -1
         };
-        if i.armor > 0 {
-            let y = y_base - (rows - 1) * row_height - 10;
-            for n in 0..10 {
-                let x = x_left + n * 8;
-                if n * 2 + 1 < i.armor {
-                    out.push(sprite("hud/armor_full", x, y, 9, 9));
-                }
-                if n * 2 + 1 == i.armor {
-                    out.push(sprite("hud/armor_half", x, y, 9, 9));
-                }
-                if n * 2 + 1 > i.armor {
-                    out.push(sprite("hud/armor_empty", x, y, 9, 9));
-                }
-            }
-        }
         let containers = f64::from(max_health / 2.0).ceil() as i32;
         let absorb_containers = (f64::from(absorption) / 2.0).ceil() as i32;
         for c in (0..containers + absorb_containers).rev() {
@@ -671,7 +683,7 @@ impl HealthHud {
             let x = x_left + column * 8;
             let mut y = y_base - row * row_height;
             if current + absorption <= 4 {
-                y += next(2);
+                y += random.next_int_bound(2).unwrap_or(0);
             }
             if c < containers && c == offset_index {
                 y -= 2;
@@ -713,69 +725,137 @@ impl HealthHud {
                 out.push(sprite(name, x, y, 9, 9));
             }
         }
-        if i.vehicle_hearts == 0 {
-            let (empty, half, full) = if i.hunger {
-                (
-                    "hud/food_empty_hunger",
-                    "hud/food_half_hunger",
-                    "hud/food_full_hunger",
-                )
-            } else {
-                ("hud/food_empty", "hud/food_half", "hud/food_full")
-            };
-            for n in 0..10 {
-                let mut y = y_base;
-                if i.saturation <= 0.0 && i.tick % (i.food * 3 + 1) == 0 {
-                    y += next(3) - 1;
-                }
-                let x = x_right - n * 8 - 9;
-                out.push(sprite(empty, x, y, 9, 9));
-                if n * 2 + 1 < i.food {
-                    out.push(sprite(full, x, y, 9, 9));
-                }
-                if n * 2 + 1 == i.food {
-                    out.push(sprite(half, x, y, 9, 9));
-                }
-            }
-            y_air -= 10;
+        (out, (rows - 1) * row_height + 10)
+    }
+
+    /// `Hud.extractArmor` (`minecraft:armor_level`) anchored at `y_line`, returning
+    /// `(draws, left_height_delta)`.
+    pub fn layout_armor(armor: i32, w: i32, y_line: i32) -> (Vec<GuiDraw>, i32) {
+        let mut out = Vec::new();
+        if armor <= 0 {
+            return (out, 0);
         }
-        // Hud.extractAirBubbles.
+        let x_left = w / 2 - 91;
+        for n in 0..10 {
+            let x = x_left + n * 8;
+            if n * 2 + 1 < armor {
+                out.push(sprite("hud/armor_full", x, y_line, 9, 9));
+            }
+            if n * 2 + 1 == armor {
+                out.push(sprite("hud/armor_half", x, y_line, 9, 9));
+            }
+            if n * 2 + 1 > armor {
+                out.push(sprite("hud/armor_empty", x, y_line, 9, 9));
+            }
+        }
+        (out, 10)
+    }
+
+    /// `Hud.extractFood` (`minecraft:food_level`) anchored at `y_line`, returning
+    /// `(draws, right_height_delta)`.
+    pub fn layout_food(
+        i: &HealthInputs,
+        w: i32,
+        y_line: i32,
+        random: &mut LegacyRandom,
+    ) -> (Vec<GuiDraw>, i32) {
+        let mut out = Vec::new();
+        if i.vehicle_hearts != 0 {
+            return (out, 0);
+        }
+        let x_right = w / 2 + 91;
+        let (empty, half, full) = if i.hunger {
+            (
+                "hud/food_empty_hunger",
+                "hud/food_half_hunger",
+                "hud/food_full_hunger",
+            )
+        } else {
+            ("hud/food_empty", "hud/food_half", "hud/food_full")
+        };
+        for n in 0..10 {
+            let mut y = y_line;
+            if i.saturation <= 0.0 && i.tick % (i.food * 3 + 1) == 0 {
+                y += random.next_int_bound(3).unwrap_or(0) - 1;
+            }
+            let x = x_right - n * 8 - 9;
+            out.push(sprite(empty, x, y, 9, 9));
+            if n * 2 + 1 < i.food {
+                out.push(sprite(full, x, y, 9, 9));
+            }
+            if n * 2 + 1 == i.food {
+                out.push(sprite(half, x, y, 9, 9));
+            }
+        }
+        (out, 10)
+    }
+
+    /// `Hud.extractAirBubbles` (`minecraft:air_level`) anchored at `y_line`, returning
+    /// `(draws, right_height_delta)`.
+    pub fn layout_air(
+        &mut self,
+        i: &HealthInputs,
+        w: i32,
+        y_line: i32,
+        random: &mut LegacyRandom,
+    ) -> (Vec<GuiDraw>, i32) {
+        let mut out = Vec::new();
         let max_air = i.max_air.max(1);
         let air = i.air.clamp(0, max_air);
-        if i.under_water || air < max_air {
-            let rows = (f64::from(i.vehicle_hearts) / 10.0).ceil() as i32;
-            let y = y_air - (rows - 1) * 10;
-            let bubble = |offset: i32| ceil(((air + offset) * 10) as f32 / max_air as f32);
-            let full = bubble(-2);
-            let popping = bubble(0);
-            let delay = i32::from(air != 0 && i.under_water);
-            let empty = 10 - bubble(delay);
-            if !i.under_water {
-                self.last_bubble_pop_sound = 0;
-            }
-            for b in 1..=10 {
-                let x = x_right - (b - 1) * 8 - 9;
-                if b <= full {
-                    out.push(sprite("hud/air", x, y, 9, 9));
-                } else if full != popping && b == popping && i.under_water {
-                    out.push(sprite("hud/air_bursting", x, y, 9, 9));
-                    // Hud.playAirBubblePoppedSound.
-                    if self.last_bubble_pop_sound != b {
-                        let volume = 0.5 + 0.1 * (empty - 3 + 1).max(0) as f32;
-                        let pitch = 1.0 + 0.1 * (empty - 5 + 1).max(0) as f32;
-                        self.bubble_pop_sound = Some((volume, pitch));
-                        self.last_bubble_pop_sound = b;
-                    }
-                } else if b > 10 - empty {
-                    let wobble = if empty == 10 && i.tick % 2 == 0 {
-                        next(2)
-                    } else {
-                        0
-                    };
-                    out.push(sprite("hud/air_empty", x, y + wobble, 9, 9));
+        if !i.under_water && air >= max_air {
+            return (out, 0);
+        }
+        let x_right = w / 2 + 91;
+        let bubble = |offset: i32| ceil(((air + offset) * 10) as f32 / max_air as f32);
+        let full = bubble(-2);
+        let popping = bubble(0);
+        let delay = i32::from(air != 0 && i.under_water);
+        let empty = 10 - bubble(delay);
+        if !i.under_water {
+            self.last_bubble_pop_sound = 0;
+        }
+        for b in 1..=10 {
+            let x = x_right - (b - 1) * 8 - 9;
+            if b <= full {
+                out.push(sprite("hud/air", x, y_line, 9, 9));
+            } else if full != popping && b == popping && i.under_water {
+                out.push(sprite("hud/air_bursting", x, y_line, 9, 9));
+                // Hud.playAirBubblePoppedSound.
+                if self.last_bubble_pop_sound != b {
+                    let volume = 0.5 + 0.1 * (empty - 3 + 1).max(0) as f32;
+                    let pitch = 1.0 + 0.1 * (empty - 5 + 1).max(0) as f32;
+                    self.bubble_pop_sound = Some((volume, pitch));
+                    self.last_bubble_pop_sound = b;
                 }
+            } else if b > 10 - empty {
+                let wobble = if empty == 10 && i.tick % 2 == 0 {
+                    random.next_int_bound(2).unwrap_or(0)
+                } else {
+                    0
+                };
+                out.push(sprite("hud/air_empty", x, y_line + wobble, 9, 9));
             }
         }
+        (out, 10)
+    }
+
+    /// `Hud.extractPlayerHealth` for a screen of `w` x `h` GUI pixels.
+    pub fn layout(&mut self, i: &HealthInputs, w: i32, h: i32) -> Vec<GuiDraw> {
+        let mut out = Vec::new();
+        let mut random = Self::status_random(i.tick);
+        let y_base = h - 39;
+        let (hearts, hearts_h) = self.layout_hearts(i, w, y_base, &mut random);
+        out.extend(Self::layout_armor(i.armor, w, y_base - hearts_h).0);
+        out.extend(hearts);
+        let mut y_air = y_base - 10;
+        let (food, food_h) = Self::layout_food(i, w, y_base, &mut random);
+        if food_h > 0 {
+            out.extend(food);
+            y_air -= 10;
+        }
+        let rows = (f64::from(i.vehicle_hearts) / 10.0).ceil() as i32;
+        let y_air = y_air - (rows - 1) * 10;
+        out.extend(self.layout_air(i, w, y_air, &mut random).0);
         out
     }
 }
