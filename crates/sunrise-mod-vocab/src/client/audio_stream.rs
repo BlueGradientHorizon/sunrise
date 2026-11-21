@@ -168,7 +168,7 @@ pub enum SpecFault {
 pub enum AudioRefusal {
     /// This is a server: it has no output to play on.
     OnServer,
-    /// The call came outside the phase that allows it (a client's setup or later) or from no mod.
+    /// The call has no owning mod.
     Unavailable,
     /// The spec has a value out of range.
     BadSpec(SpecFault),
@@ -188,7 +188,7 @@ impl std::fmt::Display for AudioRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::OnServer => f.write_str("a server has no sound output"),
-            Self::Unavailable => f.write_str("audio streams cannot be opened in this phase"),
+            Self::Unavailable => f.write_str("an audio stream must belong to a mod"),
             Self::BadSpec(fault) => write!(f, "the stream spec is refused: {fault}"),
             Self::NoOutput => f.write_str("the game has no sound output"),
             Self::ModStreamLimit => write!(
@@ -206,11 +206,6 @@ impl std::fmt::Display for AudioRefusal {
     }
 }
 impl std::error::Error for AudioRefusal {}
-impl crate::AccessRefusal for AudioRefusal {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
 impl std::fmt::Display for SpecFault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {

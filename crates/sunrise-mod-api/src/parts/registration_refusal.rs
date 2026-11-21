@@ -64,7 +64,7 @@ impl PartRegistrar {
                     discard_startup_registrations(owner, rejected_transforms.into_values());
                     discard_startup_registrations(
                         owner,
-                        rejected_factories.into_values().flat_map(HashMap::into_values),
+                        rejected_factories.into_values(),
                     );
                     discard_rejected_parts(owner, rejected_parts);
                 }

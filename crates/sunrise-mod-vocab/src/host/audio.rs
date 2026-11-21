@@ -41,7 +41,6 @@ pub trait AudioClientHost {
     /// host.open_audio_stream(&spec, Box::new(Clip(samples.into_iter())))
     /// # }
     /// ```
-    #[access(ClientSetup)]
     fn open_audio_stream(
         &self,
         _spec: &StreamSpec,
