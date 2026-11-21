@@ -86,6 +86,7 @@ pub trait LevelBlocksBackendMut {
     /// without dropping stacks that already belong to the first replacement's drops.
     /// The first write only removes the original row; it leaves the listener's replacement
     /// block entity, its contents and its saved data intact, even at the same block state.
+    /// A new block entity does not inherit the original's saved tag, including its lock.
     /// A strict bulk edit at the same position does not change which row this write removes.
     /// Aborting restores the original state and undoes those edits.
     #[access(WorldOnly)]

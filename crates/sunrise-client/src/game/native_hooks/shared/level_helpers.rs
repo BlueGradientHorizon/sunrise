@@ -293,11 +293,13 @@ fn block_entity_to_create(
 /// Stores a new block entity at `pos`, keeping an existing one of the same kind.
 fn put_block_entity(world: &mut sunrise_client::world::World, pos: [i32; 3], entity: BlockEntity) {
     let key = (pos[0], pos[1], pos[2]);
-    if world
-        .block_entities
-        .get(&key)
-        .is_none_or(|existing| std::mem::discriminant(existing) != std::mem::discriminant(&entity))
-    {
-        world.block_entities.insert(key, entity);
+    if let Some(existing) = world.block_entities.get(&key) {
+        if std::mem::discriminant(existing) == std::mem::discriminant(&entity) {
+            return;
+        }
+        // During a spill join the old row can still be in place. Retire its saved tag
+        // before installing the replacement; the outer removal skips the new generation.
+        world.forget_block_entity_source(key);
     }
+    world.block_entities.insert(key, entity);
 }

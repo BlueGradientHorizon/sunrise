@@ -64,15 +64,17 @@ any edits made before the replacement. For a direct write, the resident row's dr
 join before it is removed and before neighbor notifications. The drops already own
 the stacks they carry: a join listener that replaces the same position again does
 not spill those stacks a second time. The first write only removes the original
-block entity. If the listener installs a new block entity at that position, its
-items and saved data survive even if the position returns to the state the first
-write requested. On abort, the journal restores the original entity and undoes
-those edits. `host.edit_blocks` also restores the original blocks and
-block entities on abort; it publishes whole chunks on commit without drops or
-neighbor updates. If both kinds of write touch one position, they replay in call
-order; a later bulk edit cannot substitute its new block entity for the ordinary
-removal's old one. `LevelRef::destroy_block` returns `Ok(None)` while a transaction
-is open, before running loot, experience or break effects.
+block entity. A replacement installed by the listener does not inherit the
+original entity's saved tag or lock. The replacement keeps its own items and
+saved data, including a lock set on its new handle, even if the position returns
+to the state the first write requested. On abort, the journal restores the
+original entity and undoes those edits. `host.edit_blocks` also restores the
+original blocks and block entities on abort; it publishes whole chunks on commit
+without drops or neighbor updates. If both kinds of write touch one position,
+they replay in call order; a later bulk edit cannot substitute its new block
+entity for the ordinary removal's old one. `LevelRef::destroy_block` returns
+`Ok(None)` while a transaction is open, before running loot, experience or break
+effects.
 
 `ItemEntityRef::set_stack` writes the replacement stack immediately and joins the
 innermost transaction in the item's level, if one is open. An abort restores the old

@@ -429,9 +429,11 @@ fn reentrant_removal_does_not_spill_the_same_saved_pot_twice() {
 #[ignore = "daily"]
 fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
     const NAME: &str = "game::native_hooks::block_entity_tick::tests::spill_join_keeps_the_replacement_furnace_and_its_contents";
-    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REPLACEMENT_FURNACE", &["run"]) {
+    const CASE: &str = "SUNRISE_RESIDENT_VIEW_REPLACEMENT_FURNACE";
+    if run_fresh_cases(NAME, CASE, &["stone", "furnace"]) {
         return;
     }
+    let outer_requested_furnace = std::env::var(CASE).unwrap() == "furnace";
 
     const LABEL: &str = "Restocked furnace";
     struct Listener {
@@ -447,13 +449,15 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
         ) -> Flow {
             if event.kind == "minecraft:item" {
                 let level = host.level("minecraft:overworld").unwrap();
-                let furnace = level.block_state(host, AT).unwrap();
-                let stone = host.block_state_id("minecraft:stone").unwrap();
-                // Install a new row, but leave the state the outer write was already setting.
-                assert_eq!(
-                    level.set_block(host, AT, stone, BlockUpdateFlags::NONE),
-                    Ok(true)
-                );
+                let furnace = host.block_state_id("minecraft:furnace").unwrap();
+                if level.block_state(host, AT) == Some(furnace) {
+                    // Leave and then restore the state the outer write is setting.
+                    let stone = host.block_state_id("minecraft:stone").unwrap();
+                    assert_eq!(
+                        level.set_block(host, AT, stone, BlockUpdateFlags::NONE),
+                        Ok(true)
+                    );
+                }
                 assert_eq!(
                     level.set_block(host, AT, furnace, BlockUpdateFlags::NONE),
                     Ok(true)
@@ -507,10 +511,20 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
             game.world.block_entities.insert(POS, row);
             let level = game.level("minecraft:overworld").unwrap();
             let original = game.block_entity(level, AT).unwrap();
+            let chest_lock =
+                Compound::from([("items".into(), Tag::String("minecraft:apple".into()))]);
+            assert_eq!(original.set_lock(game, Some(chest_lock)), Ok(true));
 
+            // With stone in place during the spill, the listener installs the furnace
+            // over the still-resident chest row and its saved tag.
+            let requested = if outer_requested_furnace {
+                furnace
+            } else {
+                registry.default_state("minecraft:stone").unwrap()
+            };
             assert_eq!(
-                game.level_set_block(level, AT, furnace, BlockUpdateFlags::NONE),
-                Ok(true)
+                game.level_set_block(level, AT, requested, BlockUpdateFlags::NONE),
+                Ok(outer_requested_furnace)
             );
 
             let replacement = replacement
@@ -528,10 +542,30 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
             );
             assert_eq!(replacement.name(game).as_deref(), Some(LABEL));
             assert_eq!(replacement.lock(game), Some(&lock));
-            let [drop] = game.dropped.as_slice() else {
+            let [spilled_drop] = game.dropped.as_slice() else {
                 panic!("expected exactly one drop, from the original chest");
             };
-            assert_eq!(drop.stack, spilled);
+            assert_eq!(spilled_drop.stack, spilled);
+
+            let scratch = tempfile::tempdir().unwrap();
+            let save_root = scratch.path().to_owned();
+            let shape = game.world.shape;
+            let save = sunrise_client::save::SaveDir::new(
+                save_root.clone(),
+                shape,
+                Some(game.res.shared_items()),
+            );
+            let chunks = game.with_entities([game.world.chunks.get(&CHUNK).unwrap()]);
+            save.save(&chunks, registry, game.res.biomes()).unwrap();
+            drop(save);
+
+            let mut loaded = sunrise_client::save::SaveDir::new(save_root, shape, None)
+                .load(CHUNK.0, CHUNK.1, registry, game.res.biomes())
+                .unwrap();
+            game.world.install_chunk_block_entities(&mut loaded);
+            game.world.chunks.insert(CHUNK, Arc::new(loaded));
+            let reloaded = game.block_entity(level, AT).unwrap();
+            assert_eq!(reloaded.lock(game), Some(&lock));
         });
     });
 }
