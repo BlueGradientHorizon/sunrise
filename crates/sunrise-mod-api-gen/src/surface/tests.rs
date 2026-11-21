@@ -549,14 +549,14 @@ fn a_named_type_import_keeps_precedence_over_workspace_type_globs() {
 fn an_opaque_named_import_is_assumed_to_bind_a_type() {
     // Without core's source the audit cannot tell that PI binds only a value, so it
     // cannot see the workspace type that Rust resolves here.
-    let edited = "use core::f32::consts::PI as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    let edited = "use core::f32::consts::PI as Secret;\nuse engine::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("an unstaged explicit binding has precedence in the source-only audit");
 }
 
 #[test]
 fn an_explicit_external_type_shadows_the_same_name_from_a_workspace_glob() {
-    let edited = "use core::option::Option as Secret;\nuse engine_library::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
+    let edited = "use core::option::Option as Secret;\nuse engine::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
     try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .expect("the explicit type import takes precedence over the workspace glob");
 }
@@ -593,24 +593,65 @@ fn a_named_value_from_a_renamed_dependency_does_not_shadow_a_globbed_type() {
 
 #[test]
 fn two_globs_in_the_same_namespace_are_ambiguous_at_the_api_owner() {
-    for globs in [
-        "use engine::*; use local::*;",
-        "use local::*; use engine::*;",
+    let direct = "mod local { pub struct Secret; }";
+    let indirect = "mod a { pub struct Clash; }
+                    mod b { pub struct Clash; }
+                    mod bridge { pub use crate::a::*; pub use crate::b::*; }";
+    for (modules, globs, name, definitions) in [
+        (
+            direct,
+            "use engine::*; use local::*;",
+            "Secret",
+            ["engine_library::Secret", "mod_api::local::Secret"],
+        ),
+        (
+            direct,
+            "use local::*; use engine::*;",
+            "Secret",
+            ["engine_library::Secret", "mod_api::local::Secret"],
+        ),
+        (
+            indirect,
+            "use bridge::*;",
+            "Clash",
+            ["mod_api::a::Clash", "mod_api::b::Clash"],
+        ),
     ] {
         let edited = format!(
-            "mod local {{ pub struct Secret; }}\n{globs}\npub fn ambiguous() -> Secret {{ unimplemented!() }}\n/// A colour."
+            "{modules}\n{globs}\npub fn ambiguous() -> {name} {{ unimplemented!() }}\n/// A colour."
         );
         let error = try_export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS)
             .err()
             .expect("two different types imported by globs are ambiguous");
         assert!(error.contains("mod_api::ambiguous"), "{error}");
-        assert!(
-            error.contains("ambiguous type-namespace binding `Secret`"),
-            "{error}"
-        );
-        assert!(error.contains("engine_library::Secret"), "{error}");
-        assert!(error.contains("mod_api::local::Secret"), "{error}");
+        for definition in definitions {
+            assert!(error.contains(definition), "{error}");
+        }
     }
+
+    let unused = format!("{indirect}\nuse bridge::*;\n/// A colour.");
+    try_export_fixture(&[(LIB, "/// A colour.", &unused)], HOOKS)
+        .expect("an unused conflict does not make a glob import ambiguous");
+}
+
+#[test]
+fn multiple_glob_paths_to_the_same_definition_are_not_ambiguous() {
+    let edited = "pub struct Shared;
+        mod a { pub use crate::Shared; }
+        mod b { pub use crate::Shared; }
+        mod bridge { pub use crate::a::*; pub use crate::b::*; }
+        mod consumer { use crate::bridge::*; pub fn safe() -> Shared { unimplemented!() } }
+        pub use consumer::safe;
+        /// A colour.";
+    let export = export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS);
+    let value: serde_json::Value = serde_json::from_str(&export.surface.to_json()).unwrap();
+    let safe = value["functions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|function| function["id"] == "fn:safe")
+        .expect("safe is exported");
+    assert_eq!(safe["refs"], serde_json::json!(["type:Shared"]));
 }
 
 #[test]

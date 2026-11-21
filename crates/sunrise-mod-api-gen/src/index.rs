@@ -1,4 +1,5 @@
 //! The crates the mod API's signatures name, indexed by [`mod_source::index`].
+use mod_source::index::{Binding, ambiguous_glob};
 pub(crate) use mod_source::index::{Found, Index, ItemId, default_build, uses};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -79,13 +80,8 @@ impl Resolving {
     }
 
     fn record_ambiguous_binding(&mut self, name: &str, first: &[String], second: &[String]) {
-        let first = first.join("::");
-        let second = second.join("::");
-        self.error.get_or_insert_with(|| {
-            format!(
-                "ambiguous type-namespace binding `{name}`: glob imports supply both `{first}` and `{second}`; qualify the intended path explicitly"
-            )
-        });
+        self.error
+            .get_or_insert_with(|| ambiguous_glob(name, first, second));
     }
 }
 
@@ -400,26 +396,7 @@ impl OutsideSeam {
         if !self.crates.contains(&module.krate) {
             return None;
         }
-        Self::indexed_item_path(index, id)
-    }
-
-    fn indexed_item_path(index: &Index<'_>, id: crate::index::ItemId) -> Option<Vec<String>> {
-        let module = &index.modules[id.module];
-        let name = match index.item(id) {
-            Item::Const(item) => item.ident.to_string(),
-            Item::Enum(item) => item.ident.to_string(),
-            Item::Struct(item) => item.ident.to_string(),
-            Item::Trait(item) => item.ident.to_string(),
-            Item::Type(item) => item.ident.to_string(),
-            Item::Union(item) => item.ident.to_string(),
-            _ => return None,
-        };
-        Some(
-            std::iter::once(module.krate.to_owned())
-                .chain(module.path.iter().cloned())
-                .chain(std::iter::once(name))
-                .collect(),
-        )
+        index.item_path(id)
     }
 
     fn item_at_path(index: &mut Index<'_>, path: &[String]) -> Option<crate::index::ItemId> {
@@ -711,13 +688,20 @@ impl OutsideSeam {
                 self.exported_external_module(index, target, name, resolving)
             {
                 Some((Self::indexed_module_path(index, module), Some(module)))
-            } else if self.crates.contains(&index.modules[target].krate) {
-                self.exported_external_type(index, target, name, resolving)
-                    .map(|path| (path, None))
-            } else if let Ok(Found::Item(id)) = index.resolve_visible_type(target, name, module) {
-                Self::indexed_item_path(index, id).map(|path| (path, None))
             } else {
-                None
+                match index.visible_type_binding(target, name, module).ok()? {
+                    Binding::Found(Found::Item(id)) => index.item_path(id).map(|path| (path, None)),
+                    Binding::Ambiguous(first, second) => {
+                        resolving
+                            .error
+                            .get_or_insert_with(|| index.ambiguous_type(name, first, second));
+                        return None;
+                    }
+                    _ if self.crates.contains(&index.modules[target].krate) => self
+                        .exported_external_type(index, target, name, resolving)
+                        .map(|path| (path, None)),
+                    _ => None,
+                }
             };
             if let Some((path, target)) = candidate {
                 if let Some((first, _)) = &binding {
@@ -801,34 +785,38 @@ impl OutsideSeam {
             }
             return self.follow_external_path(index, target, rest, false, resolving);
         }
-        if let Ok(found) = index.resolve_type(scope, first) {
-            match found {
-                Found::External {
-                    module,
-                    path,
-                    rooted,
-                } => {
-                    // A named import wins over globs in the same namespace. If its source
-                    // is not indexed, assume it binds a type. This can miss a workspace
-                    // glob type shadowed only in appearance by an opaque value-only import.
-                    return self
-                        .follow_external_path(index, module, &path, rooted, resolving)
-                        .map(|mut path| {
-                            path.extend(rest.iter().cloned());
-                            path
-                        });
-                }
-                Found::Item(id) => {
-                    if id.module != scope
-                        && !self.has_named_type_import(index, scope, first, resolving)
-                    {
-                        self.globbed_binding(index, scope, first, resolving);
-                    }
-                    return is_public_external_type(index, id)
-                        .then(|| self.indexed_external_path(index, id))
-                        .flatten();
-                }
+        match index.visible_type_binding(scope, first, scope) {
+            Ok(Binding::Found(Found::External {
+                module,
+                path,
+                rooted,
+            })) => {
+                // A named import wins over globs in the same namespace. If its source
+                // is not indexed, assume it binds a type. This can miss a workspace
+                // glob type shadowed only in appearance by an opaque value-only import.
+                return self
+                    .follow_external_path(index, module, &path, rooted, resolving)
+                    .map(|mut path| {
+                        path.extend(rest.iter().cloned());
+                        path
+                    });
             }
+            Ok(Binding::Found(Found::Item(id))) => {
+                if id.module != scope && !self.has_named_type_import(index, scope, first, resolving)
+                {
+                    self.globbed_binding(index, scope, first, resolving);
+                }
+                return is_public_external_type(index, id)
+                    .then(|| self.indexed_external_path(index, id))
+                    .flatten();
+            }
+            Ok(Binding::Ambiguous(a, b)) => {
+                resolving
+                    .error
+                    .get_or_insert_with(|| index.ambiguous_type(first, a, b));
+                return None;
+            }
+            _ => {}
         }
         if self.crates.contains(first) {
             return Some(path.to_vec());
