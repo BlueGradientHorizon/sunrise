@@ -23,14 +23,15 @@ pub trait Hooks {
     /// list is cleanly discarded when dropped.
     /// Set `cancel` (or return `Flow::Cancel`, or leave the list empty) to
     /// spawn no children: the construction draws stay spent and the parent still dies.
-    /// If accepted, children join once each in list order before the parent is removed. Only for a parent above
-    /// size 1, once its children are made. With no listener nothing is allocated
-    /// for the list. On the server.
+    /// If accepted, children join once each in list order. The parent's removal effects
+    /// still run when it is removed, even if the split was canceled. Only for a parent above
+    /// size 1, once its children are made. With no listener nothing is allocated for the list.
+    /// On the server.
     #[notes = r#"## Mob split
 
 - **`mob_split(dimension, parent, kind, size, child_size, children, cancel)`** (NeoForge's `MobSplitEvent`, version 3): fires when a slime, magma cube or sulfur cube above size 1 dies and splits, after vanilla has constructed its children (`AbstractCubeMob.remove`: the count, then each half-size child and the parent's yaw draw for it; a primed sulfur cube above size 1 dispatches with an empty list). `children` (`MobSplitChildren<'_>`) lends an unbounded mutable child list directly on the stack, matching NeoForge's `MobSplitEvent.getChildren()`.
 - The list editor offers `len`, `is_empty`, `get` (read-only `UnspawnedMobView<'_>`), `get_mut` (mutable `PendingChildEditor<'_>` with `set_position`, `set_yaw`, `set_baby`, `set_size` and all unspawned-mob edits), `construct` (taking a `PendingMobSpec` and returning an owned `UnspawnedMob`), `push`, `insert`, `replace`, `remove` and `clear`. Any detached `UnspawnedMob` not left in the list is cleanly discarded on normal Rust drop with no arena or sweep. There is no 64-child cap, no lease token and no `Expired`/`Ownership`/`Capacity`/`Budget` errors; an out-of-bounds index on `insert`/`replace`, an unknown kind, a wrong dimension, a non-finite position or yaw, or an invalid size answers `Invalid` without mutating the list.
-- Every original proposal fires `entity_constructing` before `mob_split`, including proposals later removed or canceled. Canceling (`Flow::Cancel`) or removing every child spawns none. Construction draws and unrelated Host writes stay, and the parent still dies. If accepted, the remaining children join once each in list order.
+- Every original proposal fires `entity_constructing` before `mob_split`, including proposals later removed or canceled. Canceling (`Flow::Cancel`) or removing every child spawns none. Construction draws and unrelated Host writes stay, and the parent still dies. If accepted, the remaining children join once each in list order. The parent's removal effects still run when it is removed.
 - Not fired for a parent of size 1. With no listener the split runs exactly as vanilla and allocates nothing for the list."#]
     #[hook(
         dispatch = "api_carrier",

@@ -1624,6 +1624,9 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
 #[derive(Clone, Debug)]
 struct ReadyBreed(sunrise_client::mobs::goals::Breed);
 impl Goal for ReadyBreed {
+    fn flags(&self) -> u8 {
+        self.0.flags()
+    }
     fn can_use(&mut self, mob: &mut Mob, cx: &mut Cx) -> bool {
         self.0.can_use(mob, cx)
     }
@@ -1692,7 +1695,7 @@ fn a_noop_birth_listener_leaves_goal_position_age_and_random_unchanged() {
 
 #[test]
 #[ignore = "daily"]
-fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_split() {
+fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal() {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let calls = Arc::new(AtomicUsize::new(0));
     let seen = calls.clone();
@@ -1722,6 +1725,7 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_split() {
             dying.health = 0.0;
             dying.death_time = 19;
             dying.persistent = true;
+            dying.add_effect("minecraft:oozing", 200, 0);
             game.mobs.push(dying);
             let parent = add_ready_pair(game);
             let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1730,13 +1734,19 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_split() {
             assert!(attempt.is_err());
             assert_eq!(calls.load(Ordering::Relaxed), 1);
             assert!(!game.mobs.iter().any(|m| m.id == cube_id));
-            assert_eq!(
-                game.mobs
-                    .iter()
-                    .filter(|m| m.species() == Species::Slime)
-                    .count(),
-                3
-            );
+            let slime_counts = |game: &Game<'_>| {
+                let slimes = game.mobs.iter().filter(|m| m.species() == Species::Slime);
+                let (mut splits, mut oozing) = (0, 0);
+                for slime in slimes {
+                    if slime.position.x == 10.0 && slime.position.z == 10.0 {
+                        oozing += 1;
+                    } else {
+                        splits += 1;
+                    }
+                }
+                (splits, oozing)
+            };
+            assert_eq!(slime_counts(game), (3, 2));
             for mob in &mut game.mobs {
                 if mob.id == parent || mob.id == parent + 1 {
                     mob.no_ai = true;
@@ -1744,6 +1754,14 @@ fn a_later_birth_unwind_does_not_lose_or_replay_a_cube_split() {
             }
             game.tick_creature_entities().unwrap();
             assert_eq!(calls.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                game.mobs
+                    .iter()
+                    .filter(|m| m.species() == Species::Slime)
+                    .count(),
+                5,
+                "neither the split nor Oozing runs again"
+            );
         })
     });
 }

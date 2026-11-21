@@ -238,25 +238,6 @@ impl Game<'_> {
         removed: &[u32],
         through: Option<sunrise_client::join_seq::JoinSeq>,
     ) -> bool {
-        self.flush_join_admissions(loaded_from_disk, watch, removed, through, None)
-    }
-
-    /// NaturalSpawner still passes a rejected candidate to its post-insertion spawn callback.
-    /// Return that exact mob, including edits made during admission, without its world state.
-    pub(super) fn admit_natural_spawn(&mut self, watch: u32) -> Option<Mob> {
-        let mut rejected = None;
-        self.flush_join_admissions(false, watch, &[], None, Some(&mut rejected));
-        rejected
-    }
-
-    fn flush_join_admissions(
-        &mut self,
-        loaded_from_disk: bool,
-        watch: u32,
-        removed: &[u32],
-        through: Option<sunrise_client::join_seq::JoinSeq>,
-        mut rejected: Option<&mut Option<Mob>>,
-    ) -> bool {
         if self.remote.is_some() || mod_api::__private::mods().is_empty() || !self.joins_pending() {
             return true;
         }
@@ -313,16 +294,10 @@ impl Game<'_> {
                 // A listener may have written other rows before unwinding. Retire this
                 // admission only, and do not use an index that may now name another row.
                 if let Some(slot) = self.refresh_join_slot(id, slot) {
-                    if id == watch
-                        && admission.is_ok()
-                        && let Some(rejected) = rejected.as_deref_mut()
-                        && let Slot::Walk(super::entity::EntityHandle::Mob(index)) = slot
-                    {
-                        let mut mob = self.mobs.remove(index);
-                        mob.extra.spawn_tags = self.tags_of(Target::Mob(id));
-                        mob.join = Default::default();
-                        *rejected = Some(mob);
-                    } else {
+                    let retained = admission.is_ok()
+                        && matches!(slot, Slot::Walk(super::entity::EntityHandle::Mob(index))
+                            if self.detach_natural_candidate(id, index));
+                    if !retained {
                         self.discard_slot(slot);
                     }
                 }
@@ -332,7 +307,8 @@ impl Game<'_> {
                 }
                 self.persist.joins_canceled += 1;
                 kept &= id != watch;
-            } else {
+            } else if self.refresh_join_slot(id, slot).is_some() {
+                // A teleported candidate already went through admission in its destination.
                 self.remember_join(id, kind.into_owned());
                 // `addEntity` files it under its section, untold.
                 self.entity_section_joined(id, [at.x, at.y, at.z]);

@@ -206,6 +206,27 @@ pub(super) struct Parked {
 }
 
 impl Parked {
+    /// The exact body restored by a cross-level transfer during natural-spawn admission.
+    pub(super) fn natural_spawn_mob(
+        &self,
+        id: u32,
+        join: sunrise_client::join_seq::JoinSeq,
+    ) -> Option<(&Mob, Option<mod_api::EntityTags<'_>>)> {
+        let mob = if join.is_joined() {
+            &self.mobs[self.mobs.locate(join)?]
+        } else {
+            self.persist.off_level.get(&id)?.as_mob()?
+        };
+        let tags = match self.persist.raw.get(&id).and_then(|tag| tag.get("Tags")) {
+            Some(sunrise_core::nbt::Tag::List(tags)) => tags.as_slice(),
+            _ => &[],
+        };
+        Some((
+            mob,
+            Some(mod_api::__private::game::borrow_entity_tags(tags)),
+        ))
+    }
+
     resident_owners!(
         define_resident_access,
         self,

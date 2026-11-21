@@ -323,7 +323,7 @@ impl mod_api::EntityPart for ZombiePacks {
 }
 ```
 
-Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is a read-only `UnspawnedMobView<'_>`, lent after the natural spawn join attempt and spawn accounting, before the limit comparison. The view includes join-listener edits even if admission was canceled; the Host sees the mob in the level only if admitted. The answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
+Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is a read-only `UnspawnedMobView<'_>`, lent after the natural spawn join attempt and spawn accounting, before the limit comparison. The primary mob and its passengers are offered to the level one at a time. The view includes join-listener edits even if admission was canceled or a listener moved the mob to another level. Read the view rather than looking up the entity in the source level. The answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
 
 ## Editing bred babies and split children
 

@@ -258,6 +258,7 @@ pub(super) struct Creatures {
     /// (pickups, item searches) is for these alone.
     pub ticked: sunrise_client::fast_hash::FxHashSet<u32>,
     pub deferred_hits: bool,
+    pub(super) natural_admission: Option<super::natural_spawning::NaturalAdmission>,
     /// The wandering trader spawner's clock.
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
@@ -1218,6 +1219,7 @@ impl Game<'_> {
         reason: SpawnReason,
         spawner: Option<mod_api::SpawnSource>,
         vanilla: u32,
+        tags: Option<mod_api::EntityTags<'_>>,
     ) -> Option<u32> {
         if !mod_api::__private::has_entity_parts() {
             return None;
@@ -1230,10 +1232,7 @@ impl Game<'_> {
         }
         let at = [mob.position.x, mob.position.y, mob.position.z];
         let mut borrowed = self.borrowed_unspawned_mob(kind, at, Some(mob));
-        if mob.join.is_joined() {
-            borrowed.live_tags =
-                Some(self.saved_entity_tags(super::super::commands::Target::Mob(mob.id)));
-        }
+        borrowed.live_tags = tags;
         let view = mod_api::UnspawnedMobView::new(&borrowed);
         list.iter().find_map(|attached| {
             let _guard =
@@ -1475,7 +1474,6 @@ impl Game<'_> {
         #[cfg(test)]
         super::entity::taken_pass_tests::after_take(self);
         let mut dead = Vec::new();
-        let mut corpses = Vec::new();
         let mut died = std::mem::take(&mut self.died);
         let mut ticked = std::mem::take(&mut self.creatures.ticked);
         ticked.clear();
@@ -1516,7 +1514,6 @@ impl Game<'_> {
             events: &mut events,
             pushes: &mut pending.pushes,
             dead: &mut dead,
-            corpses: &mut corpses,
             died: &mut died,
             ticked: &mut ticked,
             guests: &mut guests,
@@ -1604,16 +1601,6 @@ impl Game<'_> {
         laps.lap("creature_villagers");
         for m in dead {
             self.mob_died(&m);
-        }
-        for mut m in corpses {
-            let names: Vec<&'static str> = m
-                .extra
-                .effects
-                .iter()
-                .map(|e| e.id.trim_start_matches("minecraft:"))
-                .collect();
-            let bounds = m.bounds();
-            self.effects_on_death(&names, bounds, m.silent, Some(m.id), Some(&mut m.random));
         }
         self.deliver_pending_mob_actions(level_id)?;
         self.finish_creature_entities(&mut laps, &primable)
@@ -1823,20 +1810,38 @@ impl Game<'_> {
         );
         self.finish_mob_death(m, &mut dying, source);
     }
-    /// `AbstractCubeMob.remove`: announce children while the parent is still present, then
-    /// retire the parent. A failed callback cannot leave the removal queued for another tick.
-    fn complete_cube_removal(&mut self, join: sunrise_client::join_seq::JoinSeq) {
+    /// `AbstractCubeMob.remove` and `LivingEntity.remove`: split, run removal effects,
+    /// then retire the body. A failed callback cannot queue the removal for another tick.
+    fn complete_mob_removal(&mut self, join: sunrise_client::join_seq::JoinSeq, split: bool) {
         let Some(index) = self.mobs.locate(join) else {
             return;
         };
         let mut dying = self.mobs[index].clone();
-        let split = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.split_cube_children(&mut dying)
+        let removal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if split {
+                self.split_cube_children(&mut dying);
+            }
+            if !dying.extra.effects.is_empty() {
+                let names: Vec<_> = dying
+                    .extra
+                    .effects
+                    .iter()
+                    .map(|e| e.id.trim_start_matches("minecraft:"))
+                    .collect();
+                let bounds = dying.bounds();
+                self.effects_on_death(
+                    &names,
+                    bounds,
+                    dying.silent,
+                    Some(dying.id),
+                    Some(&mut dying.random),
+                );
+            }
         }));
         if let Some(index) = self.mobs.locate(join) {
             self.mobs.remove(index);
         }
-        if let Err(payload) = split {
+        if let Err(payload) = removal {
             std::panic::resume_unwind(payload);
         }
     }

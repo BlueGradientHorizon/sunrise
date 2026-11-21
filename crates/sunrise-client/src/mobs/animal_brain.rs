@@ -532,6 +532,11 @@ pub struct Bx<'a, 'w, 'l> {
     pub now: i64,
 }
 
+/// Runs the animal brain without an owning Game to handle breeding in place.
+pub fn tick(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+    let _ = tick_until_birth(m, w, level, events, false);
+}
+
 /// `Brain.tick` then `updateActivity` (from `customServerAiStep`).
 pub(super) fn tick_until_birth(
     m: &mut Mob,

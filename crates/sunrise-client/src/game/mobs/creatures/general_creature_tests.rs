@@ -388,12 +388,12 @@ fn a_spawn_cluster_size_outside_the_world_is_refused_not_a_panic() {
             let setup = PhaseOwner::scope(ModPhase::Setup);
             let _reload = reloading.then(|| setup.reloading().unwrap());
             assert_eq!(
-                game.spawn_cluster_size(&cow, Reason::Command, None, 4),
+                game.spawn_cluster_size(&cow, Reason::Command, None, 4, None),
                 None
             );
         }
         assert_eq!(
-            game.spawn_cluster_size(&cow, Reason::Command, None, 4),
+            game.spawn_cluster_size(&cow, Reason::Command, None, 4, None),
             Some(1)
         );
     });

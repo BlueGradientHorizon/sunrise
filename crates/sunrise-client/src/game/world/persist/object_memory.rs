@@ -750,6 +750,19 @@ impl Game<'_> {
         let prepared = self.prepare_vehicle_transfer(tag, tree)?;
         let mut by_source = HashMap::new();
         let root = self.restore_vehicle_transfer(prepared, &mut by_source)?;
+        // A natural-spawn candidate is still the argument of the spawn callback after
+        // crossing levels in a join listener. Follow the exact restored object, not its UUID.
+        use crate::game::natural_spawning::NaturalAdmission;
+        if let Some(NaturalAdmission::Detached(candidate)) = &self.creatures.natural_admission
+            && let Some(&id) = by_source.get(&candidate.id)
+            && let Some(mob) = self.mob_object(id)
+        {
+            self.creatures.natural_admission = Some(NaturalAdmission::Placed {
+                level: self.dim,
+                id,
+                join: mob.join,
+            });
+        }
         Some(RestoredVehicleTree { root, by_source })
     }
 

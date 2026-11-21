@@ -62,7 +62,6 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) events: &'a mut Vec<MobEvent>,
     pub(super) pushes: &'a mut sunrise_client::mobs::PendingPushes,
     pub(super) dead: &'a mut Vec<Mob>,
-    pub(super) corpses: &'a mut Vec<Mob>,
     pub(super) died: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) ticked: &'a mut sunrise_client::fast_hash::FxHashSet<u32>,
     pub(super) guests: &'a mut super::super::lan_mobs::GuestViews,
@@ -94,7 +93,6 @@ impl Game<'_> {
         let mut snapshot = std::mem::take(state.snapshot);
         let mut events = std::mem::take(state.events);
         let mut dead = std::mem::take(state.dead);
-        let mut corpses = std::mem::take(state.corpses);
         let mut died = std::mem::take(state.died);
         let mut ticked = std::mem::take(state.ticked);
         let mut guests = std::mem::take(state.guests);
@@ -183,7 +181,7 @@ impl Game<'_> {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
-            let mut split = None;
+            let mut removal = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -720,24 +718,23 @@ impl Game<'_> {
                     } else if let Some(k) = lent {
                         spare = w.player.map(|v| std::mem::replace(&mut guests[k].1, v));
                     }
-                    // A killed mob's body is removed: its effects that act on
-                    // death run (`LivingEntity.remove` with KILLED).
-                    if !kept && !m.alive() && !m.removed && !m.extra.effects.is_empty() {
-                        corpses.push(m.clone());
-                    }
                     sunrise_client::mobs::take_mob_pushes(&mut events, from, &mut pushes);
-                    // LivingEntity.tickDeath: after twenty ticks the body is removed.
-                    if !kept && !m.removed && !m.alive() && m.death_time >= 20 {
-                        let (width, height) = (f64::from(m.width()), f64::from(m.height()));
-                        gone.push((m.id, m.position, width, height));
-                        // AbstractCubeMob.remove splits before super.remove. Yield here
-                        // while the dying parent still has an owning row and a Host handle.
-                        if matches!(
-                            m.species(),
-                            Species::Slime | Species::MagmaCube | Species::SulfurCube
-                        ) && m.extra.size > 1
-                        {
-                            split = Some(m.join);
+                    if !kept && !m.removed && !m.alive() {
+                        // LivingEntity.tickDeath: after twenty ticks the body is removed.
+                        let split = m.death_time >= 20
+                            && m.extra.size > 1
+                            && matches!(
+                                m.species(),
+                                Species::Slime | Species::MagmaCube | Species::SulfurCube
+                            );
+                        if m.death_time >= 20 {
+                            let (width, height) = (f64::from(m.width()), f64::from(m.height()));
+                            gone.push((m.id, m.position, width, height));
+                        }
+                        // AbstractCubeMob.remove splits before LivingEntity.remove runs
+                        // removal effects. Finish both while the dying parent still resolves.
+                        if split || !m.extra.effects.is_empty() {
+                            removal = Some((m.join, split));
                         }
                     }
                     route_player_events(
@@ -774,7 +771,7 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
-                    if section_yield || tell_post.is_some() || split.is_some() {
+                    if section_yield || tell_post.is_some() || removal.is_some() {
                         break;
                     }
                 }
@@ -785,7 +782,7 @@ impl Game<'_> {
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
-                && split.is_none()
+                && removal.is_none()
             {
                 break;
             }
@@ -811,7 +808,7 @@ impl Game<'_> {
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    Some(m.join) == split
+                    removal.is_some_and(|(join, _)| join == m.join)
                         || index
                             .get(&m.id)
                             .and_then(|&slot| keep.get(slot as usize))
@@ -849,7 +846,7 @@ impl Game<'_> {
                     );
                 }
                 let breeding = matches!(pause, Some(Pause::Breeding { .. }));
-                if (split.is_some() || breeding)
+                if (removal.is_some() || breeding)
                     && sections_in_game.is_none()
                     && let Some(sections) = section_table.as_ref()
                 {
@@ -859,12 +856,12 @@ impl Game<'_> {
                     );
                     sections_in_game = Some(sections);
                 }
-                if split.is_some() || breeding {
+                if removal.is_some() || breeding {
                     // Consume completed removals before calling a listener which can unwind.
                     self.emit_death_poofs(gone.drain(..));
                 }
-                if let Some(join) = split {
-                    self.complete_cube_removal(join);
+                if let Some((join, split)) = removal {
+                    self.complete_mob_removal(join, split);
                 }
                 if let Some(id) = retry_rider {
                     self.dismount_mob(id);
@@ -1046,7 +1043,6 @@ impl Game<'_> {
         *state.snapshot = snapshot;
         *state.events = events;
         *state.dead = dead;
-        *state.corpses = corpses;
         *state.died = died;
         *state.ticked = ticked;
         *state.guests = guests;
