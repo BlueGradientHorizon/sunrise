@@ -8,6 +8,7 @@ impl Items {
         let mut items = Self {
             items: HashMap::new(),
             block_items: Default::default(),
+            suspicious_stew_effects: Default::default(),
             component_registry: component_registry(
                 root,
                 &load_tags(root, "entity_type", overlay)?,

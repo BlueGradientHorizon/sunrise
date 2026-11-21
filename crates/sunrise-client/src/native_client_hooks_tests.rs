@@ -113,7 +113,7 @@ pub(crate) fn install() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let installed = super::install(NativeClientHooks {
-            menu_still_valid: |context, player, menu, pos, eye, valid| {
+            menu_still_valid: |context, player, menu, pos, eye, _, valid| {
                 STILL_VALID_ASKED.set(STILL_VALID_ASKED.get() + 1);
                 STILL_VALID_POS.set(pos);
                 if menu == "test:rules" && player == 2 && eye[2] == 0.0 {

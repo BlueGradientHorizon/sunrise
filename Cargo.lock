@@ -4288,7 +4288,16 @@ dependencies = [
 name = "sunrise-client-gameplay"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "log",
+ "serde",
+ "serde_json",
  "sunrise-client-lib",
+ "sunrise-core",
+ "sunrise-protocol",
+ "sunrise-threads",
+ "sunrise-world",
+ "winit",
 ]
 
 [[package]]
@@ -4539,7 +4548,18 @@ dependencies = [
 name = "sunrise-gameplay"
 version = "0.1.0"
 dependencies = [
+ "log",
+ "serde_json",
+ "sunrise-assets",
+ "sunrise-client-core",
  "sunrise-client-lib",
+ "sunrise-core",
+ "sunrise-items",
+ "sunrise-mod-runtime",
+ "sunrise-mod-vocab",
+ "sunrise-protocol",
+ "sunrise-threads",
+ "sunrise-world",
 ]
 
 [[package]]

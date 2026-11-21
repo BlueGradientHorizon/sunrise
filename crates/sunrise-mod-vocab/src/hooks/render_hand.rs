@@ -20,6 +20,7 @@ pub trait Hooks {
     /// the default geometry, and player render state is not exposed.
     #[hook(
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderHandEvent",

@@ -297,7 +297,7 @@ fn complete_hook_constants(
 /// Serialize hook names and NeoForge counterparts for the port-pack event report.
 /// The declaration loader remains the single source of these labels.
 pub fn neoforge_catalog(root: &Path) -> Result<String, String> {
-    let hooks: Vec<_> = Catalog::load(root)?
+    let hooks: Vec<_> = Catalog::load_declarations(root)?
         .hooks
         .into_iter()
         .map(|hook| {

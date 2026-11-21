@@ -92,8 +92,9 @@ no lookup by name and no scan over the mods; with no layer at all, it checks one
 builds nothing. A humanoid model's posed parts are kept from its draw only for a type or player model
 that has a layer (or while a mod listens to the render hook pair), so a layer on one type costs the
 other mobs nothing. The layers draw on the mobs (vanilla's and the content mods' living types) and on the players,
-this window's own in third person included. The armour stand and the ender dragon have draws of their
-own that don't run layers, so `add` refuses them.
+including this window's own in third person when it holds the camera. In the ordered body pass, layers
+submit in level join order, including the local player at its own slot. The armour stand and the ender
+dragon have draws of their own that don't run layers, so `add` refuses them.
 
 `render_living_post` and `render_player_post` are a different moment: they are asked for every mob
 and player in view each frame, after their layers (NeoForge's `RenderLivingEvent.Post` and

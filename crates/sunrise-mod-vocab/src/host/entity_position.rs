@@ -29,11 +29,10 @@ pub trait EntityPositionBackend {
     #[access(WorldOnly)]
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
-    /// The block the entity stands on (`Entity.getOnPos`): the supporting block
-    /// of an entity on the ground (`Entity.mainSupportingBlockPos`, the solid
-    /// block under its box nearest its position), else the block just under
-    /// its feet. A dragon part, which never stands, has the block under its
-    /// feet. None for a stale handle.
+    /// `Entity.getOnPos()`: the supporting block when available, otherwise the feet block with
+    /// vanilla's `1.0E-5F` subtracted from Y. For players the support comes from the last move
+    /// (`Entity.mainSupportingBlockPos`), not the current ground flag or a new collision query.
+    /// A dragon part, which never stands, has the block under its feet. None for a stale handle.
     #[access(WorldOnly)]
     fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]>;
     /// Side: server.
