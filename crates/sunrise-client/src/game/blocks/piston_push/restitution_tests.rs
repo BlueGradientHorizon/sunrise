@@ -89,15 +89,18 @@ fn a_bounce_listener_can_remove_a_later_lid_target() {
                     sunrise_client::block_contact::in_level(game.tick, Some(game.dim.id()), || {
                         game.lid_push(Lid::Box, area, Vec3::new(0.0, -0.5, 0.0));
                     });
-                    assert_eq!(
-                        game.boats.iter().map(|b| b.id).collect::<Vec<_>>(),
-                        [71, 73]
-                    );
-                    assert!(
-                        game.boats
-                            .iter()
-                            .all(|b| b.position.y == 64.0 && b.velocity.y > 0.0)
-                    );
+                    // Discard retires the handle synchronously; the tick sweep owns
+                    // physical removal. The lid must not push that departed row.
+                    assert!(game.entity(72).is_none());
+                    for boat in game.boats.iter() {
+                        if boat.id == 72 {
+                            assert_eq!(boat.position.y, 64.25);
+                            assert_eq!(boat.velocity.y, -1.0);
+                        } else {
+                            assert_eq!(boat.position.y, 64.0);
+                            assert!(boat.velocity.y > 0.0);
+                        }
+                    }
                     assert_eq!(*part.0.lock().unwrap(), [(false, 71), (false, 73)]);
                 });
             });
