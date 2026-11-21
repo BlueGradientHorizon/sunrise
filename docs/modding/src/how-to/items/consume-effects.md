@@ -5,11 +5,14 @@ In `Hooks::register`, call `register_consume_effect_type` on the engine's
 `ConsumeEffectsRegistrar`. Use your package ID as the type's namespace;
 this is how the game finds your `consume_effect` listener. The two functions
 in `ConsumeEffectType::new` read and write the
-saved map; the game handles the `type` field. `load` validates the fields
-before a new stack or edit is admitted. This includes effects inside stack
-components such as `bundle_contents` and `use_remainder`. `save` supplies the
-canonical fields with exact NBT types, including for values received over the
-network.
+saved map; the game handles the `type` field. `load` validates the fields when
+the containing stack is decoded. A bare saved component key such as
+`death_protection` means `minecraft:death_protection`, including inside templates.
+Effects on a new stack or in a decoded child such as a bundle entry are checked
+before a write is applied. `use_remainder` and `sulfur_cube_content` keep their
+saved templates and check effects when the child is materialized. `save`
+supplies the canonical fields with exact NBT types, including for values
+received over the network.
 
 Derive `Wire` on the value itself. Its bytes follow the server's registry ID,
 just as a built-in effect's stream fields do. Install the registering mod on
@@ -68,8 +71,10 @@ built-in effects; stack patches can change or remove the list.
 - Consumable and death protection payloads are decoded once for item definitions
   and stack component patches. The event borrows the retained payload. Player death
   protection uses this hook; mob death protection does not dispatch it.
-- An invalid registered payload refuses a new stack or edit. It is not installed
-  into gameplay when reopening a save.
+- An invalid registered payload on a decoded stack refuses a new stack or edit.
+  In a deferred template, the codec reports the refusal when the child is
+  materialized. The refused effect does not run, and the other effects remain
+  usable. Reopening a save likewise retains refused data without running it.
 
 To apply an effect without consuming an item, use
 [`LivingRef::apply_consume_effect`](consumable-effects.md).

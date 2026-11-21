@@ -941,18 +941,15 @@ pub(in crate::game) fn stack_value(value: &ApiStack) -> Result<EngineStack, Stac
 }
 
 fn encode_stack(value: &ApiStack, item: Arc<str>) -> Result<EngineStack, StackWriteError> {
-    let (stack, patch) = decode_stack_record(value, item);
+    let stack = decode_stack_record(value, item);
     content_declarations::validate_decoded_components(|name| {
-        patch
-            .as_ref()
-            .and_then(|patch| patch.get(name))
-            .map(|_| &stack)
+        stack.data()?.sets_component(name).then_some(&stack)
     })?;
     Ok(stack)
 }
 
-/// Decode the record and retain its incoming patch for admission checks by the caller.
-fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option<Tag>) {
+/// Decode the record, normalizing saved component names before the caller checks admission.
+fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> EngineStack {
     let mut patch = value.components().map(|patch| patch.as_nbt().clone());
     // Let the existing component codec preserve explicit zero versus prototype inheritance.
     if value.damage_component() == Some(0) {
@@ -962,13 +959,12 @@ fn decode_stack_record(value: &ApiStack, item: Arc<str>) -> (EngineStack, Option
     }
     let patch = patch.map(Tag::Compound);
     let (_, extra) = sunrise_items::item_data::decode_components(patch.as_ref());
-    let stack = EngineStack {
+    EngineStack {
         item,
         count: value.count(),
         damage: value.damage(),
         extra,
-    };
-    (stack, patch)
+    }
 }
 
 impl TryIntoApi for crate::crafting::RecipeRule {

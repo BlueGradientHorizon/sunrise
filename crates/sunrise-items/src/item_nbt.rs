@@ -112,7 +112,7 @@ pub fn item_from_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
 
 pub(crate) fn item_from_nbt_with_effects(
     tag: &Tag,
-    effects: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+    effects: Option<&Arc<[sunrise_world::component_value::consume_effects::Admitted]>>,
 ) -> Option<crate::items::ItemStack> {
     let (namespace, path) = sunrise_world::datafix::identifier(&text(tag.get("id"))?)?;
     let id = format!("{namespace}:{path}");

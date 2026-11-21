@@ -24,9 +24,12 @@ impl ConsumeEffectType {
     /// Construct a type from its persistent map codec. Implement the stream
     /// form by deriving [`Wire`](crate::Wire) on `T`. The game handles the
     /// dispatch key `type`; neither function reads or writes that field.
-    /// `load` validates fields in new data and edits, including effects in nested
-    /// stack templates. `save` writes the canonical fields when a value is
-    /// admitted, including when it arrives over Wire.
+    /// `load` validates fields when a stack is decoded for new data or edits.
+    /// Effects in a `use_remainder` or `sulfur_cube_content` template are decoded
+    /// when the template is materialized, not when the parent is written.
+    /// A bare saved component key such as `death_protection` means
+    /// `minecraft:death_protection`. `save` writes the canonical fields when a
+    /// value is admitted, including when it arrives over Wire.
     /// Neither callback depends on the live gameplay listener being enabled.
     /// Both can run on load and network threads. Return an error for invalid
     /// data rather than panicking: an error refuses that value, whereas a panic

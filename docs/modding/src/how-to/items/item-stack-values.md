@@ -65,7 +65,10 @@ records real NBT removal entries for default components; it is not an unknown-va
 
 A consume or death-protection override whose opaque native effect payload cannot be decoded
 refuses the whole stack write with `StackWriteError::InvalidEffectPayload`, before any
-resident state changes. A `villager_food` patch without positive nutrition is refused as
+resident state changes. This includes children already decoded for the write, such as a
+bundle entry. A `use_remainder` or `sulfur_cube_content` template stays saved data until
+it is materialized, so a codec refusal there is reported later and that effect does not run.
+A `villager_food` patch without positive nutrition is refused as
 `StackWriteError::InvalidComponents { reason: StackError::InvalidComponent { id } }`;
 `id` names `minecraft:villager_food`. An explicit removal remains valid.
 The items host area owns metadata reads such as `max_stack_size(ItemKey)` and

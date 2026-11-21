@@ -6,7 +6,7 @@ use sunrise_core::{
     nbt::{self, Tag},
     vanilla_bytes::Writer,
 };
-use sunrise_world::component_value::{Template, Value, effective_patch};
+use sunrise_world::component_value::{Template, Value, consume_effects::Admitted, effective_patch};
 
 fn err(s: impl Into<String>) -> Error {
     Error::new(s.into())
@@ -323,12 +323,13 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
     .map_err(err)?;
     component_from_value(kind, &value, ids)
 }
-/// Encode a retained stack component using its admitted effects (including those in templates).
+/// Encode retained effects and project newly materialized template effects for the caller.
 pub fn component_from_admitted_tag(
     kind: i32,
     value: &Tag,
     ids: &dyn Ids,
-    admitted: &dyn Fn(&Tag) -> Option<sunrise_world::component_value::consume_effects::Admitted>,
+    admitted: &dyn Fn(&Tag) -> Option<Admitted>,
+    projected: &dyn Fn(&Admitted),
 ) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err("unknown component type"))?;
     let value = sunrise_world::component_value::source::from_admitted_component_tag(
@@ -336,6 +337,7 @@ pub fn component_from_admitted_tag(
         value,
         is_native_component,
         admitted,
+        projected,
     )
     .map_err(err)?;
     component_from_value(kind, &value, ids)

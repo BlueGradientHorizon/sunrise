@@ -675,7 +675,13 @@ mod tests {
         assert_eq!((drink.ticks(), drink.animation), (32, UseAnimation::Drink));
         assert_eq!(drink.sound, "minecraft:entity.generic.drink");
         assert!(!drink.particles);
-        assert_eq!(milk.use_remainder.as_deref(), Some("minecraft:bucket"));
+        let remainder = |info: &sunrise_items::items::ItemInfo| {
+            info.component_prototype
+                .data()?
+                .template_stack("minecraft:use_remainder")
+                .map(|stack| stack.item)
+        };
+        assert_eq!(remainder(milk).as_deref(), Some("minecraft:bucket"));
         let honey = items.get("minecraft:honey_bottle").expect("honey bottle");
         let sip = honey.consumable.as_ref().unwrap();
         assert_eq!(sip.ticks(), 40);
@@ -686,15 +692,12 @@ mod tests {
                 "minecraft:poison".into()
             ])]
         );
-        assert_eq!(
-            honey.use_remainder.as_deref(),
-            Some("minecraft:glass_bottle")
-        );
+        assert_eq!(remainder(honey).as_deref(), Some("minecraft:glass_bottle"));
         let kelp = items.get("minecraft:dried_kelp").unwrap();
         let bite = kelp.consumable.as_ref().unwrap();
         assert_eq!((bite.ticks(), bite.animation), (16, UseAnimation::Eat));
         assert_eq!(bite.sound, "minecraft:entity.generic.eat");
-        assert!(bite.particles && kelp.use_remainder.is_none());
+        assert!(bite.particles && remainder(kelp).is_none());
         let chorus = items.get("minecraft:chorus_fruit").unwrap();
         assert_eq!(
             chorus.consumable.as_ref().unwrap().effects,

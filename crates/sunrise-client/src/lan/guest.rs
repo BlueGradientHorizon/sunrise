@@ -25,6 +25,7 @@ use sunrise_protocol::{
     },
     passage_sync,
 };
+use sunrise_world::component_value::consume_effects::Admitted;
 
 /// Unique across reconnects and server instances in this process, even when
 /// the protocol's container id wraps back to the same number.
@@ -1302,7 +1303,22 @@ pub fn stack_to_network(
     synced_id: impl Fn(&str, &str) -> Option<i32>,
     s: &Option<ItemStack>,
 ) -> Option<Stack> {
-    Some(network_stack(&item_id, &synced_id, s.as_ref()?))
+    stack_to_network_projecting(item_id, synced_id, s, &|_| ())
+}
+
+/// Send the stack and expose effects materialized during this encoding to its hash input.
+pub fn stack_to_network_projecting(
+    item_id: impl Fn(&str) -> i32,
+    synced_id: impl Fn(&str, &str) -> Option<i32>,
+    s: &Option<ItemStack>,
+    projected: &dyn Fn(&Admitted),
+) -> Option<Stack> {
+    Some(network_stack_projecting(
+        &item_id,
+        &synced_id,
+        s.as_ref()?,
+        projected,
+    ))
 }
 /// `ProvidesTrimMaterial.STREAM_CODEC`, `ProvidesBannerPatterns.STREAM_CODEC`,
 /// `AdventureModePredicate.STREAM_CODEC` and `ItemAttributeModifiers.STREAM_CODEC`:
@@ -1689,6 +1705,15 @@ pub(super) fn network_stack(
     synced_id: &dyn Fn(&str, &str) -> Option<i32>,
     s: &ItemStack,
 ) -> Stack {
+    network_stack_projecting(item_id, synced_id, s, &|_| ())
+}
+
+fn network_stack_projecting(
+    item_id: &dyn Fn(&str) -> i32,
+    synced_id: &dyn Fn(&str, &str) -> Option<i32>,
+    s: &ItemStack,
+    projected: &dyn Fn(&Admitted),
+) -> Stack {
     let enchantment_id = |name: &str| synced_id("minecraft:enchantment", name);
     let mut stack = Stack::new(item_id(&s.item), s.count as i32);
     if stack.item <= 0 {
@@ -1952,7 +1977,7 @@ pub(super) fn network_stack(
             let charged = d
                 .charged
                 .iter()
-                .map(|c| network_stack(item_id, synced_id, c))
+                .map(|c| network_stack_projecting(item_id, synced_id, c, projected))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::CHARGED_PROJECTILES,
@@ -1967,7 +1992,12 @@ pub(super) fn network_stack(
             let slots: Vec<(i32, Stack)> = d
                 .container
                 .iter()
-                .map(|(slot, s)| (i32::from(*slot), network_stack(item_id, synced_id, s)))
+                .map(|(slot, s)| {
+                    (
+                        i32::from(*slot),
+                        network_stack_projecting(item_id, synced_id, s, projected),
+                    )
+                })
                 .collect();
             // The saved list names only the filled slots; the codec counts them
             // all, from the first to the last that holds one.
@@ -1994,7 +2024,7 @@ pub(super) fn network_stack(
             let contents = d
                 .bundle_contents
                 .iter()
-                .map(|c| network_stack(item_id, synced_id, c))
+                .map(|c| network_stack_projecting(item_id, synced_id, c, projected))
                 .collect();
             stack.added.push((
                 sunrise_protocol::item::component::BUNDLE_CONTENTS,
@@ -2175,9 +2205,13 @@ pub(super) fn network_stack(
                 return;
             }
             let encoded = if crate::item_data::StackData::CONSUME_EFFECT_COMPONENTS.contains(&key) {
-                persistent::component_from_admitted_tag(kind, value, &ids, &|tag| {
-                    d.find_admitted_consume_effect(&|effect| effect.matches_tag(tag))
-                })
+                persistent::component_from_admitted_tag(
+                    kind,
+                    value,
+                    &ids,
+                    &|tag| d.find_admitted_consume_effect(&|effect| effect.matches_tag(tag)),
+                    projected,
+                )
             } else {
                 persistent::component_from_tag(kind, value, &ids)
             };

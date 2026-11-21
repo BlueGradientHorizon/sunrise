@@ -1954,6 +1954,14 @@ impl Game<'_> {
     /// patch a Sunrise server sends its clients, with the registries' ids, so
     /// the server's echo doesn't hand back a bare item.
     fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
+        self.to_network_projecting(s, &|_| ())
+    }
+
+    fn to_network_projecting(
+        &self,
+        s: &Option<ItemStack>,
+        projected: &dyn Fn(&sunrise_world::component_value::consume_effects::Admitted),
+    ) -> Option<Stack> {
         let r = self.remote.as_ref()?;
         // A stack as the server sent it, only its count changed: its own
         // components go back, as a vanilla client keeps them.
@@ -1990,7 +1998,7 @@ impl Game<'_> {
             }
             log::warn!("Cannot send cached custom components to this peer");
         }
-        sunrise_client::lan::guest::stack_to_network(
+        sunrise_client::lan::guest::stack_to_network_projecting(
             |name| self.item_id(name),
             // Built-in first, as a hub's `SyncData::id` does: potions are one.
             |registry, name| {
@@ -2009,6 +2017,7 @@ impl Game<'_> {
                     })
             },
             s,
+            projected,
         )
     }
 
@@ -2026,9 +2035,11 @@ impl Game<'_> {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
+        let projected = std::cell::RefCell::new(Vec::new());
         let stack = self
-            .to_network(s)
+            .to_network_projecting(s, &|effect| projected.borrow_mut().push(effect.clone()))
             .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
+        let projected = projected.into_inner();
         let hash = if let Some(data) = s.as_ref().and_then(ItemStack::data) {
             Hashed::create_with_admitted(&stack, &names, &|name, bytes| {
                 let matches =
@@ -2043,6 +2054,7 @@ impl Game<'_> {
                         .cloned()
                 } else {
                     data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
                 }
             })
         } else {

@@ -303,8 +303,6 @@ pub struct ItemInfo {
     pub death_protection: Option<Vec<ConsumeEffect>>,
     /// Kinetic pose timing decoded once from the shared item prototype.
     pub kinetic_timing: Option<crate::kinetic_weapon::UseTiming>,
-    /// `use_remainder`: what a finished use leaves (`UseRemainder`).
-    pub use_remainder: Option<String>,
     /// `use_cooldown`: the cooldown a use starts (`UseCooldown`).
     pub use_cooldown: Option<crate::cooldowns::UseCooldown>,
     pub model: String,
@@ -1271,9 +1269,6 @@ impl Items {
                         .and_then(crate::kinetic_weapon::UseTiming::from_json),
                     death_protection,
                     consumable,
-                    use_remainder: c["minecraft:use_remainder"]["id"]
-                        .as_str()
-                        .map(str::to_owned),
                     use_cooldown: c
                         .get("minecraft:use_cooldown")
                         .and_then(crate::cooldowns::UseCooldown::from_json),

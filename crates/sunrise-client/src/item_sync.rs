@@ -3,7 +3,7 @@
 //! and command item NBT use fills every field. Both sides use it: a client for
 //! what its server sends, a server for a creative client's
 //! `SetCreativeModeSlot`. The other direction is `lan::guest::stack_to_network`.
-use crate::items::{ConsumeEffect, ItemStack};
+use crate::items::{ConsumeEffect, ItemInfo, ItemStack};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::buf::{Codec, Reader};
@@ -51,8 +51,13 @@ pub fn from_network(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> ItemStack
     };
     let mut effects = EffectProjection::default();
     let components = components_tag(s, builtin, synced, &mut effects);
+    let admitted = if effects.admitted.is_empty() {
+        Arc::default()
+    } else {
+        Arc::from(effects.admitted)
+    };
     let (damage, data) =
-        crate::item_data::decode_network_components(components.as_ref(), &effects.admitted);
+        crate::item_data::decode_network_components(components.as_ref(), &admitted);
     out.damage = damage;
     if let Some(data) = data {
         *out.data_mut() = *data;
@@ -69,7 +74,7 @@ pub fn from_network(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> ItemStack
             decoded,
             patch.clone(),
             effect_mapping,
-            effects.admitted,
+            admitted,
             effects.refused,
         );
     }
@@ -187,19 +192,16 @@ pub fn can_always_eat(stack: &ItemStack, default: bool) -> bool {
     }
     default
 }
-/// `UseRemainder` from the stack's `use_remainder` component.
-pub fn use_remainder(stack: &ItemStack, default: Option<String>) -> Option<String> {
+/// `UseRemainder.convertIntoRemainder`: materialize the effective template only on use.
+pub fn use_remainder(stack: &ItemStack, info: Option<&ItemInfo>) -> Option<ItemStack> {
+    const ID: &str = "minecraft:use_remainder";
     let data = stack.data();
-    if data.is_some_and(|d| d.other("!minecraft:use_remainder").is_some()) {
-        return None;
+    if let Some(data) = data
+        && (data.other(ID).is_some() || data.other("!minecraft:use_remainder").is_some())
+    {
+        return data.template_stack(ID);
     }
-    if let Some(remainder) = data.and_then(|d| d.other("minecraft:use_remainder")) {
-        return match remainder.get("id") {
-            Some(Tag::String(id)) => Some(id.to_string_lossy()),
-            _ => None,
-        };
-    }
-    default
+    info?.component_prototype.data()?.template_stack(ID)
 }
 /// `Equippable.dispensable` from the stack's `equippable` component.
 pub fn dispensable(stack: &ItemStack, default: bool) -> bool {
@@ -1436,28 +1438,38 @@ mod tests {
                 _ => None,
             };
             let names = persistent::NameLookup::new(&lookup).with_registries(&synced);
-            let template = Tag::compound([
-                ("id", Tag::String("minecraft:stone".into())),
-                (
-                    "components",
-                    Tag::compound([(
-                        "minecraft:death_protection",
+            let template = |points| {
+                let invalid = matches!(points, Tag::String(_));
+                let mut effects = vec![Tag::compound([
+                    ("type", Tag::String("nested:charge".into())),
+                    ("points", points),
+                ])];
+                if invalid {
+                    effects.push(Tag::compound([(
+                        "type",
+                        Tag::String("minecraft:clear_all_effects".into()),
+                    )]));
+                }
+                Tag::compound([
+                    ("id", Tag::String("minecraft:stone".into())),
+                    (
+                        "components",
                         Tag::compound([(
-                            "death_effects",
-                            Tag::List(vec![Tag::compound([
-                                ("type", Tag::String("nested:charge".into())),
-                                ("points", Tag::Int(7)),
-                            ])]),
+                            "death_protection",
+                            Tag::compound([("death_effects", Tag::List(effects))]),
                         )]),
-                    )]),
-                ),
-            ]);
+                    ),
+                ])
+            };
             // One template, item 1/count 1, one own component, one effect: ID 0 and payload 7.
             let wire = [1, 1, 1, 1, 0, component::DEATH_PROTECTION as u8, 1, 0, 7];
             for kind in [component::BUNDLE_CONTENTS, component::CHARGED_PROJECTILES] {
-                let encoded =
-                    persistent::component_from_tag(kind, &Tag::List(vec![template.clone()]), &ids)
-                        .unwrap();
+                let encoded = persistent::component_from_tag(
+                    kind,
+                    &Tag::List(vec![template(Tag::Int(7))]),
+                    &ids,
+                )
+                .unwrap();
                 let Component::Stacks(stacks) = &encoded else {
                     panic!("expected typed templates")
                 };
@@ -1472,25 +1484,110 @@ mod tests {
                 );
             }
 
-            let saved = Tag::compound([
-                ("id", Tag::String("minecraft:stone".into())),
+            for (kind, key) in [
+                (component::USE_REMAINDER, "minecraft:use_remainder"),
                 (
-                    "components",
-                    Tag::compound([("minecraft:use_remainder", template)]),
+                    component::SULFUR_CUBE_CONTENT,
+                    "minecraft:sulfur_cube_content",
                 ),
-            ]);
-            let held = sunrise_items::item_nbt::item_from_persistent_nbt(&saved).unwrap();
-            assert_eq!(loads.load(Ordering::Relaxed), 3);
-            let sent = crate::lan::guest::stack_to_network(|_| 1, ids, &Some(held)).unwrap();
-            assert_eq!(
-                sent.component(component::USE_REMAINDER),
-                Some(&Component::Raw(wire[1..].to_vec()))
-            );
-            assert_eq!(
-                loads.load(Ordering::Relaxed),
-                3,
-                "encoding must not reload the effect"
-            );
+            ] {
+                let saved = |template| {
+                    Tag::compound([
+                        ("id", Tag::String("minecraft:stone".into())),
+                        ("components", Tag::compound([(key, template)])),
+                    ])
+                };
+                let before = loads.load(Ordering::Relaxed);
+                let held = sunrise_items::item_nbt::item_from_persistent_nbt(&saved(template(
+                    Tag::Int(7),
+                )))
+                .unwrap();
+                assert_eq!(
+                    loads.load(Ordering::Relaxed),
+                    before,
+                    "opening the parent must not load its template"
+                );
+                let projected = std::cell::RefCell::new(Vec::<Admitted>::new());
+                let held = Some(held);
+                let sent =
+                    crate::lan::guest::stack_to_network_projecting(|_| 1, ids, &held, &|effect| {
+                        projected.borrow_mut().push(effect.clone())
+                    })
+                    .unwrap();
+                assert_eq!(
+                    sent.component(kind),
+                    Some(&Component::Raw(wire[1..].to_vec()))
+                );
+                let projected = projected.into_inner();
+                assert_eq!(projected.len(), 1);
+                assert_eq!(projected[0].wire.as_ref(), [7]);
+                assert_eq!(projected[0].saved.get("canonical"), Some(&Tag::Byte(1)));
+                assert_eq!(loads.load(Ordering::Relaxed), before + 1);
+
+                let mut components =
+                    vec![String::new(); kind.max(component::DEATH_PROTECTION) as usize + 1];
+                components[kind as usize] = key.into();
+                components[component::DEATH_PROTECTION as usize] =
+                    "minecraft:death_protection".into();
+                let builtin = Builtin {
+                    registries: [
+                        (
+                            "minecraft:item".into(),
+                            Ids::from_names(vec!["minecraft:air".into(), "minecraft:stone".into()]),
+                        ),
+                        (
+                            "minecraft:data_component_type".into(),
+                            Ids::from_names(components),
+                        ),
+                    ]
+                    .into(),
+                };
+                let received = from_network(&sent, &builtin, &synced);
+                let child = received.data().unwrap().template_stack(key).unwrap();
+                assert!(
+                    matches!(child.death_protection(None), Some([ConsumeEffect::Native { registered: Some(effect), .. }]) if effect.wire.as_ref() == [7])
+                );
+                let echoed =
+                    crate::lan::guest::stack_to_network(|_| 1, ids, &Some(received)).unwrap();
+                assert_eq!(echoed.component(kind), sent.component(kind));
+                assert_eq!(
+                    loads.load(Ordering::Relaxed),
+                    before + 1,
+                    "received effects are not reloaded"
+                );
+
+                let data = held.as_ref().unwrap().data().unwrap();
+                let child = data.template_stack(key).unwrap();
+                assert!(
+                    matches!(child.death_protection(None), Some([ConsumeEffect::Native { registered: Some(effect), .. }]) if effect.wire.as_ref() == [7])
+                );
+                assert_eq!(loads.load(Ordering::Relaxed), before + 2);
+
+                let invalid = sunrise_items::item_nbt::item_from_persistent_nbt(&saved(template(
+                    Tag::String("bad".into()),
+                )))
+                .unwrap();
+                assert_eq!(loads.load(Ordering::Relaxed), before + 2);
+                let child = invalid.data().unwrap().template_stack(key).unwrap();
+                assert_eq!(
+                    child.death_protection(None),
+                    Some([ConsumeEffect::ClearAllEffects].as_slice())
+                );
+                assert_eq!(loads.load(Ordering::Relaxed), before + 3);
+                let sent = crate::lan::guest::stack_to_network(|_| 1, ids, &Some(invalid)).unwrap();
+                let mut survivor = wire[1..wire.len() - 2].to_vec();
+                survivor.push(
+                    synced
+                        .consume_effect_id("minecraft:clear_all_effects")
+                        .unwrap() as u8,
+                );
+                assert_eq!(sent.component(kind), Some(&Component::Raw(survivor)));
+                assert_eq!(
+                    loads.load(Ordering::Relaxed),
+                    before + 4,
+                    "the refusal is not latched"
+                );
+            }
         });
     }
 
@@ -1880,17 +1977,14 @@ mod tests {
             )])),
         );
         assert_eq!(
-            use_remainder(&stack, None).as_deref(),
-            Some("minecraft:bowl")
+            use_remainder(&stack, None),
+            Some(ItemStack::new("minecraft:bowl", 1))
         );
         stack.data_mut().set_other(
             "!minecraft:use_remainder",
             Some(Tag::compound(Vec::<(&str, Tag)>::new())),
         );
-        assert_eq!(
-            use_remainder(&stack, Some("minecraft:glass_bottle".into())),
-            None
-        );
+        assert_eq!(use_remainder(&stack, None), None);
     }
 
     #[test]

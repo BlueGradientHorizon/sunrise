@@ -129,7 +129,7 @@ pub(in crate::game) fn prepare_component_edit(
             .set_components(patch)
             .map_err(|reason| StackWriteError::InvalidComponents { reason })?;
     }
-    let (mut fields, _) = decode_stack_record(&record, id.clone());
+    let mut fields = decode_stack_record(&record, id.clone());
     validate_decoded_components(|name| match edits.component(name) {
         Some(ComponentEdit::Value(_)) => Some(&fields),
         _ => None,
@@ -209,9 +209,9 @@ mod tests {
             )
             .unwrap();
             let items = super::super::stack_limit_tests::catalog();
-            let component = |points| {
+            let component = |list, points| {
                 Tag::compound([(
-                    "on_consume_effects",
+                    list,
                     Tag::List(vec![
                         Tag::compound([
                             ("type", Tag::String("effect_edit:charge".into())),
@@ -224,25 +224,29 @@ mod tests {
                     ]),
                 )])
             };
-            for id in [
-                "minecraft:consumable",
-                "minecraft:bundle_contents",
-                "minecraft:charged_projectiles",
-                "minecraft:container",
-                "minecraft:pot_decorations",
-                "minecraft:use_remainder",
-                "minecraft:sulfur_cube_content",
+            let edit = |resident: &EngineStack, id: &str, value: Tag| {
+                prepare_component_edit(EquipmentRead::resident(resident), &items, &mut |editor| {
+                    editor
+                        .apply_components(&[(JavaString::from(id), value.clone())].into())
+                        .unwrap();
+                })
+            };
+            for (id, nested) in [
+                ("minecraft:consumable", None),
+                ("minecraft:bundle_contents", Some("death_protection")),
+                ("minecraft:charged_projectiles", Some(":death_protection")),
+                ("minecraft:container", Some("minecraft:death_protection")),
+                ("minecraft:pot_decorations", Some("death_protection")),
             ] {
-                let value = |points| {
-                    let consumable = component(points);
-                    if id == "minecraft:consumable" {
-                        return consumable;
-                    }
+                let value = |key: Option<&str>, points| {
+                    let Some(key) = key else {
+                        return component("on_consume_effects", points);
+                    };
                     let template = Tag::compound([
                         ("id", Tag::String("minecraft:stone".into())),
                         (
                             "components",
-                            Tag::compound([("minecraft:consumable", consumable)]),
+                            Tag::compound([(key, component("death_effects", points))]),
                         ),
                     ]);
                     match id {
@@ -253,36 +257,31 @@ mod tests {
                             ("slot", Tag::Int(0)),
                             ("item", template),
                         ])]),
-                        "minecraft:pot_decorations" => Tag::compound([("back", template)]),
-                        _ => template,
+                        _ => Tag::compound([("back", template)]),
                     }
                 };
-                let edit = |resident: &EngineStack, points: Tag| {
-                    prepare_component_edit(
-                        EquipmentRead::resident(resident),
-                        &items,
-                        &mut |editor| {
-                            editor
-                                .apply_components(
-                                    &[(JavaString::from(id), value(points.clone()))].into(),
-                                )
-                                .unwrap();
-                        },
-                    )
-                };
                 let mut resident = EngineStack::new("minecraft:stick", 1);
-                let (prepared, _) = edit(&resident, Tag::Int(7)).unwrap().unwrap();
+                let (prepared, _) = edit(&resident, id, value(nested, Tag::Int(7)))
+                    .unwrap()
+                    .unwrap();
                 prepared.apply(&mut resident);
                 let original = sunrise_client::item_data::component_snapshot(&resident).unwrap();
-                assert_eq!(original.get(id), Some(&value(Tag::Int(7))), "{id}");
+                assert_eq!(
+                    original.get(id),
+                    Some(&value(
+                        nested.map(|_| "minecraft:death_protection"),
+                        Tag::Int(7)
+                    )),
+                    "{id}",
+                );
                 assert!(
                     matches!(
-                        edit(&resident, Tag::String("bad".into())),
+                        edit(&resident, id, value(nested, Tag::String("bad".into()))),
                         Err(ItemPlaceEditError::Stack(
                             StackWriteError::InvalidEffectPayload
                         ))
                     ),
-                    "{id}"
+                    "{id} ({nested:?})"
                 );
                 assert_eq!(
                     sunrise_client::item_data::component_snapshot(&resident),
