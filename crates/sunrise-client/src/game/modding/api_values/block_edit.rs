@@ -110,7 +110,6 @@ mod tests {
     #[test]
     fn typed_bulk_sparse_predicates_use_existing_matcher_and_unknown_tag_properties_never_match() {
         let registry = registry();
-        let metadata = block_metadata_table().unwrap();
         let state = BlockStateId(2).try_into_api().unwrap();
         let exact =
             StatePredicate::block(state.block(), &[StateConstraint::new("left", "true")]).unwrap();

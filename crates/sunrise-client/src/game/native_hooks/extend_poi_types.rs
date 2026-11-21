@@ -18,15 +18,11 @@ mod tests {
     use mod_platform::testing::with_mods;
     use sunrise_world::{chunk::BlockState, poi::PoiExtension, registry::BlockRegistry};
 
-    struct Tags;
-    impl mod_api::Tags for Tags {}
-
     struct TestMod;
     #[mod_api::__subscriptions]
     impl Hooks for TestMod {
         fn extend_poi_types(&self, _: &RegistrationContext, event: &mut ExtendPoiTypesEvent<'_>) {
             let key = |id: &str| mod_api::__private::block_key(id).unwrap();
-            let metadata = event.extensions.metadata();
             let additions = [
                 (
                     "minecraft:home",
