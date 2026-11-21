@@ -67,7 +67,26 @@ fn registry_views_and_explicit_order_before_vanilla() {
 }
 
 #[test]
+#[ignore = "daily"]
 fn reload_registration_reports_each_refusal_without_latching_but_a_cycle_fails() {
+    // Install the process-wide logger only in an exact-selected child.
+    const TEST: &str = "client::client_reload::tests::reload_registration_reports_each_refusal_without_latching_but_a_cycle_fails";
+    const CHILD: &str = "SUNRISE_RELOAD_REFUSAL_DIAGNOSTIC_TEST";
+    if !std::env::var_os(CHILD).is_some_and(|value| value == TEST) {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([TEST, "--exact", "--ignored"])
+            .env(CHILD, TEST)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "{TEST} did not pass in its own process:\n{stdout}{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+
     thread_local! {
         static WARNINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     }

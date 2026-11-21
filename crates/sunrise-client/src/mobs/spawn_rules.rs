@@ -1306,7 +1306,26 @@ mod mod_spawn_rule_tests {
     }
 
     #[test]
+    #[ignore = "daily"]
     fn a_panicking_non_mob_replacement_restores_draws_and_disables_only_itself() {
+        // Install the process-wide logger only in an exact-selected child.
+        const TEST: &str = "mobs::spawn_rules::mod_spawn_rule_tests::a_panicking_non_mob_replacement_restores_draws_and_disables_only_itself";
+        const CHILD: &str = "SUNRISE_SPAWN_PLACEMENT_DIAGNOSTIC_TEST";
+        if !std::env::var_os(CHILD).is_some_and(|value| value == TEST) {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([TEST, "--exact", "--ignored"])
+                .env(CHILD, TEST)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+                "{TEST} did not pass in its own process:\n{stdout}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
         const BROKEN: &str = "broken_arrow_placement";
         const HEALTHY: &str = "healthy_spawn_placement";
         crate::test_log::install();
