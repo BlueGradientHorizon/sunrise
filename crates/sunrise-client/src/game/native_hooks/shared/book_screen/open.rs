@@ -73,6 +73,7 @@ impl Game<'_> {
         &mut self,
         key: Pos,
         target: Option<Pos>,
+        backing_slots: usize,
         extra: Option<sunrise_protocol::menu_extra::Message>,
     ) {
         if self.is_logical_server() || self.lan_acting.is_some() {
@@ -88,8 +89,8 @@ impl Game<'_> {
             return;
         };
         let mod_type = sunrise_client::containers::mod_menu_type(name);
-        if let Some(kind) = mod_type {
-            screen.slots.truncate(kind.slots);
+        if mod_type.is_some() {
+            screen.slots.truncate(backing_slots);
         }
         // Check sprite identifiers once at the client declaration boundary.
         for slot in screen.slots.iter().flatten() {

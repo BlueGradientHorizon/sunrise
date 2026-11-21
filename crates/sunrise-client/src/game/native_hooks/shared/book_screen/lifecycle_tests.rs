@@ -160,6 +160,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 game.open_native_screen(
                     (i32::MIN, 0, 0),
                     None,
+                    3,
                     Some(sunrise_protocol::menu_extra::Message {
                         window: 7,
                         pos: None,

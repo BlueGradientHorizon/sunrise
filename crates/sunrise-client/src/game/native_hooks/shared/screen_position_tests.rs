@@ -387,7 +387,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                     .default_state("test:crate")
                     .unwrap();
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-                game.open_native_screen(pos, Some(pos), None);
+                game.open_native_screen(pos, Some(pos), 27, None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                 assert_eq!(open.screen.height, 166.0);
@@ -477,7 +477,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
             with_listener(|game, seen| {
                 let key = (i32::MIN, 0, 0);
                 seed_native_menu(game, 1, PACK);
-                game.open_native_screen(key, None, None);
+                game.open_native_screen(key, None, 9, None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
                 assert_eq!((open.screen.height, &open.menu.block), (133.0, &None));
                 game.container = Some(key);
@@ -486,7 +486,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
                 assert_eq!(seen.lock().unwrap().draw, [(None, None)]);
                 seed_native_menu(game, 2, "minecraft:generic_9x3");
-                game.open_native_screen(key, None, None);
+                game.open_native_screen(key, None, 27, None);
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla chest keeps its screen"
@@ -618,7 +618,7 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                     heard.lock().unwrap().clear();
                     seed_native_menu(game, x, "minecraft:hopper");
-                    game.open_native_screen(pos, Some(pos), None);
+                    game.open_native_screen(pos, Some(pos), 5, None);
                     game.container = Some(pos);
                     game.set_screen(Screen::Inventory);
                     let open = game.mod_screen.as_ref().expect("the machine's screen");
@@ -686,7 +686,7 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 heard.lock().unwrap().clear();
                 seed_native_menu(game, 3, "minecraft:hopper");
-                game.open_native_screen(pos, Some(pos), None);
+                game.open_native_screen(pos, Some(pos), 5, None);
                 assert!(
                     game.mod_screen.is_none(),
                     "a vanilla hopper keeps its screen"
