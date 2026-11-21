@@ -1525,11 +1525,51 @@ impl MotionWorld<'_, '_, '_> {
     /// snow's FREEZE, then `LivingEntity.aiStep`'s freezing and its damage.
     /// Its client moves it, so the slowing and the rest are the client's.
     pub fn server_block_damage(&mut self, from: Vec3) -> Result<()> {
-        self.player.old_position = from;
-        // Entity.baseTick
-        self.player.was_in_powder_snow = self.player.in_powder_snow;
-        self.player.in_powder_snow = false;
-        self.effects_from_blocks(BlockPass::ServerDamage)?;
+        self.server_block_damage_walk(from, &mut None, false)
+            .map(|_| ())
+    }
+
+    /// Stop a guest's block walk after a hit needing death or protection on its acting body.
+    /// `false` leaves the next contact (or collected write) in `cursor` for the owning game.
+    pub fn server_block_damage_until_hit(
+        &mut self,
+        from: Vec3,
+        cursor: &mut Option<PlayerBlockWalk>,
+    ) -> Result<bool> {
+        self.server_block_damage_walk(from, cursor, true)
+    }
+
+    fn server_block_damage_walk(
+        &mut self,
+        from: Vec3,
+        cursor: &mut Option<PlayerBlockWalk>,
+        pause: bool,
+    ) -> Result<bool> {
+        let mut walk = if let Some(walk) = cursor.take() {
+            walk
+        } else {
+            self.player.old_position = from;
+            self.player.was_in_powder_snow = self.player.in_powder_snow;
+            self.player.in_powder_snow = false;
+            let walk = self.start_block_walk(BlockPass::ServerDamage)?;
+            if pause && self.hit_needs_owner() {
+                *cursor = walk;
+                return Ok(false);
+            }
+            if let Some(walk) = walk {
+                walk
+            } else {
+                return self.finish_server_block_damage().map(|()| true);
+            }
+        };
+        if !walk.run(self, pause)? {
+            *cursor = Some(walk);
+            return Ok(false);
+        }
+        self.finish_server_block_damage().map(|()| true)
+    }
+
+    fn finish_server_block_damage(&mut self) -> Result<()> {
         // LivingEntity.aiStep "freezing" (server).
         if !self.player.in_powder_snow || !self.player.can_freeze() {
             self.player.ticks_frozen = (self.player.ticks_frozen - 2).max(0);
@@ -1543,6 +1583,13 @@ impl MotionWorld<'_, '_, '_> {
         Ok(())
     }
     fn effects_from_blocks(&mut self, pass: BlockPass) -> Result<()> {
+        if let Some(mut walk) = self.start_block_walk(pass)? {
+            walk.run(self, false)?;
+        }
+        Ok(())
+    }
+
+    fn start_block_walk(&mut self, pass: BlockPass) -> Result<Option<PlayerBlockWalk>> {
         use sunrise_world::entity_move::MovementRecord;
         let damage_only = pass != BlockPass::Client;
         let mut movements: Vec<MovementRecord> =
@@ -1568,7 +1615,7 @@ impl MotionWorld<'_, '_, '_> {
         }
         // isAffectedByBlocks: no physics for spectators.
         if self.player.spectator {
-            return Ok(());
+            return Ok(None);
         }
         // Block.stepOn for the block under an entity on the ground:
         // MagmaBlock's hot floor hurts unless it steps carefully (sneaks).
@@ -1615,40 +1662,19 @@ impl MotionWorld<'_, '_, '_> {
                 }
             }
         }
-        let mut visited = crate::fast_hash::FxHashSet::default();
-        let mut effects = mod_api::InsideEffects::default();
-        let mut inside = PlayerInside {
-            m: self,
+        Ok(Some(PlayerBlockWalk {
             pass,
+            movements,
             melt_step: None,
-        };
-        crate::block_contact::sweep_movements(&mut inside, &movements, &mut visited, &mut effects)?;
-        // `applyAndClear`: the plan applies in order, in this tick, until the
-        // player dies. The engine's own effects (the powder snow's freeze and
-        // extinguish) and the parts' typed writes flush together.
-        for planned in effects.take_planned() {
-            if self.player.health.dead_or_dying() {
-                break;
-            }
-            use mod_api::{InsideEffect, PlannedInside};
-            match planned {
-                PlannedInside::Effect(InsideEffect::Freeze) => {
-                    self.player.in_powder_snow = true;
-                    if self.player.can_freeze() {
-                        self.player.ticks_frozen = (self.player.ticks_frozen + 1)
-                            .min(PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
-                    }
-                }
-                PlannedInside::Effect(InsideEffect::Extinguish) => {
-                    self.player.fire_ticks = self.player.fire_ticks.min(0);
-                }
-                // The player's own ignition paths (the lava cauldron's arm) run in
-                // the walk; no engine block queues the other types for it.
-                PlannedInside::Effect(_) => {}
-                PlannedInside::Write(write) => self.apply_entity_write(write)?,
-            }
-        }
-        Ok(())
+            sweep: Default::default(),
+            visited: Default::default(),
+            effects: Default::default(),
+            writes: None,
+        }))
+    }
+
+    fn hit_needs_owner(&self) -> bool {
+        self.player.health.totem_used || self.player.health.pending_damage_post.is_some()
     }
     /// The block effects and the frost of a window's own player while a vehicle carries it. Its
     /// own move is `rider_tick`'s; after it, `LivingEntity.aiStep` still applies the effects of
@@ -2862,6 +2888,69 @@ pub(crate) fn legacy_block_support_at(
 /// per-block effects keep their existing code, the powder snow queues the
 /// collector's FREEZE and EXTINGUISH where the hand-written group flush was, and
 /// the part's contact fires mid-walk with its writes staged.
+/// An interrupted server block walk, holding no borrow of the acting body or its level.
+pub struct PlayerBlockWalk {
+    pass: BlockPass,
+    movements: Vec<sunrise_world::entity_move::MovementRecord>,
+    melt_step: Option<i32>,
+    sweep: crate::block_contact::MovementSweep,
+    visited: crate::fast_hash::FxHashSet<i64>,
+    effects: mod_api::InsideEffects,
+    writes: Option<std::vec::IntoIter<mod_api::PlannedInside>>,
+}
+
+impl PlayerBlockWalk {
+    fn run(&mut self, world: &mut MotionWorld<'_, '_, '_>, pause: bool) -> Result<bool> {
+        if self.writes.is_none() {
+            let mut inside = PlayerInside {
+                m: world,
+                pass: self.pass,
+                melt_step: self.melt_step,
+            };
+            let finished = self.sweep.run(
+                &mut inside,
+                &self.movements,
+                &mut self.visited,
+                &mut self.effects,
+                |inside| pause && inside.m.hit_needs_owner(),
+            )?;
+            self.melt_step = inside.melt_step;
+            if !finished {
+                return Ok(false);
+            }
+            self.writes = Some(self.effects.take_planned().into_iter());
+        }
+        // Entity.applyAndClear: apply one write before reading the next part of the plan.
+        for planned in self.writes.as_mut().into_iter().flatten() {
+            if world.player.health.dead_or_dying() {
+                break;
+            }
+            use mod_api::{InsideEffect, PlannedInside};
+            match planned {
+                PlannedInside::Effect(InsideEffect::Freeze) => {
+                    world.player.in_powder_snow = true;
+                    if world.player.can_freeze() {
+                        world.player.ticks_frozen = (world.player.ticks_frozen + 1)
+                            .min(PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
+                    }
+                }
+                PlannedInside::Effect(InsideEffect::Extinguish) => {
+                    world.player.fire_ticks = world.player.fire_ticks.min(0);
+                }
+                // Lava cauldron ignition is the block's own contact, not a queued effect.
+                PlannedInside::Effect(_) => {}
+                PlannedInside::Write(write) => {
+                    world.apply_entity_write(write)?;
+                    if pause && world.hit_needs_owner() {
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+        Ok(true)
+    }
+}
+
 struct PlayerInside<'a, 'p, 'w, 'r> {
     m: &'a mut MotionWorld<'p, 'w, 'r>,
     pass: BlockPass,

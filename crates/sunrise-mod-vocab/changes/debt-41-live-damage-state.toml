@@ -72,15 +72,17 @@ Following `DamageContainer.setNewDamage` and `setPostAttackInvulnerabilityTicks`
 `Witch.getDamageAfterMagicAbsorb` uses its separate local result for innate resistance. \
 `Wolf.actuallyHurt` uses the outer cooldown difference for armor wear, without replacing the live reduction. \
 Post follows the death or totem continuation, as at NeoForge's `LivingEntity.hurtServer` tail. \
-An authoritative player hit settles `ServerPlayer.die` on the acting body; a second hit in the same \
-player turn does not share the first hit's continuation. \
+Vanilla `Entity.baseTick`, `Entity.applyEffectsFromBlocks`, `LivingEntity.tickEffects` and \
+`LivingEntity.aiStep` finish each hurt before the next hazard or effect advances. The borrowed \
+server tick releases its loans at those hit boundaries. The guest tick applies \
+`ServerPlayer.die` or protection on the acting body before going on with the next hit. \
 Matching NeoForge's `DamageContainer` and `actuallyHurt` semantics, modified reductions are \
 recorded verbatim without clamping to `[0, limit]` or replacing `NaN` (only resulting damage \
 floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, records the modified \
 value verbatim, sets remaining damage to `max(damage - modified, 0)`, and deducts \
 `damage.min(modified)` from absorption hearts floored at `0.0`. A panic while invoking or dropping a reduction callback \
-disables that mod's reduction callbacks for the session and reports loudly (error log plus error \
-toast naming the mod) while leaving the reduction unchanged; non-panic phase refusals log a \
+uses the shared hook panic boundary: it disables that mod's reduction callbacks for the session \
+and reports loudly (error log plus error toast naming the mod) while leaving the reduction unchanged; non-panic phase refusals log a \
 warning on every occurrence without latching.\
 """
 migrate = """\

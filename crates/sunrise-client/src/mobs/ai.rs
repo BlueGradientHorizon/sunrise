@@ -1100,6 +1100,23 @@ enum DamageTail {
         next: BaseStage,
         known_speed: Vec3,
     },
+    Ai {
+        next: AiStage,
+        was_on_fire: bool,
+        no_ai: bool,
+    },
+}
+
+#[derive(Debug)]
+enum AiStage {
+    BlockWalk,
+    ResumeBlockWalk(Box<MobBlockWalk>),
+    Freeze,
+    Push,
+    PushTail(Vec<super::world::PushTarget>, bool),
+    AfterPush,
+    AfterWater,
+    Finish,
 }
 
 #[derive(Debug)]
@@ -1360,6 +1377,20 @@ pub(super) fn resume_after_damage(
             let progress = continue_base_tick(m, w, level, events, contact, next);
             finish_base_progress(m, w, level, events, progress, known_speed, trample)
         }
+        DamageTail::Ai {
+            next,
+            was_on_fire,
+            no_ai,
+        } => continue_ai_tail(
+            m,
+            w,
+            level,
+            events,
+            was_on_fire,
+            no_ai,
+            trample.is_some(),
+            next,
+        ),
     }
 }
 
@@ -1444,6 +1475,7 @@ fn ai_and_finish_tick(
     events: &mut Vec<MobEvent>,
     trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
+    let pause_damage = trample.is_some();
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
@@ -1472,51 +1504,6 @@ fn ai_and_finish_tick(
         // NoAI mob pushes what it overlaps (and is pushed back by its own
         // push).
         drop_tiny_motion(m);
-        walk_and_freeze(m, w, level, events);
-        push_entities(m, w, level, events);
-        ageable_step(m, w, level, events);
-        animal_step(m, events);
-        if m.species() == Species::Chicken {
-            farm::chicken_egg_step(m, events);
-        }
-        if m.species() == Species::Allay {
-            super::allay::passive_heal(m, w.loop_context);
-            super::allay::update_duplication_cooldown(m);
-        }
-        // AbstractHorse.aiStep and Camel.tick (a camel's, through the equine step), Bee.aiStep's
-        // countdowns and WanderingTrader.aiStep's maybeDespawn: none of them asks for AI.
-        if horse || super::camel::is_camel(m.species()) {
-            super::equine::ai_step(m, w, events);
-        }
-        if m.species() == Species::Bee {
-            super::bee::ai_step(m, w);
-        }
-        if m.species() == Species::WanderingTrader {
-            super::trader::ai_step(m, w);
-        }
-        // LivingEntity.aiStep ends in the water's hurt with or without AI;
-        // a NoAI enderman's or shulker's hurts still teleport it (hurtServer).
-        hurt_by_water(m, w, level, events);
-        hurt_teleports(m, w, events);
-        // Ravager.aiStep runs outside serverAiStep: NoAI still advances
-        // attack/stun/roar, including the stun-to-roar transition.
-        if m.species() == Species::Ravager {
-            super::ravager::ai_step(m, w, events);
-        }
-        if family(m.species()) == Family::Aquatic {
-            aquatic::no_ai_step(m, w, events);
-        }
-        super::cube::no_ai_tick(m, w, events); // AbstractCubeMob.tick
-        // Shulker.tick after its living tick: a NoAI shell still keeps a
-        // face and eases its lid, pushing what the lid opens into.
-        if m.species() == Species::Shulker {
-            super::shulker::shell_tick(m, w, events);
-        }
-        // TraderLlama.aiStep still calls maybeDespawn after its super step.
-        // Keep unrelated llama healing and its random draw in the AI path.
-        if m.species() == Species::TraderLlama {
-            super::caravan::trader_llama_tick(m, w);
-        }
     } else if let Some(phase) = ai_step(m, w, level, events, trample.is_some()) {
         *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
             phase,
@@ -1526,10 +1513,156 @@ fn ai_and_finish_tick(
         });
         return TickProgress::Paused(Pause::Trample);
     }
-    if m.no_ai && m.species() == Species::Fox {
-        super::fox::finish_ai_step(m, w, events);
+    start_ai_tail(m, w, level, events, was_on_fire, pause_damage)
+}
+
+fn start_ai_tail(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    was_on_fire: bool,
+    pause_damage: bool,
+) -> TickProgress {
+    let no_ai = m.no_ai;
+    let next = AiStage::BlockWalk;
+    if pause_damage && m.pending_damage_post.is_some() {
+        return TickProgress::Paused(Pause::AfterDamage(DamageResume {
+            join: m.join,
+            tail: DamageTail::Ai {
+                next,
+                was_on_fire,
+                no_ai,
+            },
+        }));
     }
-    TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events))
+    continue_ai_tail(m, w, level, events, was_on_fire, no_ai, pause_damage, next)
+}
+
+fn continue_ai_tail(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    was_on_fire: bool,
+    no_ai: bool,
+    pause_damage: bool,
+    mut next: AiStage,
+) -> TickProgress {
+    loop {
+        next = match next {
+            AiStage::BlockWalk => {
+                if !no_ai {
+                    m.apply_effects_from_blocks(w, events);
+                }
+                let mut walk = start_block_walk(m, w, level, events);
+                if pause_damage && m.pending_damage_post.is_some()
+                    || !walk.run(m, w, level, events, pause_damage)
+                {
+                    AiStage::ResumeBlockWalk(Box::new(walk))
+                } else {
+                    AiStage::Freeze
+                }
+            }
+            AiStage::ResumeBlockWalk(mut walk) => {
+                if walk.run(m, w, level, events, pause_damage) {
+                    AiStage::Freeze
+                } else {
+                    AiStage::ResumeBlockWalk(walk)
+                }
+            }
+            AiStage::Freeze => {
+                if m.alive() {
+                    freeze_tick(m, w, level, events);
+                }
+                AiStage::Push
+            }
+            AiStage::Push => begin_push_entities(m, w, level, events)
+                .map_or(AiStage::AfterPush, |(targets, self_pushable)| {
+                    AiStage::PushTail(targets, self_pushable)
+                }),
+            AiStage::PushTail(targets, self_pushable) => {
+                finish_push_entities(m, w, events, targets, self_pushable);
+                AiStage::AfterPush
+            }
+            AiStage::AfterPush => {
+                if no_ai {
+                    ageable_step(m, w, level, events);
+                    animal_step(m, events);
+                    if m.species() == Species::Chicken {
+                        farm::chicken_egg_step(m, events);
+                    }
+                    if m.species() == Species::Allay {
+                        super::allay::passive_heal(m, w.loop_context);
+                        super::allay::update_duplication_cooldown(m);
+                    }
+                    // AbstractHorse.aiStep, Camel.tick, Bee.aiStep and WanderingTrader.aiStep
+                    // have steps without AI.
+                    if super::camel::is_camel(m.species())
+                        || (super::equine::is_equine(m.species())
+                            && !super::llama::is_llama(m.species()))
+                    {
+                        super::equine::ai_step(m, w, events);
+                    }
+                    if m.species() == Species::Bee {
+                        super::bee::ai_step(m, w);
+                    }
+                    if m.species() == Species::WanderingTrader {
+                        super::trader::ai_step(m, w);
+                    }
+                }
+                hurt_by_water(m, w, level, events);
+                if no_ai {
+                    hurt_teleports(m, w, events);
+                }
+                AiStage::AfterWater
+            }
+            AiStage::AfterWater => {
+                if no_ai {
+                    // These species' own steps also run outside serverAiStep.
+                    if m.species() == Species::Ravager {
+                        super::ravager::ai_step(m, w, events);
+                    }
+                    if family(m.species()) == Family::Aquatic {
+                        aquatic::no_ai_step(m, w, events);
+                    }
+                    super::cube::no_ai_tick(m, w, events);
+                    if m.species() == Species::Shulker {
+                        super::shulker::shell_tick(m, w, events);
+                    }
+                    if m.species() == Species::TraderLlama {
+                        super::caravan::trader_llama_tick(m, w);
+                    }
+                    if m.species() == Species::Fox {
+                        super::fox::finish_ai_step(m, w, events);
+                    }
+                } else {
+                    // Spider.tick: climbing while pressed against a wall.
+                    if m.kind.flags.climber {
+                        m.climbing = m.horizontal_collision;
+                    }
+                    ageable_step(m, w, level, events);
+                    animal_step(m, events);
+                    burn_undead(m, w, events);
+                    species_ai_step(m, w, level, events);
+                }
+                AiStage::Finish
+            }
+            AiStage::Finish => {
+                return TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events));
+            }
+        };
+        if pause_damage && m.pending_damage_post.is_some() {
+            return TickProgress::Paused(Pause::AfterDamage(DamageResume {
+                join: m.join,
+                tail: DamageTail::Ai {
+                    next,
+                    was_on_fire,
+                    no_ai,
+                },
+            }));
+        }
+    }
 }
 
 /// Resume the exact move, then the remainder of `LivingEntity.aiStep` and the tick.
@@ -1548,7 +1681,6 @@ pub(super) fn resume_after_trample(
         TramplePhase::Travel(travel) => {
             travel.resume(m, w, level, events);
             hurt_teleports(m, w, events);
-            finish_ai_step(m, w, level, events);
             None
         }
         TramplePhase::Goal(goal) => {
@@ -1567,7 +1699,7 @@ pub(super) fn resume_after_trample(
         }
     };
     match progress {
-        None => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
+        None => start_ai_tail(m, w, level, events, paused.was_on_fire, true),
         Some(phase) => {
             *trample = Some(MobTrample { phase, ..paused });
             TickProgress::Paused(Pause::Trample)
@@ -1643,6 +1775,7 @@ pub fn finish_tick(
 /// was cleared by `Entity.baseTick`; the walk's FREEZE effect sets it for a
 /// powder snow cell on the tick's path, so a hurt that teleports the mob
 /// during the walk keeps it.
+#[cfg(test)]
 fn walk_and_freeze(
     m: &mut Mob,
     w: &MobWorld,
@@ -1661,12 +1794,22 @@ fn walk_and_freeze(
 /// or Z this tick) and the honey block (`honey_slide`). The blocks are those
 /// vanilla's own sweep reaches along the mob's move this tick, on the shared
 /// inside walk; a part's contact fires mid-walk there.
+#[cfg(test)]
 pub(crate) fn effects_from_blocks(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
+    start_block_walk(m, w, level, events).run(m, w, level, events, false);
+}
+
+fn start_block_walk(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) -> MobBlockWalk {
     // Entity.applyEffectsFromBlocks fixes the tick's movements before stepOn:
     // a hurt below that teleports an enderman or a shulker leaves the scan on
     // the path it had. A stepOn teleport (snapTo) has rewritten the mob's
@@ -1712,56 +1855,96 @@ pub(crate) fn effects_from_blocks(
     // runs them, and the part's contact fires there too, staged. (This is the
     // parity change: the 0.2-block sampling over every box cell this replaced
     // visited blocks in another order; the walk's own commit carries it.)
-    let mut visited = crate::fast_hash::FxHashSet::default();
-    let mut effects = mod_api::InsideEffects::default();
-    // `Entity.applyEffectsFromBlocks` walks the tick's own movements; a hurt
-    // below that teleports an enderman or a shulker has left the old position
-    // as the path's start (#9607), so the walk begins where the tick began:
-    // the box's own cells at the start are visited first, as the tick's own
-    // first movement would, then the move itself sweeps the path (the shared
-    // visited set keeps each block once).
-    let start = tick_from;
-    let movements = [sunrise_world::entity_move::MovementRecord {
-        from: start,
-        to: tick_to,
-        original: None,
-    }];
-    // The box's own cells at the start, as the tick's first movement would
-    // visit them (a hurt that teleports leaves the old position as the
-    // path's start, #9607).
-    let start_box = m.bounds_at(start).deflate(Vec3::new(1e-5, 1e-5, 1e-5));
-    let mut inside = MobInside {
-        m,
-        w,
-        level,
-        events: &mut *events,
-    };
-    // The shared decision's stationary pass: the step stays 0 and rough, the
-    // pass's moments share the walk's first step.
-    let _ = crate::block_contact::visit_box_cells(
-        &mut inside,
-        start_box,
-        start,
-        &mut visited,
-        &mut effects,
-    );
-    let _ =
-        crate::block_contact::sweep_movements(&mut inside, &movements, &mut visited, &mut effects);
-    let MobInside {
-        m,
-        w,
-        level,
-        events,
-    } = inside;
-    // `applyAndClear` for the part's queued writes, in the collector's order,
-    // in this mob's tick, until it dies.
-    for planned in effects.take_planned() {
-        if !m.alive() {
-            break;
+    MobBlockWalk {
+        movement: sunrise_world::entity_move::MovementRecord {
+            from: tick_from,
+            to: tick_to,
+            original: None,
+        },
+        stationary: None,
+        stationary_done: false,
+        travel: Default::default(),
+        visited: Default::default(),
+        effects: Default::default(),
+        writes: None,
+    }
+}
+
+#[derive(Debug)]
+struct MobBlockWalk {
+    movement: sunrise_world::entity_move::MovementRecord,
+    stationary: Option<crate::block_contact::BoxCellSweep>,
+    stationary_done: bool,
+    travel: crate::block_contact::MovementSweep,
+    visited: crate::fast_hash::FxHashSet<i64>,
+    effects: mod_api::InsideEffects,
+    writes: Option<std::vec::IntoIter<mod_api::PlannedInside>>,
+}
+
+impl MobBlockWalk {
+    fn run(
+        &mut self,
+        m: &mut Mob,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        pause_damage: bool,
+    ) -> bool {
+        if self.writes.is_none() {
+            let mut inside = MobInside {
+                m,
+                w,
+                level,
+                events,
+            };
+            let halt = |inside: &MobInside<'_, '_, '_>| {
+                pause_damage && inside.m.pending_damage_post.is_some()
+            };
+            // Begin at the old box before sweeping the captured movement. The
+            // two passes share the visited set and the collector's first step.
+            if !self.stationary_done {
+                let walk = self.stationary.get_or_insert_with(|| {
+                    let start = self.movement.from;
+                    let bounds = inside
+                        .m
+                        .bounds_at(start)
+                        .deflate(Vec3::new(1e-5, 1e-5, 1e-5));
+                    crate::block_contact::BoxCellSweep::new(bounds, start)
+                });
+                if matches!(
+                    walk.run(&mut inside, &mut self.visited, &mut self.effects, halt),
+                    Ok(false)
+                ) {
+                    return false;
+                }
+                self.stationary_done = true;
+            }
+            if matches!(
+                self.travel.run(
+                    &mut inside,
+                    std::slice::from_ref(&self.movement),
+                    &mut self.visited,
+                    &mut self.effects,
+                    halt
+                ),
+                Ok(false)
+            ) {
+                return false;
+            }
+            self.writes = Some(self.effects.take_planned().into_iter());
         }
-        if let mod_api::PlannedInside::Write(write) = planned {
-            apply_entity_write(m, w, level, events, write);
+        for planned in self.writes.as_mut().into_iter().flatten() {
+            if !m.alive() {
+                break;
+            }
+            if let mod_api::PlannedInside::Write(write) = planned {
+                apply_entity_write(m, w, level, events, write);
+                if pause_damage && m.pending_damage_post.is_some() {
+                    return false;
+                }
+            }
         }
+        true
     }
 }
 
@@ -2980,31 +3163,9 @@ fn ai_step_after_goals(
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
-    finish_ai_step(m, w, level, events);
     Ok(())
 }
 
-fn finish_ai_step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    // LivingEntity.aiStep: applyEffectsFromBlocks follows travel, then
-    // the freezing, before pushEntities and the water's hurt.
-    m.apply_effects_from_blocks(w, events);
-    walk_and_freeze(m, w, level, events);
-    push_entities(m, w, level, events);
-    hurt_by_water(m, w, level, events);
-    // Spider.tick: climbing while pressed against a wall.
-    if m.kind.flags.climber {
-        m.climbing = m.horizontal_collision;
-    }
-    ageable_step(m, w, level, events);
-    animal_step(m, events);
-    burn_undead(m, w, events);
-    species_ai_step(m, w, level, events);
-}
 /// The end of `LivingEntity.aiStep`: a mob that water hurts (an enderman, a
 /// blaze, a snow golem) takes 1 drowning damage in water or rain
 /// (`isSensitiveToWater`, `isInWaterOrRain`). An enderman's teleport is part of
@@ -3077,15 +3238,27 @@ fn drop_tiny_motion(m: &mut Mob) {
 /// LivingEntity.pushEntities: every pushable entity overlapping the box is
 /// pushed apart from this one (`doPush(e)` = `e.push(this)`); pushes of other
 /// mobs are `Push` events their tick picks up.
+#[cfg(test)]
 fn push_entities(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
+    if let Some((targets, self_pushable)) = begin_push_entities(m, w, level, events) {
+        finish_push_entities(m, w, events, targets, self_pushable);
+    }
+}
+
+fn begin_push_entities(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) -> Option<(Vec<super::world::PushTarget>, bool)> {
     m.on_climbable = on_climbable(m, w);
     if m.species() == Species::Bat {
-        return;
+        return None;
     }
     let bounds = m.bounds();
     // The pusher's own isPushable and isVehicle, checked by `e.push(this)`.
@@ -3123,6 +3296,16 @@ fn push_entities(
         // The hurt's own teleport, inside it (#1697).
         hurt_teleports(m, w, events);
     }
+    Some((targets, self_pushable))
+}
+
+fn finish_push_entities(
+    m: &mut Mob,
+    w: &MobWorld,
+    events: &mut Vec<MobEvent>,
+    targets: Vec<super::world::PushTarget>,
+    self_pushable: bool,
+) {
     for &(who, at, _, same, vehicle) in &targets {
         // Warden.doPush: touching it angers it, then the push itself.
         if m.species() == Species::Warden {

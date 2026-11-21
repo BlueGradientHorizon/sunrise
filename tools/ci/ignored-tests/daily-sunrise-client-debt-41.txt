@@ -5,3 +5,4 @@ sunrise-client game::native_damage_tests::player_pre_keeps_live_damage_when_resi
 sunrise-client game::native_damage_tests::splash_water_finishes_a_lethal_hit_before_the_next_target lib daily resources
 sunrise-client game::native_damage_tests::borrowed_base_tick_damage_settles_before_the_next_mob_tick lib daily resources
 sunrise-client game::native_damage_tests::squid_finishes_the_lethal_hit_its_subclass_reports_false lib daily resources
+sunrise-client game::native_damage_tests::guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick lib daily resources

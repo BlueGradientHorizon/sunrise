@@ -689,7 +689,7 @@ fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
 #[test]
 #[ignore = "daily"]
 fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
-    for hazard in ["burn", "air", "effect"] {
+    for hazard in ["burn", "air", "effect", "contact"] {
         let trace = Arc::new(DeathOrder::default());
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "death-order",
@@ -703,6 +703,15 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                if hazard == "contact" {
+                    let cactus = game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:cactus")
+                        .unwrap();
+                    game.world.set(1, 80, 1, cactus).unwrap();
+                }
                 let mut first = mob(
                     game,
                     225043,
@@ -719,6 +728,7 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
                 match hazard {
                     "burn" => first.fire_ticks = 20,
                     "effect" => first.add_effect("wither", 40, 0),
+                    "contact" => first.no_ai = true,
                     _ => first.air = -19,
                 }
                 second.air = -19;
@@ -779,6 +789,49 @@ fn guest_protection_consumes_the_item_and_posts_inside_the_hit() {
             })
             .unwrap();
             assert!(!game.lan.as_ref().unwrap().hub.guests[0].dead);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
+    use crate::game::native_player_death::tests::add_guest;
+    let trace = Arc::new(DeathOrder::default());
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let at = Vec3::new(1.0, game.world.below_world_y() - 1.0, 1.0);
+            let mut body = PlayerMotion::new(game.motion, at).unwrap();
+            body.fire_ticks = 20;
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.loaded = true;
+                guest.load_timeout = 0;
+                guest.position = at.components();
+                guest.health = 0.5;
+                guest.motion = Some(Box::new(body));
+                guest.inventory[guest.selected] =
+                    Some(ItemStack::new("minecraft:totem_of_undying", 1));
+            });
+            let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
+            game.guest_server_tick(1, true);
+            assert!(trace.heard.lock().unwrap().starts_with(&[
+                ("incoming", entity),
+                ("pre", entity),
+                ("totem", entity),
+                ("post", entity),
+                ("incoming", entity),
+            ]));
+            let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+            assert!(guest.inventory[guest.selected].is_none());
         });
     });
 }
