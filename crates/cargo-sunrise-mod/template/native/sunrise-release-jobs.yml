@@ -185,6 +185,15 @@ jobs:
           python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" registry --work "$work" --registry "$work/registry"
           python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release.py" stage --work "$work" \
             --registry "$work/registry" --published "$work/published.json" --out "$work/submission"
+      - name: Show the draft or open a pull request from the configured registry fork
+        env:
+          GH_TOKEN: ${{ secrets.SUNRISE_MOD_REGISTRY_TOKEN }}
+          SUNRISE_MOD_REGISTRY_FORK: ${{ vars.SUNRISE_MOD_REGISTRY_FORK }}
+        run: |
+          work="$RUNNER_TEMP/sunrise-release"
+          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" submit --work "$work" \
+            --registry "$work/registry" --submission "$work/submission"
+      # Keep the draft only once submit has rechecked the stable pins.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sunrise-registry-submission
@@ -195,11 +204,3 @@ jobs:
             ${{ runner.temp }}/sunrise-release/submission/ALREADY_LISTED
           if-no-files-found: error
           overwrite: true
-      - name: Show the draft or open a pull request from the configured registry fork
-        env:
-          GH_TOKEN: ${{ secrets.SUNRISE_MOD_REGISTRY_TOKEN }}
-          SUNRISE_MOD_REGISTRY_FORK: ${{ vars.SUNRISE_MOD_REGISTRY_FORK }}
-        run: |
-          work="$RUNNER_TEMP/sunrise-release"
-          python "$SUNRISE_RELEASE_SCRIPTS/sunrise_release_github.py" submit --work "$work" \
-            --registry "$work/registry" --submission "$work/submission"
