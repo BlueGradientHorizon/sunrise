@@ -1,0 +1,27 @@
+ids = [
+    "trait:prelude::BlockStatesServerHost",
+    "trait:prelude::BlockEntitiesServerHost",
+    "trait:prelude::ClientViewHost",
+    "method:prelude::BlockStatesServerHost::set_block_property",
+    "method:prelude::BlockStatesServerHost::set_block_property_with",
+    "method:prelude::BlockEntitiesServerHost::block_entity_sync",
+    "method:prelude::ItemsServerHost::dispense_default",
+    "method:prelude::ItemsServerHost::dispense_with_remainder",
+    "method:prelude::ClientViewHost::block_collision",
+    "handle:LevelRef::set_block_property",
+    "handle:BlockEntityRef::sync",
+    "handle:LevelRef::dispense_default",
+    "handle:LevelRef::dispense_with_remainder",
+    "handle:LevelRef::visit_block_collision",
+    "fn:block::fluid_util::dispense_container",
+]
+why = "Block writes and dispenser actions now name their level, block-entity sync names the live holder, and collision reads visit the named level without building a list. These paths follow vanilla 26.3 Level.setBlock and LevelChunk.setBlockState, ServerLevel.sendBlockUpdated, DispenserBlock.dispenseFrom and DefaultDispenseItemBehavior.execute/consumeWithRemainder, and BlockState.getCollisionShape with VoxelShape.forAllBoxes. NeoForge's Level.markAndNotifyBlock preserves update flags, and DispenseFluidContainer.execute uses the same default and remainder paths."
+migrate = '''
+Remove explicit imports of BlockStatesServerHost, BlockEntitiesServerHost and ClientViewHost; keep ServerHost for writes and Host for shared reads. Resolve the desired LevelRef with `host.level(dimension)` and handle a missing level before calling its methods.
+
+- `host.set_block_property(pos, key, value)` → `level.set_block_property(host, pos, key, value, BlockUpdateFlags::NEIGHBORS | BlockUpdateFlags::CLIENTS)`. Replace `host.set_block_property_with(pos, key, value, flags)` with the same level call using the corresponding typed BlockUpdateFlags. Match `Ok(true)` for a change, `Ok(false)` for no write, or `Err(LevelWriteError)` for a refused level. Calls on LevelWriteHost inside block ticks are unchanged.
+- `host.block_entity_sync(pos)` → `holder.sync(host)`. Obtain the BlockEntityRef with `host.block_entity(level, pos)`, or during its own tick by returning `view.handle()` from `tick.with_view` and calling `holder.sync(tick.host())` after the view ends. Handle `Err(LevelWriteError::Stale)` for a replaced or unloaded holder and other typed refusals instead of syncing a replacement at the same position.
+- `host.dispense_default(dimension, pos, facing, stack)` → `level.dispense_default(host, pos, facing, stack)`. `host.dispense_with_remainder(dimension, pos, facing, stack, remainder)` → `level.dispense_with_remainder(host, pos, facing, stack, remainder)`. Keep using the successful Option<ItemStack> as the slot remainder. The error is now LevelWriteError, including InvalidStack for invalid input. Property writes and dispenser calls into parked levels return InTransaction if a Host transaction is open.
+- Keep `fluid_util::dispense_container(host, event)` for the standard fluid-container behavior. It uses the dispenser's resolved level and logs a refused dispense write before returning `None`.
+- Replace iteration over `host.block_collision(pos)` with `level.visit_block_collision(host, pos, &mut |bounds| { /* use bounds */ core::ops::ControlFlow::Continue(()) })`. The coordinates are still block-local. Return `Break(())` to stop early. Match the resulting `Ok(Continue(()))` or `Ok(Break(()))`, or handle `Err(LevelReadError)` for a stale or unavailable level. If you need an owned list, collect boxes inside the visitor.
+'''

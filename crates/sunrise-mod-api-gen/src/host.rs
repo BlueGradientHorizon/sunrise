@@ -620,7 +620,7 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                             call
                         }
                     } else if checked_write {
-                        if crosses_output
+                        if converted_output.is_some_and(|ty| contains_value(ty, &["BlockState"]))
                             && result_error(&entry.sig.output)
                                 .is_some_and(|error| outer_type(error, "LevelWriteError"))
                         {
