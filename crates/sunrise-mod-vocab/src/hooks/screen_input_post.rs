@@ -63,7 +63,18 @@ pub trait Hooks {
         cancellable = false
     )]
     fn screen_mouse_scrolled_post(screen: &ScreenView<'_>, scroll: [f64; 2], modifiers: u32);
-    /// A key press that neither the receiving screen nor its mounted widgets took (`ScreenEvent.KeyPressed.Post`, vanilla's `Screen.keyPressed` returning false): `key`, `repeat` and `modifiers` as in `screen_key_pressed_pre`. Set `canceled` and the press counts as handled: the game's own key handling (its key bindings, hotbar and toggles) never sees it. A key that has no vanilla name fires nothing. Fires for window key presses and the control socket's `key ... down`, `key ... repeat`, and the press phase of `key ... tap`, on the receiving screen and only when the matching Pre did not cancel it. A controller does not synthesize this hook.
+    /// A key press that neither the receiving screen nor its mounted widgets took
+    /// (`ScreenEvent.KeyPressed.Post`, vanilla's `Screen.keyPressed` returning false):
+    /// `key`, `repeat` and `modifiers` as in `screen_key_pressed_pre`. If the mod
+    /// browser's search editor declines, the container still handles raw bindings
+    /// (including rebound inventory close and sort) before this hook can fire.
+    /// Slot swap, pick and drop can act before an unhandled result; a translated
+    /// mapping reached after Post cannot sort the container. Set `canceled` to
+    /// keep the game's own key handling (bindings, hotbar and toggles) from seeing it.
+    /// A key that has no vanilla name fires nothing. Fires for window key presses
+    /// and the control socket's `key ... down`, `key ... repeat`, and the press
+    /// phase of `key ... tap`, on the receiving screen and only when the matching
+    /// Pre did not cancel it. A controller does not synthesize this hook.
     #[hook(
         receiver = "read",
         dispatch = "flat",

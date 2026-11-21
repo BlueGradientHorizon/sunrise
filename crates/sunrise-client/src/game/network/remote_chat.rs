@@ -330,14 +330,16 @@ impl Game<'_> {
     /// asks first, and one with a message argument is never sent from here:
     /// the player can only send it themselves, from the chat box. So neither
     /// a server nor a mod can have the player sign a message they never saw.
-    pub(super) fn send_unattended_command(&mut self, command: &str) {
+    /// Returns true when sent without a confirmation, so a dialog can open
+    /// its screen after the command.
+    pub(super) fn send_unattended_command(&mut self, command: &str) -> bool {
         let command = command.trim();
         let command = command.strip_prefix('/').unwrap_or(command);
         if command.is_empty() || !self.chat_abilities().allows(&format!("/{command}")) {
-            return;
+            return false;
         }
         let Some(r) = self.remote.as_ref() else {
-            return;
+            return false;
         };
         // Vanilla's dispatcher is empty until the server sends its tree.
         let check = if r.chat_tree_received {
@@ -352,7 +354,7 @@ impl Game<'_> {
                 // Verification above excludes message arguments. Use the ordinary sender so
                 // releases without an unsigned command packet still acknowledge seen chat.
                 self.send_command(command);
-                return;
+                return true;
             }
             CommandCheck::ParseErrors => (
                 "multiplayer.confirm_command.parse_errors",
@@ -382,6 +384,7 @@ impl Game<'_> {
             });
             game.capture(false);
         });
+        false
     }
 
     /// The command just clicked left this screen: if it asks, no returns there.

@@ -1114,6 +1114,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
     struct InputMod {
         log: Arc<Mutex<Vec<String>>>,
         dialog_mount: AtomicUsize,
+        veto_dialog: Arc<AtomicBool>,
         override_press_handled: Arc<Mutex<Option<bool>>>,
         override_release_handled: Arc<Mutex<Option<bool>>>,
         cancel_key_post: Arc<AtomicBool>,
@@ -1400,15 +1401,29 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         fn screen_opening(
             &self,
             _host: &dyn ClientHost,
-            _event: &mut ScreenOpeningEvent<'_>,
+            event: &mut ScreenOpeningEvent<'_>,
         ) -> Option<ScreenOpening> {
+            if event.current.id == "dialog" && event.new.id == "dialog" {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .push("opening:dialog->dialog".into());
+                if self.veto_dialog.load(Ordering::SeqCst) {
+                    return Some(ScreenOpening::Cancel);
+                }
+            }
             None
         }
 
-        fn screen_closing(&self, _host: &dyn ClientHost, _event: &mut ScreenClosingEvent<'_>) {}
+        fn screen_closing(&self, _host: &dyn ClientHost, event: &mut ScreenClosingEvent<'_>) {
+            if event.screen.id == "dialog" {
+                self.log.lock().unwrap().push("closing:dialog".into());
+            }
+        }
     }
 
     let log = Arc::new(Mutex::new(Vec::new()));
+    let veto_dialog = Arc::new(AtomicBool::new(false));
     let override_press_handled = Arc::new(Mutex::new(None));
     let override_release_handled = Arc::new(Mutex::new(None));
     let cancel_key_post = Arc::new(AtomicBool::new(false));
@@ -1420,6 +1435,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         Box::new(InputMod {
             log: log.clone(),
             dialog_mount: AtomicUsize::new(0),
+            veto_dialog: veto_dialog.clone(),
             override_press_handled: override_press_handled.clone(),
             override_release_handled: override_release_handled.clone(),
             cancel_key_post: cancel_key_post.clone(),
@@ -1433,6 +1449,13 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
     with_mods(mods, || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                )
+                .unwrap(),
+            );
 
             // 1) Open Paused and click the button that transitions paused -> mod ("target_mod"):
             //    MouseButtonPressed.Post MUST still carry screen A's id ("paused"), not "mod".
@@ -1755,9 +1778,9 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             assert_eq!(take_log(&log), ["drag_pre:dialog"]);
             send_mouse_button(game, win_id, MouseButton::Left, false);
 
-            let original = game.mounted_widget_targets()[0];
-            game.sync_mounted_focus(original);
-            assert!(game.screen_state.widgets.has_focus());
+            game.sync_mounted_focus(game.mounted_widget_targets()[0]);
+            let original = game.screen_state.widgets.focused_id().unwrap();
+            let instance = game.screen_state.screen_instance;
             let [x, y, _, _] = layout
                 .footer
                 .iter()
@@ -1766,27 +1789,56 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     _ => None,
                 })
                 .unwrap();
-            // Call the receiving dialog's own action without a pointer click moving focus first.
+            // Call the receiving dialog's action without a pointer click moving focus first.
             game.cursor = (x + 4.0, y + 6.0);
+            veto_dialog.store(true, Ordering::SeqCst);
+            assert!(game.dialog_click().unwrap());
+            assert!(game.dialog_open());
+            assert!(game.dialog_status()["screen"].is_null());
+            assert_eq!(game.screen_state.screen_instance, instance);
+            assert_eq!(game.screen_state.widgets.focused_id(), Some(original));
+            assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
+
+            veto_dialog.store(false, Ordering::SeqCst);
             assert!(game.dialog_click().unwrap());
             assert_eq!(game.dialog_status()["screen"], "waiting_for_response");
-            take_log(&log);
+            assert_eq!(game.screen_state.screen_instance, instance.wrapping_add(1));
+            assert_eq!(take_log(&log), ["opening:dialog->dialog", "closing:dialog"]);
             game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::Enter), true, false, None, None)
                 .unwrap();
             assert_eq!(
                 take_log(&log),
                 ["key_press_pre:dialog:key.keyboard.enter", "dialog_press:1"]
             );
+
+            // Warning Back also proposes a new dialog receiver. Keep the warning's
+            // focused widget if that proposal is vetoed.
+            game.show_dialog(&dialog);
+            let [x, y, _, _] = game.dialog_warning_icon().unwrap();
+            game.cursor = (x + 1.0, y + 1.0);
+            assert!(game.dialog_click().unwrap());
+            assert_eq!(game.dialog_status()["screen"], "warning");
+            let warning = game.screen_state.widgets.focused_id().unwrap();
+            let instance = game.screen_state.screen_instance;
+            take_log(&log);
+            veto_dialog.store(true, Ordering::SeqCst);
+            assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
+            assert_eq!(game.dialog_status()["screen"], "warning");
+            assert_eq!(game.screen_state.screen_instance, instance);
+            assert_eq!(game.screen_state.widgets.focused_id(), Some(warning));
+            assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
+            veto_dialog.store(false, Ordering::SeqCst);
+            assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
+            assert!(game.dialog_status()["screen"].is_null());
+            assert_eq!(game.screen_state.screen_instance, instance.wrapping_add(1));
+            assert_eq!(take_log(&log), ["opening:dialog->dialog", "closing:dialog"]);
             game.close_dialogs();
             game.set_screen(Screen::Playing);
 
             // Only a real Yes/No hit consumes the press while the pack prompt covers gameplay.
             use sunrise_client::confirm_screen::Confirm;
             use sunrise_client::text::Text;
-            use sunrise_core::geometry::Vec3;
             use sunrise_protocol::packets::configuration::ResourcePackPush;
-            game.player =
-                Some(sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.handle_pack_push(ResourcePackPush {
                 id: 1,
                 url: "https://example.invalid/pack.zip".into(),
@@ -1856,10 +1908,84 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "key_press_post:inventory:key.keyboard.k"
                 ]
             );
+            // The mod browser's search editor declines letter keys. Only the
+            // rebound inventory key is handled by the container itself.
+            game.panel_items(
+                "target_mod",
+                vec![mod_api::Stack {
+                    item: mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    count: 1,
+                    components: String::new(),
+                }],
+            );
+            let mut batch = game.gui_batch().unwrap();
+            game.draw_mod_browser(&mut batch);
+            let search = game.panel.search.as_ref().unwrap();
+            game.cursor = (search.x + 2.0, search.y + 2.0);
+            assert!(game.mod_browser_press(false));
+            assert!(game.mod_browser_typing());
+            cancel_key_post.store(false, Ordering::SeqCst);
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyZ), true, false, None, None)
+                .unwrap();
+            assert_eq!(game.screen, Screen::Inventory);
+            assert!(game.mod_browser_typing());
+            assert_eq!(
+                take_log(&log),
+                [
+                    "key_press_pre:inventory:key.keyboard.z",
+                    "key_press_post:inventory:key.keyboard.z",
+                ]
+            );
             game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyJ), true, false, None, None)
                 .unwrap();
             assert_eq!(game.screen, Screen::Playing);
             assert_eq!(take_log(&log), ["key_press_pre:inventory:key.keyboard.j"]);
+
+            // K drops one stick but must not trigger sort via its translated Q.
+            // Q sorts the remainder into the earlier empty slot without dropping it.
+            use sunrise_client::{chunk::Chunk, containers::BlockEntity, items::ItemStack};
+            let pos = (0, 0, 0);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let chest = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:chest")
+                .unwrap();
+            game.world.set(pos.0, pos.1, pos.2, chest).unwrap();
+            let mut stacks = vec![None; 27];
+            stacks[1] = Some(ItemStack::new("minecraft:stick", 2));
+            game.world
+                .block_entities
+                .insert(pos, BlockEntity::Chest(stacks));
+            game.container = Some(pos);
+            game.settings.keys.set("key.hotbar.1", "key.keyboard.1");
+            game.settings.keys.set("key.drop", "key.keyboard.k");
+            game.settings.extras.sort = true;
+            game.settings.extras.sort_key = "key.keyboard.q".into();
+            game.open_player_inventory();
+            let batch = game.gui_batch().unwrap();
+            let layout = game.built_container(&batch).unwrap();
+            let &(_, [x, y, _, _]) = layout.slots.iter().find(|(slot, _)| *slot == 301).unwrap();
+            move_mouse(game, win_id, f64::from(x + 5.0), f64::from(y + 5.0));
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyK), true, false, None, None)
+                .unwrap();
+            assert!(game.slot_view(300).is_none());
+            assert_eq!(game.slot_view(301).unwrap().count, 1);
+            assert_eq!(
+                take_log(&log),
+                [
+                    "key_press_pre:inventory:key.keyboard.k",
+                    "key_press_post:inventory:key.keyboard.k"
+                ]
+            );
+            game.dispatch_window_keyboard(&NoLoop, Some(KeyCode::KeyQ), true, false, None, None)
+                .unwrap();
+            assert_eq!(game.slot_view(300).unwrap().count, 1);
+            assert!(game.slot_view(301).is_none());
+            assert_eq!(take_log(&log), ["key_press_pre:inventory:key.keyboard.q"]);
         });
     });
 }
@@ -1874,22 +2000,26 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
     ) {
         return;
     }
-    use sunrise_client::{gamepad::Button as PadButton, osk::Output};
+    use sunrise_client::{
+        gamepad::{Button as PadButton, TextKeyboard},
+        osk::Output,
+    };
 
     struct Mounts(Arc<Mutex<Vec<String>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Mounts {
         fn screen_init_post(&self, _: &dyn ClientHost, event: &mut ScreenInitPostEvent<'_>) {
-            if event.screen.id != "mod" {
+            if event.screen.id == "mod" {
+                for name in ["first", "second"] {
+                    let log = self.0.clone();
+                    event.widgets.add_button(Button::new(
+                        [30.0, 30.0, 90.0, 20.0],
+                        ApiText::literal(name),
+                        move |_, _| log.lock().unwrap().push(name.to_owned()),
+                    ));
+                }
+            } else if event.screen.id != "chat" {
                 return;
-            }
-            for name in ["first", "second"] {
-                let log = self.0.clone();
-                event.widgets.add_button(Button::new(
-                    [30.0, 30.0, 90.0, 20.0],
-                    ApiText::literal(name),
-                    move |_, _| log.lock().unwrap().push(name.to_owned()),
-                ));
             }
             let log = self.0.clone();
             event
@@ -1909,6 +2039,14 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
     with_mods(mods, || {
         with_client_game(|game| {
             let (_event_loop, win_id) = attach_offscreen_window(game);
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(
+                    game.motion,
+                    sunrise_core::geometry::Vec3::ZERO,
+                )
+                .unwrap(),
+            );
+            game.settings.controller.keyboard = TextKeyboard::Sunrise;
             assert!(game.mod_screen_open("controller_mounts"));
             let targets = game.mounted_widget_targets();
             game.pad.menu.focus = Some(targets[1]);
@@ -1933,6 +2071,40 @@ fn controller_activates_the_selected_mount_and_edits_its_field() {
             game.pad_osk_output(Output::Enter);
             assert_eq!(take_log(&log), ["submit:a"]);
             assert!(game.pad.menu.osk.is_none());
+
+            game.ui.chat.add_recent("from history");
+            game.begin_chat_screen("native draft", false);
+            let field = game.mounted_widget_targets()[0];
+            game.pad.menu.focus = Some(field);
+            game.pad_menu_button(&NoLoop, PadButton::South, true)
+                .unwrap();
+            assert!(game.pad.menu.osk.is_some());
+            game.pad_osk_output(Output::Text("mounted draft".into()));
+            game.pad_osk_output(Output::Previous);
+            assert_eq!(
+                game.ui.chat_screen.as_ref().unwrap().value(),
+                "native draft"
+            );
+            assert_eq!(
+                game.mounted_focused_text_edit(None).unwrap().value,
+                "mounted draft"
+            );
+
+            // The same keyboard can use Chat's history again when its field owns it.
+            game.clear_mounted_widget_focus();
+            game.pad_osk_output(Output::Previous);
+            assert_eq!(
+                game.ui.chat_screen.as_ref().unwrap().value(),
+                "from history"
+            );
+            game.sync_mounted_focus(field);
+            game.pad_osk_output(Output::Next);
+            assert_eq!(
+                game.ui.chat_screen.as_ref().unwrap().value(),
+                "from history"
+            );
+            game.pad_osk_output(Output::Enter);
+            assert_eq!(take_log(&log), ["submit:mounted draft"]);
         });
     });
 }

@@ -220,6 +220,8 @@ pub struct TextFieldParts {
 }
 
 /// A single-line text field (`EditBox`) mounted on a screen during `Hooks::screen_init_post`.
+/// The controller keyboard edits the focused field without forwarding completion
+/// or suggestion/history navigation to a native Chat editor behind it.
 // no wire: owns in-process change and submit callbacks (`TextFieldCallback`).
 // exhaustive: its fields are private; mods build it with `TextField::new`.
 pub struct TextField {

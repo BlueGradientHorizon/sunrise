@@ -61,18 +61,19 @@ impl Game<'_> {
                 return Ok(true);
             }
             if self.mod_browser_typing() {
-                self.mod_browser_key(raw, shortcut);
-                return Ok(true);
-            }
-            if self.station_typing() {
+                if self.mod_browser_key(raw, shortcut) {
+                    return Ok(true);
+                }
+                // Unlike the vanilla search tabs, the browser's focused child
+                // can decline a key and leave it to the container.
+            } else if self.station_typing() {
                 if let Some(shortcut) = shortcut {
                     self.station_shortcut(shortcut);
                 } else {
                     self.station_key(raw);
                 }
                 return Ok(true);
-            }
-            if !creative
+            } else if !creative
                 && (self.merchant_key(raw)
                     || (chat && self.recipe_focus_search())
                     || self.recipe_book_key(raw))

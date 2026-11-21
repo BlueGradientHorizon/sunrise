@@ -322,6 +322,8 @@ mounted text fields support:
   vanilla's 250 ms same-screen same-button `MouseHandler` rule, and dragging extends the selection.
 - **Standard editing and clipboard shortcuts**: arrow/Home/End navigation, word movement, Shift
   selection, Backspace/Delete, and Ctrl/Cmd + A/C/V/X.
+- **Controller keyboard**: edits go to the focused mounted field. On Chat, completion and
+  suggestion/history navigation are available only when the native chat editor owns the keyboard.
 
 ### Custom widgets
 
@@ -351,6 +353,11 @@ input handlers) receive `&mut dyn ClientHost` and execute screen transitions syn
 immediately, matching `Button.onPress` calling `Gui.setScreen`. If a callback switches or closes
 the screen, the engine discards the previous screen's mounted widgets once the callback returns.
 
+A dialog moving to its waiting screen or Back from a warning to a live dialog also proposes a
+screen replacement, even though both receivers have the id `dialog`. If `screen_opening` cancels,
+the current dialog's widgets and focus remain; neither `screen_closing` nor a replacement
+`screen_init_post` fires.
+
 ## Screen input Pre and Post hooks
 
 Screen mouse, keyboard, character, and preedit hooks match NeoForge's `ScreenEvent.*` Pre/Post
@@ -376,9 +383,11 @@ contract on the **receiving screen**:
 - **Key press and release Post (unhandled-only, cancellable)**:
   `screen_key_pressed_post` and `screen_key_released_post` fire on the receiving screen only when
   neither mounted widgets nor the screen handled the key. Set `event.cancelled = true` (or return
-  `Flow::Cancel`) to mark the key handled so the game's key bindings skip it. A handled inventory
-  close does not fire Post; an unhandled slot swap, pick or drop has already happened by Post.
-  Cancel Pre to prevent a slot action. Window releases, `sunrise-ctl key … up`, and the release phase
+  `Flow::Cancel`) to mark the key handled so the game's key bindings skip it. A mod browser search
+  box can decline a key; the container then handles its raw bindings, including rebound inventory
+  close. A handled close or sort does not fire Post; an unhandled slot swap, pick or drop has
+  already happened by Post. A mapping reached after Post cannot dispatch a second sort. Cancel Pre
+  to prevent a slot action. Window releases, `sunrise-ctl key … up`, and the release phase
   of `key … tap` all deliver release Pre/Post. Do not cancel a release merely to bypass screen
   handling after allowing its mapped press; canceling the release also skips the mapped release.
 - **Unhandled-only notices (non-cancellable)**:

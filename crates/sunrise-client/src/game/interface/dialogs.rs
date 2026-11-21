@@ -355,14 +355,7 @@ impl Game<'_> {
             return Ok(());
         }
         let before = self.dialog_screen_key();
-        // openSendConfirmationWindow's `currentScreen`: a command that asks
-        // first still has this dialog to go back to.
-        let closing = match (&click, &after) {
-            (Some(Click::RunCommand(_)), AfterAction::Close | AfterAction::WaitForResponse) => {
-                self.dialogs.open.take()
-            }
-            _ => None,
-        };
+        let mut wait = after == AfterAction::WaitForResponse;
         let configuration = match click {
             Some(Click::ShowDialog(_)) => self
                 .dialogs
@@ -371,12 +364,11 @@ impl Game<'_> {
                 .and_then(|o| o.configuration.clone()),
             _ => None,
         };
-        match after {
-            AfterAction::None => {}
-            AfterAction::Close => self.dialogs.open = None,
-            AfterAction::WaitForResponse => {
-                self.dialogs.open = None;
-                self.dialogs.waiting = Some(Instant::now());
+        let mut closing = None;
+        if after == AfterAction::Close {
+            let open = self.dialogs.open.take();
+            if matches!(&click, Some(Click::RunCommand(_))) {
+                closing = open;
             }
         }
         match click {
@@ -388,7 +380,16 @@ impl Game<'_> {
             Some(Click::RunCommand(command)) => {
                 // In configuration there is nothing to run it (vanilla warns).
                 if self.player.is_some() {
-                    self.send_unattended_command(&command);
+                    let sent = self.send_unattended_command(&command);
+                    if wait {
+                        // openSendConfirmationWindow's `currentScreen`: Back
+                        // returns to this dialog, not the screen after the command.
+                        let prompted = self.command_prompt.is_some();
+                        if prompted {
+                            closing = self.dialogs.open.take();
+                        }
+                        wait = sent || prompted;
+                    }
                     if let Some(open) = closing {
                         self.command_prompt_returns_to(Behind::Dialog(ClosedDialog(Box::new(
                             open,
@@ -398,17 +399,24 @@ impl Game<'_> {
                     log::warn!(
                         "Sunrise: commands are not supported in configuration, trying to run '{command}'"
                     );
+                    wait = false;
                 }
             }
             Some(Click::ShowDialog(dialog)) => {
-                self.show_dialog_ref_in_phase(&dialog, configuration)
+                // showDialog opens its own receiver, not the waiting screen.
+                self.show_dialog_ref_in_phase(&dialog, configuration);
+                wait = false;
             }
             Some(Click::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
                 self.clipboard.set(&value);
             }
-            // ConfirmLinkScreen over the screen the dialog leaves.
-            Some(Click::OpenUrl(url)) => self.click_url(url),
+            // ConfirmLinkScreen over the screen the dialog leaves. If the
+            // confirmation was vetoed, neither it nor its return screen opens.
+            Some(Click::OpenUrl(url)) => {
+                self.click_url(url);
+                wait &= self.link_prompt.is_some();
+            }
             // defaultHandleClickEvent: `activeScreen.insertText(command, true)`.
             // Only the chat screen (opened under the dialog) takes text.
             Some(Click::SuggestCommand(command)) => {
@@ -426,7 +434,19 @@ impl Game<'_> {
             Some(other) => log::error!("Don't know how to handle {other:?}"),
             None => {}
         }
-        if self.dialog_screen_key() != before {
+        if wait {
+            let start_waiting = |game: &mut Self| {
+                game.dialogs.open = None;
+                game.dialogs.waiting = Some(Instant::now());
+            };
+            if self.command_prompt.is_some() || self.link_prompt.is_some() {
+                // The confirmation already became the receiver. Stage only
+                // the screen it can return to; do not mount it under the prompt.
+                start_waiting(self);
+            } else {
+                self.open_screen_overlay("dialog", start_waiting);
+            }
+        } else if self.dialog_screen_key() != before {
             self.dialog_receiver_changed();
         }
         Ok(())
@@ -839,6 +859,16 @@ impl Game<'_> {
         }
     }
 
+    /// `DialogScreen.WarningScreen`: Back opens its return dialog if still live.
+    fn return_from_dialog_warning(&mut self) {
+        if self.dialogs.open.is_some() || self.dialogs.waiting.is_some() {
+            self.open_screen_overlay("dialog", |game| game.dialogs.warning = false);
+        } else {
+            self.dialogs.warning = false;
+            self.dialog_receiver_changed();
+        }
+    }
+
     /// A left click on a dialog screen.
     pub(super) fn dialog_click(&mut self) -> Result<bool> {
         let cursor = self.cursor;
@@ -854,8 +884,7 @@ impl Game<'_> {
                 }
                 Some(false) => {
                     self.audio.play_button_click();
-                    self.dialogs.warning = false;
-                    self.dialog_receiver_changed();
+                    self.return_from_dialog_warning();
                 }
                 None => {}
             }
@@ -1153,8 +1182,7 @@ impl Game<'_> {
         let escape = key == KeyCode::Escape;
         if self.dialogs.warning {
             if escape {
-                self.dialogs.warning = false;
-                self.dialog_receiver_changed();
+                self.return_from_dialog_warning();
             }
             return Ok(escape);
         }

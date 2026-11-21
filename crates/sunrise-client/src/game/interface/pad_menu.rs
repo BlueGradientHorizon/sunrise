@@ -850,8 +850,9 @@ impl Game<'_> {
             self.pad.menu.osk = None;
         }
         // The on-screen keyboard takes every button while it is open.
+        let suggests = self.pad.menu.osk.is_some() && self.pad_chat_owns_keyboard();
         if let Some(keyboard) = self.pad.menu.osk.as_mut() {
-            if let Some(out) = keyboard.button(button) {
+            if let Some(out) = keyboard.button(button, suggests) {
                 self.pad_osk_output(out);
             }
             if matches!(
@@ -1602,10 +1603,11 @@ impl Game<'_> {
                 self.pad_follow_targets();
             }
         }
-        // Nothing scrolls under the on-screen keyboard; over chat its right stick picks a
-        // suggestion.
+        // Nothing scrolls under the on-screen keyboard; its right stick picks a
+        // suggestion only for the native chat editor.
+        let suggests = self.pad.menu.osk.is_some() && self.pad_chat_owns_keyboard();
         let scroll = if let Some(keyboard) = self.pad.menu.osk.as_mut() {
-            if let Some(out) = keyboard.stick(state.right[1]) {
+            if let Some(out) = keyboard.stick(state.right[1], suggests) {
                 self.pad_osk_output(out);
             }
             [0.0, 0.0]
@@ -2422,6 +2424,15 @@ impl Game<'_> {
             || matches!(self.screen, Screen::Options | Screen::WorldOptions)
     }
 
+    /// Chat's suggestion controls belong to its editor, not an overlay or a mounted field.
+    fn pad_chat_owns_keyboard(&self) -> bool {
+        self.screen == Screen::Chat
+            && self.title.is_none()
+            && self.ui.chat_screen.is_some()
+            && !self.screen_over_playing()
+            && !self.mounted_widget_captures_input()
+    }
+
     /// Enter on these goes on to a new line: a dialog's, a sign's or a book's page.
     fn pad_enter_keeps_typing(&self) -> bool {
         !self.mounted_widget_captures_input()
@@ -2449,8 +2460,7 @@ impl Game<'_> {
         {
             return;
         }
-        let suggests = self.screen == Screen::Chat && self.title.is_none() && !self.dialog_open();
-        self.pad.menu.osk = Some(Keyboard::new(self.pad_enter_keeps_typing(), suggests));
+        self.pad.menu.osk = Some(Keyboard::new(self.pad_enter_keeps_typing()));
     }
 
     /// Chat or a sign opened by the pad (either menu mode): the keyboard
@@ -2488,7 +2498,7 @@ impl Game<'_> {
             Output::Done => (Some(KeyCode::Enter), None),
             // Chat's suggestions (CommandSuggestions.keyPressed): Tab, Up and Down.
             Output::Complete | Output::Previous | Output::Next => {
-                if self.screen == Screen::Chat && !self.dialog_open() {
+                if self.pad_chat_owns_keyboard() {
                     let key = match out {
                         Output::Complete => KeyCode::Tab,
                         Output::Previous => KeyCode::ArrowUp,
@@ -2662,7 +2672,12 @@ impl Game<'_> {
                 || self.screen == Screen::Chat;
             let mut ui = sunrise_client::ui_theme::Ui::new(&self.gui.atlas, batch, self.cursor);
             let options = &self.ui.options;
-            keyboard.draw(&mut ui, at_top, options.pad_glyphs);
+            keyboard.draw(
+                &mut ui,
+                at_top,
+                options.pad_glyphs,
+                self.pad_chat_owns_keyboard(),
+            );
             ui.finish();
             return;
         }
