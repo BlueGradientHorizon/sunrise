@@ -7,6 +7,7 @@ pub(super) enum MenuOpen {
     Opened,
     Cancelled,
     Refused,
+    NoProvider,
     Stale,
 }
 
@@ -1153,7 +1154,8 @@ mod tests {
     fn block_menu_click_keeps_spent_action_on_cancellation() {
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
+        use sunrise_client::{chunk::Chunk, lan::guest::GuestKind};
+        use sunrise_core::nbt::Tag;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -1170,15 +1172,37 @@ mod tests {
                 game.level_set_block(level, [0, 64, 0], chest, BlockUpdateFlags::NEIGHBORS),
                 Ok(true)
             );
+            let pos = (0, 64, 0);
             assert!(!game.lan_open_container(12, (2, 64, 0)));
+            assert!(game.lan_open_container(999, pos));
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.kind = GuestKind::Fake;
+            });
+            assert!(game.lan_open_container(12, pos));
+            assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.kind = GuestKind::Network;
+            });
             mod_platform::testing::with_mods(
                 vec![mod_api::ModEntry::new("stop_menu", Box::new(StopMenu))].into(),
                 || {
-                    assert!(game.lan_open_container(12, (0, 64, 0)));
+                    assert!(game.lan_open_container(12, pos));
                     assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
                 },
             );
-            assert!(game.lan_open_container(12, (0, 64, 0)));
+            let lock = Tag::compound([(
+                "lock",
+                Tag::compound([("items", Tag::String("minecraft:gold_ingot".into()))]),
+            )]);
+            game.world.set_block_lock(pos, &lock);
+            // Simulate the opener already started by the block use before handoff.
+            assert!(game.container_openers_changed(pos, true));
+            assert!(game.lan_open_container(12, pos));
+            assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert!(!game.lid_openers.contains_key(&pos));
+            game.world
+                .set_block_lock(pos, &Tag::Compound(Default::default()));
+            assert!(game.lan_open_container(12, pos));
             assert!(game.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
         });
     }

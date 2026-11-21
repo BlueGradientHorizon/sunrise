@@ -28,24 +28,25 @@ impl Game<'_> {
         }
     }
 
-    /// Hand a container the guest opened over (ServerPlayer.openMenu);
-    /// false when it is not one a guest can open.
+    /// Finish the menu handoff for a guest's use. As in `ChestBlock.useWithoutItem`,
+    /// refusal by `ServerPlayer.openMenu` does not unspend the use. For blocks,
+    /// `false` means there was no menu provider to hand off.
     pub(in crate::game) fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
         if pos.1 == crate::game::minecarts::CART_KEY_Y {
             return self.lan_open_vehicle_container(conn, pos);
         }
         let opened = self.open_block_menu_with_opener(conn, pos, true);
-        if opened == MenuOpen::Cancelled
+        if opened != MenuOpen::Opened
             && self
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
                 .is_some_and(|guest| !guest.spectator())
         {
-            // The click is spent, but no menu took ownership of the use's opener.
+            // No menu took ownership of the use's opener.
             self.container_openers_changed(pos, false);
         }
-        !matches!(opened, MenuOpen::Refused | MenuOpen::Stale)
+        opened != MenuOpen::NoProvider
     }
 
     pub(in crate::game) fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
@@ -96,13 +97,13 @@ impl Game<'_> {
             (menu, Slots::Block(pos))
         } else {
             let Some(BlockEntity::Chest(items)) = self.world.block_entities.get(&pos) else {
-                return MenuOpen::Refused;
+                return MenuOpen::NoProvider;
             };
             let menu = match items.len() {
                 27 => "minecraft:generic_9x3",
                 9 => "minecraft:generic_3x3",
                 5 => "minecraft:hopper",
-                _ => return MenuOpen::Refused,
+                _ => return MenuOpen::NoProvider,
             };
             (menu, Slots::Block(pos))
         };
@@ -123,12 +124,12 @@ impl Game<'_> {
                     None if self.mod_menu_at(k).is_some() => {
                         format!("block.{}", name.replace(':', "."))
                     }
-                    None => return MenuOpen::Refused,
+                    None => return MenuOpen::NoProvider,
                 };
                 sunrise_client::containers::display_name(custom(k).as_deref(), &key)
             }
             // Opened by a mod (`open_menu`), never here.
-            Slots::Native => return MenuOpen::Refused,
+            Slots::Native => return MenuOpen::NoProvider,
         };
         let Some(host) = self.lan.as_ref() else {
             return MenuOpen::Refused;
