@@ -136,7 +136,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
         game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
-        let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new());
+        let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
         assert_eq!(
             events(&heard),
             [
@@ -190,7 +190,7 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
         ] {
             game.camera_type = camera;
             game.occlusion.shadow_casters.1 = player_shadow;
-            game.entity_geometry(CAMERA, 1.0, None, Vec::new());
+            game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
             assert!(
                 !game
                     .entity_runs
@@ -319,7 +319,13 @@ fn entity_draw_order_after_client_packets() {
                 ["frame"] => {
                     game.camera_type = CameraType::ThirdPersonBack;
                     game.tick_player_model();
-                    game.entity_geometry(glam::DVec3::new(0.5, 321.0, -4.5), 1.0, None, Vec::new());
+                    game.entity_geometry(
+                        glam::DVec3::new(0.5, 321.0, -4.5),
+                        1.0,
+                        None,
+                        Vec::new(),
+                        &mut Vec::new(),
+                    );
                     // The render pass marks every submitted body for frame generation. Read
                     // nonempty spans, not the planner's list, so a changed submit loop fails too.
                     let ids: Vec<_> = game
@@ -358,6 +364,9 @@ fn entity_draw_order_after_client_packets() {
                 vec![4321, 91, 40, 3],
                 vec![4321, 91, 40, 3, 7, 8, 9],
                 vec![4321, 91, 40, 3, 8, 9, 7],
+                vec![4321, 23, 82, 110, 20],
+                vec![4321, 82, 110, 20, 23],
+                vec![4321, 82, 23, 110, 20],
             ]
         );
     });

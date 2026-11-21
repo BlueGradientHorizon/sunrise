@@ -1182,8 +1182,6 @@ struct Game<'a> {
     entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
     /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
     entity_runs: Vec<entity::DrawRun>,
-    // Extracted general rows; keep the capacity between frames.
-    general_render_states: std::cell::RefCell<Vec<general_draw::ExtractedGeneral>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
@@ -5446,6 +5444,7 @@ impl Game<'_> {
         alpha: f64,
         billboard_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
         mut out: Vec<Vertex>,
+        additive: &mut Vec<Vertex>,
     ) -> (
         Vec<Vertex>,
         Arc<[StaticSectionSnapshot]>,
@@ -5550,6 +5549,8 @@ impl Game<'_> {
         let tnt_sprites = std::cell::OnceCell::new();
         let falling_setup = std::cell::OnceCell::new();
         let orb_frame = std::cell::OnceCell::new();
+        let general_frame = std::cell::OnceCell::new();
+        let crystal_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
         self.ordered_draw_runs(&mut runs);
         // Sets the CEM frame even if there are no mobs; later passes also use it.
@@ -5560,6 +5561,27 @@ impl Game<'_> {
             match run.family {
                 F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
                 F::LocalPlayer => self.local_player_geometry(camera, &mut out),
+                F::RemoteGeneral => {
+                    if let Some(frame) =
+                        general_frame.get_or_init(|| self.begin_general_geometry(camera, alpha))
+                    {
+                        self.general_run_geometry(frame, range, &mut out);
+                    }
+                }
+                F::Dragon => {
+                    // A dragon summoned outside the End draws at its join slot too.
+                    if let Some(dragon) = self.dragon.as_ref() {
+                        self.dragon_geometry(dragon, camera, alpha, &mut out, additive);
+                    }
+                }
+                F::Crystal => {
+                    if let Some(frame) = crystal_frame.get_or_init(|| self.begin_crystal_geometry())
+                    {
+                        for crystal in &self.crystals[range] {
+                            self.end_crystal_geometry(crystal, frame, camera, &mut out);
+                        }
+                    }
+                }
                 F::Item => {
                     // `ItemEntityRenderer`.
                     self.mark_entity(out.len(), "minecraft:item");
@@ -5624,7 +5646,7 @@ impl Game<'_> {
         self.mark_entity(out.len(), "minecraft:ominous_item_spawner");
         self.ominous_item_spawner_geometry(camera, alpha, &mut out);
         laps.lap("eg_items_misc");
-        // General rows, spawners and projectiles still have their own pass.
+        // Spawners and projectiles still have their own pass.
         self.other_creature_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
         laps.lap("eg_other_creatures");
@@ -8787,10 +8809,13 @@ impl Game<'_> {
         } else {
             self.shader_pack_inputs(camera, alpha as f32, &sky)
         };
+        // Retain the existing additive particle stream; the ordered dragon emitter appends
+        // the eyes and rays to it without changing their material routing.
+        let mut additive = self.particles.take_additive();
         if !title {
             let (built, static_sections, visible_static_sections, static_stats) =
                 spans::time("entity_geometry", || {
-                    self.entity_geometry(camera, alpha, billboard_frustum, entities)
+                    self.entity_geometry(camera, alpha, billboard_frustum, entities, &mut additive)
                 });
             entities = built;
             static_block_entities = static_sections;
@@ -8809,18 +8834,10 @@ impl Game<'_> {
         } else {
             self.bolt_instances(camera)
         };
-        // Particles blended additively (resource packs' Polytone ones, #11486), from the
-        // render that built `entities`.
-        let mut additive = self.particles.take_additive();
-        // The dragon is drawn in every dimension, as any entity: a dragon
-        // summoned outside the End (the server's AddEntity) is shown too.
         if !title {
-            let mut dragon = Vec::new();
-            self.dragon_geometry(camera, alpha, &mut dragon, &mut additive);
-            self.dragon_fireball_geometry(camera, alpha, &mut dragon);
-            entities.extend(dragon);
+            self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
-        pr.lap("pr_dragon_bolts");
+        pr.lap("pr_dragon_fireballs_bolts");
         let (celestial, stars) = if title {
             (Vec::new(), None)
         } else if self.overworld_skybox()
@@ -8867,7 +8884,7 @@ impl Game<'_> {
             self.screen_quads(alpha as f32, size, scale, hand_projection)
         };
         if !title {
-            self.end_geometry(camera, &mut entities);
+            self.eye_geometry(camera, &mut entities);
         }
         self.outline_fill(&outline, camera, &mut entities);
         pr.lap("pr_screen_end");
@@ -10999,7 +11016,6 @@ impl<'a> Game<'a> {
             shadow_only_vertices: Default::default(),
             entity_spans: Default::default(),
             entity_runs: Vec::new(),
-            general_render_states: Default::default(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
             skin_models: Default::default(),

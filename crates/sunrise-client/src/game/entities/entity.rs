@@ -1278,6 +1278,9 @@ pub(super) enum JoinOrderError {
 pub(super) enum DrawFamily {
     Mob,
     LocalPlayer,
+    RemoteGeneral,
+    Dragon,
+    Crystal,
     Item,
     Orb,
     Falling,
@@ -1318,42 +1321,67 @@ impl DrawFamily {
     }
 }
 
-/// Adds the entity to the runs: to the last one when it is its family's next, else as a run of
-/// its own. Entities of families the pass does not draw are skipped, so they split no run.
-fn push_draw_run(runs: &mut Vec<DrawRun>, handle: EntityHandle) {
-    let Some((family, index)) = DrawFamily::of(handle) else {
-        return;
-    };
-    match runs.last_mut() {
-        Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
-        _ => runs.push(DrawRun {
-            family,
-            range: index..index + 1,
-        }),
-    }
+/// Draw sources that the shared `EntityLists` walk does not own.
+#[derive(Default)]
+struct DrawExtras<'a> {
+    local_player: Option<JoinSeq>,
+    dragon: Option<JoinSeq>,
+    crystals: &'a [super::dragon::Crystal],
+    general: Option<&'a super::remote::general::RemoteGenerals>,
 }
 
-/// The drawn entities as runs in the order they joined the level.
-fn draw_runs(lists: EntityLists<'_>, local_player: Option<JoinSeq>, runs: &mut Vec<DrawRun>) {
+/// The drawn entities as runs in the order they joined the level. The draw-only sources
+/// compete with the same cached head of the shared merge until it is consumed.
+fn draw_runs(lists: EntityLists<'_>, mut extra: DrawExtras<'_>, runs: &mut Vec<DrawRun>) {
+    use DrawFamily as F;
+    let mut bodies = lists
+        .merge_in_join_order::<true>()
+        .filter_map(|(handle, seq)| DrawFamily::of(handle).map(|(family, i)| (seq, family, i)))
+        .peekable();
+    let mut crystals = extra.crystals.iter().enumerate().peekable();
+    let mut general = extra
+        .general
+        .into_iter()
+        .flat_map(|g| g.rows.values())
+        .enumerate()
+        .filter(|(_, row)| row.shown)
+        .peekable();
     runs.clear();
-    let mut pending = local_player.unwrap_or(JoinSeq::MAX);
-    for (handle, seq) in lists.merge_in_join_order::<true>() {
-        // The local player has its own resident slot, outside these entity lists.
-        if pending < seq {
-            runs.push(LOCAL_PLAYER_RUN);
-            pending = JoinSeq::MAX;
+    while let Some((_, family, index)) = [
+        bodies.peek().copied(),
+        extra.local_player.map(|seq| (seq, F::LocalPlayer, 0)),
+        extra.dragon.map(|seq| (seq, F::Dragon, 0)),
+        crystals.peek().map(|&(i, c)| (c.join, F::Crystal, i)),
+        general
+            .peek()
+            .map(|&(i, row)| (row.join, F::RemoteGeneral, i)),
+    ]
+    .into_iter()
+    .flatten()
+    .min_by_key(|&(seq, _, _)| seq)
+    {
+        match family {
+            F::LocalPlayer => extra.local_player = None,
+            F::Dragon => extra.dragon = None,
+            F::Crystal => {
+                crystals.next();
+            }
+            F::RemoteGeneral => {
+                general.next();
+            }
+            _ => {
+                bodies.next();
+            }
         }
-        push_draw_run(runs, handle);
-    }
-    if pending != JoinSeq::MAX {
-        runs.push(LOCAL_PLAYER_RUN);
+        match runs.last_mut() {
+            Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
+            _ => runs.push(DrawRun {
+                family,
+                range: index..index + 1,
+            }),
+        }
     }
 }
-
-const LOCAL_PLAYER_RUN: DrawRun = DrawRun {
-    family: DrawFamily::LocalPlayer,
-    range: 0..1,
-};
 
 impl Game<'_> {
     /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
@@ -1372,7 +1400,17 @@ impl Game<'_> {
         let local_player = self
             .player_model_shown()
             .then(|| self.resident_entities.local_player.join());
-        draw_runs(entity_lists_of!(self), local_player, runs);
+        draw_runs(
+            entity_lists_of!(self),
+            DrawExtras {
+                local_player,
+                dragon: self.dragon.as_ref().map(|dragon| dragon.join),
+                crystals: &self.crystals,
+                // Pending snapshots do not change the IndexMap's order or the spawn stamp.
+                general: self.remote.as_ref().map(|r| &r.general),
+            },
+            runs,
+        );
     }
 }
 
@@ -3131,7 +3169,14 @@ mod join_order_tests {
         local_player: Option<JoinSeq>,
     ) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
         let mut runs = Vec::new();
-        super::draw_runs(lists.view(), local_player, &mut runs);
+        super::draw_runs(
+            lists.view(),
+            super::DrawExtras {
+                local_player,
+                ..Default::default()
+            },
+            &mut runs,
+        );
         runs.into_iter().map(|r| (r.family, r.range)).collect()
     }
 
@@ -3189,22 +3234,30 @@ mod join_order_tests {
         );
     }
 
-    /// Entities the pass does not draw split no run: a stand either side of a general row is one.
+    /// Entities of an undrawn family do not split a run.
     #[test]
     fn an_undrawn_family_splits_no_run() {
-        let mut runs = Vec::new();
-        for handle in [
-            EntityHandle::ArmorStand(0),
-            EntityHandle::General(0),
-            EntityHandle::ArmorStand(1),
-        ] {
-            super::push_draw_run(&mut runs, handle);
-        }
+        use sunrise_client::projectiles::{Projectile, ProjectileKind};
+        let mut lists = Lists::default();
+        lists.stand(1);
+        let mut projectiles = JoinList::<Projectile, false>::default();
+        projectiles.push(Projectile::new(ProjectileKind::DragonFireball, at(), None));
+        lists.stand(2);
+        let mut draw = Vec::new();
+        super::draw_runs(
+            EntityLists {
+                projectiles: &projectiles,
+                ..lists.view()
+            },
+            super::DrawExtras::default(),
+            &mut draw,
+        );
         assert_eq!(
-            runs.into_iter()
-                .map(|r| (r.family, r.range))
-                .collect::<Vec<_>>(),
-            [(DrawFamily::ArmorStand, 0..2)]
+            draw,
+            [super::DrawRun {
+                family: DrawFamily::ArmorStand,
+                range: 0..2
+            }]
         );
     }
 

@@ -246,9 +246,8 @@ fn attachment_packet(
 
 /// One frame of the entity pass at `alpha`.
 fn frame(game: &mut Game<'_>, alpha: f64) -> Vec<Vertex> {
-    let mut out = Vec::new();
-    game.mob_geometry(CAMERA, alpha, &mut out);
-    out
+    game.entity_geometry(CAMERA, alpha, None, Vec::new(), &mut Vec::new())
+        .0
 }
 
 /// The scene on a client (its block atlas loaded) joined to a server through memory, with its
@@ -439,26 +438,60 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
     in_scene(
         "general_submission_keeps_lookup_order_across_removal_and_reentry",
         |game, _| {
-            for (id, x) in [(12, 6.0), (8, 8.0)] {
-                game.handle_packet(spawn(id, "test:missile", [x, 321.0, 0.0]))
-                    .unwrap();
-                game.handle_packet(snapshot(id as u32, Some(1))).unwrap();
+            let builtin = game.remote.as_ref().unwrap().builtin.clone();
+            let types = builtin.get("minecraft:entity_type").unwrap();
+            let vanilla = |id, kind| {
+                C::AddEntity(play::AddEntity {
+                    id,
+                    uuid: id as u128,
+                    kind: types.id(kind).unwrap(),
+                    position: [0.0, 321.0, 0.0],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                })
+            };
+            game.pack_ids = Some(super::shader_packs::PackIds::with_entity_ids([(
+                "test:missile",
+                77,
+            )]));
+            for packet in [
+                vanilla(71, "minecraft:armor_stand"),
+                spawn(12, "test:missile", [6.0, 321.0, 0.0]),
+                vanilla(42, "minecraft:zombie"),
+                spawn(8, "test:missile", [8.0, 321.0, 0.0]),
+                snapshot(8, Some(1)),
+            ] {
+                game.handle_packet(packet).unwrap();
             }
             let submitted = |game: &mut Game<'_>| {
-                frame(game, 1.0)
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|quad| quad.iter().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min))
+                frame(game, 1.0);
+                game.entity_motion
+                    .borrow()
+                    .windows(2)
+                    .filter(|w| w[0].1 != 0 && w[0].0 < w[1].0)
+                    .map(|w| w[0].1 as u32)
                     .collect::<Vec<_>>()
             };
-            assert_eq!(submitted(game), [4.0, 6.0, 8.0]);
+            assert_eq!(submitted(game), [5, 71, 42, 8]);
+            // Arrival of the snapshot reveals the row at its earlier spawn slot, not the tail.
+            game.handle_packet(snapshot(12, Some(1))).unwrap();
+            assert_eq!(submitted(game), [5, 71, 12, 42, 8]);
+            let own_type_spans = game
+                .entity_spans
+                .borrow()
+                .windows(2)
+                .filter(|w| w[0].id == 77 && w[0].start < w[1].start)
+                .count();
+            assert_eq!(own_type_spans, 3);
             game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![12] }))
                 .unwrap();
             game.handle_packet(spawn(12, "test:missile", [6.0, 321.0, 0.0]))
                 .unwrap();
             game.handle_packet(snapshot(12, Some(1))).unwrap();
-            assert_eq!(submitted(game), [4.0, 8.0, 6.0]);
+            assert_eq!(submitted(game), [5, 71, 42, 8, 12]);
         },
     );
 }
@@ -645,21 +678,16 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                         .is_some_and(|r| r.shown)
                 };
                 poll_until(game, ready);
-                let check_quad = |g: &Game<'_>| {
-                    let mut vertices = Vec::new();
-                    g.general_entity_geometry(camera, 1.0, &mut vertices);
+                let check_quad = |g: &mut Game<'_>| {
+                    let (frame, ..) =
+                        g.entity_geometry(camera, 1.0, None, Vec::new(), &mut Vec::new());
+                    let motion = g.entity_motion.borrow();
+                    let run = motion
+                        .windows(2)
+                        .find(|w| w[0].1 == Game::MOTION_OBJECT | u64::from(id))
+                        .expect("the frame's entity pass carries the row's quad");
+                    let vertices = &frame[run[0].0 as usize..run[1].0 as usize];
                     assert_eq!(vertices.len(), 4);
-                    // The window's entity pass draws the same quad.
-                    let mut frame = Vec::new();
-                    g.mob_geometry(camera, 1.0, &mut frame);
-                    assert!(
-                        frame.windows(4).any(|quad| {
-                            quad.iter()
-                                .map(|v| v.pos)
-                                .eq(vertices.iter().map(|v| v.pos))
-                        }),
-                        "the frame's entity pass carries the row's quad"
-                    );
                     let x = vertices.iter().map(|v| v.pos[0]);
                     assert_eq!(x.clone().fold(f32::INFINITY, f32::min), 0.0);
                     assert_eq!(x.fold(f32::NEG_INFINITY, f32::max), 7.0);

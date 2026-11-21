@@ -39,6 +39,8 @@ import net.minecraft.server.Bootstrap;
 import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.monster.zombie.Zombie;
@@ -128,6 +130,7 @@ public final class VanillaEntityDrawOrderOracle {
             (LevelCallback<Entity>) callbacks.newInstance(level));
         field(ClientLevel.class, "entityStorage").set(level, storage);
         field(ClientLevel.class, "players").set(level, new ArrayList<LocalPlayer>());
+        field(ClientLevel.class, "dragonParts").set(level, new ArrayList<>());
         field(ClientLevel.class, "tickingEntities").set(level, new EntityTickList());
     }
 
@@ -157,9 +160,18 @@ public final class VanillaEntityDrawOrderOracle {
             case "minecraft:zombie" -> new Zombie(EntityTypes.ZOMBIE, level);
             case "minecraft:tnt" -> new PrimedTnt(EntityTypes.TNT, level);
             case "minecraft:item" -> new ItemEntity(EntityTypes.ITEM, level);
+            case "minecraft:ender_dragon" -> new EnderDragon(EntityTypes.ENDER_DRAGON, level);
+            case "minecraft:end_crystal" -> new EndCrystal(EntityTypes.END_CRYSTAL, level);
             default -> throw new IllegalArgumentException(type);
         };
         entity.setId(id);
+        if (entity instanceof EnderDragon dragon) {
+            // The dragon's packet recreation assigns part IDs before level admission.
+            int partId = id;
+            for (var part : dragon.getSubEntities()) {
+                part.setId(++partId);
+            }
+        }
         entity.setUUID(new UUID(0, id));
         entity.setPosRaw(id % 5, 321.0, 0.5);
         level.addEntity(entity);
