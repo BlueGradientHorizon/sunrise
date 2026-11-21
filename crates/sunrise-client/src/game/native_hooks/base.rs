@@ -639,7 +639,7 @@ impl Game<'_> {
     }
     /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
     /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
+    /// (including its render bookkeeping) and `native_gui_layer_post`. Replacing
     /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
     /// draws from the chat screen, and a layer F1 hides fires neither hook.
     pub(in crate::game) fn native_gui_layer_pre(
@@ -698,15 +698,6 @@ impl Game<'_> {
         call: mod_api::__private::PlayerTickPostCall,
     ) {
         self.fire_player_tick_post(call);
-    }
-    pub(in crate::game) fn native_health_hud(
-        &mut self,
-        inputs: &mod_api::client::hud_layout::HealthInputs,
-        wi: i32,
-        hi: i32,
-        draws: &mut Option<Vec<GuiDraw>>,
-    ) {
-        self.fire_health_hud(inputs, wi, hi, draws);
     }
     /// Raw mouse button input on any screen, before dispatch; cancel skips dispatch and Post.
     /// Button/modifiers use the same GLFW encoding as screen hooks. Synthetic clicks skip it.

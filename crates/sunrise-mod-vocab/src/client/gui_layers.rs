@@ -52,13 +52,16 @@ pub trait GuiLayerRegistrar {
     ) -> bool;
 
     /// Replace an already registered layer (including a vanilla layer) with `draw`.
-    /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
-    /// position and draw conditions.
+    /// Keeps the layer's ID, order and which frames dispatch the slot. Discards the entire
+    /// previous body, including wrappers and eligibility checks. For example, a replaced
+    /// status slot still runs under F1, even though its original body would not draw.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
-    /// Wrap an already registered layer in place, keeping its ID, position and draw conditions.
-    /// The newest wrapper runs first and can draw the previous body through its context.
+    /// Wrap an already registered layer in place, keeping its ID, order and slot dispatch.
+    /// The newest wrapper runs first. A wrapper's own paint need not follow the original
+    /// body's eligibility checks. Those checks apply only when
+    /// [`GuiLayerWrapContext::draw_previous`] reaches the original body.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;
 }

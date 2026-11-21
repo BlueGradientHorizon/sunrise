@@ -1611,7 +1611,7 @@ fn stack_crossing_routed(
         "ParticleOptions",
     ];
     const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
-    const INFALLIBLE_VALUES: &[&str] = &["GuiDraw", "Text"];
+    const INFALLIBLE_VALUES: &[&str] = &["Text"];
     let parameters = args.iter().chain(output).collect::<Vec<_>>();
     if !parameters.iter().any(|(_, ty)| {
         contains_boundary(ty, STACK_VALUES)
@@ -2217,34 +2217,6 @@ fn main() {
         );
     }
 
-    #[test]
-    fn gui_snapshot_and_writeback_are_guarded_and_context_free() {
-        let draws: Type = syn::parse_quote!(&mut Option<Vec<GuiDraw>>);
-        let crossing = stack_crossing(
-            &[("draws".into(), &draws)],
-            None,
-            "HealthHud",
-            false,
-            &Default::default(),
-        )
-        .unwrap();
-        assert!(
-            crossing
-                .before
-                .starts_with("if !mod_api::__private::listened")
-        );
-        assert!(
-            crossing
-                .before
-                .contains("match draws.try_into_api() { Ok(value) => value, Err(_) => return }")
-        );
-        assert!(crossing.after.contains(
-            "match __api_draws.try_into_engine(&()) { Ok(value) => value, Err(_) => return }"
-        ));
-        assert!(crossing.after.ends_with("*draws = __engine_draws; "));
-        assert!(!crossing.before.contains("ItemBoundary"));
-        assert!(!crossing.after.contains("StackWriteError"));
-    }
     #[test]
     fn completion_hook_converts_only_after_subscription_check() {
         let ty: Type = syn::parse_quote!(&mut Vec<Suggestion>);

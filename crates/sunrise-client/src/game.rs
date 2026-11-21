@@ -7141,7 +7141,9 @@ impl Game<'_> {
             || self.dialog_open())
             && self.player.is_none()
         {
-            HudBatch::new(size, self.settings.gui_scale_inputs())
+            let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
+            batch
         } else {
             self.hud_layers(size)
         };
@@ -7200,6 +7202,7 @@ impl Game<'_> {
             // The early return skips the match below: the hooks still see the
             // screen, after its own drawing.
             self.draw_screen_with_post_hook(&mut batch);
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
             return batch;
         }
         if self.screen == Screen::Options {
@@ -7215,6 +7218,7 @@ impl Game<'_> {
             }
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_controller_notice(&mut batch);
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
             return batch;
         }
         self.settle_title_toasts();
@@ -7300,12 +7304,15 @@ impl Game<'_> {
         let spectator = self.spectator();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
-        if !self.ui.hide_gui {
+        let replaying = self.replay.playing();
+        // RenderGuiEvent.Pre can veto the status slots even when F1 hides their vanilla paint.
+        if !replaying || !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre can hide the HUD, not the mandatory diagnostics outside it.
-        let presentation_hidden = self.ui.hide_gui || self.replay.playing();
-        let show_hud = !presentation_hidden && !gui_canceled;
+        // The veto covers status slots even under F1, but not mandatory diagnostics.
+        let dispatch_status = !gui_canceled && !replaying;
+        let presentation_hidden = self.ui.hide_gui || replaying;
+        let show_hud = dispatch_status && !self.ui.hide_gui;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7388,6 +7395,142 @@ impl Game<'_> {
             });
             self.draw_extras(&mut batch);
         }
+        if dispatch_status {
+            // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
+            // The installed vanilla bodies share the column heights and a scratch draw list.
+            let mut status_heights = hud_layout::StatusBarHeights::default();
+            let mut status_rows = Vec::new();
+            let mount = if !show_hud || spectator {
+                None
+            } else {
+                self.mount_index().map(|i| {
+                    let mob = &self.mobs[i];
+                    (
+                        hud_layout::vehicle_max_hearts(mob.attrs.max_health),
+                        mob.health,
+                    )
+                })
+            };
+            // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
+            let show_survival_status = show_hud && !self.creative && !spectator;
+            self.gui_layer(
+                VanillaGuiLayer::PlayerHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    if !show_survival_status {
+                        return;
+                    }
+                    let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
+                    let Some(p) = &mut g.player else { return };
+                    let blink = g.health_hud.update_health(
+                        p.health.health(),
+                        tick,
+                        millis,
+                        p.health.hurt.cooldown > 0,
+                    );
+                    let inputs = hud_layout::HealthInputs {
+                        tick,
+                        max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
+                        absorption: p.health.absorption(),
+                        regeneration: g.potions.effects.get("regeneration").is_some(),
+                        hardcore: g.level.hardcore,
+                        blink,
+                    };
+                    let Some(kind) = g.player_heart_kind() else {
+                        return;
+                    };
+                    status_rows.clear();
+                    g.health_hud.health_level(
+                        &inputs,
+                        kind,
+                        wi,
+                        hi,
+                        &mut status_heights,
+                        &mut status_rows,
+                    );
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status {
+                    return;
+                }
+                let Some(p) = &mut g.player else { return };
+                let armor = p
+                    .attribute("minecraft:armor")
+                    .or_else(|_| p.attribute("armor"))
+                    .unwrap_or(0.0) as i32;
+                status_rows.clear();
+                hud_layout::armor_level(armor, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+            });
+            self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
+                    return;
+                }
+                let Some(p) = &g.player else { return };
+                let inputs = hud_layout::FoodInputs {
+                    tick: g.visual_ticks() as i32,
+                    food: p.health.food.food,
+                    saturation: p.health.food.saturation,
+                    hunger: g.potions.effects.get("hunger").is_some(),
+                };
+                status_rows.clear();
+                g.health_hud
+                    .food_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+            });
+            self.gui_layer(
+                VanillaGuiLayer::VehicleHealth,
+                &mut batch,
+                &mut |g, batch| {
+                    let Some((hearts, health)) = mount else {
+                        return;
+                    };
+                    status_rows.clear();
+                    hud_layout::vehicle_health(
+                        wi,
+                        hi,
+                        hearts,
+                        health,
+                        &mut status_heights,
+                        &mut status_rows,
+                    );
+                    hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                },
+            );
+            self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
+                if !show_survival_status {
+                    return;
+                }
+                let Some(p) = &g.player else { return };
+                let inputs = hud_layout::AirInputs {
+                    tick: g.visual_ticks() as i32,
+                    air: p.air,
+                    max_air: 300,
+                    // Hud.extractAirBubbles checks the fluid at the eyes, not the block.
+                    under_water: p.is_eye_in_fluid(sunrise_client::motion::WATER),
+                };
+                let at = [p.position.x, p.position.y, p.position.z];
+                status_rows.clear();
+                let pop_sound =
+                    g.health_hud
+                        .air_level(&inputs, wi, hi, &mut status_heights, &mut status_rows);
+                hud_layout::paint(batch, &g.gui.atlas, &status_rows);
+                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
+                // by this client only.
+                if let Some((volume, pitch)) = pop_sound {
+                    let players = sunrise_client::settings::SOUND_SOURCES
+                        .iter()
+                        .position(|s| *s == "player")
+                        .unwrap_or(0);
+                    let capture = g.audio.capture.take();
+                    g.audio
+                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
+                    g.audio.capture = capture;
+                }
+            });
+        }
         if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
             // the locator bar above the hotbar.
@@ -7400,83 +7543,6 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts reserve right-column space before air is laid out.
-            let mut status_heights = hud_layout::StatusBarHeights::default();
-            let vehicle_hearts = if spectator {
-                0
-            } else {
-                self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
-            };
-            let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
-            let kind = (!self.creative && !spectator)
-                .then(|| self.player_heart_kind())
-                .flatten();
-            if let Some(kind) = kind
-                && let Some(p) = &mut self.player
-            {
-                let effects = &self.potions.effects;
-                // Hud.extractAirBubbles: `isEyeInFluidMatching`, so the eyes are below
-                // the surface, not merely in the water block.
-                let under_water = p.is_eye_in_fluid(sunrise_client::motion::WATER);
-                let inputs = hud_layout::HealthInputs {
-                    tick: visual_ticks as i32,
-                    millis: visual_millis,
-                    health: p.health.health(),
-                    max_health: p.attribute("minecraft:max_health").unwrap_or(20.0) as f32,
-                    absorption: p.health.absorption(),
-                    armor: p
-                        .attribute("minecraft:armor")
-                        .or_else(|_| p.attribute("armor"))
-                        .unwrap_or(0.0) as i32,
-                    food: p.health.food.food,
-                    saturation: p.health.food.saturation,
-                    kind,
-                    regeneration: effects.get("regeneration").is_some(),
-                    hunger: effects.get("hunger").is_some(),
-                    hardcore: self.level.hardcore,
-                    damage_cooldown: p.health.hurt.cooldown > 0,
-                    air: p.air,
-                    max_air: 300,
-                    under_water,
-                    vehicle_hearts,
-                };
-                let at = [p.position.x, p.position.y, p.position.z];
-                // The native mods' health HUD (`native_health_hud`): a mod
-                // that answers draws every row instead.
-                let mut native_health_hud = None;
-                self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let replacement = native_health_hud.as_deref();
-                let vanilla;
-                let layers;
-                let (draws, paint_steps) = if let Some(draws) = &replacement {
-                    (*draws, std::slice::from_ref(draws))
-                } else {
-                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
-                    layers = vanilla.layers();
-                    (vanilla.draws(), layers.as_slice())
-                };
-                self.keep_status_rows(draws, wi, hi);
-                // Keep the four paint steps under the same public layer for now.
-                self.gui_layer(
-                    VanillaGuiLayer::PlayerHealth,
-                    &mut batch,
-                    &mut |g, batch| {
-                        hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
-                    },
-                );
-                // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
-                // by this client only.
-                if let Some((volume, pitch)) = self.health_hud.bubble_pop_sound.take() {
-                    let players = sunrise_client::settings::SOUND_SOURCES
-                        .iter()
-                        .position(|s| *s == "player")
-                        .unwrap_or(0);
-                    let capture = self.audio.capture.take();
-                    self.audio
-                        .play_on(players, "ui.hud.bubble_pop", Some(at), volume, pitch);
-                    self.audio.capture = capture;
-                }
-            }
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,

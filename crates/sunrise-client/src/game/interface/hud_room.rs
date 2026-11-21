@@ -3,7 +3,7 @@
 //! world's HUD draws, into `ui.room`; the controller notice and radial menu read it. With it, the frame's `motion::Clock` (`hud_clock`), and whether an
 //! overlay holds the view (`overlay_holds_view`), which what vanilla draws there gives way to.
 use super::Game;
-use sunrise_client::hud::HudBatch;
+use sunrise_client::hud::{HudBatch, HudVertex};
 use sunrise_client::hud_kit::motion::Clock;
 use sunrise_client::hud_kit::room::{Keep, Room};
 use sunrise_client::{boss_overlay, hud_layout, hud_overlays};
@@ -52,19 +52,19 @@ impl Game<'_> {
         room
     }
 
-    /// The status rows above the hotbar in a `w` x `h` GUI px view, from what they draw this
-    /// frame (`draws`): a keep-out from their highest row's top down, as wide as the hotbar. Called
-    /// as they are laid out, after `hud_room`, so the overlays drawn over the HUD see them.
-    pub(super) fn keep_status_rows(&mut self, draws: &[hud_layout::GuiDraw], w: i32, h: i32) {
-        if let Some(top) = hud_layout::draws_top(draws).filter(|top| *top < h) {
+    /// Reserve the highest painted status row, vanilla or replaced, down to the bottom
+    /// of the view. Measure only the installed body's paint, not the surrounding hook draws.
+    pub(super) fn keep_status_rows(&mut self, vertices: &[HudVertex], w: f32, h: f32) {
+        let top = vertices.iter().map(|v| v.pos[1]).fold(h, f32::min);
+        if top < self.ui.room.bottom() {
             let half = hud_overlays::HOTBAR_HALF_WIDTH;
             self.ui.room.add(
                 Keep::StatusRows,
                 [
-                    (w / 2 - half) as f32,
-                    top as f32,
+                    ((w as i32) / 2 - half) as f32,
+                    top,
                     (2 * half) as f32,
-                    (h - top) as f32,
+                    h - top,
                 ],
             );
         }

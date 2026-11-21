@@ -5,14 +5,16 @@ pub trait Hooks {
     /// After the complete body of a vanilla or mod HUD layer (`RenderGuiLayerEvent.Post`).
     /// Fires once with the ID from `gui_layer_pre`, even if a wrapper omitted its previous
     /// body. Does not fire when `gui_layer_pre` cancels the layer. Use `event.draw` to
-    /// paint above the layer. For a foreground pass independent of any layer, use
-    /// `gui_render_post`.
+    /// paint above the layer. `minecraft:player_health` is the heart layer only; armour,
+    /// food, vehicle health and air have their own layer events. These slots fire even when
+    /// the vanilla bodies do not draw, including under F1. A canceled `render_gui_pre` skips
+    /// the status slots. For a foreground pass independent of any layer, use `gui_render_post`.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_gui_layer_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",
-        version = 2,
+        version = 3,
         contract = "listen",
         neoforge = "RenderGuiLayerEvent.Post",
         cancellable = false
