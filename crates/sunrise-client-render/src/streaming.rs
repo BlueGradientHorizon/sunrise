@@ -580,6 +580,20 @@ pub struct Streaming {
     /// radius it was last ranked for.
     decoration_order: DecorationOrder,
     order_area: Option<((i32, i32), i32)>,
+    /// Something decoration reads may have changed since the last pass, so the
+    /// finalize and decoration passes are worth running: a proto chunk, a
+    /// decorated key, a finished column, the swept area, or a proto save came
+    /// or went. Light and mesh results do not set it.
+    decoration_changed: bool,
+    /// `World::chunks` membership when the last decoration pass ran: a column
+    /// that arrives or leaves outside streaming (a server's packet, a far
+    /// teleport) can make a proto ready too.
+    decoration_revision: u64,
+    /// The ranges the last finalize/decoration pass ran for. Tracked apart
+    /// from `GenerationScan`, whose remembered ranges can lag while a scan
+    /// returns at capacity: an extra area moving away and back must still
+    /// wake the pass.
+    decoration_basis: Option<DecorationBasis>,
     /// What the queued jobs' priorities were computed from (`requeue`): the
     /// centre, the band, the extra areas, and the forced chunks.
     queue_basis: forced_ring::Basis,
@@ -613,6 +627,7 @@ pub struct Streaming {
     /// the view is moving or many columns are dirty.
     light_scratch: Vec<(i64, i32, i32)>,
     gone_scratch: Vec<(i32, i32)>,
+    finalize_scratch: Vec<(i32, i32)>,
     mesh_candidates_scratch: Vec<(i64, i32, i32, SectionMask)>,
     mesh_columns_scratch: Vec<((i32, i32), SectionMask)>,
     sequence: u64,
@@ -700,6 +715,17 @@ pub struct Streaming {
     /// The columns and the next row the band's decoration ranks were given
     /// for (`set_band`).
     band_ranked: Option<(i32, i32, i32)>,
+}
+/// The ranges a finalize/decoration pass ran for, compared every commit so
+/// that a change wakes the next pass even when `GenerationScan` could not
+/// record it (a scan returns at capacity without remembering its ranges).
+#[derive(Default)]
+struct DecorationBasis {
+    center: (i32, i32),
+    radius: i32,
+    extra: Vec<((i32, i32), i32)>,
+    forced: HashSet<(i32, i32)>,
+    band: Option<Band>,
 }
 /// Snapshot only after a scan found no missing candidates. Public range fields
 /// and `World::chunks` can change without going through Streaming, so compare
@@ -1234,6 +1260,9 @@ impl Streaming {
             viewing: Default::default(),
             decoration_order: DecorationOrder::default(),
             order_area: None,
+            decoration_changed: false,
+            decoration_revision: 0,
+            decoration_basis: None,
             queue_basis: Default::default(),
             finishing: Default::default(),
             decorates: generator.decorates(),
@@ -1251,6 +1280,7 @@ impl Streaming {
             deferred: Vec::new(),
             light_scratch: Vec::new(),
             gone_scratch: Vec::new(),
+            finalize_scratch: Vec::new(),
             mesh_candidates_scratch: Vec::new(),
             mesh_columns_scratch: Vec::new(),
             sequence: 0,
@@ -1434,8 +1464,15 @@ impl Streaming {
             self.lit.remove(&(x, z));
             self.meshed.remove(&(x, z));
             self.lighting.remove(&(x, z));
+            // The column and its proto both left: not decorated any more.
+            if !self.protos.contains_key(&(x, z)) && !self.finishing.contains(&(x, z)) {
+                self.decorated.remove(&(x, z));
+            }
             world.dirty_sections.take_column(x, z);
             world.entities_pending.remove(&(x, z));
+        }
+        if !gone.is_empty() {
+            self.decoration_changed = true;
         }
     }
     /// Queue a job for the column `at`, nearest first: its distance (`distance`)
@@ -1478,6 +1515,7 @@ impl Streaming {
         writes: FinalWrites,
         world: &mut World,
     ) {
+        self.decoration_changed = true;
         self.generation_scan.exhausted = false;
         self.decorating -= 1;
         for i in &finals {
@@ -1511,6 +1549,7 @@ impl Streaming {
     /// Saved proto chunks come back; those now out of range are dropped by
     /// the next `update`.
     fn receive_saved(&mut self, protos: Vec<((i32, i32), Proto)>) {
+        self.decoration_changed = true;
         self.generation_scan.exhausted = false;
         self.saving -= 1;
         for (key, proto) in protos {
@@ -1535,6 +1574,7 @@ impl Streaming {
         self.saving == 0
     }
     fn receive_generated(&mut self, mut chunk: Chunk, world: &mut World) -> Option<Chunk> {
+        self.decoration_changed = true;
         self.generation_scan.exhausted = false;
         let key = (chunk.x, chunk.z);
         self.generating.remove(&key);
@@ -1547,6 +1587,9 @@ impl Streaming {
         // neighbours were decorated around it, so generating it again would
         // not give it back.
         if !self.ranges().chunk_kept(key.0, key.1, self.decorates) {
+            // Its proto chunk is gone too: forget the decoration with it, as
+            // the sweep used to do for the whole set on every tick.
+            self.decorated.remove(&key);
             world.set_proto_light_support(key, SectionMask::EMPTY);
             if chunk.fresh {
                 self.dropped_new.insert(key);
@@ -1653,6 +1696,7 @@ impl Streaming {
     /// A proto chunk back from its light view: the view waits in
     /// `light_views` for the light jobs that asked for it.
     fn receive_light_view(&mut self, x: i32, z: i32, proto: Proto, view: Option<Chunk>) {
+        self.decoration_changed = true;
         self.viewing.remove(&(x, z));
         self.protos.insert((x, z), Some(proto));
         if let Some(view) = view {
@@ -1935,6 +1979,11 @@ impl Streaming {
             .next()
             .or_else(|| resume.received.pop_front())
         {
+            // Any result but light or a mesh can leave a proto or column
+            // decorated (or gone): the next commit finalizes and decorates.
+            if !matches!(&done, Done::Lit(..) | Done::Meshed(..)) {
+                self.decoration_changed = true;
+            }
             match done {
                 Done::Proto(x, z, proto, decorated) => {
                     self.generation_scan.exhausted = false;
@@ -2040,6 +2089,7 @@ impl Streaming {
         let mut removed = Vec::new();
         let mut proto_saves = Vec::new();
         if sweep {
+            self.decoration_changed = true;
             for key in &far {
                 self.decorated.remove(key);
             }
@@ -2091,6 +2141,11 @@ impl Streaming {
                 } else {
                     self.protos.remove(&key);
                     self.light_views.remove(&key);
+                    // Nothing will decorate it again until it is generated
+                    // afresh, so it is no longer decorated.
+                    if !world.chunks.contains_key(&key) && !self.finishing.contains(&key) {
+                        self.decorated.remove(&key);
+                    }
                     world.set_proto_light_support(key, SectionMask::EMPTY);
                 }
             }
@@ -2105,6 +2160,67 @@ impl Streaming {
             },
             proto_saves,
         )
+    }
+
+    /// Whether the ranges changed since the last finalize/decoration pass,
+    /// recording the current ones when they did. Unlike
+    /// `GenerationScan::same_ranges`, this is not affected by a scan that
+    /// returned at capacity without remembering where its candidates came
+    /// from.
+    fn decoration_ranges_changed(&mut self) -> bool {
+        let (center, radius, band, extra, forced) = (
+            self.center,
+            self.radius,
+            self.band,
+            self.extra.as_slice(),
+            &self.forced,
+        );
+        let changed = match &self.decoration_basis {
+            Some(basis) => {
+                basis.center != center
+                    || basis.radius != radius
+                    || basis.band != band
+                    || basis.extra != extra
+                    || basis.forced != *forced
+            }
+            None => true,
+        };
+        if changed {
+            let basis = self
+                .decoration_basis
+                .get_or_insert_with(DecorationBasis::default);
+            basis.center = center;
+            basis.radius = radius;
+            basis.band = band;
+            basis.extra.clear();
+            basis.extra.extend_from_slice(extra);
+            basis.forced.clone_from(forced);
+        }
+        changed
+    }
+
+    /// Drop decorated keys whose column left `World::chunks` without going
+    /// through streaming (`World::unload_chunk`, a server packet). A stale key
+    /// would let a proto finish against a missing neighbour before it is
+    /// regenerated and decorated. Falls back to a full prune when the
+    /// membership ring cannot replay the changes.
+    fn reconcile_decorated(&mut self, world: &World) {
+        let Some(changes) = world.chunks.deltas_since(self.decoration_revision) else {
+            let (protos, finishing, chunks) = (&self.protos, &self.finishing, &world.chunks);
+            self.decorated.retain(|key| {
+                protos.contains_key(key) || finishing.contains(key) || chunks.contains_key(key)
+            });
+            return;
+        };
+        for (_, change) in changes {
+            if let ChunkMembershipDelta::Removed(key) = change
+                && !self.protos.contains_key(&key)
+                && !self.finishing.contains(&key)
+                && !world.chunks.contains_key(&key)
+            {
+                self.decorated.remove(&key);
+            }
+        }
     }
 
     /// Resume an update after submitting its proto saves.
@@ -2130,169 +2246,198 @@ impl Streaming {
         let mut columns = std::mem::take(&mut self.mesh_columns_scratch);
         columns.clear();
         let mut hz_laps = crate::spans::laps();
-        let (protos, finishing) = (&self.protos, &self.finishing);
-        self.decorated.retain(|k| {
-            protos.contains_key(k) || finishing.contains(k) || world.chunks.contains_key(k)
-        });
-        // Finalize chunks whose neighbourhood is decorated.
-        let finalize_candidates: Vec<(i32, i32)> = self.protos.keys().copied().collect();
-        for (x, z) in finalize_candidates {
-            if world.chunks.contains_key(&(x, z))
-                || self.finishing.contains(&(x, z))
-                || !self.in_range(x, z, 1)
-            {
-                continue;
-            }
-            let ready = (-1..=1).all(|dz| {
-                (-1..=1).all(|dx| {
-                    self.decorated.contains(&(x + dx, z + dz))
-                        || world.chunks.contains_key(&(x + dx, z + dz))
-                })
-            });
-            if ready && let Some(Some(_)) = self.protos.get(&(x, z)) {
-                let proto = self
-                    .protos
-                    .remove(&(x, z))
-                    .flatten()
-                    .expect("present proto");
-                self.light_views.remove(&(x, z));
-                self.finishing.insert((x, z));
-                self.written.remove(&(x, z));
-                self.submit(Some((x, z)), 0, Job::Finish(proto));
-            }
+        // `decorated` is pruned where a proto chunk or a column leaves, not by
+        // scanning every decorated key each tick: a sweep at 20 exploring bots
+        // paid 0.6 ms of the tick for that scan alone.
+        // Finalizing and decorating read only proto chunks, decorated keys,
+        // finished columns and the ranges. Light and mesh results change none
+        // of them, and about a third of a busy server's commits carry only
+        // those; they can skip both passes and their scans.
+        let membership = world.chunks.membership_revision();
+        let membership_changed = membership != self.decoration_revision;
+        let ranges_changed = self.decoration_ranges_changed();
+        let run_decoration = self.decoration_changed || membership_changed || ranges_changed;
+        self.decoration_changed = false;
+        // Reconcile against the revision the last pass recorded, before
+        // advancing it: the removed deltas are replayed from there.
+        if run_decoration && membership_changed {
+            self.reconcile_decorated(world);
         }
-        hz_laps.lap("st_finalize");
-        // Decorate chunks whose 3x3 proto neighbourhood is available, in
-        // vanilla's order: decoration is order dependent where write regions
-        // overlap (see `DecorationOrder`).
+        self.decoration_revision = membership;
         let workers = self.workers;
-        if self.decorates && self.order_area != Some((self.center, self.radius)) {
-            let (decorated, chunks) = (&self.decorated, &world.chunks);
-            // The render distance is the server view distance in singleplayer.
-            self.decoration_order
-                .reassign(self.center, self.radius, |x, z| {
-                    decorated.contains(&(x, z)) || chunks.contains_key(&(x, z))
-                });
-            self.order_area = Some((self.center, self.radius));
-            let ranges = Ranges {
-                center: self.center,
-                radius: self.radius,
-                extra: &self.extra,
-                forced: &self.forced,
-                cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
-                forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
-                band: self.band.as_ref(),
-            };
-            let (protos, generating) = (&self.protos, &self.generating);
-            self.decoration_order.retain(|x, z| {
-                ranges.in_range(x, z, 4)
-                    || ranges.near_finished(x, z, 2)
-                    || protos.contains_key(&(x, z))
-                    || generating.contains(&(x, z))
-            });
-        }
-        if self.decorates && self.decorating < workers * 2 {
-            let wants = |s: &Self, x: i32, z: i32| {
-                !s.decorated.contains(&(x, z))
-                    && !world.chunks.contains_key(&(x, z))
-                    && (s.in_range(x, z, 2) || s.near_finished(x, z, 1))
-            };
-            // A wanted chunk holds back higher-ranked ones only if it can be
-            // decorated: its 3x3 neighbourhood is (or will be) generated as
-            // protos, none of them already final.
-            let waits_for = |s: &Self, x: i32, z: i32| {
-                wants(s, x, z)
-                    && (-1..=1).all(|dz| {
-                        (-1..=1).all(|dx| {
-                            let n = (x + dx, z + dz);
-                            !world.chunks.contains_key(&n)
-                                && (s.protos.contains_key(&n)
-                                    || s.generating.contains(&n)
-                                    || s.ranges().requested(n.0, n.1, true))
-                        })
+        if run_decoration {
+            // Finalize chunks whose neighbourhood is decorated.
+            let mut finalize_candidates = std::mem::take(&mut self.finalize_scratch);
+            finalize_candidates.clear();
+            finalize_candidates.extend(self.protos.keys().copied());
+            for &(x, z) in &finalize_candidates {
+                if world.chunks.contains_key(&(x, z))
+                    || self.finishing.contains(&(x, z))
+                    || !self.in_range(x, z, 1)
+                {
+                    continue;
+                }
+                let ready = (-1..=1).all(|dz| {
+                    (-1..=1).all(|dx| {
+                        self.decorated.contains(&(x + dx, z + dz))
+                            || world.chunks.contains_key(&(x + dx, z + dz))
                     })
-            };
-            // Out for the call: ranking reads the streamer's ranges.
-            let mut order = std::mem::take(&mut self.decoration_order);
-            let mut wanted = decoration_queue(
-                &mut order,
-                self.protos
-                    .iter()
-                    .filter(|&(&(x, z), proto)| proto.is_some() && wants(self, x, z))
-                    .map(|(&k, _)| k),
-                |x, z| self.distance(x, z),
-            );
-            self.decoration_order = order;
-            // Most wanted chunks are blocked, and the same neighbours are
-            // asked about for each of them: what `waits_for` says is kept for
-            // the pass (nothing it reads changes in it but `decorated`, which
-            // updates the entry). Without it, scheduling at render distance 32
-            // took most of the thread that runs it while the world loaded.
-            let waiting: std::cell::RefCell<FxHashMap<(i32, i32), bool>> = Default::default();
-            let mut initialized = Vec::new();
-            while let Some(std::cmp::Reverse((_, x, z))) = wanted.pop() {
-                if self.decorating >= workers * 2 {
-                    break;
-                }
-                if self.decoration_order.blocked(x, z, |nx, nz| {
-                    if let Some(&known) = waiting.borrow().get(&(nx, nz)) {
-                        return known;
-                    }
-                    let known = waits_for(self, nx, nz);
-                    waiting.borrow_mut().insert((nx, nz), known);
-                    known
-                }) {
-                    continue;
-                }
-                let keys: [(i32, i32); 9] =
-                    std::array::from_fn(|i| (x + (i as i32 % 3) - 1, z + (i as i32 / 3) - 1));
-                // A final neighbour cannot be generated again: a generator that
-                // can decorates beside it (a chunk of an older world), writing
-                // into it as vanilla's features do; the others skip decoration
-                // (worlds saved before proto chunks were saved get here: their
-                // final chunks' neighbours are generated again).
-                if keys.iter().any(|k| self.decorating_finals.contains(k)) {
-                    continue;
-                }
-                let has_final = keys.iter().any(|k| world.chunks.contains_key(k));
-                if has_final && !self.saves_beside_final {
-                    self.decorated.insert((x, z));
-                    initialized.push((x, z));
-                    waiting.borrow_mut().insert((x, z), false);
-                    continue;
-                }
-                if !keys.iter().all(|k| {
-                    world.chunks.contains_key(k) || matches!(self.protos.get(k), Some(Some(_)))
-                }) {
-                    continue;
-                }
-                let finals: Vec<(usize, Chunk)> = keys
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, k)| Some((i, (**world.chunks.get(k)?).clone())))
-                    .collect();
-                let region: Box<[Proto; 9]> = Box::new(std::array::from_fn(|i| {
-                    let k = &keys[i];
-                    if finals.iter().any(|(f, _)| *f == i) {
-                        return Box::new(()) as Proto;
-                    }
-                    self.light_views.remove(k);
-                    self.protos
-                        .insert(*k, None)
+                });
+                if ready && let Some(Some(_)) = self.protos.get(&(x, z)) {
+                    let proto = self
+                        .protos
+                        .remove(&(x, z))
                         .flatten()
-                        .expect("present proto")
-                }));
-                self.decorating += 1;
-                self.decorating_finals
-                    .extend(finals.iter().map(|(i, _)| keys[*i]));
-                self.submit(Some((x, z)), 1, Job::Decorate(x, z, region, finals));
+                        .expect("present proto");
+                    self.light_views.remove(&(x, z));
+                    self.finishing.insert((x, z));
+                    self.written.remove(&(x, z));
+                    self.submit(Some((x, z)), 0, Job::Finish(proto));
+                }
             }
-            for key in initialized {
-                self.publish_proto_light_support(world, key);
+            self.finalize_scratch = finalize_candidates;
+            hz_laps.lap("st_finalize");
+            // Decorate chunks whose 3x3 proto neighbourhood is available, in
+            // vanilla's order: decoration is order dependent where write regions
+            // overlap (see `DecorationOrder`).
+            if self.decorates && self.order_area != Some((self.center, self.radius)) {
+                let (decorated, chunks) = (&self.decorated, &world.chunks);
+                // The render distance is the server view distance in singleplayer.
+                self.decoration_order
+                    .reassign(self.center, self.radius, |x, z| {
+                        decorated.contains(&(x, z)) || chunks.contains_key(&(x, z))
+                    });
+                self.order_area = Some((self.center, self.radius));
+                let ranges = Ranges {
+                    center: self.center,
+                    radius: self.radius,
+                    extra: &self.extra,
+                    forced: &self.forced,
+                    cover: ExtraCover::current(&self.cover, &self.extra, self.cover_current),
+                    forced_cover: self.forced_cover.as_ref().filter(|_| self.cover_current),
+                    band: self.band.as_ref(),
+                };
+                let (protos, generating) = (&self.protos, &self.generating);
+                self.decoration_order.retain(|x, z| {
+                    ranges.in_range(x, z, 4)
+                        || ranges.near_finished(x, z, 2)
+                        || protos.contains_key(&(x, z))
+                        || generating.contains(&(x, z))
+                });
+            }
+            if self.decorates && self.decorating < workers * 2 {
+                let wants = |s: &Self, x: i32, z: i32| {
+                    !s.decorated.contains(&(x, z))
+                        && !world.chunks.contains_key(&(x, z))
+                        && (s.in_range(x, z, 2) || s.near_finished(x, z, 1))
+                };
+                // A wanted chunk holds back higher-ranked ones only if it can be
+                // decorated: its 3x3 neighbourhood is (or will be) generated as
+                // protos, none of them already final.
+                let waits_for = |s: &Self, x: i32, z: i32| {
+                    wants(s, x, z)
+                        && (-1..=1).all(|dz| {
+                            (-1..=1).all(|dx| {
+                                let n = (x + dx, z + dz);
+                                !world.chunks.contains_key(&n)
+                                    && (s.protos.contains_key(&n)
+                                        || s.generating.contains(&n)
+                                        || s.ranges().requested(n.0, n.1, true))
+                            })
+                        })
+                };
+                // Out for the call: ranking reads the streamer's ranges.
+                let mut order = std::mem::take(&mut self.decoration_order);
+                let mut wanted = decoration_queue(
+                    &mut order,
+                    self.protos
+                        .iter()
+                        .filter(|&(&(x, z), proto)| proto.is_some() && wants(self, x, z))
+                        .map(|(&k, _)| k),
+                    |x, z| self.distance(x, z),
+                );
+                self.decoration_order = order;
+                // Most wanted chunks are blocked, and the same neighbours are
+                // asked about for each of them: what `waits_for` says is kept for
+                // the pass (nothing it reads changes in it but `decorated`, which
+                // updates the entry). Without it, scheduling at render distance 32
+                // took most of the thread that runs it while the world loaded.
+                let waiting: std::cell::RefCell<FxHashMap<(i32, i32), bool>> = Default::default();
+                let mut initialized = Vec::new();
+                while let Some(std::cmp::Reverse((_, x, z))) = wanted.pop() {
+                    if self.decorating >= workers * 2 {
+                        break;
+                    }
+                    if self.decoration_order.blocked(x, z, |nx, nz| {
+                        if let Some(&known) = waiting.borrow().get(&(nx, nz)) {
+                            return known;
+                        }
+                        let known = waits_for(self, nx, nz);
+                        waiting.borrow_mut().insert((nx, nz), known);
+                        known
+                    }) {
+                        continue;
+                    }
+                    let keys: [(i32, i32); 9] =
+                        std::array::from_fn(|i| (x + (i as i32 % 3) - 1, z + (i as i32 / 3) - 1));
+                    // A final neighbour cannot be generated again: a generator that
+                    // can decorates beside it (a chunk of an older world), writing
+                    // into it as vanilla's features do; the others skip decoration
+                    // (worlds saved before proto chunks were saved get here: their
+                    // final chunks' neighbours are generated again).
+                    if keys.iter().any(|k| self.decorating_finals.contains(k)) {
+                        continue;
+                    }
+                    let has_final = keys.iter().any(|k| world.chunks.contains_key(k));
+                    if has_final && !self.saves_beside_final {
+                        self.decorated.insert((x, z));
+                        initialized.push((x, z));
+                        waiting.borrow_mut().insert((x, z), false);
+                        continue;
+                    }
+                    if !keys.iter().all(|k| {
+                        world.chunks.contains_key(k) || matches!(self.protos.get(k), Some(Some(_)))
+                    }) {
+                        continue;
+                    }
+                    let finals: Vec<(usize, Chunk)> = keys
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, k)| Some((i, (**world.chunks.get(k)?).clone())))
+                        .collect();
+                    let region: Box<[Proto; 9]> = Box::new(std::array::from_fn(|i| {
+                        let k = &keys[i];
+                        if finals.iter().any(|(f, _)| *f == i) {
+                            return Box::new(()) as Proto;
+                        }
+                        self.light_views.remove(k);
+                        self.protos
+                            .insert(*k, None)
+                            .flatten()
+                            .expect("present proto")
+                    }));
+                    self.decorating += 1;
+                    self.decorating_finals
+                        .extend(finals.iter().map(|(i, _)| keys[*i]));
+                    self.submit(Some((x, z)), 1, Job::Decorate(x, z, region, finals));
+                }
+                if !initialized.is_empty() {
+                    // These became decorated after this call's finalize pass:
+                    // the next commit must look at the protos they unblock.
+                    self.decoration_changed = true;
+                }
+                for key in initialized {
+                    self.publish_proto_light_support(world, key);
+                }
             }
         }
         hz_laps.lap("st_decorate");
-        self.schedule_generation(world, workers);
+        // Generation only gains candidates from the same changes as decoration
+        // (a proto, a finished column or the ranges); a light or mesh result
+        // leaves its inputs alone.
+        if run_decoration {
+            self.schedule_generation(world, workers);
+        }
         hz_laps.lap("st_generate");
         // Lighting once all neighbours exist, nearest first and only as
         // much of it as the workers can chew. Vanilla's light engine also
@@ -3466,6 +3611,9 @@ impl Ranges<'_> {
     /// Within `margin` of an extra area's square (Chebyshev distance, as
     /// vanilla's ticket levels spread).
     fn in_extra(&self, x: i32, z: i32, margin: i32) -> bool {
+        if self.extra.is_empty() {
+            return false;
+        }
         if let Some(cover) = self.cover
             && (0..=ExtraCover::REACH).contains(&margin)
         {
@@ -3745,7 +3893,199 @@ fn checkout_protos(
 
 #[cfg(test)]
 mod tests {
+    use super::section_visibility::tests::fixture;
     use super::*;
+
+    fn finish_jobs(streaming: &Streaming) -> usize {
+        streaming
+            .shared
+            .queue
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|queued| matches!(queued.job, Job::Finish(_)))
+            .count()
+    }
+
+    fn decoration_fixture() -> (World, Streaming) {
+        struct Inert;
+        impl Source for Inert {
+            fn next(&self) -> Option<Rank> {
+                None
+            }
+
+            fn run(&self, _: usize) -> bool {
+                false
+            }
+        }
+
+        let (world, mut streaming, _) = fixture();
+        // Keep submitted jobs in the queue so the assertions see them.
+        streaming.jobs = sunrise_threads::jobs::pool().register(Arc::new(Inert));
+        (world, streaming)
+    }
+
+    /// A proto at `key` whose 3x3 is decorated, checked out for saving (its
+    /// slot is `None` until the result comes back).
+    fn checked_out_proto(streaming: &mut Streaming, key: (i32, i32)) {
+        for dz in -1..=1 {
+            for dx in -1..=1 {
+                streaming.decorated.insert((key.0 + dx, key.1 + dz));
+            }
+        }
+        streaming.protos.insert(key, None);
+    }
+
+    fn empty_commit() -> StreamingCommit {
+        StreamingCommit {
+            uploads: Vec::new(),
+            removed: Vec::new(),
+            paused: false,
+        }
+    }
+
+    /// The save drain applies results outside `resume_plan_update`; a proto it
+    /// returns can be finalizable at once, so the next commit must not skip
+    /// the finalize pass.
+    #[test]
+    #[ignore = "daily"]
+    fn a_save_drain_wakes_the_next_finalize() {
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.remote = true;
+        streaming.decorates = false;
+        streaming.center = (0, 0);
+        streaming.radius = 2;
+        // Sync the membership revision before decorating by hand: the first
+        // pass otherwise prunes keys that are not in the still-empty chunk map.
+        streaming.complete_commit(&mut world, empty_commit());
+        let key = (0, 0);
+        checked_out_proto(&mut streaming, key);
+        streaming.complete_commit(&mut world, empty_commit());
+        assert_eq!(
+            finish_jobs(&streaming),
+            0,
+            "nothing finishes while the proto is checked out"
+        );
+
+        streaming.saving = 1;
+        streaming
+            .shared
+            .done
+            .send(Done::Saved(vec![(key, Box::new(()))]));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let _ = streaming.prepare_save(&mut world, true, deadline);
+        streaming.complete_commit(&mut world, empty_commit());
+        assert_eq!(
+            finish_jobs(&streaming),
+            1,
+            "the returned proto is finalized on the next commit"
+        );
+    }
+
+    /// A generation scan that returns at capacity does not remember the
+    /// ranges it saw. An extra area that moves away and back must still wake
+    /// finalize, or a proto eligible only in the original area is skipped.
+    #[test]
+    #[ignore = "daily"]
+    fn a_range_moving_back_wakes_decoration_while_generation_is_at_capacity() {
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.remote = false;
+        streaming.decorates = false;
+        streaming.center = (0, 0);
+        streaming.radius = 0;
+        streaming.workers = 1; // Generation capacity: 3 in flight.
+        let (area_a, area_b) = (((20, 0), 2), ((40, 0), 2));
+        let key = (20, 0);
+        // Sync the membership revision before decorating by hand: the first
+        // pass otherwise prunes keys that are not in the still-empty chunk map.
+        streaming.complete_commit(&mut world, empty_commit());
+        streaming.generating.clear();
+        checked_out_proto(&mut streaming, key);
+
+        streaming.extra = vec![area_a];
+        streaming.complete_commit(&mut world, empty_commit());
+        let ranges = streaming.ranges();
+        assert!(
+            streaming.generation_scan.same_ranges(&ranges),
+            "the first scan remembers A"
+        );
+
+        // Move to B at capacity and make the proto ready there. It is out of
+        // range, and the generation scan still remembers A.
+        streaming.extra = vec![area_b];
+        streaming.generating.clear();
+        streaming.generating.extend([(100, 0), (101, 0), (102, 0)]);
+        streaming.protos.insert(key, Some(Box::new(()) as Proto));
+        streaming.complete_commit(&mut world, empty_commit());
+        assert_eq!(finish_jobs(&streaming), 0, "the ready proto is outside B");
+        let ranges = streaming.ranges();
+        assert!(
+            !streaming.generation_scan.same_ranges(&ranges),
+            "a scan at capacity leaves A remembered"
+        );
+
+        // Only the commit's own range basis can wake the pass back in A.
+        streaming.extra = vec![area_a];
+        let ranges = streaming.ranges();
+        assert!(
+            streaming.generation_scan.same_ranges(&ranges),
+            "generation alone would think the ranges unchanged"
+        );
+        streaming.complete_commit(&mut world, empty_commit());
+        assert_eq!(
+            finish_jobs(&streaming),
+            1,
+            "the pass ran for the area that moved back"
+        );
+    }
+
+    /// A finished column can leave `World::chunks` without streaming's
+    /// cleanup. Its stale decorated key must not let a neighbour finish
+    /// against a missing chunk.
+    #[test]
+    #[ignore = "daily"]
+    fn a_neighbour_removed_outside_streaming_is_not_decorated() {
+        let (mut world, mut streaming) = decoration_fixture();
+        streaming.remote = true;
+        streaming.decorates = false;
+        streaming.center = (0, 0);
+        streaming.radius = 2;
+        // Sync the membership revision before decorating by hand, as in the
+        // save-drain case; then the chunk map changes are replayable deltas.
+        streaming.complete_commit(&mut world, empty_commit());
+        let key = (0, 0);
+        let neighbour = (1, 0);
+        let backed_neighbour = (0, 1);
+        checked_out_proto(&mut streaming, key);
+        for (x, z) in [neighbour, backed_neighbour] {
+            world.chunks.insert((x, z), Arc::new(Chunk::empty(x, z)));
+        }
+        streaming.complete_commit(&mut world, empty_commit());
+        assert_eq!(finish_jobs(&streaming), 0);
+
+        world.unload_chunk(neighbour);
+        streaming.protos.insert(backed_neighbour, None);
+        world.unload_chunk(backed_neighbour);
+        streaming.protos.insert(key, Some(Box::new(()) as Proto));
+        assert!(
+            streaming.decorated.contains(&neighbour),
+            "the unload left the decorated key behind"
+        );
+        streaming.complete_commit(&mut world, empty_commit());
+        assert!(
+            !streaming.decorated.contains(&neighbour),
+            "the membership removal pruned the stale key"
+        );
+        assert!(
+            streaming.decorated.contains(&backed_neighbour),
+            "the tracked proto still backs the decorated key"
+        );
+        assert_eq!(
+            finish_jobs(&streaming),
+            0,
+            "the missing neighbour is not decorated"
+        );
+    }
 
     /// The queue hands out the wanted chunks in the order the full sort did
     /// (every chunk measured, sorted by distance, the new ones ranked in that

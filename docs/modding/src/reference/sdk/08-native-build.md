@@ -53,8 +53,21 @@ Each line is an object whose `event` names it.
 | `built` | `route`, `binary`, `libraries`, `records`, `mods`, `internals`, `mixins`, `used` | The executable and the libraries to install beside it, in load order; `records` is each library's identity, the build record's `libraries`: one row per library, the patch library included, whose `identity` is `<build id> <mod id> <version> <rustc release> unwind` (the panic strategy the library's entry reports; the loader refuses `abort`); `route` is `prebuilt-api` or `prebuilt`, as the record names it; `mods` is the compiled mods in dependency order. `internals` has each compiled mod's `[[internals]]` by mod id, every absent `hash` taken from the SDK's catalog, as the build record keeps them; `mixins` is the horizon-mixins revision the build ran; `used` lists the kept folders and files under `work` it used, for a caller's cache to count as used. |
 | `failed` | `error`, `blame`, `used` | Why it did not build, as the build log ends with it. `blame` is `null`, or the mod the error is that mod's own and how: `{"mod": id, "kind": "compile" \| "build-script" \| "features"}`, the one a caller leaves out next time. `used` as for `built`. |
 
-What it downloads (the horizon-mixins tool, a mod's GitHub source) goes through the proxy its environment names:
-`HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY`, with the hosts `NO_PROXY` lists reached directly. A caller with a proxy setting of its own passes it in those variables.
+For SDK downloads, registry release discovery and native-build downloads, the mod tool uses the first
+nonblank setting in this order: `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`, `all_proxy` for HTTPS, or
+`HTTP_PROXY`, `http_proxy`, `ALL_PROXY`, `all_proxy` for HTTP. A caller with a proxy setting of its own
+passes it in these variables.
+
+A proxy address without a scheme means HTTP. Supported schemes are `http://`, `socks4://`, `socks4a://`,
+`socks5://`, `socks5h://` and `socks://` (an alias for SOCKS5). An `https://` proxy address is not supported,
+even for HTTPS downloads. HTTP proxy credentials are sent only on HTTPS CONNECT, not for plain HTTP requests
+such as downloads from an HTTP SDK mirror.
+
+Local addresses bypass the proxy. `NO_PROXY` (or `no_proxy` if `NO_PROXY` is unset) is a comma-separated
+list: `*` bypasses all hosts; a host or domain (`example.org`, `.example.org`, `*.example.org`) matches
+that name and its subdomains. The list accepts IP literals, including bare or bracketed IPv6, but not CIDR.
+An entry with a port (`example.org:8443` or `[2001:db8::1]:8443`) matches only that destination port,
+including the URL scheme's default port when no port is written.
 
 The tool never edits an instance, never selects a version and never installs anything outside `work`.
 

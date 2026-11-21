@@ -159,25 +159,26 @@ pub fn fetch(
         .filter(|(dest, _)| !dest.exists())
     {
         let checksum = format!("{url}.sha1");
-        let sha1 = crate::net::agent(&checksum)
-            .get(&checksum)
-            .set("User-Agent", modrinth::AGENT)
-            .call()
-            .ok()
-            .and_then(|r| r.into_string().ok())
-            .map(|s| s.trim().to_owned());
-        let made = dest.parent().map(fs::create_dir_all);
-        match made
-            .unwrap_or(Ok(()))
-            .map_err(|e| e.to_string())
-            .and_then(|()| {
-                // Maven's `.sha1` or nothing: a jar whose checksum couldn't be read isn't taken.
-                let sha1 = sha1
-                    .as_deref()
-                    .filter(|s| s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit()))
-                    .ok_or_else(|| format!("{checksum}: no SHA-1"))?;
-                download(&url, Some(sha1), &dest, true)
-            }) {
+        let result = (|| {
+            let agent = crate::net::agent(&checksum).map_err(|e| format!("{checksum}: {e}"))?;
+            let sha1 = agent
+                .get(&checksum)
+                .set("User-Agent", modrinth::AGENT)
+                .call()
+                .ok()
+                .and_then(|r| r.into_string().ok());
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            // Maven's `.sha1` or nothing: a jar whose checksum couldn't be read isn't taken.
+            let sha1 = sha1
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+                .ok_or_else(|| format!("{checksum}: no SHA-1"))?;
+            download(&url, Some(sha1), &dest, true)
+        })();
+        match result {
             Ok(()) => log(format!("loader: {}", dest.display())),
             Err(e) => log(format!(
                 "loader: {e} (structures keep only vanilla biome tags)"
