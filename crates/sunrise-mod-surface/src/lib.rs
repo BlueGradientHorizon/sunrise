@@ -126,6 +126,14 @@ pub struct Surface {
     pub engine_items: Vec<EngineItem>,
 }
 
+/// A record of a list a newer writer added, as this reader knows it: its `id` and `hash` join the
+/// document hash.
+#[derive(Deserialize)]
+struct LaterRecord {
+    id: String,
+    hash: String,
+}
+
 /// Why a document was refused.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadError {
@@ -570,6 +578,12 @@ impl Surface {
 
     /// The SHA-256 (first 128 bits, hex) of `<id> <hash>\n` for every entry, in byte order of id.
     pub fn document_hash(&self) -> String {
+        self.document_hash_with(&[])
+    }
+
+    /// [`Self::document_hash`] with `later`'s entries counted too: the records of lists a newer
+    /// writer adds, which this reader knows only by their `id` and `hash`.
+    fn document_hash_with(&self, later: &[LaterRecord]) -> String {
         let tags: Vec<_> = self
             .extension_tags
             .iter()
@@ -583,6 +597,7 @@ impl Surface {
         let mut entries: Vec<(&str, &str)> = self
             .entries_with_engine()
             .chain(tags.iter().map(|(id, hash)| (id.as_str(), hash.as_str())))
+            .chain(later.iter().map(|r| (r.id.as_str(), r.hash.as_str())))
             .collect();
         entries.sort_unstable();
         let mut text = String::new();
@@ -732,24 +747,26 @@ impl Surface {
     }
 
     /// [`Self::read`], and the ids it finds unsealed: [`Self::unsealed`]'s records, and `surface`
-    /// when the document's own hash is not [`Self::document_hash`]. That one is checked only when
-    /// the document holds no non-empty list this reader doesn't know, since a newer writer's
-    /// collection may count toward it. Unknown values are only looked at, never decoded, so no
-    /// nesting the typed reader skips refuses here.
+    /// when the document's own hash is not [`Self::document_hash`] with every list this reader
+    /// doesn't know counted in. Such a list is how a newer writer adds a collection: records with
+    /// a string `id` and `hash`, whose other fields this reader skips, and it refuses any other
+    /// unknown list. Other unknown values are outside the document hash.
     pub fn read_sealed(bytes: &[u8]) -> Result<(Self, Vec<String>), ReadError> {
         let surface = Self::read(bytes)?;
         let mut unsealed = surface.unsealed();
         let raw: BTreeMap<String, &serde_json::value::RawValue> =
             serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
         let known = serde_json::to_value(&surface).expect("a surface serializes");
-        let unknown_list = raw.iter().any(|(key, value)| {
-            let text = value.get();
-            key != "engine_items"
-                && known.get(key).is_none()
-                && text.starts_with('[')
-                && !text[1..].trim_start().starts_with(']')
-        });
-        if !unknown_list && surface.hash != surface.document_hash() {
+        let mut later = Vec::new();
+        for (key, value) in raw {
+            if key == "engine_items" || known.get(&key).is_some() || !value.get().starts_with('[') {
+                continue;
+            }
+            let records: Vec<LaterRecord> = serde_json::from_str(value.get())
+                .map_err(|e| ReadError::Json(format!("{key}: {e}")))?;
+            later.extend(records);
+        }
+        if surface.hash != surface.document_hash_with(&later) {
             unsealed.push("surface".to_owned());
         }
         Ok((surface, unsealed))

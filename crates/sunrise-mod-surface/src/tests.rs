@@ -621,33 +621,49 @@ fn a_stored_hash_its_contract_does_not_give_is_unsealed() {
 }
 
 #[test]
-fn the_document_hash_is_checked_unless_a_newer_writers_list_may_count_toward_it() {
+fn a_newer_writers_lists_join_the_document_hash() {
     let mut surface = sample();
     surface.hash = surface.document_hash();
-    let read = |value: &serde_json::Value| {
-        Surface::read_sealed(value.to_string().as_bytes())
-            .unwrap()
-            .1
-    };
+    let read = |value: &serde_json::Value| Surface::read_sealed(value.to_string().as_bytes());
     let mut value = serde_json::to_value(&surface).unwrap();
-    assert!(read(&value).is_empty());
+    assert_eq!(read(&value).unwrap().1, Vec::<String>::new());
     value["hash"] = "0".repeat(32).into();
-    assert_eq!(read(&value), ["surface"]);
-    // A newer writer's collection, counted in its document hash: this reader can't recompute it.
-    value["later"] = serde_json::json!([{"id": "later:x", "hash": "h"}]);
-    assert!(read(&value).is_empty());
-    // A field it doesn't know that is no list, or an empty one: the hash is checked still.
-    for other in [serde_json::json!("note"), serde_json::json!([])] {
-        value["later"] = other;
-        assert_eq!(read(&value), ["surface"]);
+    assert_eq!(read(&value).unwrap().1, ["surface"]);
+    // A list this reader doesn't know: its records' ids and hashes count toward the hash, their
+    // other fields (however deep) are skipped.
+    let mut lines: Vec<String> = surface
+        .entries_with_engine()
+        .map(|(id, hash)| format!("{id} {hash}\n"))
+        .chain(["later:x h\n".to_owned()])
+        .collect();
+    lines.sort();
+    value["later"] = serde_json::json!([{"id": "later:x", "hash": "h", "contract": "deep"}]);
+    value["hash"] = digest(&lines.concat()).into();
+    let deep = format!("{}{}", "[".repeat(100_000), "]".repeat(100_000));
+    let text = value.to_string().replace(r#""deep""#, &deep);
+    assert_eq!(
+        Surface::read_sealed(text.as_bytes()).unwrap().1,
+        Vec::<String>::new()
+    );
+    // The same list with a hash that doesn't count it, or an empty one beside a bad hash: refused.
+    for (list, hash) in [
+        (value["later"].clone(), surface.hash.clone()),
+        (serde_json::json!([]), "0".repeat(32)),
+    ] {
+        value["later"] = list;
+        value["hash"] = hash.into();
+        assert_eq!(read(&value).unwrap().1, ["surface"]);
     }
-    // An unknown list nested past serde_json's limit is skipped, as the typed reader skips it.
-    let mut text = serde_json::to_string(&surface).unwrap();
-    text.pop();
-    text.push_str(&format!(
-        r#","later":{}{}}}"#,
-        "[".repeat(1_000),
-        "]".repeat(1_000)
-    ));
-    assert!(Surface::read_sealed(text.as_bytes()).unwrap().1.is_empty());
+    // An unknown list of anything but records with a string id and hash is no surface.
+    for list in [
+        serde_json::json!([1]),
+        serde_json::json!([{"id": "later:x"}]),
+    ] {
+        value["later"] = list;
+        assert!(matches!(read(&value), Err(ReadError::Json(_))));
+    }
+    // An unknown value that is no list is outside the hash.
+    value["later"] = serde_json::json!({"note": [1]});
+    value["hash"] = surface.hash.clone().into();
+    assert_eq!(read(&value).unwrap().1, Vec::<String>::new());
 }

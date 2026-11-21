@@ -112,7 +112,10 @@ class StableModApiIntegration(unittest.TestCase):
                    "hash": digest("".join(f"{id} {hash}\n" for id, hash in sorted(entries)))}
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
-                ("unknown collection", {**ADDITIVE, "later": [{"id": "later:x"}]}, False),
+                ("empty unknown collection", {**ADDITIVE, "later": []}, False),
+                # A newer writer's list is records with an id and a hash, which join the document hash.
+                ("unknown collection without hashes", {**ADDITIVE, "later": [{"id": "later:x"}]}, True),
+                ("unknown collection outside the hash", {**ADDITIVE, "later": [{"id": "later:x", "hash": "h"}]}, True),
                 ("repeated id", repeated, True), ("no hash", hashless, True),
                 ("float schema", {**ADDITIVE, "schema": 3.0}, True),
                 ("native internals", {**ADDITIVE, "engine_items": [internal]}, True),
@@ -125,7 +128,6 @@ class StableModApiIntegration(unittest.TestCase):
                 ("unsealed record", {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0],
                                                                {**ADDITIVE["behaviours"][1], "hash": "0" * 32}]}, True),
                 ("unsealed document", {**ADDITIVE, "hash": "0" * 32}, True),
-                # A newer writer's collection counted in its document hash, which this reader can't recompute.
                 ("unknown collection in the hash", counted, False)):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             notes.write_text("Release notes.\n")
