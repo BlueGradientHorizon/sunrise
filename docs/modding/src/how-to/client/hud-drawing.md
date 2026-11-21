@@ -29,10 +29,12 @@ an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(i
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
 registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID,
 order and dispatch. A replacement does not inherit the original body's eligibility checks.
+Those checks apply only to the original body, including when a wrapper calls `draw_previous()`
+and reaches it.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
-That call runs the previous body with its own eligibility checks. The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
+The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
 for this draw without discarding it at registration.
 
 ```rust,ignore
@@ -47,7 +49,8 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
-runs. For a foreground pass independent of any HUD slot, use `gui_render_post`.
+runs. For work that must happen even when the HUD is hidden, use the independent foreground
+`gui_render_post` hook.
 
 ## Status rows and fixed text positions
 
