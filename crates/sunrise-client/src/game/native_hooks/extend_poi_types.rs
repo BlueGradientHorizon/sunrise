@@ -3,7 +3,7 @@ impl Game<'_> {
     /// The block states mods add to vanilla POI types, once the block registry is resolved.
     pub(in crate::game) fn native_extend_poi_types(
         context: &mod_api::RegistrationContext,
-        extensions: &mut dyn PoiTypeExtensions,
+        extensions: &mut mod_api::PoiTypeExtensionRegistry<'_>,
     ) {
         Self::fire_extend_poi_types(context, extensions);
     }

@@ -45,13 +45,8 @@ def replace(source, old, new, path, *formatted, count=1):
     raise SystemExit(f"{path}: expected exactly {count} crossing(s): {old!r} or {new!r}")
 
 
-def reload_hud_and_tickets(bridge):
-    for hook, argument, trait, owner, prefix in (
-        ("add_client_reload_listeners", "listeners", "ClientReloadListeners", "mod_api::ClientListenerRegistry", ""),
-        ("add_server_reload_listeners", "listeners", "ServerReloadListeners", "mod_api::ServerListenerRegistry", ""),
-        ("register_gui_layers", "layers", "GuiLayerRegistrar", "sunrise_client::gui_layers::GuiLayers", "context, "),
-        ("validate_tickets", "validation", "mod_api::TicketValidation", "mod_api::world::mod_chunk_tickets::ControllerTickets", "dimension, controller, "),
-    ):
+def rewrite_staged_calls(crossings, bridge):
+    for hook, argument, trait, owner, prefix in crossings:
         path = NATIVE / f"{hook}.rs"
         source = replace(path.read_text(), f"{argument}: &mut dyn {trait}", f"{argument}: &mut {owner}", path)
         if bridge:
@@ -61,6 +56,14 @@ def reload_hud_and_tickets(bridge):
                 f"{call}\n            |listen| {argument}.register_listener(listen),\n        );")
         path.write_text(source)
 
+
+def reload_hud_and_tickets(bridge):
+    rewrite_staged_calls((
+        ("add_client_reload_listeners", "listeners", "ClientReloadListeners", "mod_api::ClientListenerRegistry", ""),
+        ("add_server_reload_listeners", "listeners", "ServerReloadListeners", "mod_api::ServerListenerRegistry", ""),
+        ("register_gui_layers", "layers", "GuiLayerRegistrar", "sunrise_client::gui_layers::GuiLayers", "context, "),
+        ("validate_tickets", "validation", "mod_api::TicketValidation", "mod_api::world::mod_chunk_tickets::ControllerTickets", "dimension, controller, "),
+    ), bridge)
     if not bridge:
         return
 
@@ -81,17 +84,41 @@ def reload_hud_and_tickets(bridge):
     ))
 
 
+def pack_section_and_poi(bridge):
+    rewrite_staged_calls((
+        ("add_pack_finders", "packs", "mod_api::PackFinders", "crate::game::pack_finders::Registry", ""),
+        ("add_section_geometry", "renderers", "mod_api::SectionGeometryRenderers", "mod_api::SectionGeometryRegistry", "context, "),
+        ("extend_poi_types", "extensions", "PoiTypeExtensions", "mod_api::PoiTypeExtensionRegistry<'_>", "context, "),
+    ), bridge)
+    path = GAME / "modding/pack_finders/mod.rs"
+    source = replace(path.read_text(), "\nstruct Registry {", "\npub(in crate::game) struct Registry {", path)
+    if bridge:
+        source = replace(
+            source,
+            "mod_api::dispatch_add_pack_finders(host, &mut registry);",
+            "mod_api::dispatch_add_pack_finders(host, |listen| registry.register_listener(listen));",
+            path,
+        )
+    path.write_text(source)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("ingress")
     reload_hud_tickets = commands.add_parser("reload-hud-tickets")
     reload_hud_tickets.add_argument("--bridge", action="store_true")
+    pack_section_poi = commands.add_parser("pack-section-poi")
+    pack_section_poi.add_argument("--bridge", action="store_true")
     bridge = commands.add_parser("bridge")
     bridge.add_argument("hooks", nargs="+", choices=REGISTRARS)
     args = parser.parse_args()
     if args.command == "reload-hud-tickets":
         reload_hud_and_tickets(args.bridge)
+        return
+
+    if args.command == "pack-section-poi":
+        pack_section_and_poi(args.bridge)
         return
 
     pending = {}

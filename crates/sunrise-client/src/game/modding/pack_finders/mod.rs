@@ -15,7 +15,7 @@ use sunrise_client::{
 #[cfg(test)]
 mod tests;
 
-struct Registry {
+pub(in crate::game) struct Registry {
     kind: PackType,
     mods: ModsState,
     packs: Vec<Pack>,
