@@ -47,17 +47,17 @@ pub trait SpawnLevel {
     /// `getNearestPlayer(x, y, z, distance, true) != null`: a survival or
     /// adventure player that close.
     fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool;
-    /// `MobSpawnEvent.SpawnPlacementCheck`: what the check answers once
-    /// `vanilla`, the result of the type's vanilla or registered predicates,
-    /// is known. Only the game's level tells mods.
+    /// `MobSpawnEvent.SpawnPlacementCheck`: answer after the type's vanilla or registered
+    /// predicates, with the same random stream they used. Only the game's level tells mods.
     fn placement_check(
         &self,
         _entity: &str,
         _reason: Reason,
         _at: [i32; 3],
-        vanilla: bool,
+        default_result: bool,
+        _random: &mut dyn mod_api::RandomSource,
     ) -> bool {
-        vanilla
+        default_result
     }
 }
 
@@ -230,8 +230,8 @@ fn bright<L: SpawnLevel>(l: &L, x: i32, y: i32, z: i32) -> bool {
 fn mob_rules<L: SpawnLevel>(s: Species, l: &L, reason: Reason, x: i32, y: i32, z: i32) -> bool {
     is_spawner(reason) || is_valid_spawn(s, l, x, y - 1, z)
 }
-/// `Monster.checkMonsterSpawnRules`.
-fn monster_rules<L: SpawnLevel>(
+/// `Monster.checkMonsterSpawnRules`, independent of registered spawn placements.
+pub fn monster_rules<L: SpawnLevel>(
     s: Species,
     l: &L,
     reason: Reason,
@@ -242,6 +242,17 @@ fn monster_rules<L: SpawnLevel>(
 ) -> bool {
     (ignores_light(reason) || is_dark_enough(l, random, x, y, z))
         && mob_rules(s, l, reason, x, y, z)
+}
+/// `PatrollingMonster.checkPatrollingMonsterSpawnRules`, independent of registered placements.
+pub(crate) fn patrolling_monster_rules<L: SpawnLevel>(
+    s: Species,
+    l: &L,
+    reason: Reason,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> bool {
+    l.block_light(x, y, z) <= 8 && mob_rules(s, l, reason, x, y, z)
 }
 /// `Animal.checkAnimalSpawnRules` with the given spawnable-on tag.
 fn animal_rules<L: SpawnLevel>(l: &L, reason: Reason, on: &str, x: i32, y: i32, z: i32) -> bool {
@@ -276,7 +287,7 @@ pub fn check_spawn_rules<L: SpawnLevel>(
             let pos = BlockPos::new(x, y, z);
             let mut ctx = SpawnContext {
                 level: SpawnLevelView(l),
-                rng: random,
+                random: SpawnRandom(random),
                 pos,
             };
             match &row.predicates {
@@ -286,7 +297,7 @@ pub fn check_spawn_rules<L: SpawnLevel>(
                 data::SpawnPredicates::Combined { original, or, and } => {
                     let original = match original {
                         Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
-                        None => placement_predicate(kind.species, l, reason, ctx.rng, x, y, z),
+                        None => placement_predicate(kind.species, l, reason, ctx.random.0, x, y, z),
                     };
                     (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
                         && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
@@ -295,7 +306,7 @@ pub fn check_spawn_rules<L: SpawnLevel>(
         }
         None => placement_predicate(kind.species, l, reason, random, x, y, z),
     };
-    l.placement_check(&kind.id, reason, at, allowed)
+    l.placement_check(&kind.id, reason, at, allowed, &mut SpawnRandom(random))
 }
 
 struct SpawnLevelView<'a, L>(&'a L);
@@ -328,7 +339,7 @@ impl<L: SpawnLevel> SpawnPlacementLevel for SpawnLevelView<'_, L> {
 
 struct SpawnContext<'a, L, R> {
     level: SpawnLevelView<'a, L>,
-    rng: &'a mut R,
+    random: SpawnRandom<'a, R>,
     pos: BlockPos,
 }
 
@@ -338,41 +349,49 @@ impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, 
     }
 
     fn random(&mut self) -> &mut dyn mod_api::RandomSource {
-        self
+        &mut self.random
     }
 
     fn is_dark_enough_to_spawn(&mut self) -> bool {
-        is_dark_enough(self.level.0, self.rng, self.pos.x, self.pos.y, self.pos.z)
+        is_dark_enough(
+            self.level.0,
+            self.random.0,
+            self.pos.x,
+            self.pos.y,
+            self.pos.z,
+        )
     }
 }
 
-impl<L, R: RandomSource> mod_api::RandomSource for SpawnContext<'_, L, R> {
+struct SpawnRandom<'a, R>(&'a mut R);
+
+impl<R: RandomSource> mod_api::RandomSource for SpawnRandom<'_, R> {
     fn next_int(&mut self) -> i32 {
-        self.rng.next_int()
+        self.0.next_int()
     }
 
     fn next_int_bound(&mut self, bound: i32) -> i32 {
-        self.rng.next_int_bound(bound).unwrap_or(0)
+        self.0.next_int_bound(bound).unwrap_or(0)
     }
 
     fn next_long(&mut self) -> i64 {
-        self.rng.next_long()
+        self.0.next_long()
     }
 
     fn next_boolean(&mut self) -> bool {
-        self.rng.next_boolean()
+        self.0.next_boolean()
     }
 
     fn next_float(&mut self) -> f32 {
-        self.rng.next_float()
+        self.0.next_float()
     }
 
     fn next_double(&mut self) -> f64 {
-        self.rng.next_double()
+        self.0.next_double()
     }
 
     fn next_gaussian(&mut self) -> f64 {
-        self.rng.next_gaussian()
+        self.0.next_gaussian()
     }
 }
 
@@ -502,7 +521,7 @@ fn placement_predicate<L: SpawnLevel>(
         S::Ocelot => random.next_int_bound(3).unwrap_or(0) != 0,
         S::Parrot => tag(l, "minecraft:parrots_spawnable_on", x, y - 1, z) && bright(l, x, y, z),
         S::Hoglin | S::Piglin => name(l, x, y - 1, z) != "minecraft:nether_wart_block",
-        S::Pillager => l.block_light(x, y, z) <= 8 && mob_rules(s, l, reason, x, y, z),
+        S::Pillager => patrolling_monster_rules(s, l, reason, x, y, z),
         S::PolarBear => {
             if l.biome_tag("minecraft:polar_bears_spawn_on_alternate_blocks", x, y, z) {
                 bright(l, x, y, z)
@@ -1048,9 +1067,16 @@ mod mod_spawn_rule_tests {
         fn player_near(&self, _: f64, _: f64, _: f64, _: f64) -> bool {
             false
         }
-        fn placement_check(&self, _: &str, _: Reason, _: [i32; 3], vanilla: bool) -> bool {
-            self.heard.borrow_mut().push(vanilla);
-            self.hook.unwrap_or(vanilla)
+        fn placement_check(
+            &self,
+            _: &str,
+            _: Reason,
+            _: [i32; 3],
+            default_result: bool,
+            _: &mut dyn mod_api::RandomSource,
+        ) -> bool {
+            self.heard.borrow_mut().push(default_result);
+            self.hook.unwrap_or(default_result)
         }
     }
 
@@ -1164,7 +1190,7 @@ mod mod_spawn_rule_tests {
         let mut rng = LegacyRandom::new(7);
         let mut context = SpawnContext {
             level: SpawnLevelView(&level),
-            rng: &mut rng,
+            random: SpawnRandom(&mut rng),
             pos: BlockPos::new(0, 1, 0),
         };
 
