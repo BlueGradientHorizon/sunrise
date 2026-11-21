@@ -1622,7 +1622,7 @@ mod tests {
         .write(&root, &Default::default())
         .unwrap();
         with_game(|game| {
-            let before = game.res.biomes().with_packs([]);
+            let before = game.res.biomes().with_packs([]).unwrap();
             let mut chunk = sunrise_client::chunk::Chunk::empty(8, 8);
             chunk.set_biome_cell(1, 20, 2, before.saved_id("gone_mod:highland"));
             let save = SaveDir::new(

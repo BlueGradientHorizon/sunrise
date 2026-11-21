@@ -796,7 +796,7 @@ mod pack_tests {
             ("minecraft:molten_peaks", &hot),
             ("minecraft:river", &red),
         ];
-        let world = base.with_packs(files);
+        let world = base.with_packs(files).unwrap();
         // The built-in ids stay; the river takes the pack's values.
         assert_eq!(world.id("minecraft:plains"), 1);
         assert_eq!(world.id("minecraft:river"), 2);
@@ -823,7 +823,7 @@ mod pack_tests {
             ]
         );
         // Another world starts again from the built-in biomes.
-        let other = world.with_packs([]);
+        let other = world.with_packs([]).unwrap();
         assert_eq!(other.list.len(), 3);
         assert!(!other.contains("minecraft:molten_peaks"));
         assert_eq!(other.get(2).water, 0x3F76E4);
@@ -837,7 +837,7 @@ mod pack_tests {
     #[test]
     fn an_id_past_the_table_names_plains() {
         let next = builtin(&["minecraft:meadow", "minecraft:plains", "minecraft:river"]);
-        let last = next.with_packs([("limbo:void", &json!({}))]);
+        let last = next.with_packs([("limbo:void", &json!({}))]).unwrap();
         let stale = last.id("limbo:void");
         assert_eq!((stale, last.name(stale)), (3, "limbo:void"));
         assert_eq!(next.name(stale), "minecraft:plains");
@@ -1306,7 +1306,7 @@ mod placeholder_tests {
         // A recoloured copy keeps the ids; a table rebuilt from packs does not share them.
         let recolored = biomes.with_colors(|_, c| c.water = 3).unwrap();
         assert_eq!(recolored.saved_name(gone), "gone_mod:highland");
-        let rebuilt = biomes.with_packs([]);
+        let rebuilt = biomes.with_packs([]).unwrap();
         assert_eq!(rebuilt.saved_name(gone), "minecraft:plains");
     }
 }
