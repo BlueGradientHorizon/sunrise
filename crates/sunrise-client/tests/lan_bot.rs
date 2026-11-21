@@ -1718,10 +1718,10 @@ fn a_respawned_guest_is_immune_until_its_client_loads_the_world() {
     );
     // A level change does not clear it: vanilla resets the loaded state on death and respawn
     // only, and covers a portal with its separate `isChangingDimension` term.
-    s.hub.begin_level_change(0, at, 0.0, None, 0, &ctx);
+    let change = s.hub.begin_level_change(0, at, 0.0, None, 0, &ctx);
     s.hub
         .send_commands(0, s.hub.commands_packet(s.hub.guests[0].permission));
-    s.hub.finish_level_change(0, false, &ctx);
+    s.hub.finish_level_change(0, change, false, &ctx);
     assert!(
         !s.hub.guests[0].client_loaded(),
         "a level change keeps the cleared state from the respawn"

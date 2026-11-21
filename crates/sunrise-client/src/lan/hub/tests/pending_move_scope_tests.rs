@@ -73,9 +73,9 @@ fn the_first_tick_after_a_level_change_is_not_heard_and_the_second_is() {
     let mut hub = standing(true, vec![]);
     let conn = hub.guests[0].conn;
     with_input_context(|ctx| {
-        hub.begin_level_change(0, [0.0, 64.0, 0.0], 0.0, None, 0, ctx);
+        let change = hub.begin_level_change(0, [0.0, 64.0, 0.0], 0.0, None, 0, ctx);
         hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-        hub.finish_level_change(0, false, ctx);
+        hub.finish_level_change(0, change, false, ctx);
     });
     assert_eq!(hub.guests[0].level_entered, 10);
     hub.ticks = 11;
@@ -289,9 +289,9 @@ fn the_baseline_is_the_destination_of_every_server_side_teleport() {
     });
     assert_eq!(baseline(&hub), ([0.5, 64.0, 0.5], [30.0, 5.0]), "a respawn");
     with_input_context(|ctx| {
-        hub.begin_level_change(0, [100.5, 49.0, 0.5], 90.0, None, 0, ctx);
+        let change = hub.begin_level_change(0, [100.5, 49.0, 0.5], 90.0, None, 0, ctx);
         hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-        hub.finish_level_change(0, false, ctx);
+        hub.finish_level_change(0, change, false, ctx);
     });
     assert_eq!(
         baseline(&hub),

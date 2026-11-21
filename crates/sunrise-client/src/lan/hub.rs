@@ -166,6 +166,14 @@ pub struct TickCtx<'a> {
     pub streaming: Option<&'a crate::streaming::Streaming>,
 }
 
+/// Destination placement and viewed-level handoff after the command-tree send.
+pub struct LevelChange {
+    at: [f64; 3],
+    yaw: f32,
+    pitch: Option<f32>,
+    view: Option<sunrise_protocol::viewed_levels::Level>,
+}
+
 /// What the gameplay code has to do for a guest.
 pub enum HostEvent {
     /// Release input reservations only after this segment has finished in Game.
@@ -4956,10 +4964,46 @@ impl Hub {
         pitch: Option<f32>,
         portal_cooldown: i32,
         ctx: &TickCtx,
-    ) {
+    ) -> LevelChange {
         let info = self.spawn_info(i, portal_cooldown, ctx.sea_level);
         self.close_container_for(i);
-        self.before_travel(i);
+        let view = self.before_travel(i);
+        let g = &self.guests[i];
+        g.send(&C::Respawn(play::Respawn {
+            spawn: info,
+            // ClientboundRespawnPacket.KEEP_ALL_DATA.
+            keep: 3,
+        }));
+        if let Some(level @ sunrise_protocol::viewed_levels::Level::Bound { .. }) = view {
+            g.sender.send(sunrise_protocol::viewed_levels::swap(level));
+        }
+        g.send(&C::ChangeDifficulty(play::ChangeDifficulty {
+            difficulty: ctx.difficulty,
+            locked: ctx.difficulty_locked,
+        }));
+        self.send_permission_level(i);
+        LevelChange {
+            at,
+            yaw,
+            pitch,
+            view,
+        }
+    }
+
+    /// Finish the move after sending the command tree from the player's source state.
+    pub fn finish_level_change(
+        &mut self,
+        i: usize,
+        change: LevelChange,
+        portal: bool,
+        ctx: &TickCtx,
+    ) {
+        let LevelChange {
+            at,
+            yaw,
+            pitch,
+            view,
+        } = change;
         let left = self.guests[i].dimension.clone();
         self.guests.update(i, |g| {
             // Out of the old level with its chunks (ChunkMap.removeEntity).
@@ -4976,23 +5020,9 @@ impl Hub {
                 g.pitch = pitch;
             }
             g.place(at);
-            g.send(&C::Respawn(play::Respawn {
-                spawn: info,
-                // ClientboundRespawnPacket.KEEP_ALL_DATA.
-                keep: 3,
-            }));
         });
         // Its chunks, queues and entities left behind, or kept as a viewed level (#3716).
-        self.leave_level(i, &left);
-        self.guests[i].send(&C::ChangeDifficulty(play::ChangeDifficulty {
-            difficulty: ctx.difficulty,
-            locked: ctx.difficulty_locked,
-        }));
-        self.send_permission_level(i);
-    }
-
-    /// Finish the level change after sending the command tree.
-    pub fn finish_level_change(&mut self, i: usize, portal: bool, ctx: &TickCtx) {
+        self.leave_level(i, &left, view);
         if portal {
             // A teleport still pending from the old level is void: its late
             // acceptance must not move the player back there.
@@ -5461,9 +5491,9 @@ mod tests {
             border: &border,
             streaming: None,
         };
-        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        let change = hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
         hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-        hub.finish_level_change(0, false, &ctx);
+        hub.finish_level_change(0, change, false, &ctx);
         assert_eq!(drain(&rx).1, [3]);
         assert_eq!(hub.guests[0].sent_pose, Pose::Crouching);
         hub.sync_player_state(0);
@@ -6131,9 +6161,9 @@ mod tests {
             border: &border,
             streaming: None,
         };
-        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        let change = hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
         hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-        hub.finish_level_change(0, false, &ctx);
+        hub.finish_level_change(0, change, false, &ctx);
         let _ = shared_flags_sent(&rx);
         hub.guests.update(0, |g| g.sneaking = false);
         hub.sync_player_state(0);
@@ -6216,9 +6246,9 @@ mod tests {
             g.recipe_book.custom.set("test:cooking", flags).unwrap();
         });
         open(&mut hub);
-        hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
+        let change = hub.begin_level_change(0, [100.5, 49.0, 0.5], 0.0, None, 0, &ctx);
         hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-        hub.finish_level_change(0, false, &ctx);
+        hub.finish_level_change(0, change, false, &ctx);
         assert!(hub.guests[0].menu.is_none());
         assert_eq!(hub.guests[0].recipe_book.custom.get("test:cooking"), flags);
         open(&mut hub);
@@ -7708,9 +7738,9 @@ mod tests {
                 border: &border,
                 streaming: None,
             };
-            hub.begin_level_change(0, [0.5, 64.0, 0.5], 0.0, None, 0, &ctx);
+            let change = hub.begin_level_change(0, [0.5, 64.0, 0.5], 0.0, None, 0, &ctx);
             hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
-            hub.finish_level_change(0, true, &ctx);
+            hub.finish_level_change(0, change, true, &ctx);
             // The nether's chunks: the level left and the new one are a run
             // each, which names its level once.
             send_chunks(&mut hub, &mut world);
