@@ -114,7 +114,9 @@ pub trait FeatureContext {
     fn block_in_tag(&mut self, pos: [i32; 3], tag: &str) -> Option<bool>;
     /// `LevelWriter.setBlock(pos, state, flags)`, as `Feature.setBlock` (flags
     /// `BlockUpdateFlags::NEIGHBORS | CLIENTS`) and the tree features (`| KNOWN_SHAPE`) call it:
-    /// whether it will be written.
+    /// whether it will be written. During FEATURES, `WorldGenRegion.ensureCanWrite` allows
+    /// the center chunk and its eight neighbors. If the center is upgrading, its generation
+    /// height also restricts writes throughout the region, regardless of the target chunk.
     fn set_block(&mut self, pos: [i32; 3], state: BlockState, flags: BlockUpdateFlags) -> bool;
     /// `WorldGenLevel.getHeight` of the heightmap kind at (x, z), as the level has it before
     /// this call's writes.

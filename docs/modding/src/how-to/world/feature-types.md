@@ -90,11 +90,13 @@ the modifiers before you drew from.
 | `min_y`, `max_y` | The level's height bounds |
 
 `set_block` answers `false` for the state already there, as `Level.setBlock` answers. A write
-outside the region it may write (during decoration, the game's own decoration region around the
-chunk) or outside the build height also answers `false`, and is a fault. A read the level can't
-answer is `None`. Neither ever loads a chunk. `block_entity` is `false` for a position you didn't
-place a block at in this call, in a full chunk that decoration only reads (the block is never
-placed there), and for data whose `id` isn't that block's block entity.
+outside the writable region or build height also answers `false`, and is a fault. During
+FEATURES decoration, `WorldGenRegion.ensureCanWrite` allows the center chunk and its eight
+neighbors. If the center is upgrading, its generation height also restricts writes anywhere in
+that region, regardless of the target chunk. A read the level can't answer is `None`. Neither
+ever loads a chunk. `block_entity` is `false` for a position you didn't place a block at in this
+call, in a full chunk that decoration only reads (the block is never placed there), and for data
+whose `id` isn't that block's block entity.
 
 Each world query, block write or block-entity operation is one unit of work; random draws and
 the config, metadata and state helpers are not charged. One root placement (a decoration

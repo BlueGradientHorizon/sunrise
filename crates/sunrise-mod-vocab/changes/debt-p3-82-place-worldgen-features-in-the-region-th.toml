@@ -6,14 +6,21 @@ ids = [
   "type:StructureError.0",
   "handle:StructureError::new",
   "type:BlockStateError",
+  "method:FeatureContext::set_block",
 ]
 why = """
 `Feature.place`, `StructureStart.placeInChunk`, and `PiecesContainer.load` call generation and
 piece-loading code in-process. NeoForge uses the worldgen registries for type dispatch, including
 `DeferredRegister` for features and the `STRUCTURE_TYPE` and `STRUCTURE_PIECE` registries for
 structures and pieces. The callback errors now keep their original typed causes instead of encoding
-strings. This change leaves `WorldGenRegion.ensureCanWrite` and `Structure.findValidGenerationPoint`
-semantics, feature config codecs, and structure save codecs untouched.
+strings. Feature config codecs, structure save codecs, and `Structure.findValidGenerationPoint`
+are unchanged.
+
+The FEATURES writer now uses `WorldGenRegion.ensureCanWrite` for both checks and writes.
+`ChunkPyramid.GENERATION_PYRAMID` gives FEATURES a write radius of one chunk; the center's
+`ProtoChunk.getHeightAccessorForGeneration` supplies the vertical restriction during upgrades.
+Each far-chunk refusal logs the position and stage. `WorldGenRegion.setBlock` keeps its result even
+for admitted no-ops in proto or imposter storage; live writes keep `Level.setBlock`'s result.
 """
 migrate = """
 Replace `FeatureError(message)` with `FeatureError::new(std::io::Error::other(message))` and
@@ -28,4 +35,9 @@ cause that carries the ID. Make the same replacement with `StructureError::new` 
 Replace `.0` or tuple destructuring with `error.to_string()` for diagnostics or
 `std::error::Error::source(&error)` to inspect or downcast the cause. Return the native error
 from the callback; neither wrapper supports `Wire` encoding or decoding anymore.
+
+The `FeatureContext::set_block` call is unchanged. During FEATURES, keep writes within one
+chunk of the center in X and Z. For a below-zero upgrade, write only at Y=-64 through -1
+throughout that region, as set by `BelowZeroRetrogen.UPGRADE_HEIGHT_ACCESSOR`; the target chunk's
+own upgrade state does not determine which writes are allowed.
 """

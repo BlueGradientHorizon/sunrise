@@ -133,6 +133,10 @@ impl HeightmapState for GenBlockState {
 #[derive(Clone, Debug)]
 pub struct GenBlockStates(Arc<[GenBlockState]>);
 impl GenBlockStates {
+    pub(super) fn new(states: Vec<GenBlockState>) -> Self {
+        Self(states.into())
+    }
+
     pub fn get(&self, id: BlockStateId) -> GenBlockState {
         self.0.get(id.0 as usize).copied().unwrap_or_default()
     }

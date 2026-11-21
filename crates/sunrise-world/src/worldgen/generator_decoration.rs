@@ -58,6 +58,9 @@ use {
     sunrise_core::bounding_box::BoundingBox,
 };
 
+/// `ChunkPyramid.GENERATION_PYRAMID` sets the FEATURES block-state write radius to one chunk.
+const FEATURES_WRITE_RADIUS: i32 = 1;
+
 pub(super) struct Decoration {
     plan: FeatureDecorationPlan,
     names: Vec<String>,
@@ -430,7 +433,7 @@ impl Decoration {
             region: terrain,
             biomes: BiomeRegion::new(biomes, obfuscate_seed(seed))
                 .map_err(|e| resource(e.to_string()))?,
-            zone: GenerationWriteZone::new(center, 1),
+            zone: GenerationWriteZone::new(center, FEATURES_WRITE_RADIUS),
             center,
             uniform_biomes: vec![UNKNOWN_BIOME; 9 * (height / 16).max(0) as usize],
             biome_quarts: region[4].biomes().quart_range(),
@@ -875,6 +878,26 @@ impl DecorationWorld for World<'_> {
     }
 }
 impl World<'_> {
+    /// `WorldGenRegion.ensureCanWrite`: the step's horizontal radius and, while
+    /// upgrading, the center's generation interval. Proto storage handles its
+    /// own bounds after admission.
+    fn can_write(&self, position: [i32; 3]) -> Result<bool, RegionError> {
+        let [x, y, z] = position;
+        let pos = BlockPos::new(x, y, z);
+        if !self.zone.contains_block(pos) {
+            let ChunkPos { x: cx, z: cz } = pos.chunk();
+            let stage = PreLightChunkStage::Features.name();
+            log::error!(
+                "Refused worldgen write at {position:?} in far chunk [{cx}, {cz}], stage: {stage}"
+            );
+            return Ok(false);
+        }
+        Ok(self
+            .region
+            .upgrade_write_height(self.center)?
+            .is_none_or(|height| height.contains(y)))
+    }
+
     /// Whether `position` is in one of the region's full chunks.
     fn is_full_chunk(&self, [x, _, z]: [i32; 3]) -> bool {
         self.full.iter().any(|p| p.x == x >> 4 && p.z == z >> 4)
@@ -901,10 +924,7 @@ impl FeatureWorld for World<'_> {
         state: BlockStateId,
         flags: i32,
     ) -> Result<bool, RegionError> {
-        if !self
-            .zone
-            .contains_block(BlockPos::new(position[0], position[1], position[2]))
-        {
+        if !self.can_write(position)? {
             return Ok(false);
         }
         // ImposterProtoChunk(chunk, false): setBlockState, setBlockEntity,
@@ -913,8 +933,7 @@ impl FeatureWorld for World<'_> {
         if self.is_full_chunk(position) {
             return Ok(true);
         }
-        let old = self.region.block(position)?;
-        self.region.set_block_worldgen(position, state)?;
+        let old = self.region.set_block_worldgen(position, state)?;
         self.raise_floor_bound(position);
         // ProtoChunk keeps a block entity that already exists when the same kind
         // of block is set again (a chest turning waterlogged); other changes drop it.
@@ -1389,9 +1408,7 @@ impl PlacementContext for World<'_> {
         Ok(())
     }
     fn ensure_can_write(&mut self, position: [i32; 3]) -> Result<bool, PlacementQueryError> {
-        Ok(self
-            .zone
-            .contains_block(BlockPos::new(position[0], position[1], position[2])))
+        self.can_write(position).map_err(Into::into)
     }
     /// ProtoChunk.setBlockState: the section and the stage's heightmaps
     /// (nothing on a full chunk: ImposterProtoChunk(chunk, false)).
@@ -1660,15 +1677,25 @@ fn set_feature_bit(bits: &mut Vec<u64>, feature: FeatureIdentity) {
 }
 #[cfg(test)]
 mod tests {
-    use super::loot_table_nbt;
-    use crate::registry::BlockRegistry;
+    use super::*;
+    use crate::{
+        chunk_status::ChunkStatus,
+        registry::BlockRegistry,
+        retrogen::BelowZeroRetrogen,
+        worldgen::{biome_chunk::BiomeChunk, generator::GenBlockState, terrain::TerrainChunk},
+    };
     use sunrise_core::random::{LegacyRandom, RandomSource};
 
-    /// Air, a chest, a dispenser and a furnace: one randomizable container the
-    /// worldgen callers place, three they do not, and one plain container.
+    /// Minimal feature blocks and the containers used in the loot table tests.
     fn registry() -> &'static BlockRegistry {
         let names = [
             "minecraft:air",
+            "minecraft:cave_air",
+            "minecraft:void_air",
+            "minecraft:stone",
+            "minecraft:cobblestone",
+            "minecraft:end_stone",
+            "minecraft:obsidian",
             "minecraft:chest",
             "minecraft:dispenser",
             "minecraft:hopper",
@@ -1696,6 +1723,128 @@ mod tests {
 
     fn state(name: &str) -> crate::registry::BlockStateId {
         registry().default_state(name).unwrap()
+    }
+
+    #[test]
+    fn features_writer_uses_resident_center_admission() {
+        let registry = registry();
+        let blocks = FeatureBlocks::from_registry(registry).unwrap();
+        let properties = GenBlockStates::new(
+            (0..registry.len())
+                .map(|id| {
+                    let name = registry
+                        .state(BlockStateId(id as u32))
+                        .unwrap()
+                        .name
+                        .as_str();
+                    let air = name.ends_with("air");
+                    GenBlockState {
+                        air,
+                        air_block: name == "minecraft:air",
+                        motion: !air,
+                        no_leaves: !air,
+                        fluid: false,
+                    }
+                })
+                .collect(),
+        );
+        let decoration = Decoration {
+            plan: FeatureDecorationPlan::new(vec![]).unwrap(),
+            names: Vec::new(),
+            features: Vec::new(),
+            biome_features: Vec::new(),
+            bindings: FeatureBlockBindings::new(registry, BTreeSet::new()).unwrap(),
+            weather: None,
+            blocks,
+            catalog: FeatureCatalog::from_resources(
+                &BTreeMap::new(),
+                &BTreeMap::new(),
+                &TagDefinitions::default(),
+            )
+            .unwrap(),
+            named: Default::default(),
+            postprocess_self: Vec::new(),
+            postprocess_above: Vec::new(),
+            top_layers: Vec::new(),
+        };
+        let mut chunks = Vec::new();
+        let mut biomes = Vec::new();
+        for z in -1..=1 {
+            for x in -1..=1 {
+                let pos = ChunkPos::new(x, z);
+                let mut chunk =
+                    TerrainChunk::new(pos, -64, 128, registry, properties.clone()).unwrap();
+                chunk.set_generation_stage(PreLightChunkStage::Terrain);
+                chunks.push(chunk);
+                biomes.push(BiomeChunk::new(pos, -64, 128, BiomeId(0)).unwrap());
+            }
+        }
+        let center = ChunkPos::new(0, 0);
+        let biome_quarts = biomes[4].quart_range();
+        let mut random = LegacyRandom::new(0);
+        let mut world = World {
+            full: vec![ChunkPos::new(-1, 0)],
+            block_entities: Vec::new(),
+            entities: Vec::new(),
+            level_random: &mut random,
+            structure_mobs: None,
+            starts: Vec::new(),
+            biome_names: &[],
+            blocks: None,
+            region: TerrainRegion::new(chunks, WorldGenerationContext::new(-64, 128, 0)).unwrap(),
+            biomes: BiomeRegion::new(biomes, obfuscate_seed(0)).unwrap(),
+            zone: GenerationWriteZone::new(center, FEATURES_WRITE_RADIUS),
+            center,
+            uniform_biomes: Vec::new(),
+            biome_quarts,
+            decoration: &decoration,
+            temperatures: &mut [],
+            behaviours: None,
+            build: (-64, 64),
+            shape_ticks: std::cell::RefCell::new(crate::level::Ticks::new(0)),
+            last_tag: None,
+            floor_bounds: [None; 9],
+            shape_capture: Default::default(),
+        };
+        let retrogen = BelowZeroRetrogen::new(ChunkStatus::Features, Vec::new()).unwrap();
+        world
+            .region
+            .chunk_mut(1, 0)
+            .unwrap()
+            .set_below_zero_retrogen(Some(retrogen.clone()));
+
+        // An upgrading target does not restrict the writes of a normal center.
+        let neighbor = [16, 0, 0];
+        assert!(world.ensure_can_write(neighbor).unwrap());
+        assert!(world.set_block(neighbor, blocks.stone, 2).unwrap());
+        assert_eq!(world.block(neighbor).unwrap(), blocks.stone);
+        assert!(world.set_block(neighbor, blocks.stone, 2).unwrap());
+        assert!(!world.set_block([32, 0, 0], blocks.stone, 2).unwrap());
+
+        // Imposter and out-of-storage ProtoChunk writes can be admitted no-ops.
+        let full = [-1, 0, 0];
+        assert!(world.set_block(full, blocks.stone, 2).unwrap());
+        assert_eq!(world.block(full).unwrap(), blocks.air);
+        let above_storage = [16, 64, 0];
+        assert!(world.set_block(above_storage, blocks.stone, 2).unwrap());
+        assert_eq!(
+            world.block(above_storage).unwrap(),
+            registry.default_state("minecraft:void_air").unwrap()
+        );
+
+        // The center's lower generation interval now applies even to a normal neighbor.
+        world
+            .region
+            .chunk_mut(0, 0)
+            .unwrap()
+            .set_below_zero_retrogen(Some(retrogen));
+        let too_high = [0, 0, -1];
+        assert!(!world.ensure_can_write(too_high).unwrap());
+        assert!(!world.set_block(too_high, blocks.stone, 2).unwrap());
+        assert_eq!(world.block(too_high).unwrap(), blocks.air);
+        let in_interval = [0, -1, -1];
+        assert!(world.set_block(in_interval, blocks.stone, 2).unwrap());
+        assert_eq!(world.block(in_interval).unwrap(), blocks.stone);
     }
 
     /// `RandomizableContainer.setBlockEntityLootTable` hands the table to the block
