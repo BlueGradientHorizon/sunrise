@@ -318,6 +318,35 @@ fn uses_private_type() { let _: private_type::helper = (); }
 }
 
 #[test]
+fn a_cfg_gated_value_does_not_make_a_restricted_type_import_shadow_a_public_value() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod defs {
+    pub type helper = ();
+    #[cfg(any())]
+    pub fn helper() {}
+}
+mod values { pub fn helper() {} }
+mod provider {
+    pub(crate) use super::defs::helper;
+    pub use super::values::*;
+}
+fn calls_public_value() { provider::helper(); }
+fn uses_private_type() { let _: provider::helper = (); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    check("calls_public_value").unwrap();
+    let (code, why) = check("uses_private_type").unwrap_err();
+    assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+    assert!(why.contains("provider::helper"), "{why}");
+}
+
+#[test]
 fn a_bare_reference_follows_the_mirrors_import_to_its_provider() {
     let root = fixture();
     fs::write(

@@ -17,8 +17,8 @@ enum Namespace {
 
 #[derive(Default)]
 pub(super) struct Scope {
-    items: [HashMap<String, Binding>; 2],
-    conditional_modules: HashSet<String>,
+    // None means a cfg-gated declaration may bind the name in that namespace.
+    items: [HashMap<String, Option<Binding>>; 2],
     imports: HashMap<String, Option<Import>>,
     globs: Vec<Import>,
     opaque: bool,
@@ -184,27 +184,27 @@ impl Scope {
             };
             if !mod_source::modules::test_only(attrs) {
                 let name = unraw(ident);
-                if matches!(item, Item::Mod(_)) && conditional(attrs) {
-                    scope.conditional_modules.insert(name);
-                    continue;
-                }
-                let binding = Binding {
+                let spaces: &[_] = match item {
+                    Item::Fn(_) | Item::Const(_) | Item::Static(_) => &[Namespace::Value],
+                    // A tuple or unit struct has a constructor in the value namespace too.
+                    Item::Struct(item) if !matches!(item.fields, syn::Fields::Named(_)) => {
+                        &[Namespace::Type, Namespace::Value]
+                    }
+                    _ => &[Namespace::Type],
+                };
+                let binding = (!conditional(attrs)).then(|| Binding {
                     module: matches!(item, Item::Mod(_)).then(|| format!("{module}::{name}")),
                     limit: limit(module, vis),
                     blocked: None,
-                };
-                match item {
-                    Item::Fn(_) | Item::Const(_) | Item::Static(_) => {
-                        scope.items[Namespace::Value as usize].insert(name, binding);
-                    }
-                    _ => {
-                        // A tuple or unit struct has a constructor in the value namespace too.
-                        if matches!(item, Item::Struct(item) if !matches!(item.fields, syn::Fields::Named(_)))
-                        {
-                            scope.items[Namespace::Value as usize]
-                                .insert(name.clone(), binding.clone());
-                        }
-                        scope.items[Namespace::Type as usize].insert(name, binding);
+                });
+                for &space in spaces {
+                    let names = &mut scope.items[space as usize];
+                    if let Some(binding) = &binding {
+                        names
+                            .entry(name.clone())
+                            .or_insert_with(|| Some(binding.clone()));
+                    } else {
+                        names.insert(name.clone(), None);
                     }
                 }
             }
@@ -251,12 +251,9 @@ impl Walk<'_> {
     fn binding(&mut self, module: &str, name: &str, space: Namespace) -> Lookup {
         let scope = self.scope(module).ok_or(Unresolved)?;
         if let Some(item) = scope.items[space as usize].get(name) {
-            return Ok(Some(item.clone()));
+            return item.clone().map(Some).ok_or(Unresolved);
         }
         if space == Namespace::Type {
-            if scope.conditional_modules.contains(name) {
-                return Err(Unresolved);
-            }
             // The game module walker knows about build-generated declarations too.
             let child = format!("{module}::{name}");
             if self.source.files.contains_key(&child) {
@@ -437,8 +434,6 @@ pub(super) fn check_body(
                         scope.opaque
                             || !scope.globs.is_empty()
                             || scope.items[head as usize].contains_key(first)
-                            || (head == Namespace::Type
-                                && scope.conditional_modules.contains(first))
                             || scope.imports.contains_key(first)
                     }))
             {
