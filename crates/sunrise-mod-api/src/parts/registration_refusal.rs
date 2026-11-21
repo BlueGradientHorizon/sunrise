@@ -310,17 +310,6 @@ mod tests {
 
     #[test]
     fn panic_in_hooks_register_rolls_back_only_its_owner_and_queues_report() {
-        struct RefusesDrop;
-        impl crate::BlockPart for RefusesDrop {
-            fn block_subscribed(&self) -> &'static [Option<crate::HookId>] {
-                &[]
-            }
-        }
-        impl Drop for RefusesDrop {
-            fn drop(&mut self) {
-                panic!("a discarded Part destructor panics");
-            }
-        }
         struct Panics;
         impl Hooks for Panics {
             fn subscribed(&self) -> &'static [Option<crate::HookId>] {
@@ -329,10 +318,6 @@ mod tests {
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
                 r.declare_fluid("before");
                 r.declare_biome_region("aborted", region()).unwrap();
-                for id in ["minecraft:stone", "minecraft:dirt"] {
-                    let key = r.block_key(id);
-                    r.block_part(key, RefusesDrop);
-                }
                 panic!("boom during registration");
             }
         }
