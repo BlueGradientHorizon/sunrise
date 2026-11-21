@@ -8298,10 +8298,9 @@ impl Game<'_> {
             if let Some((start, rgb)) = glowing.take() {
                 self.mark_outline(&out[start..], rgb);
             }
-            let kind = a.kind.id();
-            self.mark_entity(out.len(), kind);
+            self.mark_entity(out.len(), a.entity_type());
             if a.id != 0
-                && let Some(rgb) = self.thing_outline(a.id, kind)
+                && let Some(rgb) = self.thing_outline(a.id, a.kind.id())
             {
                 glowing = Some((out.len(), rgb));
             }

@@ -1302,27 +1302,37 @@ fn projectile_body_uses_its_own_shader_entity_id() {
             entities: [
                 ("minecraft:snowball".into(), 41),
                 ("minecraft:ominous_item_spawner".into(), 42),
+                ("minecraft:arrow".into(), 43),
+                ("minecraft:spectral_arrow".into(), 44),
             ]
             .into(),
             ..Default::default()
         });
-        game.creatures.projectiles.push(Projectile::new(
+        let arrow = |effect| ProjectileKind::Arrow {
+            base_damage: 2.0,
+            critical: false,
+            effect,
+        };
+        for kind in [
             ProjectileKind::Snowball,
-            sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
-            None,
-        ));
+            arrow(None),
+            arrow(Some(("minecraft:glowing", 200))),
+        ] {
+            game.creatures.projectiles.push(Projectile::new(
+                kind,
+                sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+                None,
+            ));
+        }
         game.entity_geometry(glam::DVec3::new(0.5, 64.0, -4.5), 1.0, None, Vec::new());
-        let spans = game.entity_spans.borrow();
-        assert!(
-            spans
-                .windows(2)
-                .any(|span| span[0].id == 41 && span[0].start < span[1].start)
-        );
-        assert!(
-            !spans
-                .windows(2)
-                .any(|span| span[0].id == 42 && span[0].start < span[1].start)
-        );
+        let ids: Vec<_> = game
+            .entity_spans
+            .borrow()
+            .windows(2)
+            .filter(|span| span[0].start < span[1].start && (41..=44).contains(&span[0].id))
+            .map(|span| span[0].id)
+            .collect();
+        assert_eq!(ids, [41, 43, 44]);
     });
 }
 
