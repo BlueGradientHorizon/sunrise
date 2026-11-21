@@ -502,12 +502,25 @@ def pick_stable() -> None:
     wanted = f"{train.TARGET}-{version}"
     own = wanted if version and tags.get(wanted) == sha else ""
     tag = train.next_stable_tag(tags, version=version, own=own)
-    older = [t for t in tags if t != tag and (found := train.stable_version(t)) and found[0] == train.TARGET]
-    previous = max(older, key=train.stable_key, default=None)
-    parent, legs = None, []
-    if reason:
+    # The release it follows, the one parent every stable check compares with: an orphan stable tag above it stops a
+    # real release here, before anything is built or signed.
+    if dry_run:
+        try:
+            parent = stable_parent(tag)
+        except SystemExit as refused:
+            print(f"::warning::a real release would stop here: {refused}")
+            parent = None
+    else:
         parent = stable_parent(tag)
+    legs = []
+    if reason:
         problems, legs = train.break_glass_problems(sha, tag, parent)
+        attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
+        if attempt != "1":
+            # Only a run's first attempt's approvals count (release_train.break_glass_approvals): refuse before
+            # either person is asked.
+            problems.append(f"a break-glass release runs only as its run's first attempt, not attempt {attempt}: "
+                            "dispatch a new run")
         # What the two approvers approve, shown before their environments ask.
         line = (f"### Break-glass release {tag} at {sha}\n"
                 + (f"Patches {parent.tag} ({parent.sha}) on the daily legs {', '.join(legs) or '(none)'}.\n"
@@ -525,10 +538,9 @@ def pick_stable() -> None:
     parts = [f"Sunrise {tag}: the stable release for Minecraft {train.TARGET}, commit {sha} of "
              f"`{train.RELEASE_BRANCH}`. sunrise-source.tar.gz is its tree; native mods built for it pin that commit, "
              f"and its SDK is the release sdk-{sha}.", MUSL_NOTE]
-    if previous:
-        git("fetch", "--quiet", "origin", f"+refs/tags/{previous}:refs/tags/{previous}")
-        picked = git("log", "--reverse", "--format=- %s", f"refs/tags/{previous}..{sha}")
-        parts.append(f"### Since {previous}\n" + (picked or "No change since then."))
+    if parent:
+        picked = git("log", "--reverse", "--format=- %s", f"{parent.sha}..{sha}")
+        parts.append(f"### Since {parent.tag}\n" + (picked or "No change since then."))
     else:
         parts.append(f"The first stable release for Minecraft {train.TARGET}: what the Nightly of this commit holds.")
     if issues := train.known_issues():
@@ -703,6 +715,35 @@ def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> No
                          "cherry-pick fixes on this line or use a new major")
 
 
+def unpack(sha: str, into: Path) -> None:
+    """The tree of `sha`, extracted into the new folder `into`: no checkout, worktree or repository of its own."""
+    into.mkdir()
+    archive = subprocess.Popen(["git", "archive", sha], stdout=subprocess.PIPE)
+    subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
+    if archive.wait():
+        raise SystemExit(f"::error::git archive {sha} failed")
+
+
+# What a cargo build or a built tool must not inherit from the runner or a checkout: another target folder, or a
+# wrapper that would run in place of the compiler.
+INHERITED_BUILD = ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET_DIR", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER",
+                   "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER")
+
+
+def isolated_env() -> dict[str, str]:
+    return {name: value for name, value in os.environ.items() if name not in INHERITED_BUILD}
+
+
+def parent_stage(sha: str, work: Path) -> str:
+    """`sha`'s own sunrise-stage, built from its tree alone in `work`: cargo runs there, so no `.cargo/config.toml` of
+    the candidate's checkout applies, into its own target folder, with no inherited wrapper."""
+    tree = work / "judge"
+    unpack(sha, tree)
+    subprocess.run(["cargo", "build", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage",
+                    "--target-dir", str(work / "judge-target")], cwd=tree, env=isolated_env(), check=True)
+    return str(work / "judge-target" / "debug" / "sunrise-stage")
+
+
 def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     """Compare to the latest published stable release, not sdk.json's previous SDK or a reserved tag."""
     parsed = train.stable_version(tag)
@@ -720,7 +761,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     old_tag, old_sha = parent.tag, parent.sha
     old_version = train.stable_version(old_tag)[1]
     same_line = old_version[0] == version[0]
-    if break_glass and not same_line:
+    if break_glass and old_version[:2] != version[:2]:
         raise SystemExit(f"::error::refused: a break-glass release is a patch of {old_tag}, not {tag}")
     if same_line:
         require_stable_lineage(sha, tag, old_sha, old_tag)
@@ -731,18 +772,29 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
         new_content, new_functions = stable_sdk_inputs(sha, after if same_line else None)
         if same_line:
             report = work / "diff.json"
-            stage = ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage"]
+            stage = ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage", "--"]
             if break_glass:
                 # A break-glass release keeps its parent's surface.json as it is, and the parent's own sunrise-stage
-                # judges it, never the candidate's.
+                # judges it, never the candidate's: built from the parent's tree alone, it exports both trees itself.
                 if json.loads(before.read_bytes()) != json.loads(after.read_bytes()):
                     raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
                                      "release never does")
-                judge = work / "judge"
-                git("worktree", "add", "--quiet", "--detach", str(judge), old_sha)
-                stage += ["--manifest-path", str(judge / "Cargo.toml")]
+                stage = [parent_stage(old_sha, work)]
+                exported = {}
+                for name, commit in (("parent", old_sha), ("candidate", sha)):
+                    tree, out = work / f"{name}-tree", work / f"{name}.json"
+                    unpack(commit, tree)
+                    subprocess.run([*stage, "surface", str(tree), str(out)], cwd=work, env=isolated_env(), check=True)
+                    exported[name] = json.loads(out.read_bytes())
+                if exported["parent"] != json.loads(before.read_bytes()):
+                    raise SystemExit(f"::error::refused: {old_tag}'s own sunrise-stage does not export its published "
+                                     "surface.json from its tree")
+                if exported["candidate"] != exported["parent"]:
+                    raise SystemExit(f"::error::refused: {old_tag}'s sunrise-stage exports a different surface from "
+                                     f"{tag}'s tree; a break-glass release never changes it")
+                before, after = work / "parent.json", work / "candidate.json"
             # Both files are plain SDK surfaces: no native internals, loops, or change-note waivers.
-            subprocess.run([*stage, "--", "surface-diff", str(before), str(after), "--json", str(report)], check=True)
+            subprocess.run([*stage, "surface-diff", str(before), str(after), "--json", str(report)], check=True)
             verdict = json.loads(report.read_text())["verdict"]
             minor = old_version[1] != version[1]
             allowed = {"identical", "additive"} if minor else {"identical"}

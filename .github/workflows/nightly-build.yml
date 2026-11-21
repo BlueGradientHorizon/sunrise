@@ -287,7 +287,8 @@ jobs:
         run: echo "### break-glass-aria $SAID" >> "$GITHUB_STEP_SUMMARY"
   break-glass:
     needs: [pick, break-glass-umceko, break-glass-aria]
-    if: needs.pick.outputs.break_glass == 'true'
+    # Only a run's first attempt's approvals count: a re-run (of failed jobs too) never reuses them.
+    if: needs.pick.outputs.break_glass == 'true' && github.run_attempt == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -314,7 +315,8 @@ jobs:
     # all wait for this job.
     if: >-
       !cancelled() && needs.pick.result == 'success' && needs.pick.outputs.build == 'true' &&
-      (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
+      (needs.pick.outputs.break_glass == 'false' ||
+      (needs.break-glass.result == 'success' && github.run_attempt == '1'))
     uses: ./.github/workflows/game-build.yml
     with:
       part: exporters
@@ -369,7 +371,8 @@ jobs:
     needs: [pick, build, complete, break-glass]
     if: >-
       !cancelled() && needs.complete.outputs.complete == 'true' &&
-      (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
+      (needs.pick.outputs.break_glass == 'false' ||
+      (needs.break-glass.result == 'success' && github.run_attempt == '1'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Main's sign_release.sh hashes the archives and signs with the runner's OpenSSL.
@@ -431,7 +434,8 @@ jobs:
     needs: [pick, build, complete, sign, break-glass]
     if: >-
       !cancelled() && needs.complete.outputs.complete == 'true' && needs.sign.result == 'success' &&
-      (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
+      (needs.pick.outputs.break_glass == 'false' ||
+      (needs.break-glass.result == 'success' && github.run_attempt == '1'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

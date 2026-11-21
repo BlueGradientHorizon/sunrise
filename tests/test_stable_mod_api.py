@@ -111,42 +111,80 @@ class StableModApiTests(unittest.TestCase):
                     diff.assert_called_once()
 
     def test_a_break_glass_release_keeps_its_parents_surface_judged_by_the_parents_own_stage(self):
+        # The parent's own sunrise-stage exports both trees itself: a candidate whose own exporter hides a change
+        # (its published surface.json unchanged) is still refused.
         tag = "26.3-0.1.11"
-        tags = {tag: HEAD, PREVIOUS: OLD}
-        calls = []
+        tool = "/judge/sunrise-stage"
+        other = {**SURFACE, "hash": "other"}
+        for published, parent_tree, candidate_tree, error in (
+                (SURFACE, SURFACE, SURFACE, None),
+                (other, SURFACE, SURFACE, "changes surface.json from 26.3-0.1.10"),
+                (SURFACE, SURFACE, other, "exports a different surface from 26.3-0.1.11's tree"),
+                (SURFACE, other, other, "does not export its published surface.json")):
+            assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, published, "1", {})}
+            calls, unpacked = [], []
 
-        def compare(args, *, check):
-            calls.append(args)
-            Path(args[-1]).write_text(json.dumps({"verdict": "identical"}))
+            def run(args, *, check, cwd=None, env=None):
+                calls.append(args)
+                if args[1] == "surface":
+                    tree = Path(args[2]).name
+                    Path(args[3]).write_text(json.dumps(parent_tree if tree == "parent-tree" else candidate_tree))
+                    self.assertNotIn("RUSTC_WRAPPER", env)
+                else:
+                    Path(args[-1]).write_text(json.dumps({"verdict": "identical"}))
 
-        for surface, error in ((SURFACE, None), ({**SURFACE, "hash": "other"}, "changes surface.json from 26.3-0.1.10")):
-            assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, surface, "1", {})}
-            calls.clear()
-            with self.subTest(surface=surface), \
-                    mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
+            with self.subTest(error=error), \
+                    mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true", "RUSTC_WRAPPER": "sccache"}), \
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
-                    mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
-                    mock.patch.object(nightly, "git") as git, \
-                    mock.patch.object(nightly, "require_stable_lineage"), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value={tag: HEAD, PREVIOUS: OLD}), \
+                    mock.patch.object(nightly, "git"), mock.patch.object(nightly, "require_stable_lineage"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
-                    mock.patch.object(nightly.subprocess, "run", side_effect=compare):
+                    mock.patch.object(nightly, "parent_stage", return_value=tool) as stage, \
+                    mock.patch.object(nightly, "unpack", side_effect=lambda sha, into: unpacked.append((sha, into.name))), \
+                    mock.patch.object(nightly.subprocess, "run", side_effect=run):
                 if error:
                     with self.assertRaisesRegex(SystemExit, error):
                         nightly.stable_mod_api(HEAD, tag, self.notes)
-                    self.assertEqual(calls, [], "refused before any stage runs")
+                    self.assertNotIn("surface-diff", [args[1] for args in calls])
                     continue
                 nightly.stable_mod_api(HEAD, tag, self.notes)
-                worktree = next(call.args for call in git.call_args_list if call.args[0] == "worktree")
-                self.assertEqual((worktree[:4], worktree[-1]), (("worktree", "add", "--quiet", "--detach"), OLD))
-                [args] = calls
-                manifest = args[args.index("--manifest-path") + 1]
-                self.assertEqual(manifest, str(Path(worktree[4]) / "Cargo.toml"), "the parent's sunrise-stage judges")
-                self.assertLess(args.index("--manifest-path"), args.index("--"))
+            stage.assert_called_once()
+            self.assertEqual(stage.call_args.args[0], OLD, "built from the parent")
+            self.assertEqual(unpacked, [(OLD, "parent-tree"), (HEAD, "candidate-tree")])
+            self.assertEqual([args[:2] for args in calls], [[tool, "surface"]] * 2 + [[tool, "surface-diff"]])
+            self.assertEqual([Path(name).name for name in calls[-1][2:4]], ["parent.json", "candidate.json"])
+
+    def test_the_parents_stage_is_built_from_its_tree_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            with mock.patch.dict(nightly.os.environ, {"CARGO_TARGET_DIR": "/elsewhere", "RUSTC_WRAPPER": "sccache"}), \
+                    mock.patch.object(nightly, "unpack") as unpack, \
+                    mock.patch.object(nightly.subprocess, "run") as run:
+                tool = nightly.parent_stage(OLD, work)
+            unpack.assert_called_once_with(OLD, work / "judge")
+            args, kwargs = run.call_args
+            self.assertEqual(kwargs["cwd"], work / "judge", "no .cargo/config.toml of the candidate's checkout")
+            self.assertEqual(args[0][args[0].index("--target-dir") + 1], str(work / "judge-target"))
+            self.assertFalse({"CARGO_TARGET_DIR", "RUSTC_WRAPPER"} & kwargs["env"].keys())
+            self.assertEqual(tool, str(work / "judge-target" / "debug" / "sunrise-stage"))
+            # The tree is a plain extraction: the checkout gains no worktree.
+            repo = work / "repo"
+            repo.mkdir()
+            git = nightly.git
+            with chdir(repo):
+                git("init", "-q")
+                Path("a.txt").write_text("a\n")
+                git("add", "a.txt")
+                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
+                nightly.unpack("HEAD", work / "tree")
+                self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
+                self.assertEqual(len(git("worktree", "list").splitlines()), 1)
 
     def test_a_break_glass_release_needs_a_published_parent_on_its_line(self):
         for pages, tags, tag, error in (
                 ([[]], {}, "26.3-0.1.1", "needs a published stable release to compare with"),
-                ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-1.0.0", "is a patch of 26.3-0.1.10, not 26.3-1.0.0")):
+                ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-1.0.0", "is a patch of 26.3-0.1.10, not 26.3-1.0.0"),
+                ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-0.2.0", "is a patch of 26.3-0.1.10, not 26.3-0.2.0")):
             with self.subTest(tag=tag), mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
                     mock.patch.object(nightly.train, "gh_json", return_value=pages), \
                     mock.patch.object(nightly.train, "origin_tags", return_value=tags), \

@@ -494,12 +494,15 @@ waives the full daily on the release commit and nothing else:
   off: GitHub lets any one reviewer of an environment approve, so two people take two environments. The `break-glass`
   job reads the run's recorded approvals and refuses unless each environment was approved once, by its own approver,
   a user, with no rejection or second review. Only a run's first attempt counts, since the approvals record has no
-  attempt: a re-run refuses, and a new dispatch asks again. Nothing builds, signs or publishes until it passes, and
+  attempt: `pick` refuses a re-run before anyone is asked, the jobs after the approvals run only in the first
+  attempt, and a new dispatch asks again. Nothing builds, signs or publishes until it passes, and
   `reserve-stable-tag` checks the approvals again before the tag. No input or variable stands in for an approval.
 - **The changed paths choose the daily legs.** `release_train.break_glass_legs` maps each path that differs between
   the parent and the release commit (`git diff -z --raw`) to daily legs, by the rows of `BREAK_GLASS_LEGS`, the
-  first matching row deciding. A path no row matches, a row with no legs (the crates that judge a release: its mod API
-  surface, packages and signature), a symbolic link, a submodule or a name holding a line break means the full daily:
+  first matching row deciding. A path no row matches, a symbolic link, a submodule or a name holding a line break
+  means the full daily, and so does any change to the code that judges a release (`release_train.judge_folders`: the
+  crates of its mod API surface, packages and signature and every local crate they build from, through path and
+  workspace dependencies and the root manifest's `[patch]` and `[replace]`) or to those two tables:
   the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
   run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
   game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots
@@ -509,8 +512,10 @@ waives the full daily on the release commit and nothing else:
 - **Never for** a minor or major release (only a patch of the parent), a commit that is the parent's or doesn't
   descend from it, a release whose `surface.json` differs from the parent's, a commit whose own newest full daily
   failed, or a parent whose newest full daily did not pass every leg. `nightly.py stable-mod-api` holds the surface:
-  under break-glass it refuses any change to `surface.json` and runs the surface diff with the parent's own
-  `sunrise-stage` (a worktree of the parent), never the candidate's. It runs in `pick`, before anything is approved,
+  under break-glass it refuses any change to the published `surface.json`, then builds the parent's own
+  `sunrise-stage` from the parent's tree alone (its own folder and target, no inherited compiler wrapper), which
+  exports both trees itself: the parent's export must equal its published surface and the candidate's must equal the
+  parent's, and its diff must be `identical`. The candidate's own exporter never judges it. It runs in `pick`, before anything is approved,
   built or signed, and again in `publish` before the tag. A break-glass daily run never counts as a full one, and it
   files and closes no issue.
 - **Recorded and followed up.** The run's summary and the release notes (a `### Break-glass release` section above

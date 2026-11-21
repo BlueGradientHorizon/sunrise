@@ -445,7 +445,8 @@ class PickStableTests(unittest.TestCase):
                     mock.patch.object(nightly.train, "release_head", return_value=self.SHA) as head, \
                     mock.patch.object(nightly.train, "open_blockers", return_value=list(blockers)), \
                     mock.patch.object(nightly.train, "known_issues", return_value=[]), \
-                    mock.patch.object(nightly, "sdk_ready", return_value=True):
+                    mock.patch.object(nightly, "sdk_ready", return_value=True), \
+                    mock.patch.object(nightly, "stable_parent", return_value=None):
                 nightly.pick_stable()
             head.assert_called_once_with(values["NIGHTLY_BASE"], values["DRY_RUN"] == "true", daily=True)
             return dict(line.split("=", 1) for line in out.read_text().splitlines()), Path("nightly-notes.md").read_text()

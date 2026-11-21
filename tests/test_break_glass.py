@@ -21,6 +21,22 @@ CRATES = ["cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases"]
 PARENT_TAG = "26.3-0.1.0"
 
 
+def write_commit(folder, files):
+    """A commit writing `files` ({path: text}) on the current one (a new repository's first, when it has none)."""
+    repo = Path(folder)
+    git = git_in(repo)
+    if not (repo / ".git").exists():
+        git("init", "-q", "-b", "release")
+        git("config", "user.name", "Test")
+        git("config", "user.email", "test@example.invalid")
+    for path, text in files.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text)
+        git("add", "--", path)
+    git("commit", "-q", "--allow-empty", "-m", "change")
+    return git("rev-parse", "HEAD")
+
+
 def history(folder, *changes):
     """26.3-0.1.0 at `parent`, a cherry-pick above it writing each (path, kind): a file, or a symlink."""
     repo = Path(folder)
@@ -66,11 +82,42 @@ class LegsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(train.break_glass_legs(["docs/hosting.md", path])[1], [path])
 
-    def test_the_crates_that_judge_a_release_need_the_full_daily(self):
-        for crate in ("sunrise-mod-api-gen", "sunrise-mod-surface", "sunrise-mod-package", "sunrise-release-sign"):
-            for path in (f"crates/{crate}/src/lib.rs", f"crates/{crate}"):
+    def test_the_code_that_judges_a_release_and_its_manifest_redirects_need_the_full_daily(self):
+        # The judge's own crates, what they build from (a path dependency, one through [workspace.dependencies], a
+        # crate [patch] puts in place of a registry one) and a change to [patch]: none may ride a break-glass release.
+        # A dev-dependency is not built into the judge, and a game crate outside it is an ordinary change.
+        root = ('[workspace.dependencies]\nshared = { path = "crates/shared" }\n'
+                '[patch.crates-io]\nsyn = { path = "third_party/syn" }\n')
+        files = {"Cargo.toml": root,
+                 "crates/sunrise-mod-api-gen/Cargo.toml":
+                     '[dependencies]\nsunrise-mod-source = { path = "../sunrise-mod-source" }\n'
+                     'shared = { workspace = true }\n[dev-dependencies]\ntestonly = { path = "../testonly" }\n',
+                 "crates/sunrise-mod-source/Cargo.toml": '[target.\'cfg(unix)\'.dependencies]\ndeep = { path = "../deep" }\n',
+                 "third_party/syn/Cargo.toml": "", "crates/deep/Cargo.toml": "", "crates/shared/Cargo.toml": ""}
+        with tempfile.TemporaryDirectory() as folder:
+            parent = write_commit(folder, files)
+            changes = {
+                "crates/sunrise-mod-source/src/lib.rs": True, "crates/deep/src/lib.rs": True,
+                "crates/shared/src/lib.rs": True, "crates/sunrise-mod-api-gen/src/main.rs": True,
+                "crates/sunrise-release-sign/src/lib.rs": True, "crates/testonly/src/lib.rs": False,
+                "crates/sunrise-world/src/lib.rs": False,
+                "Cargo.toml": False,  # a change outside [patch] and [replace]
+            }
+            for path, judged in changes.items():
                 with self.subTest(path=path):
-                    self.assertEqual(train.break_glass_legs([path, "crates/sunrise-world/src/lib.rs"])[1], [path])
+                    git_in(Path(folder))("checkout", "-q", parent)
+                    content = root + "# a comment\n" if path == "Cargo.toml" else "fix\n"
+                    sha = write_commit(folder, {path: content})
+                    with mock.patch.object(train, "ROOT", Path(folder)):
+                        plain, special = train.changed_since(parent, sha)
+                    self.assertEqual((special, plain), ([path], []) if judged else ([], [path]))
+            # A redirect added by the candidate: the manifest and the crate it points to both need the full daily.
+            git_in(Path(folder))("checkout", "-q", parent)
+            sha = write_commit(folder, {"Cargo.toml": root + 'serde = { path = "crates/evil" }\n',
+                                        "crates/evil/src/lib.rs": "fix\n", "crates/evil/Cargo.toml": ""})
+            with mock.patch.object(train, "ROOT", Path(folder)):
+                plain, special = train.changed_since(parent, sha)
+            self.assertEqual((sorted(special), plain), (["Cargo.toml", "crates/evil/Cargo.toml", "crates/evil/src/lib.rs"], []))
 
     def test_every_selected_leg_is_a_daily_leg(self):
         legs = set(train.BREAK_GLASS_ALWAYS).union(*(selected or () for _, selected in train.BREAK_GLASS_LEGS))
@@ -358,33 +405,59 @@ class ReserveTests(unittest.TestCase):
 
 class PickTests(unittest.TestCase):
     SHA = "c" * 40
+    PARENT = train.Release(PARENT_TAG, "a" * 40, "")
 
-    def test_the_approvers_see_the_parent_and_legs_before_they_approve(self):
-        parent = train.Release(PARENT_TAG, "a" * 40, "")
+    def pick(self, parent=PARENT, **env):
+        """pick_stable for a break-glass patch of `parent` (a Release, or an exception stable_parent raises): its
+        outputs, run summary and stop() calls."""
         with tempfile.TemporaryDirectory() as folder:
             env = {"GITHUB_REPOSITORY": REPO, "GITHUB_OUTPUT": f"{folder}/out", "GITHUB_REF": "refs/heads/release/26.3",
                    "DRY_RUN": "false", "NIGHTLY_BASE": self.SHA, "RELEASE_VERSION": "0.1.1", "RELEASES_PAUSED": "",
-                   "BREAK_GLASS": "the save fix", "GITHUB_STEP_SUMMARY": f"{folder}/summary"}
+                   "BREAK_GLASS": "the save fix", "GITHUB_STEP_SUMMARY": f"{folder}/summary", "GITHUB_RUN_ATTEMPT": "1",
+                   **env}
+            Path(folder, "summary").touch()
             back = os.getcwd()
             os.chdir(folder)
             try:
-                with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git", return_value=""), \
-                        mock.patch.object(nightly.train, "origin_tags", return_value={PARENT_TAG: parent.sha}), \
+                with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git", return_value="") as git, \
+                        mock.patch.object(nightly.train, "origin_tags", return_value={PARENT_TAG: self.PARENT.sha}), \
                         mock.patch.object(nightly.train, "release_head", return_value=self.SHA), \
                         mock.patch.object(nightly.train, "open_blockers", return_value=[]), \
                         mock.patch.object(nightly.train, "known_issues", return_value=[]), \
                         mock.patch.object(nightly, "sdk_ready", return_value=True), \
-                        mock.patch.object(nightly, "stable_parent", return_value=parent), \
+                        mock.patch.object(nightly, "stable_parent", side_effect=[parent]), \
                         mock.patch.object(nightly.train, "break_glass_problems", return_value=([], ALWAYS)), \
-                        contextlib.redirect_stdout(io.StringIO()):
+                        mock.patch.object(nightly, "stop", side_effect=SystemExit("stopped")) as stop, \
+                        contextlib.redirect_stdout(io.StringIO()) as out:
                     nightly.pick_stable()
             finally:
                 os.chdir(back)
-            summary_text = Path(folder, "summary").read_text()
+                summary_text = Path(folder, "summary").read_text()
             outputs = dict(line.split("=", 1) for line in Path(folder, "out").read_text().splitlines())
-        self.assertIn(f"Patches {PARENT_TAG} ({parent.sha}) on the daily legs {', '.join(ALWAYS)}.", summary_text)
+            notes = Path(folder, "nightly-notes.md").read_text()
+        return outputs, summary_text, notes, git, out.getvalue(), stop
+
+    def test_the_approvers_see_the_parent_and_legs_before_they_approve(self):
+        outputs, summary_text, notes, git, _, _ = self.pick()
+        for part in (PARENT_TAG, self.PARENT.sha, "26.3-0.1.1", self.SHA, *ALWAYS):
+            self.assertIn(part, summary_text)
         self.assertEqual((outputs["parent_tag"], outputs["parent_sha"], outputs["break_glass_legs"]),
-                         (PARENT_TAG, parent.sha, " ".join(ALWAYS)))
+                         (PARENT_TAG, self.PARENT.sha, " ".join(ALWAYS)))
+        # Its notes list what changed since the same parent.
+        self.assertIn(f"### Since {PARENT_TAG}", notes)
+        git.assert_any_call("log", "--reverse", "--format=- %s", f"{self.PARENT.sha}..{self.SHA}")
+
+    def test_a_rerun_is_refused_before_anyone_is_asked(self):
+        with self.assertRaisesRegex(SystemExit, "stopped"):
+            self.pick(GITHUB_RUN_ATTEMPT="2")
+
+    def test_an_orphan_tag_stops_a_real_release_at_the_pick_and_a_dry_run_says_so(self):
+        orphan = SystemExit("::error::refused: 26.3-0.1.5 is a tag with no published release above 26.3-0.1.0")
+        with self.assertRaisesRegex(SystemExit, "26.3-0.1.5 is a tag with no published release"):
+            self.pick(parent=orphan, BREAK_GLASS="")
+        outputs, _, notes, _, out, _ = self.pick(parent=orphan, BREAK_GLASS="", DRY_RUN="true")
+        self.assertIn("::warning::a real release would stop here: ::error::refused: 26.3-0.1.5", out)
+        self.assertEqual(outputs["parent_tag"], "")
 
 
 class PartialSummaryTests(unittest.TestCase):
@@ -454,10 +527,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(set(jobs["break-glass"]["needs"]), {"pick", *bound})
         self.assertIn("break-glass-approvals", jobs["break-glass"]["steps"][-1]["run"])
         self.assertIn("needs.pick.result == 'success'", jobs["exporters"]["if"])
+        self.assertIn("github.run_attempt == '1'", jobs["break-glass"]["if"])
         for name in ("exporters", "sign", "publish"):
             with self.subTest(job=name):
                 self.assertIn("break-glass", jobs[name]["needs"])
-                self.assertIn("needs.break-glass.result == 'success'", jobs[name]["if"])
+                self.assertIn("(needs.break-glass.result == 'success' && github.run_attempt == '1')", jobs[name]["if"])
         for name in ("build", "musl-build"):
             self.assertIn("exporters", jobs[name]["needs"])
 

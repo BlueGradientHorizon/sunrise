@@ -51,10 +51,12 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import subprocess
 import sys
 import time
+import tomllib
 import typing
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -721,9 +723,9 @@ def release_head(head="", dry_run=False, daily=True):
 # Break-glass patch releases (docs/release-flow.md "Break-glass patch releases"): a stable patch whose cherry-picks
 # need only some daily legs, approved by two people through GitHub environments. The daily legs each changed path
 # selects (daily.yml's job names), the first row matching it deciding: a row ending in `/` is that folder (or a file
-# or link replacing it), any other an exact path. A row with no legs (None) needs the full daily, and so does a path
-# no row matches (fail closed). The crates that judge a release (its mod API surface, its packages, its signature)
-# never ride a break-glass release. The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
+# or link replacing it), any other an exact path. A path no row matches needs the full daily (fail closed), and so
+# does any change to the code that judges a release (judge_folders) or to the root manifest's [patch] and [replace]
+# (changed_since). The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
 # (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change runs every leg that tests
 # the game (the ignored-test shards, the Windows rows and the parity harnesses) and is booted headless by the release
 # build's own smoke test, which publishing requires.
@@ -732,10 +734,6 @@ BREAK_GLASS_LEGS = (
     ("docs/modding/", ("book-quickstart",)),
     ("tools/book_quickstart.py", ("book-quickstart",)),
     ("docs/", ()),
-    ("crates/sunrise-mod-api-gen/", None),
-    ("crates/sunrise-mod-surface/", None),
-    ("crates/sunrise-mod-package/", None),
-    ("crates/sunrise-release-sign/", None),
     ("crates/", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
     ("Cargo.toml", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
     ("Cargo.lock", ("cargo-sunrise-mod", "parity", "shards", "windows-runtime-leases")),
@@ -768,14 +766,59 @@ def break_glass_legs(paths):
     return sorted(legs), unmapped
 
 
+# The crates that judge a release: its mod API surface (sunrise-stage), its packages and its signature.
+JUDGES = ("crates/sunrise-mod-api-gen", "crates/sunrise-mod-surface", "crates/sunrise-mod-package",
+          "crates/sunrise-release-sign")
+DEPENDENCY_KINDS = ("dependencies", "build-dependencies")
+
+
+def manifest(sha, path):
+    """The TOML file `path` of commit `sha`, or {} where it has none."""
+    text = run("git", "show", f"{sha}:{path}", check=False)
+    return tomllib.loads(text) if text else {}
+
+
+def judge_folders(sha):
+    """The folders of JUDGES at `sha` and of every local crate they build from: path dependencies of every kind and
+    target, directly or through the root's [workspace.dependencies], and every crate the root's [patch] or [replace]
+    puts in place of a registry one, followed through their own."""
+    root = manifest(sha, "Cargo.toml")
+    shared = root.get("workspace", {}).get("dependencies", {})
+    patched = [spec for table in root.get("patch", {}).values() for spec in table.values()]
+    patched += list(root.get("replace", {}).values())
+    todo = list(JUDGES) + [posixpath.normpath(spec["path"]) for spec in patched if isinstance(spec, dict) and "path" in spec]
+    seen = set()
+    while todo:
+        folder = todo.pop()
+        if folder in seen:
+            continue
+        seen.add(folder)
+        crate = manifest(sha, f"{folder}/Cargo.toml")
+        tables = [crate.get(kind, {}) for kind in DEPENDENCY_KINDS]
+        tables += [target.get(kind, {}) for target in crate.get("target", {}).values() for kind in DEPENDENCY_KINDS]
+        for name, spec in ((name, spec) for table in tables for name, spec in table.items()):
+            base = folder
+            if isinstance(spec, dict) and spec.get("workspace"):
+                base, spec = "", shared.get(name)
+            if isinstance(spec, dict) and "path" in spec:
+                todo.append(posixpath.normpath(posixpath.join(base, spec["path"])))
+    return seen
+
+
 def changed_since(parent_sha, sha):
     """The paths that differ between the two commits (a rename's old and new names both), and those no row may map:
-    a symbolic link or submodule on either side, or a name holding a line break."""
+    a symbolic link or submodule on either side, a name holding a line break, anything in the code that judges a
+    release on either side (judge_folders), and the root manifest when its [patch] or [replace] changed."""
     out = run("git", "-c", "core.quotePath=false", "diff", "-z", "--raw", "--no-renames", parent_sha, sha)
+    judged = judge_folders(parent_sha) | judge_folders(sha)
+    redirects = [{key: manifest(commit, "Cargo.toml").get(key) for key in ("patch", "replace")}
+                 for commit in (parent_sha, sha)]
     fields, plain, special = out.split("\0"), [], []
     for meta, path in zip(fields[0::2], fields[1::2]):
         modes = meta.split()[:2]
-        odd = any(mode.lstrip(":") in ("120000", "160000") for mode in modes) or "\n" in path or "\r" in path
+        odd = (any(mode.lstrip(":") in ("120000", "160000") for mode in modes) or "\n" in path or "\r" in path
+               or any(path == folder or path.startswith(folder + "/") for folder in judged)
+               or path == "Cargo.toml" and redirects[0] != redirects[1])
         (special if odd else plain).append(path)
     return plain, special
 
