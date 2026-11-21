@@ -3,8 +3,9 @@ use crate::{AttachmentError, AttachmentType};
 use sunrise_core::nbt::Compound;
 use sunrise_mod_runtime::attachments::{Attachments, snapshot::SyncedAttachmentSnapshot};
 
-/// A general entity's synced fields as they were at render-state extraction.
-/// Clones share the captured generation and do not see later sync updates.
+/// A general entity's last published generation of synced fields at render-state extraction.
+/// A refused generation does not replace the published one. Clones share the captured
+/// generation and do not see later sync updates.
 /// Snapshots compare by attachment key and canonical NBT value, regardless of generation
 /// identity, compound iteration order, or which typed values have been read.
 // no wire: native render input; attachments keep their separate disk and sync codecs.

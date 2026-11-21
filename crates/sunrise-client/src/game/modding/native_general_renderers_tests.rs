@@ -680,9 +680,8 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                         .as_ref()
                         .unwrap()
                         .general
-                        .rows
-                        .get(&(id as i32))
-                        .is_some_and(|r| r.shown)
+                        .shown(id as i32)
+                        .is_some()
                 };
                 poll_until(game, ready);
                 let check_quad = |g: &mut Game<'_>| {

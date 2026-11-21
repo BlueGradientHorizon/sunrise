@@ -38,8 +38,9 @@ pub struct EntityRenderState {
     /// An item frame or glow item frame's own frame ([`ItemFrameRenderState`]); none for any
     /// other entity.
     pub item_frame: Option<ItemFrameRenderState>,
-    /// A general entity's immutable synced fields. `None` for other families or when the
-    /// whole attachment generation exceeds the render snapshot budget.
+    /// A general entity's last published immutable generation of synced fields, even if empty.
+    /// An over-budget generation leaves the previous one in place. The general entity does not
+    /// draw until its first generation is published. `None` for other entity families.
     pub attachments: Option<crate::EntityRenderAttachments>,
 }
 
@@ -138,8 +139,9 @@ pub trait EntityRenderer: Send + Sync + 'static {
     /// `item`, `model_part`) under its pose stack, which starts at the entity's position, not
     /// turned: turn it by `entity.yaw` and `entity.pitch` as the model needs. `draw` also has
     /// the partial tick, the game time and the entity's light. Asked once a frame for each entity
-    /// of the type in view; what it draws replaces the type's own drawing. A frame is drawn
-    /// afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err` or
+    /// of the type in view; a general entity is drawn only after its first synced attachment
+    /// generation is published. What this method draws replaces the type's own drawing. A frame
+    /// is drawn afresh: `draw.keep()` does nothing here. `Ok(())` keeps what it drew. On an `Err` or
     /// panic, what it drew this frame is dropped, the error is logged once, and the renderer
     /// is asked no more until the next resource load resolves it again. Until then its type
     /// draws as it would without a registered renderer.
