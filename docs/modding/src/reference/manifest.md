@@ -122,8 +122,8 @@ remove those requirements or bypass ABI and build identity checks.
 See [Dependencies between mods](../concepts/dependencies.md).
 
 Top-level `[properties]` holds free-form values other mods read: strings, integers, floats and booleans only,
-at most 64 keys and 8 KiB (keys and strings by length, 8 bytes per number, 1 per boolean); a table, an array
-or a larger table refuses the package. A mod reads any loaded package's manifest through
+at most 64 keys and 8 KiB (keys and strings by length, 8 bytes per number, 1 per boolean); a table, an array,
+a float that is not finite (`nan`, `inf`, `-inf`) or a larger table refuses the package. A mod reads any loaded package's manifest through
 `context.mods().get(id)`: `PackageInfo` gives `name`, `description`, `authors`, `license`, `homepage`,
 `issues`, `icon_path`, `runtime` (`Native` or `None` for content), `dependencies` and
 `property(key)`. Each readonly `PackageDependency` exposes `id()`, `version()`, `kind()`,

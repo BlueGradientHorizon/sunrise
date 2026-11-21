@@ -1,0 +1,2 @@
+manifest:
+refused: sunrise-mod.toml: [properties] ratio is NaN: a float must be finite
