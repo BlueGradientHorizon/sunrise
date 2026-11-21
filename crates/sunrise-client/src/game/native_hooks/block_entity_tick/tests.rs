@@ -399,8 +399,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
     });
 }
 
-fn check_edit_then_replace(commit: bool) {
-    with_game(|game| {
+fn check_edit_then_replace(commit: bool, observer: Option<ModEntry>) {
+    with_ticker_mods(observer, |game, _| {
         let subject = place_subject(game, KIND);
         let original = game.world.block(POS.0, POS.1, POS.2);
         let replacement = game
@@ -530,12 +530,8 @@ fn edit_then_replace_commit_spills_only_the_remaining_contents() {
         }
     }
     let observed = Arc::new(Mutex::new(Vec::new()));
-    let mods: mod_api::Mods = vec![ModEntry::new(
-        "removal_order",
-        Box::new(Listener(observed.clone())),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || check_edit_then_replace(true));
+    let observer = ModEntry::new("removal_order", Box::new(Listener(observed.clone())));
+    check_edit_then_replace(true, Some(observer));
     assert_eq!(
         *observed.lock().unwrap(),
         [
@@ -549,7 +545,11 @@ fn edit_then_replace_commit_spills_only_the_remaining_contents() {
 #[test]
 #[ignore = "daily"]
 fn edit_then_replace_abort_restores_the_original_contents() {
-    check_edit_then_replace(false);
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::edit_then_replace_abort_restores_the_original_contents";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_REMOVAL_ABORT", &["run"]) {
+        return;
+    }
+    check_edit_then_replace(false, None);
 }
 
 #[test]
@@ -784,7 +784,11 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
 #[test]
 #[ignore = "daily"]
 fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::strict_bulk_replacement_aborts_the_block_handle_and_inventory_together";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_STRICT_ABORT", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         game.options.dedicated = Some(Vec::new());
         let subject = place_subject(game, KIND);
         let original = game.world.block(POS.0, POS.1, POS.2);
@@ -853,7 +857,11 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
 #[test]
 #[ignore = "daily"]
 fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
-    with_game(|game| {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::strict_bulk_commit_publishes_whole_chunks_without_drops";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_STRICT_COMMIT", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
         game.options.dedicated = Some(Vec::new());
         let subject = place_subject(game, KIND);
         let chest = game
@@ -897,94 +905,102 @@ fn strict_bulk_commit_publishes_whole_chunks_without_drops() {
 #[test]
 #[ignore = "daily"]
 fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
-    for strict_first in [false, true] {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let subject = place_subject(game, KIND);
-            let original = game.world.block(POS.0, POS.1, POS.2);
-            let registry = game.pack.assets.registry;
-            let chest = registry.default_state("minecraft:chest").unwrap();
-            let glass = registry.default_state("minecraft:glass").unwrap();
-            let level = game.level("minecraft:overworld").unwrap();
-            let edit = BlockEdit {
-                palette: vec![chest.try_into_api().unwrap()],
-                filters: Vec::new(),
-                runs: vec![BlockRun {
-                    x: POS.0,
-                    y: POS.1,
-                    z: POS.2,
-                    height: 1,
-                    surface: None,
-                    block: 0,
-                    only: None,
-                }],
-            };
-            game.world.block_entities.set_mod_containers(
-                [(
-                    original.0,
-                    Arc::new(ModContainer {
-                        slots: 1,
-                        ..Default::default()
-                    }),
-                )]
-                .into_iter()
-                .collect(),
-            );
-            let original_stack = ItemStack::new("minecraft:diamond", 1);
-            let chest_stack = ItemStack::new("minecraft:iron_ingot", 1);
-            let BlockEntity::Mod(row) = game.world.block_entities.get_mut(&POS).unwrap() else {
-                panic!("expected mod container");
-            };
-            row.items = vec![Some(original_stack.clone())];
-            game.world.block_log = Some(Vec::new());
-
-            let seal = game.transaction_open();
-            if strict_first {
-                assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
-                game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
-                    Some(chest_stack.clone());
-            }
-            assert_eq!(
-                game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
-                Ok(true)
-            );
-            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
-            let last_chest = game.block_entity(level, AT).unwrap();
-            assert_ne!(last_chest, subject);
-            game.transaction_close(&seal, true);
-
-            assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
-            assert_eq!(game.block_entity(level, AT), Some(last_chest));
-            assert!(
-                game.world
-                    .block_entities
-                    .get(&POS)
-                    .unwrap()
-                    .slots()
-                    .iter()
-                    .all(Option::is_none)
-            );
-            assert!(game.world.bulk_log.contains(&CHUNK));
-            let [drop] = game.dropped.as_ref() else {
-                panic!("one ordinary spill, none from strict")
-            };
-            assert_eq!(
-                drop.stack,
-                if strict_first {
-                    chest_stack
-                } else {
-                    original_stack
-                }
-            );
-        });
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::ordinary_replacement_between_strict_edits_uses_its_own_resident_row";
+    const CASE: &str = "SUNRISE_RESIDENT_STRICT_ORDER";
+    if run_fresh_cases(NAME, CASE, &["ordinary_first", "strict_first"]) {
+        return;
     }
+    let strict_first = std::env::var(CASE).as_deref() == Ok("strict_first");
+    with_ticker(|game, _| {
+        game.options.dedicated = Some(Vec::new());
+        let subject = place_subject(game, KIND);
+        let original = game.world.block(POS.0, POS.1, POS.2);
+        let registry = game.pack.assets.registry;
+        let chest = registry.default_state("minecraft:chest").unwrap();
+        let glass = registry.default_state("minecraft:glass").unwrap();
+        let level = game.level("minecraft:overworld").unwrap();
+        let edit = BlockEdit {
+            palette: vec![chest.try_into_api().unwrap()],
+            filters: Vec::new(),
+            runs: vec![BlockRun {
+                x: POS.0,
+                y: POS.1,
+                z: POS.2,
+                height: 1,
+                surface: None,
+                block: 0,
+                only: None,
+            }],
+        };
+        game.world.block_entities.set_mod_containers(
+            [(
+                original.0,
+                Arc::new(ModContainer {
+                    slots: 1,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let original_stack = ItemStack::new("minecraft:diamond", 1);
+        let chest_stack = ItemStack::new("minecraft:iron_ingot", 1);
+        let BlockEntity::Mod(row) = game.world.block_entities.get_mut(&POS).unwrap() else {
+            panic!("expected mod container");
+        };
+        row.items = vec![Some(original_stack.clone())];
+        game.world.block_log = Some(Vec::new());
+
+        let seal = game.transaction_open();
+        if strict_first {
+            assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+            game.world.block_entities.get_mut(&POS).unwrap().slots_mut()[0] =
+                Some(chest_stack.clone());
+        }
+        assert_eq!(
+            game.level_set_block(level, AT, glass, BlockUpdateFlags::KNOWN_SHAPE),
+            Ok(true)
+        );
+        assert_eq!(game.edit_blocks("minecraft:overworld", &edit), Ok(1));
+        let last_chest = game.block_entity(level, AT).unwrap();
+        assert_ne!(last_chest, subject);
+        game.transaction_close(&seal, true);
+
+        assert_eq!(game.world.block(POS.0, POS.1, POS.2), chest);
+        assert_eq!(game.block_entity(level, AT), Some(last_chest));
+        assert!(
+            game.world
+                .block_entities
+                .get(&POS)
+                .unwrap()
+                .slots()
+                .iter()
+                .all(Option::is_none)
+        );
+        assert!(game.world.bulk_log.contains(&CHUNK));
+        let [drop] = game.dropped.as_ref() else {
+            panic!("one ordinary spill, none from strict")
+        };
+        assert_eq!(
+            drop.stack,
+            if strict_first {
+                chest_stack
+            } else {
+                original_stack
+            }
+        );
+    });
 }
 
 #[test]
 #[ignore = "daily"]
 fn replacement_and_item_stack_journals_close_in_their_own_dimensions() {
+    const NAME: &str = "game::native_hooks::block_entity_tick::tests::replacement_and_item_stack_journals_close_in_their_own_dimensions";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_DIMENSION_JOURNALS", &["run"]) {
+        return;
+    }
     let scratch = tempfile::tempdir().unwrap();
-    with_game(|game| {
+    with_ticker(|game, _| {
         game.world_root = scratch.path().into();
         let overworld = place_subject(game, KIND);
         game.enter_level(Dim::Nether).unwrap();
@@ -1186,8 +1202,14 @@ impl Hooks for Effects {
 }
 
 fn with_ticker(test: impl FnOnce(&mut Game<'_>, &Effects)) {
+    with_ticker_mods(None, test);
+}
+
+fn with_ticker_mods(observer: Option<ModEntry>, test: impl FnOnce(&mut Game<'_>, &Effects)) {
     let effects = Effects::default();
-    let mods: mod_api::Mods = vec![ModEntry::new("view_tick", Box::new(effects.clone()))].into();
+    let mut entries = vec![ModEntry::new("view_tick", Box::new(effects.clone()))];
+    entries.extend(observer);
+    let mods: mod_api::Mods = entries.into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
