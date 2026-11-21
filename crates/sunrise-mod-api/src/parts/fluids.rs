@@ -269,7 +269,7 @@ pub mod tests {
             (from, from_side): ([i32; 3], Option<Direction>),
             (to, to_side): ([i32; 3], Option<Direction>),
             max: u32,
-        ) -> Result<u32, Overanswered> {
+        ) -> Result<u32, TransactionError<Overanswered>> {
             let host: &mut dyn ServerHost = self;
             let source = here().capability(host, &FLUIDS, from, from_side).unwrap();
             let target = here().capability(host, &FLUIDS, to, to_side).unwrap();

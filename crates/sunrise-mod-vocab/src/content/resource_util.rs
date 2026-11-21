@@ -104,7 +104,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         in_turn(
             host,
             tx,
@@ -119,7 +119,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         in_turn(
             host,
             tx,
@@ -175,10 +175,10 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     ) -> u32 {
 ///         self.0.extract_at(host, tx, index, resource, amount)
 ///     }
-///     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, Overanswered> {
+///     fn insert(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, TransactionError<Overanswered>> {
 ///         self.0.insert(host, tx, r, n)
 ///     }
-///     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, Overanswered> {
+///     fn extract(&self, host: &mut dyn ServerHost, tx: &TransactionContext, r: &R, n: u32) -> Result<u32, TransactionError<Overanswered>> {
 ///         self.0.extract(host, tx, r, n)
 ///     }
 /// }
@@ -492,7 +492,7 @@ pub fn insert_stacking<R: PartialEq>(
     resource: &R,
     amount: u32,
     tx: Option<&TransactionContext>,
-) -> Result<u32, Overanswered> {
+) -> Result<u32, TransactionError<Overanswered>> {
     assert_transaction_matches(host, tx);
     if amount == 0 {
         return Ok(0);
@@ -512,7 +512,7 @@ fn try_insert_stacking<R: PartialEq>(
     resource: &R,
     amount: u32,
     tx: &TransactionContext,
-) -> Result<u32, Overanswered> {
+) -> Result<u32, TransactionError<Overanswered>> {
     let handler = endpoint.handler;
     let size = handler.size(host);
     let indices = [true, false]
@@ -646,7 +646,7 @@ impl<R> Attributed<'_, R> {
         tx: &TransactionContext,
         resource: &R,
         asked: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         self.handler
             .insert(host, tx, resource, asked)
             .and_then(|answer| checked_transfer(answer, asked))
@@ -671,7 +671,7 @@ pub fn move_resources<'a, R: 'a>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-) -> Result<u32, Overanswered> {
+) -> Result<u32, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
@@ -686,7 +686,7 @@ pub fn move_resources_stacking<'a, R: PartialEq + 'a>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-) -> Result<u32, Overanswered> {
+) -> Result<u32, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
         try_insert_stacking(host, &to, resource, out, tx)
@@ -699,8 +699,8 @@ fn move_resources_by<R>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     with_move_transaction(host, tx, |host| {
         let mut moved = 0;
         for index in 0..from.handler.size(host) {
@@ -732,7 +732,7 @@ pub fn move_first<'a, R: PartialEq + 'a>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
@@ -747,7 +747,7 @@ pub fn move_first_stacking<'a, R: PartialEq + 'a>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
         try_insert_stacking(host, &to, resource, out, tx)
@@ -760,8 +760,8 @@ fn move_first_by<R: PartialEq>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&TransactionContext>,
-    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<Option<(R, u32)>, Overanswered> {
+    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<Option<(R, u32)>, TransactionError<Overanswered>> {
     with_move_transaction(host, tx, |host| {
         let mut selected = None;
         let mut moved = 0;
@@ -792,8 +792,8 @@ fn move_first_by<R: PartialEq>(
 fn with_move_transaction<T: Default>(
     host: &mut dyn ServerHost,
     tx: Option<&TransactionContext>,
-    run: impl FnOnce(&mut dyn ServerHost) -> Result<T, Overanswered>,
-) -> Result<T, Overanswered> {
+    run: impl FnOnce(&mut dyn ServerHost) -> Result<T, TransactionError<Overanswered>>,
+) -> Result<T, TransactionError<Overanswered>> {
     assert_transaction_matches(host, tx);
     match host.transaction(|host, _| run(host)) {
         Ok(value) => Ok(value),
@@ -808,8 +808,8 @@ fn move_slot<R>(
     index: usize,
     resource: &R,
     max: u32,
-    insert: &impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    insert: &impl Fn(&mut dyn ServerHost, &TransactionContext, &R, u32) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     let want = max.min(from.handler.amount(host, index));
     if want == 0 {
         return Ok(0);

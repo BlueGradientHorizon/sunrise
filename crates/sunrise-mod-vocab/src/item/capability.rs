@@ -143,7 +143,7 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.check_resource_transfer(
             self.handler.insert(host, tx, resource, amount),
@@ -158,7 +158,7 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         self.check_resource_transfer(
             self.handler.extract(host, tx, resource, amount),
@@ -171,10 +171,10 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
 impl<R> Capability<dyn ResourceHandler<R>> {
     fn check_resource_transfer(
         &self,
-        answer: Result<u32, Overanswered>,
+        answer: Result<u32, TransactionError<Overanswered>>,
         amount: u32,
         operation: &str,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         answer
             .and_then(|answer| crate::content::resource::checked_transfer(answer, amount))
             .map_err(|mut error| {

@@ -79,7 +79,7 @@ pub fn move_energy(
     to: &Capability<dyn EnergyHandler>,
     max: u32,
     tx: &TransactionContext,
-) -> Result<u32, Overanswered> {
+) -> Result<u32, TransactionError<Overanswered>> {
     crate::item::transaction::assert_transaction_matches(host, Some(tx));
     let want = max.min(from.amount(host));
     if want == 0 {

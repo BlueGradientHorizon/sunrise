@@ -96,7 +96,7 @@ impl ResourceHandler<ItemResource> for Storage {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         assert_eq!(amount, 1);
         assert_eq!(tx.depth(), 0);
         assert!(host.transaction_matches(Some(tx)));

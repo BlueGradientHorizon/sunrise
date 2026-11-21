@@ -474,7 +474,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         tx: &TransactionContext,
         resource: &ItemResource,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         if !live(host, self.entity) {
             return Ok(0);

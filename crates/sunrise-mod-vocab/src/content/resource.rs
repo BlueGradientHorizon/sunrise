@@ -565,7 +565,7 @@ pub trait ResourceHandler<R> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
@@ -581,7 +581,7 @@ pub trait ResourceHandler<R> {
         tx: &TransactionContext,
         resource: &R,
         amount: u32,
-    ) -> Result<u32, Overanswered> {
+    ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
@@ -596,8 +596,8 @@ pub(crate) fn in_turn<P>(
     tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     crate::item::transaction::assert_transaction_matches(host, Some(tx));
     if amount == 0 {
         return Ok(0);
@@ -615,8 +615,8 @@ pub(crate) fn try_in_turn<P>(
     tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, Overanswered>,
-) -> Result<u32, Overanswered> {
+    mut ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, TransactionError<Overanswered>>,
+) -> Result<u32, TransactionError<Overanswered>> {
     let mut done = 0;
     for part in parts {
         let left = amount - done;
@@ -662,8 +662,8 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     ends: Ends<'_, A, B>,
     want: N,
     extract: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> N,
-    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> Result<N, Overanswered>,
-) -> Result<N, Overanswered> {
+    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> Result<N, TransactionError<Overanswered>>,
+) -> Result<N, TransactionError<Overanswered>> {
     let Ends { from, to, at } = ends;
     // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: a handler answered more than it
     // was asked.
