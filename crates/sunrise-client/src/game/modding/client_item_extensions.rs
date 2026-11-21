@@ -1068,7 +1068,11 @@ mod tests {
             {
                 let _owner = owner("host");
                 registry.register_model("runes:helm", &tree(0.0)).unwrap();
-                assert!(registry.register_model("minecraft:helm", &tree(0.0)).is_err());
+                assert!(
+                    registry
+                        .register_model("minecraft:helm", &tree(0.0))
+                        .is_err()
+                );
             }
             {
                 let _owner = owner("other");

@@ -460,7 +460,10 @@ mod tests {
             assert!(good.register_attachment_type("runes:other", false).is_err());
             assert_eq!(
                 good.register_attachment_type("runes:charge", false),
-                Err("package other attachment runes:charge: already declared by package host".into())
+                Err(
+                    "package other attachment runes:charge: already declared by package host"
+                        .into()
+                )
             );
             good.refused.clear();
             super::super::install_registrar(good, &crate::parts::tests::rule_schema()).unwrap();
@@ -468,12 +471,11 @@ mod tests {
                 crate::__private::client_requirement("host"),
                 Some("declares the synced attachment runes:charge".into())
             );
-            let _caller =
-                crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
-                    id: "other",
-                    hook: "test",
-                    part: None,
-                });
+            let _caller = crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
+                id: "other",
+                hook: "test",
+                part: None,
+            });
             assert_eq!(
                 mod_vocab::__private::validate_attachment_use("runes", "charge", true),
                 Ok(())
