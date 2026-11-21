@@ -214,7 +214,7 @@ mod tests {
                     (15.0, 15.0, 15.0, 0.0)
                 );
 
-                use sunrise_protocol::packets::play::{Clientbound, SetPassengers};
+                use sunrise_protocol::packets::play::{AddEntity, Clientbound, SetPassengers};
                 let set_passengers = |game: &mut crate::game::Game<'_>, vehicle, passengers| {
                     game.handle_packet(Clientbound::SetPassengers(SetPassengers {
                         vehicle,
@@ -247,7 +247,27 @@ mod tests {
                 game.player_model_geometry(camera, 1.0, &mut Vec::new());
                 assert_eq!(*turns.lock().unwrap(), [37.5, 45.0, 65.0]);
 
-                game.spawn_entity(45, "minecraft:armor_stand", [0.5, 64.0, 3.5], [0.0; 3]);
+                let stand_type = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id("minecraft:armor_stand")
+                    .unwrap();
+                game.handle_packet(Clientbound::AddEntity(AddEntity {
+                    id: 45,
+                    uuid: 45,
+                    kind: stand_type,
+                    position: [0.5, 64.0, 3.5],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
+                .unwrap();
                 let stand = game
                     .armor_stands
                     .iter_mut()
