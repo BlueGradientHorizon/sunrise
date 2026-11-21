@@ -206,21 +206,21 @@ impl Game<'_> {
         }
         Some(true)
     }
-    /// `Pig` / `Strider.mobInteract`: saddle an adult, or ride a saddled one.
+    /// `Pig.mobInteract` / `Strider.mobInteract`: saddle an adult, or ride a saddled mount with no passenger.
     fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
         let held = self.inventory[self.selected].clone();
-        let m = &mut self.mobs[index];
+        let m = &self.mobs[index];
         if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
             return false;
         }
         let at = m.center();
         if item == "minecraft:saddle" && !m.extra.saddled() {
-            m.set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
             let sound = if m.species() == Species::Strider {
                 "minecraft:entity.strider.saddle"
             } else {
                 "minecraft:entity.pig.saddle"
             };
+            self.mobs[index].set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
             self.audio.play(sound, Some(at), 1.0, 1.0);
             self.consume_held();
             let id = self.mobs[index].id;
@@ -233,7 +233,11 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || self.keys.held(Action::Sneak) {
+        if !m.extra.saddled()
+            || food
+            || self.keys.held(Action::Sneak)
+            || self.has_seated_passengers(m.id)
+        {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -2194,6 +2198,10 @@ pub(in crate::game) mod sneak_dismount_tests;
 #[cfg(test)]
 #[path = "tests/strider_lava_boarding_tests.rs"]
 mod strider_lava_boarding_tests;
+
+#[cfg(test)]
+#[path = "tests/steerable_boarding_tests.rs"]
+mod steerable_boarding_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_dismount_tests.rs"]
