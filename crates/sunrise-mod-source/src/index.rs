@@ -25,6 +25,7 @@ pub enum Found {
 }
 
 type ModuleLoader<'a> = dyn FnMut(&str, &[String]) -> Result<Vec<Item>, String> + 'a;
+type ItemFilter<'a> = dyn Fn(&Item) -> bool + 'a;
 
 /// The indexed crates' modules, parsed as they are first reached.
 pub struct Index<'a> {
@@ -46,6 +47,7 @@ pub struct Index<'a> {
     /// A crate's root file where it is not `lib.rs` (a library's `[lib] path`).
     root_files: HashMap<&'static str, String>,
     load_module: Option<Box<ModuleLoader<'a>>>,
+    item_enabled: Option<Box<ItemFilter<'a>>>,
 }
 
 /// The file a module's `#[path = "..."]` names.
@@ -87,6 +89,7 @@ impl<'a> Index<'a> {
             extra: Vec::new(),
             root_files: HashMap::new(),
             load_module: None,
+            item_enabled: None,
         }
     }
 
@@ -97,6 +100,19 @@ impl<'a> Index<'a> {
     ) -> Self {
         self.load_module = Some(Box::new(load));
         self
+    }
+
+    /// Filter items lazily when name resolution actually matches them, rather than when a module
+    /// is loaded.
+    pub fn filtering_items(mut self, enabled: impl Fn(&Item) -> bool + 'a) -> Self {
+        self.item_enabled = Some(Box::new(enabled));
+        self
+    }
+
+    fn enabled(&self, item: &Item) -> bool {
+        self.item_enabled
+            .as_ref()
+            .is_none_or(|enabled| enabled(item))
     }
 
     /// Names the file `krate`'s root module lives in, below its source directory.
@@ -270,7 +286,9 @@ impl<'a> Index<'a> {
         let reachable = |vis: &Visibility| holders.iter().all(|&h| self.visible(module, h, vis));
         let mut shadowed = false;
         for (item, definition) in items.iter().enumerate() {
-            if let Some(vis) = definition_visibility(definition, name, self.load_module.is_some()) {
+            if let Some(vis) = definition_visibility(definition, name, self.load_module.is_some())
+                && self.enabled(definition)
+            {
                 if reachable(vis) {
                     return Ok(Some(Found::Item(ItemId { module, item })));
                 }
@@ -280,19 +298,29 @@ impl<'a> Index<'a> {
         let mut named = None;
         let mut globs = Vec::new();
         for item in items {
-            if let Item::Use(item) = item {
-                let open = reachable(&item.vis);
+            if let Item::Use(use_item) = item {
+                let open = reachable(&use_item.vis);
+                let mut matched_named = None;
+                let mut matched_globs = Vec::new();
                 uses(
-                    &item.tree,
+                    &use_item.tree,
                     &mut Vec::new(),
                     &mut |path, alias| match alias {
-                        Some(alias) if alias == name && named.is_none() => {
-                            named = Some((path, open));
+                        Some(alias) if alias == name && matched_named.is_none() => {
+                            matched_named = Some(path);
                         }
-                        None if open => globs.push(path),
+                        None if open => matched_globs.push(path),
                         _ => {}
                     },
                 );
+                if (matched_named.is_some() || !matched_globs.is_empty()) && self.enabled(item) {
+                    if let Some(path) = matched_named
+                        && named.is_none()
+                    {
+                        named = Some((path, open));
+                    }
+                    globs.extend(matched_globs);
+                }
             }
         }
         match named {
@@ -448,10 +476,9 @@ impl<'a> Index<'a> {
             "crate" => (m.krate, Vec::new()),
             "self" => (m.krate, m.path.clone()),
             "super" => (m.krate, m.path[..m.path.len().checked_sub(1)?].to_vec()),
-            name if m
-                .items
-                .iter()
-                .any(|item| matches!(item, Item::Mod(item) if item.ident == name)) =>
+            name if m.items.iter().any(|item| {
+                matches!(item, Item::Mod(m) if m.ident == name) && self.enabled(item)
+            }) =>
             {
                 let mut path = m.path.clone();
                 path.push(name.to_string());

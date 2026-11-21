@@ -448,7 +448,7 @@ impl<'b, 'i, 's> Routes<'b, 'i, 's> {
 
     pub(super) fn has_slot(&self, scope: usize, table: &str, name: &str) -> bool {
         self.index.modules[scope].items.iter().any(|item| {
-            matches!(item, Item::Struct(item) if item.ident == table && item.fields.iter().any(|field| {
+            matches!(item, Item::Struct(item) if item.ident == table && self.build.enabled(&item.attrs) && item.fields.iter().any(|field| {
                 field.ident.as_ref().is_some_and(|ident| ident == name)
                     && self.build.enabled(&field.attrs)
             }))

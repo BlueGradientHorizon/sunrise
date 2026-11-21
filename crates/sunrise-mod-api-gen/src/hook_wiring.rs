@@ -1015,4 +1015,72 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn wiring_check_ignores_unreached_feature_gated_items_when_splitting_builds() {
+        let root = tempfile::tempdir().unwrap();
+        fixture(root.path(), "sunrise-world/Cargo.toml", "");
+        fixture(
+            root.path(),
+            "sunrise-world/src/lib.rs",
+            "pub mod loot; pub mod native_load_hooks;",
+        );
+        fixture(
+            root.path(),
+            "sunrise-world/src/loot.rs",
+            "pub fn load() { crate::native_load_hooks::loot_table_load(); }",
+        );
+        fixture(
+            root.path(),
+            "sunrise-world/src/native_load_hooks.rs",
+            "pub struct NativeLoadHooks { pub loot_table_load: fn() }\n\
+             pub fn install(_: NativeLoadHooks) {}\n\
+             pub fn loot_table_load() { (hooks.loot_table_load)(); }",
+        );
+        fixture(root.path(), "sunrise-client/Cargo.toml", "");
+        fixture(
+            root.path(),
+            "sunrise-client/src/lib.rs",
+            "mod entry; mod helper;",
+        );
+        fixture(
+            root.path(),
+            "sunrise-client/src/entry.rs",
+            "pub fn start() {\n\
+                sunrise_world::native_load_hooks::install(\n\
+                    sunrise_world::native_load_hooks::NativeLoadHooks {\n\
+                        loot_table_load: || { mod_api::dispatch_loot_table_load(); },\n\
+                    },\n\
+                );\n\
+                crate::helper::unrelated();\n\
+             }",
+        );
+        fixture(
+            root.path(),
+            "sunrise-client/src/helper.rs",
+            "#[cfg(feature = \"unused_feature_a\")]\n\
+             pub fn never_called() {}\n\
+             #[cfg(feature = \"unused_feature_b\")]\n\
+             pub struct UnusedType;\n\
+             #[cfg(feature = \"unused_feature_c\")]\n\
+             use std::fmt::Debug;\n\
+             #[cfg(feature = \"unused_feature_d\")]\n\
+             mod unused_mod;\n\
+             pub fn unrelated() {}",
+        );
+        let mut hook = Hook::sample("sunrise_world::loot::load", Side::Server);
+        hook.name = "loot_table_load".into();
+        let root_canon = root.path().canonicalize().unwrap();
+        let mut sources = Sources::new(&root_canon);
+        let targets = [
+            "unix\ntarget_family=\"unix\"\ntarget_os=\"linux\"".into(),
+            "windows\ntarget_family=\"windows\"\ntarget_os=\"windows\"".into(),
+        ];
+        let build = Build::from_targets(&targets).unwrap();
+        assert!(check_target(&mut sources, &hook, &build).unwrap());
+        assert!(
+            build.split().is_none(),
+            "unreached #[cfg(feature = ...)] items must not trigger a build split"
+        );
+    }
 }

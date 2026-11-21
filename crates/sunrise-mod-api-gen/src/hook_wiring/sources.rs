@@ -133,33 +133,37 @@ impl<'a> Sources<'a> {
     }
 
     pub(super) fn index<'s>(&'s mut self, build: &'s Build) -> Index<'s> {
-        Index::new(self.root, &[], CRATES).loading_functions(move |krate, path| {
-            let path = path.join("::");
-            let items = self
-                .items(build, krate, &path)?
-                .ok_or_else(|| format!("module {krate}::{path} was not declared in this build"))?;
-            Ok(items
-                .filter_map(|item| match item {
-                    Item::Fn(item) if build.enabled(&item.attrs) => Some(Item::Fn(item.clone())),
-                    Item::Struct(item) if build.enabled(&item.attrs) => {
-                        Some(Item::Struct(item.clone()))
-                    }
-                    Item::Use(item) if build.enabled(&item.attrs) => Some(Item::Use(item.clone())),
-                    Item::Mod(item) if build.enabled(&item.attrs) => {
-                        Some(Item::Mod(syn::ItemMod {
+        Index::new(self.root, &[], CRATES)
+            .loading_functions(move |krate, path| {
+                let path = path.join("::");
+                let items = self.items(build, krate, &path)?.ok_or_else(|| {
+                    format!("module {krate}::{path} was not declared in this build")
+                })?;
+                Ok(items
+                    .filter_map(|item| match item {
+                        Item::Fn(item) => Some(Item::Fn(item.clone())),
+                        Item::Struct(item) => Some(Item::Struct(item.clone())),
+                        Item::Use(item) => Some(Item::Use(item.clone())),
+                        Item::Mod(item) => Some(Item::Mod(syn::ItemMod {
                             vis: item.vis.clone(),
                             ident: item.ident.clone(),
                             content: None,
-                            attrs: vec![],
+                            attrs: item.attrs.clone(),
                             unsafety: item.unsafety,
                             mod_token: item.mod_token,
                             semi: item.semi,
-                        }))
-                    }
-                    _ => None,
-                })
-                .collect())
-        })
+                        })),
+                        _ => None,
+                    })
+                    .collect())
+            })
+            .filtering_items(move |item| match item {
+                Item::Fn(item) => build.enabled(&item.attrs),
+                Item::Struct(item) => build.enabled(&item.attrs),
+                Item::Use(item) => build.enabled(&item.attrs),
+                Item::Mod(item) => build.enabled(&item.attrs),
+                _ => true,
+            })
     }
 
     pub(super) fn items<'s>(
