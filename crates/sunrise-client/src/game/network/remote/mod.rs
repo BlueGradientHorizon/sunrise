@@ -1124,6 +1124,7 @@ impl Game<'_> {
         self.server_packs_connect(local.is_none().then_some(address), user);
         let session = match local {
             Some(pipe) => Session::connect_local(
+                &self.client_inbox,
                 pipe,
                 name,
                 auth.clone(),
@@ -1135,6 +1136,7 @@ impl Game<'_> {
                 self.connection_starts(address, name, lan);
                 match cookies {
                     Some(cookies) => Session::connect_transferred(
+                        &self.client_inbox,
                         address,
                         name,
                         auth.clone(),
@@ -1150,6 +1152,7 @@ impl Game<'_> {
                             Session::connect
                         };
                         connect(
+                            &self.client_inbox,
                             address,
                             name,
                             auth.clone(),
@@ -1438,7 +1441,7 @@ impl Game<'_> {
             |a| (a.name.clone(), a.uuid),
         );
         self.server_packs_connect(None, user);
-        let session = Session::replay(name);
+        let session = Session::replay(&self.client_inbox, name);
         let player_type = super::perspective::player_type(&root);
         let mut streaming = Streaming::new(
             Arc::new(NoTerrain),

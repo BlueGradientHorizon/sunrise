@@ -3,14 +3,14 @@ use super::{Delivery, Endpoint, Incoming};
 use crate::{
     lan::NetEvent,
     net::{
-        Event,
+        Event, EventSender, QueuedEvent,
         ingress::{Prepared, Producer, Refusal, Refused},
     },
 };
 use mod_api::PayloadContextError;
 
 pub enum MainQueue {
-    Client(Producer<Event>),
+    Client(EventSender),
     Server {
         events: Producer<NetEvent>,
         endpoint: Endpoint,
@@ -18,13 +18,13 @@ pub enum MainQueue {
     },
 }
 pub(crate) enum PreparedMain {
-    Client(Prepared<Event>),
+    Client(Prepared<QueuedEvent>),
     Server(Prepared<NetEvent>),
 }
 /// Keeps failed opaque work alive until after the caller releases its epoch gate.
 /// Boxing occurs only on failed publication, adding no allocation to successful publication.
 pub(crate) enum FailedMain {
-    Client(Box<Refused<Event>>),
+    Client(Box<Refused<QueuedEvent>>),
     Server(Box<Refused<NetEvent>>),
 }
 impl FailedMain {

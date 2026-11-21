@@ -4009,6 +4009,7 @@ struct Game<'a> {
     attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     remote: Option<remote::Remote>,
+    client_inbox: sunrise_client::net::ClientInbox,
     /// The current connection came from Realms (retained for reconnect).
     realm_session: bool,
     /// The server this window connected to last over the network: kept while something may
@@ -13594,6 +13595,7 @@ impl<'a> Game<'a> {
             entity_initialization: Default::default(),
             attachment_indexes: Default::default(),
             remote: None,
+            client_inbox: Default::default(),
             realm_session: false,
             last_connection: None,
             connection_open: false,

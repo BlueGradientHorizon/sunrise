@@ -2,11 +2,19 @@
 use super::*;
 
 impl Remote {
-    pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
+    fn receive_credited_backlog(
+        &mut self,
+        inbox: &sunrise_client::net::ClientInbox,
+        events: &mut VecDeque<Received>,
+    ) {
         // Chunk packets start decoding now; the frame that reaches one in
         // order inserts its column.
-        for receipt in self.session.poll() {
-            let (event, credit) = receipt.into_parts();
+        for receipt in inbox.poll() {
+            let (queued, credit) = receipt.into_parts();
+            if queued.serial != self.session.serial() {
+                continue;
+            }
+            let event = queued.event;
             events.push_back(match event {
                 Event::Packet(p) if matches!(*p, C::LevelChunkWithLight(_)) => {
                     match self.decoder.submit(self.chunk_format.clone(), p) {
@@ -30,7 +38,7 @@ impl Game<'_> {
         };
         let mut events = std::mem::take(&mut r.backlog);
         if !before_tick {
-            r.receive_credited_backlog(&mut events);
+            r.receive_credited_backlog(&self.client_inbox, &mut events);
         }
         let overdue = r
             .backlog_since

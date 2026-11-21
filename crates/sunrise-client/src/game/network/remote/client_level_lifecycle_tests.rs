@@ -155,13 +155,17 @@ fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
     assert_eq!(stream.state(), AudioStreamState::Playing);
 
     let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
-    tx.send(Event::Reconfiguring).unwrap();
-    let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+    tx.send(sunrise_client::net::QueuedEvent {
+        serial: game.remote.as_ref().unwrap().session.serial(),
+        event: Event::Reconfiguring,
+    })
+    .unwrap();
+    let (queued, credit) = rx.try_recv_owned().unwrap().into_parts();
     game.remote
         .as_mut()
         .unwrap()
         .backlog
-        .push_back(super::super::Received::Event(event, credit));
+        .push_back(super::super::Received::Event(queued.event, credit));
     game.poll_remote_events(true).unwrap();
 
     assert!(game.remote.as_ref().unwrap().reconfiguring.is_some());
