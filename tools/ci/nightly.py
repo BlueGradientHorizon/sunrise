@@ -544,8 +544,11 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerp
     files = released_assets(sha, SDK_INDEX, *names)
     try:
         index = json.loads(files[SDK_INDEX])
-        if index["schema"] != 1 or index["build"]["commit"] != sha:
-            raise ValueError("sdk.json has an unsupported schema or names the wrong build")
+        schema = index["schema"]
+        if type(schema) is not int or schema != 1:
+            raise ValueError(f"sdk.json has schema {schema!r}; expected 1")
+        if index["build"]["commit"] != sha:
+            raise ValueError("sdk.json names the wrong build")
         content_api = index["content_api"]
         if not isinstance(content_api, str):
             raise ValueError("sdk.json has no content_api version")
@@ -962,6 +965,8 @@ def main() -> None:
             args.out.write_bytes(released(build, SDK_SURFACE))
             print(build)
     elif args.cmd == "stable-mod-api":
+        if not train.FULL_SHA.fullmatch(args.sha):
+            stable_api.error("sha must be a full lowercase commit SHA")
         stable_mod_api(args.sha, args.tag, args.notes)
     elif args.cmd == "rotate":
         rotate()
