@@ -312,6 +312,7 @@ impl Game<'_> {
     }
 
     fn dialog_closed(&mut self) {
+        self.refresh_screen_widgets();
         if self.player.is_some() && self.screen == super::Screen::Playing && self.title.is_none() {
             self.capture(true);
         }
@@ -1012,9 +1013,9 @@ impl Game<'_> {
 
     /// The mouse wheel over a dialog: a cycle button under it takes the
     /// step, else the body scrolls 10 a step.
-    pub(super) fn dialog_scroll(&mut self, delta: f32) {
+    pub(super) fn dialog_scroll(&mut self, delta: f32) -> bool {
         let Some(layout) = self.dialog_layout() else {
-            return;
+            return false;
         };
         let cursor = self.cursor;
         let stick_scroll = self.pad_stick_scroll();
@@ -1036,7 +1037,7 @@ impl Game<'_> {
                 if let Some(input) = hovered_cycle.filter(|_| !stick_scroll) {
                     // CycleButton.mouseScrolled: up goes back.
                     cycle(open, input, if delta > 0.0 { -1 } else { 1 });
-                    return;
+                    return true;
                 }
                 // AbstractScrollArea.mouseScrolled: a multiline box takes the wheel.
                 let text = layout
@@ -1063,11 +1064,16 @@ impl Game<'_> {
                     .and_then(|i| open.fields.get_mut(i))
                 {
                     edit.wheel(delta);
-                    return;
+                    return true;
                 }
             }
-            open.scroll.wheel(delta, 10.0, ay, ay + ah, layout.content);
+            let [ax, _, aw, _] = layout.area;
+            if stick_scroll || step_scroll || ui::hovered(cursor, ax, ay, aw, ah) {
+                open.scroll.wheel(delta, 10.0, ay, ay + ah, layout.content);
+                return true;
+            }
         }
+        false
     }
 
     /// The pointer moved with a slider held (`AbstractSliderButton.onDrag`).
@@ -1115,13 +1121,12 @@ impl Game<'_> {
 
     /// A key pressed on a dialog screen: Escape closes what allows it, Tab
     /// moves between the text inputs, the rest goes to the focused one
-    /// (`shortcut`: the press as an edit shortcut; `text`: what it types).
+    /// (`shortcut`: the press as an edit shortcut).
     pub(super) fn dialog_key(
         &mut self,
         key: KeyCode,
         shortcut: Option<EditShortcut>,
-        text: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let escape = key == KeyCode::Escape;
         if self.dialogs.warning {
             if escape {
@@ -1130,30 +1135,32 @@ impl Game<'_> {
                     self.dialog_closed();
                 }
             }
-            return Ok(());
+            return Ok(escape);
         }
         if let Some(since) = self.dialogs.waiting {
             // shouldCloseOnEsc: once Back works.
             if escape && waiting_button((since.elapsed().as_millis() / 50) as u32).2 {
                 self.dialogs.waiting = None;
                 self.dialog_closed();
+                return Ok(true);
             }
-            return Ok(());
+            return Ok(false);
         }
         let ctrl = self.modifiers.control_key() || self.modifiers.super_key();
         let shift = self.modifiers.shift_key();
         let Some(open) = self.dialogs.open.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         if escape {
             if !open.dialog.can_close_with_escape {
-                return Ok(());
+                return Ok(false);
             }
             // onClose: the cancel action, and the screen closes.
             Self::dialog_values(open);
             let d = &open.dialog;
             let click = d.on_cancel().and_then(|a| a.click(&d.inputs, &open.values));
-            return self.run_dialog_action(click, AfterAction::Close);
+            self.run_dialog_action(click, AfterAction::Close)?;
+            return Ok(true);
         }
         if key == KeyCode::Tab {
             let texts: Vec<usize> = (0..open.fields.len())
@@ -1169,7 +1176,7 @@ impl Game<'_> {
                 };
                 open.focus = Some(texts[next]);
             }
-            return Ok(());
+            return Ok(false);
         }
         if let Some(focus) = open.focus
             && let Some(input) = open.dialog.inputs.get(focus)
@@ -1195,28 +1202,17 @@ impl Game<'_> {
                 -delta
             };
             *val = (*val + step_sign).clamp(0.0, 1.0);
-            return Ok(());
+            return Ok(true);
         }
         let Some(Some(edit)) = open.focus.and_then(|f| open.fields.get_mut(f)) else {
-            return Ok(());
+            return Ok(false);
         };
         let font = &self.gui.atlas.font;
         if let Some(shortcut) = shortcut {
             edit.shortcut(font, shortcut, &mut self.clipboard);
-            return Ok(());
+            return Ok(true);
         }
-        if edit.key(font, key, ctrl, shift) {
-            return Ok(());
-        }
-        let typed: String = text
-            .unwrap_or_default()
-            .chars()
-            .filter(|c| !c.is_control())
-            .collect();
-        if !typed.is_empty() {
-            edit.insert_text(font, &typed);
-        }
-        Ok(())
+        Ok(edit.key(font, key, ctrl, shift))
     }
 
     /// Whether the open dialog has a text input.

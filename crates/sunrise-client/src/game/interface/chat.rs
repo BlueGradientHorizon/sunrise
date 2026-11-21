@@ -46,10 +46,7 @@ fn sunrise_profiler_args<'a>(
         .is_none_or(|tree| tree.has_sunrise_profiler())
         .then_some(args)
 }
-use winit::{
-    event::KeyEvent,
-    keyboard::{KeyCode, PhysicalKey},
-};
+use winit::keyboard::KeyCode;
 
 /// `base` with extra client-local commands added: each a literal taking the
 /// rest of the line as typed (`Dispatcher::with_mod_commands`), so the chat
@@ -1187,8 +1184,12 @@ impl Game<'_> {
         );
     }
     /// Keys while the chat screen is open.
-    pub(super) fn chat_key(&mut self, event: &KeyEvent) {
-        if let Some(shortcut) = self.edit_shortcut(event) {
+    pub(super) fn chat_key(
+        &mut self,
+        key: KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        if let Some(shortcut) = shortcut {
             let m = Measure(&self.gui.atlas.font);
             let c = Commands {
                 dispatcher: chat_tree(&self.remote),
@@ -1196,16 +1197,14 @@ impl Game<'_> {
             };
             if let Some(screen) = self.ui.chat_screen.as_mut() {
                 screen.shortcut(&m, &c, shortcut, &mut self.clipboard);
+                return true;
             }
-            return;
+            return false;
         }
-        let PhysicalKey::Code(key) = event.physical_key else {
-            return;
-        };
-        self.chat_key_code(key, event.text.as_deref());
+        self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) {
+    pub(super) fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) -> bool {
         // The live modifiers, not `self.keys`: every ModifiersChanged runs
         // sync_toggle, which drops ShiftLeft and ControlLeft from `self.keys`
         // while a screen is open.
@@ -1220,7 +1219,7 @@ impl Game<'_> {
             }
         {
             self.toggle_chat_search();
-            return;
+            return true;
         }
         match key {
             // ChatScreen.keyPressed: the chat scrolls a page.
@@ -1235,19 +1234,20 @@ impl Game<'_> {
                 self.ui
                     .chat
                     .scroll_by(if key == KeyCode::PageUp { n } else { -n }, true);
-                return;
+                return true;
             }
             _ => {}
         }
         let Some(mut screen) = self.ui.chat_screen.take() else {
-            return;
+            return false;
         };
         let m = Measure(&self.gui.atlas.font);
         let c = Commands {
             dispatcher: chat_tree(&self.remote),
             registries: &self.ui.registries,
         };
-        match screen.key(&m, &c, &self.ui.chat.recent, key, shift, ctrl) {
+        let (handled, action) = screen.key_input(&m, &c, &self.ui.chat.recent, key, shift, ctrl);
+        match action {
             ChatAction::Close => {
                 // Escape: the box still holds its text, which close_chat keeps as the draft
                 // (a search's query gives way to the text it put aside: keep_chat_draft).
@@ -1281,6 +1281,7 @@ impl Game<'_> {
             }
         }
         self.notify_chat_suggestion_completion();
+        handled
     }
     fn notify_chat_suggestion_completion(&mut self) {
         if let Some(completion) = self
@@ -1598,9 +1599,11 @@ impl Game<'_> {
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(super) fn answer_link_prompt(&mut self, yes: bool) {
-        if let Some(url) = self.link_prompt.take()
-            && yes
-        {
+        let Some(url) = self.link_prompt.take() else {
+            return;
+        };
+        self.refresh_screen_widgets();
+        if yes {
             super::packs::open_uri(&url);
         }
     }

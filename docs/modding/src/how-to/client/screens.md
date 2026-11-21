@@ -269,7 +269,8 @@ overlays alike. Mounted widgets are cleared and rebuilt whenever the screen init
 selection state on your mod struct and seed widgets from it in `screen_init_post`. Use
 `event.widgets.set_initial_focus(id)` to focus a mounted widget on open (`Screen.setInitialFocus`),
 or `event.widgets.remove(id)` to remove a widget added during the same `screen_init_post` call
-(`Screen.removeWidget`).
+(`Screen.removeWidget`). There is no live focus setter or mutable lookup for built-in widgets.
+A custom widget can track its own focus via `set_focused` and read or change the state it owns.
 
 ### Buttons with your own art
 
@@ -378,7 +379,10 @@ contract on the **receiving screen**:
 - **Unhandled-only notices (non-cancellable)**:
   `screen_mouse_dragged_post`, `screen_mouse_scrolled_post`, `screen_char_typed_post`, and
   `screen_preedit_post` fire on the receiving screen only when neither mounted widgets nor the
-  screen handled the input, and cannot cancel (`screen_char_typed_post` returns `()`).
+  screen handled the input, and cannot cancel (`screen_char_typed_post` returns `()`). A built-in
+  `TextField` can consume preedit; a custom `ScreenWidget` cannot, even when its `captures_input()`
+  returns `true`. A custom editor can observe the unhandled composition in `screen_preedit_post`
+  and receives committed characters through `char_typed`.
 
 ## Labels: wrapped text without a widget
 

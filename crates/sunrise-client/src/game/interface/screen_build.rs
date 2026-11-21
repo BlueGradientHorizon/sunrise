@@ -336,6 +336,13 @@ pub(super) struct ScreenState {
 }
 
 impl ScreenState {
+    /// Advance the receiving screen's identity. Rebuilding children is not a replacement.
+    pub(super) fn bump_instance(&mut self) -> u64 {
+        self.screen_instance = self.screen_instance.wrapping_add(1);
+        self.last_click = None;
+        self.screen_instance
+    }
+
     /// Whether a press at `now` on `screen_instance` with `button` is a vanilla
     /// double-click (within 250ms on the same screen instance and button,
     /// `MouseHandler.java:101-106`).

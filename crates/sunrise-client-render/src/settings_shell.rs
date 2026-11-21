@@ -1523,7 +1523,7 @@ pub(crate) trait Hosted {
         size: (f32, f32),
         at: (f32, f32),
         amount: f32,
-    ) -> Vec<Output>;
+    ) -> (bool, Vec<Output>);
     /// The one way a list scrolls: the wheel, a right stick and a D-pad past the view's edge.
     fn scroll(&mut self, s: &Settings, size: (f32, f32), amount: f32);
     /// Typing in the search field, Tab and the arrows between controls, Left and Right on a
@@ -2578,18 +2578,30 @@ impl<S: Screen + Default> Hosted for Shell<S> {
         size: (f32, f32),
         at: (f32, f32),
         amount: f32,
-    ) -> Vec<Output> {
+    ) -> (bool, Vec<Output>) {
         if amount != 0.0 && s.extras.wheel_cycles_settings {
             let view = self.view(s, size);
             if let Some((row, _)) = self.row_at(&view, at).filter(|(row, _)| row.live)
                 && let Some(outputs) = self.screen.wheel_step(s, row.id, amount > 0.0)
             {
                 self.did(&outputs);
-                return outputs;
+                return (true, outputs);
             }
         }
-        self.scroll(s, size, amount);
-        Vec::new()
+        let view = self.view(s, size);
+        let cols = &view.cols;
+        if ui::hovered(
+            at,
+            cols.list_x,
+            cols.top,
+            cols.list_w,
+            cols.bottom - cols.top,
+        ) {
+            self.scroll(s, size, amount);
+            (true, Vec::new())
+        } else {
+            (false, Vec::new())
+        }
     }
     fn scroll(&mut self, s: &Settings, size: (f32, f32), amount: f32) {
         let view = self.view(s, size);

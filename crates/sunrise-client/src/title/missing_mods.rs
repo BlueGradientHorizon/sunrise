@@ -79,11 +79,14 @@ impl Title {
         self.scroll.set(scroll);
         true
     }
-    pub(super) fn wheel_missing_mods(&mut self, delta: f32, size: (f32, f32)) -> bool {
+    pub(super) fn wheel_missing_mods(&mut self, delta: f32, y: f32, size: (f32, f32)) -> bool {
         if !matches!(self.mode, Mode::MissingMods { .. }) {
             return false;
         }
         let (top, bottom, _) = layout(size.0, size.1);
+        if !(top..bottom).contains(&y) {
+            return false;
+        }
         let mut scroll = self.scroll.get();
         scroll.wheel(
             delta,

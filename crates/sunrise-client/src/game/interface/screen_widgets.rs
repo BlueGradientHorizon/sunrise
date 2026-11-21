@@ -19,7 +19,7 @@ use sunrise_client::{
     preedit::PreeditEvent,
     text::{DARK_GRAY, Style, Text},
     ui::{self, EditBox},
-    widgets::{Kind, Narratable, Target},
+    widgets::{self, Kind, Narratable, Target},
 };
 use winit::keyboard::KeyCode;
 
@@ -356,7 +356,10 @@ impl MountedWidgetEntry {
             MountedWidgetKind::Button { state, .. } => {
                 (state.visible && state.active).then_some(Target {
                     rect: state.rect,
-                    kind: Kind::Button,
+                    kind: Kind::Mounted {
+                        id: self.id.raw(),
+                        field: false,
+                    },
                 })
             }
             MountedWidgetKind::TextField {
@@ -366,7 +369,10 @@ impl MountedWidgetEntry {
                 ..
             } => (*visible && *active).then_some(Target {
                 rect: [edit_box.x, edit_box.y, edit_box.width, edit_box.height],
-                kind: Kind::Field,
+                kind: Kind::Mounted {
+                    id: self.id.raw(),
+                    field: true,
+                },
             }),
             MountedWidgetKind::Custom(widget) => call_owner(
                 &self.owner,
@@ -375,10 +381,9 @@ impl MountedWidgetEntry {
                 || {
                     (widget.visible() && widget.active()).then(|| Target {
                         rect: widget.bounds(),
-                        kind: if widget.captures_input() {
-                            Kind::Field
-                        } else {
-                            Kind::Button
+                        kind: Kind::Mounted {
+                            id: self.id.raw(),
+                            field: widget.captures_input(),
                         },
                     })
                 },
@@ -386,10 +391,6 @@ impl MountedWidgetEntry {
             .flatten(),
         }
     }
-}
-
-fn rect_matches(a: [f32; 4], b: [f32; 4]) -> bool {
-    a.iter().zip(b).all(|(p, q)| (p - q).abs() < 0.5)
 }
 
 impl Game<'_> {
@@ -497,23 +498,19 @@ impl Game<'_> {
         out
     }
 
-    /// Find the mounted widget whose target rectangle matches `rect`.
-    pub(super) fn mounted_widget_index_for_rect(&self, rect: [f32; 4]) -> Option<usize> {
-        let mut inner = self.screen_state.widgets.inner.borrow_mut();
-        for (idx, slot) in inner.entries.iter_mut().enumerate() {
-            if let Some(entry) = slot.as_mut()
-                && let Some(t) = entry.target()
-                && rect_matches(t.rect, rect)
-            {
-                return Some(idx);
-            }
-        }
-        None
-    }
-
-    /// Sync mounted widget focus with the unified screen focus target rectangle.
-    pub(super) fn sync_mounted_focus_to_rect(&mut self, rect: [f32; 4]) {
-        let idx = self.mounted_widget_index_for_rect(rect);
+    /// Synchronize with the selected child, not whichever widget overlaps its bounds.
+    pub(super) fn sync_mounted_focus(&mut self, target: Target) {
+        let idx = match target.kind {
+            Kind::Mounted { id, .. } => self
+                .screen_state
+                .widgets
+                .inner
+                .borrow()
+                .entries
+                .iter()
+                .position(|slot| slot.as_ref().is_some_and(|entry| entry.id.raw() == id)),
+            _ => None,
+        };
         self.set_mounted_widget_focus(idx);
     }
 
@@ -593,6 +590,7 @@ impl Game<'_> {
                 match &mut entry.kind {
                     MountedWidgetKind::Button { state, .. } => {
                         if state.visible {
+                            let mark = widgets::frame_mark();
                             let hovered = point_in_rect(mouse, state.rect);
                             let label: Text = state.label.try_into_engine(&()).unwrap_or_default();
                             ui::button_as(
@@ -605,6 +603,7 @@ impl Game<'_> {
                                 state.sprites.as_ref(),
                                 |rect| Narratable::button(label.plain(), rect, state.active),
                             );
+                            widgets::mark_mounted(mark, entry.id.raw(), false);
                         }
                     }
                     MountedWidgetKind::TextField {
@@ -616,7 +615,9 @@ impl Game<'_> {
                     } => {
                         if *visible {
                             edit_box.focused = focused && *active;
+                            let mark = widgets::frame_mark();
                             edit_box.draw(batch, &self.gui.atlas, None);
+                            widgets::mark_mounted(mark, entry.id.raw(), true);
                             if let Some(hint) = hint
                                 && edit_box.value.is_empty()
                                 && !edit_box.focused
@@ -649,12 +650,11 @@ impl Game<'_> {
                                 }
                                 let bounds = widget.bounds();
                                 if widget.active() {
-                                    sunrise_client::widgets::target_as(
+                                    widgets::target_as(
                                         bounds,
-                                        if widget.captures_input() {
-                                            Kind::Field
-                                        } else {
-                                            Kind::Button
+                                        Kind::Mounted {
+                                            id: entry.id.raw(),
+                                            field: widget.captures_input(),
                                         },
                                     );
                                 }

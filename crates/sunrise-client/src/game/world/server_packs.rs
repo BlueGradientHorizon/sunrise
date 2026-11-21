@@ -346,6 +346,7 @@ impl Game<'_> {
             }
             Some(false)
         };
+        self.refresh_screen_widgets();
         for (id, url, hash) in prompt.requests {
             self.server_packs.packs.push(id, &url, parse_sha1(&hash));
         }

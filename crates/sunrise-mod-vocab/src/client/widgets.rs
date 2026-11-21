@@ -466,7 +466,8 @@ pub trait ScreenWidget: Send + 'static {
     }
 
     /// Whether this widget wants text input focus priority over screen hotkeys (such as `E` to
-    /// close inventory screens) while focused. Defaults to `false`.
+    /// close inventory screens) while focused. This does not consume IME preedit; custom widgets
+    /// receive committed characters via [`Self::char_typed`]. Defaults to `false`.
     fn captures_input(&self) -> bool {
         false
     }

@@ -822,16 +822,20 @@ impl ModsScreen {
         self.panel.held = None;
     }
     /// The mouse wheel over the list or the panel.
-    pub fn scroll(&mut self, x: f64, y: f64, amount: f64) {
+    pub fn scroll(&mut self, x: f64, y: f64, amount: f64) -> bool {
         let g = self.geo();
         if hit(g.list, x, y) {
             let content = self.list_content();
             self.list
                 .set(self.list.amount - amount * WHEEL_STEP, content, g.list[3]);
+            true
         } else if hit([g.frame[0], g.panel[1], g.frame[2], g.panel[3]], x, y) {
             let content = self.panel_content.get();
             self.panel
                 .set(self.panel.amount - amount * WHEEL_STEP, content, g.panel[3]);
+            true
+        } else {
+            false
         }
     }
 

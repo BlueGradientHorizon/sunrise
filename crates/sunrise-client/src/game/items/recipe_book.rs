@@ -337,30 +337,22 @@ impl Game<'_> {
         }
     }
     /// A key press while the search box has focus.
-    pub(super) fn recipe_key(&mut self, event: &winit::event::KeyEvent) {
-        use winit::keyboard::PhysicalKey;
-        if let Some(shortcut) = self.edit_shortcut(event) {
+    pub(super) fn recipe_key(
+        &mut self,
+        key: winit::keyboard::KeyCode,
+        shortcut: Option<sunrise_client::clipboard::EditShortcut>,
+    ) -> bool {
+        if let Some(shortcut) = shortcut {
             self.recipe_shortcut(shortcut);
-            return;
+            return true;
         }
-        let ctrl = self.has_control_down();
-        let shift = self.has_shift_down();
-        let types_text = self.types_text();
+        let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
         let Some(search) = self.recipe_ui.search.as_mut() else {
-            return;
+            return false;
         };
-        let handled = match event.physical_key {
-            PhysicalKey::Code(code) => search.key(code, ctrl, shift),
-            _ => false,
-        };
-        if !handled
-            && types_text
-            && let Some(text) = &event.text
-        {
-            let text: String = text.chars().filter(|c| !c.is_control()).collect();
-            search.insert_text(&text);
-        }
+        let handled = search.key(key, ctrl, shift);
         search.reset_blink();
+        handled
     }
 
     /// `RecipeToast.addOrUpdate` for each display of the recipes just

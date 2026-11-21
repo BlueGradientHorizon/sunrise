@@ -57,7 +57,9 @@ impl Game<'_> {
         }
         match key {
             KeyCode::Escape => match self.screen {
-                Screen::Options => self.options_key(KeyCode::Escape, None)?,
+                Screen::Options => {
+                    self.options_key(KeyCode::Escape, None)?;
+                }
                 Screen::Playing => {
                     if self.replay.playing() && self.captured {
                         self.capture(false);

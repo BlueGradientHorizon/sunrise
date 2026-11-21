@@ -114,6 +114,16 @@ empty-state placeholder text (`EditBox.setHint`, not an inline completion suffix
 label). For custom text colours, inline completion suggestions, or custom narration/rendering, \
 implement `ScreenWidget` with a local `TextEdit` and `DrawContext`, mounted via \
 `event.widgets.add_widget(Box::new(...))`.
+   - `Widgets::focused()` / `set_focus(...)`: during Init use `event.widgets.set_initial_focus(id)`. \
+There is no live focus setter or query on `ScreenWidgets`. To observe live focus for your own \
+control, mount a custom `ScreenWidget`, store the bool passed to `ScreenWidget::set_focused`, \
+and use it in your rendering and callbacks; mouse and keyboard navigation set actual focus. \
+`set_focused` is a notification, not a way to claim focus.
+   - `Widgets::button_mut(id)` / `text_field_mut(id)`: there is no lookup or live mutator for the \
+built-in widgets. Change a built-in button through `&mut ButtonState` in its `on_press`. Put \
+initial text in `TextField::value(...)` at Init and observe player edits with `on_change`. For \
+rendering or editing that reacts to other runtime state, place that state on a custom \
+`ScreenWidget` (or share it with the mod) and apply the changes there.
    - Custom controls: implement `ScreenWidget` and mount via `event.widgets.add_widget(Box::new(...))`.
 2. `ScreenView.mod_screen` and `ClientHost::mod_screen_open`:
    - `ScreenView` now carries `mod_screen: Option<&str>`, naming the owning mod of that screen \
@@ -144,4 +154,9 @@ only when neither mounted widgets nor the screen handled the drag or scroll.
    - `screen_char_typed_post`: change the return type from `Flow` to `()`, remove any \
 `event.cancelled` access, and rely on it as a non-cancellable notice for unhandled characters on \
 the receiving screen.
+   - `screen_preedit_post`: a focused custom `ScreenWidget` does not consume preedit, even with \
+`captures_input() == true`. Unless Pre cancels, handle the unconsumed composition as a notice in \
+`screen_preedit_post` keyed by the receiving screen and your own focus state, or use a built-in \
+`TextField` for engine-owned composition (which consumes preedit and skips Post). Committed text \
+still reaches `ScreenWidget::char_typed` character by character.
 """

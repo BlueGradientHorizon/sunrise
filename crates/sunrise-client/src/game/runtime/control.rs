@@ -269,6 +269,25 @@ impl Game<'_> {
     /// the screen takes it.
     pub(super) fn type_into_screen(&mut self, text: &str) -> Result<()> {
         if text == "\\b" {
+            let instance = self.screen_state.screen_instance;
+            if self.mounted_widget_key_pressed(
+                KeyCode::Backspace,
+                false,
+                super::glfw_modifiers(self.modifiers),
+            ) {
+                return Ok(());
+            }
+            if self.screen_state.screen_instance != instance
+                || self.screen_state.widgets.has_focus()
+            {
+                return Err("no focused editor accepted Backspace".into());
+            }
+            if self.dialog_open() && self.dialog_type(text) {
+                return Ok(());
+            }
+            if self.prompt_open() {
+                return Err("no focused editor accepted Backspace".into());
+            }
             match self.screen {
                 Screen::WorldOptions => {
                     self.world_options_text(None);
@@ -282,7 +301,7 @@ impl Game<'_> {
                     self.social_backspace();
                     return Ok(());
                 }
-                _ => {}
+                _ => return Err("no focused editor accepted Backspace".into()),
             }
         }
         self.type_chars_into_screen(text)
@@ -293,12 +312,21 @@ impl Game<'_> {
     /// Nothing here is a key — the caller drops control characters. `Err` when
     /// no text box of the screen takes them.
     pub(super) fn type_chars_into_screen(&mut self, text: &str) -> Result<()> {
-        if self.mounted_widget_captures_input() {
-            return Err("focused mounted widget owns character input".into());
+        if self.screen_state.widgets.has_focus() {
+            return Err("focused mounted widget declined character input".into());
+        }
+        if self.dialog_open() && self.dialog_type(text) {
+            return Ok(());
+        }
+        if self.prompt_open() {
+            return Err("no focused editor accepted character input".into());
         }
         if self.book.is_some() {
-            self.book_type(text);
-            return Ok(());
+            if matches!(self.book, Some(super::books::BookScreen::Edit { .. })) {
+                self.book_type(text);
+                return Ok(());
+            }
+            return Err("the open book is not editable".into());
         }
         if self.sign_edit.is_some() {
             self.sign_input(None, Some(text));
@@ -306,21 +334,30 @@ impl Game<'_> {
         }
         // The title's screens: the world name, the seed, a server's address.
         // A screen opened over the title (Options, say) keeps its own text.
-        if title_owns_text(&self.screen, self.title.is_some())
-            && let Some(title) = &mut self.title
-        {
-            title.type_text(text);
-            return Ok(());
+        if title_owns_text(&self.screen, self.title.is_some()) {
+            if self.vanilla_text_field_focused() {
+                self.title_edit(Some(text), false);
+                return Ok(());
+            }
+            return Err("the title screen has no focused editor".into());
         }
         match self.screen {
             Screen::Chat => self.chat_type(text),
             Screen::CommandBlock => self.command_block_type(text),
             Screen::Social => self.social_type(text),
-            Screen::BlockEditor => self.block_editor_type(text),
-            Screen::DebugOptions => self.debug_options_type(text),
-            Screen::Options => self.ui.options.type_text(&self.gui.atlas, text),
+            Screen::BlockEditor if self.vanilla_text_field_focused() => {
+                self.block_editor_type(text)
+            }
+            Screen::DebugOptions if self.vanilla_text_field_focused() => {
+                self.debug_options_type(text)
+            }
+            Screen::Options if self.ui.options.typing() && !self.options_waiting_for_key() => {
+                self.ui.options.type_text(&self.gui.atlas, text)
+            }
             // The port, or the game rules' search and number boxes.
-            Screen::WorldOptions => self.world_options_text(Some(text)),
+            Screen::WorldOptions if self.world_options_typing() => {
+                self.world_options_text(Some(text))
+            }
             Screen::Inventory | Screen::Creative if self.mod_browser_typing() => {
                 self.mod_browser_text(Some(text), false)
             }
@@ -720,49 +757,13 @@ impl Game<'_> {
                     // As a window's key press: the radial menu closes, and the key goes on.
                     self.pad_radial_cancel();
                 }
-                // The command confirmation takes the keys; none go past it.
-                if self.command_prompt.is_some() {
-                    if arg(2)? != "up" {
-                        self.command_prompt_key(key);
-                    }
-                    return ok();
+                if self.observed_screen_view().is_none()
+                    && !self.dialog_open()
+                    && !self.prompt_open()
+                {
+                    self.require_world()?;
                 }
-                // A server's dialog takes the keys, in configuration too.
-                if self.dialog_open() {
-                    if arg(2)? != "up" {
-                        self.dialog_key(key, None, None)?;
-                    }
-                    return ok();
-                }
-                self.require_world()?;
-                // KeyboardHandler.keyPress: the open screen's narration hears it.
-                super::narrator::narrate_key(&mut self.narration, key, arg(2)? != "up");
-                // The sign editor takes raw presses (Enter, arrows, Backspace, Escape).
-                if self.sign_edit.is_some() {
-                    if arg(2)? != "up" {
-                        self.sign_input(Some(key), None);
-                    }
-                    return ok();
-                }
-                // A held edit modifier (`key super down`) and A/C/V/X: the
-                // open book's Select All, Copy, Paste or Cut.
-                if self.book.is_some() && arg(2)? != "up" {
-                    let held = |k: [KeyCode; 2]| k.iter().any(|k| self.keys.raw(k));
-                    let edit = if cfg!(target_os = "macos") {
-                        held([KeyCode::SuperLeft, KeyCode::SuperRight])
-                    } else {
-                        held([KeyCode::ControlLeft, KeyCode::ControlRight])
-                    };
-                    let name = arg(1)?;
-                    let letter = name.chars().next().filter(|_| name.len() == 1);
-                    let shift = held([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-                    if let Some(shortcut) =
-                        sunrise_client::clipboard::edit_shortcut(letter, edit, shift, false)
-                    {
-                        self.book_shortcut(shortcut);
-                        return ok();
-                    }
-                }
+                super::narrator::narrate_key(&mut self.narration, key, action != "up");
                 // KeyboardHandler.keyPress: the debug keys see the physical key first.
                 let physical = key;
                 {
@@ -784,166 +785,58 @@ impl Game<'_> {
                         self.debug_key(key, KeyAction::Release);
                     }
                 }
-                let action = arg(2)?;
-                let is_press = action != "up";
-                let is_release = action == "up" || action == "tap";
                 let repeat = action == "repeat";
-                let modifiers = super::glfw_modifiers(self.modifiers);
-                if is_press {
-                    let press_instance = self.screen_state.screen_instance;
-                    let key_receiver = self.observed_input_screen();
-                    // ScreenEvent.KeyPressed.Pre: the open screen hears of the
-                    // press before it acts on it. A cancelled press goes no further.
-                    let pre_canceled =
-                        self.screen_key_pressed_on(key_receiver.as_ref(), physical, repeat);
-                    if !pre_canceled {
-                        if self.screen_state.screen_instance != press_instance {
-                            let _ = self.screen_key_post_on(
-                                key_receiver.as_ref(),
-                                physical,
-                                true,
-                                repeat,
-                            );
-                        } else if physical == KeyCode::Escape
-                            && self.screen == Screen::Mod
-                            && !self.prompt_open()
-                            && !self.dialog_open()
-                        {
-                            self.close_mod_screen();
-                        } else if self.observed_screen_view().is_some()
-                            && self.mounted_widget_key_pressed(physical, repeat, modifiers)
-                        {
-                            // Handled by the focused mounted widget.
-                        } else if self.screen_state.screen_instance != press_instance {
-                            let _ = self.screen_key_post_on(
-                                key_receiver.as_ref(),
-                                physical,
-                                true,
-                                repeat,
-                            );
-                        } else {
-                            self.native_panel_key_event(physical, true, repeat);
-                            let mounted_captures = self.mounted_widget_captures_input();
-                            // The merchant's focused offer and the recipe book's last
-                            // recipe take Enter and Space, as the window's.
-                            let inv_handled = !mounted_captures
-                                && self.screen == Screen::Inventory
-                                && (self.merchant_key(physical) || self.recipe_book_key(physical));
-                            // Text screens consume raw presses; releases follow key binds.
-                            let typing = matches!(
-                                self.screen,
-                                Screen::Chat
-                                    | Screen::Options
-                                    | Screen::CommandBlock
-                                    | Screen::BlockEditor
-                            );
-                            if !inv_handled
-                                && (typing
-                                    || !self.screen_key_post_on(
-                                        key_receiver.as_ref(),
-                                        physical,
-                                        true,
-                                        repeat,
-                                    ))
-                                && (physical == KeyCode::Escape || !mounted_captures)
-                            {
-                                if typing {
-                                    if repeat {
-                                        self.physical_keys.insert(physical);
-                                        self.mapped_key(key, true, true, key, Source::Agent)?;
-                                    } else {
-                                        self.control_key_down(key, physical)?;
-                                    }
-                                } else {
-                                    match self.settings.keys.translate(key) {
-                                        Some(Ok(k)) => {
-                                            if repeat {
-                                                self.physical_keys.insert(physical);
-                                                self.mapped_key(k, true, true, k, Source::Agent)?;
-                                            } else {
-                                                self.control_key_down(k, physical)?;
-                                            }
-                                        }
-                                        Some(Err(button)) => {
-                                            if self.screen == Screen::Playing
-                                                && self.shared_default_acts(
-                                                    button,
-                                                    sunrise_client::keybinds::key_name(physical),
-                                                )
-                                            {
-                                                self.mouse_mapping(button, true, Source::Agent)?;
-                                            }
-                                        }
-                                        None => {}
-                                    }
-                                }
+                if action != "up" && !self.screenshot_shortcut(key, repeat) {
+                    let name = arg(1)?;
+                    let letter = name.chars().next().filter(|_| name.len() == 1);
+                    let shortcut = self.edit_shortcut_for_letter(letter);
+                    if !self.dispatch_screen_key(event_loop, physical, true, repeat, shortcut)?
+                        && !self.key_press_canceled(physical, true, repeat)
+                    {
+                        self.native_panel_key_event(physical, true, repeat);
+                        match self.settings.keys.translate(key) {
+                            Some(Ok(k)) if repeat => {
+                                self.mapped_key(k, true, true, physical, Source::Agent)?
                             }
+                            Some(Ok(k)) => self.control_key_down(k, physical)?,
+                            Some(Err(button))
+                                if self.screen == Screen::Playing
+                                    && self.shared_default_acts(
+                                        button,
+                                        sunrise_client::keybinds::key_name(physical),
+                                    ) =>
+                            {
+                                self.mouse_mapping(button, true, Source::Agent)?;
+                            }
+                            _ => {}
                         }
                     }
                 }
-                if is_release {
+                if action == "up" || action == "tap" {
                     if action == "tap" {
                         self.press_modifier_key(physical, false);
                         self.physical_keys.remove(&physical);
                         self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
                     }
-                    let release_instance = self.screen_state.screen_instance;
-                    let release_receiver = self.observed_input_screen();
-                    let release_modifiers = super::glfw_modifiers(self.modifiers);
-                    let mut run_binding_release = true;
-                    if self.screen_key_released_on(release_receiver.as_ref(), physical) {
-                        // Screen cancellation must not leave a held keyboard mapping down.
-                        self.keys.remove(&physical);
-                    } else if self.screen_state.screen_instance != release_instance {
-                        let _ = self.screen_key_post_on(
-                            release_receiver.as_ref(),
-                            physical,
-                            false,
-                            false,
-                        );
-                        self.keys.remove(&physical);
-                        run_binding_release = false;
-                    } else if self.observed_screen_view().is_some()
-                        && self.mounted_widget_key_released(physical, release_modifiers)
+                    if !self.dispatch_screen_key(event_loop, physical, false, false, None)?
+                        && !self.key_press_canceled(physical, false, false)
                     {
-                        run_binding_release = false;
-                    } else if self.screen_state.screen_instance != release_instance {
-                        let _ = self.screen_key_post_on(
-                            release_receiver.as_ref(),
-                            physical,
-                            false,
-                            false,
-                        );
-                        self.keys.remove(&physical);
-                        run_binding_release = false;
-                    } else {
                         self.native_panel_key_event(physical, false, false);
-                        if self.screen_key_post_on(
-                            release_receiver.as_ref(),
-                            physical,
-                            false,
-                            false,
-                        ) {
-                            run_binding_release = false;
-                        }
-                    }
-                    if run_binding_release {
                         match self.settings.keys.translate(key) {
                             Some(Ok(k)) => {
                                 self.control_key_up(k);
                                 self.physical_keys.remove(&k);
                             }
-                            Some(Err(button)) => {
+                            Some(Err(button))
                                 if self.screen == Screen::Playing
                                     && self.shared_default_acts(
                                         button,
                                         sunrise_client::keybinds::key_name(physical),
-                                    )
-                                {
-                                    self.mouse_mapping(button, false, Source::Agent)?;
-                                }
+                                    ) =>
+                            {
+                                self.mouse_mapping(button, false, Source::Agent)?;
                             }
-                            None => {}
+                            _ => {}
                         }
                     }
                 }
@@ -1234,28 +1127,11 @@ impl Game<'_> {
                     .unwrap_or("")
                     .strip_prefix(' ')
                     .unwrap_or("");
-                // A server's dialog, in configuration too.
-                if self.dialog_type(text) {
-                    return ok();
+                if self.observed_screen_view().is_none() && !self.dialog_open() {
+                    self.require_world()?;
                 }
-                self.require_world()?;
-                // Typed keys: the open screen's narration hears them.
                 self.narration.keyboard_action();
-                // ScreenEvent.CharacterTyped.Pre: the open screen hears of
-                // each character before a text box takes it, as the window's
-                // key event fires it. A cancelled character is dropped, so
-                // `type` types the survivors only.
-                // `\b` is the socket's backspace sentinel, not two characters.
                 if text == "\\b" {
-                    if self.observed_screen_view().is_some() && self.mounted_widget_captures_input()
-                    {
-                        self.mounted_widget_key_pressed(
-                            KeyCode::Backspace,
-                            false,
-                            super::glfw_modifiers(self.modifiers),
-                        );
-                        return ok();
-                    }
                     self.type_into_screen(text)?;
                     return ok();
                 }
@@ -1502,25 +1378,6 @@ impl Game<'_> {
 
     fn control_key_down(&mut self, key: KeyCode, raw: KeyCode) -> Result<()> {
         self.physical_keys.insert(key);
-        // The window's shortcuts come before any screen, here too.
-        if self.screenshot_shortcut(key, false) {
-            return Ok(());
-        }
-        if self.screen == Screen::Chat {
-            self.chat_key_code(key, None);
-            return Ok(());
-        }
-        if self.screen == Screen::Options {
-            return self.options_key(key, None);
-        }
-        if self.screen == Screen::CommandBlock {
-            self.command_block_key_code(key, None, None);
-            return Ok(());
-        }
-        if self.screen == Screen::BlockEditor {
-            self.block_editor_key_code(key, None, None);
-            return Ok(());
-        }
         if self.keys.press(key, Source::Agent) {
             self.key_pressed(key, raw)?;
         }

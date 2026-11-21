@@ -5893,9 +5893,9 @@ impl Screen {
 
     /// `AbstractScrollArea.mouseScrolled` over the product page's list, the template and
     /// upload lists.
-    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), (_, h): (f32, f32)) {
-        if let Some(true) = self.wheel_upload_select(delta, cursor, (f32::NAN, h)) {
-            return;
+    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), (_, h): (f32, f32)) -> bool {
+        if let Some(handled) = self.wheel_upload_select(delta, cursor, (f32::NAN, h)) {
+            return handled;
         }
         if let SubScreen::AddRealm {
             scroll, content, ..
@@ -5905,10 +5905,10 @@ impl Screen {
             // it by `entryHeight / 2` = 22.
             let (top, bottom) = (44.0, h - 33.0);
             if cursor.1 < top || cursor.1 >= bottom {
-                return;
+                return false;
             }
             scroll.wheel(delta, 22.0, top, bottom, content.get());
-            return;
+            return true;
         }
         // `RealmsSettingsTab`'s `ScrollableLayout`: the column scrolls when it is taller
         // than the tab area (`setMaxHeight(getContentHeight())`).
@@ -5923,8 +5923,9 @@ impl Screen {
             if cursor.1 >= top && cursor.1 < bottom {
                 self.settings_scroll
                     .wheel(delta, 10.0, top, bottom, content);
+                return true;
             }
-            return;
+            return false;
         }
         // `ObjectSelectionList` scrolls: the server list and the pending invites too.
         let scrolled = match &self.subscreen {
@@ -5992,7 +5993,9 @@ impl Screen {
                 SubScreen::PendingInvites { scroll, .. } => {
                     scroll.wheel(delta, height / 2.0, top, bottom, content);
                 }
-                SubScreen::RegionPreference { scroll, .. } => {
+                SubScreen::RegionPreference { scroll, .. }
+                | SubScreen::Backups { scroll, .. }
+                | SubScreen::BackupInfo { scroll, .. } => {
                     scroll.wheel(delta, height / 2.0, top, bottom, content);
                 }
                 SubScreen::Configure {
@@ -6004,7 +6007,7 @@ impl Screen {
                 }
                 _ => {}
             }
-            return;
+            return true;
         }
         let (top, bottom, content, height) = match &self.subscreen {
             SubScreen::TemplateList {
@@ -6015,10 +6018,10 @@ impl Screen {
                 templates.len() as f32 * TEMPLATE_ROW,
                 TEMPLATE_ROW,
             ),
-            _ => return,
+            _ => return false,
         };
         if cursor.1 < top || cursor.1 >= bottom {
-            return;
+            return false;
         }
         match &mut self.subscreen {
             SubScreen::TemplateList { scroll, .. }
@@ -6028,6 +6031,7 @@ impl Screen {
             }
             _ => {}
         }
+        true
     }
 
     pub fn buttons(

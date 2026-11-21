@@ -800,13 +800,17 @@ impl Game<'_> {
             }
         }
     }
-    pub(super) fn stats_scroll(&mut self, amount: f32) {
+    pub(super) fn stats_scroll(&mut self, amount: f32) -> bool {
         let (row_h, _) = self.stats_rows();
         let h = self.gui_size().1;
+        if !(TAB_H..h - FOOTER).contains(&self.cursor.1) {
+            return false;
+        }
         let content = self.stats_content();
         self.stats_ui
             .scroll
             .wheel(amount, row_h / 2.0, TAB_H, h - FOOTER, content);
+        true
     }
     /// A press on the statistics list's scrollbar holds it
     /// (`AbstractSelectionList.updateScrolling`).

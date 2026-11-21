@@ -1332,30 +1332,25 @@ impl Title {
         }
         self.scroll.get_mut().release();
     }
-    /// Mouse wheel over the classic world and server lists, or cycle buttons. Returns true if a button was cycled.
+    /// Mouse wheel over the classic world and server lists, or cycle buttons. Returns true if a child accepted it.
     pub fn scroll_worlds(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) -> bool {
         if let Some(rules) = self.rules.get_mut() {
-            rules.wheel(delta, size.1.ceil());
-            return false;
+            return rules.wheel_at(delta, cursor.1, size.1.ceil());
         }
         if let Mode::Multiplayer(screen) = &mut self.mode {
-            screen.wheel(delta, cursor, size);
-            return false;
+            return screen.wheel(delta, cursor, size);
         }
         if let Mode::Realms(screen) = &mut self.mode {
-            screen.wheel(delta, cursor, size);
-            return false;
+            return screen.wheel(delta, cursor, size);
         }
         if let Mode::CreateFlat { flat, .. } = &mut self.mode {
-            flat::wheel(flat, delta, cursor, size);
-            return false;
+            return flat::wheel(flat, delta, cursor, size);
         }
         if let Mode::CreateBuffet { buffet, .. } = &mut self.mode {
-            buffet::wheel(buffet, delta, cursor, size);
-            return false;
+            return buffet::wheel(buffet, delta, cursor, size);
         }
-        if self.wheel_missing_mods(delta, size) {
-            return false;
+        if matches!(self.mode, Mode::MissingMods { .. }) {
+            return self.wheel_missing_mods(delta, cursor.1, size);
         }
         // CycleButton.mouseScrolled reads only the vertical wheel.
         if let Mode::Create {
@@ -1388,7 +1383,7 @@ impl Title {
         let mut scroll = self.scroll.get();
         scroll.wheel(delta, ROW_HEIGHT / 2.0, top, bottom, content);
         self.scroll.set(scroll);
-        false
+        true
     }
     pub fn failed(&mut self, error: impl std::fmt::Display) {
         let return_to = Box::new(self.mode.clone());

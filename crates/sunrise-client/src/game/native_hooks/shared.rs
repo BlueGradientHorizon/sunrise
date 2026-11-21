@@ -520,11 +520,9 @@ impl Game<'_> {
             .map(|view| self.observe_view(view))
     }
 
-    /// Snapshot of the open screen for screen input hooks (`screen_hooks_open` gate).
+    /// Snapshot of the receiving screen for screen input hooks, including overlays.
     pub(super) fn observed_input_screen(&self) -> Option<ObservedScreen> {
-        self.screen_hooks_open()
-            .then(|| self.observed_now())
-            .flatten()
+        self.observed_now()
     }
 
     /// Runs close cleanup for any screen or overlay being replaced by
@@ -532,6 +530,7 @@ impl Game<'_> {
     /// `Gui.setScreen` / `Screen.removed` so no container menu, editor, dialog,
     /// or prompt stays open over the new screen.
     fn close_replaced_screen_for_mod(&mut self) {
+        let replacing = std::mem::replace(&mut self.screen_state.replacing, true);
         match self.screen {
             Screen::Inventory => self.close_container(),
             Screen::Creative => self.close_creative_menu(),
@@ -551,6 +550,7 @@ impl Game<'_> {
         self.command_prompt = None;
         self.code_of_conduct = None;
         self.server_packs.prompt = None;
+        self.screen_state.replacing = replacing;
     }
 
     fn observe_view(&self, view: ScreenView<'_>) -> ObservedScreen {
@@ -567,7 +567,7 @@ impl Game<'_> {
             .unwrap_or([view.rect[2], view.rect[3]]);
         ObservedScreen {
             id: view.id,
-            overlay: self.screen == Screen::Playing,
+            overlay: self.screen == Screen::Playing || self.observed_overlay_now().is_some(),
             mod_screen: view.mod_screen.map(str::to_owned),
             menu: view.menu.map(str::to_owned),
             menu_generation: (self.screen == Screen::Inventory && !self.screen_over_playing())
@@ -680,6 +680,14 @@ impl Game<'_> {
 
     pub(super) fn observe_screen(&mut self) {
         self.settle_title_mode();
+        self.refresh_screen_widgets();
+    }
+
+    /// Refresh the receiver's build before another input can reach it.
+    pub(super) fn refresh_screen_widgets(&mut self) {
+        if self.screen_state.replacing {
+            return;
+        }
         // Keeps the build on the frame's window size and drops it once nothing
         // shows; an unchanged frame compares and builds nothing.
         self.build_screen();
@@ -727,16 +735,7 @@ impl Game<'_> {
                     from.is_some(),
                 );
             }
-            self.screen_state.bump_instance();
-            if let Some(new) = &current {
-                let mut published = new.clone();
-                published.instance = self.screen_state.screen_instance;
-                self.screen_state.observed = Some(published);
-                self.init_screen_widgets(&new.view());
-            } else {
-                self.screen_state.observed = None;
-                self.clear_screen_widgets();
-            }
+            self.commit_screen_transition();
             return;
         }
         if matches!(
@@ -1200,26 +1199,6 @@ pub(super) enum ScreenMousePre {
     Passed(ScreenMousePost),
 }
 
-/// What a `ScreenEvent.CharacterTyped.Pre` leaves of `text`, given `canceled`
-/// (whether a hook cancelled character `c`): the cancelled printable
-/// characters are gone and every other character stays, control characters
-/// included — a text box reads Backspace, Delete or Escape as keys and vanilla
-/// fires no `charTyped` for them, so they are never offered to the hook.
-/// `None` when nothing is left to type.
-fn screen_text_hooked(text: &str, mut canceled: impl FnMut(char) -> bool) -> Option<String> {
-    let mut left = String::with_capacity(text.len());
-    for c in text.chars() {
-        if !c.is_control() && canceled(c) {
-            continue;
-        }
-        left.push(c);
-    }
-    if left.is_empty() && !text.is_empty() {
-        return None;
-    }
-    Some(left)
-}
-
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
     /// The single admission point for all toast families. Producers decide the
@@ -1643,18 +1622,6 @@ impl Game<'_> {
             canceled
         })
     }
-    /// Text on its way to a text box after the open screen's character hooks
-    /// (`native_screen_char_typed_pre` per printable character): the cancelled
-    /// characters are gone and every other one stays, control characters
-    /// included (a text box reads Backspace, Delete and the like as keys).
-    /// `None` when none of them is left to type. For a key's text that stays
-    /// on the key, which no box with a `field` takes.
-    pub(super) fn screen_text_typed(&mut self, text: &str) -> Option<String> {
-        screen_text_hooked(text, |c| {
-            let receiver = self.observed_input_screen();
-            self.screen_char_canceled_on(receiver.as_ref(), c)
-        })
-    }
     /// Text into a text box a character at a time (`Screen.charTyped`): each
     /// printable one snapshots the current receiving screen, is offered to
     /// `native_screen_char_typed_pre`, and `take` gets it unless cancelled,
@@ -1701,10 +1668,8 @@ impl Game<'_> {
             if self.screen_char_canceled_on(receiver.as_ref(), c) {
                 continue;
             }
-            if self.screen_state.screen_instance != initial_instance {
-                continue;
-            }
-            let mut handled = self.mounted_widget_char_typed(c, modifiers);
+            let mut handled = self.screen_state.screen_instance == initial_instance
+                && self.mounted_widget_char_typed(c, modifiers);
             if !handled && self.screen_state.screen_instance == initial_instance {
                 handled = take(self, c.encode_utf8(&mut encoded));
             }

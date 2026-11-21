@@ -981,16 +981,17 @@ impl PackScreen {
             l.held = None;
         }
     }
-    pub fn scroll(&mut self, x: f64, y: f64, amount: f64) {
+    pub fn scroll(&mut self, x: f64, y: f64, amount: f64) -> bool {
         if self.confirm.is_some() || self.search.contains(x, y) {
-            return;
+            return false;
         }
         for l in &mut self.lists {
             if l.is_over(x, y) {
                 l.set_scroll(l.scroll - amount * 18.0);
-                return;
+                return true;
             }
         }
+        false
     }
     /// Typed text, when the search box has the focus.
     pub fn type_text(&mut self, m: &Measure, s: &str) {

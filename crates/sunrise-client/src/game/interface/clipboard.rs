@@ -38,10 +38,17 @@ impl Game<'_> {
         if event.state != ElementState::Pressed {
             return None;
         }
+        self.edit_shortcut_for_letter(clipboard::shortcut_letter(
+            &event.logical_key,
+            event.physical_key,
+        ))
+    }
+
+    pub(super) fn edit_shortcut_for_letter(&self, letter: Option<char>) -> Option<EditShortcut> {
         let m = self.modifiers;
         let held = |keys: [KeyCode; 2]| keys.iter().any(|k| self.physical_keys.contains(k));
         clipboard::edit_shortcut(
-            clipboard::shortcut_letter(&event.logical_key, event.physical_key),
+            letter,
             self.has_control_down_with_quirk(),
             m.shift_key() || held([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
             m.alt_key() || held([KeyCode::AltLeft, KeyCode::AltRight]),

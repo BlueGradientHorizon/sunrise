@@ -1769,7 +1769,7 @@ impl Screen {
         }
         true
     }
-    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) {
+    pub fn wheel(&mut self, delta: f32, cursor: (f32, f32), size: (f32, f32)) -> bool {
         if let Self::List {
             servers,
             lan,
@@ -1781,8 +1781,10 @@ impl Screen {
             if cursor.1 >= top && cursor.1 < bottom {
                 let content = content_height(servers.len(), lan.games().len());
                 scroll.wheel(delta, ROW_HEIGHT / 2.0, top, bottom, content);
+                return true;
             }
         }
+        false
     }
     /// The pointer moved: a held scrollbar follows it, and a held server
     /// moves to the saved server's row under the pointer, the others closing

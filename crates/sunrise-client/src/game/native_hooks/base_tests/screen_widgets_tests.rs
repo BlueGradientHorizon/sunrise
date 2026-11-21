@@ -340,8 +340,10 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
                 WindowEvent::Resized(PhysicalSize::new(800, 600)),
                 InputOrigin::User,
             );
-            game.observe_screen();
+            // No render or observe_screen call between resize and fresh input.
             assert_eq!(init_count.load(Ordering::SeqCst), 2);
+            game.screen_chars_typed(Some("r"));
+            assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "r");
             assert_ne!(game.screen_state.widgets.generation(), gen_before_resize);
             // Prior 3 live drop counters + 1 newly removed drop counter = 5 total drops.
             assert_eq!(drops.load(Ordering::SeqCst), 5);
@@ -1034,6 +1036,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         bounds: [f32; 4],
         handle_drag: Arc<AtomicBool>,
         handle_scroll: Arc<AtomicBool>,
+        transition_on_drag: Arc<AtomicBool>,
     }
 
     impl ScreenWidget for DragScrollWidget {
@@ -1052,12 +1055,17 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         }
         fn mouse_dragged(
             &mut self,
-            _host: &mut dyn ClientHost,
+            host: &mut dyn ClientHost,
             _mouse: [f32; 2],
             _button: i32,
             _delta: [f32; 2],
             _modifiers: u32,
         ) -> bool {
+            if self.transition_on_drag.load(Ordering::SeqCst) {
+                assert!(host.mod_screen_open("target_mod"));
+                host.close_screen();
+                return false;
+            }
             self.handle_drag.load(Ordering::SeqCst)
         }
         fn mouse_released(
@@ -1080,6 +1088,27 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         }
     }
 
+    struct DecliningEditor(Arc<Mutex<Vec<String>>>);
+    impl ScreenWidget for DecliningEditor {
+        fn bounds(&self) -> [f32; 4] {
+            [20.0, 20.0, 80.0, 20.0]
+        }
+        fn captures_input(&self) -> bool {
+            true
+        }
+        fn mouse_clicked(
+            &mut self,
+            _: &mut dyn ClientHost,
+            _: [f32; 2],
+            _: i32,
+            _: u32,
+            _: bool,
+        ) -> bool {
+            self.0.lock().unwrap().push("editor_click".into());
+            true
+        }
+    }
+
     struct InputMod {
         log: Arc<Mutex<Vec<String>>>,
         override_press_handled: Arc<Mutex<Option<bool>>>,
@@ -1087,6 +1116,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
         cancel_key_post: Arc<AtomicBool>,
         handle_drag: Arc<AtomicBool>,
         handle_scroll: Arc<AtomicBool>,
+        transition_on_drag: Arc<AtomicBool>,
     }
 
     #[mod_api::__subscriptions]
@@ -1117,7 +1147,33 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                         bounds: [20.0, 60.0, 80.0, 20.0],
                         handle_drag: self.handle_drag.clone(),
                         handle_scroll: self.handle_scroll.clone(),
+                        transition_on_drag: self.transition_on_drag.clone(),
                     }));
+                }
+                "stats" => {
+                    let id = event
+                        .widgets
+                        .add_widget(Box::new(DecliningEditor(self.log.clone())));
+                    event.widgets.set_initial_focus(id);
+                }
+                "link_prompt" => {
+                    let a = event
+                        .widgets
+                        .add_text_field(TextField::new([20.0, 20.0, 80.0, 20.0], 32));
+                    event.widgets.add_text_field(
+                        TextField::new([20.0, 20.0, 80.0, 20.0], 32).on_change(|text, host| {
+                            if text == "switch" {
+                                host.mod_screen_open("target_mod");
+                            }
+                        }),
+                    );
+                    event.widgets.set_initial_focus(a);
+                }
+                "chat" => {
+                    let field = event
+                        .widgets
+                        .add_text_field(TextField::new([20.0, 20.0, 80.0, 20.0], 32));
+                    event.widgets.set_initial_focus(field);
                 }
                 _ => {}
             }
@@ -1286,6 +1342,11 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                 .lock()
                 .unwrap()
                 .push(format!("char_pre:{}:{}", event.screen.id, event.c));
+            if event.c == '~'
+                && let Some(field) = event.field.as_mut()
+            {
+                field.value = "switch".into();
+            }
             Flow::Continue
         }
 
@@ -1340,6 +1401,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
     let cancel_key_post = Arc::new(AtomicBool::new(false));
     let handle_drag = Arc::new(AtomicBool::new(true));
     let handle_scroll = Arc::new(AtomicBool::new(true));
+    let transition_on_drag = Arc::new(AtomicBool::new(false));
     let mods: Arc<[ModEntry]> = vec![ModEntry::new(
         "target_mod",
         Box::new(InputMod {
@@ -1349,6 +1411,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             cancel_key_post: cancel_key_post.clone(),
             handle_drag: handle_drag.clone(),
             handle_scroll: handle_scroll.clone(),
+            transition_on_drag: transition_on_drag.clone(),
         }),
     )]
     .into();
@@ -1552,6 +1615,89 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
                     "scroll_post:advancements",
                 ]
             );
+            // Main Options sends Post for an unhandled key and an unhandled character.
+            game.open_options(false);
+            take_log(&log);
+            send_key_control(game, "key z down");
+            game.screen_chars_typed(Some("z"));
+            assert_eq!(
+                take_log(&log),
+                [
+                    "key_press_pre:options:key.keyboard.z",
+                    "key_press_post:options:key.keyboard.z",
+                    "char_pre:options:z",
+                    "char_post:options:z",
+                ]
+            );
+            move_mouse(game, win_id, 3.0, 3.0);
+            send_scroll(game, win_id, 0.0, 1.0);
+            assert_eq!(
+                take_log(&log),
+                ["scroll_pre:options", "scroll_post:options"]
+            );
+
+            // The socket sentinel reports a declined edit, not successful typing. Enter
+            // is still a key (Post reports it), never a click on the selected custom child.
+            game.set_screen(Screen::Stats);
+            take_log(&log);
+            assert!(game.type_into_screen("\\b").is_err());
+            send_key_control(game, "key enter down");
+            assert_eq!(
+                take_log(&log),
+                [
+                    "key_press_pre:stats:key.keyboard.enter",
+                    "key_press_post:stats:key.keyboard.enter"
+                ]
+            );
+
+            // Two mounted fields at identical bounds still have distinct focus identities.
+            game.set_screen(Screen::Chat);
+            game.open_screen_overlay("link_prompt", |game| {
+                game.link_prompt = Some("https://example.com".into())
+            });
+            assert_eq!(game.screen_state.widgets.focused_index(), Some(0));
+            game.ime_preedit("old", Some((0, 3)));
+            assert!(sunrise_client::preedit::composing());
+            send_key_control(game, "key tab down");
+            assert_eq!(game.screen_state.widgets.focused_index(), Some(1));
+            game.ime_preedit("new", Some((0, 3)));
+            game.sync_ime(); // the redraw must not clear B's newly accepted preedit
+            assert!(sunrise_client::preedit::composing());
+            game.ime_commit("new");
+            assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "new");
+
+            // A non-cancelling rewrite can replace the receiver via on_change. Post is owed to the prompt.
+            take_log(&log);
+            game.screen_chars_typed(Some("~"));
+            assert_eq!(game.mod_screen(), Some("target_mod"));
+            assert_eq!(
+                take_log(&log),
+                ["char_pre:link_prompt:~", "char_post:link_prompt:~"]
+            );
+
+            // A drag that replaces its screen but declines the event still posts on the old receiver.
+            transition_on_drag.store(true, Ordering::SeqCst);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            move_mouse(game, win_id, 40.0, 70.0);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            take_log(&log);
+            move_mouse(game, win_id, 50.0, 70.0);
+            assert_eq!(game.screen, Screen::Playing);
+            assert_eq!(take_log(&log), ["drag_pre:mod", "drag_post:mod"]);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+
+            // Closing a confirmation exposes the Chat child before any intervening frame.
+            game.set_screen(Screen::Chat);
+            game.open_screen_overlay("link_prompt", |game| {
+                game.link_prompt = Some("https://example.com".into())
+            });
+            let prompt = game.screen_state.widgets.focused_id();
+            game.answer_link_prompt(false);
+            assert_ne!(game.screen_state.widgets.focused_id(), prompt);
+            take_log(&log);
+            game.screen_chars_typed(Some("c"));
+            assert_eq!(game.mounted_focused_text_edit(None).unwrap().value, "c");
+            assert_eq!(take_log(&log), ["char_pre:chat:c"]);
         });
     });
 }

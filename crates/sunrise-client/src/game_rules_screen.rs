@@ -303,6 +303,13 @@ impl RulesScreen {
                 .wheel(delta, ROW / 2.0, HEADER, h - FOOTER, content);
         }
     }
+    pub fn wheel_at(&mut self, delta: f32, y: f32, h: f32) -> bool {
+        if self.confirm || !(HEADER..h - FOOTER).contains(&y) {
+            return false;
+        }
+        self.wheel(delta, h);
+        true
+    }
     /// A press on the scrollbar holds it (AbstractSelectionList.updateScrolling).
     pub fn press_scrollbar(&mut self, cursor: (f32, f32), (w, h): (f32, f32)) -> bool {
         let content = self.content();

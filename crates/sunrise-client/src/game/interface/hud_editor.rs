@@ -220,9 +220,9 @@ impl Game<'_> {
         }
     }
     /// The wheel over a widget resizes it by 10%.
-    pub(super) fn hud_editor_scroll(&mut self, amount: f64) {
+    pub(super) fn hud_editor_scroll(&mut self, amount: f64) -> bool {
         let Some((id, _)) = self.widget_under_cursor() else {
-            return;
+            return false;
         };
         let place = self.settings.extras.pvp.layout.get_mut(id);
         let (lo, hi) = pvp_hud::SCALES;
@@ -232,6 +232,7 @@ impl Game<'_> {
             place.scale.saturating_sub(10).max(lo)
         };
         self.settings.save(&Self::options_path());
+        true
     }
 }
 

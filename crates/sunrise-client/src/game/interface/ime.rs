@@ -44,7 +44,7 @@ impl Game<'_> {
         if self.dialog_open() {
             return self.dialog_has_text_field();
         }
-        if self.title_input_active()
+        if self.screen == Screen::Playing
             && let Some(title) = self.title.as_mut()
         {
             // A caret field, an append-only one (`focused_field`), or a game
@@ -139,6 +139,7 @@ impl Game<'_> {
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
     pub(super) fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
+        self.sync_ime();
         let preedit_receiver = (mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
         .then(|| self.observed_now())
@@ -240,31 +241,27 @@ impl Game<'_> {
         if text.is_empty() || self.held_key_text.swallows(text) {
             return;
         }
-        // Dialogs have their own fields; the other topmost prompts take no text.
-        if self.prompt_open() && !self.dialog_open() {
-            return;
-        }
-        let text: String = text.chars().filter(|c| !c.is_control()).collect();
-        if text.is_empty() {
-            return;
-        }
         // ScreenEvent.CharacterTyped.Pre, mounted widgets, focused vanilla
         // field, and CharacterTyped.Post on the captured receiving screen when
         // unhandled.
-        self.screen_chars_dispatch(&text, |game, c| game.ime_type(c));
+        self.screen_chars_dispatch(text, |game, c| game.ime_type(c));
     }
 
     /// A committed character into the focused vanilla text box (mounted
     /// widgets are offered first by `screen_chars_dispatch`). Returns whether
     /// a text box handled the character.
     fn ime_type(&mut self, text: &str) -> bool {
-        if self.mounted_widget_captures_input() || !self.vanilla_text_field_focused() {
+        // Only a dialog has vanilla fields among the prompts. Mounted fields already heard it.
+        if (self.prompt_open() && !self.dialog_open())
+            || self.screen_state.widgets.has_focus()
+            || !self.vanilla_text_field_focused()
+        {
             return false;
         }
         if self.dialog_type(text) {
             return true;
         }
-        if self.title_input_active() {
+        if self.screen == Screen::Playing && self.title.is_some() {
             self.title_edit(Some(text), false);
             return true;
         } else if self.book.is_some() {

@@ -185,13 +185,14 @@ pub(super) fn focus_row(state: &mut State, cursor: (f32, f32), size: (f32, f32))
     state.select(row);
     true
 }
-pub(super) fn wheel(state: &mut State, delta: f32, cursor: (f32, f32), size: (f32, f32)) {
+pub(super) fn wheel(state: &mut State, delta: f32, cursor: (f32, f32), size: (f32, f32)) -> bool {
     let rows = state.rows();
     let (top, bottom, _, content) = list_area(size, rows.len());
     if cursor.1 < top || cursor.1 >= bottom {
-        return;
+        return false;
     }
     state.scroll.wheel(delta, ROW_HEIGHT, top, bottom, content);
+    true
 }
 pub(super) fn drag(state: &mut State, cursor: (f32, f32), size: (f32, f32)) {
     let rows = state.rows();

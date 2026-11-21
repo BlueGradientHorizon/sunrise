@@ -477,6 +477,7 @@ impl Game<'_> {
             (false, _, Some(Behind::Dialog(dialog))) => self.reopen_dialog(dialog),
             (false, _, None) => {}
         }
+        self.refresh_screen_widgets();
         if self.screen == Screen::Playing && !self.screen_over_playing() {
             self.capture(true);
         }
@@ -484,29 +485,34 @@ impl Game<'_> {
 
     /// ConfirmScreen.keyPressed, and what its buttons take from the keyboard
     /// (Screen's focus navigation, AbstractButton's Enter and Space).
-    pub(super) fn command_prompt_key(&mut self, key: KeyCode) {
+    pub(super) fn command_prompt_key(&mut self, key: KeyCode) -> bool {
         let (size, shift) = (self.gui_size(), self.has_shift_down());
         let Some(prompt) = &self.command_prompt else {
-            return;
+            return false;
         };
         let mut choice = self.command_prompt_layout(prompt, size);
         match key {
-            KeyCode::Escape => return self.answer_command_prompt(false),
+            KeyCode::Escape => {
+                self.answer_command_prompt(false);
+                return true;
+            }
             KeyCode::Tab => choice.tab(shift),
             KeyCode::ArrowLeft | KeyCode::ArrowRight => choice.arrow(key == KeyCode::ArrowLeft),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => {
                 if let Some(button) = choice.pressed() {
                     self.audio.play_button_click();
                     self.answer_command_prompt(button == 0);
+                    return true;
                 }
-                return;
+                return false;
             }
-            _ => return,
+            _ => return false,
         }
         let focus = choice.focus;
         if let Some(prompt) = self.command_prompt.as_mut() {
             prompt.focus = focus;
         }
+        false
     }
 
     pub(super) fn command_prompt_click(&mut self) {
