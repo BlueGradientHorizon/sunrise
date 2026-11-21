@@ -1,8 +1,0 @@
-ids = [
-    "type:CauldronRegistrationError",
-    "type:CauldronRegistrationError.Duplicate",
-    "type:CauldronRegistrationError.UnknownDispatcher",
-    "type:CauldronRegistrationError.UnsupportedCapability",
-]
-why = "Cauldron interaction registration now overwrites matching item and tag entries in place and checks tag entries before exact item entries, matching vanilla 26.3's `CauldronInteraction.Dispatcher.put` / `Dispatcher.get` and NeoForge's `RegisterCauldronInteractionEvent`. `CauldronRegistrationError` drops the unused `Duplicate`, `UnknownDispatcher`, and `UnsupportedCapability` variants as well as `Wire` (it is only returned in-process during registration) and now implements `Copy`."
-migrate = "Remove match arms for `CauldronRegistrationError::Duplicate`, `CauldronRegistrationError::UnknownDispatcher`, and `CauldronRegistrationError::UnsupportedCapability`, and stop encoding `CauldronRegistrationError` with `Wire`. Re-registering an existing item or tag on a cauldron dispatcher now overwrites the previous entry in place (preserving tag registration order), and item-tag entries now take precedence over exact item entries (with `minecraft:cauldron_can_remove_dye` on `minecraft:water_cauldron` replaceable via `register_tag`)."
