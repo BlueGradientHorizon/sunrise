@@ -2,7 +2,8 @@ use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 impl Game<'_> {
-    /// Player FOV scale, after vanilla effects and before zoom and easing.
+    /// Player FOV scale, after vanilla effects and before easing (skipped when
+    /// spectating another entity).
     /// Invalid values or values outside 0.01..=10 revert to base. API 362.
     pub(in crate::game) fn native_compute_fov_modifier(
         &self,

@@ -1,0 +1,11 @@
+ids = [
+    "hook:zoom",
+    "method:Hooks::zoom",
+    "type:Zoom",
+    "type:ZoomEvent",
+    "hook:player_turn",
+    "method:Hooks::player_turn",
+    "type:PlayerTurnEvent",
+]
+why = "Removed the mod-specific client replace hook `zoom` (`Hooks::zoom`, `ZoomEvent`, `Zoom`) and its synthetic engine clamps (`1..=10` factor, `0.05..=1.0` turn scale) in favor of general FOV and turn primitives matching vanilla `Camera.tickFov` / `Camera.calculateFov` (`ComputeFovModifierEvent`, `ViewportEvent.ComputeFov`), `MouseHandler.turnPlayer` (`CalculatePlayerTurnEvent`), and `Entity.turn`. Added the device-neutral client listen hook `player_turn` (`Hooks::player_turn`, `PlayerTurnEvent`) at `Entity.turn` so mouse, controller, and keyboard relative look deltas can be scaled or adjusted without mislabeling controller turns as mouse-only `calculate_player_turn`. Also fixed `Camera.tickFov` dispatch order so spectating a non-player entity skips `compute_fov_modifier` as vanilla `Camera.tickFov` checks `cameraEntity instanceof AbstractClientPlayer`."
+migrate = "Remove `Hooks::zoom` and `Zoom`. Compose zoom from general client primitives: check `host.playing()`, your registered key mapping (`mod_key_mapping_is_down`), and optionally `host.local_item_use()` (to yield to a spyglass); narrow the view in `Hooks::compute_fov_modifier` (eased by vanilla `Camera.tickFov`) or `Hooks::compute_fov` (immediate, in degrees); and slow or adjust look speed across mouse, controller, and keyboard in `Hooks::player_turn` by scaling `event.x` and `event.y` (in `Entity.turn` units where 1.0 = 0.15 degrees), or use `Hooks::calculate_player_turn` when specifically adjusting mouse sensitivity or cinematic camera smoothing."

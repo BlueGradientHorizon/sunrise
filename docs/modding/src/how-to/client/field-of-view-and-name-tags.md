@@ -5,8 +5,8 @@ add labels of its own.
 
 ## Field of view
 
-`compute_fov_modifier` runs on the client once per tick while there is a local player, after vanilla's effects
-(sprinting, a drawn bow) and before zoom and camera easing. It is NeoForge's `ComputeFovModifierEvent`.
+`compute_fov_modifier` runs on the client once per tick while the camera is the local player, after vanilla's effects
+(sprinting, a drawn bow) and before camera easing (`Camera.tickFov`). It is NeoForge's `ComputeFovModifierEvent`.
 
 | `ComputeFovModifierEvent` field | Meaning |
 | --- | --- |
@@ -14,8 +14,18 @@ add labels of its own.
 | `base` | The scale before any mod ran |
 | `modifier` | The scale to use; write it to change the field of view |
 
-A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not affect a spectator
-camera attached to a mob.
+A value that is not finite, or lies outside `0.01..=10`, falls back to `base`. The hook does not run while a
+spectator camera is attached to another entity.
+
+`compute_fov` runs after `Camera.calculateFov` and fluid/death adjustment, before projection and nausea spin
+(NeoForge's `ViewportEvent.ComputeFov`), letting a listener replace the final world FOV in degrees (finite values
+in `1..=179`). Hand/HUD FOV uses its own path.
+
+To compose a zoom feature (like a telescope key) from these general hooks, check `host.playing()` and your
+registered key mapping, narrow the view in `compute_fov_modifier` (eased by vanilla `Camera.tickFov`) or
+`compute_fov` (immediate), and scale relative look speed across mouse, controller and keyboard in `player_turn`
+(or adjust mouse sensitivity and cinematic smoothing in `calculate_player_turn`). Check
+`host.local_item_use()` if you want to yield to a vanilla spyglass.
 
 ## Name tags
 

@@ -87,6 +87,15 @@ impl Game<'_> {
     /// `Camera.tick`: the eye height and the field-of-view modifier ease
     /// halfway toward the player's each tick.
     pub(super) fn tick_fov(&mut self) {
+        // A server's spectator camera on a mob or an armor stand: its eye
+        // height. Its modifier stays 1 (another player's own modifier is not
+        // modelled here) and `Camera.tickFov` skips `getFieldOfViewModifier`
+        // (and `compute_fov_modifier`) when the camera entity is not the
+        // local player.
+        if let Some(e) = self.spectated_camera_snapshot() {
+            self.view.tick(Some(e.eye_height), 1.0);
+            return;
+        }
         let first_person = self.camera_type.is_first_person();
         let effect = self.fov_effect_scale();
         let target = self.fov_player().map_or(1.0, |player| {
@@ -95,15 +104,6 @@ impl Game<'_> {
             self.native_compute_fov_modifier(&player, base, &mut modifier);
             valid_fov_modifier(modifier, base)
         });
-        let target = self.zoomed_fov_target(target);
-        // A server's spectator camera on a mob or an armor stand: its eye
-        // height. Its modifier stays 1 (another player's own modifier is not
-        // modelled here); the zoom extra still narrows it.
-        if let Some(e) = self.spectated_camera_snapshot() {
-            self.view
-                .tick(Some(e.eye_height), self.zoomed_fov_target(1.0));
-            return;
-        }
         let eye = self.player.as_ref().map(|p| {
             if self.sleeping.is_some() {
                 0.2
@@ -165,7 +165,7 @@ impl Game<'_> {
         if self.studio.flying() {
             return self.studio.freecam.fov.clamp(1.0, 179.0);
         }
-        let fov = self.view.calculate_fov(
+        let vanilla = self.view.calculate_fov(
             partial,
             self.settings.fov as i32,
             self.fov_effect_scale(),
@@ -173,7 +173,6 @@ impl Game<'_> {
             self.camera_fluid(camera),
             false,
         );
-        let vanilla = self.zoomed_fov_degrees(fov);
         let mut degrees = vanilla;
         self.native_compute_fov(partial, camera, &mut degrees);
         if degrees.is_finite() && (1.0..=179.0).contains(&degrees) {
@@ -185,10 +184,10 @@ impl Game<'_> {
     /// How many times the view is magnified right now: the player's field of
     /// view over the one actually in use, and 1 when nothing is zooming.
     ///
-    /// Reads the result rather than any one zoom, so it covers all three:
-    /// the spyglass (`AbstractClientPlayer.getFieldOfViewModifier`'s tenth
-    /// while `isScoping`), the zoom mod (`native_zoom`) and any mod that
-    /// narrows the field of view through `native_compute_fov`.
+    /// Reads the result rather than any one zoom, so it covers both the
+    /// spyglass (`AbstractClientPlayer.getFieldOfViewModifier`'s tenth while
+    /// `isScoping`) and any mod that narrows the field of view through
+    /// `native_compute_fov_modifier` or `native_compute_fov`.
     pub(super) fn zoom_magnification(&self, camera: [f64; 3]) -> f32 {
         let now = self.fov_degrees(1.0, camera);
         let base = self.settings.fov.clamp(1.0, 179.0);
