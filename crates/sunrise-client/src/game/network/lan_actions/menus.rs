@@ -245,23 +245,28 @@ impl Game<'_> {
         };
         // Park the opener's window-0 cursor and build the first contents from
         // their inventory, even when an open through BlockEntityRef runs in their turn.
-        if self
-            .with_own_record(gi, |host, _| {
-                host.hub
-                    .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)?;
-                if !hidden.is_empty() {
-                    host.hub.hide_menu_slots(conn, hidden);
-                }
-                Some(())
-            })
-            .is_none()
-        {
+        let Some(menu_generation) = self.with_own_record(gi, |host, _| {
+            host.hub
+                .open_menu_window(conn, menu, title, Some(pos), slots, items, extra)?;
+            if !hidden.is_empty() {
+                host.hub.hide_menu_slots(conn, hidden);
+            }
+            Some(host.hub.guest(conn)?.menu_generation)
+        }) else {
             return MenuOpen::Refused;
-        }
+        };
         // ChestMenu and ShulkerBoxMenu own startOpen, including a ChestMenu
         // backed by PlayerEnderChestContainer with an active ender chest.
         self.guest_container_opener(conn, pos, true);
-        self.player_menu_opening(conn);
+        // The game-event listener can close or replace the installed menu.
+        if self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+            .is_some_and(|guest| guest.menu.is_some() && guest.menu_generation == menu_generation)
+        {
+            self.player_menu_opening(conn);
+        }
         MenuOpen::Opened
     }
 

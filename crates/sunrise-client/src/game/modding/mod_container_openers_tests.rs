@@ -2,13 +2,95 @@
 #[cfg(test)]
 mod tests {
     use super::super::Game;
-    use mod_api::{Hooks, ModContainerViewersEvent, ModEntry, ServerHost, VanillaGameEventEvent};
+    use mod_api::{
+        BlockUpdateFlags, Flow, Hooks, MenuReplace, ModContainerViewersEvent, ModEntry,
+        PlayerContainerOpenEvent, ServerHost, Text, VanillaGameEventEvent,
+    };
     use std::sync::{Arc, Mutex};
     use sunrise_client::containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer,
     };
     use sunrise_client::lan::menu::Slots;
     use sunrise_core::nbt::Tag;
+
+    const POS: (i32, i32, i32) = (3, 64, 4);
+    const AT: [i32; 3] = [POS.0, POS.1, POS.2];
+
+    fn with_container(block: &str, test: impl FnOnce(&mut Game<'_>)) {
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let state = game.pack.assets.registry.default_state(block).unwrap();
+            let level = game.level("minecraft:overworld").unwrap();
+            assert_eq!(
+                game.level_set_block(level, AT, state, BlockUpdateFlags::NEIGHBORS),
+                Ok(true)
+            );
+            test(game);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_replacement_reusing_the_block_menu_window_is_not_announced_twice() {
+        struct Replace(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Replace {
+            fn vanilla_game_event(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut VanillaGameEventEvent<'_>,
+            ) -> Flow {
+                if event.event == "minecraft:container_open" {
+                    let player = host.players().acting_player().unwrap();
+                    // Roll over the window ID so the final replacement's ID is the same
+                    // as the outer opening's, without reusing the menu's identity.
+                    for window in (2..=100).chain([1]) {
+                        assert_eq!(
+                            host.open_menu(
+                                player.uuid(),
+                                1,
+                                Text::literal("replacement"),
+                                Vec::new(),
+                                MenuReplace::InPlace
+                            ),
+                            Ok(Some(window))
+                        );
+                    }
+                }
+                Flow::Continue
+            }
+
+            fn player_container_open(
+                &self,
+                _: &mut dyn ServerHost,
+                event: &mut PlayerContainerOpenEvent<'_>,
+            ) {
+                self.0.lock().unwrap().push(event.menu_type.into());
+            }
+        }
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        with_container("minecraft:chest", |game| {
+            mod_platform::testing::with_mods(
+                vec![ModEntry::new(
+                    "replace_menu",
+                    Box::new(Replace(heard.clone())),
+                )]
+                .into(),
+                || game.open_block_menu(12, POS),
+            );
+            let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+            let menu = guest.menu.as_ref().unwrap();
+            assert_eq!(menu.window, 1);
+            assert_eq!(&*menu.registry_id, "minecraft:generic_9x1");
+            let heard = heard.lock().unwrap();
+            assert_eq!(heard.len(), 100);
+            assert!(heard.iter().all(|kind| kind == "minecraft:generic_9x1"));
+            assert!(!game.lid_openers.contains_key(&POS));
+        });
+    }
 
     #[test]
     #[ignore = "daily"]
