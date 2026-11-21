@@ -4528,6 +4528,8 @@ pub(crate) mod tests {
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(mod_type, registry_id),
                 opening_item: None,
+                opener_block: None,
+                removed: false,
             };
             menu.still_valid(context, &world, &guest)
         };
@@ -4598,6 +4600,8 @@ pub(crate) mod tests {
                 links: Vec::new(),
                 asks_still_valid: crate::lan::menu::asks_still_valid(Some(mod_type), "test:rules"),
                 opening_item: None,
+                opener_block: None,
+                removed: false,
             };
             menu.still_valid(context, &world, &guest)
         };

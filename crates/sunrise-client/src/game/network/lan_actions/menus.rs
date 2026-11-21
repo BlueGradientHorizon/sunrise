@@ -312,6 +312,11 @@ impl Game<'_> {
                     host.hub
                         .hide_menu_slots(conn, hidden.iter().copied().map(usize::from).collect());
                 }
+                let _ = host.hub.update_guest(conn, |g| {
+                    if let Some(m) = g.menu.as_mut() {
+                        m.opener_block = Some(block.as_str().into());
+                    }
+                });
                 Some(())
             })
             .is_none()
@@ -511,25 +516,42 @@ impl Game<'_> {
         let host = self.lan.as_ref()?;
         let retired_window =
             super::super::native_menus::open_menu_of(host, conn).map(|(window, _, _)| window);
-        let open_menu = host
-            .hub
-            .guest(conn)
-            .and_then(|g| g.menu.as_ref())
-            .map(|m| (m.window, m.slots));
-        if let Some((window, slots)) = open_menu {
-            self.guest_container_closed(conn);
-            if let Slots::Block(key) = slots
-                && key.1 == crate::game::minecarts::CART_KEY_Y
-            {
-                self.close_guest_vehicle_menu(conn, key);
-            }
-            // Returning queued cursors and closing a container can both call
-            // listeners that remove another player, shifting the guest list.
-            if let Some(gi) = self.guest_index(conn)
-                && let Some(carried) =
-                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
-            {
-                self.lan_place_back(gi, vec![carried]);
+        let open_menu = host.hub.guest(conn).and_then(|g| {
+            g.menu
+                .as_ref()
+                .map(|m| (m.window, m.slots, g.menu_generation, m.removed))
+        });
+        let mut closing_generation = None;
+        if let Some((window, slots, generation, already_removed)) = open_menu {
+            if already_removed {
+                if let Some(host) = self.lan.as_mut() {
+                    host.hub.finish_close_container(conn, generation);
+                }
+            } else {
+                closing_generation = Some(generation);
+                self.guest_container_closed(conn);
+                if let Slots::Block(key) = slots
+                    && key.1 == crate::game::minecarts::CART_KEY_Y
+                {
+                    self.close_guest_vehicle_menu(conn, key);
+                }
+                // Returning queued cursors and closing a container can both call
+                // listeners that remove another player, shifting the guest list.
+                if let Some(gi) = self.guest_index(conn)
+                    && let Some((carried, removed)) = self
+                        .with_own_record(gi, |host, _| host.hub.remove_container_menu(conn, window))
+                {
+                    if let Some(carried) = carried {
+                        self.lan_place_back(gi, vec![carried]);
+                    }
+                    if let Some(removed) = removed {
+                        if self.transactions.is_empty() {
+                            self.deliver_menu_removed(removed);
+                        } else if let Some(host) = self.lan.as_mut() {
+                            host.hub.native_menu_events.push(removed);
+                        }
+                    }
+                }
             }
         }
         self.lan_merchant_closed(conn, None);
@@ -539,8 +561,14 @@ impl Game<'_> {
         }
         self.lan_station_closed(conn, None);
         self.lan_mount_closed(conn, None);
-        // `PlayerContainerEvent.Close`, after the menu's `removed`.
+        // `PlayerContainerEvent.Close`, after the menu's `removed` and before
+        // `containerMenu = inventoryMenu`.
         self.player_menu_closing(conn);
+        if let Some(generation) = closing_generation
+            && let Some(host) = self.lan.as_mut()
+        {
+            host.hub.finish_close_container(conn, generation);
+        }
         retired_window
     }
 

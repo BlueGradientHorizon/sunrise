@@ -69,7 +69,10 @@ impl Game<'_> {
         let Some(guest) = self.native_menu_guest(menu) else {
             return false;
         };
-        if guest.disconnect_pending || self.lan_acting == Some(guest.conn) {
+        if guest.disconnect_pending
+            || self.lan_acting == Some(guest.conn)
+            || guest.menu.as_ref().is_some_and(|m| m.removed)
+        {
             return false;
         }
         self.request_menu_close(guest.conn, window, guest.menu_generation);
@@ -570,9 +573,12 @@ impl Game<'_> {
         match backing {
             MenuSlotBacking::Ender(n) => guests.ender_items_mut(index)?.get_mut(n),
             MenuSlotBacking::CraftGrid(n) => guests.craft_grid_mut(index)?.get_mut(n),
-            MenuSlotBacking::Native(n) | MenuSlotBacking::Owned(n) => {
-                guests.native_menu_mut(index)?.get_mut(n)
-            }
+            MenuSlotBacking::Native(n) | MenuSlotBacking::Owned(n) => guests[index]
+                .menu
+                .as_ref()
+                .is_some_and(|m| !m.removed)
+                .then(|| guests.native_menu_mut(index)?.get_mut(n))
+                .flatten(),
             _ => None,
         }
     }

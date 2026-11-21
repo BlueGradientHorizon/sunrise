@@ -328,14 +328,17 @@ pending value, but a full resend only includes committed values. Commit sends th
 values and abort discards pending writes. Closing or replacing the menu discards its data.
 Buttons and validity still use `menu_button` and `menu_still_valid`; neither needs a slot.
 
-The menu the player had open closes on the server first, as a close does: its `removed`, one
-`player_container_close`, and the cursor stack and crafting grids back to the inventory. Then
+The menu the player had open closes on the server first, as a close does: its `removed`
+(`MenuPart::menu_removed` for an owning mod menu, with any detached `owned_slots` and
+`opening_hand`), the cursor stack and crafting grids back to the inventory, and then one
+`player_container_close` before `containerMenu` resets to the inventory menu. Then
 the new menu is built, its screen opened and its contents sent, and `player_container_open`
-tells of it synchronously. Version 2 names the type string `menu_type` (also on
-`player_container_close`) and supplies `menu: Option<MenuRef>`, valid during the open callback,
-as `PlayerRef::container_menu` does. It is `None` for crafting tables, merchants, workstations,
-lecterns and mount inventories. A supported menu's permanently excluded slots are inaccessible
-but keep their backing indices. `replace` is the Java `MenuProvider`'s choice
+tells of it synchronously. `player_container_open` v2 and `player_container_close` v2 both name
+the type string `menu_type` and supply `menu: Option<MenuRef>` (`player_container_close` v2 also
+passes `player: PlayerRef`), valid during the callback as `PlayerRef::container_menu` is, and
+stale once `player_container_close` returns. It is `None` for crafting tables, merchants,
+workstations, lecterns and mount inventories. A supported menu's permanently excluded slots are
+inaccessible but keep their backing indices. `replace` is the Java `MenuProvider`'s choice
 (`shouldTriggerClientSideContainerClosingOnOpen`), as for
 [`open_menu`](../../concepts/capabilities/menu-slots.md#a-mods-chest-menu):
 `MenuReplace::CloseFirst`, vanilla's default, first sends the client a close for the old

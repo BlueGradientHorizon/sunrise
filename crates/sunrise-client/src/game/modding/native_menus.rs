@@ -188,8 +188,10 @@ impl Game<'_> {
             .ok_or(OpenMenuError::PlayerUnavailable)?;
         let opening_item = opening_hand.map(|hand| (hand, self.held_by(guest, hand).1.cloned()));
         let pos = pos.map(|[x, y, z]| (x, y, z));
-        let opener = pos.and_then(|pos| self.menu_opener_block(pos, &id));
-        let Some(hidden) = Self::native_hidden_slots(&id, opener, kind.slots) else {
+        let opener: Option<Box<str>> = pos
+            .and_then(|pos| self.menu_opener_block(pos, &id))
+            .map(Into::into);
+        let Some(hidden) = Self::native_hidden_slots(&id, opener.as_deref(), kind.slots) else {
             return Ok(None);
         };
         self.close_for_open(conn, replace);
@@ -213,6 +215,7 @@ impl Game<'_> {
                     open.hidden = hidden.iter().copied().map(usize::from).collect();
                     open.blockless_data = data;
                     open.opening_item = opening_item;
+                    open.opener_block = opener;
                     g.send_menu_data_snapshot();
                 });
                 Some(window)
@@ -232,7 +235,9 @@ impl Game<'_> {
             .menu
             .as_ref()
             .filter(|m| {
-                m.window == window && m.slots == sunrise_client::lan::menu::Slots::Native
+                m.window == window
+                    && m.slots == sunrise_client::lan::menu::Slots::Native
+                    && !m.removed
             })?;
         self.player_container_menu(self.player(uuid)?)
             .filter(|menu| menu.fields().window == window)
@@ -268,8 +273,9 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// Closes the player's native menu (a `native_menu_closed` follows). An active click
-    /// stages the close for its current window and sends it only once the transaction commits.
+    /// Closes the player's native menu (`MenuPart::menu_removed` and `player_container_close`
+    /// follow). An active click stages the close for its current window and sends it only once
+    /// the transaction commits.
     pub(super) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
@@ -434,22 +440,36 @@ impl Game<'_> {
             return;
         };
         let uuid = guest.uuid;
-        let name = heard.then(|| guest.name.clone());
+        let entity_id = guest.entity_id;
+        let name = (heard && open).then(|| guest.name.clone());
         let dimension = self.dim.id();
         self.player_hook(conn, move |g| {
             for (pos, generation) in openers.into_iter().flatten() {
                 g.mod_container_player_opener_for(pos, open, Some(generation));
             }
-            if let Some(name) = name {
+            if heard {
                 if open {
-                    let handle = g
-                        .player(uuid)
-                        .and_then(|player| g.player_container_menu(player));
-                    g.native_player_container_open(
-                        uuid, &name, dimension, &menu.menu, menu.pos, handle,
-                    );
+                    if let Some(name) = name {
+                        let handle = g
+                            .player(uuid)
+                            .and_then(|player| g.player_container_menu(player));
+                        g.native_player_container_open(
+                            uuid, &name, dimension, &menu.menu, menu.pos, handle,
+                        );
+                    }
                 } else {
-                    g.native_player_container_close(uuid, &name, dimension, &menu.menu, menu.pos);
+                    let player = g.player(uuid).or_else(|| {
+                        let epoch = g.native_lifecycle.epoch()?;
+                        let id = u32::try_from(entity_id).ok()?;
+                        Some(mod_api::__private::game::player_ref(
+                            mod_api::EntityRef::new(epoch, id),
+                            uuid,
+                        ))
+                    });
+                    if let Some(player) = player {
+                        let handle = g.player_container_menu(player);
+                        g.native_player_container_close(player, &menu.menu, menu.pos, handle);
+                    }
                 }
             }
         });
@@ -471,6 +491,42 @@ impl Game<'_> {
         }
     }
 
+    /// Delivers a detached `AbstractContainerMenu.removed` event: ends backed slot places
+    /// and invokes the owning `MenuPart::menu_removed` (with `player: None` if the player is
+    /// already gone).
+    pub(super) fn deliver_menu_removed(&mut self, event: NativeMenuEvent) {
+        let NativeMenuEvent::Closed {
+            uuid,
+            window,
+            menu,
+            block,
+            opening_hand,
+            owned_slots,
+            ..
+        } = event
+        else {
+            return;
+        };
+        self.menu_places_closed(uuid, window);
+        if mod_api::__private::has_part_hook(mod_api::HookId::MenuRemoved) {
+            use super::api_values::TryIntoApi;
+            let owned_slots: Vec<_> = owned_slots
+                .iter()
+                .map(|slot| slot.as_ref().and_then(|stack| stack.try_into_api().ok()))
+                .collect();
+            let player = self.player(uuid);
+            self.native_menu_removed(mod_api::__private::MenuRemovedCall {
+                menu: &menu,
+                block: block.as_deref(),
+                player,
+                uuid,
+                window,
+                opening_hand,
+                owned_slots: &owned_slots,
+            });
+        }
+    }
+
     /// The notices the hub collected, dispatched with the hub in `self.lan` and no guest turn active.
     pub(super) fn run_native_menu_events(&mut self) {
         loop {
@@ -486,22 +542,8 @@ impl Game<'_> {
                         self.lan_place_back(gi, vec![item]);
                     }
                 }
-                NativeMenuEvent::Closed {
-                    uuid,
-                    window,
-                    opening_hand,
-                    owned_slots,
-                    ..
-                } => {
-                    self.menu_places_closed(uuid, window);
-                    if mod_api::__private::listened(mod_api::HookId::MenuClosed) {
-                        use super::api_values::TryIntoApi;
-                        let owned_slots: Vec<_> = owned_slots
-                            .iter()
-                            .map(|slot| slot.as_ref().and_then(|stack| stack.try_into_api().ok()))
-                            .collect();
-                        self.native_menu_closed(uuid, window, opening_hand, &owned_slots);
-                    }
+                event @ NativeMenuEvent::Closed { .. } => {
+                    self.deliver_menu_removed(event);
                 }
                 // A write to a backed menu's storage (#3385): its slots looked at again.
                 NativeMenuEvent::PlacesChanged { uuid, window } => {
@@ -1440,15 +1482,8 @@ mod tests {
             );
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 18)));
             assert!(
-                matches!(
-                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
-                    [NativeMenuEvent::Closed {
-                        uuid: 123,
-                        window: 1,
-                        ..
-                    }]
-                ),
-                "the old menu closed on the server"
+                game.lan.as_ref().unwrap().hub.native_menu_events.is_empty(),
+                "the old menu's teardown already ran synchronously"
             );
 
             // The old window's click and close land on nothing.
@@ -1688,15 +1723,8 @@ mod tests {
             );
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 9)));
             assert!(
-                matches!(
-                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
-                    [NativeMenuEvent::Closed {
-                        uuid: 123,
-                        window: 1,
-                        ..
-                    }]
-                ),
-                "the old menu closed on the server"
+                game.lan.as_ref().unwrap().hub.native_menu_events.is_empty(),
+                "the old menu's teardown already ran synchronously"
             );
 
             // Both notifications were delivered inline, without a second close.

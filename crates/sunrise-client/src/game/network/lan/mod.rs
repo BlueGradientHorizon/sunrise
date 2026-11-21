@@ -2308,6 +2308,17 @@ impl Game<'_> {
                             };
                             assert_eq!(host.hub.guests[at].conn, conn);
                             *guest = host.hub.guests.remove(at);
+                        } else if let Some(host) = self.lan.as_mut() {
+                            let guest = &mut *guest;
+                            if let Some(menu) = guest.menu.as_mut() {
+                                let closed = menu.native_removed(
+                                    guest.uuid,
+                                    guest.menu_generation,
+                                    &mut guest.native_menu,
+                                    false,
+                                );
+                                host.hub.native_menu_events.extend(closed);
+                            }
                         }
                         if let Err(e) = self.enter_level(back) {
                             log::error!("could not reopen {}: {e}", back.id());

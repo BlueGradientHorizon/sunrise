@@ -2513,6 +2513,8 @@ mod recipe_check_tests {
                 links: Vec::new(),
                 asks_still_valid: false,
                 opening_item: None,
+                opener_block: None,
+                removed: false,
             });
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             sent(&rx);

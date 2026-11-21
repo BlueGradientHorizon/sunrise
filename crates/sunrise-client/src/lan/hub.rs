@@ -2668,11 +2668,14 @@ impl Hub {
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
         let mut g = self.guests.remove(i);
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        let closed = g
-            .menu
-            .as_ref()
-            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
-        self.native_menu_events.extend(closed);
+        if !g.placed {
+            let uuid = g.uuid;
+            let generation = g.menu_generation;
+            if let Some(menu) = g.menu.as_mut() {
+                let closed = menu.native_removed(uuid, generation, &mut g.native_menu, false);
+                self.native_menu_events.extend(closed);
+            }
+        }
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -6238,6 +6241,8 @@ mod tests {
                     links: Vec::new(),
                     asks_still_valid: true,
                     opening_item: None,
+                    opener_block: None,
+                    removed: false,
                 });
             });
         };
@@ -8016,6 +8021,8 @@ mod tests {
                 links: Vec::new(),
                 opening_item: None,
                 asks_still_valid: false,
+                opener_block: None,
+                removed: false,
             });
         });
         let drain_data =

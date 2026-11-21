@@ -800,33 +800,49 @@ impl Game<'_> {
                 let Some(host) = self.lan.as_ref() else {
                     return;
                 };
-                let vehicle = host.hub.guests[gi]
+                let guest = &host.hub.guests[gi];
+                let vehicle = guest
                     .menu
                     .as_ref()
-                    .filter(|m| m.window == p.container)
+                    .filter(|m| m.window == p.container && !m.removed)
                     .and_then(|m| match m.slots {
                         Slots::Block(key) if key.1 == crate::game::minecarts::CART_KEY_Y => {
                             Some(key)
                         }
                         _ => None,
                     });
-                let closing = host.hub.guests[gi]
+                let closing_generation = guest
                     .menu
                     .as_ref()
-                    .is_some_and(|m| m.window == p.container);
-                if closing {
+                    .filter(|m| m.window == p.container && !m.removed)
+                    .map(|_| guest.menu_generation);
+                if closing_generation.is_some() {
                     self.guest_container_closed(conn);
                 }
                 if let Some(key) = vehicle {
                     self.close_guest_vehicle_menu(conn, key);
                 }
-                if let Some(carried) =
-                    self.with_own_record(gi, |host, _| host.hub.container_closed(conn, p.container))
+                if let Some(gi) = self.guest_index(conn)
+                    && let Some((carried, removed)) = self.with_own_record(gi, |host, _| {
+                        host.hub.remove_container_menu(conn, p.container)
+                    })
                 {
-                    self.lan_place_back(gi, vec![carried]);
+                    if let Some(carried) = carried {
+                        self.lan_place_back(gi, vec![carried]);
+                    }
+                    if let Some(removed) = removed {
+                        if self.transactions.is_empty() {
+                            self.deliver_menu_removed(removed);
+                        } else if let Some(host) = self.lan.as_mut() {
+                            host.hub.native_menu_events.push(removed);
+                        }
+                    }
                 }
-                if closing {
+                if let Some(generation) = closing_generation {
                     self.player_menu_closing(conn);
+                    if let Some(host) = self.lan.as_mut() {
+                        host.hub.finish_close_container(conn, generation);
+                    }
                 }
             }
             S::ChatCommand(c) => self.guest_chat_command(conn, &c.command),
