@@ -795,6 +795,8 @@ class VerifySumsTests(unittest.TestCase):
                             # A bare carriage return ends no line: here it is part of the file's name.
                             (f"{a}  a.tar.gz\r".encode(), "No such file"),
                             (f"\n \n".encode(), "lists no file"),
+                            # Rust's trim keeps U+001F, so this line is a row, and no row.
+                            (f"{a}  a.tar.gz\n\x1f\n".encode(), "is not `<sha256>  <file>`"),
                             # A repeated name is checked against each of its rows.
                             (f"{a}  a.tar.gz\n{'0' * 64}  a.tar.gz\n".encode(), "a.tar.gz does not match")):
             with self.subTest(sums=sums), self.assertRaisesRegex((SystemExit, FileNotFoundError), error):
@@ -813,12 +815,13 @@ class VerifySumsTests(unittest.TestCase):
         alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
         loose = good[:-3] + alphabet[alphabet.index(good[-3]) ^ 1] + good[-2:]
         self.assertEqual(base64.b64decode(loose), base64.b64decode(good))
-        for text in (f"{other} {good}\n", f"{loose}\n", "not-base64!\n", f"{other}\r{good}\n"):
+        for text in (f"{other} {good}\n", f"{loose}\n", "not-base64!\n", f"{other}\r{good}\n", f"\x1c{good}\n"):
             with self.subTest(text=text), self.assertRaisesRegex(SystemExit, "isn't signed"):
                 (folder / "SHA256SUMS.sig").write_text(text)
                 self.verify(folder, "26.3-0.1.0")
-        with self.assertRaisesRegex(SystemExit, "names a file of the folder"):
-            self.verify(folder, "26.3-0.1.0", signature="../SHA256SUMS.sig")
+        for name in ("../SHA256SUMS.sig", ".", "..", ""):
+            with self.subTest(signature=name), self.assertRaisesRegex(SystemExit, "names a file of the folder"):
+                self.verify(folder, "26.3-0.1.0", signature=name)
 
     def test_sdk_previous_prints_only_the_build_it_found(self):
         # sdk-publish.yml reads its stdout as one SHA: the verifier's own report goes to stderr. The release is a
@@ -876,3 +879,24 @@ class VerifySumsTests(unittest.TestCase):
             self.assertEqual(nightly.release_keys(), [self.public])
         with mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "someone/fork"}):
             self.assertEqual(nightly.release_keys(), [], "another repository's releases are trusted by no key")
+        # A line the native verifier can't read makes launchers trust no key at all: refused, never skipped. Its
+        # whitespace and comments are read as it reads them.
+        alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits + "+/"
+        loose = self.public[:-2] + alphabet[alphabet.index(self.public[-2]) ^ 1] + "="  # an unused bit set
+        for text, keys in ((f" {self.public}\u3000\r\n\n# a comment\n", [self.public]),
+                           (f"{self.public}\nnot-a-key\n", None), (f"{self.public[:-4]}\n", None),
+                           (f"{base64.b64encode(bytes(31)).decode()}\n", None), (f"{loose}\n", None),
+                           (f"\x1c{self.public}\n", None)):
+            subprocess.run(["git", "checkout", "-q", "main"], cwd=clone, check=True)
+            keys_file = clone / nightly.KEYS_FILE
+            keys_file.write_text(text)
+            for command in (["add", "-A"], ["-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit",
+                                            "-q", "--allow-empty", "-m", "keys"], ["push", "-q", "origin", "main"]):
+                subprocess.run(["git", *command], cwd=clone, check=True)
+            with self.subTest(text=text), mock.patch.object(nightly, "REPOSITORY", clone), \
+                    mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "sunrise-org/sunrise"}):
+                if keys:
+                    self.assertEqual(nightly.release_keys(), keys)
+                else:
+                    with self.assertRaisesRegex(SystemExit, "is no Ed25519 public key"):
+                        nightly.release_keys()

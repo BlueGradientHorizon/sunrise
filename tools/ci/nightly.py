@@ -325,17 +325,43 @@ def isolated_env() -> dict[str, str]:
 KEYS_FILE = "crates/sunrise-release-sign/release-keys.txt"
 # An Ed25519 public key's DER: this SubjectPublicKeyInfo header, then its 32 bytes.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
+# What Rust's `str::trim` strips (Unicode White_Space), which the native verifier uses. Python's own strip() takes
+# U+001C to U+001F too.
+RUST_WHITESPACE = "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a" \
+                  "\u2028\u2029\u202f\u205f\u3000"
+
+
+def text_lines(text: str) -> list[str]:
+    """`text`'s lines as Rust's `str::lines` splits them: at LF or CRLF, never at a bare CR."""
+    return text.replace("\r\n", "\n").split("\n")
+
+
+def canonical_base64(text: str) -> bytes | None:
+    """The bytes of `text` when it is base64 as the native verifier's strict decoder takes it (padded, no stray
+    characters, no unused bits set), else None."""
+    try:
+        decoded = base64.b64decode(text, validate=True)
+    except ValueError:
+        return None
+    return decoded if base64.b64encode(decoded).decode() == text else None
 
 
 def release_keys() -> list[str]:
-    """main's release-keys.txt (one base64 key per line, `#` comments): sunrise-org/sunrise's keys, none elsewhere."""
+    """main's release-keys.txt (one base64 key per line, `#` comments): sunrise-org/sunrise's keys, none elsewhere.
+    Read as the native verifier reads it: a line that is no 32-byte key makes it trust none, so that refuses here."""
     if os.environ.get("GITHUB_REPOSITORY", "sunrise-org/sunrise") != "sunrise-org/sunrise":
         return []
     subprocess.run(["git", "fetch", "--quiet", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main"],
                    cwd=REPOSITORY, check=True)
     text = subprocess.run(["git", "show", f"refs/remotes/origin/main:{KEYS_FILE}"], cwd=REPOSITORY, check=True,
                           capture_output=True, text=True).stdout
-    return [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+    keys = [line.strip(RUST_WHITESPACE) for line in text_lines(text)]
+    keys = [key for key in keys if key and not key.startswith("#")]
+    for key in keys:
+        if len(canonical_base64(key) or b"") != 32:
+            raise SystemExit(f"::error::main's {KEYS_FILE} line {key!r} is no Ed25519 public key: launchers would "
+                             "trust no key")
+    return keys
 
 
 def sums_rows(tag: str, sums: bytes) -> list[tuple[str, str]]:
@@ -347,8 +373,8 @@ def sums_rows(tag: str, sums: bytes) -> list[tuple[str, str]]:
     except UnicodeDecodeError:
         raise SystemExit(f"::error::{tag}'s SHA256SUMS is not UTF-8 text")
     rows = []
-    for line in text.replace("\r\n", "\n").split("\n"):
-        if not line.strip():
+    for line in text_lines(text):
+        if not line.strip(RUST_WHITESPACE):
             continue
         digest, space, name = line.partition(" ")
         name = name[1:] if name[:1] in (" ", "*") else name
@@ -370,7 +396,7 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
     is checked against each of its rows. Reports on stderr (stdout is its callers' result), and exits naming what
     failed."""
     keys = release_keys() if keys is None else list(keys)
-    if "/" in signature or "\\" in signature:
+    if "/" in signature or "\\" in signature or signature in ("", ".", ".."):
         raise SystemExit(f"::error::--signature names a file of the folder, not {signature!r}")
     sums = (folder / "SHA256SUMS").read_bytes()
     rows = sums_rows(tag, sums)
@@ -379,7 +405,7 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
     # Before any key exists, only Sunrise's own releases may go out unchecked, as with the native verifier.
     unkeyed = publishing and not keys and os.environ.get("GITHUB_REPOSITORY", "sunrise-org/sunrise") == "sunrise-org/sunrise"
     try:
-        lines = (folder / signature).read_bytes().decode().replace("\r\n", "\n").split("\n")
+        lines = text_lines((folder / signature).read_bytes().decode())
     except (OSError, UnicodeDecodeError):
         lines = None
     if lines is None:
@@ -399,12 +425,9 @@ def verify_sums(folder: Path, tag: str, only=(), signature: str = "SHA256SUMS.si
             message = work / "message"
             message.write_bytes(f"horizon release {tag}\n".encode() + sums)
             signed = False
-            for line in (line.strip() for line in lines):
-                try:
-                    decoded = base64.b64decode(line, validate=True)
-                except ValueError:
-                    continue
-                if len(decoded) != 64 or base64.b64encode(decoded).decode() != line:
+            for line in lines:
+                decoded = canonical_base64(line.strip(RUST_WHITESPACE))
+                if decoded is None or len(decoded) != 64:
                     continue
                 (work / "signature").write_bytes(decoded)
                 for key in keys:
@@ -702,7 +725,7 @@ def stable_parent(tag: str = "", verify: bool = True) -> train.Release | None:
             raise SystemExit(f"::error::refused: the tag {newest} names {sha}, but its signed {RELEASE_FILE} names "
                              f"{signed}")
     git("fetch", "--quiet", "--no-tags", "origin", sha)
-    return train.Release(newest, sha, published[newest]["published_at"])
+    return train.Release(newest, sha, train.github_time(published[newest].get("published_at")))
 
 
 def stable_step(tag: str, parent: train.Release | None) -> str:
@@ -978,27 +1001,31 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
                 problems.append(f"mod API is {verdict} (see the changed records above)")
             if old_content != new_content:
                 problems.append(f"content_api changed from {old_content!r} to {new_content!r}")
-            # The signed surface.json is what modders build against: it must be what the parent's tool exports from
-            # the candidate's tree. A patch's exactly; a minor's may hold more records (its own tool may export kinds
-            # the parent's doesn't know), but every exported one unchanged.
+            # The signed surface.json is what modders build against, written by the candidate's own exporter. The
+            # parent's tool reads it as the SDK's readers do and diffs it against its own export of the candidate's
+            # tree: the step allows what it allows there too (a minor's exporter may add records or fields the
+            # parent's reader doesn't know). A patch's is that export exactly, whatever the order of its lists.
             signed, export = published[tag], exported["candidate"]
             read = subprocess.run([stage, "surface-diff", str(work / "candidate.json"), str(after), "--json",
                                    str(work / "signed-diff.json")], cwd=work, env=isolated_env(), capture_output=True,
                                   text=True)
             if read.returncode:
-                problems.append(f"{old_tag}'s sunrise-stage cannot read its signed surface.json: "
+                problems.append(f"the parent's tool cannot read the signed {SDK_SURFACE} for {tag}: "
                                 f"{read.stderr.strip()}")
-            elif minor:
-                if signed.get("schema") != export.get("schema"):
-                    problems.append(f"its signed surface.json has schema {signed.get('schema')!r}, the export of "
-                                    f"{old_tag}'s sunrise-stage {export.get('schema')!r}")
-                if dropped := sorted(surface_records(export) - surface_records(signed)):
-                    problems.append(f"its signed surface.json changes or lacks {len(dropped)} records {old_tag}'s "
-                                    "sunrise-stage exports from its tree: "
-                                    + ", ".join(f"{kind} {json.loads(record).get('id', '?')}"
-                                                for kind, record in dropped[:5]))
-            elif signed != export:
-                problems.append(f"its signed surface.json is not what {old_tag}'s sunrise-stage exports from its tree")
+            elif (read_as := json.loads((work / "signed-diff.json").read_text())["verdict"]) not in allowed:
+                problems.append(f"the parent's tool reads the signed {SDK_SURFACE} for {tag} as {read_as} against "
+                                "its export of the candidate's tree")
+            if signed.get("engine_items"):
+                problems.append(f"the signed {SDK_SURFACE} for {tag} lists native internals, which an SDK surface "
+                                "never holds")
+            if signed.get("schema") != export.get("schema"):
+                problems.append(f"the signed {SDK_SURFACE} for {tag} has schema {signed.get('schema')!r}, the parent "
+                                f"tool's export {export.get('schema')!r}")
+            fields = [{key: value for key, value in surface.items() if not isinstance(value, list)}
+                      for surface in (signed, export)]
+            if not minor and (fields[0] != fields[1] or surface_records(signed) != surface_records(export)):
+                problems.append(f"the signed {SDK_SURFACE} for {tag} is not what the parent's tool exports from its "
+                                "tree")
             if problems:
                 step = "minor" if minor else "patch"
                 raise SystemExit(f"::error::refused: {tag} is a {step} release after {old_tag}: {'; '.join(problems)}")

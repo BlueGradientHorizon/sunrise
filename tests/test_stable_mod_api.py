@@ -72,8 +72,9 @@ class StableModApiTests(unittest.TestCase):
         self.enterContext(mock.patch.object(nightly, "unpack",
                                             side_effect=lambda sha, into: self.unpacked.append((sha, into.name))))
 
-    def judge(self, parent_tree, candidate_tree, verdict="identical", calls=None):
-        """subprocess.run as the parent's sunrise-stage answers: it exports each tree's surface, and diffs."""
+    def judge(self, parent_tree, candidate_tree, verdict="identical", calls=None, read_as="identical"):
+        """subprocess.run as the parent's sunrise-stage answers: it exports each tree's surface, diffs the two
+        (`verdict`), and diffs its candidate export with the signed surface (`read_as`)."""
         def run(args, *, cwd=None, env=None, check=False, capture_output=False, text=False):
             self.assertEqual(args[0], TOOL, "only the parent's own tool runs")
             self.assertFalse({"GH_TOKEN", "RUSTC_WRAPPER"} & env.keys())
@@ -85,7 +86,8 @@ class StableModApiTests(unittest.TestCase):
             elif "unreadable" in json.loads(Path(args[3]).read_text()):
                 return subprocess.CompletedProcess(args, 1, "", "surface.json lists behaviour:example twice")
             else:
-                Path(args[-1]).write_text(json.dumps({"verdict": verdict}))
+                signed = Path(args[3]).name == "after.json"
+                Path(args[-1]).write_text(json.dumps({"verdict": read_as if signed else verdict}))
             return subprocess.CompletedProcess(args, 0, "", "")
         return run
 
@@ -207,26 +209,31 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, f"sunrise-stage cannot export candidate {HEAD}: unknown key"):
                 nightly.stable_mod_api(HEAD, tag, self.notes)
 
-    def test_the_signed_surface_is_what_the_parents_tool_exports_from_the_candidate(self):
-        # A patch's signed surface.json is that export exactly. A minor's may add records its own exporter knows,
-        # but an exporter that drops or rewrites one of the parent tool's records is refused. The parent's tool reads
-        # it too.
+    def test_the_signed_surface_is_judged_by_the_parents_reader_against_its_export(self):
+        # The parent's tool exports the candidate's tree and reads the signed surface.json (its verdict here is
+        # `read_as`; the real reader's is in the daily stable_mod_api_integration test). A patch's file is that
+        # export exactly, in any order; a minor's may hold what the parent's reader reads as additive.
+        two = {**ADDITIVE, "extension_tags": [{"registry": "item", "id": "tag:a"}, {"registry": "item", "id": "tag:b"}]}
+        reordered = {**two, "behaviours": two["behaviours"][::-1], "extension_tags": two["extension_tags"][::-1]}
         newer = {**ADDITIVE, "hash": "newer", "extension_tags": [{"registry": "item", "id": "tag:new"}]}
-        dropped = {**ADDITIVE, "behaviours": [DECLARATION]}
-        rewritten = {**ADDITIVE, "behaviours": [DECLARATION, {**DECLARATION, "id": "behaviour:new", "doc": "x"}]}
-        for tag, signed, error in (
-                ("26.3-0.1.11", SURFACE, None),
-                ("26.3-0.1.11", {**SURFACE, "hash": "other"}, "patch release.*signed surface.json is not what"),
-                ("26.3-0.2.0", newer, None),
-                ("26.3-0.2.0", dropped, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
-                ("26.3-0.2.0", rewritten, "minor release.*changes or lacks 1 records.*behaviours behaviour:new"),
-                ("26.3-0.2.0", {**newer, "schema": 4}, "minor release.*schema 4"),
-                # Whatever it holds, a file the parent's reader refuses (the real reader's cases are in the daily
-                # stable_mod_api_integration test) is refused.
-                ("26.3-0.1.11", {**SURFACE, "unreadable": True}, "cannot read its signed surface.json: .*twice"),
-                ("26.3-0.2.0", {**newer, "unreadable": True}, "cannot read its signed surface.json"),
-                ("26.3-0.2.0", b"{not json", "26.3-0.2.0's signed surface.json is not JSON")):
-            export = SURFACE if tag == "26.3-0.1.11" else ADDITIVE
+        internals = {**ADDITIVE, "engine_items": [{"id": "internal:x", "hash": "h", "contract": {}}]}
+        for tag, export, signed, read_as, error in (
+                ("26.3-0.1.11", SURFACE, SURFACE, "identical", None),
+                ("26.3-0.1.11", two, reordered, "identical", None),
+                ("26.3-0.1.11", SURFACE, {**SURFACE, "hash": "other"}, "identical",
+                 "patch release.*is not what the parent's tool exports"),
+                ("26.3-0.1.11", SURFACE, ADDITIVE, "additive", "patch release.*reads .* as additive"),
+                ("26.3-0.2.0", ADDITIVE, ADDITIVE, "identical", None),
+                ("26.3-0.2.0", ADDITIVE, newer, "additive", None),
+                ("26.3-0.2.0", ADDITIVE, SURFACE, "breaking", "minor release.*reads .* as breaking"),
+                ("26.3-0.2.0", ADDITIVE, CONDITIONAL, "conditional", "minor release.*reads .* as conditional"),
+                ("26.3-0.2.0", ADDITIVE, internals, "advisory", "minor release.*as advisory.*lists native internals"),
+                ("26.3-0.2.0", ADDITIVE, {**newer, "schema": 4}, "identical", "minor release.*schema 4"),
+                # Whatever it holds, a file the parent's reader refuses is refused.
+                ("26.3-0.1.11", SURFACE, {**SURFACE, "unreadable": True}, None,
+                 "the parent's tool cannot read the signed surface.json for 26.3-0.1.11: .*twice"),
+                ("26.3-0.2.0", ADDITIVE, {**newer, "unreadable": True}, None, "cannot read the signed surface.json"),
+                ("26.3-0.2.0", ADDITIVE, b"{not json", None, "26.3-0.2.0's signed surface.json is not JSON")):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             with self.subTest(tag=tag, signed=signed), \
                     mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
@@ -235,8 +242,8 @@ class StableModApiTests(unittest.TestCase):
                     mock.patch.object(nightly, "require_unchanged_content_schema"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
                     mock.patch.object(nightly.subprocess, "run",
-                                      side_effect=self.judge(SURFACE, export, "identical" if export is SURFACE
-                                                             else "additive")):
+                                      side_effect=self.judge(SURFACE, export, "identical" if tag == "26.3-0.1.11"
+                                                             else "additive", read_as=read_as)):
                 self.notes.write_text("Existing notes.\n")
                 if error:
                     with self.assertRaisesRegex(SystemExit, error):
@@ -266,7 +273,7 @@ class StableModApiTests(unittest.TestCase):
         for parent, tag in ((None, "26.3-0.1.0"), (PREVIOUS, "26.3-0.1.11"), (PREVIOUS, "26.3-0.1.15"),
                             (PREVIOUS, "26.3-0.2.0"), (PREVIOUS, "26.3-1.0.0")):
             with self.subTest(parent=parent, tag=tag):
-                found = nightly.train.Release(parent, OLD, "") if parent else None
+                found = nightly.train.Release(parent, OLD, nightly.train.github_time("2026-11-01T00:00:00Z")) if parent else None
                 self.assertEqual(nightly.stable_step(tag, found), "")
 
     def test_a_break_glass_release_needs_a_published_parent_on_its_line(self):
@@ -313,6 +320,16 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, f"the published release {PREVIOUS} has no tag"):
                 nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
 
+    def test_a_parent_without_a_publication_time_refuses(self):
+        # The break-glass rules need the parent's own daily run after it: with no time, none could be told apart.
+        for published in (None, "", "2026-11-20 10:00:00", "yesterday"):
+            with self.subTest(published=published), \
+                    mock.patch.object(nightly.train, "gh_json",
+                                      return_value=[[{**release(PREVIOUS), "published_at": published}]]), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value={PREVIOUS: OLD}), \
+                    mock.patch.object(nightly, "git"), self.assertRaisesRegex(SystemExit, "not a GitHub timestamp"):
+                nightly.stable_parent("26.3-0.1.11", verify=False)
+
     def test_the_parent_is_the_newest_published_release_and_an_orphan_tag_above_it_refuses(self):
         pages = [[release("26.3-0.1.9"), release(PREVIOUS, body=f"x\n{nightly.BREAK_GLASS_SECTION}\ny"),
                   release("26.3-0.2.0", draft=True), release("26.4-0.1.0"), release("26.3-0.1.11")]]
@@ -321,7 +338,8 @@ class StableModApiTests(unittest.TestCase):
             with mock.patch.object(nightly.train, "origin_tags", return_value=tags):
                 parent = nightly.stable_parent("26.3-0.1.11")
                 # Its notes say nothing to the checks: the parent is its tag, commit and publication time.
-                self.assertEqual(parent, nightly.train.Release(PREVIOUS, OLD, "2026-11-20T10:00:00Z"))
+                self.assertEqual(parent, nightly.train.Release(PREVIOUS, OLD,
+                                                               nightly.train.github_time("2026-11-20T10:00:00Z")))
                 git.assert_called_once_with("fetch", "--quiet", "--no-tags", "origin", OLD)
                 self.assertEqual(nightly.stable_parent().tag, "26.3-0.1.11", "no bound: the newest")
                 self.assertEqual(nightly.stable_parent("26.3-0.1.10").tag, "26.3-0.1.9")
@@ -439,7 +457,7 @@ class StableModApiTests(unittest.TestCase):
             git("switch", "--detach", "HEAD~2")
             unrelated_edit = git("rev-parse", "HEAD")
 
-        parent = nightly.train.Release(PREVIOUS, previous, "")
+        parent = nightly.train.Release(PREVIOUS, previous, nightly.train.github_time("2026-11-01T00:00:00Z"))
         run = subprocess.run
         judge = self.judge(SURFACE, SURFACE)
 

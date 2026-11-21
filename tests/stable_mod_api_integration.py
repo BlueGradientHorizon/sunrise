@@ -11,6 +11,8 @@ from unittest import mock
 from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, sdk_assets
 from tools.ci import nightly
 
+PARENT = nightly.train.Release(PREVIOUS, OLD, nightly.train.github_time("2026-11-01T00:00:00Z"))
+
 CHANGES = Path("crates/sunrise-mod-vocab/changes")
 
 
@@ -19,7 +21,7 @@ class StableModApiIntegration(unittest.TestCase):
         stage = str(Path(os.environ["SUNRISE_STAGE_TOOL"]).resolve(strict=True))
         directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         notes = directory / "release.md"
-        parent = nightly.train.Release(PREVIOUS, OLD, "")
+        parent = PARENT
         run_stage = subprocess.run
         for verdict, candidate, passes in (
                 ("identical", SURFACE, {"patch", "minor"}),
@@ -78,9 +80,10 @@ class StableModApiIntegration(unittest.TestCase):
                         self.assertEqual(notes.read_text(), "Release notes.\n")
                     self.assertEqual(reports, [verdict])
 
-    def test_a_signed_surface_the_sdk_reader_refuses_is_refused(self):
-        # Every exported record is kept, but the real reader refuses the file: a repeated id, a missing hash, a
-        # schema that is no integer.
+    def test_the_parents_reader_judges_the_signed_surface_of_a_minor(self):
+        # The real reader reads the signed file against its export of the candidate's tree (ADDITIVE). What it
+        # doesn't know (a field, a collection) is no change; a file it refuses (a repeated id, a missing hash, a
+        # schema that is no integer), native internals, or a record it reads as changed are refused.
         stage = str(Path(os.environ["SUNRISE_STAGE_TOOL"]).resolve(strict=True))
         notes = Path(self.enterContext(tempfile.TemporaryDirectory())) / "release.md"
         surfaces = {OLD: SURFACE, HEAD: ADDITIVE}
@@ -98,21 +101,32 @@ class StableModApiIntegration(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, "", "")
             return run_stage(args, **kwargs)
 
-        for fixture, signed in (("repeated id", repeated), ("no hash", hashless),
-                                ("float schema", {**ADDITIVE, "schema": 3.0})):
+        internal = {"id": "internal:x", "hash": "h", "kind": "internal", "signature": "fn x()", "signature_hash": "s"}
+        unknown_field = {**ADDITIVE, "behaviours": [{**record, "since": "26.3-0.2.0"} for record in ADDITIVE["behaviours"]]}
+        bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
+        for fixture, signed, refused in (
+                ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
+                ("unknown collection", {**ADDITIVE, "later": [{"id": "later:x"}]}, False),
+                ("repeated id", repeated, True), ("no hash", hashless, True),
+                ("float schema", {**ADDITIVE, "schema": 3.0}, True),
+                ("native internals", {**ADDITIVE, "engine_items": [internal]}, True),
+                ("changed record", bumped, True), ("dropped record", SURFACE, True)):
             assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, signed, "1", {})}
             notes.write_text("Release notes.\n")
             with self.subTest(fixture), mock.patch.dict(os.environ, {"BREAK_GLASS": "false"}), \
-                    mock.patch.object(nightly, "stable_parent", return_value=nightly.train.Release(PREVIOUS, OLD, "")), \
+                    mock.patch.object(nightly, "stable_parent", return_value=PARENT), \
                     mock.patch.object(nightly, "require_stable_lineage"), \
                     mock.patch.object(nightly, "require_unchanged_content_schema"), \
                     mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
                     mock.patch.object(nightly, "parent_stage", return_value=stage), \
                     mock.patch.object(nightly, "unpack", side_effect=unpack), \
-                    mock.patch.object(nightly.subprocess, "run", side_effect=run), \
-                    self.assertRaisesRegex(SystemExit, "cannot read its signed surface.json"):
-                nightly.stable_mod_api(HEAD, "26.3-0.2.0", notes)
-            self.assertEqual(notes.read_text(), "Release notes.\n")
+                    mock.patch.object(nightly.subprocess, "run", side_effect=run):
+                if refused:
+                    with self.assertRaises(SystemExit):
+                        nightly.stable_mod_api(HEAD, "26.3-0.2.0", notes)
+                    self.assertEqual(notes.read_text(), "Release notes.\n")
+                else:
+                    nightly.stable_mod_api(HEAD, "26.3-0.2.0", notes)
 
 
 if __name__ == "__main__":
