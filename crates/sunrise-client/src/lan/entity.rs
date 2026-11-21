@@ -113,6 +113,10 @@ pub struct EntityState {
     /// that producer alone, never from the key: a quarantined record keeps its
     /// type's key and is no row.
     pub general: bool,
+    /// Pre-encoded `sunrise:attachment_sync` payload for non-empty initial synced
+    /// attachments (`AttachmentSync.syncInitialEntityAttachments`), sent inside
+    /// the entity's pairing bundle to clients that negotiated attachment sync.
+    pub initial_attachments: Option<Vec<u8>>,
 }
 
 impl EntityState {
@@ -149,6 +153,7 @@ impl EntityState {
         self.watching = false;
         self.hidden = None;
         self.general = false;
+        self.initial_attachments = None;
     }
 }
 
@@ -994,6 +999,10 @@ pub struct Viewer<'a> {
     /// such a client is paired with a native mod's general row. Another never tracks one: no
     /// spawn, no move and no removal names it.
     pub general_entity: bool,
+    /// Its client is placed in this level and negotiated `sunrise:attachment_sync`
+    /// (`Guest::negotiated_attachment_sync`): non-empty initial synced attachments are
+    /// included inside each entity's pairing bundle.
+    pub attachment_sync: bool,
     /// It accepted a move since the last tick (ChunkMap.move): every pair
     /// of it is checked again.
     pub moved: bool,
@@ -1199,6 +1208,56 @@ impl Bodies {
     }
 }
 
+/// The encoded `BundleDelimiter` packet, shared across every pairing bundle.
+fn bundle_delimiter() -> super::Body {
+    static DELIMITER: std::sync::OnceLock<super::Body> = std::sync::OnceLock::new();
+    DELIMITER
+        .get_or_init(|| {
+            super::Body::shared(
+                play::Clientbound::BundleDelimiter(sunrise_protocol::packets::Empty).encode(),
+            )
+        })
+        .clone()
+}
+
+/// One entity's pairing bundle (`ServerEntity.addPairing` + NeoForge's
+/// `AttachmentSync.syncInitialEntityAttachments`), encoded once for every client
+/// starting to track it.
+struct PairingBodies {
+    base: Bodies,
+    attachment_sync: Option<super::Body>,
+}
+
+impl PairingBodies {
+    fn of(packets: &[play::Clientbound], initial_attachments: Option<&[u8]>) -> Self {
+        let attachment_sync = initial_attachments.map(|data| {
+            super::Body::shared(
+                play::Clientbound::CustomPayload(CustomPayload {
+                    channel: sunrise_protocol::attachment_sync::CHANNEL.into(),
+                    data: data.to_vec(),
+                })
+                .encode(),
+            )
+        });
+        Self {
+            base: Bodies::of(packets),
+            attachment_sync,
+        }
+    }
+
+    fn write_to(&self, viewer: &mut Viewer) {
+        let delimiter = bundle_delimiter();
+        let base = self.base.to(viewer);
+        let include_sync = viewer.attachment_sync;
+        viewer.out.push(delimiter.clone());
+        viewer.out.extend(base.iter().cloned());
+        if include_sync && let Some(sync) = &self.attachment_sync {
+            viewer.out.push(sync.clone());
+        }
+        viewer.out.push(delimiter);
+    }
+}
+
 impl Entities {
     /// `ChunkMap.addEntity` after this tick's tracking pass: pair now without
     /// running sendChanges or advancing either clock. The first sendChanges
@@ -1257,12 +1316,12 @@ impl Entities {
                 let built = bodies.get_or_insert_with(|| {
                     let mut packets = Vec::new();
                     s.pairing(e, kind, riding, &mut packets)
-                        .then(|| Bodies::of(&packets))
+                        .then(|| PairingBodies::of(&packets, e.initial_attachments.as_deref()))
                 });
                 let Some(bodies) = built else {
                     continue;
                 };
-                v.out.extend(bodies.to(v).iter().cloned());
+                bodies.write_to(v);
                 v.tracker.seen.insert(e.id, Arc::clone(&s.tracked));
                 v.tracker.events.push(TrackEvent {
                     start: true,
@@ -1320,6 +1379,7 @@ impl Entities {
                 j.minecart_steps.clone_from(&e.minecart_steps);
                 j.needs_sync = e.needs_sync;
                 j.sync_velocity = e.sync_velocity;
+                j.initial_attachments.clone_from(&e.initial_attachments);
                 Some((j.id, j))
             })
             .collect()
@@ -1692,7 +1752,7 @@ impl Entities {
                 continue;
             }
             let mut encoded = false;
-            let mut pairing: Option<Option<Bodies>> = None;
+            let mut pairing: Option<Option<PairingBodies>> = None;
             for (v, flags) in viewers.iter_mut().zip(&self.flags) {
                 let f = flags[index];
                 if f & TRACKS != 0 {
@@ -1710,10 +1770,10 @@ impl Entities {
                     && let Some(bodies) = pairing.get_or_insert_with(|| {
                         let mut packets = Vec::new();
                         s.pairing(e, kind, riding, &mut packets)
-                            .then(|| Bodies::of(&packets))
+                            .then(|| PairingBodies::of(&packets, e.initial_attachments.as_deref()))
                     })
                 {
-                    v.out.extend(bodies.to(v).iter().cloned());
+                    bodies.write_to(v);
                     // The bundle ends here: its changes follow (sendChanges), after
                     // what a mod sends for the pairing.
                     let at = v.out.len();
@@ -1757,7 +1817,7 @@ impl Entities {
             index: usize,
             state: &'s mut ServerEntity,
             changes: Bodies,
-            pairing: Option<Bodies>,
+            pairing: Option<PairingBodies>,
             synced: bool,
         }
         let Self {
@@ -1810,7 +1870,7 @@ impl Entities {
                     packets.clear();
                     m.pairing = s
                         .pairing(e, kind, riding, &mut packets)
-                        .then(|| Bodies::of(&packets));
+                        .then(|| PairingBodies::of(&packets, e.initial_attachments.as_deref()));
                 }
             }
         });
@@ -1828,7 +1888,7 @@ impl Entities {
                         && let Some(pairing) = &m.pairing
                         && m.state.kind.is_some_and(|kind| v.pairs_with(kind))
                     {
-                        v.out.extend(pairing.to(v).iter().cloned());
+                        pairing.write_to(v);
                         // As `send_in_order`: the bundle ends before its changes.
                         let at = v.out.len();
                         if m.synced {
@@ -1906,6 +1966,7 @@ mod tests {
             watching: false,
             hidden: None,
             general: false,
+            initial_attachments: None,
         }
     }
 
@@ -2002,6 +2063,7 @@ mod tests {
                             entity_id: 1 + k as i32,
                             sunrise: true,
                             general_entity: true,
+                            attachment_sync: k % 2 == 0,
                             sources: None,
                             spectator: false,
                             permission: 0,
@@ -2590,6 +2652,7 @@ mod tests {
         moved: [bool; 2],
         spectators: [bool; 2],
         permissions: [u8; 2],
+        attachment_sync: [bool; 2],
     }
 
     impl Clients {
@@ -2603,6 +2666,7 @@ mod tests {
                 moved: [false; 2],
                 spectators: [false; 2],
                 permissions: [0; 2],
+                attachment_sync: [true; 2],
             }
         }
         fn tick(&mut self, level: &mut Entities, entities: &[&EntityState]) {
@@ -2618,6 +2682,7 @@ mod tests {
                     permission: self.permissions[0],
                     sunrise: true,
                     general_entity: true,
+                    attachment_sync: self.attachment_sync[0],
                     moved: self.moved[0],
                     position: self.positions[0],
                     view_distance: 10,
@@ -2632,6 +2697,7 @@ mod tests {
                     permission: self.permissions[1],
                     sunrise: true,
                     general_entity: true,
+                    attachment_sync: self.attachment_sync[1],
                     moved: self.moved[1],
                     position: self.positions[1],
                     view_distance: 10,
@@ -2705,7 +2771,7 @@ mod tests {
         c.tick(&mut level, &[&e]);
         assert!(c.trackers[1].is_tracking(7));
         assert!(c.out[0].is_empty());
-        assert_eq!(c.out[1].len(), 1);
+        assert_eq!(c.out[1].len(), 3);
         c.tick(&mut level, &[&e]);
         e.position[0] = 2.0;
         c.tick(&mut level, &[&e]);
@@ -2788,13 +2854,17 @@ mod tests {
         let mut level = Entities::default();
         let mut c = Clients::new();
         let mut e = state(15.5);
-        // Paired in the same pass: the bodies of ServerEntity.sendPairingData.
+        // Paired in the same pass: the bodies of ServerEntity.addPairing.
         c.tick(&mut level, &[&e]);
         let mut pairing = Vec::new();
         assert!(added(&e).pairing(&e, Kind::Type(100), &Riding::default(), &mut pairing));
-        let pairing: Vec<_> = pairing.into_iter().map(body).collect();
-        assert!(!pairing.is_empty());
-        assert_eq!(c.out, [pairing.clone(), pairing]);
+        let delimiter = body(play::Clientbound::BundleDelimiter(
+            sunrise_protocol::packets::Empty,
+        ));
+        let mut expected = vec![delimiter.clone()];
+        expected.extend(pairing.into_iter().map(body));
+        expected.push(delimiter);
+        assert_eq!(c.out, [expected.clone(), expected]);
         assert!(shared(&c));
         // Its first update (tick 0's position), then a data change, to both.
         c.tick(&mut level, &[&e]);
@@ -2869,7 +2939,10 @@ mod tests {
             head_yaw: 0,
             data: 0,
         }));
-        assert_eq!(c.out[0], [add]);
+        let delimiter = body(play::Clientbound::BundleDelimiter(
+            sunrise_protocol::packets::Empty,
+        ));
+        assert_eq!(c.out[0], [delimiter.clone(), add, delimiter]);
         let later = state(2.0);
         let entities = vec![&later];
         assert!(level.joined_states(&entities, vec![joined]).is_empty());
@@ -2913,7 +2986,7 @@ mod tests {
             };
             let mut c = Clients::new();
             c.tick(&mut level, &[&sand]);
-            let paired = c.out[0][1..].to_vec();
+            let paired = c.out[0][3..].to_vec();
             let mut fallen = sand.clone();
             fallen.position[1] -= 0.04;
             c.tick(&mut level, &[&fallen]);
@@ -3194,12 +3267,175 @@ mod tests {
         assert!(!c.trackers[1].forget(1));
         c.tick(&mut level, &[&player]);
         assert!(c.trackers[1].is_tracking(1));
-        let paired = c.out[1]
-            .first()
-            .and_then(|p| play::Clientbound::decode(i32::from(p[0]), &p[1..]).ok());
+        let paired: Vec<_> = c.out[1]
+            .iter()
+            .map(|p| {
+                let mut reader = sunrise_protocol::buf::Reader::new(p);
+                let id = reader.varint().unwrap();
+                play::Clientbound::decode(id, reader.rest()).unwrap()
+            })
+            .collect();
         assert!(
-            matches!(paired, Some(play::Clientbound::AddEntity(ref a)) if a.id == 1),
+            matches!(
+                &paired[..],
+                [
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::AddEntity(a),
+                    play::Clientbound::BundleDelimiter(_),
+                ] if a.id == 1
+            ),
             "{paired:?}"
+        );
+    }
+
+    #[test]
+    fn pairing_wraps_in_bundle_delimiter_and_includes_initial_attachments_only_for_negotiated_viewers()
+     {
+        let decode_all = |bodies: &[Vec<u8>]| -> Vec<play::Clientbound> {
+            bodies
+                .iter()
+                .map(|p| {
+                    let mut reader = sunrise_protocol::buf::Reader::new(p);
+                    let id = reader.varint().unwrap();
+                    play::Clientbound::decode(id, reader.rest()).unwrap()
+                })
+                .collect()
+        };
+        let payload = vec![0xAA, 0xBB, 0xCC];
+        for apart in [false, true] {
+            let mut level = Entities {
+                send_apart_always: Some(apart),
+                ..Entities::default()
+            };
+            let mut c = Clients::new();
+            c.attachment_sync = [true, false];
+            let mut with_attachments = state(0.0);
+            with_attachments.initial_attachments = Some(payload.clone());
+            c.tick(&mut level, &[&with_attachments]);
+            let synced = decode_all(&c.out[0]);
+            assert!(
+                matches!(
+                    &synced[..],
+                    [
+                        play::Clientbound::BundleDelimiter(_),
+                        play::Clientbound::AddEntity(a),
+                        play::Clientbound::CustomPayload(p),
+                        play::Clientbound::BundleDelimiter(_),
+                    ] if a.id == 7
+                        && p.channel == sunrise_protocol::attachment_sync::CHANNEL
+                        && p.data == payload
+                ),
+                "apart={apart}: {synced:?}"
+            );
+            let plain = decode_all(&c.out[1]);
+            assert!(
+                matches!(
+                    &plain[..],
+                    [
+                        play::Clientbound::BundleDelimiter(_),
+                        play::Clientbound::AddEntity(a),
+                        play::Clientbound::BundleDelimiter(_),
+                    ] if a.id == 7
+                ),
+                "apart={apart}: {plain:?}"
+            );
+            assert_eq!(c.trackers[0].take_events()[0].at, Some(4));
+            assert_eq!(c.trackers[1].take_events()[0].at, Some(3));
+        }
+
+        // `pair_after_tick` follows the same bundle + viewer rule, and omits CustomPayload when
+        // `initial_attachments` is `None`.
+        let mut level = Entities::default();
+        let chunks = [(0, 0)].into_iter().collect();
+        let mut t0 = Tracker::default();
+        let mut t1 = Tracker::default();
+        let mut o0 = Vec::new();
+        let mut o1 = Vec::new();
+        let mut viewers = [
+            Viewer {
+                entity_id: 1,
+                spectator: false,
+                permission: 0,
+                sunrise: true,
+                general_entity: true,
+                attachment_sync: true,
+                moved: false,
+                position: [0.0, 64.0, 0.0],
+                view_distance: 10,
+                chunks: &chunks,
+                sources: None,
+                tracker: &mut t0,
+                out: &mut o0,
+            },
+            Viewer {
+                entity_id: 2,
+                spectator: false,
+                permission: 0,
+                sunrise: true,
+                general_entity: true,
+                attachment_sync: false,
+                moved: false,
+                position: [0.0, 64.0, 0.0],
+                view_distance: 10,
+                chunks: &chunks,
+                sources: None,
+                tracker: &mut t1,
+                out: &mut o1,
+            },
+        ];
+        level.tick(&[], &Riding::default(), &mut viewers, |_| Some(100));
+        let mut e = state(0.0);
+        e.initial_attachments = Some(payload.clone());
+        let mut bare_sync = state(0.0);
+        bare_sync.id = 8;
+        level.pair_after_tick(&[e, bare_sync], &Riding::default(), &mut viewers, |_| {
+            Some(100)
+        });
+        let raw0: Vec<Vec<u8>> = viewers[0].out.iter().map(|b| b.to_vec()).collect();
+        let raw1: Vec<Vec<u8>> = viewers[1].out.iter().map(|b| b.to_vec()).collect();
+        let decoded0 = decode_all(&raw0);
+        let decoded1 = decode_all(&raw1);
+        assert!(
+            matches!(
+                &decoded0[..],
+                [
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::AddEntity(a7),
+                    play::Clientbound::CustomPayload(p),
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::AddEntity(a8),
+                    play::Clientbound::BundleDelimiter(_),
+                ] if a7.id == 7
+                    && p.channel == sunrise_protocol::attachment_sync::CHANNEL
+                    && p.data == payload
+                    && a8.id == 8
+            ),
+            "{decoded0:?}"
+        );
+        assert!(
+            matches!(
+                &decoded1[..],
+                [
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::AddEntity(a7),
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::BundleDelimiter(_),
+                    play::Clientbound::AddEntity(a8),
+                    play::Clientbound::BundleDelimiter(_),
+                ] if a7.id == 7 && a8.id == 8
+            ),
+            "{decoded1:?}"
+        );
+        let events0 = viewers[0].tracker.take_events();
+        let events1 = viewers[1].tracker.take_events();
+        assert_eq!(
+            events0.iter().map(|e| e.at).collect::<Vec<_>>(),
+            [Some(4), Some(7)]
+        );
+        assert_eq!(
+            events1.iter().map(|e| e.at).collect::<Vec<_>>(),
+            [Some(3), Some(6)]
         );
     }
 }

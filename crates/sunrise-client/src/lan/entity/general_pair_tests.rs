@@ -174,6 +174,7 @@ fn pass(level: &mut Entities, clients: &mut [Client], at: &[[f64; 3]], states: &
             permission: 0,
             sunrise: true,
             general_entity: c.general_entity,
+            attachment_sync: false,
             moved: true,
             position,
             view_distance: c.view_distance,

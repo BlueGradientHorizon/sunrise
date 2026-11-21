@@ -73,6 +73,7 @@ impl Scene {
                 entity_id: i as i32 + 1,
                 sunrise: true,
                 general_entity: true,
+                attachment_sync: true,
                 sources: None,
                 spectator: false,
                 permission: 0,

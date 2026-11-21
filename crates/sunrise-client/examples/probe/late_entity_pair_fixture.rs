@@ -20,6 +20,7 @@ fn dump(out: &mut impl Write, index: usize, phase: &str, packets: &mut Vec<Body>
         let id = r.varint()?;
         let payload = r.rest();
         let name = match C::decode(id, payload)? {
+            C::BundleDelimiter(_) => continue,
             C::AddEntity(_) => "add",
             C::SetEntityMotion(_) => "motion",
             C::MoveEntityPosRot(_) => "posrot",
@@ -50,6 +51,7 @@ pub fn main() -> Result<()> {
                     entity_id: 1,
                     sunrise: true,
                     general_entity: false,
+                    attachment_sync: false,
                     spectator: false,
                     permission: 0,
                     moved: false,

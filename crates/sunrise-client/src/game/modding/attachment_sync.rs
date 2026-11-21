@@ -81,22 +81,9 @@ impl Game<'_> {
                     .map(|((x, y, z), map)| (Holder::BlockEntity([x, y, z]), map.synced())),
             );
         }
-        // A general row is shown on a client once its first snapshot arrives with it
-        // (`remote/general.rs`), so it gets one even with nothing synced, as a player does.
-        let general = |holder: &Holder| match holder {
-            Holder::Entity(id) => self
-                .resident_entities
-                .general
-                .rows
-                .iter()
-                .any(|row| row.id == *id),
-            _ => false,
-        };
         holders
             .into_iter()
-            .filter(|(holder, changes)| {
-                !changes.is_empty() || matches!(holder, Holder::Player(_)) || general(holder)
-            })
+            .filter(|(holder, changes)| !changes.is_empty() || matches!(holder, Holder::Player(_)))
             .map(|(holder, changes)| Message {
                 holder,
                 replace: true,
@@ -158,7 +145,11 @@ impl Game<'_> {
                     .map_or(holder, |g| Holder::Player(g.uuid)),
                 _ => holder,
             };
-            let messages = if reads {
+            // Non-player entities' initial non-empty synced attachments were already sent
+            // atomically inside `ServerEntity::pairing`'s `BundleDelimiter` bundle; keep
+            // `Holder::Entity` snapshots here for collider sync and guest-to-`Holder::Player`
+            // mapping.
+            let messages = if reads && !matches!(holder, Holder::Entity(_)) {
                 self.attachment_snapshot(holder)
             } else {
                 Vec::new()

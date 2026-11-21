@@ -2662,6 +2662,7 @@ impl Game<'_> {
                 self.lan_entities(&mut states, false, next, None);
                 self.lan_hook_states(&mut states);
                 self.lan_entity_uuids(&mut states);
+                self.lan_entity_attachments(&mut states);
                 host.hub.note_joined(states.as_slice());
             }
             host.states_next_entity = Some(self.next_entity);
@@ -2780,6 +2781,7 @@ impl Game<'_> {
                     }
                     self.lan_hook_states(&mut states);
                     self.lan_entity_uuids(&mut states);
+                    self.lan_entity_attachments(&mut states);
                 });
                 let Some(host) = self.lan.as_mut() else {
                     return;
@@ -3139,6 +3141,7 @@ impl Game<'_> {
             self.lan_entities(&mut theirs, false, 0, None);
             self.lan_hook_states(&mut theirs);
             self.lan_entity_uuids(&mut theirs);
+            self.lan_entity_attachments(&mut theirs);
             theirs.as_slice()
         } else {
             entities

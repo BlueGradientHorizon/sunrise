@@ -68,8 +68,16 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
         None,
     );
     assert!(
+        matches!(next_sent_packet(&rx), C::BundleDelimiter(_)),
+        "pairing opens with a bundle delimiter"
+    );
+    assert!(
         matches!(next_sent_packet(&rx), C::AddEntity(p) if p.id == 37),
         "ChunkMap.addEntity pairs a late spawn before the throw sound"
+    );
+    assert!(
+        matches!(next_sent_packet(&rx), C::BundleDelimiter(_)),
+        "pairing closes with a bundle delimiter"
     );
     let mut heard = false;
     while let Ok(out) = rx.try_recv() {

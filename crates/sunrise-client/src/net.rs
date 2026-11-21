@@ -103,6 +103,9 @@ pub enum Event {
         name: String,
     },
     Packet(Box<play::Clientbound>),
+    /// `ClientboundBundlePacket`: packets delimited by `BundleDelimiter`, delivered
+    /// atomically in one game-thread turn (`ClientPacketListener.handleBundlePacket`).
+    Bundle(Vec<play::Clientbound>),
     /// Registered application bytes, owned until the receiving root transaction ends.
     RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
@@ -184,6 +187,14 @@ impl Event {
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
             }
+            Self::Bundle(packets) => packets
+                .capacity()
+                .saturating_mul(size_of::<play::Clientbound>())
+                .saturating_add(
+                    packets
+                        .iter()
+                        .fold(0usize, |acc, p| acc.saturating_add(p.owned_heap_bytes())),
+                ),
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
             Self::PackPush(packet) => packet.owned_heap_bytes(),
@@ -1121,6 +1132,10 @@ fn receive_play(
 ) -> Result<Reason, Reason> {
     // ClientPacketListener.chunkBatchSizeCalculator.
     let mut batch = sunrise_protocol::chunk_batch::ChunkBatchSize::default();
+    // PacketBundlePacker + BundlerInfo.BUNDLE_SIZE_LIMIT: collect delimited play packets into
+    // one Event::Bundle for atomic game-thread dispatch.
+    const MAX_BUNDLE_PACKETS: usize = 4096;
+    let mut bundle: Option<Vec<play::Clientbound>> = None;
     loop {
         let (id, payload) = reader
             .recv()
@@ -1169,7 +1184,15 @@ fn receive_play(
                     },
                 ));
             }
-            play::Clientbound::BundleDelimiter(_) => {}
+            play::Clientbound::BundleDelimiter(_) => {
+                if let Some(packets) = bundle.take() {
+                    if !packets.is_empty() && send.send(Event::Bundle(packets)).is_err() {
+                        return Ok(Reason::plain("Disconnected"));
+                    }
+                } else {
+                    bundle = Some(Vec::new());
+                }
+            }
             play::Clientbound::ResourcePackPush(p) => {
                 let _ = send.send(Event::PackPush(p));
             }
@@ -1177,6 +1200,7 @@ fn receive_play(
                 let _ = send.send(Event::PackPop(p.id));
             }
             play::Clientbound::StartConfiguration(_) => {
+                bundle = None;
                 payloads.begin_configuration();
                 configuring.store(true, Ordering::Release);
                 let _ = send.send(Event::Reconfiguring);
@@ -1245,14 +1269,25 @@ fn receive_play(
                     payload,
                     send,
                 )? {
-                    send.send(Event::Packet(Box::new(play::Clientbound::CustomPayload(
-                        payload,
-                    ))))
-                    .map_err(|_| Reason::plain("Disconnected"))?;
+                    let packet = play::Clientbound::CustomPayload(payload);
+                    if let Some(packets) = bundle.as_mut() {
+                        if packets.len() >= MAX_BUNDLE_PACKETS {
+                            return Err(Reason::plain("Too many packets in a bundle"));
+                        }
+                        packets.push(packet);
+                    } else {
+                        send.send(Event::Packet(Box::new(packet)))
+                            .map_err(|_| Reason::plain("Disconnected"))?;
+                    }
                 }
             }
             other => {
-                if send.send(Event::Packet(Box::new(other))).is_err() {
+                if let Some(packets) = bundle.as_mut() {
+                    if packets.len() >= MAX_BUNDLE_PACKETS {
+                        return Err(Reason::plain("Too many packets in a bundle"));
+                    }
+                    packets.push(other);
+                } else if send.send(Event::Packet(Box::new(other))).is_err() {
                     return Ok(Reason::plain("Disconnected"));
                 }
             }
@@ -2871,6 +2906,80 @@ mod tests {
         );
         writer.lock().unwrap().take().unwrap().shutdown();
         assert!(thread.join().unwrap().is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// `PacketBundlePacker` + `BundlerInfo`: `BundleDelimiter` frames play packets
+    /// (including game-thread `CustomPayload`s) into one `Event::Bundle` and rejects
+    /// bundles exceeding 4096 packets.
+    #[test]
+    fn bundle_delimiter_collects_packets_and_rejects_oversized_bundles() {
+        let (root, data) = empty_item_data("bundle");
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (send, events) = event_channel();
+        let thread_writer = writer.clone();
+        let thread = std::thread::spawn(move || {
+            receive_play(
+                &mut reader,
+                &thread_writer,
+                &Arc::new(AtomicBool::new(false)),
+                &Language::new(),
+                &send,
+                &Cookies::default(),
+                &crate::lod_net::Inbox::default(),
+                &data,
+                &Arc::new(Mutex::new(None)),
+                &crate::raw_payloads::Transport::empty(),
+            )
+        });
+        let mut server = Connection::local(server);
+        let delimiter = play::Clientbound::BundleDelimiter(Empty).encode();
+        let ping1 = play::Clientbound::Ping(cfg::Ping { id: 1 });
+        let sync = play::Clientbound::CustomPayload(cfg::CustomPayload {
+            channel: sunrise_protocol::attachment_sync::CHANNEL.into(),
+            data: vec![1, 2, 3],
+        });
+        let ping2 = play::Clientbound::Ping(cfg::Ping { id: 2 });
+        let ping3 = play::Clientbound::Ping(cfg::Ping { id: 3 });
+
+        server.send(&delimiter).unwrap();
+        server.send(&ping1.encode()).unwrap();
+        server.send(&sync.encode()).unwrap();
+        server.send(&delimiter).unwrap();
+        server.send(&ping2.encode()).unwrap();
+        // Empty bundle produces no event; the next packet arrives standalone.
+        server.send(&delimiter).unwrap();
+        server.send(&delimiter).unwrap();
+        server.send(&ping3.encode()).unwrap();
+
+        let timeout = Duration::from_secs(5);
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        let Event::Bundle(packets) = event else {
+            panic!("expected bundled packets");
+        };
+        assert_eq!(packets, [ping1, sync]);
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(event, Event::Packet(p) if *p == ping2));
+        let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        assert!(matches!(event, Event::Packet(p) if *p == ping3));
+
+        // Exceeding `BundlerInfo.BUNDLE_SIZE_LIMIT` (4096) fails the connection.
+        server.send(&delimiter).unwrap();
+        let filler = play::Clientbound::Ping(cfg::Ping { id: 99 }).encode();
+        for _ in 0..=4096 {
+            if server.send(&filler).is_err() {
+                break;
+            }
+        }
+        let err = thread.join().unwrap().unwrap_err();
+        assert!(
+            err.text.contains("Too many packets in a bundle"),
+            "{}",
+            err.text
+        );
+        writer.lock().unwrap().take().unwrap().shutdown();
         std::fs::remove_dir_all(root).unwrap();
     }
 

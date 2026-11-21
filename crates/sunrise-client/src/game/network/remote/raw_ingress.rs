@@ -276,6 +276,21 @@ impl Game<'_> {
                     }
                     packet => self.handle_packet(packet)?,
                 },
+                Event::Bundle(packets) => {
+                    for packet in packets {
+                        match packet {
+                            C::CustomPayload(p)
+                                if p.channel == sunrise_client::perf_net::CHANNEL =>
+                            {
+                                self.remote_perf_reply(&p.data)
+                            }
+                            packet => self.handle_packet(packet)?,
+                        }
+                        if self.remote.is_none() {
+                            break;
+                        }
+                    }
+                }
             }
             chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
             if self.remote.is_none() {

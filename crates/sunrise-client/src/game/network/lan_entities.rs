@@ -769,6 +769,19 @@ impl Game<'_> {
         }
     }
 
+    /// Populates `EntityState::initial_attachments` for each non-bare entity that holds
+    /// non-empty synced attachments (`AttachmentSync.syncInitialEntityAttachments`), so
+    /// `ServerEntity::pairing` bundles them with the spawn.
+    pub(super) fn lan_entity_attachments(&self, out: &mut States) {
+        if self.entity_attachments.is_empty() {
+            return;
+        }
+        for e in out.as_mut_slice().iter_mut().filter(|e| !e.bare) {
+            e.initial_attachments =
+                encode_initial_attachments(&self.entity_attachments, e.id as u32);
+        }
+    }
+
     /// ServerEntity.sendChanges clears needsSync once it has looked, and
     /// SteppedInterpolationTracker.updateTracking clears syncPosition: once the states for the
     /// tracking pass are taken.
@@ -1016,6 +1029,8 @@ impl Game<'_> {
                     }
                     _ => {}
                 }
+                joined.initial_attachments =
+                    encode_initial_attachments(&self.entity_attachments, p.id);
                 hub.note_fresh_joined(&[joined]);
             }
         }
@@ -1162,6 +1177,30 @@ impl Game<'_> {
                 .push((9, serializer::BOOLEAN, Value::Bool(false)));
         }
         out.extend(self.lan_dragon_state());
+    }
+}
+
+/// Pre-encodes a `sunrise:attachment_sync` initial snapshot for entity `id` when it holds
+/// non-empty synced attachments (`AttachmentSync.syncInitialEntityAttachments`).
+fn encode_initial_attachments(
+    attachments: &super::native_colliders::EntityMaps,
+    id: u32,
+) -> Option<Vec<u8>> {
+    let changes = attachments.get(&id)?.synced();
+    if changes.is_empty() {
+        return None;
+    }
+    let message = sunrise_protocol::attachment_sync::Message {
+        holder: sunrise_mod_runtime::attachments::Holder::Entity(id),
+        replace: true,
+        changes,
+    };
+    match sunrise_protocol::attachment_sync::encode(&message) {
+        Ok(bytes) => Some(bytes),
+        Err(error) => {
+            log::warn!("Sunrise: initial attachment sync for entity {id} not encoded: {error}");
+            None
+        }
     }
 }
 

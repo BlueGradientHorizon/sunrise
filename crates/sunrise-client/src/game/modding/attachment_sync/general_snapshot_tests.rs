@@ -1,7 +1,6 @@
-//! A general row's first attachment snapshot: sent whenever a client starts tracking the row,
-//! even with nothing synced, since the client shows the row only once it arrives
-//! (`game/network/remote/general.rs`); and whole, so a client that pairs later reads the value
-//! the row holds then.
+//! A general row's attachment snapshot (NeoForge `AttachmentSync`): no empty packet when
+//! nothing is synced, and a `replace: true` snapshot with the current value when synced
+//! attachments are present.
 use super::transport_tests::{VALUE, store};
 use crate::game::general::{GeneralEntityRecord, GeneralTypeEnvelope};
 use crate::game::native_entity_refs::tests::with_game;
@@ -84,10 +83,8 @@ fn value_of(changes: &[sunrise_mod_runtime::attachments::AttachmentSync]) -> Opt
 fn a_general_row_always_has_a_first_snapshot_holding_what_it_holds_now() {
     with_robot(|game| {
         let id = robot(game);
-        // First pairing, nothing synced yet: one whole, empty snapshot all the same.
-        let first = game.attachment_snapshot(Holder::Entity(id));
-        assert_eq!(first.len(), 1);
-        assert!(first[0].replace && first[0].changes.is_empty());
+        // First pairing, nothing synced yet: no empty snapshot packet (NeoForge AttachmentSync).
+        assert!(game.attachment_snapshot(Holder::Entity(id)).is_empty());
         // A client that pairs later is sent the value the row holds then.
         let seal = game.transaction_open();
         VALUE.set(store(game), Holder::Entity(id), 7).unwrap();

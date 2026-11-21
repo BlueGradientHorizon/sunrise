@@ -140,6 +140,7 @@ mod tests {
             permission: 0,
             sunrise: true,
             general_entity: false,
+            attachment_sync: false,
             moved: true,
             position: [1.0e6, 64.0, 1.0e6],
             view_distance: 2,

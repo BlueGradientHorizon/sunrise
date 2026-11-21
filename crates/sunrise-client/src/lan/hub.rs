@@ -3306,6 +3306,7 @@ impl Hub {
             watching: false,
             hidden: None,
             general: false,
+            initial_attachments: None,
         }
     }
 
