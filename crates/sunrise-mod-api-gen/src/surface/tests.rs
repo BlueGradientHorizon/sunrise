@@ -747,6 +747,31 @@ fn a_private_named_type_blocks_only_its_own_workspace_glob_binding() {
 }
 
 #[test]
+fn public_glob_cycles_do_not_hide_exports_from_a_later_alias() {
+    for exports in [
+        "pub use a::marker; pub use alias::*;",
+        "pub use alias::*; pub use a::marker;",
+    ] {
+        let edited = format!(
+            "mod a {{
+                pub fn marker() {{}}
+                pub fn leak() -> engine::Secret {{ unimplemented!() }}
+                pub use crate::b::*;
+             }}
+             mod b {{ pub use crate::a::*; }}
+             use self::b as alias;
+             {exports}
+             /// A colour."
+        );
+        let error = try_export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS)
+            .err()
+            .expect("the glob alias still exports the leaking function");
+        assert!(error.contains("mod_api::leak"), "{error}");
+        assert!(error.contains("engine_library::Secret"), "{error}");
+    }
+}
+
+#[test]
 fn a_private_module_shadows_globbed_types_without_hiding_the_prelude() {
     let edited = "mod a { pub struct Option; }
         mod b { pub struct Option; }

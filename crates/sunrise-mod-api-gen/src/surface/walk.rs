@@ -100,9 +100,10 @@ pub(super) struct Walker<'i, 'a> {
     pub(super) index: &'i mut Index<'a>,
     names: HashMap<usize, Vec<Name>>,
     open: HashSet<usize>,
+    cycle_cuts: usize,
     notes: Vec<String>,
-    /// Public items compiled out only under `cfg(test)`.
-    test_only: usize,
+    /// Public items compiled out only under `cfg(test)`, keyed by module and item position.
+    test_only: HashSet<(usize, usize)>,
 }
 
 /// How many paths through re-exports one module is visited by.
@@ -124,8 +125,9 @@ impl<'i, 'a> Walker<'i, 'a> {
             index,
             names: HashMap::new(),
             open: HashSet::new(),
+            cycle_cuts: 0,
             notes: Vec::new(),
-            test_only: 0,
+            test_only: HashSet::new(),
         }
     }
 
@@ -297,8 +299,10 @@ impl<'i, 'a> Walker<'i, 'a> {
             return Ok(names.clone());
         }
         if !self.open.insert(module) {
+            self.cycle_cuts += 1;
             return Ok(Vec::new());
         }
+        let cycle_cuts = self.cycle_cuts;
         let items = self.index.modules[module].items.clone();
         let mut own: Vec<Name> = Vec::new();
         let mut globbed: Vec<Name> = Vec::new();
@@ -318,7 +322,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                         && !gate.contains("feature")
                         && !gate.contains("target")
                     {
-                        self.test_only += 1;
+                        self.test_only.insert((module, position));
                     } else {
                         let what = match item {
                             Item::Mod(child) => format!("mod {}", child.ident),
@@ -458,7 +462,11 @@ impl<'i, 'a> Walker<'i, 'a> {
             }
         }
         self.open.remove(&module);
-        self.names.insert(module, own.clone());
+        // A cycle cut is only valid along this route. Another caller may reach the names
+        // missing from this expansion when it starts from a different module.
+        if self.cycle_cuts == cycle_cuts {
+            self.names.insert(module, own.clone());
+        }
         Ok(own)
     }
 
@@ -589,10 +597,10 @@ impl<'i, 'a> Walker<'i, 'a> {
             "{} items are reachable only through #[doc(hidden)] items or modules: recorded only where a recorded signature names them",
             hidden_items.len()
         ));
-        if self.test_only > 0 {
+        if !self.test_only.is_empty() {
             public.notes.push(format!(
                 "{} public items compiled only under cfg(test), not recorded",
-                self.test_only
+                self.test_only.len()
             ));
         }
         public.macros = macros.into_iter().collect();
