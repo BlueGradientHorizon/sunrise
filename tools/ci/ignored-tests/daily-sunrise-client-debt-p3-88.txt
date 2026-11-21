@@ -1,0 +1,2 @@
+sunrise-client game::consume_effect_dispatch_tests::a_consume_callback_panic_leaves_later_effects_and_other_callbacks_running lib daily resources
+sunrise-client game::consume_effect_dispatch_tests::nested_consume_effects_follow_call_order_even_for_the_same_kind lib daily resources

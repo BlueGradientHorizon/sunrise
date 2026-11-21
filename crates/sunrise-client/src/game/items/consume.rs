@@ -7,7 +7,7 @@ use crate::game::api_values::TryIntoApi;
 use crate::game::collision_source::Mover;
 use std::convert::Infallible;
 use sunrise_client::{
-    items::{ConsumeEffect, ItemInfo, ItemStack},
+    items::{ConsumeEffect, ItemConsumable, ItemInfo, ItemStack},
     mobs::Who,
     particles::{ParticleOptions, ParticleType},
 };
@@ -17,12 +17,10 @@ use sunrise_core::{
 use {
     sunrise_core::use_animation::UseAnimation,
     sunrise_world::{
-        consumable::{Consumable, EmissionWorld},
+        consumable::EmissionWorld,
         teleport_consume::{TeleportConsume, TeleportConsumeWorld},
     },
 };
-
-type ItemConsumable = Consumable<String, ConsumeEffect>;
 
 /// Capture once per effect, not once per attempted destination. If the stack
 /// cannot cross the API boundary (for example, an unregistered saved item), skip
@@ -54,8 +52,8 @@ impl Game<'_> {
     }
 
     /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
-    pub(super) fn consumable(&self, stack: &ItemStack) -> Option<ItemConsumable> {
-        sunrise_client::item_sync::consumable(stack, self.items())
+    pub(super) fn consumable(&self, stack: &ItemStack) -> Option<std::sync::Arc<ItemConsumable>> {
+        stack.consumable(self.items().get(&stack.item)).cloned()
     }
 
     /// `ServerPlayer.completeUsingItem`: the player's own client is told
@@ -286,7 +284,7 @@ impl Game<'_> {
         let mut can_finish = true;
         for effect in effects {
             match effect {
-                ConsumeEffect::PlaySound(_) | ConsumeEffect::Native { .. } => {
+                ConsumeEffect::PlaySound(_) | ConsumeEffect::Native(_) => {
                     can_finish &= self
                         .apply_consume_effect(stack, effect, Some(consumer), consumer.entity())
                         .is_some();

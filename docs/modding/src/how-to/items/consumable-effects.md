@@ -11,8 +11,7 @@ or the effect is unsupported. Mob random teleport, armor stands and dragons are 
 supported. Player random teleport uses the level random as normal.
 
 Mod-defined kinds dispatch through the ordinary `consume_effect` hook. For these
-kinds, `Some(true)` means dispatch was entered, not that a listener changed game
-state; an unclaimed kind does nothing. Reapplying the same kind from inside
-its own handler on the same call stack returns `Some(false)` without recursion.
-Another kind, including one owned by another mod, dispatches normally, and a later
-independent call can apply the original kind again.
+kinds, `Some(true)` means the bound callback completed, not that it changed game
+state. `Some(false)` means the callback was missing, disabled or failed. Nested
+applications of the same kind or another kind run immediately and return their
+own result. Do not rely on the engine to stop a cycle in your own effects.

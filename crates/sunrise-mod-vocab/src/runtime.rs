@@ -55,6 +55,7 @@ pub(crate) struct Installed {
     pub(crate) disabled: Box<[std::sync::atomic::AtomicBool]>,
     /// One installed owner per mod for delayed tasks, independent of its other callbacks.
     pub(crate) scheduled_tasks: Box<[crate::callback_owner::CallbackOwner]>,
+    consume_effects: Box<[Option<crate::callback_owner::CallbackOwner>]>,
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
@@ -100,6 +101,15 @@ impl Installed {
             .enumerate()
             .map(|(index, entry)| crate::callback_owner::CallbackOwner::for_index(entry.id, index))
             .collect();
+        let consume_effects = mods
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                subscribers
+                    .contains(HookId::ConsumeEffect as usize, index)
+                    .then(|| crate::callback_owner::CallbackOwner::for_index(entry.id, index))
+            })
+            .collect();
         let mod_id_owners = mods
             .iter()
             .enumerate()
@@ -115,6 +125,7 @@ impl Installed {
             subscribers,
             disabled,
             scheduled_tasks,
+            consume_effects,
             mod_id_owners,
             content_owners: OnceLock::new(),
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
@@ -596,18 +607,44 @@ pub(crate) fn listening_matching<'a>(
     })
 }
 
-/// Look up the enabled subscriber owning a namespaced kind without walking the hook's listeners.
-pub(crate) fn listening_kind_owner(hook: HookId, kind: &str) -> Option<&'static ModEntry> {
-    let (namespace, _) = kind.split_once(':')?;
-    let installed = installed()?;
-    let &index = installed.by_id.get(namespace)?;
-    if !installed.subscribers.contains(hook as usize, index)
-        || installed.disabled[index].load(std::sync::atomic::Ordering::Relaxed)
-    {
-        return None;
+// no wire: the binding refers to this process's installed native callback.
+/// A consume-effect callback resolved while decoding the effect's registered kind.
+// hidden: the game retains the callback with its decoded effect.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct ConsumeEffectBinding {
+    owner: &'static crate::callback_owner::CallbackOwner,
+    entry: &'static ModEntry,
+}
+
+impl std::fmt::Debug for ConsumeEffectBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ConsumeEffectBinding")
+            .field(&self.entry.id)
+            .finish()
     }
-    bump_listener_serial();
-    Some(&installed.mods[index])
+}
+
+impl ConsumeEffectBinding {
+    /// Bind to the namespace owner's registered listener, even if currently toggled off.
+    pub fn resolve(kind: &str) -> Option<Self> {
+        let (namespace, _) = kind.split_once(':')?;
+        let installed = installed()?;
+        let &index = installed.by_id.get(namespace)?;
+        Some(Self {
+            owner: installed.consume_effects[index].as_ref()?,
+            entry: &installed.mods[index],
+        })
+    }
+
+    pub(crate) fn invoke(self, invoke: impl FnOnce(&dyn Hooks)) -> bool {
+        self.owner
+            .call("consume effect", "consume_effect", || {
+                bump_listener_serial();
+                invoke(&*self.entry.hooks);
+            })
+            .is_ok()
+    }
 }
 
 /// Marks the thread as inside `entry`'s `hook` until the guard drops, and hands back its hooks.

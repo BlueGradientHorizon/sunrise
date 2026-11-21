@@ -4,7 +4,7 @@ use crate::game::{api_values::TryIntoApi, native_entity_refs::tests::with_game};
 use mod_api::{ConsumeEffectEvent, Hooks, ModEntry, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
-    items::{ConsumeEffect, ItemStack},
+    items::{ConsumeEffect, ItemStack, parse_consumable},
     mobs::Mob,
 };
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -19,17 +19,20 @@ impl Hooks for First {
         self.0.lock().unwrap().push("first");
         let source = host.entity(21).unwrap();
         assert_eq!(event.user, source);
-        assert_eq!(event.stack.count(), 1);
         assert_eq!(
             event.stack.item(),
             host.item_key(&mod_api::Identifier::parse("minecraft:pufferfish").unwrap())
                 .unwrap()
         );
+        if event.stack.count() == 1 {
+            return;
+        }
+        assert_eq!(event.stack.count(), 2);
         let living = host.living(source).unwrap();
         let same = ItemStack::new("minecraft:pufferfish", 1)
             .try_into_api()
             .unwrap();
-        assert_eq!(living.apply_consume_effect(host, &same, 0), Ok(Some(false)));
+        assert_eq!(living.apply_consume_effect(host, &same, 0), Ok(Some(true)));
         let other = ItemStack::new("minecraft:honey_bottle", 1)
             .try_into_api()
             .unwrap();
@@ -48,7 +51,7 @@ impl Hooks for Second {
 
 #[test]
 #[ignore = "daily"]
-fn a_living_handle_dispatches_custom_kinds_with_same_kind_recursion_refused() {
+fn nested_consume_effects_follow_call_order_even_for_the_same_kind() {
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![
         ModEntry::new("first", Box::new(First(trace.clone()))),
@@ -62,42 +65,29 @@ fn a_living_handle_dispatches_custom_kinds_with_same_kind_recursion_refused() {
                 ("minecraft:honey_bottle", "second:effect"),
                 ("minecraft:apple", "unclaimed:effect"),
             ] {
-                items
-                    .items
-                    .get_mut(item)
-                    .unwrap()
-                    .consumable
-                    .as_mut()
-                    .unwrap()
-                    .effects = vec![ConsumeEffect::Native {
-                    kind: kind.to_owned(),
-                    data: Arc::new(Tag::Compound(Default::default())),
-                }];
+                let component = parse_consumable(&serde_json::json!({
+                    "on_consume_effects": [{"type": kind}]
+                }))
+                .unwrap();
+                items.items.get_mut(item).unwrap().consumable = Some(Arc::new(component));
             }
             game.server_items = Some(Arc::new(items));
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             game.mobs
                 .push(Mob::new(21, kind, Vec3::new(0.0, 64.0, 0.0), 0.0));
             let living = game.living(game.entity(21).unwrap()).unwrap();
-            let stack = ItemStack::new("minecraft:pufferfish", 1)
+            let stack = ItemStack::new("minecraft:pufferfish", 2)
                 .try_into_api()
                 .unwrap();
             assert_eq!(living.apply_consume_effect(game, &stack, 0), Ok(Some(true)));
-            assert_eq!(*trace.lock().unwrap(), ["first", "second", "first_after"]);
             let unclaimed = ItemStack::new("minecraft:apple", 1).try_into_api().unwrap();
-            living.apply_consume_effect(game, &unclaimed, 0).unwrap();
-            assert_eq!(*trace.lock().unwrap(), ["first", "second", "first_after"]);
-            assert_eq!(living.apply_consume_effect(game, &stack, 0), Ok(Some(true)));
+            assert_eq!(
+                living.apply_consume_effect(game, &unclaimed, 0),
+                Ok(Some(false))
+            );
             assert_eq!(
                 *trace.lock().unwrap(),
-                [
-                    "first",
-                    "second",
-                    "first_after",
-                    "first",
-                    "second",
-                    "first_after"
-                ]
+                ["first", "first", "second", "first_after"]
             );
         });
     });
@@ -141,11 +131,10 @@ fn consuming_player_is_supplied_outside_a_guest_action() {
                 let user = game.entity(7).unwrap();
                 let stack = ItemStack::new("minecraft:pufferfish", 4);
                 let info = game.items().get(&stack.item).unwrap().clone();
-                let mut consumable = game.consumable(&stack).unwrap();
-                consumable.effects = vec![ConsumeEffect::Native {
-                    kind: "player_meal:effect".into(),
-                    data: Arc::new(Tag::Compound(Default::default())),
-                }];
+                let consumable = parse_consumable(&serde_json::json!({
+                    "on_consume_effects": [{"type": "player_meal:effect"}]
+                }))
+                .unwrap();
                 game.creative = false;
                 game.inventory[game.selected] = Some(stack.clone());
                 game.finish_consuming(&info, &consumable, &stack);
@@ -281,6 +270,66 @@ fn potion_finishes_with_its_patched_effects_after_potion_contents() {
     });
 }
 
+struct PanicsDuringConsumption(Arc<std::sync::atomic::AtomicUsize>);
+#[mod_api::__subscriptions]
+impl Hooks for PanicsDuringConsumption {
+    fn consume_effect(&self, _: &mut dyn ServerHost, _: &mut ConsumeEffectEvent<'_>) {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        panic!("consume effect fixture");
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_consume_callback_panic_leaves_later_effects_and_other_callbacks_running() {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![
+        ModEntry::new(
+            "panics_during_meal",
+            Box::new(PanicsDuringConsumption(calls.clone())),
+        ),
+        ModEntry::new("observes_meal", Box::new(ObservePotion(seen.clone()))),
+    ];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_game(|game| {
+            let mut body =
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.0, 65.0, 0.0))
+                    .unwrap();
+            body.entity_id = 7;
+            game.player = Some(body);
+            game.bind_local_player_residency();
+            game.creative = false;
+            let stack = ItemStack::new("minecraft:apple", 1);
+            let info = game.items().get(&stack.item).unwrap().clone();
+            let consumable = parse_consumable(&serde_json::json!({
+                "on_consume_effects": [
+                    {"type": "panics_during_meal:first"},
+                    {"type": "minecraft:apply_effects", "effects": [
+                        {"id": "minecraft:water_breathing", "duration": 120}
+                    ]},
+                    {"type": "observes_meal:after_builtin"},
+                    {"type": "panics_during_meal:again"}
+                ]
+            }))
+            .unwrap();
+            for _ in 0..2 {
+                game.inventory[game.selected] = Some(stack.clone());
+                game.finish_consuming(&info, &consumable, &stack);
+                assert!(game.held().is_none());
+            }
+            assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+            assert_eq!(
+                *seen.lock().unwrap(),
+                [
+                    ("observes_meal:after_builtin".into(), true),
+                    ("observes_meal:after_builtin".into(), true)
+                ]
+            );
+        });
+    });
+}
+
 struct FoxConsumption(Arc<Mutex<Vec<(mod_api::EntityRef, mod_api::ItemStack)>>>);
 #[mod_api::__subscriptions]
 impl Hooks for FoxConsumption {
@@ -309,22 +358,24 @@ fn a_foxs_later_custom_effect_keeps_the_original_user_and_stack_after_discard() 
     mod_platform::testing::with_mods(mods.into(), || {
         with_game(|game| {
             let mut items = game.items().clone();
-            let effects = &mut items
+            let consumable = items
                 .items
                 .get_mut("minecraft:chorus_fruit")
                 .unwrap()
                 .consumable
                 .as_mut()
-                .unwrap()
-                .effects;
+                .unwrap();
+            let effects = &mut Arc::make_mut(consumable).effects;
             assert!(
                 effects
                     .iter()
                     .any(|effect| matches!(effect, ConsumeEffect::TeleportRandomly(_)))
             );
-            let custom = |kind: &str| ConsumeEffect::Native {
-                kind: kind.into(),
-                data: Arc::new(Tag::Compound(Default::default())),
+            let custom = |kind: &str| {
+                parse_consumable(&serde_json::json!({"on_consume_effects": [{"type": kind}]}))
+                    .unwrap()
+                    .effects
+                    .remove(0)
             };
             effects.insert(0, custom("fox_meal:discard"));
             effects.push(ConsumeEffect::PlaySound("minecraft:entity.fox.eat".into()));
