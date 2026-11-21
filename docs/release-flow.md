@@ -500,9 +500,10 @@ waives the full daily on the release commit and nothing else:
 - **The changed paths choose the daily legs.** `release_train.break_glass_legs` maps each path that differs between
   the parent and the release commit (`git diff -z --raw`) to daily legs, by the rows of `BREAK_GLASS_LEGS`, the
   first matching row deciding. A path no row matches, a symbolic link, a submodule or a name holding a line break
-  means the full daily, and so does any change to the code that judges a release (`release_train.judge_folders`: the
+  means the full daily, and so does any change to the code that judges a release (`release_train.judge_graph`: the
   crates of its mod API surface, packages and signature and every local crate they build from, through path and
-  workspace dependencies and the root manifest's `[patch]` and `[replace]`) or to those two tables:
+  workspace dependencies and the root manifest's `[patch]` and `[replace]`), to those two tables, to a
+  `[workspace.dependencies]` entry those crates take, or to the `Cargo.lock` entries they build from:
   the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
   run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
   game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots
@@ -520,12 +521,11 @@ waives the full daily on the release commit and nothing else:
   files and closes no issue.
 - **Recorded and followed up.** The run's summary and the release notes (a `### Break-glass release` section above
   the closing disclaimer) name the parent, the legs it passed, why (the `break_glass` input) and who approved it with
-  their comments. Once it is published, `full-daily` dispatches the full daily on the release branch for its commit:
-  a real run, whose reds file `bug` issues titled `Daily (release/26.3): …`. Each commit on `release/26.3` has its own
-  daily queue, so another commit's run never replaces it. A parent with no full daily that passed before it was
-  published (as a break-glass release has none) needs one created after its publication, which the next patch
-  checks from the daily runs themselves, never from the notes; until it passes, the next patch can't take this path.
-  If the follow-up was lost, dispatch it again:
+  their comments. Once any stable release is published, `full-daily` dispatches the full daily on the release branch
+  for its commit: a real run, whose reds file `bug` issues titled `Daily (release/26.3): …`. Each commit on
+  `release/26.3` has its own daily queue, so another commit's run never replaces it. A break-glass patch needs its
+  parent's newest full daily created after the parent's publication to have passed, whatever kind of release the
+  parent was; until one has, the next patch can't take this path. If the follow-up was lost, dispatch it again:
   `gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f commit=<its sha>`.
 
 `pick` checks the rules of `release_train.break_glass_problems` and puts the parent and the selected legs in the run

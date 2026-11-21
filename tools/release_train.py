@@ -724,7 +724,7 @@ def release_head(head="", dry_run=False, daily=True):
 # need only some daily legs, approved by two people through GitHub environments. The daily legs each changed path
 # selects (daily.yml's job names), the first row matching it deciding: a row ending in `/` is that folder (or a file
 # or link replacing it), any other an exact path. A path no row matches needs the full daily (fail closed), and so
-# does any change to the code that judges a release (judge_folders) or to the root manifest's [patch] and [replace]
+# does any change to the code that judges a release (judge_graph) or to the root manifest's [patch] and [replace]
 # (changed_since). The SDK legs (BREAK_GLASS_ALWAYS) always run: sdk-publish waits for them
 # (daily_summary.SDK_LEGS), and a release ships only after its SDK. A game crate's change runs every leg that tests
 # the game (the ignored-test shards, the Windows rows and the parity harnesses) and is booted headless by the release
@@ -778,47 +778,79 @@ def manifest(sha, path):
     return tomllib.loads(text) if text else {}
 
 
-def judge_folders(sha):
-    """The folders of JUDGES at `sha` and of every local crate they build from: path dependencies of every kind and
-    target, directly or through the root's [workspace.dependencies], and every crate the root's [patch] or [replace]
-    puts in place of a registry one, followed through their own."""
+def judge_graph(sha):
+    """What JUDGES build from at `sha`: (their folders and those of every local crate they build from, their package
+    names, the names they take from the root's [workspace.dependencies]). Local crates are path dependencies of every
+    kind but dev and every target, directly or through [workspace.dependencies], and every crate the root's [patch]
+    or [replace] puts in place of a registry one, followed through their own."""
     root = manifest(sha, "Cargo.toml")
     shared = root.get("workspace", {}).get("dependencies", {})
     patched = [spec for table in root.get("patch", {}).values() for spec in table.values()]
     patched += list(root.get("replace", {}).values())
     todo = list(JUDGES) + [posixpath.normpath(spec["path"]) for spec in patched if isinstance(spec, dict) and "path" in spec]
-    seen = set()
+    folders, packages, inherited = set(), set(), set()
     while todo:
         folder = todo.pop()
-        if folder in seen:
+        if folder in folders:
             continue
-        seen.add(folder)
+        folders.add(folder)
         crate = manifest(sha, f"{folder}/Cargo.toml")
+        if name := crate.get("package", {}).get("name"):
+            packages.add(name)
         tables = [crate.get(kind, {}) for kind in DEPENDENCY_KINDS]
         tables += [target.get(kind, {}) for target in crate.get("target", {}).values() for kind in DEPENDENCY_KINDS]
         for name, spec in ((name, spec) for table in tables for name, spec in table.items()):
             base = folder
             if isinstance(spec, dict) and spec.get("workspace"):
+                inherited.add(name)
                 base, spec = "", shared.get(name)
             if isinstance(spec, dict) and "path" in spec:
                 todo.append(posixpath.normpath(posixpath.join(base, spec["path"])))
-    return seen
+    return folders, packages, inherited
+
+
+def locked_closure(sha, packages):
+    """The Cargo.lock entries of `packages` at `sha` and of everything they depend on, as comparable tuples: a judge
+    built from another crates.io version builds other code."""
+    entries = manifest(sha, "Cargo.lock").get("package", [])
+    by_name = {}
+    for entry in entries:
+        by_name.setdefault(entry["name"], []).append(entry)
+    found, todo = set(), [name for name in packages if name in by_name]
+    while todo:
+        name, _, version = todo.pop().partition(" ")
+        version = version.split(" ")[0]
+        for entry in by_name.get(name, []):
+            if version and entry["version"] != version:
+                continue
+            key = (entry["name"], entry["version"], entry.get("source"), entry.get("checksum"))
+            if key not in found:
+                found.add(key)
+                todo += entry.get("dependencies", [])
+    return found
 
 
 def changed_since(parent_sha, sha):
     """The paths that differ between the two commits (a rename's old and new names both), and those no row may map:
     a symbolic link or submodule on either side, a name holding a line break, anything in the code that judges a
-    release on either side (judge_folders), and the root manifest when its [patch] or [replace] changed."""
+    release on either side (judge_graph), the root manifest when its [patch], [replace] or a [workspace.dependencies]
+    entry the judges take changed, and Cargo.lock when it changed what the judges build from."""
     out = run("git", "-c", "core.quotePath=false", "diff", "-z", "--raw", "--no-renames", parent_sha, sha)
-    judged = judge_folders(parent_sha) | judge_folders(sha)
-    redirects = [{key: manifest(commit, "Cargo.toml").get(key) for key in ("patch", "replace")}
-                 for commit in (parent_sha, sha)]
+    graphs = [judge_graph(commit) for commit in (parent_sha, sha)]
+    judged = graphs[0][0] | graphs[1][0]
+    packages, inherited = graphs[0][1] | graphs[1][1], graphs[0][2] | graphs[1][2]
+    pins, locks = [], []
+    for commit in (parent_sha, sha):
+        root = manifest(commit, "Cargo.toml")
+        shared = root.get("workspace", {}).get("dependencies", {})
+        pins.append((root.get("patch"), root.get("replace"), {name: shared.get(name) for name in inherited}))
+        locks.append(locked_closure(commit, packages))
     fields, plain, special = out.split("\0"), [], []
     for meta, path in zip(fields[0::2], fields[1::2]):
         modes = meta.split()[:2]
         odd = (any(mode.lstrip(":") in ("120000", "160000") for mode in modes) or "\n" in path or "\r" in path
                or any(path == folder or path.startswith(folder + "/") for folder in judged)
-               or path == "Cargo.toml" and redirects[0] != redirects[1])
+               or path == "Cargo.toml" and pins[0] != pins[1] or path == "Cargo.lock" and locks[0] != locks[1])
         (special if odd else plain).append(path)
     return plain, special
 
@@ -865,9 +897,8 @@ def break_glass_problems(sha, tag, parent):
     The rules never waived: a patch of that release, descending from it; dyna-checks' gate passed on a release-branch
     push of exactly `sha`; a daily run of `sha` that passed every leg its changed paths select (break_glass_legs), the
     SDK published, and no full daily of `sha` that failed; and the parent's newest full daily passed, run after its
-    publication unless the parent had passed one before it was published (a break-glass release's follow-up). Which
-    kind of release the parent was is read from Actions' own records, never from its editable notes: with no record
-    of a full daily it passed before its publication, one after it is required. The surface (unchanged
+    publication (nightly-build.yml's full-daily dispatches it after every stable release), whatever kind of release
+    the parent was: a run created after the publication ran entirely after it. The surface (unchanged
     `surface.json`, an `identical` diff, the content API) is stable-mod-api's, run at the pick and again before the
     tag."""
     if not parent:
@@ -887,13 +918,10 @@ def break_glass_problems(sha, tag, parent):
                             f"run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f break_glass=true`")
     if (own := newest_full_daily(sha, runs)) and not own[1]:
         problems.append(f"the newest full daily run of {sha} failed ({own[0]})")
-    tested = any(passed and entry["created_at"] < parent.published_at
-                 for entry, passed in full_dailies(parent.sha, runs))
-    since = "" if tested else parent.published_at
-    found = newest_full_daily(parent.sha, runs, since)
+    found = newest_full_daily(parent.sha, runs, parent.published_at)
     if not found or not found[1]:
-        after = f" since its publication ({since})" if since else ""
-        problems.append(f"the newest full daily run of {parent.tag} ({parent.sha}){after} "
+        problems.append(f"the newest full daily run of {parent.tag} ({parent.sha}) since its publication "
+                        f"({parent.published_at}) "
                         + (f"failed ({found[0]})" if found else f"is missing in the last {DAILY_EVIDENCE_DAYS} days")
                         + f"; run `gh workflow run daily.yml --ref {RELEASE_BRANCH} -f dry_run=false -f commit={parent.sha}`")
     if not fork_gate_passed(sha, RELEASE_BRANCH):

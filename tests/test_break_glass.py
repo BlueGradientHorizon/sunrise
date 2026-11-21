@@ -84,36 +84,46 @@ class LegsTests(unittest.TestCase):
 
     def test_the_code_that_judges_a_release_and_its_manifest_redirects_need_the_full_daily(self):
         # The judge's own crates, what they build from (a path dependency, one through [workspace.dependencies], a
-        # crate [patch] puts in place of a registry one) and a change to [patch]: none may ride a break-glass release.
-        # A dev-dependency is not built into the judge, and a game crate outside it is an ordinary change.
-        root = ('[workspace.dependencies]\nshared = { path = "crates/shared" }\n'
-                '[patch.crates-io]\nsyn = { path = "third_party/syn" }\n')
-        files = {"Cargo.toml": root,
+        # crate [patch] puts in place of a registry one, the crates.io versions Cargo.lock gives them) and a change to
+        # [patch] or to a workspace dependency they take: none may ride a break-glass release. A dev-dependency is not
+        # built into the judge, and a game crate, a workspace dependency or a locked package outside it is an
+        # ordinary change.
+        def root(serde="1.0", other="2"):
+            return (f'[workspace.dependencies]\nshared = {{ path = "crates/shared" }}\nserde = "{serde}"\n'
+                    f'other = "{other}"\n[patch.crates-io]\nsyn = {{ path = "third_party/syn" }}\n')
+
+        def lock(serde="1.0.1", rand="0.8.0"):
+            return ('version = 4\n[[package]]\nname = "sunrise-mod-api-gen"\nversion = "0.1.0"\n'
+                    'dependencies = ["serde", "shared"]\n[[package]]\nname = "shared"\nversion = "0.1.0"\n'
+                    f'[[package]]\nname = "serde"\nversion = "{serde}"\nsource = "registry+x"\n'
+                    f'[[package]]\nname = "rand"\nversion = "{rand}"\nsource = "registry+x"\n')
+
+        files = {"Cargo.toml": root(), "Cargo.lock": lock(),
                  "crates/sunrise-mod-api-gen/Cargo.toml":
-                     '[dependencies]\nsunrise-mod-source = { path = "../sunrise-mod-source" }\n'
-                     'shared = { workspace = true }\n[dev-dependencies]\ntestonly = { path = "../testonly" }\n',
+                     '[package]\nname = "sunrise-mod-api-gen"\n[dependencies]\n'
+                     'sunrise-mod-source = { path = "../sunrise-mod-source" }\nshared = { workspace = true }\n'
+                     'serde = { workspace = true }\n[dev-dependencies]\ntestonly = { path = "../testonly" }\n',
                  "crates/sunrise-mod-source/Cargo.toml": '[target.\'cfg(unix)\'.dependencies]\ndeep = { path = "../deep" }\n',
                  "third_party/syn/Cargo.toml": "", "crates/deep/Cargo.toml": "", "crates/shared/Cargo.toml": ""}
         with tempfile.TemporaryDirectory() as folder:
             parent = write_commit(folder, files)
-            changes = {
-                "crates/sunrise-mod-source/src/lib.rs": True, "crates/deep/src/lib.rs": True,
-                "crates/shared/src/lib.rs": True, "crates/sunrise-mod-api-gen/src/main.rs": True,
-                "crates/sunrise-release-sign/src/lib.rs": True, "crates/testonly/src/lib.rs": False,
-                "crates/sunrise-world/src/lib.rs": False,
-                "Cargo.toml": False,  # a change outside [patch] and [replace]
-            }
-            for path, judged in changes.items():
-                with self.subTest(path=path):
+            for path, content, judged in (
+                    ("crates/sunrise-mod-source/src/lib.rs", "fix\n", True), ("crates/deep/src/lib.rs", "fix\n", True),
+                    ("crates/shared/src/lib.rs", "fix\n", True), ("crates/sunrise-mod-api-gen/src/main.rs", "fix\n", True),
+                    ("crates/sunrise-release-sign/src/lib.rs", "fix\n", True),
+                    ("crates/testonly/src/lib.rs", "fix\n", False), ("crates/sunrise-world/src/lib.rs", "fix\n", False),
+                    ("Cargo.toml", root() + "# a comment\n", False), ("Cargo.toml", root(other="3"), False),
+                    ("Cargo.toml", root(serde="1.1"), True),
+                    ("Cargo.lock", lock(rand="0.8.1"), False), ("Cargo.lock", lock(serde="1.0.2"), True)):
+                with self.subTest(path=path, content=content):
                     git_in(Path(folder))("checkout", "-q", parent)
-                    content = root + "# a comment\n" if path == "Cargo.toml" else "fix\n"
                     sha = write_commit(folder, {path: content})
                     with mock.patch.object(train, "ROOT", Path(folder)):
                         plain, special = train.changed_since(parent, sha)
                     self.assertEqual((special, plain), ([path], []) if judged else ([], [path]))
             # A redirect added by the candidate: the manifest and the crate it points to both need the full daily.
             git_in(Path(folder))("checkout", "-q", parent)
-            sha = write_commit(folder, {"Cargo.toml": root + 'serde = { path = "crates/evil" }\n',
+            sha = write_commit(folder, {"Cargo.toml": root() + 'serde = { path = "crates/evil" }\n',
                                         "crates/evil/src/lib.rs": "fix\n", "crates/evil/Cargo.toml": ""})
             with mock.patch.object(train, "ROOT", Path(folder)):
                 plain, special = train.changed_since(parent, sha)
@@ -246,29 +256,26 @@ class ProblemsTests(unittest.TestCase):
                     self.assertEqual(len(problems), 1, problems)
                     self.assertIn(reason, problems[0])
 
-    def test_a_parent_without_a_full_daily_before_publication_needs_one_after(self):
-        # Which kind of release the parent was comes from its daily runs, never its notes: a parent that shipped
-        # without a passed full daily (a break-glass release) needs its follow-up, run after it was published.
+    def test_the_parent_needs_a_full_daily_created_after_its_publication(self):
+        # Whatever kind of release the parent was: a green run from before its publication never stands in for the
+        # one after it, and the newest one after it decides.
         with tempfile.TemporaryDirectory() as folder:
             parent, sha = history(folder, ("docs/a.md", "file"))
             release = train.Release(PARENT_TAG, parent, "2026-11-20T00:00:00Z")
             legs = (run_record(2), legs_jobs(sha, ALWAYS))
-            red_before = (run_record(1, "2026-11-19T09:00:00Z", conclusion="failure"), full(parent, green=False))
             green_before = (run_record(1, "2026-11-19T09:00:00Z"), full(parent))
             green_after = (run_record(3, "2026-11-20T05:00:00Z"), full(parent))
-            for runs, missing in (([legs], True), ([legs, red_before], True), ([legs, green_after, red_before], False),
-                                  ([legs, green_before], False)):
+            red_after = (run_record(4, "2026-11-20T09:00:00Z", conclusion="failure"), full(parent, green=False))
+            for runs, problem in (([legs], "is missing"), ([legs, green_before], "is missing"),
+                                  ([legs, green_after, green_before], None), ([legs, red_after, green_after], "failed"),
+                                  ([legs, red_after, green_before], "failed")):
                 with self.subTest(runs=runs):
                     problems, _ = self.problems(folder, sha, release, runs=runs)
-                    if missing:
-                        self.assertIn("since its publication (2026-11-20T00:00:00Z) is missing", problems[0])
+                    if problem:
+                        self.assertIn(f"since its publication (2026-11-20T00:00:00Z) {problem}", problems[0])
                         self.assertIn(f"-f commit={parent}", problems[0])
                     else:
                         self.assertEqual(problems, [])
-            # A parent that passed before publication: its newest full daily still decides.
-            red_after = (run_record(3, "2026-11-20T05:00:00Z", conclusion="failure"), full(parent, green=False))
-            problems, _ = self.problems(folder, sha, release, runs=[legs, red_after, green_before])
-            self.assertIn("failed", problems[0])
 
     def test_an_unmapped_or_special_path_a_foreign_parent_or_no_parent_refuses(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -557,10 +564,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertLess(stable["run"].index("break-glass-notes"), stable["run"].index("reserve-stable-tag"))
         self.assertLess(publish["steps"].index(check), publish["steps"].index(stable))
 
-    def test_the_full_daily_follows_a_published_break_glass_release(self):
+    def test_the_full_daily_follows_every_published_stable_release(self):
         full_daily = workflow("nightly-build.yml")["jobs"]["full-daily"]
         self.assertIn("needs.publish.result == 'success'", full_daily["if"])
-        self.assertIn("needs.pick.outputs.break_glass == 'true'", full_daily["if"])
+        self.assertIn("inputs.kind == 'stable'", full_daily["if"])
+        self.assertNotIn("break_glass", full_daily["if"])
         run = full_daily["steps"][0]["run"]
         self.assertIn('gh workflow run daily.yml', run)
         self.assertIn('-f dry_run=false -f commit="$SHA"', run)

@@ -628,12 +628,12 @@ jobs:
           echo "Would publish ${{ needs.pick.outputs.tag }} at ${{ needs.pick.outputs.sha }} (${{ needs.pick.outputs.source }})"
           ls -l dist
 
-  # Every break-glass release gets its full daily after publishing: a real run on the release branch, for exactly its
-  # commit, whose reds file `Daily (release/26.3): …` issues. Its result is the next break-glass release's parent
-  # check (release_train.newest_daily_green).
+  # Every stable release gets a full daily after publishing: a real run on the release branch, for exactly its commit,
+  # whose reds file `Daily (release/26.3): …` issues. A break-glass patch of it needs that run, created after the
+  # publication, to have passed (release_train.break_glass_problems).
   full-daily:
     needs: [pick, publish]
-    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.pick.outputs.break_glass == 'true' && needs.pick.outputs.publish == 'true' }}
+    if: ${{ !cancelled() && needs.publish.result == 'success' && inputs.kind == 'stable' && needs.pick.outputs.publish == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
