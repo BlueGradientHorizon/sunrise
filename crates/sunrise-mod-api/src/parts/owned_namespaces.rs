@@ -468,19 +468,6 @@ mod tests {
                 "runes_extra:infusing",
             );
             let book = host.recipe_book_type("runes:book").unwrap();
-            let screen = crate::Screen {
-                width: 176.0,
-                height: 166.0,
-                slots: vec![
-                    Some(crate::ScreenSlot {
-                        position: [8.0, 8.0],
-                        ..Default::default()
-                    });
-                    3
-                ],
-                recipe_book: Some(book.clone()),
-                ..Default::default()
-            };
             host.menu_recipe_book(
                 "runes:altar",
                 &book,
@@ -490,7 +477,6 @@ mod tests {
                     fuel: 1,
                     result: 2,
                 },
-                screen,
             )
             .unwrap();
             assert!(host.refused.is_empty(), "{:?}", host.refused);

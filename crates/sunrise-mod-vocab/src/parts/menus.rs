@@ -83,7 +83,7 @@ pub(crate) fn index_menu_screens(
             if let Some(part) = parts.iter().find(|p| authority.owns(p.mod_id, book.owner)) {
                 indexed.insert(menu.clone(), MenuScreenIndex::Fixed(part.clone()));
             }
-        } else if vanilla_menu(menu) {
+        } else if menu.starts_with("minecraft:") {
             let mut by_namespace = HashMap::new();
             for part in parts {
                 for namespace in authority.namespaces_for(part.mod_id) {

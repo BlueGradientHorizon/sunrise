@@ -1107,6 +1107,8 @@ mod native_components;
 mod native_config_files;
 #[path = "game/modding/native_configs.rs"]
 mod native_configs;
+#[path = "game/modding/native_connection_groups.rs"]
+mod native_connection_groups;
 #[path = "game/modding/native_console.rs"]
 mod native_console;
 #[cfg(test)]

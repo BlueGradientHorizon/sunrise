@@ -141,30 +141,79 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
 
 #[test]
 fn served_content_menu_screen_dispatches_to_serving_host_only() {
-    struct HostMod;
+    use std::sync::{Arc, Mutex};
+
+    struct HostPart(Arc<Mutex<Option<&'static str>>>);
+    #[mod_api::sunrise_part]
+    impl crate::MenuPart for HostPart {
+        fn menu_button_valid(
+            &self,
+            _: &dyn crate::Host,
+            _: &mut crate::MenuButtonValidEvent<'_>,
+        ) -> crate::Flow {
+            *self.0.lock().unwrap() = Some("horizon_java");
+            crate::Flow::Continue
+        }
+    }
+    struct ThirdPart(Arc<Mutex<Option<&'static str>>>);
+    #[mod_api::sunrise_part]
+    impl crate::MenuPart for ThirdPart {
+        fn menu_button_valid(
+            &self,
+            _: &dyn crate::Host,
+            _: &mut crate::MenuButtonValidEvent<'_>,
+        ) -> crate::Flow {
+            *self.0.lock().unwrap() = Some("third");
+            crate::Flow::Continue
+        }
+    }
+    struct HostMod {
+        seen: Arc<Mutex<Option<&'static str>>>,
+    }
     #[mod_api::__subscriptions]
     impl crate::Hooks for HostMod {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-            r.menu_part("runes:altar", Layout);
-            r.menu_part("runes_extra:forge", Layout);
-            r.menu_part("minecraft:hopper", Layout);
+            r.menu_part("runes:altar", HostPart(self.seen.clone()));
+            r.menu_part("runes_extra:forge", HostPart(self.seen.clone()));
+            r.menu_part("minecraft:hopper", HostPart(self.seen.clone()));
+            let f = || -> Arc<dyn crate::MenuScreenFactory> {
+                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
+            };
+            r.register_menu_screen("runes:altar", f()).unwrap();
+            r.register_menu_screen("runes_extra:forge", f()).unwrap();
+            r.register_menu_screen("minecraft:hopper", f()).unwrap();
         }
     }
-    struct ThirdMod;
+    struct ThirdMod {
+        seen: Arc<Mutex<Option<&'static str>>>,
+    }
     #[mod_api::__subscriptions]
     impl crate::Hooks for ThirdMod {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-            r.menu_part("plain:table", Overlay);
-            r.menu_part("minecraft:hopper", Overlay);
+            r.menu_part("plain:table", ThirdPart(self.seen.clone()));
+            r.menu_part("minecraft:hopper", ThirdPart(self.seen.clone()));
+            let f = || -> Arc<dyn crate::MenuScreenFactory> {
+                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
+            };
+            r.register_menu_screen("minecraft:hopper", f()).unwrap();
         }
     }
-    struct ThirdHijack;
+    struct ThirdHijack {
+        seen: Arc<Mutex<Option<&'static str>>>,
+    }
     #[mod_api::__subscriptions]
     impl crate::Hooks for ThirdHijack {
         fn register(&self, r: &mut dyn Registrar, _: &crate::RegistrationContext) {
-            r.menu_part("runes:altar", Overlay);
+            r.menu_part("runes:altar", ThirdPart(self.seen.clone()));
+            let f = || -> Arc<dyn crate::MenuScreenFactory> {
+                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None)
+            };
+            assert!(r.register_menu_screen("runes:altar", f()).is_err());
         }
     }
+
+    let host = crate::testing::FakeHost::new();
+    let seen: Arc<Mutex<Option<&'static str>>> = Arc::new(Mutex::new(None));
 
     let packages = || {
         vec![
@@ -204,54 +253,72 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
         ]
     };
 
+    let mods: crate::Mods = vec![
+        crate::ModEntry::new("horizon_java", Box::new(HostMod { seen: seen.clone() })),
+        crate::ModEntry::new("third", Box::new(ThirdMod { seen: seen.clone() })),
+    ]
+    .into();
     crate::load_state::with_test_package_inventory(packages(), || {
-        crate::parts::tests::install_parts_fixture(&[
-            crate::ModEntry::new("horizon_java", Box::new(HostMod)),
-            crate::ModEntry::new("third", Box::new(ThirdMod)),
-        ])
-        .unwrap();
-        assert_eq!(menu_screen_owner("runes:altar", None), Some("horizon_java"));
-        assert_eq!(
-            menu_screen_owner("runes_extra:forge", None),
-            Some("horizon_java")
-        );
-        assert_eq!(
-            menu_screen_owner("minecraft:hopper", Some("runes:altar")),
-            Some("horizon_java")
-        );
-        assert_eq!(
-            menu_screen_owner("minecraft:hopper", Some("minecraft:hopper")),
-            None
-        );
-        assert_eq!(menu_screen_owner("plain:table", None), None);
+        crate::testing::with_mods(mods.clone(), || {
+            let menu_opener_owner = |menu: &str, block: Option<&str>| -> Option<&'static str> {
+                *seen.lock().unwrap() = None;
+                let mut accepted = false;
+                crate::dispatch_menu_button_valid(&host, menu, block, 1, &mut accepted);
+                *seen.lock().unwrap()
+            };
+            crate::parts::tests::install_parts_fixture(&mods).unwrap();
+            assert_eq!(menu_opener_owner("runes:altar", None), Some("horizon_java"));
+            assert_eq!(
+                menu_opener_owner("runes_extra:forge", None),
+                Some("horizon_java")
+            );
+            assert_eq!(
+                menu_opener_owner("minecraft:hopper", Some("runes:altar")),
+                Some("horizon_java")
+            );
+            assert_eq!(
+                menu_opener_owner("minecraft:hopper", Some("minecraft:hopper")),
+                None
+            );
+            assert_eq!(menu_opener_owner("plain:table", None), None);
+            // Per-frame opener dispatch reads the pre-indexed table without querying the package
+            // inventory again: clearing the test package inventory leaves the resolved owners
+            // intact.
+            crate::load_state::with_test_package_inventory(Vec::new(), || {
+                assert_eq!(menu_opener_owner("runes:altar", None), Some("horizon_java"));
+                assert_eq!(
+                    menu_opener_owner("runes_extra:forge", None),
+                    Some("horizon_java")
+                );
+                assert_eq!(
+                    menu_opener_owner("minecraft:hopper", Some("runes:altar")),
+                    Some("horizon_java")
+                );
+                assert_eq!(
+                    menu_opener_owner("minecraft:hopper", Some("runes_extra:forge")),
+                    Some("horizon_java")
+                );
+                assert_eq!(
+                    menu_opener_owner("minecraft:hopper", Some("minecraft:hopper")),
+                    None
+                );
+                assert_eq!(menu_opener_owner("plain:table", None), None);
+            });
+        });
     });
-    // Per-frame screen dispatch reads the pre-indexed table without querying the package
-    // inventory again: clearing the test package inventory leaves the resolved owners intact.
-    assert_eq!(menu_screen_owner("runes:altar", None), Some("horizon_java"));
-    assert_eq!(
-        menu_screen_owner("runes_extra:forge", None),
-        Some("horizon_java")
-    );
-    assert_eq!(
-        menu_screen_owner("minecraft:hopper", Some("runes:altar")),
-        Some("horizon_java")
-    );
-    assert_eq!(
-        menu_screen_owner("minecraft:hopper", Some("runes_extra:forge")),
-        Some("horizon_java")
-    );
-    assert_eq!(
-        menu_screen_owner("minecraft:hopper", Some("minecraft:hopper")),
-        None
-    );
-    assert_eq!(menu_screen_owner("plain:table", None), None);
 
+    let hijack_mods: crate::Mods = vec![crate::ModEntry::new(
+        "third",
+        Box::new(ThirdHijack { seen: seen.clone() }),
+    )]
+    .into();
     crate::load_state::with_test_package_inventory(packages(), || {
-        crate::parts::tests::install_parts_fixture(&[crate::ModEntry::new(
-            "third",
-            Box::new(ThirdHijack),
-        )])
-        .unwrap();
-        assert_eq!(menu_screen_owner("runes:altar", None), None);
+        crate::testing::with_mods(hijack_mods.clone(), || {
+            let errors = crate::parts::tests::install_parts_fixture(&hijack_mods).unwrap_err();
+            assert!(
+                errors.iter().any(|e| e.contains("runes:altar")),
+                "{errors:?}"
+            );
+        });
     });
 }

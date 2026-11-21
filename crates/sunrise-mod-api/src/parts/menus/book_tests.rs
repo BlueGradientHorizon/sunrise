@@ -100,47 +100,23 @@ fn menu_recipe_book_accepts_served_content_namespace_only_for_its_host() {
         let mut host = PartRegistrar::new("horizon_java");
         let book = host.recipe_book_type("runes:book").unwrap();
         assert!(
-            host.menu_recipe_book(
-                "runes:altar",
-                &book,
-                "runes:crafting",
-                roles(),
-                screen(&book)
-            )
-            .is_ok()
+            host.menu_recipe_book("runes:altar", &book, "runes:crafting", roles())
+                .is_ok()
         );
         assert!(
-            host.menu_recipe_book(
-                "plain:table",
-                &book,
-                "runes:crafting",
-                roles(),
-                screen(&book)
-            )
-            .is_err()
+            host.menu_recipe_book("plain:table", &book, "runes:crafting", roles())
+                .is_err()
         );
         assert!(
-            host.menu_recipe_book(
-                "minecraft:crafting",
-                &book,
-                "runes:crafting",
-                roles(),
-                screen(&book)
-            )
-            .is_err()
+            host.menu_recipe_book("minecraft:crafting", &book, "runes:crafting", roles())
+                .is_err()
         );
 
         let mut third = PartRegistrar::new("third");
         let third_book = third.recipe_book_type("third:book").unwrap();
         assert!(
             third
-                .menu_recipe_book(
-                    "runes:altar",
-                    &third_book,
-                    "runes:crafting",
-                    roles(),
-                    screen(&third_book)
-                )
+                .menu_recipe_book("runes:altar", &third_book, "runes:crafting", roles())
                 .is_err()
         );
     });

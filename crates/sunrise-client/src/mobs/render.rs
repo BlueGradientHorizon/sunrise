@@ -4530,7 +4530,9 @@ mod translate_to_hand_tests {
             blinks: Default::default(),
             pois: Default::default(),
             species_placements: Default::default(),
+            vanilla_spawn_placements: Default::default(),
             mod_spawns: Default::default(),
+            frame_models: Default::default(),
             resolved: Default::default(),
         };
         let (alpha, camera) = (0.5, glam::DVec3::new(-2.0, 1.0, 3.0));
