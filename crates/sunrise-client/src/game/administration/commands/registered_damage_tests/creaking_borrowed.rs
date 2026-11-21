@@ -96,7 +96,7 @@ impl Hooks for Watch {
                     .unwrap()
                     .teleport_to(host, FISH_AFTER_HURT, None)
             );
-            let mut commands = host.commands();
+            let commands = host.commands();
             assert!(commands.run_command(
                 "data merge entity 00000056-0000-0000-0000-000000000002 {PuffState:1}"
             ));
@@ -287,7 +287,48 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                     .count();
                 (flashes, sways)
             };
+            let parity_output = (case == "expiry")
+                .then(|| std::env::var_os("SUNRISE_CREAKING_BORROWED_OUTPUT"))
+                .flatten();
+            let snapshot = |game: &Game<'_>| {
+                let (flashes, _) = live_reaction(game);
+                let action = TEST_POSTED_EVENT_ORDER.with(|order| {
+                    order
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .filter_map(|(event, source, flashes, sounds)| {
+                            (*event == "minecraft:entity_action" && *source == Some(Who::Mob(mob)))
+                                .then_some([*flashes, *sounds])
+                        })
+                        .collect::<Vec<_>>()
+                });
+                let creaking = game.mob_object(mob).unwrap();
+                let Some(BlockEntity::CreakingHeart(heart)) =
+                    game.world.block_entities.get(&(8, 64, 8))
+                else {
+                    panic!("missing heart");
+                };
+                let sounds = game
+                    .audio
+                    .capture
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|s| {
+                        (s.event == "minecraft:entity.creaking.sway").then_some(&s.event)
+                    })
+                    .collect::<Vec<_>>();
+                serde_json::json!({
+                    "action": action, "flashes": flashes, "sounds": sounds, "emitter": heart.emitter,
+                    "animation": creaking.extra.ints[0], "remembered": game.last_hurt_by_player.contains_key(&mob),
+                    "clock": creaking.ai.last_hurt_by_player,
+                })
+            };
+            let start = parity_output.as_ref().map(|_| snapshot(game));
             game.tick_creature_entities().unwrap();
+            let after_hurt = parity_output.as_ref().map(|_| snapshot(game));
             let reacted = usize::from(!matches!(case.as_str(), "offline" | "mismatched_protector"));
             let swayed = if case == "protector" { 0 } else { reacted };
             let reaction = live_reaction(game);
@@ -422,6 +463,10 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             game.tick_creature_entities().unwrap();
             assert_eq!(live_reaction(game), (reacted, swayed));
             assert_eq!(heard.lock().unwrap().reactions.len(), reacted);
+            if let Some(path) = parity_output {
+                let trace = [start.unwrap(), after_hurt.unwrap(), snapshot(game)];
+                std::fs::write(path, serde_json::to_vec(&trace).unwrap()).unwrap();
+            }
             TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = None);
         })
     });

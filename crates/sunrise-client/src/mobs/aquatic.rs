@@ -2,7 +2,7 @@
 //! tropical fish and pufferfish (`AbstractFish`, puffing), and dolphins
 //! (breathing, smooth swimming).
 use super::{
-    Damage, Mob, MobEvent, MobWorld, Species, Who,
+    Mob, MobEvent, MobWorld, Species,
     anim::{Poses, State},
     control::MoveKind,
     goals::{
