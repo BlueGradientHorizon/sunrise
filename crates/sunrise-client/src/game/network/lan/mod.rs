@@ -1906,7 +1906,7 @@ impl Game<'_> {
             let place = super::lan_idle::Place {
                 position: [d.position.x, d.position.y, d.position.z],
                 rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
+                on_ground: d.ground.on_ground,
                 velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
             };
             let bare = idle
@@ -1931,7 +1931,7 @@ impl Game<'_> {
             e.precise = false;
             e.needs_sync = d.needs_sync;
             e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
+            e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self.tracked_entity_glowing(d.id) {
                 e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
@@ -1942,7 +1942,7 @@ impl Game<'_> {
             let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
             e.position = [o.position.x, o.position.y, o.position.z];
             e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
+            e.on_ground = o.ground.on_ground;
             e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
             // ExperienceOrb.DATA_VALUE.
             e.meta.push((8, serializer::INT, Value::Int(o.value)));

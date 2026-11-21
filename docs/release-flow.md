@@ -2,9 +2,10 @@
 
 How a change gets from a pull request to players: the checks a pull request passes, how it merges, and the
 automatic releases that follow. Releases are automatic and frequent so the latest Sunrise is always playable.
-Since 2026-10-28 Sunrise ships only the **Nightly** (Ludovic's decision; the Team proposed it): the batch train builds
-a Nightly instead of a `vX.Y.Z` release, it is published once its smoke test passed and no `release-blocker` is open,
-and every launcher and `sunrise-server update` install it ([Nightly only](#nightly-only)).
+Since 2026-10-28 Sunrise ships the **Nightly** instead of `vX.Y.Z` releases (Ludovic's decision; the Team proposed
+it): the batch train builds a Nightly, it is published once its smoke test passed and no `release-blocker` is open,
+and launchers and Nightly servers update to it ([Nightly only](#nightly-only)). Stable releases (`26.3-<semver>`) are
+cut from a Nightly, and a server installed on one updates within its line ([Release branches](#release-branches)).
 
 ## Pull request checks
 
@@ -223,9 +224,10 @@ commits) since the commit the published Nightly was built on:
 
 ### Nightly only
 
-Ludovic decided on 2026-10-28 that Sunrise ships only the Nightly. No `vX.Y.Z` game release is made any more:
-the last one stays GitHub's *latest*, so launchers and servers from before the switch (which don't read Nightlies)
-keep a working build until they update themselves. `.github/release-line.txt` still numbers the launcher's releases
+Ludovic decided on 2026-10-28 that Sunrise ships the Nightly instead of `vX.Y.Z` game releases; stable releases
+(`26.3-<semver>`, [Release branches](#release-branches)) have joined it since. No `vX.Y.Z` game release is made any
+more: the last one stays GitHub's *latest*, so launchers and servers from before the switch (which don't read
+Nightlies) keep a working build until they update themselves. `.github/release-line.txt` still numbers the launcher's releases
 (`launcher@X.Y.Z`).
 
 - **Launchers** (#3342) install the current `nightly` pre-release as their update, as the version
@@ -234,9 +236,10 @@ keep a working build until they update themselves. `.github/release-line.txt` st
   instance stays. Worlds are in the game's folder, never in a version's, so nothing touches them. The "Nightly
   builds" setting is gone. The last week's Nightlies (`nightly-<date>`) and the old releases stay on the Versions
   page.
-- **Servers** (#3331): `sunrise-server update`, `install.sh` and `install.ps1` follow the Nightly the same way. A
-  server installed on a stable release (`install.sh --version 26.3-0.1.0`) follows that release's line instead
-  ([server.md](server.md), section 7).
+- **Servers**: `install.sh` and `install.ps1` install the current Nightly unless given a release's tag, and
+  `sunrise-server update` then keeps a Nightly server on the Nightly. A server installed on a stable release
+  (`install.sh --version 26.3-0.1.0`, or `install.ps1 -Version 26.3-0.1.0` on Windows) is updated within that
+  release's line instead ([server.md](server.md), section 7).
 - **Kira** posts each Nightly in #releases; the bug template asks for the version the game shows.
 - **Everyone gets the reviewers' picks.** A Nightly is main plus the pull requests the trusted reviewers picked
   ([below](#trusted-reviewers-pick-the-nightlys-pull-requests)), so a pick reaches every player with the next
@@ -358,14 +361,35 @@ with every key the environment holds, `RELEASE_SIGNING_KEY` and `RELEASE_SIGNING
 turns:
 
 1. `tools/ci/new_release_key.sh <the empty name>` makes the next key; add its public key to release-keys.txt
-   beside the old one. From then on every release is signed with both keys (one line each).
+   beside the old one. From then on every release is signed with both keys (one line each). Then publish a new
+   verifier and pin it (below), so first installs trust the new key too.
 2. Wait until launchers and servers built with both keys are in use (a few weeks: launchers update themselves).
-3. Delete the old key's secret (`gh secret delete <its name> --env release`) and its line in release-keys.txt.
-   The next rotation makes its new key under the name just freed.
+3. Delete the old key's secret (`gh secret delete <its name> --env release`) and its line in release-keys.txt,
+   then publish and pin a new verifier: the pinned one still has the old key built in, and editing
+   release-keys.txt doesn't change it. The next rotation makes its new key under the name just freed.
 
-If the old key may have leaked, skip the wait: remove its public key from release-keys.txt at once and delete
-its secret. Launchers built before the new key cannot check releases signed only with it: they refuse to install
+If the old key may have leaked, skip the wait: remove its public key from release-keys.txt at once, delete its
+secret, and publish and pin a verifier built without it. Launchers built before the new key cannot check releases signed only with it: they refuse to install
 them with a clear message, and players download the launcher again from the website once.
+
+### The install scripts' verifier
+
+The server install scripts (`packaging/server/install.sh` and `install.ps1`) check a release with
+`sunrise-verify`, the same `verify` the launcher runs, built as one binary per platform with the keys from
+`release-keys.txt` built in (static on Linux and Windows; the macOS build links only the system's libraries). It is published as its own release, `verifier@X.Y.Z` (a prerelease, never "latest"),
+by `.github/workflows/verifier.yml`, with SHA256SUMS and a build-provenance attestation. The binaries are not
+signed: the trust anchor is the SHA-256 of each one, pinned in a marked block in both scripts on main.
+
+A new verifier is needed only when the verify code or `release-keys.txt` changes:
+
+1. Dispatch it from main: `gh workflow run verifier.yml -f version=X.Y.Z -f dry_run=false`. Any other run is a
+   dry run that builds and checks everything and publishes nothing. The workflow holds no secret and uses no
+   environment.
+2. Pin it in a pull request: `python3 tools/ci/pin_verifier.py verifier@X.Y.Z --commit <the run's head SHA>`.
+   Before it writes anything, `gh attestation verify` must accept SHA256SUMS and every binary as built by
+   `verifier.yml` of sunrise-org/sunrise on `refs/heads/main` at that commit; then it rewrites only the pin block.
+   A pin written another way is checked on a clean checkout of the pull request's head: the same command must
+   exit 0, and `git diff --exit-code HEAD -- packaging/server/` must then report no change.
 
 ### Starting one by hand
 

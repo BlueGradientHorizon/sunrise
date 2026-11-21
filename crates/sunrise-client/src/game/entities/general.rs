@@ -1297,8 +1297,8 @@ impl Entity for GeneralRow {
     fn get_piston_push_reaction(&self) -> sunrise_world::level::PushReaction {
         general_type_catalog().piston_push_reaction(self.type_slot)
     }
-    fn native_type(&self) -> Cow<'static, str> {
-        Cow::Owned(general_type_catalog().key(self.type_slot).to_owned())
+    fn native_type(&self) -> Cow<'_, str> {
+        Cow::Borrowed(general_type_catalog().key(self.type_slot))
     }
     fn save_nbt(
         game: &mut Game<'_>,
