@@ -444,13 +444,9 @@ fn a_command_teleport_into_the_nether_is_heard_once_on_every_server() {
 fn player_tick_count_survives_teleports_and_deferred_arrivals() {
     with_server(ExecutionRole::DedicatedServer, |game| {
         let entity = game.entity(CONN).unwrap();
-        game.lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .update_guest(CONN, |guest| {
-                guest.motion.as_mut().unwrap().health.tick_count = 17;
-            });
+        game.lan.as_mut().unwrap().hub.update_guest(CONN, |guest| {
+            guest.motion.as_mut().unwrap().health.tick_count = 17;
+        });
 
         run_as_player(
             game,
