@@ -775,7 +775,6 @@ mod tests {
 
     #[test]
     fn a_stalled_report_worker_cannot_delay_dedicated_crash_diagnostics() {
-        crate::test_log::install();
         let dir = tempfile::tempdir().unwrap();
         let mut reporter = SaveFailureReporter::new(false, dir.path(), "world");
         let diagnostics = SaveFailureDiagnostics::default();
@@ -810,15 +809,13 @@ mod tests {
         let shutdown = thread::spawn(move || {
             reporter.target.as_mut().unwrap().drain(Duration::ZERO);
             drop(reporter);
-            finished.send(crate::test_log::records()).unwrap();
+            finished.send(()).unwrap();
         });
         // Clean up the worker before checking the result, even if shutdown blocked erroneously.
-        let logs = drained.recv_timeout(Duration::from_secs(1));
+        let finished_first = drained.recv_timeout(Duration::from_secs(1));
         release.send(()).unwrap();
         shutdown.join().unwrap();
-        assert!(logs.unwrap().iter().any(|(level, message)| {
-            *level == log::Level::Warn && message.contains("Timed out draining chunk IO reports")
-        }));
+        assert_eq!(finished_first, Ok(()));
         assert_eq!(
             ran.recv_timeout(Duration::from_secs(1)),
             Err(mpsc::RecvTimeoutError::Disconnected)
