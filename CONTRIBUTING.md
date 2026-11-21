@@ -18,6 +18,15 @@ events for mods, native mods, content mods (`.smod`), mixins, `cargo sunrise-mod
 builds and the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mods.md)). A change to the mod
 API follows its clean-break rules ([AGENTS.md](AGENTS.md#mod-api-the-clean-break)).
 
+When adding a native hook, keep its declaration under `crates/sunrise-mod-vocab/src/hooks/` and wire the engine
+function named by its target. Vocabulary generation does not read engine bodies, so it cannot tell whether
+those targets fire the hooks. `verify-static` runs `bash tools/ci/check_hook_wiring.sh` separately, without
+changing any sources.
+It checks that a game hook calls its generated adapter or, for a direct target, that the target reaches its
+dispatcher. For native render replacements, it checks the call into the adapter instead: the replacement slot
+itself is intentionally empty. `cargo run -p xtask -- mod-api` fills a new game hook's placeholder during authoring;
+a placeholder left in the checkout fails the wiring check.
+
 ## Build it
 
 - **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer, and on Linux the ALSA and udev headers
