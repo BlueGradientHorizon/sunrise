@@ -169,24 +169,22 @@ fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
 }
 
 #[test]
-fn rebuilds_use_the_signed_sources_canonical_version_without_changing_the_label() {
+fn a_short_version_label_cannot_list_native_builds() {
     let release = Release::new("source.smod");
     release.0.edit(ID, |text| {
         text.replace("version='1.0.0'", "version='1.0'")
             .replace("release_probe-1.0.0.smod", "release_probe-1.0.smod")
     });
     release.0.make_base();
-    release.use_descriptor("shorthand");
-    release.check().unwrap();
-    let index = release.build();
-    let row = &index.project(ID).unwrap().versions[0];
-    assert_eq!(row.version, "1.0");
-    assert_eq!(row.file.name, "release_probe-1.0.smod");
-    assert_eq!(row.native_binaries.len(), 2);
+    assert_eq!(
+        release.build().project(ID).unwrap().versions[0].version,
+        "1.0"
+    );
+    release.use_descriptor("valid");
+    let error = release.check().unwrap_err();
     assert!(
-        row.native_binaries
-            .iter()
-            .all(|binary| binary.file.name.starts_with("release_probe-1.0+"))
+        error.contains("publish the version under \"1.0.0\""),
+        "{error}"
     );
 }
 

@@ -290,6 +290,12 @@ pub(super) fn verify(
     src: &Sources<'_>,
     revoked: &[Revoked],
 ) -> Result<Vec<NativeBinary>, String> {
+    let canonical = source.manifest.version.to_string();
+    if version.version != canonical {
+        return Err(format!(
+            "builds require a canonical version label: publish the version under {canonical:?}"
+        ));
+    }
     let submissions = submissions(entry, version)?;
     let made_for = release.ok_or("builds require --releases with the source's stable release")?;
     let checks = src
@@ -339,7 +345,7 @@ pub(super) fn verify(
         }
         let identity = format!(
             "{} {} {} {} unwind",
-            descriptor.build, descriptor.id, source.manifest.version, descriptor.rust
+            descriptor.build, descriptor.id, canonical, descriptor.rust
         );
         for archive in descriptor.archives {
             if revoked.iter().any(|r| r.covers(&entry.id, &archive.sha256)) {
