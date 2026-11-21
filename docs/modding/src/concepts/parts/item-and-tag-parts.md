@@ -134,17 +134,23 @@ player use or block with the item. For ordinary behavior on both sides, use
 `ItemPart::use_item` and `ItemPart::release_using` instead. To track this local interception,
 use the callbacks, not `local_item_use`, `living_used_item_hand` or `living_is_blocking`.
 
-Every callback sees the original `&ItemStack` and its hotbar slot (`u32`, 0–8), even if the
-current stack has changed. `stack.item()` gives the `ItemKey` and `stack.count()` gives the
+Each callback sees a typed `&ItemStack` and its hotbar slot (`u32`, 0–8). While the same item
+kind remains in that slot, each tick and release rebinds the stack to the live slot contents
+(matching vanilla `LivingEntity.updatingUsingItem` and `LivingEntity.releaseUsingItem`), so
+`release_using` and `on_stop_using` observe live count and component updates. If the slot is
+emptied or replaced with a different item kind, `on_stop_using` receives the last valid stack
+of the captured item kind. `stack.item()` gives the `ItemKey` and `stack.count()` gives the
 count. Read `minecraft:custom_name` or `minecraft:custom_data` as typed `Tag` entries in the
 component patch, as above, or decode a component with `stack.get(&descriptor)`.
 
 Both optional end methods also receive the elapsed held ticks. The game clears the capture
-before calling either. An input release while the same item kind is still selected in the
-original slot and the player can still use it calls `release_using` followed by
-`on_stop_using`. A reset, such as a slot or item kind change, focus loss, death or disconnect,
-only calls `on_stop_using`. Put actions that require a release in `release_using` and cleanup
-that should also run on resets in `on_stop_using`. A disabled owner receives no callbacks.
+before calling either. Releasing the use input—including when a keybind opens a screen and
+releases key mappings (matching `Minecraft.handleKeybinds`) or when focus is lost and the next
+tick observes the use key up—while the same item kind is still selected in the active slot and
+the player can still use it calls `release_using` followed by `on_stop_using`. A reset, such as
+a slot or item kind change, death or disconnect, only calls `on_stop_using`. Put actions that
+require a release in `release_using` and cleanup that should also run on resets in
+`on_stop_using`. A disabled owner receives no callbacks.
 
 ## Item use on a block
 

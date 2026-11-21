@@ -15,8 +15,9 @@ pub(super) struct ActiveClientItemUse {
     mod_id: &'static str,
     mod_index: usize,
     behavior: Arc<dyn ClientItemUseBehavior>,
-    original: ItemStack,
-    /// Only for comparing the current stack's kind; the original snapshot never changes.
+    /// Last known live stack of `item_id` in `slot`, rebound on tick and release like
+    /// `LivingEntity.useItem`.
+    stack: ItemStack,
     item_id: Arc<str>,
     slot: usize,
     ticks: u32,
@@ -78,6 +79,15 @@ impl Game<'_> {
                 .is_some_and(|stack| stack.item == active.item_id && stack.count != 0)
     }
 
+    /// Read the live hotbar stack at `active.slot` when it still holds the same item kind.
+    fn live_client_item_use_stack(&self, active: &ActiveClientItemUse) -> Option<ItemStack> {
+        let stack = self.stack_in(active.slot)?;
+        if stack.item != active.item_id || stack.count == 0 {
+            return None;
+        }
+        stack.try_into_api().ok()
+    }
+
     /// Give the registered main-hand behavior this click instead of using a target or item.
     pub(in crate::game) fn start_client_item_use(&mut self) -> bool {
         let slot = self.selected;
@@ -93,35 +103,46 @@ impl Game<'_> {
         {
             return false;
         }
-        let Ok(original) = stack.try_into_api() else {
+        let Ok(initial) = stack.try_into_api() else {
             return false;
         };
+        let item_id = Arc::clone(&stack.item);
         self.client_item_use = Some(ActiveClientItemUse {
             mod_id,
             mod_index,
             behavior: Arc::clone(&behavior),
-            original: original.clone(),
-            item_id: Arc::clone(&stack.item),
+            stack: initial.clone(),
+            item_id,
             slot,
             ticks: 0,
         });
         self.call_client_item_use(mod_id, "use_item", |host| {
-            behavior.use_item(host, &original, slot as u32);
+            behavior.use_item(host, &initial, slot as u32);
         });
         true
     }
 
-    /// Reset an invalid capture or count a held tick. Only input handling releases it.
+    /// Reset an invalid capture or rebind the live stack and count a held tick. Only input
+    /// handling releases it.
     pub(in crate::game) fn tick_client_item_use(&mut self) {
         let Some(active) = self.client_item_use.as_ref() else {
             return;
         };
-        if !mod_index_on(active.mod_index) || !self.client_item_use_valid(active) {
+        let valid = mod_index_on(active.mod_index) && self.client_item_use_valid(active);
+        let live = if valid {
+            self.live_client_item_use_stack(active)
+        } else {
+            None
+        };
+        if !valid {
             self.reset_client_item_use();
-        } else if self.right
-            && let Some(active) = self.client_item_use.as_mut()
-        {
-            active.ticks = active.ticks.saturating_add(1);
+        } else if let Some(active) = self.client_item_use.as_mut() {
+            if let Some(live) = live {
+                active.stack = live;
+            }
+            if self.right {
+                active.ticks = active.ticks.saturating_add(1);
+            }
         }
     }
 
@@ -132,9 +153,12 @@ impl Game<'_> {
     /// Retire the capture before entering mod code. Only a valid input release calls
     /// `release_using`; every other end is a reset. Return whether a capture owned the input.
     pub(in crate::game) fn end_client_item_use(&mut self, release_requested: bool) -> bool {
-        let Some(active) = self.client_item_use.take() else {
+        let Some(mut active) = self.client_item_use.take() else {
             return false;
         };
+        if let Some(live) = self.live_client_item_use_stack(&active) {
+            active.stack = live;
+        }
         if release_requested
             && mod_index_on(active.mod_index)
             && self.client_item_use_valid(&active)
@@ -142,7 +166,7 @@ impl Game<'_> {
             self.call_client_item_use(active.mod_id, "release_using", |host| {
                 active.behavior.release_using(
                     host,
-                    &active.original,
+                    &active.stack,
                     active.slot as u32,
                     active.ticks,
                 );
@@ -152,7 +176,7 @@ impl Game<'_> {
             self.call_client_item_use(active.mod_id, "on_stop_using", |host| {
                 active.behavior.on_stop_using(
                     host,
-                    &active.original,
+                    &active.stack,
                     active.slot as u32,
                     active.ticks,
                 );

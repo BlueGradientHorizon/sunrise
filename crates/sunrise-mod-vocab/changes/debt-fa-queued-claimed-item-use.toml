@@ -1,0 +1,12 @@
+ids = [
+    "trait:ClientItemUseBehavior",
+    "method:ClientItemUseBehavior::use_item",
+    "method:ClientItemUseBehavior::release_using",
+    "method:ClientItemUseBehavior::on_stop_using",
+]
+why = "Match vanilla 26.3 LivingEntity.updatingUsingItem, LivingEntity.releaseUsingItem and Minecraft.handleKeybinds (after Gui.setScreen's KeyMapping.releaseAll): rebind the active claimed stack to the live hotbar stack whenever the same item kind stays in the active slot (preserving the last valid stack on empty or replacement so on_stop_using never receives a different item kind), and let screen-open key releases and focus loss flow through release_using before on_stop_using instead of hard-resetting."
+migrate = '''
+Update ClientItemUseBehavior implementations that assumed release_using and on_stop_using always receive the frozen stack from use_item: they now receive the live stack from the active hotbar slot while the same item kind remains there (including count and component updates), or the last valid stack of that kind if the slot was emptied or replaced.
+
+Update handlers that relied on opening a screen or losing window focus to skip release_using: opening a screen via keybind (inventory, chat, advancements, social) or losing window focus now releases the use key through the normal release path, calling release_using before on_stop_using while the same item kind is still selected and usable. Slot changes, item-kind replacement, death, spectator mode, respawn and disconnect remain resets that call on_stop_using alone. See also debt-67w3-claimed-item-owner.toml.
+'''

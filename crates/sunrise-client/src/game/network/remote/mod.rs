@@ -9471,10 +9471,7 @@ impl Game<'_> {
         // `KeyMapping.releaseAll` clears key.use; without this the button still
         // reads held and a use would start again on the first tick back.
         self.right = false;
-        // Clearing the mapping for a screen is a capture reset, not a use-key release.
-        if !self.end_client_item_use(false) {
-            sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
-        }
+        sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
     }
 
     /// `MultiPlayerGameMode.releaseUsingItem`: sends `RELEASE_USE_ITEM` and

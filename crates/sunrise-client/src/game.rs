@@ -11959,7 +11959,6 @@ impl Game<'_> {
                             self.sync_toggle(1);
                             self.left = false;
                             self.right = false;
-                            self.reset_client_item_use();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;

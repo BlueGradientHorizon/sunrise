@@ -185,7 +185,7 @@ and GUI `item` / `item_model` take `ItemKey`. `block_item`, `fluid_bucket` and
 `Hit.block` return block keys; `BlockEntityDrawContext::block` takes one.
 `ItemStack::item()` returns an `ItemKey`, not a name. Request that same key in `Hooks::register`
 when binding a [`ClientItemUseBehavior`](parts/item-and-tag-parts.md#intercept-main-hand-client-input).
-The callback receives the original typed stack and a separate hotbar slot.
+The callback receives the live typed stack (or the last valid stack of that item kind if the slot was emptied or replaced) and a separate hotbar slot.
 Unknown incoming slots are refused at the boundary.
 `block_sprites` takes API-owned `BlockState` values, preserving properties without
 parsing state strings or exposing numeric engine state IDs. The pre-change block event carries resolved `from` / `to`
