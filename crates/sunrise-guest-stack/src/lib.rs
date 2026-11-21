@@ -1,4 +1,4 @@
-//! Stack policy shared by guest callers and executable link settings.
+//! Legacy stack reservation and inspection used by the region writer stack test.
 
 #[path = "guest_stack_constants.rs"]
 mod constants;
@@ -30,86 +30,8 @@ pub fn spawn<T: Send + 'static>(
     })
 }
 
-/// Must run before game initialization.
-pub fn prepare_main() {
-    if let Err(error) = prepare() {
-        let error = error.to_string();
-        let message = error
-            .strip_prefix("GuestStackUnavailable: ")
-            .unwrap_or(&error);
-        eprintln!("GuestStackUnavailable: {message}");
-        std::process::exit(1);
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn prepare() -> std::io::Result<()> {
-    // Executable link settings reserve the same stack on Windows and macOS.
-    inspect_current().map_err(|error| std::io::Error::other(error.to_string()))
-}
-
-#[cfg(target_os = "linux")]
-fn prepare() -> std::io::Result<()> {
-    use std::os::unix::process::CommandExt;
-    let required = (GUEST_STACK_BYTES + HOST_HEADROOM) as libc::rlim_t;
-    let mut limit = libc::rlimit {
-        rlim_cur: 0,
-        rlim_max: 0,
-    };
-    // SAFETY: limit is writable and getrlimit initializes it on success.
-    if unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut limit) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    if limit.rlim_cur >= required && inspect_current().is_ok() {
-        return Ok(());
-    }
-    let describe = |bytes| {
-        if bytes == libc::RLIM_INFINITY {
-            "unlimited".to_owned()
-        } else {
-            format!("{} KiB", bytes / 1024)
-        }
-    };
-    let limits = format!(
-        "soft={}, hard={}",
-        describe(limit.rlim_cur),
-        describe(limit.rlim_max)
-    );
-    if std::env::var_os("SUNRISE_STACK_REEXEC").is_some() {
-        let found = inspect_current()
-            .err()
-            .map_or(String::new(), |error| format!(": {error}"));
-        return Err(std::io::Error::other(format!(
-            "GuestStackUnavailable: stack re-exec marker already set but the stack is insufficient ({limits}){found}"
-        )));
-    }
-    if limit.rlim_max < required {
-        return Err(std::io::Error::other(format!(
-            "GuestStackUnavailable: stack hard limit is too low ({limits}); raise ulimit -Hs to at least {} KiB",
-            required.saturating_add(HOST_HEADROOM as libc::rlim_t) / 1024
-        )));
-    }
-    // pthread_getattr_np excludes the initial argument/environment pages from
-    // its reported stack extent. Reserve additional host headroom for those
-    // pages when the hard limit permits it; guest entry still verifies the extent.
-    limit.rlim_cur = required
-        .saturating_add(HOST_HEADROOM as libc::rlim_t)
-        .min(limit.rlim_max);
-    // SAFETY: limit is initialized; this changes only this process's resource limit.
-    if unsafe { libc::setrlimit(libc::RLIMIT_STACK, &limit) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    // Linux chooses its mmap base at exec using RLIMIT_STACK. Re-exec keeps the
-    // enlarged stack's address range clear before libraries and workers start.
-    Err(std::process::Command::new(std::env::current_exe()?)
-        .arg0(std::env::args_os().next().unwrap_or_default())
-        .args(std::env::args_os().skip(1))
-        .env("SUNRISE_STACK_REEXEC", "1")
-        .exec())
-}
-
-/// Refuse guest entry when the calling thread's stack reservation is too small.
-/// Cache the platform query once per thread; the hot path reads only thread-local state.
+/// Check that the calling thread has the expected stack reservation.
+/// Cache the platform query once per thread.
 pub fn check_current() -> Result<(), &'static str> {
     thread_local! {
         static CHECK: std::cell::OnceCell<Result<(), &'static str>> = const { std::cell::OnceCell::new() };
@@ -119,43 +41,24 @@ pub fn check_current() -> Result<(), &'static str> {
             inspect_current().map_err(|error| match error {
                 #[cfg(not(any(target_vendor = "apple", windows)))]
                 StackError::Uninspectable(reason) => reason,
-                StackError::Small(_) => {
-                    "GuestStackUnavailable: calling thread needs 136 MiB of stack"
-                }
+                StackError::Small => "GuestStackUnavailable: calling thread needs 136 MiB of stack",
             })
         })
     })
 }
 
-/// Why the calling thread can't enter a guest.
-#[derive(Clone, Copy, Debug)]
 enum StackError {
     /// Linux and other non-Apple, non-Windows targets: the stack could not be read.
     #[cfg(not(any(target_vendor = "apple", windows)))]
     Uninspectable(&'static str),
-    /// Its stack, in bytes, is smaller than the guest's reservation.
-    Small(usize),
-}
-
-impl std::fmt::Display for StackError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            #[cfg(not(any(target_vendor = "apple", windows)))]
-            Self::Uninspectable(reason) => f.write_str(reason),
-            Self::Small(size) => write!(
-                f,
-                "GuestStackUnavailable: calling thread needs {} MiB of stack, has {} KiB",
-                (GUEST_STACK_BYTES + HOST_HEADROOM) >> 20,
-                size >> 10
-            ),
-        }
-    }
+    /// The calling thread's stack is smaller than the expected reservation.
+    Small,
 }
 
 fn inspect_current() -> Result<(), StackError> {
     let size = current_stack_size()?;
     if !fits(size, THREAD_STRUCTURE_ALLOWANCE) {
-        return Err(StackError::Small(size));
+        return Err(StackError::Small);
     }
     Ok(())
 }
@@ -182,9 +85,9 @@ fn current_stack_size() -> Result<usize, StackError> {
         // SAFETY: getpid and gettid take no arguments and always succeed.
         let main = unsafe { libc::getpid() as libc::c_long == libc::syscall(libc::SYS_gettid) };
         if main {
-            // The main thread's stack grows on demand up to RLIMIT_STACK (`prepare` raises it and
-            // re-execs so the range stays clear). glibc's pthread_getattr_np reports that limit, but
-            // musl's reports only the pages mapped so far, so read the limit itself.
+            // The main thread's stack grows on demand up to RLIMIT_STACK.
+            // glibc's pthread_getattr_np reports that limit, but musl's reports only
+            // the pages mapped so far, so read the limit itself.
             let mut limit = libc::rlimit {
                 rlim_cur: 0,
                 rlim_max: 0,

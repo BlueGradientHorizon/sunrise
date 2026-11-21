@@ -10,5 +10,3 @@ mod loading;
 pub use loading::main_with;
 
 mod mods_button;
-
-pub use sunrise_guest_stack::prepare_main as prepare_main_stack;
