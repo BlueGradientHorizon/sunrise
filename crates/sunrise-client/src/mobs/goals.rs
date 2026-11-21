@@ -1,6 +1,7 @@
 //! Vanilla's `GoalSelector` (priorities, MOVE/LOOK/JUMP/TARGET control flags,
 //! interruption) and the shared goals of `net.minecraft.world.entity.ai.goal`.
 use super::{Mob, MobEvent, MobWorld, Seen, Species, Who, world::TargetInfo};
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
@@ -273,7 +274,7 @@ impl GoalSelector {
         cx: &mut Cx,
         paused: GoalMovementPause,
     ) -> Option<GoalMovementPause> {
-        if let Err(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
+        if let ControlFlow::Break(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
             return Some(GoalMovementPause { movement, ..paused });
         }
         if m.removed {

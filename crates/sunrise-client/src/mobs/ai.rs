@@ -7,6 +7,7 @@ mod feeding;
 mod flower_contact;
 mod freezing;
 use flower_contact::flower_contact_effects;
+use std::ops::ControlFlow;
 
 pub use feeding::takes_food;
 
@@ -1705,11 +1706,11 @@ pub(super) fn resume_movement(
     }
     let progress = match paused.phase {
         MovementPhase::Travel(travel) => match travel.resume(m, w, level, events) {
-            Ok(()) => {
+            ControlFlow::Continue(()) => {
                 hurt_teleports(m, w, events);
                 None
             }
-            Err(travel) => Some(MovementPhase::Travel(travel)),
+            ControlFlow::Break(travel) => Some(MovementPhase::Travel(travel)),
         },
         MovementPhase::Goal(goal) => {
             let paused = {
@@ -1724,7 +1725,7 @@ pub(super) fn resume_movement(
                 }
                 finish_server_ai_step(m, w, level, events);
                 ai_step_after_goals(m, w, level, events, true)
-                    .err()
+                    .break_value()
                     .map(MovementPhase::Travel)
             }
         }
@@ -3162,7 +3163,7 @@ fn ai_step(
         m.ai.zza = 0.0;
     }
     ai_step_after_goals(m, w, level, events, pause_movement)
-        .err()
+        .break_value()
         .map(MovementPhase::Travel)
 }
 
@@ -3172,7 +3173,7 @@ fn ai_step_after_goals(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_movement: bool,
-) -> Result<(), super::living::TravelPause> {
+) -> ControlFlow<super::living::TravelPause> {
     m.handle_jumping(w);
     let input = Vec3::new(
         f64::from(m.ai.xxa),
@@ -3191,7 +3192,7 @@ fn ai_step_after_goals(
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
-    Ok(())
+    ControlFlow::Continue(())
 }
 
 /// The end of `LivingEntity.aiStep`: a mob that water hurts (an enderman, a

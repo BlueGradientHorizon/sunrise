@@ -7,6 +7,7 @@ use super::{
     goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone, reduced},
 };
 use crate::blocks::Fluid;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::random::RandomSource;
 
@@ -391,7 +392,9 @@ impl FollowPlayerRidden {
             f64::from(m.ai.zza),
         );
         m.move_relative(speed, input);
-        if let Err(movement) = m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {}) {
+        if let ControlFlow::Break(movement) =
+            m.travel_move(cx.w, cx.level, cx.events, pause, |_, _, _, _| {})
+        {
             self.pending_rider = Some((position, yaw));
             return Some(movement);
         }

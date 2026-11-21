@@ -6,6 +6,7 @@ use super::{Mob, MobEvent, MobWorld};
 use crate::health::DamageLevel;
 use crate::items::BlockTagFlags;
 use crate::{blocks::Fluid, collisions::SceneCollisions};
+use std::ops::ControlFlow;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
@@ -401,7 +402,7 @@ impl TravelTail {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         handoff: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         match self {
             Self::Fixed(finish) => finish(mob, w, level, events),
             Self::Air {
@@ -460,13 +461,13 @@ impl TravelTail {
                         if handoff
                             && (mob.pending_damage_post.is_some() || was_alive && !mob.alive())
                         {
-                            return Err(TravelPause(TravelStop::AfterHit));
+                            return ControlFlow::Break(TravelPause(TravelStop::AfterHit));
                         }
                     }
                 }
             }
         }
-        Ok(())
+        ControlFlow::Continue(())
     }
 }
 
@@ -515,12 +516,12 @@ impl TravelPause {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-    ) -> Result<(), Self> {
+    ) -> ControlFlow<Self> {
         let TravelStop::Move { movement, tail } = self.0 else {
-            return Ok(());
+            return ControlFlow::Continue(());
         };
         if let Some(fall) = mob.resume_fall(w, level, events, movement.fall, true) {
-            return Err(Self(TravelStop::Move {
+            return ControlFlow::Break(Self(TravelStop::Move {
                 movement: MovePause { fall, ..movement },
                 tail,
             }));
@@ -529,7 +530,7 @@ impl TravelPause {
             mob.finish_move(w, level, movement.wanted, movement.moved, events);
             tail.finish(mob, w, level, events, true)?;
         }
-        Ok(())
+        ControlFlow::Continue(())
     }
 }
 
@@ -2054,7 +2055,7 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
         self.velocity = crate::motion::fall_flying_movement(
             self.velocity,
@@ -2075,7 +2076,7 @@ impl Mob {
         input: Vec3,
         events: &mut Vec<MobEvent>,
         pause: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         let (fluid_speed, air_speed) = if self.species() == super::Species::HappyGhast {
             let speed = super::happy_ghast::travel_speed(self);
             (speed, speed)
@@ -2106,7 +2107,7 @@ impl Mob {
         lava_speed: f32,
         air_speed: f32,
         pause: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         let (speed, drag) = if self.fluids.in_water {
             (water_speed, f64::from(0.8_f32))
         } else if self.fluids.in_lava {
@@ -2127,7 +2128,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelFinish,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
     }
 
@@ -2138,10 +2139,10 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         tail: TravelTail,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         if let Some(movement) = self.move_until_pause(w, level, events, &mut MoveGate::new(), pause)
         {
-            return Err(TravelPause(TravelStop::Move { movement, tail }));
+            return ControlFlow::Break(TravelPause(TravelStop::Move { movement, tail }));
         }
         tail.finish(self, w, level, events, pause)
     }
@@ -2203,7 +2204,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         stop_gliding: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         let friction = if self.on_ground {
             // FRICTION_MODIFIER scales the block's slipperiness.
             let modifier = super::sulfur_cube::physics(self)
@@ -2280,7 +2281,7 @@ impl Mob {
         events: &mut Vec<MobEvent>,
         pause: bool,
         water: bool,
-    ) -> Result<(), TravelPause> {
+    ) -> ControlFlow<TravelPause> {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();

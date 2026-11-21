@@ -16,6 +16,7 @@ use crate::health::DamageLevel;
 use crate::join_seq::JoinList;
 use crate::particles::ParticleType;
 use std::f32::consts::PI;
+use std::ops::ControlFlow;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -617,7 +618,7 @@ pub(super) fn travel_in_water(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<(), super::living::TravelPause> {
+) -> ControlFlow<super::living::TravelPause> {
     let speed = match m.species() {
         Species::Axolotl | Species::Dolphin => m.ai.speed,
         _ => 0.01,
