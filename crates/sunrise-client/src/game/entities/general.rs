@@ -554,6 +554,13 @@ impl GeneralTypeCatalog {
         self.entries[slot].pickable
     }
 
+    pub(in crate::game) fn piston_push_reaction(
+        &self,
+        slot: usize,
+    ) -> sunrise_world::level::PushReaction {
+        super::api_values::push_reaction(&self.entries[slot].piston_push_reaction).1
+    }
+
     /// The type's declared payload schema version, the one a fresh row starts at.
     pub fn payload_version(&self, slot: usize) -> u16 {
         self.entries[slot].payload_version
@@ -1285,6 +1292,9 @@ impl Entity for GeneralRow {
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))
     }
+    fn get_piston_push_reaction(&self) -> sunrise_world::level::PushReaction {
+        general_type_catalog().piston_push_reaction(self.type_slot)
+    }
     fn native_type(&self) -> Cow<'static, str> {
         Cow::Owned(general_type_catalog().key(self.type_slot).to_owned())
     }
@@ -1521,6 +1531,7 @@ mod tests {
             save_policy: mod_api::GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            piston_push_reaction: mod_api::PushReaction::PushPull,
             tracking_chunks: 8,
             update_interval: 3,
             payload_version: 1,

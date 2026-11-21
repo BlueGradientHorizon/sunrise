@@ -437,7 +437,7 @@ where
 /// Validate a mod value against the game's registry before admitting it to engine state.
 #[path = "api_values/content_declarations.rs"]
 mod content_declarations;
-pub(in crate::game) use content_declarations::push_reaction;
+pub(in crate::game) use content_declarations::{api_push_reaction, push_reaction};
 
 #[path = "api_values/stack_count.rs"]
 mod stack_count;

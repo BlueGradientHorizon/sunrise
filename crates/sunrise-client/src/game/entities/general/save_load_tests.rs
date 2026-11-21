@@ -30,6 +30,7 @@ impl mod_api::Hooks for Declare {
                 },
                 true,
                 false,
+                save.then_some(mod_api::PushReaction::IgnoreEntity),
                 8,
                 3,
                 1,
@@ -73,6 +74,80 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         map.insert(format::PASSENGERS.into(), Tag::List(riders));
     }
     tag
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
+    use crate::game::piston_push::Lid;
+    use sunrise_client::{chunk::Chunk, entities::ArmorStand, mobs::Mob};
+    use sunrise_core::{
+        geometry::{Aabb, Direction},
+        position::BlockPos,
+    };
+    use sunrise_world::level::pistons::MovingPiston;
+
+    with_types(|game| {
+        game.world
+            .chunks
+            .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
+        let root = record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new());
+        game.load_listed("mymod:robot", None, None, root).unwrap();
+        let row = &game.resident_entities.general.rows[0];
+        let (id, before) = (row.id, row.position);
+        let stand = id + 1;
+        let shulker = id + 2;
+        game.armor_stands.push(ArmorStand::new(stand, before, 0.0));
+        let kind = game
+            .res
+            .mob_types()
+            .get("minecraft:shulker")
+            .unwrap()
+            .clone();
+        game.mobs
+            .push(Mob::new(shulker, kind, Vec3::new(8.0, 64.0, 8.0), 0.0));
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        assert_eq!(
+            game.entity(id).unwrap().piston_push_reaction(game),
+            Ok(Some(mod_api::PushReaction::IgnoreEntity))
+        );
+
+        game.push_piston_entities(vec![(
+            BlockPos::new(0, 64, 0),
+            MovingPiston {
+                moved_state: game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap(),
+                direction: Direction::East,
+                extending: true,
+                source: false,
+                progress: 0.0,
+                progress_o: 0.0,
+                last_ticked: 0,
+                death_ticks: 0,
+                id: 1,
+            },
+            0.5,
+        )]);
+        assert_eq!(game.resident_entities.general.rows[0].position, before);
+        assert!(
+            game.armor_stands[0].position.x > before.x,
+            "the piston reaches the control"
+        );
+
+        let sweep = Aabb::new(Vec3::new(0.0, 64.0, 0.0), Vec3::new(1.0, 65.0, 1.0));
+        let movement = Vec3::new(0.0, 0.25, 0.0);
+        game.lid_push(Lid::Box, sweep, movement);
+        assert_eq!(game.resident_entities.general.rows[0].position, before);
+        game.lid_push(Lid::Shulker(shulker), sweep, movement);
+        assert_eq!(
+            game.resident_entities.general.rows[0].position,
+            before.add_vector(movement)
+        );
+    });
 }
 
 /// The saved rows of one chunk, through the same walk the save uses.
