@@ -4,11 +4,10 @@ The root `Cargo.toml` and `src/` form the mod's crate. It depends on `sunrise-mo
 `mod_api`), never directly on the game. The build supplies the pinned SDK and declared
 [mod dependencies](../../concepts/dependencies.md).
 
-**Registry dependencies belong to the mod.** A mod may use crates.io packages that the game does
-not use, or different versions of packages the game uses. Each package must have an exact version
-and SHA-256 checksum in the mod's registry dependency lock, stored as `Cargo.lock` beside its
-`Cargo.toml`. Keep this file in version control and include it in the mod package. Changing it
-changes the native build's cache identity.
+**Registry dependencies belong to the mod.** A mod may use crates.io packages whether or not the
+game uses them. Each package must have an exact version and SHA-256 checksum in the mod's registry
+dependency lock, stored as `Cargo.lock` beside its `Cargo.toml`. Keep this file in version control
+and include it in the mod package. Changing it changes the native build's cache identity.
 
 `cargo sunrise-mod build` writes it the first time a mod with registry dependencies is built. After
 you change `Cargo.toml`, resolve again on purpose:
@@ -29,24 +28,22 @@ are not replaced without `--update-lock`; a refused input leaves the existing lo
 A starter that uses only the SDK does not need registry pins until it adds a
 registry dependency.
 
-A build never repins a dependency the lock already pins, and a player's build never writes a lock:
-it refuses a package the mod's lock doesn't pin.
-A build may resolve registry **index metadata** online using an inert manifest whose
-requirements are exact pins. Before fetching crate archives, every resulting identity and
-checksum must match a supplied lock. Cargo checks downloaded archives against those checksums.
-Only after this fetch does the build resolve the actual staged workspace **offline**.
+A build never rewrites a mod's `Cargo.lock`. It may resolve registry **index metadata** online,
+but before fetching crate archives, every resolved version and checksum must match the game's lock
+or an installed mod's lock. Cargo checks downloaded archives against those checksums. After the
+fetch, the build runs **offline**.
 
 The game's own packages never change because of a mod. The game ships prebuilt, and a mod's registry
 packages are compiled for the mod and linked into the mod's library, so a package both use exists
-twice: the features and dependency versions of the mod's copy are the mod's own. What a build checks
-is that every registry package it compiles is pinned, by version and checksum, in the game's lock or
-in the lock of a mod in the build.
+twice. A mod can enable different features on its copy without changing the prebuilt game.
 
 All native mods of an instance compile in one Cargo workspace, which resolves one version of a
-package for every mod that uses it. When two mods' locks pin different versions that both their
-requirements allow, both mods are built on one of the two. So a mod may be built on another
-semver-compatible version of a dependency than the one its author locked; a requirement that must
-not move is written as an exact one (`dtoa = "=1.0.9"`).
+package per semver line (the same major, or the same `0.minor` below 1.0). If the game locks a
+package on that line, the build uses the game's version and checksum even if a mod's lock pins a
+newer version. If a dependency requirement excludes the game's version, the build refuses instead
+of compiling a different version. For packages the game doesn't lock on that line, mods that pin
+different versions build on one of their pins if all their requirements allow it. To require a
+particular version of a mod-only crate, use an exact requirement (`dtoa = "=1.0.9"`).
 
 Each mod is its own library, and a library carries a copy of every registry package linked into it,
 so a mod depending on two mods that each use `serde` would reach two copies of `serde`, which Rust

@@ -423,12 +423,6 @@ pub fn compile(
     let wanted = super::crates::wanted(out, &declared_paths)?;
     let mut plan = registry_plan::Plan::read(lock, projects, &wanted)?;
     plan.authorize_game_patches(&patches);
-    registry_plan::apply_patches(out, &patches)?;
-    fs::write(
-        out.join("Cargo.lock"),
-        plan.mods.seed("version=4\npackage=[]\n")?,
-    )
-    .map_err(|e| e.to_string())?;
     plan.fetch_with_patches(rust, out, &patches)?;
     let mut metadata = super::registry_inventory::read(rust, out)
         .map_err(|error| plan.explain_resolution(error))?;
@@ -501,17 +495,15 @@ pub fn compile(
         metadata = super::registry_inventory::read(rust, out)
             .map_err(|error| plan.explain_resolution(error))?;
     }
-    plan.allowed
-        .check_pins(&super::registry_lock::RegistryLock::parse(
-            &super::read_lock(out)?,
-        )?)?;
+    let resolved = super::read_lock(out)?;
+    plan.check_resolved(&super::registry_lock::RegistryLock::parse(&resolved)?)?;
     let mut game_names = plan.game.game_package_names();
     for registry in patches.values() {
         for name in registry.as_table().expect("validated SDK patches").keys() {
             game_names.remove(name);
         }
     }
-    super::crates::check_game_graph_names(out, &super::read_lock(out)?, &game_names)?;
+    super::crates::check_game_graph_names(out, &resolved, &game_names)?;
     let inventory = metadata.inventory(&super::registry_lock::RegistryLock::default(), links)?;
     if inventory.added_crates > 0 && !options.consent.is_some_and(|ask| ask(&inventory)) {
         return Err(crate::host::tr("The mods' crates.io dependencies were not compiled: the plan's \"registry\" field is false or the question was declined. \"registry\": true approves compiling them; their build scripts and proc macros then run on this computer").into());

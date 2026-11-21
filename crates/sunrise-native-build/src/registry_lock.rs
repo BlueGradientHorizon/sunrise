@@ -10,6 +10,15 @@ pub struct Identity {
     pub source: String,
 }
 
+impl Identity {
+    pub(super) fn same_slot(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.source == other.source
+            && self.version.major == other.version.major
+            && (self.version.major != 0 || self.version.minor == other.version.minor)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Record {
     checksum: Option<String>,
@@ -109,6 +118,20 @@ impl RegistryLock {
             }
         }
         Ok(())
+    }
+
+    /// Returns the registry pins in `resolved` that moved a version this lock already supplies.
+    /// SDK-local identities are a separate source, checked by `check_pins`.
+    pub(super) fn moved_pins<'a>(
+        &'a self,
+        resolved: &'a Self,
+    ) -> impl Iterator<Item = (&'a Identity, &'a Identity)> {
+        resolved.packages.keys().filter_map(|id| {
+            (!self.packages.contains_key(id))
+                .then(|| self.packages.keys().find(|game| game.same_slot(id)))
+                .flatten()
+                .map(|game| (game, id))
+        })
     }
 
     /// Withholds the registry identity of each crate the SDK builds from its own source (`names`,
