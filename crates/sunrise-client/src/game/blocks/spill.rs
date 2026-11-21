@@ -459,6 +459,16 @@ pub(super) fn put_saved_entity(
     }
 }
 
+/// The row still in the level after its pre-removal effects have run.
+pub(super) enum RemovingBlockEntity {
+    Saved,
+    Resident {
+        kind: PreRemove,
+        neighbor_updates: u8,
+    },
+    OwnTick,
+}
+
 #[derive(Default)]
 pub(in crate::game) struct RemovalOutputs {
     pub keep_contents: bool,
@@ -811,23 +821,30 @@ impl GameLevel<'_> {
         old: BlockStateId,
         side_effects: bool,
     ) -> u8 {
+        let removal = self.pre_remove_entity(pos, old, side_effects);
+        self.finish_remove_entity(pos, old, removal)
+    }
+
+    pub(super) fn pre_remove_entity(
+        &mut self,
+        pos: BlockPos,
+        old: BlockStateId,
+        side_effects: bool,
+    ) -> RemovingBlockEntity {
         let key = (pos.x, pos.y, pos.z);
         self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
-        // A replacement is a new block entity, even at the same position.
-        // Headless servers cannot rely on renderer visibility to discard this state.
-        if &*self.facts.get(old).name == "minecraft:end_gateway" {
-            self.positions.gateways.remove(&[pos.x, pos.y, pos.z]);
-        }
-        if self.remove_saved_entity(pos, old, side_effects) {
-            self.positions.hoppers.remove(&key);
-            return 0;
+        if let Some(tag) = saved_entity(self.world, [pos.x, pos.y, pos.z]) {
+            if side_effects {
+                self.drop_saved_contents(pos, old, tag);
+            }
+            return RemovingBlockEntity::Saved;
         }
         // Sculk blocks and creaking hearts notice their removal on their own tick.
         if matches!(
             self.world.block_entities.get(&key),
             Some(BlockEntity::Sculk(_) | BlockEntity::CreakingHeart(_))
         ) {
-            return 0;
+            return RemovingBlockEntity::OwnTick;
         }
         // A mod's block entity answers its parts in place (its slot, so its
         // attachments, stay until `put`), as vanilla's override runs on `this`.
@@ -846,14 +863,11 @@ impl GameLevel<'_> {
                 .block_entities
                 .put(lease, BlockEntity::Mod(entity));
         }
-        let entity = self.world.block_entities.remove(&key);
-        self.positions.hoppers.remove(&key);
-        self.world.block_names.remove(&key);
-        self.world.forget_block_entity_source(key);
+        let entity = self.world.block_entities.get(&key);
         let name = self.facts.get(old).name.clone();
         // BaseContainerBlockEntity.preRemoveSideEffects: Containers.dropContents
         // visits every declared slot, even if its empty storage hasn't been materialized.
-        let kind = if let Some(BlockEntity::Mod(m)) = &entity
+        let kind = if let Some(BlockEntity::Mod(m)) = entity
             && let Some(container) = self.world.block_entities.mod_container(old.0)
         {
             PreRemove::Contents {
@@ -867,14 +881,20 @@ impl GameLevel<'_> {
         if side_effects {
             match kind {
                 PreRemove::Contents { slots, furnace } => {
-                    let items = entity.as_ref().map_or(&[][..], BlockEntity::slots);
                     for slot in 0..if outputs.keep_contents { 0 } else { slots } {
-                        let stack = items.get(slot).cloned().flatten();
+                        let stack = self
+                            .world
+                            .block_entities
+                            .get_mut(&key)
+                            .and_then(|row| row.slots_mut().get_mut(slot))
+                            .and_then(Option::take);
                         self.drop_item_stack(pos, stack);
                     }
                     // AbstractFurnaceBlockEntity.preRemoveSideEffects: then the
                     // experience of what it made, at the block's centre.
-                    if furnace && let Some(BlockEntity::Furnace(f)) = &entity {
+                    if furnace
+                        && let Some(BlockEntity::Furnace(f)) = self.world.block_entities.get(&key)
+                    {
                         let at = [
                             f64::from(pos.x) + 0.5,
                             f64::from(pos.y) + 0.5,
@@ -891,8 +911,8 @@ impl GameLevel<'_> {
                     }
                 }
                 PreRemove::Campfire => {
-                    let items = match &entity {
-                        Some(BlockEntity::Campfire(c)) => c.items.clone(),
+                    let items = match self.world.block_entities.get_mut(&key) {
+                        Some(BlockEntity::Campfire(c)) => std::mem::take(&mut c.items),
                         _ => Default::default(),
                     };
                     for stack in items {
@@ -903,8 +923,8 @@ impl GameLevel<'_> {
                     // popOutTheItem: removeTheItem stops a playing song (its
                     // events and a neighbour update), the record pops, and
                     // onSongChanged updates the neighbours again.
-                    if let Some(BlockEntity::Jukebox(j)) = &entity
-                        && let Some(record) = j.record().cloned()
+                    if let Some(BlockEntity::Jukebox(j)) = self.world.block_entities.get_mut(&key)
+                        && let Some(record) = j.items[0].take()
                     {
                         if j.playing {
                             self.jukebox_stopped(pos, old);
@@ -927,8 +947,9 @@ impl GameLevel<'_> {
                         _ => [1, 0],
                     };
                     if has_book
-                        && let Some(BlockEntity::Lectern(l)) = &entity
-                        && let Some(book) = l.book.clone()
+                        && let Some(BlockEntity::Lectern(l)) =
+                            self.world.block_entities.get_mut(&key)
+                        && let Some(book) = l.book.take()
                     {
                         self.spawn_removal_item(book, removal::lectern_book_position(pos, step));
                     }
@@ -949,6 +970,39 @@ impl GameLevel<'_> {
                 self.award_orbs(at, amount);
             }
         }
+        RemovingBlockEntity::Resident {
+            kind,
+            neighbor_updates: neighbour_updates,
+        }
+    }
+
+    pub(super) fn finish_remove_entity(
+        &mut self,
+        pos: BlockPos,
+        old: BlockStateId,
+        removal: RemovingBlockEntity,
+    ) -> u8 {
+        let key = (pos.x, pos.y, pos.z);
+        // Headless levels cannot rely on a renderer to discard a replaced gateway.
+        if &*self.facts.get(old).name == "minecraft:end_gateway" {
+            self.positions.gateways.remove(&[pos.x, pos.y, pos.z]);
+        }
+        let (kind, neighbour_updates) = match removal {
+            RemovingBlockEntity::OwnTick => return 0,
+            RemovingBlockEntity::Saved => {
+                self.forget_saved_entity(pos);
+                self.positions.hoppers.remove(&key);
+                return 0;
+            }
+            RemovingBlockEntity::Resident {
+                kind,
+                neighbor_updates,
+            } => (kind, neighbor_updates),
+        };
+        let entity = self.world.block_entities.remove(&key);
+        self.positions.hoppers.remove(&key);
+        self.world.block_names.remove(&key);
+        self.world.forget_block_entity_source(key);
         // BlockEntity.setRemoved: a jukebox always reports its song stopping,
         // a beacon plays its deactivation.
         match kind {
@@ -991,14 +1045,7 @@ impl GameLevel<'_> {
             source: None,
         });
     }
-    /// A block entity Sunrise keeps as it was loaded (campfires, decorated
-    /// pots, chiseled bookshelves, shelves): its items spill as vanilla's do.
-    fn remove_saved_entity(
-        &mut self,
-        pos: BlockPos,
-        old: BlockStateId,
-        side_effects: bool,
-    ) -> bool {
+    fn forget_saved_entity(&mut self, pos: BlockPos) {
         use sunrise_core::nbt::Tag;
         let chunk_key = (pos.x >> 4, pos.z >> 4);
         let at = |t: &Tag| {
@@ -1009,22 +1056,28 @@ impl GameLevel<'_> {
             int("x") == Some(pos.x) && int("y") == Some(pos.y) && int("z") == Some(pos.z)
         };
         let Some(chunk) = self.world.chunks.get_mut(&chunk_key) else {
-            return false;
+            return;
         };
         let Some(saved) = chunk.saved.as_ref() else {
-            return false;
+            return;
         };
         let Some(index) = saved.block_entities.iter().position(at) else {
-            return false;
+            return;
         };
         let chunk = std::sync::Arc::make_mut(chunk);
         let Some(saved) = chunk.saved.as_mut() else {
-            return false;
+            return;
         };
-        let tag = std::sync::Arc::make_mut(saved).block_entities.remove(index);
-        if !side_effects {
-            return true;
-        }
+        std::sync::Arc::make_mut(saved).block_entities.remove(index);
+    }
+
+    /// Spill the contents of a block entity still backed by its saved compound.
+    fn drop_saved_contents(
+        &mut self,
+        pos: BlockPos,
+        old: BlockStateId,
+        tag: sunrise_core::nbt::Tag,
+    ) {
         let name = self.facts.get(old).name.clone();
         let items = match removal::pre_remove(&name) {
             PreRemove::Contents { slots, .. } if &*name == "minecraft:decorated_pot" => {
@@ -1049,12 +1102,11 @@ impl GameLevel<'_> {
                 sunrise_client::save::decode_items(tag.get("Items"), slots)
             }
             PreRemove::Campfire => sunrise_client::save::decode_items(tag.get("Items"), 4),
-            _ => return true,
+            _ => return,
         };
         for stack in items {
             self.drop_item_stack(pos, stack);
         }
-        true
     }
     /// `Containers.dropContents` for a mod block entity that left the world
     /// during its own tick (the block broke itself): what it held spills as
@@ -1146,6 +1198,27 @@ impl Game<'_> {
             random,
         );
     }
+    pub(super) fn publish_removal_spawns(
+        &mut self,
+        spawns: Vec<Spawn>,
+        orbs: Vec<([f64; 3], u32, i32)>,
+    ) {
+        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        for spawn in spawns {
+            self.push_item_entity(
+                spawn.stack,
+                spawn.pos,
+                spawn.motion,
+                spawn.delay,
+                spawn.random,
+            );
+            self.join_removal_item(self.next_entity, spawn.pos);
+        }
+        for (at, value, merge_id) in orbs {
+            self.award_orb(at, value, merge_id);
+        }
+    }
+
     /// Add the item entities the block behaviour spawned and follow up on the
     /// block entities it removed.
     pub(super) fn flush_spill(&mut self) {

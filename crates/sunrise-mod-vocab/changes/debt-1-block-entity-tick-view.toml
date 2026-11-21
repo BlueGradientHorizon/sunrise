@@ -19,10 +19,14 @@ NeoForge adds no ticker event. Taking the Host and borrowing the subject are seq
 loan checks that the original entity still occupies the same level and state. Every successful
 storage write follows one save-mark rule.
 
-Commit replays vanilla 26.3's LevelChunk.setBlockState: preRemoveSideEffects uses the row as it stood
-at replacement, before removeBlockEntity and neighbor effects. In keeping with NeoForge's
-SnapshotJournal.onClose, only abort restores the first-write snapshot. ItemEntityRef::set_stack still
-uses ItemEntity.setItem and now joins the ambient transaction.
+The server's block replacement replays vanilla 26.3's LevelChunk.setBlockState: preRemoveSideEffects
+uses the row as it stood at replacement, and Containers.dropItemStack joins the resulting drops
+(before removeBlockEntity and neighbor notifications), at NeoForge's EntityJoinLevelEvent site in
+PersistentEntitySectionManager.addEntity. In keeping with NeoForge's SnapshotJournal.onClose,
+only abort restores the first-write snapshot. Bulk edits keep FillCommand.fillBlocks' strict rules:
+no container drops or neighbor updates, with whole changed chunks published on commit.
+ItemEntityRef::set_stack still uses ItemEntity.setItem. Its write and block replacement join the
+journal of the level in place, not a journal in a different level (ExecuteCommand's in branch).
 """
 migrate = """
 - Change `fn block_entity_tick(&self, host, event: &mut BlockEntityTickEvent)` to
@@ -36,10 +40,15 @@ migrate = """
   `event.subject.host()` to `edit_state`. To use another object, return any owned input from the view
   closure, then borrow `event.subject.host()`. Reborrow using `with_view` and handle `None` instead
   of writing to the replacement.
-- A tick no longer commits a reply or opens a transaction for you. Replace proposed dropped-item
-  writes in the tick reply with `item.set_stack(tick.host(), stack)`. To commit those writes or
-  neighbor writes with the subject edits, put them in `event.subject.transaction(|tick, _| { ... })`,
-  recheck source values after taking the Host, and return `Err` on a stale subject or failed write.
-  `ItemEntityRef::set_stack` is visible immediately but rolls back on abort when a transaction is open;
-  without a transaction it does not roll back.
+- A tick no longer commits a reply or opens a transaction for you. For a standalone dropped-item
+  write, change `item.set_stack(host, stack)` to `item.set_stack(event.subject.host(), stack)`.
+  The Host setter writes live storage instead of proposing an edit to the engine's old internal
+  buffer. To roll it back together with subject edits, wrap the work in
+  `event.subject.transaction(|tick, _| { ... })` and call `item.set_stack(tick.host(), stack)`
+  inside that closure. Recheck source values after taking the Host and return `Err` on a stale
+  subject or refused write. A setter with no transaction open in that level is not rolled back.
+- `level.set_block(host, pos, state, flags)`, `level.remove_block(host, pos, moved)` and
+  `host.edit_blocks(dimension, &edit)` keep their signatures. To roll back a replacement in
+  another dimension, open a transaction there; a transaction in the original level does not
+  cover it. For `edit_blocks`, no call change is needed to take part in the level's transaction.
 """

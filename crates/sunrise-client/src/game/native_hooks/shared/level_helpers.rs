@@ -137,6 +137,17 @@ impl GameLevel<'_> {
         let previous = self.world.block(pos[0], pos[1], pos[2]);
         let b = self.behaviours;
         let changed = b.set_block(self, ticks, at, state, flags);
+        self.finish_native_block(pos, previous, state, changed);
+        changed
+    }
+
+    pub(in crate::game) fn finish_native_block(
+        &mut self,
+        pos: [i32; 3],
+        previous: BlockStateId,
+        state: BlockStateId,
+        changed: bool,
+    ) {
         let landed = self.world.block(pos[0], pos[1], pos[2]);
         if !self.world.block_entities.stateful_entity(landed.0)
             && block_entity_to_create(self.facts, changed, previous, state, landed).is_some()
@@ -144,7 +155,6 @@ impl GameLevel<'_> {
         {
             put_block_entity(self.world, pos, entity);
         }
-        changed
     }
     /// `Level.removeBlock`: replace a block with its fluid's legacy block.
     pub(in crate::game) fn remove_block_write(

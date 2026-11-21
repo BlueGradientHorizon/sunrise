@@ -79,9 +79,10 @@ pub trait LevelBlocksBackendMut {
     /// Set a block (`Level.setBlock`). Stale/unavailable levels and invalid states return
     /// typed errors without mutation. Ok(false) means vanilla refused an unchanged,
     /// unloaded or out-of-height write. Notification follows the supplied update flags.
-    /// Inside a transaction, replacement effects wait for the outermost commit and
-    /// use the block entity as it was at replacement, including earlier edits.
-    /// Aborting restores the original state and undoes those edits.
+    /// Inside a transaction in this level, replacement effects wait for that level's
+    /// outermost commit. The server uses the block entity as it was at replacement,
+    /// including earlier edits, and joins its drops before removing it and notifying
+    /// neighbors. Aborting restores the original state and undoes those edits.
     #[access(WorldOnly)]
     fn level_set_block(
         &mut self,

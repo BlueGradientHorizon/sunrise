@@ -89,6 +89,14 @@ pub(super) struct OpenTransactions {
 }
 
 impl OpenTransactions {
+    pub(super) fn level_frame(&mut self, dim: super::Dim) -> Option<&mut Level> {
+        entities::open_in(self, dim)
+    }
+
+    pub(super) fn advance_block_writes(&mut self) {
+        self.block_writes = self.block_writes.wrapping_add(1);
+    }
+
     fn player_write(&mut self) -> Option<&mut Level> {
         self.player_writes = self.player_writes.wrapping_add(1);
         self.writes = self.writes.wrapping_add(1);
@@ -119,6 +127,7 @@ impl OpenTransactions {
     /// Keep a resident row just before its first write, without relinquishing the loan.
     pub(in crate::game) fn journal_block_entity_loan(
         &mut self,
+        dim: super::Dim,
         pos: Pos,
         loan: &sunrise_client::block_entities::BlockEntityLoan<'_>,
         chunks: &sunrise_client::chunk_map::ChunkMap,
@@ -126,7 +135,7 @@ impl OpenTransactions {
         hopper: Option<HopperState>,
     ) {
         self.writes = self.writes.wrapping_add(1);
-        if let Some(level) = self.last_mut() {
+        if let Some(level) = entities::open_in(self, dim) {
             level.block_entities.entry(pos).or_insert_with(|| Kept {
                 entity: Some(BlockEntity::Mod(Box::new(loan.entity.clone()))),
                 generation: Some(loan.identity.generation),
@@ -147,7 +156,7 @@ impl OpenTransactions {
         pos: Pos,
     ) {
         let chunk = (pos.0 >> 4, pos.2 >> 4);
-        if let Some(level) = self.last_mut() {
+        if let Some(level) = entities::open_in(self, dim) {
             level.save_chunks.insert((dim, chunk));
         } else {
             modified.insert(chunk);
@@ -200,6 +209,12 @@ impl Drop for ClosingPhase<'_, '_> {
 }
 
 struct KeptBlock {
+    state: BlockStateId,
+    replay: Option<BlockReplay>,
+}
+
+#[derive(Clone, Copy)]
+struct BlockReplay {
     state: BlockStateId,
     flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
@@ -479,6 +494,12 @@ pub(super) enum After {
     BreakProgress(i32, [i32; 3], i32),
     /// The block's final state, set with the combined update flags.
     Block(Pos),
+    /// Publish the storage and watched writes of a strict bulk edit, not ordinary updates.
+    BulkBlocks(
+        sunrise_client::block_edit::BulkPublication,
+        Vec<super::block_edits::Tracked>,
+        Vec<[i32; 3]>,
+    ),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
     BlockGameEvent(
@@ -531,6 +552,27 @@ pub(super) enum After {
     },
 }
 
+impl After {
+    fn level_owned(&self) -> bool {
+        matches!(
+            self,
+            Self::Block(_)
+                | Self::BulkBlocks(..)
+                | Self::Changed(_)
+                | Self::DirtyBlockEntity(_)
+                | Self::LostMenuContents(..)
+                | Self::Capabilities(_)
+                | Self::LevelWrite(_)
+                | Self::FluidWrite(_)
+                | Self::FluidEffects(_)
+                | Self::BlockGameEvent(..)
+                | Self::Drop(..)
+                | Self::Spawn(..)
+                | Self::Emptied(_)
+        )
+    }
+}
+
 /// Effects shared by transactional interaction contexts.
 pub(super) enum DeferredEffect {
     CustomStat {
@@ -565,6 +607,55 @@ fn frame_token() -> u64 {
 }
 
 impl Level {
+    pub(super) fn keep_bulk_block(&mut self, pos: Pos, state: u32) {
+        self.blocks.entry(pos).or_insert(KeptBlock {
+            state: BlockStateId(state),
+            replay: None,
+        });
+    }
+
+    fn merge_level_writes(&mut self, child: &mut Self) {
+        // Slots before whole entities: a slot the outer transaction already kept the
+        // whole entity of is older there, but one kept whole only by this child is not,
+        // so the child's slot entries go up beside its capture.
+        for ((pos, slot), kept) in std::mem::take(&mut child.slots) {
+            if !self.block_entities.contains_key(&pos) {
+                self.slots.entry((pos, slot)).or_insert(kept);
+            }
+        }
+        for (pos, kept) in std::mem::take(&mut child.block_entities) {
+            self.block_entities.entry(pos).or_insert(kept);
+        }
+        for (pos, removed) in std::mem::take(&mut child.removed_block_entities) {
+            let first = self.removed_block_entities.entry(pos).or_default();
+            if first.is_none() {
+                *first = removed;
+            }
+        }
+        for (pos, block) in std::mem::take(&mut child.blocks) {
+            self.blocks
+                .entry(pos)
+                .and_modify(|kept| {
+                    if let Some(replay) = block.replay {
+                        if let Some(earlier) = &mut kept.replay {
+                            earlier.flags = merge_block_update_flags(earlier.flags, replay.flags);
+                            earlier.level_host = replay.level_host;
+                            earlier.replay_removal |= replay.replay_removal;
+                        } else {
+                            kept.replay = Some(replay);
+                        }
+                    }
+                })
+                .or_insert(block);
+        }
+        for (id, kept) in std::mem::take(&mut child.item_entities) {
+            self.item_entities.entry(id).or_insert(kept);
+        }
+        for (chunk, mark) in std::mem::take(&mut child.chunk_marks) {
+            self.chunk_marks.entry(chunk).or_insert(mark);
+        }
+    }
+
     /// Keep the first snapshot for this stream. `None` names the frame's own level.
     pub(super) fn keep_level_random(
         &mut self,
@@ -639,7 +730,7 @@ impl Game<'_> {
     /// Opens a transaction and gives back its write and close tokens.
     fn open_storage_transaction(&mut self) -> (u64, u64) {
         let (token, close_token) = (frame_token(), frame_token());
-        if self.transactions.is_empty() {
+        if !self.world.block_entities.defers_retirement() {
             self.world.block_entities.defer_retirement();
         }
         let lifetimes = self.entity_journal_open();
@@ -690,6 +781,17 @@ impl Game<'_> {
             None if self.transactions.is_empty() => TransactionLifecycle::None,
             None => TransactionLifecycle::Open,
         }
+    }
+    pub(super) fn transaction_holds_here(&self, tx: &Transaction) -> bool {
+        let named = mod_api::__private::transaction_token(tx);
+        self.transactions
+            .iter()
+            .any(|level| level.token == named && level.dimension == Some(self.dim))
+    }
+    pub(super) fn has_level_transaction(&self) -> bool {
+        self.transactions
+            .iter()
+            .any(|level| level.dimension == Some(self.dim))
     }
     /// `transaction_current`: the innermost open transaction's write token, never its seal.
     pub(in crate::game) fn transaction_current(&self) -> Option<Transaction> {
@@ -752,8 +854,10 @@ impl Game<'_> {
         // end the root's phase early. The guard puts it back on a panic too, so a listener
         // that panics leaves the phase as it was.
         let outer = self.transactions.closing.replace(closing);
-        // The root's own close, not one a root-commit listener opened: what the transactions
-        // removed is final now, so it retires (`defer_retirement`).
+        // Each world's retired rows stay bound through its own root commit, including
+        // transactions reentered by that commit's listeners.
+        let retire = !self.has_level_transaction()
+            && !entities::is_committing(&self.transactions.committing, self.dim);
         let root = self.transactions.is_empty() && outer.is_none();
         let keep_completions = self.transactions.closing_configuration_completions.len();
         let mut guard = ClosingPhase {
@@ -769,17 +873,17 @@ impl Game<'_> {
             && !(level.packets.is_some()
                 && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         guard.game.close_level(level, commit);
-        if root {
+        if retire {
             guard.game.world.block_entities.publish_retirement();
-            if commit {
-                for completion in guard
-                    .game
-                    .transactions
-                    .closing_configuration_completions
-                    .drain(..)
-                {
-                    completion.publish();
-                }
+        }
+        if root && commit {
+            for completion in guard
+                .game
+                .transactions
+                .closing_configuration_completions
+                .drain(..)
+            {
+                completion.publish();
             }
         } else if commit {
             guard.keep_completions = guard
@@ -823,38 +927,44 @@ impl Game<'_> {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
+        let mut independent = None;
+        if commit && let Some(outer) = self.transactions.last_mut() {
+            if outer.dimension == level.dimension {
+                outer.merge_level_writes(&mut level);
+            } else {
+                let mut local = Level {
+                    block_entities: std::mem::take(&mut level.block_entities),
+                    removed_block_entities: std::mem::take(&mut level.removed_block_entities),
+                    slots: std::mem::take(&mut level.slots),
+                    blocks: std::mem::take(&mut level.blocks),
+                    item_entities: std::mem::take(&mut level.item_entities),
+                    chunk_marks: std::mem::take(&mut level.chunk_marks),
+                    after: level
+                        .after
+                        .extract_if(.., |after| after.level_owned())
+                        .collect(),
+                    ..Level::default()
+                };
+                level.save_chunks.retain(|&(dim, chunk)| {
+                    if dim != self.dim {
+                        return true;
+                    }
+                    local.save_chunks.insert((dim, chunk));
+                    false
+                });
+                if let Some(owner) = entities::open_in(&mut self.transactions, self.dim) {
+                    owner.merge_level_writes(&mut local);
+                    owner.save_chunks.extend(local.save_chunks);
+                    owner.after.extend(local.after);
+                } else {
+                    independent = Some(local);
+                }
+            }
+        }
         match (commit, self.transactions.last_mut()) {
             (true, Some(outer)) => {
                 outer.actions.merge(level.actions);
                 outer.trades.merge(level.trades);
-                // Slots before whole entities: a slot the outer transaction already kept the
-                // whole entity of is older there, but one kept whole only by this child is not,
-                // so the child's slot entries go up beside its capture.
-                for ((pos, slot), kept) in level.slots {
-                    if !outer.block_entities.contains_key(&pos) {
-                        outer.slots.entry((pos, slot)).or_insert(kept);
-                    }
-                }
-                for (pos, kept) in level.block_entities {
-                    outer.block_entities.entry(pos).or_insert(kept);
-                }
-                for (pos, removed) in level.removed_block_entities {
-                    let first = outer.removed_block_entities.entry(pos).or_default();
-                    if first.is_none() {
-                        *first = removed;
-                    }
-                }
-                for (pos, block) in level.blocks {
-                    outer
-                        .blocks
-                        .entry(pos)
-                        .and_modify(|kept| {
-                            kept.flags = merge_block_update_flags(kept.flags, block.flags);
-                            kept.level_host = block.level_host;
-                            kept.replay_removal |= block.replay_removal;
-                        })
-                        .or_insert(block);
-                }
                 if let Some(before) = level.level_random {
                     if outer.dimension == level.dimension {
                         outer.keep_level_random(None, || before);
@@ -899,9 +1009,6 @@ impl Game<'_> {
                 if outer.board.is_none() {
                     outer.board = level.board;
                 }
-                for (id, kept) in level.item_entities {
-                    outer.item_entities.entry(id).or_insert(kept);
-                }
                 for (join, kept) in level.orbs {
                     outer.orbs.entry(join).or_insert(kept);
                 }
@@ -941,9 +1048,6 @@ impl Game<'_> {
                     outer.scratch_kept.entry(id).or_insert(kept);
                 }
                 outer.save_gate = outer.save_gate.take().or(level.save_gate);
-                for (chunk, mark) in level.chunk_marks {
-                    outer.chunk_marks.entry(chunk).or_insert(mark);
-                }
                 outer.save_chunks.extend(level.save_chunks);
                 outer.new_maps.append(&mut level.new_maps);
                 outer.after.extend(level.after);
@@ -953,7 +1057,11 @@ impl Game<'_> {
                     .and_then(|dim| entities::open_in(&mut self.transactions, dim))
                 {
                     Some(enclosing) => enclosing.lifetimes.merge(lifetimes),
-                    None => self.commit_entity_journal(lifetimes, |_| {}),
+                    None => self.commit_entity_journal(lifetimes, |game| {
+                        if let Some(local) = independent {
+                            game.root_commit(local);
+                        }
+                    }),
                 }
             }
             (true, None) => {
@@ -1064,7 +1172,7 @@ impl Game<'_> {
     /// cooldown, if a transaction is open and hasn't yet.
     pub(super) fn journal_block_entity(&mut self, pos: Pos) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return;
         };
         level
@@ -1086,7 +1194,7 @@ impl Game<'_> {
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
         let entities = &mut self.world.block_entities;
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             entities.remove(&pos);
             return;
         };
@@ -1125,7 +1233,7 @@ impl Game<'_> {
         {
             return self.journal_block_entity(pos);
         }
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return;
         };
         if level.block_entities.contains_key(&pos) {
@@ -1139,7 +1247,12 @@ impl Game<'_> {
     /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
     /// block entity's with the rest of it, any other's alone.
     pub(super) fn journal_attachments(&mut self, holder: Holder) {
-        if let Some(level) = self.transactions.last_mut() {
+        let level = if matches!(holder, Holder::BlockEntity(_)) {
+            entities::open_in(&mut self.transactions, self.dim)
+        } else {
+            self.transactions.last_mut()
+        };
+        if let Some(level) = level {
             level
                 .save_gate
                 .get_or_insert_with(sunrise_client::join_seq::visibility::PassLease::enter);
@@ -1448,29 +1561,28 @@ impl Game<'_> {
         flags: i32,
         level_host: bool,
     ) -> bool {
-        let Some(level) = self.transactions.last_mut() else {
+        let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return self.level_set_with_flags(pos, state, flags).is_ok();
         };
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
-        level
-            .blocks
-            .entry(key)
-            .and_modify(|kept| {
-                kept.flags = merge_block_update_flags(kept.flags, flags);
-                kept.level_host = level_host;
-            })
-            .or_insert(KeptBlock {
-                state: old,
-                flags,
-                level_host,
-                replay_removal: false,
-            });
+        let block = level.blocks.entry(key).or_insert(KeptBlock {
+            state: old,
+            replay: None,
+        });
+        let replay = block.replay.get_or_insert(BlockReplay {
+            state: old,
+            flags,
+            level_host,
+            replay_removal: false,
+        });
+        replay.flags = merge_block_update_flags(replay.flags, flags);
+        replay.level_host = level_host;
         level.after.push(After::Block(key));
         if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
             return false;
         }
-        self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
+        self.transactions.advance_block_writes();
         true
     }
     /// Hide a replaced block entity from staged reads, without dropping its
@@ -1478,10 +1590,9 @@ impl Game<'_> {
     /// drops against the old entity before journalling the removal.
     pub(super) fn journal_block_replacement(&mut self, pos: Pos) {
         self.journal_remove_block_entity(pos);
-        if let Some(block) = self
-            .transactions
-            .last_mut()
+        if let Some(block) = entities::open_in(&mut self.transactions, self.dim)
             .and_then(|level| level.blocks.get_mut(&pos))
+            .and_then(|block| block.replay.as_mut())
         {
             block.replay_removal = true;
         }
@@ -1543,7 +1654,7 @@ impl Game<'_> {
     /// Mark a written chunk unsaved at root commit, without issuing any notice.
     pub(super) fn journal_chunk_save(&mut self, chunk: (i32, i32)) {
         let dim = self.dim;
-        if let Some(level) = self.transactions.last_mut() {
+        if let Some(level) = entities::open_in(&mut self.transactions, self.dim) {
             level.save_chunks.insert((dim, chunk));
         }
     }
@@ -1553,7 +1664,12 @@ impl Game<'_> {
     }
     /// Runs `after` at once, or at the root commit inside a transaction.
     pub(super) fn after_commit(&mut self, after: After) {
-        match self.transactions.last_mut() {
+        let frame = if after.level_owned() {
+            entities::open_in(&mut self.transactions, self.dim)
+        } else {
+            self.transactions.last_mut()
+        };
+        match frame {
             Some(level) => level.after.push(after),
             None => self.run_after(after),
         }
@@ -1619,6 +1735,9 @@ impl Game<'_> {
             },
             // Only reached through a root commit, which sets the block itself.
             After::Block(_) => {}
+            After::BulkBlocks(publication, tracked, removed) => {
+                self.publish_bulk_edit(publication, tracked, removed);
+            }
             After::Drop(pos, stack) => {
                 self.spawn_item(stack, pos.map(|p| f64::from(p) + 0.5), [0.0; 3], 10);
             }
@@ -1785,12 +1904,15 @@ impl Game<'_> {
                         continue;
                     }
                     let now = self.world.block(pos.0, pos.1, pos.2);
-                    let KeptBlock {
+                    let Some(BlockReplay {
                         state: was,
                         flags,
                         level_host,
                         replay_removal,
-                    } = level.blocks[&pos];
+                    }) = level.blocks[&pos].replay
+                    else {
+                        continue;
+                    };
                     // LevelChunk.setBlockState runs preRemoveSideEffects on the resident row
                     // before removeBlockEntity and neighbor effects. Replay with the row as it
                     // stood at removal, or leave it in place if the old block kind survived.
@@ -1807,9 +1929,7 @@ impl Game<'_> {
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
                         let pos = [pos.0, pos.1, pos.2];
                         if level_host {
-                            self.with_level(|_, level, ticks| {
-                                level.native_set_block(ticks, pos, now, flags);
-                            });
+                            self.set_block_live(pos, now, flags, true);
                             let _ = self.process_level_events();
                         } else {
                             let _ = self.level_set_with_flags(pos, now, flags);
@@ -1897,6 +2017,11 @@ impl Game<'_> {
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
+            let current = self.world.block_entities.generation(&pos);
+            let replaced = current != kept.generation;
+            if replaced && current.is_some() {
+                self.world.block_entities.remove(&pos);
+            }
             match (kept.entity, self.world.block_entities.get_mut(&pos)) {
                 (Some(entity), Some(now)) => {
                     fn shapes(
@@ -1916,7 +2041,9 @@ impl Game<'_> {
                         .restore_generation(pos, kept.generation.unwrap());
                 }
                 // One this transaction removed comes back.
-                (Some(entity), None) if level.removed_block_entities.contains_key(&pos) => {
+                (Some(entity), None)
+                    if replaced || level.removed_block_entities.contains_key(&pos) =>
+                {
                     self.restore_removed_block_entity(pos, entity, kept.generation.unwrap());
                 }
                 _ => {}
