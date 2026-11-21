@@ -38,9 +38,9 @@ def main():
         raise AssertionError(f"Rust witness replay did not run: {test}")
     print(f"{sum(line.startswith('read ') for line in expected.read_text().splitlines())} light reads match the real engine")
 
-    probe = oracle_harness.build_probe(build, "light_storage_padding")
+    probe = oracle_harness.build_probe(build, "light_parity")
     actual_pads = build / "rust-padding.txt"
-    oracle_harness.run_logged([*probe, lab.RESOURCES, actual_pads], build, "rust-padding")
+    oracle_harness.run_logged([*probe, "--ordered-padding", lab.RESOURCES, actual_pads], build, "rust-padding")
     # The outputs include payload bytes: name the first differing row, not its data.
     expected_lines = expected_pads.read_text().splitlines()
     actual_lines = actual_pads.read_text().splitlines()

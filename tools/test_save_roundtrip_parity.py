@@ -16,7 +16,7 @@
    data as the server that loaded V0 (so vanilla reads Sunrise's files as it reads its own).
 
   test_save_roundtrip_parity.py [--keep] [--bin-dir DIR] [--gen-only] [--skip-vanilla-load]
-                                [--vanilla DIR] [--sunrise DIR] (reuse an existing V0/H pair)
+                                [--vanilla DIR] [--sunrise DIR] (compare supplied saves with exact light)
 
 Run files stay under .local/save-roundtrip/run. On Linux the Sunrise client runs on the
 virtual screen (`vscreen`), never on a real monitor, with a null ALSA device; on macOS it
@@ -478,13 +478,14 @@ def normalize_chunk(root):
     sections = {}
     for s in root.get('sections', []):
         y = s['Y'][1] if isinstance(s['Y'], tuple) else s['Y']
-        # SerializableChunkData.write can emit light without a chunk section.
-        # Compare its blocks as air, like an absent section, but keep both light layers.
-        if 'block_states' not in s and 'biomes' not in s and ('BlockLight' in s or 'SkyLight' in s):
-            blocks, biomes = ['minecraft:air'] * 4096, None
-        else:
+        # SerializableChunkData.write can emit light with no chunk section only at the pads.
+        # Compare those pads as air, but leave missing containers elsewhere detectable.
+        blocks = None
+        if 'block_states' in s:
             blocks = decode_container(s['block_states'], 4096, 4, 'minecraft:air')
-            biomes = decode_container(s['biomes'], 64, 1, 'minecraft:plains') if 'biomes' in s else None
+        elif y in (LOWER_PAD, UPPER_PAD) and 'biomes' not in s and ('BlockLight' in s or 'SkyLight' in s):
+            blocks = AIR_BLOCKS
+        biomes = decode_container(s['biomes'], 64, 1, 'minecraft:plains') if 'biomes' in s else None
         sections[y] = {'blocks': blocks, 'biomes': biomes, 'BlockLight': s.get('BlockLight'),
                        'SkyLight': s.get('SkyLight')}
     out = {k: v for k, v in root.items() if k != 'sections'}
@@ -502,6 +503,7 @@ LIT_STATUSES = {'minecraft:light', 'minecraft:spawn', 'minecraft:full'}
 # Overworld block sections -4 through 19, plus two light-only pads.
 LOWER_PAD, UPPER_PAD = -5, 20
 PACKED_ZERO = ('B', [0] * 2048)
+AIR_BLOCKS = ['minecraft:air'] * 4096
 
 
 def lower_pad_inherits_zero(sections):
@@ -529,18 +531,31 @@ def compare_chunks(vanilla, sunrise, report, *, warm_overworld=False):
         ha, hs = normalize_chunk(sunrise[key])
         out = []
         diff(va, ha, 'chunk', out)
-        promoted = va.get('Status') != 'minecraft:full' and ha.get('Status') == 'minecraft:full'
+        vanilla_full = va.get('Status') == 'minecraft:full'
+        sunrise_full = ha.get('Status') == 'minecraft:full'
+        promoted = not vanilla_full and sunrise_full
         if promoted:
             rule = re.compile(r'^chunk\.(Status|Heightmaps\.\w+_WG|entities)$')
             out = [(path.replace('chunk.', 'chunk.promoted.', 1) if rule.match(path) else path, p, q)
                    for path, p, q in out]
         for y in sorted(set(vs) | set(hs)):
-            empty = {'blocks': ['minecraft:air'] * 4096, 'biomes': None, 'BlockLight': None, 'SkyLight': None}
+            empty = {'blocks': AIR_BLOCKS, 'biomes': None, 'BlockLight': None, 'SkyLight': None}
             a, b = vs.get(y, empty), hs.get(y, empty)
-            blocks = [(i, p, q) for i, (p, q) in enumerate(zip(a['blocks'], b['blocks'])) if p != q]
-            if blocks:
-                i, p, q = blocks[0]
-                out.append((f'chunk.sections.blocks[{y}]', f'{len(blocks)} differ, first #{i} {p}', q))
+            in_range = LOWER_PAD < y < UPPER_PAD
+            for tag, field in (('block_states', 'blocks'), ('biomes', 'biomes')):
+                missing = [y not in sections or section[field] is None
+                           for sections, section in ((vs, a), (hs, b))]
+                required = [(in_range and full) or (tag == 'block_states' and y in sections)
+                            for full, sections in ((vanilla_full, vs), (sunrise_full, hs))]
+                if any(m and r for m, r in zip(missing, required)):
+                    # A missing required container is invalid even on a chunk Sunrise promoted.
+                    report.append((f'chunk.sections.{tag}[{y}] @{key}',
+                                   *('missing' if m else 'present' for m in missing)))
+            if a['blocks'] is not None and b['blocks'] is not None:
+                blocks = [(i, p, q) for i, (p, q) in enumerate(zip(a['blocks'], b['blocks'])) if p != q]
+                if blocks:
+                    i, p, q = blocks[0]
+                    out.append((f'chunk.sections.blocks[{y}]', f'{len(blocks)} differ, first #{i} {p}', q))
             if a['biomes'] is not None and b['biomes'] is not None and a['biomes'] != b['biomes']:
                 out.append((f'chunk.sections.biomes[{y}]', 'differ', ''))
             for light in ('BlockLight', 'SkyLight'):
@@ -551,7 +566,7 @@ def compare_chunks(vanilla, sunrise, report, *, warm_overworld=False):
                 # the bottom section's packed array arrives. The former omits its empty
                 # layer on save; the latter repeats the bottom row into packed zeroes.
                 if (warm_overworld and y == LOWER_PAD and light == 'SkyLight'
-                        and va.get('Status') == ha.get('Status') == 'minecraft:full'
+                        and vanilla_full and sunrise_full
                         and ((p is None and q == PACKED_ZERO and lower_pad_inherits_zero(vs))
                              or (q is None and p == PACKED_ZERO and lower_pad_inherits_zero(hs)))):
                     continue
@@ -749,7 +764,7 @@ def main():
                     print('cold server log:', line)
             failures += compare_cold_pads(cold_vanilla / 'world', cold_sunrise / 'world')
     print('comparing', v0, 'with', h)
-    report = compare_worlds(v0, h, warm_overworld=True)
+    report = compare_worlds(v0, h, warm_overworld=not args.sunrise)
     failures += summarize(report)
     if not args.skip_vanilla_load:
         shutil.rmtree(RUN / 'v1', ignore_errors=True)

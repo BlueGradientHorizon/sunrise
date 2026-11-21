@@ -26,10 +26,7 @@ fn append_hex(report: &mut String, bytes: &[u8]) -> std::fmt::Result {
     writeln!(report)
 }
 
-pub fn main() -> sunrise_client::Result<()> {
-    let mut args = crate::args_os().skip(1);
-    let resources = PathBuf::from(args.next().ok_or("missing resources directory")?);
-    let output = args.next().ok_or("missing output path")?;
+pub(super) fn write_report(resources: PathBuf, output: PathBuf) -> sunrise_client::Result<()> {
     let assets = Assets::load(&resources)?;
     let biomes = Biomes::load(&sunrise_assets::resource_source::ResourceRoot::directory(
         resources,

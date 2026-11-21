@@ -75,14 +75,14 @@ class SaveRoundtripPathsTests(unittest.TestCase):
 class SaveRoundtripChunkTests(unittest.TestCase):
     def test_light_only_section_compares_both_layers_and_does_not_hide_blocks(self):
         key = ('r.0.0.mca', 0, 0)
-        section = {'Y': ('b', -5), 'BlockLight': ('bytearray', [1] * 2048),
-                   'SkyLight': ('bytearray', [2] * 2048)}
+        section = {'Y': ('b', -5), 'BlockLight': ('B', [1] * 2048),
+                   'SkyLight': ('B', [2] * 2048)}
         vanilla = {key: {'Status': 'minecraft:full', 'sections': [section]}}
         for other, paths in (
             ([section], []),
             ([], ['BlockLight', 'SkyLight']),
-            ([{**section, 'BlockLight': ('bytearray', [0] * 2048),
-               'SkyLight': ('bytearray', [0] * 2048)}], ['BlockLight', 'SkyLight']),
+            ([{**section, 'BlockLight': ('B', [0] * 2048),
+               'SkyLight': ('B', [0] * 2048)}], ['BlockLight', 'SkyLight']),
             ([{**section, 'block_states': {'palette': [{'Name': 'minecraft:stone'}]},
                'biomes': {'palette': ['minecraft:plains']}}], ['blocks']),
         ):
@@ -93,18 +93,37 @@ class SaveRoundtripChunkTests(unittest.TestCase):
                 self.assertEqual([path for path, _, _ in report],
                                  [f'chunk.sections.{name}[-5] @{key}' for name in paths])
 
+    def test_full_in_range_section_requires_both_containers_even_when_air(self):
+        key = ('r.0.0.mca', 0, 0)
+        section = {'Y': ('b', -4), 'SkyLight': ('B', [2] * 2048),
+                   'block_states': {'palette': [{'Name': 'minecraft:air'}]},
+                   'biomes': {'palette': ['minecraft:desert']}}
+        vanilla = {key: {'Status': 'minecraft:full', 'sections': [section]}}
+        for missing in [('block_states',), ('biomes',), ('block_states', 'biomes')]:
+            with self.subTest(missing=missing):
+                invalid = {tag: value for tag, value in section.items() if tag not in missing}
+                sunrise = {key: {'Status': 'minecraft:full', 'sections': [invalid]}}
+                report = []
+                roundtrip.compare_chunks(vanilla, sunrise, report)
+                self.assertEqual(report, [(f'chunk.sections.{tag}[-4] @{key}', 'present', 'missing')
+                                          for tag in missing])
+
     def test_only_warm_full_lower_sky_accepts_packed_zero_in_place_of_empty(self):
         key = ('r.0.0.mca', 0, 0)
         full = 'minecraft:full'
         zero = ('B', [0] * 2048)
-        source = {'Y': ('b', -4), 'SkyLight': ('B', [0] * 128 + [1] * 1920)}
+        terrain = {'block_states': {'palette': [{'Name': 'minecraft:air'}]},
+                   'biomes': {'palette': ['minecraft:plains']}}
+        source = {**terrain, 'Y': ('b', -4), 'SkyLight': ('B', [0] * 128 + [1] * 1920)}
         for y in range(-5, 21):
             for layer in ('SkyLight', 'BlockLight'):
                 for warm in (False, True):
                     with self.subTest(y=y, layer=layer, warm=warm):
                         base = [] if y == -4 else [source]
-                        missing = {key: {'Status': full, 'sections': base}}
-                        packed = {key: {'Status': full, 'sections': base + [{'Y': ('b', y), layer: zero}]}}
+                        section = {'Y': ('b', y), **(terrain if -5 < y < 20 else {})}
+                        missing_layer = base + ([section] if -5 < y < 20 else [])
+                        missing = {key: {'Status': full, 'sections': missing_layer}}
+                        packed = {key: {'Status': full, 'sections': base + [{**section, layer: zero}]}}
                         for a, b in ((missing, packed), (packed, missing)):
                             report = []
                             roundtrip.compare_chunks(a, b, report, warm_overworld=warm)
@@ -126,6 +145,24 @@ class SaveRoundtripChunkTests(unittest.TestCase):
                 b = {key: {'Status': status, 'sections': sources + [{'Y': ('b', -5), 'SkyLight': payload}]}}
                 roundtrip.compare_chunks(a, b, report, warm_overworld=True)
                 self.assertEqual([p for p, _, _ in report], [f'chunk.sections.SkyLight[-5] @{key}'])
+
+
+class SaveRoundtripModeTests(unittest.TestCase):
+    def test_only_the_sunrise_resave_created_by_this_run_is_warm(self):
+        for supplied_sunrise in (False, True):
+            with self.subTest(supplied_sunrise=supplied_sunrise), tempfile.TemporaryDirectory() as folder:
+                run = Path(folder)
+                v0, h = run / 'vanilla', run / 'sunrise'
+                argv = ['save_roundtrip', '--vanilla', str(v0), '--skip-vanilla-load', '--keep']
+                argv += ['--sunrise', str(h)] if supplied_sunrise else ['--bin-dir', str(run)]
+                with (patch.object(roundtrip, 'RUN', run), patch.object(sys, 'argv', argv),
+                      patch.object(roundtrip, 'sunrise_resave', return_value=h) as resave,
+                      patch.object(roundtrip, 'compare_worlds', return_value=[]) as compare,
+                      contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as stopped):
+                    roundtrip.main()
+                self.assertEqual(stopped.exception.code, 0)
+                self.assertEqual(resave.call_count, int(not supplied_sunrise))
+                compare.assert_called_once_with(v0, h, warm_overworld=not supplied_sunrise)
 
 
 class SaveRoundtripTimersTests(unittest.TestCase):
