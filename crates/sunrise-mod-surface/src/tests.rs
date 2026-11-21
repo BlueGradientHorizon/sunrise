@@ -592,3 +592,32 @@ fn an_argument_references_only_the_items_its_own_type_names_by_path() {
         ]
     );
 }
+
+#[test]
+fn a_stored_hash_its_contract_does_not_give_is_unsealed() {
+    let mut surface = sample();
+    surface.hooks = vec![hook_with(1, &[("player", "PlayerRef")])];
+    surface.traits = vec![api_trait("trait:Api", Role::Call, &["trait:Host"], &["a"])];
+    surface.hash = surface.document_hash();
+    assert!(surface.unsealed().is_empty(), "{:?}", surface.unsealed());
+    // A contract changed under its old hash, at every level, and a document hash its entries don't give. (A
+    // called trait's `refs` are outside its hash: the release gate compares them field by field.)
+    let mut changed = surface.clone();
+    changed.functions[0].contract.signature = "fn ground(other: u8)".into();
+    changed.types[0].fields[0].contract.ty = "u8".into();
+    changed.traits[0].contract.side = Side::Server;
+    changed.traits[0].methods[0].contract.signature = "fn a(&mut self)".into();
+    changed.hooks[0].contract.arguments[0].ty = "u8".into();
+    changed.hash = "0".repeat(32);
+    assert_eq!(
+        changed.unsealed(),
+        [
+            "hook:joined (its argument records)",
+            "trait:Api",
+            &changed.traits[0].methods[0].id,
+            &changed.functions[0].id,
+            "type:Block.state",
+            "surface",
+        ]
+    );
+}

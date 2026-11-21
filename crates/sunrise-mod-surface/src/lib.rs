@@ -69,7 +69,8 @@
 //! [`Surface::read`] refuses an unknown `schema` number and malformed or truncated JSON with a
 //! typed [`ReadError`], and ignores fields it does not know. It does not recompute record
 //! hashes: a newer writer may hash contract fields this reader does not know, and the file's
-//! integrity is the signature's job.
+//! integrity is the signature's job. [`Surface::unsealed`] does, for a release gate that judges a
+//! newer writer's file with this reader.
 pub mod build_data;
 pub mod child;
 pub mod diff;
@@ -592,6 +593,147 @@ impl Surface {
             text.push('\n');
         }
         digest(&text)
+    }
+
+    /// The ids whose stored hash is not the one this reader's constructors give their contract,
+    /// `surface` for the document's own: a hook's argument records are compared whole with the
+    /// ones its contract gives. A newer writer that hashes contract fields this reader doesn't
+    /// know fails here too, so a release judged by an older tool keeps that tool's hashes.
+    /// (`fields_hash` is outside: it also covers fields no record lists.)
+    pub fn unsealed(&self) -> Vec<String> {
+        fn sealed<'a>(
+            out: &mut Vec<String>,
+            records: impl IntoIterator<Item = (&'a str, &'a str, String)>,
+        ) {
+            for (id, stored, hash) in records {
+                if stored != hash {
+                    out.push(id.to_owned());
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for hook in &self.hooks {
+            let fresh = Hook::new(
+                hook.id.clone(),
+                "",
+                hook.engine.clone(),
+                hook.counterparts.clone(),
+                hook.contract.clone(),
+            );
+            sealed(
+                &mut out,
+                [(hook.id.as_str(), hook.hash.as_str(), fresh.hash)],
+            );
+            let fields = |fields: &[Field]| {
+                fields
+                    .iter()
+                    .map(|f| (f.id.clone(), f.hash.clone(), f.contract.clone()))
+                    .collect::<Vec<_>>()
+            };
+            if fields(&hook.fields) != fields(&fresh.fields) {
+                out.push(format!("{} (its argument records)", hook.id));
+            }
+        }
+        for item in &self.traits {
+            let fresh = Trait::new(
+                item.id.clone(),
+                "",
+                item.contract.clone(),
+                Vec::new(),
+                Vec::new(),
+            );
+            sealed(
+                &mut out,
+                [(item.id.as_str(), item.hash.as_str(), fresh.hash)],
+            );
+            sealed(
+                &mut out,
+                item.methods.iter().map(|m| {
+                    let hash = Method::new(m.id.clone(), "", m.contract.clone()).hash;
+                    (m.id.as_str(), m.hash.as_str(), hash)
+                }),
+            );
+            sealed(
+                &mut out,
+                item.associated.iter().map(|a| {
+                    let hash = Associated::new(a.id.clone(), "", a.contract.clone()).hash;
+                    (a.id.as_str(), a.hash.as_str(), hash)
+                }),
+            );
+        }
+        sealed(
+            &mut out,
+            self.handles.iter().chain(&self.functions).map(|f| {
+                let hash = Function::new(f.id.clone(), "", f.contract.clone()).hash;
+                (f.id.as_str(), f.hash.as_str(), hash)
+            }),
+        );
+        sealed(
+            &mut out,
+            self.macros.iter().map(|m| {
+                let hash = Macro::new(m.id.clone(), "", m.contract.clone()).hash;
+                (m.id.as_str(), m.hash.as_str(), hash)
+            }),
+        );
+        for item in &self.types {
+            let hash = Type::new(
+                item.id.clone(),
+                "",
+                None,
+                item.contract.clone(),
+                Vec::new(),
+                Vec::new(),
+            )
+            .hash;
+            sealed(&mut out, [(item.id.as_str(), item.hash.as_str(), hash)]);
+            sealed(
+                &mut out,
+                item.fields.iter().map(|f| {
+                    let hash = Field::new(f.id.clone(), "", f.contract.clone()).hash;
+                    (f.id.as_str(), f.hash.as_str(), hash)
+                }),
+            );
+            sealed(
+                &mut out,
+                item.variants.iter().map(|v| {
+                    let hash = Variant::new(v.id.clone(), "", v.contract.clone()).hash;
+                    (v.id.as_str(), v.hash.as_str(), hash)
+                }),
+            );
+        }
+        sealed(
+            &mut out,
+            self.parts.iter().map(|p| {
+                let hash = Part::new(p.id.clone(), "", Vec::new(), p.contract.clone()).hash;
+                (p.id.as_str(), p.hash.as_str(), hash)
+            }),
+        );
+        sealed(
+            &mut out,
+            self.capabilities.iter().map(|c| {
+                let hash = Capability::new(c.id.clone(), "", c.contract.clone()).hash;
+                (c.id.as_str(), c.hash.as_str(), hash)
+            }),
+        );
+        sealed(
+            &mut out,
+            self.behaviours.iter().map(|b| {
+                let hash = Behaviour::new(b.id.clone(), "", Vec::new(), b.contract.clone()).hash;
+                (b.id.as_str(), b.hash.as_str(), hash)
+            }),
+        );
+        sealed(
+            &mut out,
+            self.engine_items.iter().map(|e| {
+                let hash = EngineItem::new(e.id.clone(), e.contract.clone()).hash;
+                (e.id.as_str(), e.hash.as_str(), hash)
+            }),
+        );
+        sealed(
+            &mut out,
+            [("surface", self.hash.as_str(), self.document_hash())],
+        );
+        out
     }
 
     /// The identifiers a mod's source may contain for each id: its [`leaf`], and a capability
