@@ -1,47 +1,88 @@
 //! Direct mod GUI drawing on the hook's HUD batch.
 
-use crate::game::api_values::TryIntoEngine;
-use mod_api::{GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, Text};
+use crate::game::{
+    Game,
+    api_values::{TryIntoEngine, stack_value},
+};
+use mod_api::{GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, ItemStack, Text};
 use sunrise_client::{
     hud::{GuiSprite, HudAtlas, HudBatch},
     hud_layout::{
         Blend, IDENTITY, Pose, PoseOp, ResolvedGuiQuad, abgr, paint_fill_gradient, pose_apply,
         pose_point,
     },
+    items::ItemStack as EngineStack,
+    skins::HeadSkinJournal,
 };
 
-pub(super) struct GameGuiCanvas<'a> {
+pub(super) struct GameGuiCanvas<'a, 'g> {
     batch: &'a mut HudBatch,
     atlas: &'a HudAtlas,
+    /// Absent only for the renderer-only canvas fixture.
+    game: Option<&'a Game<'g>>,
+    head_skins: &'a HeadSkinJournal,
     pose: Pose,
     /// Screen-space edges, not affected by future changes of pose.
     scissor: Option<[f32; 4]>,
 }
 
-impl GameGuiCanvas<'_> {
+impl GameGuiCanvas<'_, '_> {
     pub(super) fn draw(
         batch: &mut HudBatch,
         atlas: &HudAtlas,
+        game: Option<&Game<'_>>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        Self::group(batch, atlas, IDENTITY, None, draw)
+        let head_skins = HeadSkinJournal::default();
+        Self::group(batch, atlas, game, &head_skins, IDENTITY, None, draw)?;
+        if let Some(game) = game
+            && !head_skins.is_empty()
+        {
+            head_skins.commit(
+                &mut game.skin_profiles.borrow_mut(),
+                &mut game.skin_downloads.borrow_mut(),
+            );
+        }
+        Ok(())
     }
 
     fn group(
         batch: &mut HudBatch,
         atlas: &HudAtlas,
+        game: Option<&Game<'_>>,
+        head_skins: &HeadSkinJournal,
         pose: Pose,
         scissor: Option<[f32; 4]>,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        batch.draw_scope(&atlas.font, |batch| {
-            draw(&mut GameGuiCanvas {
-                batch,
-                atlas,
-                pose,
-                scissor,
+        head_skins.scope(|| {
+            batch.draw_scope(&atlas.font, |batch| {
+                draw(&mut GameGuiCanvas {
+                    batch,
+                    atlas,
+                    game,
+                    head_skins,
+                    pose,
+                    scissor,
+                })
             })
         })
+    }
+
+    /// Validate the posed slot before asking its model or bar hooks to run. Oversized models
+    /// and count text may extend beyond the slot; `paint` validates their emitted vertices.
+    fn check_item_geometry(&self, [x, y]: [f32; 2]) -> Result<(), GuiDrawError> {
+        let [right, bottom] = rect_end([x, y, 16.0, 16.0])?;
+        if self.pose == IDENTITY
+            || [[x, y], [right, y], [right, bottom], [x, bottom]]
+                .into_iter()
+                .flat_map(|point| pose_point(self.pose, point))
+                .all(f32::is_finite)
+        {
+            Ok(())
+        } else {
+            Err(GuiDrawError::NotFinite)
+        }
     }
 
     /// An individual call can be refused even when the caller chooses to commit its group.
@@ -91,7 +132,13 @@ fn rect_end([x, y, w, h]: [f32; 4]) -> Result<[f32; 2], GuiDrawError> {
     }
 }
 
-impl GuiCanvas for GameGuiCanvas<'_> {
+/// The API count is nonzero, but vanilla also treats air as an empty stack.
+fn drawable_stack(stack: &ItemStack) -> Result<Option<EngineStack>, GuiDrawError> {
+    let stack = stack_value(stack).map_err(GuiDrawError::Stack)?;
+    Ok((&*stack.item != "minecraft:air").then_some(stack))
+}
+
+impl GuiCanvas for GameGuiCanvas<'_, '_> {
     fn size(&self) -> [f32; 2] {
         [self.batch.width, self.batch.height]
     }
@@ -143,7 +190,15 @@ impl GuiCanvas for GameGuiCanvas<'_> {
         } else {
             self.scissor
         };
-        Self::group(self.batch, self.atlas, pose, clip, draw)
+        Self::group(
+            self.batch,
+            self.atlas,
+            self.game,
+            self.head_skins,
+            pose,
+            clip,
+            draw,
+        )
     }
 
     fn fill(&mut self, rect @ [x, y, ..]: [f32; 4], argb: u32) -> Result<(), GuiDrawError> {
@@ -178,6 +233,40 @@ impl GuiCanvas for GameGuiCanvas<'_> {
         self.paint(|batch, atlas| {
             batch.text_styled(atlas, &text, x, y, abgr(argb), shadow);
         })
+    }
+
+    fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError> {
+        let Some(stack) = drawable_stack(stack)? else {
+            return Ok(());
+        };
+        self.check_item_geometry(at)?;
+        let game = self.game.ok_or(GuiDrawError::Unavailable)?;
+        let head_skins = self.head_skins;
+        head_skins.scope(|| {
+            self.paint(|batch, _| {
+                game.draw_item_model_with_skins(batch, &stack, at, seed, Some(head_skins));
+            })
+        })
+    }
+
+    fn item_decorations(
+        &mut self,
+        stack: &ItemStack,
+        at @ [x, y]: [f32; 2],
+        count: Option<&str>,
+    ) -> Result<(), GuiDrawError> {
+        let Some(stack) = drawable_stack(stack)? else {
+            return Ok(());
+        };
+        self.check_item_geometry(at)?;
+        let game = self.game.ok_or(GuiDrawError::Unavailable)?;
+        self.paint(|batch, _| {
+            game.draw_vanilla_item_decorations(batch, &stack, x, y, count.map(str::to_owned));
+        })?;
+        // Its draws already use this pose and scissor. Only the vanilla suffix above needs
+        // transforming, not the whole decorator call.
+        game.native_item_decorations(&stack, x, y, self);
+        Ok(())
     }
 
     fn blit_sprite(
@@ -296,12 +385,12 @@ mod tests {
             )
         };
         let mut batch = HudBatch::scratch([320, 240]);
-        GameGuiCanvas::draw(&mut batch, &atlas, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
             crosshair(root, [2.0, 3.0, 2.0, 2.0])
         })
         .unwrap();
 
-        GameGuiCanvas::draw(&mut batch, &atlas, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
             assert_eq!(root.size(), [320.0, 240.0]);
             root.scope(
                 &[PoseOp::Translate(10.75, 20.25)],
@@ -373,7 +462,7 @@ mod tests {
 
         let before = bytemuck::cast_slice::<_, u8>(&batch.vertices).to_vec();
         assert_eq!(
-            GameGuiCanvas::draw(&mut batch, &atlas, &mut |root| {
+            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
                 root.scope(&[], None, &mut |child| {
                     crosshair(child, [4.0, 7.0, 1.0, 1.0])
                 })?;
@@ -395,7 +484,7 @@ mod tests {
         ))
         .unwrap();
         let mut batch = HudBatch::scratch([320, 240]);
-        GameGuiCanvas::draw(&mut batch, &atlas, &mut |root| {
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
             let mut over_scissor =
                 |canvas: &mut dyn GuiCanvas| canvas.fill([-32.0, -32.0, 64.0, 64.0], 0xFFFF_FFFF);
             root.scope(

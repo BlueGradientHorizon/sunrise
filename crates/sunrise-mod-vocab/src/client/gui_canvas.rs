@@ -1,6 +1,6 @@
 //! Lexical, transactional GUI drawing.
 
-use crate::{Text, text::TextFormError};
+use crate::{ItemStack, StackWriteError, Text, text::TextFormError};
 
 use super::hud_layout::{Blend, PoseOp};
 
@@ -39,6 +39,8 @@ pub enum GuiDrawError {
     NotFinite,
     /// Text could not cross to the game (for example, its component tree is too deep).
     Text(TextFormError),
+    /// The stack could not be read for rendering. Storage count and damage limits do not apply.
+    Stack(StackWriteError),
     /// No sprite is present at the requested GUI or packed-atlas id.
     UnknownSprite,
     /// `Vignette` and `Nausea` are only available for raw texture blits.
@@ -58,6 +60,7 @@ impl std::fmt::Display for GuiDrawError {
             Self::Abort => "GUI drawing was aborted by the caller",
             Self::NotFinite => "GUI draw geometry is not finite",
             Self::Text(error) => return write!(f, "GUI draw text: {error}"),
+            Self::Stack(error) => return write!(f, "GUI draw stack: {error:?}"),
             Self::UnknownSprite => "unknown GUI draw sprite",
             Self::UnsupportedSpriteBlend => "this blend is not supported for GUI sprites",
             Self::BadSpriteRegion => "GUI sprite size must be positive",
@@ -115,6 +118,21 @@ pub trait GuiCanvas {
         at: [f32; 2],
         argb: u32,
         shadow: bool,
+    ) -> Result<(), GuiDrawError>;
+
+    /// Draw the stack's 16-pixel GUI item model at `at`, with `seed` passed to its model
+    /// resolver. This does not draw decorations. An empty stack draws nothing; inventory
+    /// storage limits do not apply. New head-skin requests wait for the outer group to commit.
+    fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
+
+    /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
+    /// `count` replaces the normal count label; `Some("")` hides it. An empty stack draws nothing.
+    /// Call this in the parent scope after drawing a squeezed model in a child scope.
+    fn item_decorations(
+        &mut self,
+        stack: &ItemStack,
+        at: [f32; 2],
+        count: Option<&str>,
     ) -> Result<(), GuiDrawError>;
 
     /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, with an optional source region.

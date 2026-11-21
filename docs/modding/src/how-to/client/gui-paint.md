@@ -27,37 +27,51 @@ let result: Result<(), GuiDrawError> = draw.draw_gui(&mut |canvas| {
 A nested scope that returns an error leaves its parent unchanged. Widgets, scenes and other
 host state are not part of the transaction; use the ordinary `DrawContext` for those draws.
 
+## Items
+
+Call `canvas.item(&stack, at, seed)` to draw a stack's model in a 16-pixel slot, passing the seed to
+its model resolver. Call `canvas.item_decorations(&stack, at, None)` to add its bar, cooldown,
+count and custom decoration, in that order. An optional `Some(label)` replaces the count text.
+The stack is read for display, not written to a slot: it keeps its components and can be over the
+storage limit. Empty stacks draw nothing. Head-skin fetches and atlas requests caused by the draw
+wait until the outer group commits.
+
+To draw from the local inventory, read it at the calling boundary rather than sending a slot
+number to the renderer. Inventory numbers `0..=8` are the hotbar and `40` is the off hand. An
+absent stack means nothing to draw. As in vanilla's hotbar, apply the pop squeeze only in the
+model's child scope, so it doesn't distort the decorations:
+
+```rust,ignore
+use mod_api::client::hud_layout::PoseOp;
+
+let slots = host.local_player().and_then(|player| player.inventory_slots(host));
+if let Some((_, stack)) = slots.into_iter().flatten().find(|(slot, _)| *slot == 0) {
+    draw.draw_gui(&mut |canvas| {
+        let at = [20.0, 20.0];
+        canvas.scope(
+            &[
+                PoseOp::Translate(28.0, 32.0),
+                PoseOp::Scale(0.5, 1.5),
+                PoseOp::Translate(-28.0, -32.0),
+            ],
+            None,
+            &mut |model| model.item(&stack, at, 1),
+        )?;
+        canvas.item_decorations(&stack, at, None)
+    })?;
+}
+```
+
+`ItemPart::item_decorations` receives a `GuiCanvas` as `event.draw` after the standard
+bar, cooldown and count. Use the icon's local `event.x` and `event.y` for drawing. The canvas
+already has the caller's pose and scissor (identity for ordinary inventory, hotbar and tooltip
+calls). Use `event.draw.scope` to give a decorator's own draws a separate rollback boundary.
+
 ## Command buffer
 
 `DrawContext::gui_paint(&[GuiDraw])` draws a buffer of vanilla's `GuiGraphics` calls in order, under their poses
 (`GuiDraw::Push` / `Pop`). Every op in it is drawn, or none is: an op the paint cannot draw refuses the whole buffer
 with a `GuiPaintError` that names it and its index, so a mod can draw it another way.
-
-```rust,ignore
-use mod_api::client::hud_layout::GuiDraw;
-
-// The first hotbar slot's stack at twice its size, as the hotbar's pick-up "pop" squeezes it.
-let drawn = draw.gui_paint(&[GuiDraw::Item {
-    slot: 0,
-    x: 20,
-    y: 20,
-    seed: 0,
-    scale: [2.0, 2.0],
-    pivot: [28.0, 28.0],
-}]);
-if drawn.is_err() {
-    // Not drawn: fall back to a stack of our own.
-    draw.item_stack(&stack, [20.0, 20.0], 16.0);
-}
-```
-
-## Items
-
-`GuiDraw::Item { slot, x, y, seed, scale, pivot }` draws the local player's stack in hotbar slot `slot` (0-8, or
-40 for the off hand) as vanilla's hotbar does (`extractSlot`): the item (`GuiGraphicsExtractor.item`) with its top
-left at `(x, y)`, scaled by `scale` about `pivot`, then its decorations (`itemDecorations`: count, damage bar,
-cooldown) at `(x, y)` unscaled. An empty slot draws nothing and is not an error. The game's own hotbar draws its
-items this way too. To draw a stack the player doesn't hold, use `DrawContext::item_stack`.
 
 ## Blits
 

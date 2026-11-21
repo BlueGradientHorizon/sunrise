@@ -1,0 +1,10 @@
+ids = [
+    "trait:GuiCanvas",
+    "method:GuiCanvas::item",
+    "method:GuiCanvas::item_decorations",
+    "type:GuiDrawError",
+    "type:ItemDecorationsEvent",
+    "hook:item_decorations",
+]
+why = "GUI canvases draw a stack's seeded model and its decorations separately. The decorator receives the same posed canvas as the standard bar, cooldown and count, so its draws are discarded with the group if it is refused. Head-skin requests from an abandoned group are also discarded."
+migrate = "Replace GuiDraw::Item with a stack read via host.local_player().and_then(|player| player.inventory_slots(host)); look up slots 0 through 8 or 40 for the off hand, and skip an absent stack. Inside draw.draw_gui, call canvas.scope(&[PoseOp::Translate(px, py), PoseOp::Scale(sx, sy), PoseOp::Translate(-px, -py)], None, &mut |model| model.item(&stack, [x, y], seed))? for the old pivot (px, py) and scale (sx, sy). Then call canvas.item_decorations(&stack, [x, y], None) on the parent canvas; pass Some(label) to replace the count text. GuiDrawError::Stack reports a stack that could not cross the draw boundary. In ItemPart::item_decorations, event.draw is now &mut dyn GuiCanvas, not &mut dyn DrawContext. Use its fallible primitives (for example event.draw.fill([event.x, event.y, w, h], color)) in local coordinates. For an all-or-nothing set of custom draws, use event.draw.scope(&[], None, &mut |canvas| { ...; Ok(()) }). Widgets, live scenes, focus and narration are not available on that canvas."

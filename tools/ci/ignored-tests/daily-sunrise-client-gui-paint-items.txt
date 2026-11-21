@@ -1,2 +1,2 @@
-# A mod's gui_paint items, blits and refusals (#4527) through the game's dispatch.
-sunrise-client game::gui_paint_items_tests::a_mods_paint_draws_hotbar_items_and_blits_and_refuses_what_it_cannot_draw lib daily resources
+# Scoped GUI item models and decorations, and the engine's hotbar draw, in a prepared game.
+sunrise-client game::gui_paint_items_tests::scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeeze lib daily resources

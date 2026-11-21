@@ -20,6 +20,7 @@ use sunrise_client::{
     item_render::{self, ItemRenderState, SpecialHost, WorldSink},
     items::ItemStack,
     mesher::Vertex,
+    skins::HeadSkinJournal,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 
@@ -344,6 +345,7 @@ pub(super) struct Host<'a> {
     sprites: &'a HashMap<String, Rect>,
     skins: &'a RefCell<sunrise_client::skins::Downloader>,
     profiles: &'a RefCell<sunrise_client::skins::Resolver>,
+    head_skins: Option<&'a HeadSkinJournal>,
 }
 impl SpecialHost for Host<'_> {
     fn banner_texture(&self, pattern: &str) -> Option<String> {
@@ -361,11 +363,12 @@ impl SpecialHost for Host<'_> {
         // accepts a texture property without a signature, unlike the tab list.
         // A `Dynamic` profile (a name or id only) resolves through the
         // services (`PlayerSkinRenderCache.getOrDefault`).
-        Some(sunrise_client::skins::head_skin(
+        Some(sunrise_client::skins::head_skin_with_journal(
             profile,
             &mut self.profiles.borrow_mut(),
             &mut self.skins.borrow_mut(),
             |location| self.sprites.contains_key(location),
+            self.head_skins,
         ))
     }
 }
@@ -447,6 +450,7 @@ impl Game<'_> {
             sprites: &self.gui.atlas.sprites,
             skins: &self.skin_downloads,
             profiles: &self.skin_profiles,
+            head_skins: None,
         }
     }
     /// The client level as item models read it: worked out once a frame (a
@@ -650,13 +654,29 @@ impl Game<'_> {
         y: f32,
         seed: i32,
     ) {
+        self.draw_item_model_with_skins(batch, stack, [x, y], seed, None);
+    }
+
+    /// The seeded GUI item draw, with optional deferral for a transactional canvas.
+    pub(in crate::game) fn draw_item_model_with_skins(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        [x, y]: [f32; 2],
+        seed: i32,
+        head_skins: Option<&HeadSkinJournal>,
+    ) {
         let owner = self.player_owner(Some(stack));
         let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), seed);
+        let host = Host {
+            head_skins,
+            ..self.item_host()
+        };
         item_render::gui::draw(
             &state,
             &self.pack.item_renderer,
             &self.gui.atlas.sprites,
-            &self.item_host(),
+            &host,
             batch,
             x,
             y,

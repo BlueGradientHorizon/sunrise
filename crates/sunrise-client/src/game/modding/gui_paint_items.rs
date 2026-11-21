@@ -22,10 +22,10 @@ impl HotbarItems<'_, '_> {
     }
 }
 impl GuiItems for HotbarItems<'_, '_> {
-    fn item(&mut self, batch: &mut HudBatch, slot: u32, x: i32, y: i32, _seed: i32) {
+    fn item(&mut self, batch: &mut HudBatch, slot: u32, x: i32, y: i32, seed: i32) {
         if let Some(stack) = self.stack(slot) {
             self.game
-                .draw_item_model(batch, stack, x as f32, y as f32, 0);
+                .draw_item_model(batch, stack, x as f32, y as f32, seed);
         }
     }
     fn decorations(&mut self, batch: &mut HudBatch, slot: u32, x: i32, y: i32) {

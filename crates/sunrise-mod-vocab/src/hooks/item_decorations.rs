@@ -3,10 +3,10 @@
 
 pub trait Hooks {
     /// Append an item's custom decorations after its default bar, cooldown and count.
-    /// Coordinates are the icon's top-left in GUI units, as the batch takes them;
-    /// no item translation is active.
-    /// Runs wherever the shared item-decoration path is used (hotbar, menus, tooltips,
-    /// and the other screens that draw item icons: advancements, beacon, stats, trading).
+    /// `draw` is the borrowed `GuiCanvas`; `(x, y)` is the icon's top-left in its local
+    /// GUI units. The canvas includes the caller's decoration pose and scissor, not the
+    /// model-only squeeze. Inventory, hotbar and tooltip draws lend an identity canvas.
+    /// Appended draws belong to the enclosing group, if any; independent host calls do not.
     /// The NeoForge counterpart is `IItemDecorator.render`; registration through
     /// `RegisterItemDecorationsEvent` is a separate moment.
     #[hook(
@@ -14,7 +14,8 @@ pub trait Hooks {
         contract = "listen",
         scope = "item",
         key = "stack",
-        neoforge = "IItemDecorator.render"
+        neoforge = "IItemDecorator.render",
+        version = 2
     )]
     fn item_decorations();
 }

@@ -8,6 +8,16 @@ use mod_api::{prelude::*, *};
 #[path = "draw/gui_canvas.rs"]
 mod gui_canvas;
 
+impl Game<'_> {
+    pub(in crate::game) fn draw_gui_canvas(
+        &self,
+        batch: &mut crate::hud::HudBatch,
+        draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+    ) -> Result<(), GuiDrawError> {
+        gui_canvas::GameGuiCanvas::draw(batch, &self.gui.atlas, Some(self), draw)
+    }
+}
+
 /// [`DrawContext`] on the game's `crate::hud::HudBatch`: one per hook call.
 pub(crate) struct GameDrawContext<'a, 'g> {
     pub(crate) game: &'a Game<'g>,
@@ -79,7 +89,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         &mut self,
         draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
     ) -> Result<(), GuiDrawError> {
-        gui_canvas::GameGuiCanvas::draw(self.surface, &self.game.gui.atlas, draw)
+        self.game.draw_gui_canvas(self.surface, draw)
     }
     fn gui_paint(&mut self, draws: &[GuiDraw]) -> Result<(), GuiPaintError> {
         let draws = draws.try_into_engine(&())?;
