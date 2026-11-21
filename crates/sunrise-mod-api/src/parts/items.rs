@@ -2033,12 +2033,7 @@ impl ItemsRegistrar for PartRegistrar {
             name,
             ProviderTarget::Id(item),
             before_game,
-            {
-                let handler = mod_vocab::__private::parts_installation::capability_provider_handler(
-                    &provider,
-                );
-                (provider, handler)
-            },
+            provider,
         );
     }
 

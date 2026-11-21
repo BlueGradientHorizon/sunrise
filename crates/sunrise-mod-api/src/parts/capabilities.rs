@@ -10,16 +10,17 @@ impl PartRegistrar {
     /// `shares_names` is the table whose capability names are the same capabilities as
     /// `table`'s (a block's and a block entity type's, asked together at a position), so one
     /// name has one handler type across both.
-    pub(crate) fn capability<P>(
+    pub(crate) fn capability(
         &mut self,
-        table: fn(&mut Parts) -> &mut Capabilities<P>,
-        shares_names: Option<fn(&Parts) -> &Capabilities<P>>,
+        table: fn(&mut Parts) -> &mut Capabilities<NativeCapabilityProvider>,
+        shares_names: Option<fn(&Parts) -> &Capabilities<NativeCapabilityProvider>>,
         name: &'static str,
         target: ProviderTarget<'_>,
         before_game: bool,
-        (provider, handler): (P, impl Into<Arc<str>>),
+        provider: NativeCapabilityProvider,
     ) {
-        let handler = handler.into();
+        let handler: Arc<str> =
+            mod_vocab::__private::parts_installation::capability_provider_handler(&provider).into();
         let me = self.mod_id;
         if !namespaced(name) {
             self.refused.push(format!(
@@ -51,7 +52,7 @@ impl PartRegistrar {
                 id
             }
         };
-        let answered = |table: &Capabilities<P>| {
+        let answered = |table: &Capabilities<NativeCapabilityProvider>| {
             let other = table.get(name)?.values().flatten().next()?;
             (other.type_name != handler).then(|| format!("{} by {}", other.type_name, other.mod_id))
         };

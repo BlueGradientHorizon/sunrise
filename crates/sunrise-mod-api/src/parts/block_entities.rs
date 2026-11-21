@@ -1023,12 +1023,7 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             name,
             ProviderTarget::BlockEntity(kind),
             before_game,
-            {
-                let handler = mod_vocab::__private::parts_installation::capability_provider_handler(
-                    &provider,
-                );
-                (provider, handler)
-            },
+            provider,
         );
     }
 }
