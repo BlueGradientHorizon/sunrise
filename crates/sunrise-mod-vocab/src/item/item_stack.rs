@@ -321,6 +321,7 @@ pub(crate) mod component_edits {
     use std::collections::BTreeMap;
 
     /// One staged operation on an override; removal and inheritance are distinct.
+    // exhaustive: the engine applies these three distinct override operations exhaustively.
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub enum ComponentEdit<T> {
         /// Replace the override with this value.
@@ -342,6 +343,7 @@ pub(crate) mod component_edits {
     }
 
     /// A callback's normalized writes: one operation per bare component name, with damage inline.
+    // exhaustive: the editor alone normalizes the named operations and damage into this private game input.
     pub struct ItemComponentEdits {
         pub(super) components: BTreeMap<String, ComponentEdit<Tag>>,
         pub(super) damage: Option<ComponentEdit<u32>>,
