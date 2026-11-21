@@ -31,7 +31,7 @@ pub trait Hooks {
     )]
     fn render_hand(
         render: &mut HandRender<'_>,
-        draw: &mut dyn BlockEntityDrawContext,
+        draw: &mut dyn HandDrawContext,
         canceled: &mut bool,
     );
 }
