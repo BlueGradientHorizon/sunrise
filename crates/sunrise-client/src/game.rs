@@ -77,7 +77,8 @@ macro_rules! game_side {
                 .map_or($s.level.enabled_features.as_arc(), |remote| {
                     &remote.features
                 }),
-            items: if $s.options.execution_role.is_client() {
+            items: $s.res.items(),
+            tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
                 $s.session_lock.is_some().then(|| $s.res.items())
@@ -91,6 +92,7 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
         Some(t) => sunrise_world::loot::PackOverlay {
             conditions: &t.conditions,
             files: &t.files,
+            priority_layers: &t.priority_layers,
         },
         None => sunrise_world::loot::PackOverlay::NONE,
     }
@@ -381,6 +383,8 @@ pub(crate) mod cushions;
 mod custom_arm_pose;
 #[path = "game/interface/custom_sky.rs"]
 mod custom_sky;
+#[path = "game/mobs/custom_spawner_level.rs"]
+mod custom_spawner_level;
 #[path = "game/mobs/custom_spawners.rs"]
 mod custom_spawners;
 #[cfg(test)]
@@ -585,8 +589,6 @@ mod focused_text_field;
 mod fov;
 #[path = "game/mobs/foxes.rs"]
 mod foxes;
-#[path = "game/runtime/frame_autotune.rs"]
-mod frame_autotune;
 #[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
 #[path = "game/entities/frames.rs"]
@@ -708,8 +710,6 @@ mod integrated;
 #[cfg(test)]
 #[path = "game/entities/interaction_data_tests.rs"]
 mod interaction_data_tests;
-#[path = "game/items/interaction_shapes.rs"]
-mod interaction_shapes;
 #[path = "game/items/interactions.rs"]
 mod interactions;
 #[path = "game/interface/inventory_input.rs"]
@@ -728,8 +728,6 @@ mod item_abilities;
 mod item_abilities_tests;
 #[path = "game/items/item_actions.rs"]
 mod item_actions;
-#[path = "game/items/item_areas.rs"]
-mod item_areas;
 #[cfg(test)]
 #[path = "game/items/item_attack_tests.rs"]
 mod item_attack_tests;
@@ -772,6 +770,8 @@ mod item_pickup_shape_tests;
 mod item_slot_command_tests;
 #[path = "game/items/item_use.rs"]
 mod item_use;
+#[path = "game/items/item_use_stacks.rs"]
+mod item_use_stacks;
 #[cfg(test)]
 #[path = "game/entities/item_void_tests.rs"]
 mod item_void_tests;
@@ -817,8 +817,6 @@ mod lan_crafting;
 mod lan_entities;
 #[path = "game/network/lan_far.rs"]
 mod lan_far;
-#[path = "game/network/lan_idle.rs"]
-mod lan_idle;
 #[path = "game/network/lan_menus.rs"]
 mod lan_menus;
 #[cfg(test)]
@@ -946,11 +944,11 @@ mod mob_gear;
 #[cfg(test)]
 #[path = "game/world/mob_hurt_cooldown_tests.rs"]
 mod mob_hurt_cooldown_tests;
-#[path = "game/mobs/mob_index.rs"]
-mod mob_index;
 #[cfg(test)]
 #[path = "game/mobs/mob_landing_support_tests.rs"]
 mod mob_landing_support_tests;
+#[path = "game/mobs/mob_level.rs"]
+mod mob_level;
 #[path = "game/mobs/mob_light.rs"]
 mod mob_light;
 #[path = "game/mobs/mob_looting.rs"]
@@ -1414,6 +1412,12 @@ mod native_living_refs;
 #[cfg(test)]
 #[path = "game/modding/native_living_renderers_tests.rs"]
 mod native_living_renderers_tests;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_sweep_tests.rs"]
+mod native_living_travel_sweep_tests;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_tests.rs"]
+mod native_living_travel_tests;
 #[path = "game/modding/native_living_writes.rs"]
 mod native_living_writes;
 #[path = "game/modding/native_local_player_writes.rs"]
@@ -1727,8 +1731,6 @@ mod net_harness;
 mod nether_portal;
 #[path = "game/runtime/no_resources.rs"]
 mod no_resources;
-#[path = "game/interface/occlusion_culling/mod.rs"]
-mod occlusion_culling;
 #[path = "game/mobs/ominous_item_spawner/mod.rs"]
 mod ominous_item_spawner;
 #[path = "game/interface/options.rs"]
@@ -1826,6 +1828,9 @@ mod play_keys;
 mod play_ping_tests;
 #[path = "game/blocks/player_destroy.rs"]
 mod player_destroy;
+#[cfg(test)]
+#[path = "game/items/player_destroy_item_tests.rs"]
+mod player_destroy_item_tests;
 #[cfg(test)]
 #[path = "game/blocks/player_destroy_tests.rs"]
 mod player_destroy_tests;
@@ -2066,6 +2071,11 @@ mod slot_rules;
 #[cfg(test)]
 #[path = "game/modding/slot_rules_tests.rs"]
 mod slot_rules_tests;
+#[cfg(test)]
+#[path = "game/modding/slot_take_tests.rs"]
+mod slot_take_tests;
+#[path = "game/modding/slot_takes.rs"]
+mod slot_takes;
 #[path = "game/interface/smithing_icons.rs"]
 mod smithing_icons;
 #[path = "game/mobs/sniffers.rs"]
@@ -2198,8 +2208,6 @@ mod text_displays;
 mod text_expression_tests;
 #[path = "game/mobs/thrown_item_draw.rs"]
 mod thrown_item_draw;
-#[path = "game/world/tick_profile.rs"]
-mod tick_profile;
 #[path = "game/world/tick_script.rs"]
 mod tick_script;
 #[path = "game/interface/titles.rs"]
@@ -2329,6 +2337,10 @@ mod zombie_reinforcements;
 #[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
 pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+use sunrise_client_gameplay::frame_autotune;
+use sunrise_client_gameplay::occlusion_culling;
+use sunrise_gameplay::lan::idle as lan_idle;
+use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
 
 use event_loop::EventLoopCtl;
 use hand::interact_location;
@@ -2348,7 +2360,6 @@ pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_claimed_items::{HeldItemSlot, ModEvent};
-pub use native_components::NativeComponentError;
 pub use native_configs::ConfigFile;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
@@ -2972,6 +2983,7 @@ struct WorldTables {
     /// The pack files the tables were built from (a native mod's among
     /// them), for the advancement tree reload and the loot data.
     files: Vec<(String, Vec<Vec<u8>>)>,
+    priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
@@ -3088,10 +3100,7 @@ fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
 /// A chunk whose ticking future can complete (`ChunkMap.prepareTickingChunk`):
 /// lit, with its neighbours loaded, as `postprocess_chunks` waits for.
 fn ticking_chunk(world: &World, x: i32, z: i32) -> bool {
-    let Some(center) = world.chunks.get(&(x, z)) else {
-        return false;
-    };
-    center.lit && world.chunks.surrounded((x, z))
+    world.chunks.is_ticking_ready((x, z))
 }
 /// `TicketStorage.canTicketExpire` for a `PORTAL` ticket: its chunk's holder is
 /// ready for saving once the futures of its level are done, the chunk lit and
@@ -3492,6 +3501,9 @@ struct Game<'a> {
     /// reads see ready tables, and is not this marker: a final save before the
     /// prepared `Level` is installed would replace the world with placeholder state.
     world_adopted: bool,
+    /// An early shutdown must not replace on-disk tickets while the server is
+    /// still publishing levels or activating their tickets.
+    startup_ticket_restore_pending: bool,
     audio: Audio,
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
@@ -3843,6 +3855,8 @@ struct Game<'a> {
     cart_models: minecarts::CartModels,
     /// The boat the player rides.
     riding: Option<u32>,
+    /// This window's player's place in `riding`'s passengers, as `Guest.vehicle_order` is a guest's.
+    riding_order: i64,
     /// Vehicles that gained a rider this tick whose `START_RIDING_TRIGGER` was
     /// not fired yet (`game/entities/boarding.rs`), for a guest's turn.
     started_riding: Vec<u32>,
@@ -3970,17 +3984,8 @@ struct Game<'a> {
     upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
-    /// Whether the renderer's section-occlusion graph is active for this view.
-    entity_section_visibility_valid: bool,
-    /// The camera section in the current world layout.
-    entity_section_camera: Option<(i32, i32, i32)>,
-    sync_occlusion_culler: Option<sunrise_client::voxel_occlusion::Culler>,
-    async_occlusion_culler: Option<Box<occlusion_culling::AsyncOcclusionCuller>>,
-    async_occlusion_culling_failed: bool,
+    occlusion: entity_culling::EntityOcclusion,
     async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
-    /// `Renderer::pack_shadow_casters` for this frame's entities: (keep what the culler hides,
-    /// build the player's model in first person); (false, false) without a shader pack.
-    pack_shadow_casters: (bool, bool),
     /// A scripted flight from the control socket (`fly`).
     flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
@@ -6590,9 +6595,11 @@ impl Game<'_> {
         if !creative {
             // The stack as the removal left it: a listener may have swapped it.
             let held = self.held().cloned();
-            if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness);
-            }
+            let broken_tool = if removed {
+                self.mine_block_with_held(&facts.name, facts.hardness)
+            } else {
+                None
+            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
@@ -6692,6 +6699,9 @@ impl Game<'_> {
                         prevents_melting,
                     );
                 });
+            }
+            if let Some(original) = broken_tool {
+                self.player_item_destroyed(&original, Some(Hand::Main));
             }
         }
         self.pending.clear(pos);
@@ -8036,7 +8046,7 @@ impl Game<'_> {
             // in the view or not (`Renderer::shadow_pass_block_entities`, #8464): those the
             // view leaves out go in hidden from the camera.
             let shadow_only: Vec<&([i32; 3], u32)> =
-                if self.pack_ids.is_some() && self.pack_shadow_casters.0 {
+                if self.pack_ids.is_some() && self.occlusion.shadow_casters.0 {
                     let listed: HashSet<[i32; 3]> = camera_list.iter().map(|b| b.0).collect();
                     r.shadow_pass_block_entities(camera)
                         .filter(|(pos, state)| {
@@ -8061,7 +8071,7 @@ impl Game<'_> {
                 }
                 let name = &*self.res.facts().get(BlockStateId(state)).name;
                 if self.settings.sunrise.entity_culling == EntityCullingMode::Off
-                    || self.pack_shadow_casters.0
+                    || self.occlusion.shadow_casters.0
                     || name == "minecraft:end_portal"
                     || name == "minecraft:end_gateway"
                     || hi.y - lo.y > 2.0
@@ -8748,7 +8758,11 @@ impl Game<'_> {
                         ) {
                             return None;
                         }
-                        self.capture_block_entity_payload(*pos, entity.id(), &entity.nbt)
+                        let registry = self.pack.assets.registry;
+                        let block = registry
+                            .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
+                            .map_or("", |state| state.name.as_str());
+                        self.capture_block_entity_payload(*pos, block, entity, self.res.items())
                             .map(|edited| (*pos, edited))
                     })
                     .collect();
@@ -8870,14 +8884,10 @@ impl Game<'_> {
         self.inventory = inventory;
         self.bind_chunk_disk_worker(&save, dim);
         self.save = self.with_profession_save_snapshot(save);
-        // MinecraftServer.prepareLevels: the saved tickets come back.
-        self.tickets = if self.options.execution_role.is_client() {
-            Default::default()
-        } else {
-            sunrise_client::ticket_levels::ChunkTickets::with_saved_portal(
-                self.save.load_portal_tickets(),
-            )
-        };
+        // MinecraftServer.prepareLevels restores the saved tickets after the
+        // built-in levels have been published.
+        self.tickets = Default::default();
+        self.startup_ticket_restore_pending = self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
         self.pending_vehicle = level.root_vehicle;
         self.level = level;
@@ -8919,7 +8929,7 @@ impl Game<'_> {
         self.spawn_spiral = Default::default();
         self.player_spawn = None;
         self.creatures.reset_trader();
-        self.creatures.cat_tick = 0;
+        self.creatures.cat = Default::default();
         self.creatures.custom_spawners.clear();
         self.portals = Default::default();
         self.experience = Experience {
@@ -8950,8 +8960,7 @@ impl Game<'_> {
         self.streaming.nether_shading =
             facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
         self.load_world_state()?;
-        self.native_world_opened(dim);
-        self.open_saved_portal_levels()?;
+        self.open_builtin_levels()?;
         Ok(stack)
     }
     fn finish_close_world(&mut self) -> Result<()> {
@@ -8972,6 +8981,7 @@ impl Game<'_> {
         self.session_lock = None;
         self.clear_world_parts();
         self.world_adopted = false;
+        self.startup_ticket_restore_pending = false;
         self.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.debug_charts.reset();
@@ -13266,6 +13276,7 @@ impl<'a> Game<'a> {
             player_autosaves: Default::default(),
             session_lock: None,
             world_adopted: false,
+            startup_ticket_restore_pending: false,
             audio,
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
             tick: sunrise_client::parallel::TickThread::mint(),
@@ -13472,6 +13483,7 @@ impl<'a> Game<'a> {
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             riding: None,
+            riding_order: 0,
             started_riding: Vec::new(),
             rotation_forced: false,
             posed_rider: None,
@@ -13529,13 +13541,8 @@ impl<'a> Game<'a> {
             tick_script: tick_script::TickScript::from_env(),
             agent: agent::Agent::default(),
             view_frustum: None,
-            entity_section_visibility_valid: false,
-            entity_section_camera: None,
-            sync_occlusion_culler: None,
-            async_occlusion_culler: None,
-            async_occlusion_culling_failed: false,
+            occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
-            pack_shadow_casters: (false, false),
             pending_uploads: Vec::new(),
             upload_pace: Default::default(),
             extras: Default::default(),
@@ -13875,7 +13882,7 @@ pub(crate) fn run_with(
     mods::register_client_presentations(options.execution_role);
     mods::register_meshing(options.execution_role);
     mods::register_particles(options.execution_role);
-    mods::freeze_declarations()?;
+    mods::freeze_declarations();
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
@@ -13924,6 +13931,9 @@ pub(crate) fn run_with(
             &options.mods,
         )
         .or_else(|e| {
+            if e.is::<mods::DeclarationFailures>() {
+                return Err(e);
+            }
             log::warn!("Sunrise: resource packs not applied: {e}");
             pack_error = Some(e.to_string());
             mods::content_root(&vanilla_root, &options.mods)

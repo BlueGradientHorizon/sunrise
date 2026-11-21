@@ -863,7 +863,7 @@ impl Game<'_> {
         enum TurnTeleport {
             Command([f64; 3], [bool; 3]),
             Position([f64; 3]),
-            Rider([f64; 3]),
+            Rider([f64; 3], [bool; 3]),
         }
         let released_vehicle = host.hub.guests[i]
             .vehicle
@@ -999,7 +999,7 @@ impl Game<'_> {
                 } else if teleported {
                     // ServerPlayer.startRiding and an asPassenger transition also
                     // teleport the rider. Retain its mount and publish its body.
-                    teleport = Some(TurnTeleport::Rider(at));
+                    teleport = Some(TurnTeleport::Rider(at, teleported_delta));
                 }
             }
             (stat_events, name, teleport)
@@ -1007,7 +1007,7 @@ impl Game<'_> {
         match teleport {
             Some(TurnTeleport::Command(at, delta)) => host.hub.teleport_command(i, at, delta),
             Some(TurnTeleport::Position(at)) => host.hub.teleport(i, Some(at)),
-            Some(TurnTeleport::Rider(at)) => host.hub.teleport_rider(i, at),
+            Some(TurnTeleport::Rider(at, delta)) => host.hub.teleport_rider(i, at, delta, false),
             None => {}
         }
         let g = &host.hub.guests[i];

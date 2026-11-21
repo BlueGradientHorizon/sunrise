@@ -583,7 +583,7 @@ A mod's block entity carries its saved data on the item as vanilla's do: Ctrl + 
 
 ### A block's items
 
-A server mod reaches a block's items through its `ITEMS` capability ([parts](../concepts/parts.md)): `level.capability(host, &ITEMS, pos, side)` gives the block entity's slots as that side reaches them, by the rules hoppers follow (a furnace's sides, a double chest's two halves, a mod's `ModContainer` with its `faces`, `inputs` and `outputs`), and `move_resources(host, &from, &to, filter, max, tx)` moves items between two of them in a transaction. `side` is the side of the block being reached, so a pipe above a chest uses `Some(Direction::Up)`. A level not in place, a stale `LevelRef` and a client's copy of the world give none. `native_dimension()` names the level in place (`minecraft:overworld`) for a hook that isn't told it, such as `block_entity_tick`.
+A server mod reaches a block's items through its `ITEMS` capability ([parts](../concepts/parts.md)): `level.capability(host, &ITEMS, pos, side)` gives the block entity's slots as that side reaches them, by the rules hoppers follow (a furnace's sides, a double chest's two halves, a mod's `ModContainer` with its `faces`, `inputs` and `outputs`), and `resource_util::move_resources(host, &from, &to, filter, max, Some(tx))` moves items between two of them in a transaction. `side` is the side of the block being reached, so a pipe above a chest uses `Some(Direction::Up)`. A level not in place, a stale `LevelRef` and a client's copy of the world give none. `native_dimension()` names the level in place (`minecraft:overworld`) for a hook that isn't told it, such as `block_entity_tick`.
 
 During a machine's own tick its block entity is out of the world, so it has no capability then: it has its slots in hand, in the `items` it's given. A composter has no block entity, so it has no `ITEMS`: hoppers fill and empty it. Container entities (minecarts, chest boats) aren't reached this way yet. A pipe keeps a neighbour's capability with `BlockCapabilityCache` instead of looking it up every tick ([keeping a block capability](../concepts/capabilities/keeping-a-block-capability.md)). A provider whose answer changes with no block change (a machine's side configuration) calls `level.invalidate_capabilities(host, pos)` (NeoForge's `invalidateCapabilities`): the capability generation there moves on, at the root commit inside a transaction and not at all when it aborts, and every cache there looks up again at its next `get`. `level.capability_generation(host, pos)` reads it; only its change means anything.
 
@@ -684,12 +684,11 @@ handle, an entity the client doesn't track and a level it doesn't show:
   world. `level.enabled_features(host)` is the world's `FeatureFlags` (`LevelReader.enabledFeatures`:
   `contains("minecraft:redstone_experiments")`, `iter()`); every level of a world shares them. If the save
   omits its flag list, the world enables `minecraft:vanilla`.
-- `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level, loaded or not (None past 30 million
-  blocks). `chunk.forced(host)` and `level.forced_chunks(host)` read the chunks `/forceload` holds (`/forceload query`);
-  `chunk.set_forced(host, bool)` is `/forceload add` or `remove` of one chunk and returns whether the set changed. That
-  is the world's own state: it is saved with the level and stays until `/forceload remove`.
-  A newly added forced chunk is loaded before the call returns, including in a parked server level. Repeated adds
-  and removals do not load chunks.
+- `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level (None past 30 million blocks).
+  `chunk.forced(host)` and `level.forced_chunks(host)` query `/forceload` tickets. `chunk.set_forced(host, bool)` adds
+  or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
+  parked level. If streaming is paused, the add records the ticket to take effect when its level starts streaming.
+  Adds after generation stops return false; repeated adds and removals do not load chunks.
 - Ticket controllers (NeoForge's `TicketController`, registered in `RegisterTicketControllersEvent`): a mod registers
   each one once at startup, from `Hooks::register`, with `r.register_ticket_controller("quarry", validates)` and keeps the
   `TicketController` it returns (it is `Copy`; `Hooks` methods take `&self`, so a `OnceLock` holds it). The id is the
@@ -1297,7 +1296,7 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
 - `menu_closed(uuid, window)`: the player closed it, another menu opened, or the player left.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken
-  out of the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler and put into the other's with `insert_any`
+  out of the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler and put into the other's with `insert`
   ([the recipe](../concepts/capabilities/entity-items.md)). A changed offer or no room returns an error, and every move is put back.
 
 ### Render functions
@@ -1842,7 +1841,7 @@ still go on each event or registrar.
 
 - `level.weather(host)` (rain and thunder levels, 0 in the Nether and the End), `level.day_time(host)` (the time of day), `level.height(host)` (min y and height) and `native_max_stack_size(item)`, with `level.brightness(host, layer, pos)` for light and `level.is_raining_at(host, pos)` for rain at a position: what a mod's solar panel, wind turbine, quarry or own container needs without reaching into Sunrise's internals.
 
-- Giving a whole stack (damage, name, enchantments kept) to any player from a server hook: `insert_any` into
+- Giving a whole stack (damage, name, enchantments kept) to any player from a server hook: `insert` into
   the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler places it as `Inventory.add` does, and answers how many went.
 
 - Registered mod commands from every source use `run_mod_command(source, command, ran)`. Players retain their swapped-in state; the console has no acting player. Functions are silent, and block/cart feedback follows track-output. Unhandled invocations fail as unknown commands.
@@ -2214,7 +2213,7 @@ registration path.
 
 - A loot table's custom function or condition uses a codec registered by id through `Registrar::register_loot_function_type` or `Registrar::register_loot_condition_type`. Data validates before publication; unknown types refuse the load. Callbacks receive read-only context facts, authoritative tags and the actual evaluation random. Entry, pool and table order is preserved in both loot evaluators.
 
-- A server's levels opening and closing, on the single player server thread and on a dedicated server: `level_load(dimension)` when a level opens, before any of its chunks (NeoForge's `LevelEvent.Load`), and `level_unload(dimension)` once it has closed, after its last save (`LevelEvent.Unload`). The level the world opens in comes before `WorldOpenReady`; the Nether and the End open when someone first goes there and close after 300 ticks with nobody in them. Every level still open closes when the server stops, before `WorldCloseFinal`, or when its open or its loop fails, so each load has one unload.
+- A server's levels opening and closing, on the single player server thread and on a dedicated server: `level_load(dimension)` when a level opens, before any of its chunks (NeoForge's `LevelEvent.Load`), and `level_unload(dimension)` once it has closed, after its last save (`LevelEvent.Unload`). The Overworld, Nether and End fire `level_load` in that order during startup, before `server_started`. The Nether and End can still close when idle and fire `level_load` again when reopened. Every level still open closes when the server stops, before `WorldCloseFinal`, or when its open or its loop fails, so each load has one unload.
 
 - The client's level made and dropped, on the window: `client_level_load(dimension)` when the client makes a level, on joining a server (single player's own included) and on changing dimension (NeoForge's `LevelEvent.Load` from the `ClientLevel` constructor), and `client_level_unload(dimension)` when it drops one, replaced by another dimension's (told after the new one's load, as `Minecraft.setLevel` does) or on leaving the server (`LevelEvent.Unload`). Each load has one unload, except when the game itself quits.
 
@@ -2600,7 +2599,7 @@ registration path.
 
 - Hiding a player (a vanish): `player.hide(host, level)` hides that player, from the next tick, from the players below permission `level` (None shows them again): they leave those players' Tab list and world (their clients stop tracking them, as they do a spectator) and those players don't read them joining or leaving. Players of `level` or more still see them; a player made an operator sees them again. Retain a `PlayerRef` obtained while the player is available: unlike live-player writes, hide can still change that UUID's visibility after disconnect, within the handle's world epoch. It cannot target an arbitrary offline UUID, and a handle from a closed or reopened world refuses the write. The visibility setting is kept by UUID across reconnects until changed or the server stops. It requires `&mut dyn ServerHost` and an available server player list.
 
-- A player's item breaking: `player_destroy_item(player, name, item, slot)` is heard for a server player whose tool, shield, rod or armour piece ran out of durability (`LivingEntity.onEquippedItemBroken`, Bukkit's `PlayerItemBreakEvent`), with the item that broke and the slot it was in (`mainhand`, `offhand`, `head`, `chest`, `legs`, `feet`, `body`, `saddle`); armour has a slot rather than a hand. `ItemPart::damage_item` is the wear, this is only the break. Listen only. The player's state is swapped in. Not heard for a creative player or for the host of a LAN world.
+- A player's item used up or broken: `player_destroy_item(player, player_entity_id, original, hand)` reports the complete stack before use or durability loss, including its count, damage and components. It covers hand use, entity consumption, completed eating/drinking and durability breaks on each logical side, including the local host. `hand` is `Some(Main)` or `Some(Off)` for hands, `None` for armour or inventory ammunition. A partial consumption and creative use preserving the stack are silent. Listen only, after the consumption or break has applied and before a use remainder is installed. The callback receives the typed `HostSide`. `ItemPart::damage_item` decides wear; this notice cannot veto it (NeoForge's `PlayerDestroyItemEvent`).
 
 - A player's damaging melee hit on a living target: `critical_hit(target_kind, vanilla_critical, critical, damage_multiplier)` may force or deny the critical hit and change its multiplier (1.5 for a vanilla crit, else 1.0); the sweep, sound and particles follow the decided result. Not fired for a dragon part or a hit that does no damage.
 
@@ -3007,7 +3006,7 @@ registration path.
   `level.getRandom()`): a mod draws from the stream vanilla's explosions and block drops use, so its draws shift theirs
   as a Java mod's would. The closure draws on the level's stream and the level keeps it after (`random(host)` is a copy
   of it, `set_random(host, random)` stores one back), also for a level parked while the server ticks another. It is `None` on a client of a server, for a stale handle and for a level that isn't open:
-  the Nether and the End open when someone first goes there and close after 300 ticks with nobody in them. Inside a
+  the Nether and the End open at server startup and can later close while idle. Inside a
   restricted level hook, `with_random` on the `LevelRandomHost` draws from the same stream.
 
 - Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server.

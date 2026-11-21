@@ -33,6 +33,7 @@ mod bundle;
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
+pub use click::{ClickContinuation, SlotTake};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod asked;
@@ -404,8 +405,12 @@ pub struct AnvilUndo {
 pub struct Stonecutter {
     /// `recipesForInput`: indices into `StationRecipes.stonecutting`.
     pub recipes: Vec<usize>,
-    /// The item the list was made for (`input`; None for nothing).
-    pub input: Option<Arc<str>>,
+    /// The item the local or client list was made for (`input`; None for nothing).
+    input: Option<Arc<str>>,
+    /// The full stack checked by the projected server menu's ingredient predicates.
+    server_input: Option<ItemStack>,
+    /// The button map sent to the guest of this server menu, pinned until close.
+    pub server_buttons: Option<Arc<crate::lan::recipes::StonecutterButtons>>,
     /// `ResultContainer.recipeUsed`.
     pub used: Option<usize>,
 }
@@ -815,6 +820,7 @@ impl Menu {
                 item_smelted: Vec::new(),
                 item_smithed_hook: false,
                 item_smithed: Vec::new(),
+                takes: None,
                 output_removed: 0,
                 equipped: Vec::new(),
                 merchant: None,
@@ -886,11 +892,13 @@ impl Menu {
             if self.state.data[0] == id {
                 return false;
             }
-            if id >= 0 && (id as usize) < self.state.stone.recipes.len() {
+            if let Some(recipe) = self.stone_recipe(env, id) {
                 self.state.data[0] = id;
-                self.stone_setup_result(env, id);
+                self.stone_setup_result(env, Some(recipe));
+                return true;
             }
-            return true;
+            // A projected-but-ineligible button is not a recipe selection.
+            return self.state.stone.server_buttons.is_none();
         }
         if self.state.kind != Kind::Loom || id < 0 || id as usize >= self.state.loom_patterns.len()
         {
@@ -1051,9 +1059,30 @@ impl Menu {
     /// (`setupRecipeList`), with none selected and no result.
     fn stone_changed(&mut self, env: &Env) {
         self.touch();
-        let input = self.state.containers[MAIN][0]
-            .as_ref()
-            .map(|s| s.item.clone());
+        let input = self.state.containers[MAIN][0].as_ref();
+        if self.state.stone.server_buttons.is_some() {
+            let before = self.state.stone.server_input.as_ref();
+            if input == before {
+                return;
+            }
+            // The selected recipe's index is valid until this server generation closes.
+            // A count change can refill it, but still has to pass the full predicate.
+            let recipe = input.zip(before).and_then(|(input, before)| {
+                self.state.stone.used.filter(|&index| {
+                    input.same_item_same_components(before)
+                        && env.station_recipes.stonecutting[index]
+                            .input
+                            .test_in(env.loop_context, input)
+                })
+            });
+            self.state.stone.server_input = input.cloned();
+            if recipe.is_none() {
+                self.state.data[0] = -1;
+            }
+            self.stone_setup_result(env, recipe);
+            return;
+        }
+        let input = input.map(|s| s.item.clone());
         if input == self.state.stone.input {
             return;
         }
@@ -1073,8 +1102,20 @@ impl Menu {
         };
     }
 
+    fn stone_recipe(&self, env: &Env, button: i32) -> Option<usize> {
+        let index = usize::try_from(button).ok()?;
+        if let Some(buttons) = &self.state.stone.server_buttons {
+            let stack = self.state.containers[MAIN][0].as_ref()?;
+            let id = buttons.recipe(&stack.item, index)?;
+            return env.station_recipes.stonecutting.iter().position(|recipe| {
+                recipe.id == id && recipe.input.test_in(env.loop_context, stack)
+            });
+        }
+        self.state.stone.recipes.get(index).copied()
+    }
+
     /// `StonecutterMenu.setupResultSlot`.
-    fn stone_setup_result(&mut self, env: &Env, index: i32) {
+    fn stone_setup_result(&mut self, env: &Env, recipe: Option<usize>) {
         self.touch();
         // A client's SelectableRecipe entries carry no recipe (`entry.recipe().recipe()` is empty off the
         // server): its result stays empty until the server's slot update, and a take refills nothing.
@@ -1083,9 +1124,6 @@ impl Menu {
             self.state.containers[RESULT][0] = None;
             return;
         }
-        let recipe = usize::try_from(index)
-            .ok()
-            .and_then(|i| self.state.stone.recipes.get(i).copied());
         self.state.stone.used = recipe;
         self.state.containers[RESULT][0] =
             recipe.map(|r| env.station_recipes.stonecutting[r].result.clone());
@@ -1395,10 +1433,7 @@ impl Menu {
     pub fn rename(&mut self, env: &Env, name: &str) -> bool {
         self.touch();
         // StringUtil.filterText, then validateName's length limit.
-        let name: String = name
-            .chars()
-            .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
-            .collect();
+        let name = crate::clipboard::filter_text(name, false);
         if self.state.kind != Kind::Anvil
             || name.encode_utf16().count() > 50
             || self.state.anvil.name.as_deref() == Some(&name)
@@ -1406,7 +1441,7 @@ impl Menu {
             return false;
         }
         if let Some(result) = self.state.containers[RESULT][0].as_mut() {
-            result.data_mut().custom_name = (!name.trim().is_empty())
+            result.data_mut().custom_name = (!sunrise_core::java_character::is_blank(&name))
                 .then(|| sunrise_core::nbt::Tag::String(name.as_str().into()));
             result.tidy();
         }
@@ -3691,6 +3726,29 @@ pub(crate) mod tests {
         });
     }
 
+    #[test]
+    fn an_anvil_rename_uses_vanillas_definition_of_blank() {
+        bare_env(|env| {
+            let renamed = |name| {
+                let mut menu = Menu::new(Kind::Anvil);
+                menu.set_slot(env, 0, stack("iron_sword", 1));
+                menu.anvil_created();
+                assert!(menu.rename(env, name));
+                menu
+            };
+            let menu = renamed("\u{85}");
+            assert_eq!(
+                menu.slot(2).unwrap().custom_name().as_deref(),
+                Some("\u{85}")
+            );
+            assert_eq!(menu.data[0], 1);
+
+            let menu = renamed("\u{a0}\u{2007}\u{202f}");
+            assert!(menu.slot(2).is_none());
+            assert_eq!(menu.data[0], 0);
+        });
+    }
+
     /// A rename beside a right input the anvil can't use changes neither
     /// the (empty) result nor the cost, but `createResult` ran: the mods
     /// are asked, and their output is the result.
@@ -4830,6 +4888,7 @@ pub(crate) mod tests {
 
     mod crafted_stat_tests;
     mod mod_grid_tests;
+    mod server_stonecutter_tests;
 
     /// Extra sources (`native_recipe_sources`) count as more inventory: the
     /// grid fills as the table's does when the player holds what the sources

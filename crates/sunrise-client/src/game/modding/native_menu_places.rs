@@ -1007,8 +1007,8 @@ mod tests {
         }
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
             event
-                .blocks
-                .push(mod_api::Block::new("satchel:stand", "minecraft:barrel").with_item(false));
+                .register(mod_api::Block::new("satchel:stand", "minecraft:barrel").with_item(false))
+                .unwrap();
         }
     }
     /// The content mod menu type the satchel opens: a prepared registry slot for a synthetic

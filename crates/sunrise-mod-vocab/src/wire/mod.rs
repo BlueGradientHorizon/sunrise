@@ -1,4 +1,5 @@
-//! Canonical binary encoding for owned API values, including typed network payloads.
+//! Canonical binary encoding for owned API values, including typed payload tokens.
+//! Typed payload bodies are encoded by `PayloadCodec`, not Wire.
 //!
 //! Everything is little-endian and self-delimiting: a length is a `u32` before its items, an
 //! `Option` is a tag byte, an enum is a `u32` case then its fields, a record is its fields in
@@ -170,15 +171,10 @@ impl Writer {
         }
     }
     /// Encodes a borrowed value unless an earlier write failed.
+    /// The caller keeps ownership and is responsible for disposing of the value.
     pub fn put<T: Put + ?Sized>(&mut self, value: &T) {
         if self.error.is_none() {
             value.put_to(self);
-        }
-    }
-    /// Writes an owned value with the same encoding as `put`.
-    pub fn put_owned<T: Wire>(&mut self, value: T) {
-        if self.error.is_none() {
-            value.put_owned(self);
         }
     }
     /// Writes one structural level, refusing before recursing past [`MAX_DEPTH`].
@@ -360,10 +356,6 @@ pub trait Wire: Sized {
     const MIN: usize;
     /// Encodes this value, recording failures on the writer.
     fn put(&self, out: &mut Writer);
-    /// Encodes an owned value, using the same format as `put`.
-    fn put_owned(self, out: &mut Writer) {
-        self.put(out);
-    }
     /// Decodes one value, leaving any following bytes for the caller.
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError>;
     // hidden: internal Vec encoding specialization, not a mod-facing API
@@ -774,9 +766,6 @@ mod tests {
             out.put(&value);
             assert_eq!(out.bytes(), bytes);
             assert_eq!(super::Reader::decode::<T>(bytes).unwrap(), value);
-            let mut owned = super::Writer::new();
-            owned.put_owned(value);
-            assert_eq!(owned.bytes(), bytes);
         }
         check(
             Named {
@@ -864,10 +853,6 @@ mod tests {
             out.put(&value);
             assert_eq!(out.error(), None);
             assert_eq!(out.bytes(), expected);
-            let mut owned = super::Writer::new();
-            owned.put_owned(value);
-            assert_eq!(owned.error(), None);
-            assert_eq!(owned.bytes(), expected);
         }
         bytes(
             crate::Vec3 {

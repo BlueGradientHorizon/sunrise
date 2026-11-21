@@ -1915,8 +1915,11 @@ impl Game<'_> {
     /// A stack from the server, decoded as the saved and command item NBT
     /// are, so tooltips and models see every field.
     pub(super) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
+        self.decode_remote_stack(s.as_ref()?)
+    }
+
+    fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        let stack = s.as_ref()?;
         if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
             .unwrap_or(false)
         {
@@ -1978,13 +1981,24 @@ impl Game<'_> {
 
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
-    fn hashed_stack(&self, s: &Option<ItemStack>) -> Option<Hashed> {
-        let r = self.remote.as_ref()?;
+    fn hashed_stack(&self, s: &Option<ItemStack>) -> sunrise_protocol::Result<Option<Hashed>> {
+        if s.is_none() {
+            return Ok(None);
+        }
+        let r = self
+            .remote
+            .as_ref()
+            .ok_or_else(|| sunrise_protocol::Error::new("no live menu connection"))?;
         let names = SyncedNames {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
-        self.to_network(s).map(|s| Hashed::create(&s, &names))
+        let stack = self
+            .to_network(s)
+            .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
+        Hashed::create(&stack, &names)
+            .map(Some)
+            .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 
     /// A line in the connection's chat, with its styles, click and hover
@@ -4760,7 +4774,7 @@ impl Game<'_> {
                 // unless the elder guardian is silent.
                 10 => {
                     self.particles.elder_guardian();
-                    if p.param == 1.0
+                    if p.rounded_param() == 1
                         && let Some(at) = self.player.as_ref().map(|m| m.position)
                     {
                         self.play_client_local_sound(
@@ -4781,8 +4795,8 @@ impl Game<'_> {
                 // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
                 event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
                 3 => {
-                    let mode = p.param as i32;
-                    self.set_mode_id(mode);
+                    self.set_mode_id(p.rounded_param());
+                    let mode = self.mode_id();
                     if let Some(r) = self.remote.as_mut() {
                         r.game_mode = mode;
                     }
@@ -8683,29 +8697,36 @@ impl Game<'_> {
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
         let registry = self.pack.assets.registry;
+        let stack_state = |state| {
+            crate::game::block_items::item_block_state(
+                registry,
+                state,
+                stack,
+                ctx.can_use_game_master_blocks,
+            )
+        };
+        let has_part = asks_mods
+            && mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
+        let placer = has_part.then(|| self.placement_placer()).flatten();
         self.with_level(|b, level, ticks| {
-            let mut level = DryLevel::new(level);
-            level.reads = Some(ticks);
-            level.asks_mods = asks_mods;
-            let placed = b.place_block_with_state(
-                &mut level,
-                &mut sunrise_world::level::Ticks::default(),
-                &ctx,
-                |state| {
-                    crate::game::block_items::item_block_state(
-                        registry,
-                        state,
-                        stack,
-                        ctx.can_use_game_master_blocks,
-                    )
-                },
-            )?;
+            let mut dry = DryLevel::new(level);
+            dry.reads = Some(ticks);
+            dry.asks_mods = asks_mods;
+            let mut ticks = sunrise_world::level::Ticks::default();
+            // The rewrite reads the base level: the scratch level has not written anything yet.
+            let (decision, _) =
+                b.decide_placement(&mut dry, &mut ticks, &ctx, stack_state, |_, context| {
+                    has_part
+                        .then(|| level.rewrite_placement_context(stack, context, placer))
+                        .flatten()
+                })?;
+            let placed = b.place_resolved_block(&mut dry, &mut ticks, decision, stack_state)?;
             let pos = placed.context.pos;
-            let primary = level.changed.remove_entry(&pos);
+            let primary = dry.changed.remove_entry(&pos);
             Some(DryPlace {
                 pos,
                 matches_candidate: placed.matches_candidate,
-                changes: primary.into_iter().chain(level.changed).collect(),
+                changes: primary.into_iter().chain(dry.changed).collect(),
             })
         })
     }

@@ -38,7 +38,7 @@ pub fn block_entity_transform(id: &str) -> Option<&'static dyn crate::BlockEntit
 
 /// Owned declarations of the block entity types mods registered.
 /// The game converts these snapshots to its content model when registration freezes.
-pub fn block_entity_types() -> &'static [BlockEntityTypeDecl] {
+pub fn block_entity_types() -> &'static [(&'static str, BlockEntityTypeDecl)] {
     installed().map_or(&[], |installed| &installed.block_entity_types)
 }
 

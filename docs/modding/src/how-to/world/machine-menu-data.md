@@ -39,7 +39,8 @@ This method does not resize: an absent index returns `Ok(false)`. Both methods u
 same silent storage write target and journal; call `set_changed` explicitly if needed. Transactions retain their
 ordinary behavior; an aborted outer transaction restores the vector that existed
 before its first write, including writes committed by children. The normal menu
-broadcast delivers committed changes to viewers.
+broadcast delivers committed changes to viewers. To draw those values on the client, see
+[Draw a progress bar and a fuel gauge](../client/menu-gauges.md).
 
 The public handle resolves one entity's lifecycle generation as well as its level
 and position. Removal, replacement and chunk reload make it stale; in-place data
@@ -57,14 +58,19 @@ insertion; it enforces automation policy. Vanilla containers are unavailable her
 
 Indices use the current container's declared count. Lazy slots read empty; saved
 excess slots are neither exposed nor truncated. `None` clears, identical values
-return `Ok(false)`. Writes and restores are silent: issue `set_changed` explicitly when needed.
-Nested abort restores ordinary before-images, including committed-child writes. Invalid
+return `Ok(false)`. A committed change marks the chunk unsaved without notifying
+comparators or neighbours. Call `set_changed` explicitly to notify. Nested abort
+restores ordinary before-images, including committed-child writes. Invalid
 indices, unknown/air/zero-count stacks and counts above the registered or
 component-overridden maximum return `BlockEntityItemError`, never a partial write
 or silent count clamp. A stale handle refuses a replacement rather than accessing
 its container; acquire a new handle for the replacement.
 
 ## Skip unchanged tick write-back
+
+A tick with no `BlockEntityPart::block_entity_tick` subscriber for the entity's
+registered type does not snapshot the row, resize its items or mark its chunk
+unsaved. Pending load notices are still delivered before the tick.
 
 The `BlockEntityPart::block_entity_tick` reply defaults to `Changed`, retaining full checked payload write-back.
 When no payload should be written back, set:

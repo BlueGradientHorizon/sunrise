@@ -57,6 +57,12 @@ stand: an API struct name followed by `{` or `(` is a build, in full unless it e
 except where only a type stands or as a type written after `name:` in parameters, a `let` or a struct's fields
 (`.map(Pos)`, `{ Marker }` and `make: Pos` count).
 
+A positional read counts when the scan can tie it to a tuple struct path: `p.0` on a typed parameter or
+binding, a read on a constructor result (directly or through a binding), `self.0` in a known `impl`, or the
+positions a tuple pattern lists before `..`. If the path is proven to name a mod-local type or constructor,
+or an enum variant, it does not count for a same-named API tuple struct. An unresolved path keeps its
+plausible API fields.
+
 What the scan cannot place is left to the compile, and records nothing:
 - a literal of a name that is no API struct's: a macro's `$t { … }`, another crate's type;
 - a `Self { … }` the scan cannot tie to an impl, and a literal of a `type` alias whose target is not a plain path;
