@@ -108,115 +108,14 @@ static ITEM_MODEL_FACTORIES: OnceLock<Arc<ItemModelFactories>> = OnceLock::new()
 static RANGE_PROPERTY_FACTORIES: OnceLock<Arc<RangePropertyFactories>> = OnceLock::new();
 static SELECT_PROPERTY_FACTORIES: OnceLock<Arc<SelectPropertyFactories>> = OnceLock::new();
 
-#[cfg(test)]
-#[derive(Default)]
-pub(super) struct ProvidersFixtureState {
-    pub(super) tint: Option<Arc<ItemTintFactories>>,
-    pub(super) item_model: Option<Arc<ItemModelFactories>>,
-    pub(super) range_property: Option<Arc<RangePropertyFactories>>,
-    pub(super) select_property: Option<Arc<SelectPropertyFactories>>,
-}
-
-#[cfg(test)]
-static PROVIDERS_FIXTURE: std::sync::Mutex<Option<ProvidersFixtureState>> =
-    std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
-
-#[cfg(test)]
-pub(super) struct ItemProvidersFixture;
-
-#[cfg(test)]
-impl ItemProvidersFixture {
-    pub(super) fn install(state: ProvidersFixtureState) -> Self {
-        let mut fixture = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while fixture.is_some() {
-            fixture = FIXTURE_CHANGED
-                .wait(fixture)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
-        *fixture = Some(state);
-        Self
-    }
-
-    pub(super) fn tint(sources: Vec<Answered<ItemTintSourceRegistration>>) -> (Self, Vec<String>) {
-        let (factories, kept) = bind_item_tint_factories(sources);
-        (
-            Self::install(ProvidersFixtureState {
-                tint: Some(Arc::new(factories)),
-                ..Default::default()
-            }),
-            kept,
-        )
-    }
-
-    pub(super) fn item_models(models: Vec<Answered<ItemModelRegistration>>) -> (Self, Vec<String>) {
-        let (factories, kept) = bind_item_model_factories(models);
-        (
-            Self::install(ProvidersFixtureState {
-                item_model: Some(Arc::new(factories)),
-                ..Default::default()
-            }),
-            kept,
-        )
-    }
-}
-
-#[cfg(test)]
-impl Drop for ItemProvidersFixture {
-    fn drop(&mut self) {
-        let mut fixture = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *fixture = None;
-        FIXTURE_CHANGED.notify_all();
-    }
-}
-
-#[derive(Default)]
-pub(super) struct ActiveItemProviders {
-    tint: Option<Arc<ItemTintFactories>>,
-    item_model: Option<Arc<ItemModelFactories>>,
-    range_property: Option<Arc<RangePropertyFactories>>,
-    select_property: Option<Arc<SelectPropertyFactories>>,
-}
-
-impl ActiveItemProviders {
-    pub(super) fn current() -> Self {
-        #[cfg(test)]
-        if let Some(fixture) = PROVIDERS_FIXTURE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            return Self {
-                tint: fixture.tint.clone(),
-                item_model: fixture.item_model.clone(),
-                range_property: fixture.range_property.clone(),
-                select_property: fixture.select_property.clone(),
-            };
-        }
+impl<'a> ItemProviderTables<'a> {
+    pub(super) fn installed(special: Option<&'a SpecialModelFactories>) -> Self {
         Self {
-            tint: TINT_FACTORIES.get().cloned(),
-            item_model: ITEM_MODEL_FACTORIES.get().cloned(),
-            range_property: RANGE_PROPERTY_FACTORIES.get().cloned(),
-            select_property: SELECT_PROPERTY_FACTORIES.get().cloned(),
-        }
-    }
-
-    pub(super) fn tables<'a>(
-        &'a self,
-        special: Option<&'a SpecialModelFactories>,
-    ) -> ItemProviderTables<'a> {
-        ItemProviderTables {
             special,
-            tint: self.tint.as_deref(),
-            item_model: self.item_model.as_deref(),
-            range_property: self.range_property.as_deref(),
-            select_property: self.select_property.as_deref(),
+            tint: TINT_FACTORIES.get().map(Arc::as_ref),
+            item_model: ITEM_MODEL_FACTORIES.get().map(Arc::as_ref),
+            range_property: RANGE_PROPERTY_FACTORIES.get().map(Arc::as_ref),
+            select_property: SELECT_PROPERTY_FACTORIES.get().map(Arc::as_ref),
         }
     }
 }

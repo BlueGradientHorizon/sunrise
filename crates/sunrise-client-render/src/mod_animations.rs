@@ -26,12 +26,6 @@ struct BoundAnimations {
 
 static TYPES: OnceLock<Arc<BoundAnimations>> = OnceLock::new();
 
-#[cfg(test)]
-static TYPES_FIXTURE: std::sync::Mutex<Option<Arc<BoundAnimations>>> = std::sync::Mutex::new(None);
-
-#[cfg(test)]
-static FIXTURE_CHANGED: std::sync::Condvar = std::sync::Condvar::new();
-
 fn freeze(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> BoundAnimations {
     let mut targets: BTreeMap<String, BoundAnimationTarget> = BTreeMap::new();
     let mut interpolations: BTreeMap<String, BoundInterpolation> = BTreeMap::new();
@@ -103,18 +97,6 @@ pub fn register(types: Vec<Answered<JsonAnimationTypeRegistration>>) {
     }
 }
 
-fn active_types() -> Option<Arc<BoundAnimations>> {
-    #[cfg(test)]
-    if let Some(fixture) = TYPES_FIXTURE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-    {
-        return Some(fixture);
-    }
-    TYPES.get().cloned()
-}
-
 /// The folder under each namespace the files are read from.
 const FOLDER: &str = "neoforge/animations/entity";
 
@@ -127,6 +109,7 @@ impl Animations {
     /// Every animation file of `source`. A file that doesn't parse is logged with its reason and
     /// left out; the others load.
     pub fn load(source: &crate::resource_source::ResourceSource) -> Self {
+        let types = TYPES.get().map(Arc::as_ref);
         let mut out = BTreeMap::new();
         for file in source.list_under("assets", &[FOLDER]) {
             let Some((namespace, path)) = file
@@ -145,7 +128,7 @@ impl Animations {
             match source
                 .read_to_string(&file)
                 .map_err(|e| e.to_string())
-                .and_then(|text| parse(id.clone(), &text))
+                .and_then(|text| parse_with_types(id.clone(), &text, types))
             {
                 Ok(holder) => {
                     out.insert(id, Arc::new(holder));
@@ -169,6 +152,14 @@ impl Animations {
 /// target's converter during parse (matching NeoForge's `AnimationParser`). A target or
 /// interpolation neither built in nor registered fails the file, naming it.
 pub fn parse(animation: Identifier, text: &str) -> Result<AnimationHolder, String> {
+    parse_with_types(animation, text, TYPES.get().map(Arc::as_ref))
+}
+
+fn parse_with_types(
+    animation: Identifier,
+    text: &str,
+    types: Option<&BoundAnimations>,
+) -> Result<AnimationHolder, String> {
     let json: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
     let length = finite(&json["length"]).ok_or("no finite `length`")? as f32;
     if length <= 0.0 {
@@ -181,7 +172,6 @@ pub fn parse(animation: Identifier, text: &str) -> Result<AnimationHolder, Strin
     let entries = json["animations"]
         .as_array()
         .ok_or("no `animations` list")?;
-    let active = active_types();
     let mut bones: Vec<(String, Vec<AnimationChannel>)> = Vec::new();
     for (index, entry) in entries.iter().enumerate() {
         let bone = entry["bone"]
@@ -192,7 +182,7 @@ pub fn parse(animation: Identifier, text: &str) -> Result<AnimationHolder, Strin
             Some("minecraft:position") => AnimationTarget::Position,
             Some("minecraft:rotation") => AnimationTarget::Rotation,
             Some("minecraft:scale") => AnimationTarget::Scale,
-            Some(id) => match active.as_ref().and_then(|t| t.targets.get(id)) {
+            Some(id) => match types.and_then(|t| t.targets.get(id)) {
                 Some(bound) => AnimationTarget::Custom(bound.clone()),
                 None => return Err(format!("animations[{index}]: unknown target {id}")),
             },
@@ -204,7 +194,7 @@ pub fn parse(animation: Identifier, text: &str) -> Result<AnimationHolder, Strin
             .iter()
             .enumerate()
             .map(|(at, keyframe)| {
-                keyframe_of(keyframe, &target, active.as_deref())
+                keyframe_of(keyframe, &target, types)
                     .map_err(|e| format!("animations[{index}].keyframes[{at}]: {e}"))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -266,7 +256,7 @@ fn convert_vector(target: &AnimationTarget, v: [f64; 3]) -> Result<[f32; 3], Str
 fn keyframe_of(
     keyframe: &Value,
     target: &AnimationTarget,
-    active: Option<&BoundAnimations>,
+    types: Option<&BoundAnimations>,
 ) -> Result<Keyframe, String> {
     let time = finite(&keyframe["timestamp"]).ok_or("no finite `timestamp`")? as f32;
     let (pre, post) = if keyframe.get("preTarget").is_some() || keyframe.get("postTarget").is_some()
@@ -286,7 +276,7 @@ fn keyframe_of(
     let interpolation = match interpolation_id.as_deref() {
         Some("minecraft:linear") => Interpolation::Linear,
         Some("minecraft:catmullrom") => Interpolation::CatmullRom,
-        Some(id) => match active.and_then(|t| t.interpolations.get(id)) {
+        Some(id) => match types.and_then(|t| t.interpolations.get(id)) {
             Some(bound) => Interpolation::Custom(bound.clone()),
             None => return Err(format!("unknown interpolation {id}")),
         },
@@ -312,34 +302,6 @@ mod tests {
         f32::consts::{FRAC_PI_2, FRAC_PI_4},
         sync::atomic::{AtomicUsize, Ordering},
     };
-
-    struct TypesFixture;
-
-    impl TypesFixture {
-        fn from_registrations(types: Vec<Answered<JsonAnimationTypeRegistration>>) -> Self {
-            let bound = freeze(types);
-            let mut fixture = TYPES_FIXTURE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            while fixture.is_some() {
-                fixture = FIXTURE_CHANGED
-                    .wait(fixture)
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-            }
-            *fixture = Some(Arc::new(bound));
-            Self
-        }
-    }
-
-    impl Drop for TypesFixture {
-        fn drop(&mut self) {
-            let mut fixture = TYPES_FIXTURE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *fixture = None;
-            FIXTURE_CHANGED.notify_all();
-        }
-    }
 
     const SWING: &str = r#"{"length": 2.0, "loop": true, "animations": [
         {"bone": "arm", "target": "minecraft:rotation", "keyframes": [
@@ -606,7 +568,14 @@ mod tests {
                 &RegistrationContext::new(),
                 &mut types,
             );
-            let _fixture = TypesFixture::from_registrations(types);
+            let bound = freeze(types);
+            let read = |text: &str| {
+                parse_with_types(
+                    Identifier::parse("test:animation").unwrap(),
+                    text,
+                    Some(&bound),
+                )
+            };
 
             let holder = read(
                 r#"{"length": 1, "animations": [
@@ -759,7 +728,14 @@ mod tests {
                 &RegistrationContext::new(),
                 &mut types,
             );
-            let _fixture = TypesFixture::from_registrations(types);
+            let bound = freeze(types);
+            let read = |text: &str| {
+                parse_with_types(
+                    Identifier::parse("test:animation").unwrap(),
+                    text,
+                    Some(&bound),
+                )
+            };
             let _ = take_callback_panic_notices();
 
             // Non-finite converter fails the file cleanly without latching or panic notice.
