@@ -1,0 +1,8 @@
+# Integration tests for GuiCanvas items/decorations/sprites/blits and health_hud (debt 55r).
+sunrise-client game::gui_canvas_items_tests::canvas_item_decorations_draws_vanilla_and_custom_under_enclosing_pose_and_scissor lib daily child-process
+sunrise-client game::gui_canvas_items_tests::canvas_item_forwards_seed_and_skips_air lib daily resources
+sunrise-client game::gui_canvas_items_tests::canvas_sprites_and_blits_draw_with_blends_and_refusals_keep_prior_draws lib daily resources
+sunrise-client game::health_hud_tests::cancelling_player_health_layer_skips_health_hud_and_vanilla_rows lib daily resources
+sunrise-client game::health_hud_tests::empty_ok_is_blank_and_err_keeps_prior_draws_without_vanilla_fallback_or_latching lib daily resources
+sunrise-client game::health_hud_tests::first_answering_health_hud_wins_between_layer_hooks_in_its_mod_scope lib daily resources
+sunrise-client game::health_hud_tests::panicking_health_hud_disables_only_that_hook_and_queues_error_toast lib daily resources

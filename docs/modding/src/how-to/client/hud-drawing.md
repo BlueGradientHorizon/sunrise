@@ -1,8 +1,9 @@
 # Drawing on the HUD and in screens
 
 A HUD layer, a screen or a tooltip hook draws through the `DrawContext` it is handed, in GUI pixels. Each call
-is one of vanilla's `GuiGraphics` calls: `fill`, `text`, `sprite`, `item_stack` and the others. `gui_paint`
-takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the pose.
+is one of vanilla's `GuiGraphicsExtractor` calls: `fill`, `text`, `sprite`, `item_stack` and the others.
+`draw_gui` lends a `GuiCanvas` for checked primitives inside lexical pose and scissor scopes
+(`GuiCanvas::scope`).
 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
@@ -167,24 +168,25 @@ fn gui_render_post(&self, _: &dyn ClientHost, event: &mut GuiRenderPostEvent<'_>
 }
 ```
 
-In a `gui_paint` buffer the same call is the op `GuiDraw::FillGradient { x0, y0, x1, y1, top, bottom }`, with
-vanilla's corner arguments: `top` stays on the `y0` edge and `bottom` on the `y1` edge.
+Inside `draw_gui`, the same call is `GuiCanvas::fill_gradient(rect, top, bottom)`, which validates
+finite geometry before emitting vertices and refuses non-finite coordinates with `GuiDrawError::NotFinite`.
 
-- **Pose and clip.** A gradient follows the current pose (a `gui_paint` buffer's `Push`) and the hook call's
-  clip (`push_clip`), as `fill` does. A clip that cuts the rectangle keeps the colour ramp: the cut edge has the
-  colour that was there.
+- **Pose and clip.** A gradient follows the current pose (`GuiCanvas::scope`) and the enclosing
+  scissor (`DrawContext::with_scissor` or `GuiCanvas::scope`), as `fill` does. A clip that cuts the
+  rectangle keeps the colour ramp: the cut edge has the colour that was there.
 - **Empty or inverted.** Zero width or height draws nothing, as does inversion on exactly one axis.
-  Inverting both axes (`w < 0` and `h < 0`, or `x1 < x0` and `y1 < y0`) draws sorted bounds with the
+  Inverting both axes (`w < 0` and `h < 0`) draws sorted bounds with the
   colours flipped: the first colour stays on its input y edge, now the lower edge. This preserves vanilla's
-  visible winding and colour placement. A `fill_gradient` rectangle with a NaN or infinite coordinate draws nothing.
+  visible winding and colour placement. A `DrawContext::fill_gradient` rectangle with a NaN or infinite
+  coordinate draws nothing; `GuiCanvas::fill_gradient` returns `Err(GuiDrawError::NotFinite)`.
   Zero-area calls are culled here; vanilla can retain their layering bounds without drawing pixels.
 - **Cost.** One quad on the GUI batch, as `fill`; nothing is drawn or kept when a mod doesn't call it.
 
 ## Scaled text
 
 `DrawContext::text_scaled(text, at, scale, argb, shadow)` draws `text` as `text` does, scaled by `scale` about
-`at`, its top-left corner: what vanilla's HUD draws with `PoseStack.scale` around a line, without a `gui_paint`
-buffer of `Push`, `Text` and `Pop`. A half-size line under a label is `scale` 0.5, starting a quarter of its
+`at`, its top-left corner: what vanilla's HUD draws with `PoseStack.scale` around a line, without opening
+a `draw_gui` pose scope. A half-size line under a label is `scale` 0.5, starting a quarter of its
 unscaled width left of where it is centred.
 
 ```rust,ignore

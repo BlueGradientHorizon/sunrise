@@ -1,0 +1,61 @@
+ids = [
+    "method:DrawContext::gui_paint",
+    "method:DrawContext::draw_gui",
+    "method:DrawContext::push_clip",
+    "method:DrawContext::pop_clip",
+    "method:DrawContext::with_scissor",
+    "type:GuiClipRefusal",
+    "type:GuiClipRefusal.NoneOpen",
+    "type:GuiClipRefusal.TooDeep",
+    "type:GuiDraw",
+    "type:GuiDraw.Sprite",
+    "type:GuiDraw.AtlasSprite",
+    "type:GuiDraw.Blit",
+    "type:GuiDraw.Fill",
+    "type:GuiDraw.FillGradient",
+    "type:GuiDraw.Text",
+    "type:GuiDraw.Item",
+    "type:GuiDraw.Push",
+    "type:GuiDraw.Pop",
+    "type:GuiPaintError",
+    "type:GuiPaintError.Text",
+    "type:GuiPaintError.ItemSlot",
+    "type:GuiPaintError.ItemNotFinite",
+    "type:GuiPaintError.BlitTexture",
+    "type:GuiPaintError.BlitSize",
+    "type:GuiPaintError.Sprite",
+    "type:GuiPaintError.SpriteRegion",
+    "type:GuiPaintError.SpriteBlend",
+    "type:client::hud_layout::PoseOp",
+    "type:client::hud_layout::Blend",
+    "trait:GuiCanvas",
+    "method:GuiCanvas::size",
+    "method:GuiCanvas::scope",
+    "method:GuiCanvas::fill",
+    "method:GuiCanvas::fill_gradient",
+    "method:GuiCanvas::text",
+    "method:GuiCanvas::item",
+    "method:GuiCanvas::item_decorations",
+    "method:GuiCanvas::blit_sprite",
+    "method:GuiCanvas::atlas_sprite",
+    "method:GuiCanvas::blit",
+    "type:GuiBlitRegion",
+    "type:GuiSpriteRegion",
+    "type:GuiDrawError",
+]
+why = "GUI drawing and clipping now append directly into the HUD batch inside lexical RAII pose and scissor scopes instead of buffering Wire command lists or pairing manual push_clip/pop_clip calls. Follows vanilla net.minecraft.client.gui.GuiGraphicsExtractor (pose, enableScissor/disableScissor, fill, fillGradient, text, blit, blitSprite, item, itemDecorations): each primitive validates its own inputs before emitting vertices, refuses invalid calls with GuiDrawError without rolling back prior draws (no transactional rollback or GuiDrawError::Abort), and always restores pose and scissor on return, error, or unwind. DrawContext::with_scissor has no artificial 64-level nesting limit, so GuiClipRefusal::TooDeep and GuiClipRefusal::NoneOpen are removed. PoseOp and Blend stay in-process and no longer derive Wire."
+migrate = '''
+Replace `draw.gui_paint(&[...])` with `draw.draw_gui(&mut |canvas| { ... })` using `GuiCanvas` methods directly:
+- `GuiDraw::Push(ops)` ... `GuiDraw::Pop` -> `canvas.scope(&ops, None, &mut |scoped| { ... })?` (pass `Some([x, y, w, h])` for a posed scissor).
+- `GuiDraw::Fill { x0, y0, x1, y1, color }` -> `canvas.fill([x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32], color)?`.
+- `GuiDraw::FillGradient { x0, y0, x1, y1, top, bottom }` -> `canvas.fill_gradient([x0 as f32, y0 as f32, (x1 - x0) as f32, (y1 - y0) as f32], top, bottom)?`.
+- `GuiDraw::Text { text, x, y, color, shadow }` -> `canvas.text(&text, [x as f32, y as f32], color, shadow)?`.
+- `GuiDraw::Item { slot, x, y, seed, scale, pivot }` -> read the stack yourself, draw `canvas.scope(&[PoseOp::Translate(pivot[0], pivot[1]), PoseOp::Scale(scale[0], scale[1]), PoseOp::Translate(-pivot[0], -pivot[1])], None, &mut |s| s.item(&stack, [x as f32, y as f32], seed))?`, then draw `canvas.item_decorations(&stack, [x as f32, y as f32], None)?` outside the squeeze scope so decorations follow the surrounding pose.
+- `GuiDraw::Sprite { sprite, x, y, w, h, region, color, blend }` -> `canvas.blit_sprite(&sprite, [x as f32, y as f32, w as f32, h as f32], region.map(|[sw, sh, u, v]| GuiSpriteRegion { size: [sw, sh], offset: [u, v] }), color, blend)?`.
+- `GuiDraw::AtlasSprite { sprite, x, y, w, h, color }` -> `canvas.atlas_sprite(&sprite, [x as f32, y as f32, w as f32, h as f32], color)?`.
+- `GuiDraw::Blit { texture, blend, x, y, w, h, uv, src, tex, color }` -> `canvas.blit(&texture, [x as f32, y as f32, w as f32, h as f32], GuiBlitRegion { uv, src, tex }, color, blend)?`.
+
+Replace `GuiPaintError` handling with `GuiDrawError`. A refused primitive emits no vertices while keeping draws emitted before it; pose and scissor are always restored on return, `Err`, or unwind.
+
+Replace `draw.push_clip(rect)?; ...; draw.pop_clip()?;` with `draw.with_scissor(rect, &mut |clipped| { ... })?;`. Remove match arms for `GuiClipRefusal::NoneOpen` and `GuiClipRefusal::TooDeep`; only `GuiClipRefusal::NotFinite` remains and scissor nesting is unbounded.
+'''
