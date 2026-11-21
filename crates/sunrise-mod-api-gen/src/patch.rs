@@ -8,6 +8,7 @@
 //! inaccessible. A method moves into a one-method trait implemented for its own type, so `self`,
 //! `Self` and the helpers' bindings stay as written. horizon-mixins then patches the copies, and
 //! the game installs each through its function's replacement slot (`__fnr_<name>`).
+use crate::source::unraw;
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -1574,10 +1575,12 @@ fn mirror(
     let std_is_std = !uses(&items)
         .iter()
         .any(|item| may_import(&item.tree, None, "std"))
-        && !defined.clone().any(|(ident, _)| ident == "std")
+        && !defined
+            .clone()
+            .any(|(ident, attrs)| unraw(ident) == "std" && !mod_source::modules::test_only(attrs))
         && !items.iter().any(|item| {
             matches!(item, Item::ExternCrate(krate)
-                if krate.rename.as_ref().is_some_and(|(_, name)| name == "std"))
+                if krate.rename.as_ref().is_some_and(|(_, name)| unraw(name) == "std"))
         });
     let mut glob = false;
     let mut thread_locals = Vec::new();
@@ -1592,7 +1595,7 @@ fn mirror(
                         .into_iter()
                         .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
                         .map(|item| {
-                            let cfg = cfg_predicates(&mac.attrs)
+                            let cfg: Vec<_> = cfg_predicates(&mac.attrs)
                                 .chain(cfg_predicates(&item.attrs))
                                 .collect();
                             (item.ident, cfg)
@@ -1608,20 +1611,20 @@ fn mirror(
     let mut names: Vec<(syn::Ident, Vec<Vec<proc_macro2::TokenStream>>)> = Vec::new();
     // Keep the prebuilt game's test-item filter on re-exports, not on binding detection.
     let re_exported = defined
-        .filter(|(ident, attrs)| {
-            *ident != "tests"
-                && !attrs.iter().any(|attr| {
-                    attr.path().is_ident("test")
-                        || (attr.path().is_ident("cfg")
-                            && attr.to_token_stream().to_string().contains("test"))
-                })
-        })
+        .filter(|(ident, attrs)| *ident != "tests" && !mod_source::modules::test_only(attrs))
         .map(|(ident, attrs)| (ident.clone(), cfg_predicates(attrs).collect()));
+    // A lower crate is compiled with its own features, but the patch crate with the game's, so a
+    // condition on a feature can't be decided here: the glob brings such an item where it exists.
+    let lower = path.split("::").next() != Some("sunrise_client");
     for (ident, cfg) in re_exported
         .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
         .filter(|(ident, _)| !only_public || public.contains(&ident.to_string()))
     {
+        if lower && cfg.iter().any(names_feature) {
+            glob = true;
+            continue;
+        }
         match names.iter_mut().find(|(name, _)| *name == ident) {
             Some((_, cfgs)) => cfgs.push(cfg),
             None => names.push((ident, vec![cfg])),
@@ -1881,6 +1884,15 @@ fn macro_may_be_in_scope(source: &mut Source, path: &str, name: &str) -> bool {
     (1..=segments.len()).any(|end| within(source, &segments[..end].join("::"), name))
 }
 
+/// Whether a cfg predicate reads a Cargo feature.
+fn names_feature(predicate: &proc_macro2::TokenStream) -> bool {
+    predicate.clone().into_iter().any(|tree| match tree {
+        proc_macro2::TokenTree::Ident(ident) => ident == "feature",
+        proc_macro2::TokenTree::Group(group) => names_feature(&group.stream()),
+        _ => false,
+    })
+}
+
 /// The binding of an unaliased import: `use x::name::{self}` binds `name`.
 fn use_binding<'a>(ident: &'a syn::Ident, prefix: Option<&'a syn::Ident>) -> &'a syn::Ident {
     if ident == "self" {
@@ -1898,8 +1910,8 @@ fn may_import(tree: &syn::UseTree, prefix: Option<&syn::Ident>, name: &str) -> b
             .items
             .iter()
             .any(|item| may_import(item, prefix, name)),
-        syn::UseTree::Name(binding) => use_binding(&binding.ident, prefix) == name,
-        syn::UseTree::Rename(rename) => rename.rename == name,
+        syn::UseTree::Name(binding) => unraw(use_binding(&binding.ident, prefix)) == name,
+        syn::UseTree::Rename(rename) => unraw(&rename.rename) == name,
         syn::UseTree::Glob(_) => true,
     }
 }
@@ -2378,32 +2390,63 @@ mod tests {
 
     #[test]
     fn a_thread_local_under_a_gated_std_module_keeps_the_glob() {
+        let out = |text: &str| {
+            let mut source = source_of("lower::anim", text);
+            mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+                .unwrap()
+                .to_string()
+                .replace(' ', "")
+        };
+        let thread_local = "std::thread_local! { pub static SHARED: u8 = 0; }";
+        for gated in [
+            "#[cfg(not(test))] mod std {}",
+            "#[cfg(not(test))] mod r#std {}",
+        ] {
+            let out = out(&format!("{gated} {thread_local}"));
+            assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
+            assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        }
+        // A test-only `std` doesn't exist in the build, and a release item stays named.
+        let out = out(&format!(
+            "#[cfg(test)] mod std {{}} #[cfg(not(test))] pub fn release() {{}} {thread_local}"
+        ));
+        assert!(!out.contains("pubuse::lower::anim::*;"), "{out}");
+        assert!(out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        assert!(out.contains("pubuse::lower::anim::release;"), "{out}");
+    }
+
+    #[test]
+    fn a_lower_crate_item_gated_on_a_feature_comes_through_the_glob() {
         let mut source = source_of(
             "lower::anim",
-            "#[cfg(not(test))] mod std {}
-             std::thread_local! { pub static SHARED: u8 = 0; }",
+            r#"#[cfg_attr(feature = "default", cfg(any()))]
+            pub fn helper() {}
+            #[cfg(unix)]
+            pub fn plain() {}"#,
         );
         let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
             .unwrap()
             .to_string()
             .replace(' ', "");
         assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
-        assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        assert!(!out.contains("pubuse::lower::anim::helper;"), "{out}");
+        assert!(out.contains("pubuse::lower::anim::plain;"), "{out}");
     }
 
     #[test]
     fn a_thread_local_with_a_grouped_std_self_import_keeps_the_glob() {
-        let mut source = source_of(
-            "lower::anim",
-            "use other::std::{self};
-             std::thread_local! { pub static SHARED: u8 = 0; }",
-        );
-        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
-            .unwrap()
-            .to_string()
-            .replace(' ', "");
-        assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
-        assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        for import in ["use other::std::{self};", "use other::r#std::{self};"] {
+            let mut source = source_of(
+                "lower::anim",
+                &format!("{import} std::thread_local! {{ pub static SHARED: u8 = 0; }}"),
+            );
+            let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+                .unwrap()
+                .to_string()
+                .replace(' ', "");
+            assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
+            assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        }
     }
 
     #[test]
