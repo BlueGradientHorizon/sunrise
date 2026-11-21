@@ -197,14 +197,7 @@ fn shared_admission_part_distinguishes_blocks_and_current_state() {
                 })
                 .collect(),
         );
-        let mut attempt = PlacementAttempt::default();
-        let stack = ItemStack::new("minecraft:stone", 1);
-        for (pos, state, expected) in [
-            (TARGET, closed, false),
-            (TARGET, open, true),
-            (other, open, false),
-            (TARGET, chest, false),
-        ] {
+        for (pos, state) in [(TARGET, closed), (other, open)] {
             game.world.set(pos.0, pos.1, pos.2, state).unwrap();
             let entity = ModBlockEntity::new(
                 "admission:filtered".into(),
@@ -217,6 +210,16 @@ fn shared_admission_part_distinguishes_blocks_and_current_state() {
             game.world
                 .block_entities
                 .insert(pos, BlockEntity::Mod(Box::new(entity)));
+        }
+        let mut attempt = PlacementAttempt::default();
+        let stack = ItemStack::new("minecraft:stone", 1);
+        for (pos, state, expected) in [
+            (TARGET, closed, false),
+            (TARGET, open, true),
+            (other, open, false),
+            (TARGET, chest, false),
+        ] {
+            game.world.set(pos.0, pos.1, pos.2, state).unwrap();
             let containers = game.containers();
             let view = containers.view(pos, false).unwrap();
             assert_eq!(
