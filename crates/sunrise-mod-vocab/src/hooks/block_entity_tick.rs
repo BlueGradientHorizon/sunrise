@@ -16,6 +16,7 @@ pub trait Hooks {
     /// update; normal menu synchronization reads the resident data slots.
     /// With no Part subscribed for this type, the game skips the tick dispatch.
     #[hook(
+        receiver = "associated",
         dispatch = "flat",
         side = "server",
         contract = "listen",
