@@ -321,8 +321,14 @@ a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field
 `tag` and `commit` (40 hex digits, published as lowercase), one per stable release. A declared tag must be in the
 list (a reader of an index that lists releases leaves out a version naming another), and a row that declares one is refused when no file is given; a row without `sunrise` needs none. When package
 files are checked, a native package's `[native] sunrise` pin must match the named commit. Once a version is listed
-with `sunrise`, `registry review` refuses changing or removing it. The workflow supplies the file; the tool does not
-discover releases itself.
+with `sunrise`, `registry review` refuses changing or removing it.
+
+`cargo sunrise-mod registry releases --out releases.json` discovers published, non-draft stable releases
+from `sunrise-org/sunrise` (no prereleases), resolves lightweight and annotated tags to full commits, and
+sorts the rows by tag. A failed listing or tag lookup leaves the output unchanged. The command uses
+`GH_TOKEN`, then `GITHUB_TOKEN`, if set; public releases can also be read without a token. Discovery does
+not verify an SDK signature. The workflow must verify the corresponding signed SDK separately before
+supplying its data and the release list to the offline `registry check`, `review` and `build` commands.
 
 An entry with neither versions nor a Nightly source publishes nothing and keeps its id; its id, kind and owners are
 still checked. A project with only a Nightly source may leave out its icon and screenshots; the ones it has are
