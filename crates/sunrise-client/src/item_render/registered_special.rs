@@ -28,20 +28,13 @@ use sunrise_assets::{
     model::{Direction, Material},
 };
 
-pub type SpecialModelFactories = BTreeMap<String, SpecialModelFactory>;
+pub type SpecialModelFactories = BTreeMap<mod_api::Identifier, SpecialModelFactory>;
 
 pub(super) static FACTORIES: OnceLock<SpecialModelFactories> = OnceLock::new();
 
 /// Install the winning factories before the first client resource load. A type may replace a
-/// builtin, but must be a fully qualified resource identifier.
-pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> bool {
-    factories.retain(|kind, _| {
-        let valid = identifier(kind).is_ok_and(|canonical| canonical == kind.as_str());
-        if !valid {
-            log::warn!("special model type {kind:?} is not <namespace>:<path>");
-        }
-        valid
-    });
+/// builtin.
+pub fn install_special_model_factories(factories: SpecialModelFactories) -> bool {
     FACTORIES.set(factories).is_ok()
 }
 
@@ -156,7 +149,9 @@ impl ItemRenderer {
         factories: Option<&SpecialModelFactories>,
     ) -> Result<ClientItem, DecodeError> {
         ClientItem::from_json_with_specials(text, &|kind, base, fields| {
-            let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
+            let Some(factory) = factories.and_then(|factories| {
+                mod_api::Identifier::parse_namespaced(kind).and_then(|id| factories.get(&id))
+            }) else {
                 return Ok(None);
             };
             let renderer = factory

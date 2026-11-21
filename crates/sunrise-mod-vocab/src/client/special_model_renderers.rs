@@ -6,7 +6,7 @@
 //! load decodes and bakes every `minecraft:special` model node that names that type. On each draw,
 //! the baked renderer extracts an argument from the selected stack and submits geometry or nested
 //! stacks through a [`SpecialModelCollector`]. The game owns the surrounding draw state.
-use crate::{ClientHost, Component, ItemDisplayContext, ItemKey, ItemStack};
+use crate::{ClientHost, Component, Identifier, ItemDisplayContext, ItemKey, ItemStack};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use std::{any::Any, collections::BTreeMap, num::NonZeroU32, sync::Arc};
@@ -391,9 +391,8 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
 pub trait SpecialModelRenderers {
     /// The counterpart of NeoForge's `register(location, codec)`: `factory` decodes and bakes
     /// each special model node of type `kind` (`mymod:skillet`). The last registration wins,
-    /// including replacements for builtins; the game logs both owners. An id that is not
-    /// `<namespace>:<path>` is logged and skipped.
-    fn register(&mut self, kind: String, factory: SpecialModelFactory);
+    /// including replacements for builtins; the game logs both owners.
+    fn register(&mut self, kind: Identifier, factory: SpecialModelFactory);
 }
 
 // no wire: a report the game logs at registration; it holds `&'static` mod ids.
@@ -402,7 +401,7 @@ pub trait SpecialModelRenderers {
 #[non_exhaustive]
 pub struct ReplacedSpecialModelRenderer {
     /// The type.
-    pub kind: String,
+    pub kind: Identifier,
     /// The mod that registered it first, when a mod's dispatch did.
     pub earlier: Option<&'static str>,
     /// The mod whose registration stays.
@@ -414,13 +413,13 @@ pub struct ReplacedSpecialModelRenderer {
 #[derive(Default)]
 // exhaustive: its fields are private; the game builds it
 pub struct SpecialModelRendererRegistry {
-    factories: BTreeMap<String, (Option<&'static str>, SpecialModelFactory)>,
+    factories: BTreeMap<Identifier, (Option<&'static str>, SpecialModelFactory)>,
     replaced: Vec<ReplacedSpecialModelRenderer>,
-    initial: Vec<(String, Option<&'static str>)>,
+    initial: Vec<(Identifier, Option<&'static str>)>,
 }
 
 impl SpecialModelRenderers for SpecialModelRendererRegistry {
-    fn register(&mut self, kind: String, factory: SpecialModelFactory) {
+    fn register(&mut self, kind: Identifier, factory: SpecialModelFactory) {
         let later = crate::content::crash::current_native_mod();
         if let Some((earlier, _)) = self.factories.insert(kind.clone(), (later, factory)) {
             self.replaced.push(ReplacedSpecialModelRenderer {
@@ -437,10 +436,8 @@ impl SpecialModelRenderers for SpecialModelRendererRegistry {
 impl SpecialModelRendererRegistry {
     /// The first mod registration of each type. The engine uses its own builtin decoder
     /// to distinguish replacement of a game type from a new type, irrespective of namespace.
-    pub fn initial_owners(&self) -> impl Iterator<Item = (&str, Option<&'static str>)> {
-        self.initial
-            .iter()
-            .map(|(kind, owner)| (kind.as_str(), *owner))
+    pub fn initial_owners(&self) -> impl Iterator<Item = (&Identifier, Option<&'static str>)> {
+        self.initial.iter().map(|(kind, owner)| (kind, *owner))
     }
 
     /// Consume the registry into its winning factories, keyed by type, and the list of
@@ -448,7 +445,7 @@ impl SpecialModelRendererRegistry {
     pub fn into_renderers(
         self,
     ) -> (
-        BTreeMap<String, SpecialModelFactory>,
+        BTreeMap<Identifier, SpecialModelFactory>,
         Vec<ReplacedSpecialModelRenderer>,
     ) {
         let factories = self
@@ -486,18 +483,20 @@ mod tests {
     fn the_last_registration_of_a_type_wins() {
         let factory = || SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Nothing));
         let last = factory();
+        let pan = Identifier::parse("a:pan").unwrap();
+        let shield = Identifier::parse("minecraft:shield").unwrap();
         let mut registry = SpecialModelRendererRegistry::default();
-        registry.register("a:pan".into(), factory());
-        registry.register("a:pan".into(), last.clone());
-        registry.register("minecraft:shield".into(), factory());
+        registry.register(pan.clone(), factory());
+        registry.register(pan.clone(), last.clone());
+        registry.register(shield.clone(), factory());
         assert_eq!(
             registry.initial_owners().collect::<Vec<_>>(),
-            vec![("a:pan", None), ("minecraft:shield", None)]
+            vec![(&pan, None), (&shield, None)]
         );
         let (renderers, replaced) = registry.into_renderers();
         assert_eq!(renderers.len(), 2);
-        assert!(Arc::ptr_eq(&renderers["a:pan"].0, &last.0));
+        assert!(Arc::ptr_eq(&renderers[&pan].0, &last.0));
         assert_eq!(replaced.len(), 1);
-        assert_eq!(replaced[0].kind, "a:pan");
+        assert_eq!(replaced[0].kind, pan);
     }
 }

@@ -14,7 +14,7 @@ the stack contains more than one item. Keep your `mod_api` dependency and add se
 
 ```rust,ignore
 use mod_api::{
-    ClientHost, Hooks, RegisterSpecialModelRendererEvent, RegistrationContext,
+    ClientHost, Hooks, Identifier, RegisterSpecialModelRendererEvent, RegistrationContext,
     SpecialModelCollector, SpecialModelContext, SpecialModelFactory, SpecialModelGeometry,
     SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
 };
@@ -71,7 +71,7 @@ impl Hooks for SkilletMod {
         event: &mut RegisterSpecialModelRendererEvent<'_>,
     ) {
         event.renderers.register(
-            "example:skillet".into(),
+            Identifier::parse("example:skillet").unwrap(),
             SpecialModelFactory::new(
                 |fields| fields.decode::<SkilletConfig>(),
                 |config, bake| {
@@ -144,11 +144,12 @@ mod does not pass those values to the collector.
 
 ## Reloads and failures
 
-Registration runs once at client startup, not on reload. Use a fully qualified name
-(`namespace:path`); an invalid name is logged and skipped. The last registration of a type wins,
-including replacements for vanilla types. Each resource load decodes the winning definitions and
-bakes new renderer instances and leases. Submit only leases from the current load. Item states
-already resolved before a reload retain their baked geometry and can finish drawing it.
+Registration runs once at client startup, not on reload. Pass a validated `Identifier` (bare
+paths default to `minecraft:`, matching vanilla and NeoForge). The last registration of a type
+wins, including replacements for vanilla types. Each resource load decodes the winning
+definitions and bakes new renderer instances and leases. Submit only leases from the current
+load. Item states already resolved before a reload retain their baked geometry and can finish
+drawing it.
 
 An unknown type or an error or panic in decode or bake refuses the enclosing item definition.
 That item draws the missing model; the other definitions still load and the game does not try a

@@ -179,7 +179,7 @@ fn install_stick_with(
     + 'static,
 ) {
     let factories = BTreeMap::from([(
-        "test:stick".into(),
+        mod_api::Identifier::parse("test:stick").unwrap(),
         SpecialModelFactory::new(|_| Ok(()), move |(), bake| bake_geometry(bake).map(Stick)),
     )]);
     let definition = game.pack.item_renderer.decode_definition(

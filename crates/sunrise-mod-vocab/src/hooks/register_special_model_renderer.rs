@@ -7,10 +7,10 @@ pub trait Hooks {
     /// including for vanilla's types. Each `minecraft:special` node is decoded and baked afresh on
     /// resource reload; the baked renderer submits to a scoped collector when the item is drawn.
     #[notes = r#"Use `event.renderers.register(kind, SpecialModelFactory::new(decode, bake))` with a
-fully qualified type id. Use `SpecialModelConfig::decode` to read the inline `model` fields
-other than `type` into your own config type. The bake callback consumes that config and can
-keep geometry leases for the current resource load. Reloading rebuilds those leases and
-renderers, without firing this hook again.
+validated `Identifier` (bare paths default to `minecraft:`, matching vanilla and NeoForge). Use
+`SpecialModelConfig::decode` to read the inline `model` fields other than `type` into your own
+config type. The bake callback consumes that config and can keep geometry leases for the current
+resource load. Reloading rebuilds those leases and renderers, without firing this hook again.
 
 On each draw, `SpecialModelRenderer::extract_argument` reads a borrowed `SpecialModelStack`
 and returns the argument for `submit`. Submit geometry or nested stacks through

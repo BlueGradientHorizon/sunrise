@@ -265,7 +265,7 @@ impl ItemDrawEnv for PanEnv {
 
 fn pan_factories(on_bake: impl Fn(u8) + Send + Sync + 'static) -> SpecialModelFactories {
     BTreeMap::from([(
-        "spt:pan".into(),
+        mod_api::Identifier::parse("spt:pan").unwrap(),
         SpecialModelFactory::new(
             |config| config.decode::<PanConfig>(),
             move |config, bake| {
@@ -600,14 +600,14 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     let mut factories = pan_factories(|_| {});
     factories.extend([
         (
-            "spt:decode-panic".into(),
+            mod_api::Identifier::parse("spt:decode-panic").unwrap(),
             SpecialModelFactory::new(
                 |_| -> Result<Pan, String> { panic!("decoder panicked") },
                 |pan, _| Ok(pan),
             ),
         ),
         (
-            "spt:bake-panic".into(),
+            mod_api::Identifier::parse("spt:bake-panic").unwrap(),
             SpecialModelFactory::new(
                 |_| Ok(()),
                 |(), _| -> Result<Pan, String> { panic!("baker panicked") },
@@ -722,7 +722,7 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
         }
     };
     let factories = BTreeMap::from([(
-        "spt:pan".into(),
+        mod_api::Identifier::parse("spt:pan").unwrap(),
         SpecialModelFactory::new(|config| config.decode::<PanConfig>(), bake),
     )]);
     let renderer = renderer(temp.path(), 2, 2, &factories);
@@ -872,7 +872,11 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:fault","handle":2}}}"#,
     );
     let mut factories = pan_factories(|_| {});
-    factories.insert("spt:fault".into(), factories["spt:pan"].clone());
+    let pan = mod_api::Identifier::parse("spt:pan").unwrap();
+    factories.insert(
+        mod_api::Identifier::parse("spt:fault").unwrap(),
+        factories[&pan].clone(),
+    );
     let renderer = renderer(&root, 2, 2, &factories);
     let env = PanEnv(FakeHost::new());
     let resolve = |item: &str, count, display| {
