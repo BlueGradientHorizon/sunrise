@@ -1248,8 +1248,10 @@ mod tests {
                     error.contains("eq_panicker") && error.contains("panicked"),
                     "{error}"
                 );
-                assert!(!factories["selecttest:panic_in_load"].owner.is_enabled());
-                assert!(factories["selecttest:panic_in_draw"].owner.is_enabled());
+                let load_owner = factories["selecttest:panic_in_load"].decode.owner();
+                let draw_owner = factories["selecttest:panic_in_draw"].decode.owner();
+                assert!(!load_owner.is_enabled());
+                assert!(draw_owner.is_enabled());
                 let item = decode_definition_without_specials(
                 r#"{"model":{"type":"minecraft:select","property":"selecttest:panic_in_draw",
                     "cases":[{"when":1,"model":{"type":"minecraft:model","model":"minecraft:item/apple"}}],
@@ -1257,7 +1259,7 @@ mod tests {
                 &providers,
             ).unwrap();
                 assert_eq!(selected_model(item.clone(), 1), "minecraft:item/bone");
-                assert!(!factories["selecttest:panic_in_draw"].owner.is_enabled());
+                assert!(!draw_owner.is_enabled());
                 assert_eq!(selected_model(item, 1), "minecraft:item/bone");
             },
         );
