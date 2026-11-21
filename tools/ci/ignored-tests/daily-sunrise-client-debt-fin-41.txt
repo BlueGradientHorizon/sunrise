@@ -1,2 +1,4 @@
+sunrise-client game::native_damage_tests::a_dolphin_follow_move_posts_before_the_next_goal lib daily child-process
+sunrise-client game::native_damage_tests::borrowed_mob_landing_posts_before_the_travel_tail lib daily child-process
 sunrise-client game::native_damage_tests::borrowed_mod_effect_posts_before_the_next_action lib daily child-process
 sunrise-client game::native_damage_tests::guest_landing_posts_before_its_ground_hit lib daily resources

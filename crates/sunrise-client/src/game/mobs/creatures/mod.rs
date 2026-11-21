@@ -1729,9 +1729,11 @@ impl Game<'_> {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
-        let Some(post) = mob.pending_damage_post.take() else {
+        let post = mob.pending_damage_post.take();
+        let killed = mob.health <= 0.0;
+        if post.is_none() && !killed {
             return;
-        };
+        }
         let id = mob.id;
         let kind = mob.kind.clone();
         if self.died.insert(id) {
@@ -1740,7 +1742,9 @@ impl Game<'_> {
             let death = mob.clone();
             self.mob_die(&death);
         }
-        self.finish_damage_post(id as i32, &kind.id, &post);
+        if let Some(post) = post {
+            self.finish_damage_post(id as i32, &kind.id, &post);
+        }
     }
 
     /// LivingEntity.die / dropAllDeathLoot.

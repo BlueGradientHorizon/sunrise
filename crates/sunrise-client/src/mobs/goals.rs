@@ -64,8 +64,8 @@ pub trait Goal: std::fmt::Debug + Send + Sync {
         false
     }
     fn tick(&mut self, _m: &mut Mob, _cx: &mut Cx) {}
-    /// Goals that move the body itself can stop for the owning level to apply
-    /// a landing decision. The ordinary goal path runs without a pause.
+    /// Goals that move the body itself can stop for the owning level to handle
+    /// a trample, passenger fall, or hurt. The ordinary path runs without a pause.
     fn tick_until_movement_pause(
         &mut self,
         mob: &mut Mob,
@@ -273,7 +273,12 @@ impl GoalSelector {
         cx: &mut Cx,
         paused: GoalMovementPause,
     ) -> Option<GoalMovementPause> {
-        paused.movement.resume(m, cx.w, cx.level, cx.events);
+        if let Err(movement) = paused.movement.resume(m, cx.w, cx.level, cx.events) {
+            return Some(GoalMovementPause { movement, ..paused });
+        }
+        if m.removed {
+            return None;
+        }
         // An owning-host listener can remove or shift the running goal. Only
         // the still-resident goal holding this pause can finish its path update.
         let next = self

@@ -175,7 +175,9 @@ protection that hit caused. A later hazard in the same tick still starts a separ
 never shares the first hit's `DamageContainerView`. A mob's queued effect hurt finishes before the
 next queued action, and a dolphin's dry-out hurt finishes before its hop on land.
 A server player's landing hurt settles death or protection and Post on the landing body before
-`HIT_GROUND`, the fall-distance reset, and the next accepted move.
+`HIT_GROUND`, the fall-distance reset, and the next accepted move. In a mob's own tick, landing
+hurt settles before the fall-distance reset, the rest of movement, a gliding collision hurt or
+another goal. Trampling farmland is still decided before the landing hurt.
 
 For incoming damage, `event.weapon` is the direct entity's weapon, including a projectile's
 saved firing weapon. `event.causing_weapon` is instead the causing living entity's current

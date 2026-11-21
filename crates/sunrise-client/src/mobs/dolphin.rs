@@ -282,6 +282,7 @@ pub struct FollowPlayerRidden {
     following: bool,
     recalc: i32,
     leading: bool,
+    // One rider sample belongs to the whole move, even if its landing yields again.
     pending_rider: Option<(sunrise_core::geometry::Vec3, f32)>,
 }
 impl FollowPlayerRidden {
@@ -349,6 +350,7 @@ impl Goal for FollowPlayerRidden {
     /// `FollowPlayerRiddenEntityGoal.stop`.
     fn stop(&mut self, _: &mut Mob, _: &mut Cx) {
         self.following = false;
+        self.pending_rider = None;
     }
     /// `FollowPlayerRiddenEntityGoal.tick`.
     fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {

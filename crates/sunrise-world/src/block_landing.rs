@@ -111,16 +111,25 @@ impl FallDamageCall {
         }
     }
 
+    /// Resolve the operands for a body that can suspend inside `causeFallDamage`.
+    pub fn resolve<W: BlockLandingWorld>(
+        self,
+        world: &mut W,
+    ) -> Result<(f64, f32, W::DamageSource), LandingError<W::Error>> {
+        let source = world
+            .damage_source(self.owner, self.kind)
+            .map_err(LandingError::World)?;
+        Ok((self.distance, self.multiplier, source))
+    }
+
     /// Resolve the selected source and apply `causeFallDamage`, but not the block's tail.
     pub fn apply<W: BlockLandingWorld>(
         self,
         world: &mut W,
     ) -> Result<bool, LandingError<W::Error>> {
-        let source = world
-            .damage_source(self.owner, self.kind)
-            .map_err(LandingError::World)?;
+        let (distance, multiplier, source) = self.resolve(world)?;
         world
-            .cause_fall_damage(self.distance, self.multiplier, source)
+            .cause_fall_damage(distance, multiplier, source)
             .map_err(LandingError::World)
     }
 

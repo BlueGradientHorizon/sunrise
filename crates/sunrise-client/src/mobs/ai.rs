@@ -1083,8 +1083,10 @@ pub enum Pause {
     },
     /// A hit needs its owning level before the tick goes on.
     AfterDamage(DamageResume),
-    /// The caller's trample slot holds the continuation.
-    Trample,
+    /// A landing's farmland decision, before its superclass hurt.
+    Trample(sunrise_world::block_landing::FarmlandTrample),
+    /// A vehicle must propagate the selected fall before this move continues.
+    FallToPassengers(super::living::PassengerFall),
 }
 
 #[derive(Debug)]
@@ -1105,6 +1107,8 @@ enum DamageTail {
         was_on_fire: bool,
         no_ai: bool,
     },
+    /// The caller's movement slot holds the exact travel or goal stage.
+    Movement,
 }
 
 #[derive(Debug)]
@@ -1137,22 +1141,34 @@ enum MovementPhase {
     Travel(super::living::TravelPause),
 }
 
-/// A suspended mob's landing and the exact remainder of its tick.
+/// A suspended move and the tick state needed once the move finishes.
 #[derive(Debug)]
 pub struct MobMovement {
     phase: MovementPhase,
     was_on_fire: bool,
-    join: crate::join_seq::JoinSeq,
-    pub mob: u32,
 }
 
-impl MobMovement {
-    pub fn decision(&self) -> sunrise_world::block_landing::FarmlandTrample {
-        match &self.phase {
-            MovementPhase::Goal(goal) => goal.movement.decision(),
-            MovementPhase::Travel(travel) => travel.decision(),
-        }
-    }
+fn pause_movement(
+    m: &Mob,
+    movement: &mut Option<MobMovement>,
+    phase: MovementPhase,
+    was_on_fire: bool,
+) -> TickProgress {
+    let travel = match &phase {
+        MovementPhase::Goal(goal) => &goal.movement,
+        MovementPhase::Travel(travel) => travel,
+    };
+    use super::living::MovementAction;
+    let pause = match travel.action() {
+        MovementAction::Trample(trample) => Pause::Trample(trample),
+        MovementAction::SettleHit => Pause::AfterDamage(DamageResume {
+            join: m.join,
+            tail: DamageTail::Movement,
+        }),
+        MovementAction::Passengers(fall) => Pause::FallToPassengers(fall),
+    };
+    *movement = Some(MobMovement { phase, was_on_fire });
+    TickProgress::Paused(pause)
 }
 
 /// A mob's air update, decided and waiting for its owner to ask the mods:
@@ -1225,16 +1241,15 @@ pub fn tick(
             TickProgress::Paused(Pause::AfterDamage(resume)) => {
                 resume_after_damage(m, w, level, events, resume, None)
             }
-            TickProgress::Paused(Pause::Trample) => {
+            TickProgress::Paused(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
                 unreachable!("hostless travel cannot pause")
             }
         };
     }
 }
 
-/// Stop before a fox's effect draws, a watched `living_breathe` update, or a
-/// decided trample, so the owner can provide a mutable host. Only a trample
-/// writes the caller's continuation slot.
+/// Stop when the living tick needs the owning game. A suspended travel or
+/// goal leaves its continuation in the caller's movement slot.
 pub fn tick_until_consumption(
     m: &mut Mob,
     w: &MobWorld,
@@ -1392,6 +1407,13 @@ pub(super) fn resume_after_damage(
             movement.is_some(),
             next,
         ),
+        DamageTail::Movement => resume_movement(
+            m,
+            w,
+            level,
+            movement.expect("a game-owned movement returned for a hurt"),
+            events,
+        ),
     }
 }
 
@@ -1506,13 +1528,12 @@ fn ai_and_finish_tick(
         // push).
         drop_tiny_motion(m);
     } else if let Some(phase) = ai_step(m, w, level, events, movement.is_some()) {
-        *movement.expect("only a game-owned tick pauses a trample") = Some(MobMovement {
+        return pause_movement(
+            m,
+            movement.expect("only a game-owned tick pauses movement"),
             phase,
             was_on_fire,
-            join: m.join,
-            mob: m.id,
-        });
-        return TickProgress::Paused(Pause::Trample);
+        );
     }
     start_ai_tail(m, w, level, events, was_on_fire, pause_damage)
 }
@@ -1678,16 +1699,18 @@ pub(super) fn resume_movement(
     movement: &mut Option<MobMovement>,
     events: &mut Vec<MobEvent>,
 ) -> TickProgress {
-    let paused = movement.take().expect("the trample pause was stored");
-    if m.removed || m.join != paused.join {
-        return TickProgress::Complete(!m.removed);
+    let paused = movement.take().expect("the movement pause was stored");
+    if m.removed {
+        return TickProgress::Complete(false);
     }
     let progress = match paused.phase {
-        MovementPhase::Travel(travel) => {
-            travel.resume(m, w, level, events);
-            hurt_teleports(m, w, events);
-            None
-        }
+        MovementPhase::Travel(travel) => match travel.resume(m, w, level, events) {
+            Ok(()) => {
+                hurt_teleports(m, w, events);
+                None
+            }
+            Err(travel) => Some(MovementPhase::Travel(travel)),
+        },
         MovementPhase::Goal(goal) => {
             let paused = {
                 let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
@@ -1696,6 +1719,9 @@ pub(super) fn resume_movement(
             if let Some(goal) = paused {
                 Some(MovementPhase::Goal(goal))
             } else {
+                if m.removed {
+                    return TickProgress::Complete(false);
+                }
                 finish_server_ai_step(m, w, level, events);
                 ai_step_after_goals(m, w, level, events, true)
                     .err()
@@ -1705,10 +1731,7 @@ pub(super) fn resume_movement(
     };
     match progress {
         None => start_ai_tail(m, w, level, events, paused.was_on_fire, true),
-        Some(phase) => {
-            *movement = Some(MobMovement { phase, ..paused });
-            TickProgress::Paused(Pause::Trample)
-        }
+        Some(phase) => pause_movement(m, movement, phase, paused.was_on_fire),
     }
 }
 

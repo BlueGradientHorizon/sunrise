@@ -161,9 +161,9 @@ impl Game<'_> {
         let mut hit_sounds: Vec<super::NativeSound> = Vec::new();
         use sunrise_client::mobs::ai::Pause;
         let mut resume = None;
-        // Trample is uncommon. Keep its payload here rather than making every
-        // mob's tick result and resume marker large enough to carry it.
+        // Keep the suspended move out of the ordinary tick's result.
         let mut movement = None;
+        let mut resume_entity = None;
         let mut resume_air_answer = None;
         let mut resume_selection = None;
         // An invalid removed vehicle is retried once at this rider's own
@@ -250,7 +250,8 @@ impl Game<'_> {
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
                     let checked = resuming || told_at == Some(slot);
-                    if blocked.contains(&m.id) {
+                    if blocked.contains(&m.id) || resuming && resume_entity != Some((m.id, m.join))
+                    {
                         cursor += 1;
                         resume = None;
                         movement = None;
@@ -565,14 +566,16 @@ impl Game<'_> {
                                 &mut movement,
                             )
                         }
-                        Some(Pause::Trample) => sunrise_client::mobs::riders::resume_movement(
-                            &mut mobs,
-                            i,
-                            &w,
-                            &mut level,
-                            &mut movement,
-                            &mut events,
-                        ),
+                        Some(Pause::Trample(_) | Pause::FallToPassengers(_)) => {
+                            sunrise_client::mobs::riders::resume_movement(
+                                &mut mobs,
+                                i,
+                                &w,
+                                &mut level,
+                                &mut movement,
+                                &mut events,
+                            )
+                        }
                         Some(Pause::Consumption { was_on_fire, .. }) => {
                             sunrise_client::mobs::riders::resume_after_consumption(
                                 &mut mobs,
@@ -622,7 +625,10 @@ impl Game<'_> {
                             }
                         };
                     let kept = match progress {
-                        sunrise_client::mobs::ai::TickProgress::Complete(kept) => kept,
+                        sunrise_client::mobs::ai::TickProgress::Complete(kept) => {
+                            movement = None;
+                            kept
+                        }
                         sunrise_client::mobs::ai::TickProgress::Paused(paused) => {
                             // Return every player loan before ending the world borrow.
                             if seen_guest.is_none() {
@@ -637,6 +643,7 @@ impl Game<'_> {
                             resume_sampled = sampled;
                             resume_guest = seen_guest;
                             resume_selection = selection;
+                            resume_entity = Some((mobs[i].id, mobs[i].join));
                             pause = Some(paused);
                             sunrise_threads::work::clear_work();
                             break;
@@ -820,12 +827,15 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 std::mem::swap(&mut host.mob_players, &mut bindings);
             }
-            // The lift is a position write made by the owning game, not by
-            // the borrowed mob. Give it the live section table as well.
-            let trampling = matches!(pause, Some(Pause::Trample));
-            let live_sections = section_table
-                .as_ref()
-                .filter(|_| trampling || matches!(pause, Some(Pause::AfterDamage(_))));
+            // Lifts and hurt listeners can write positions from the owning game.
+            let trampling = matches!(pause, Some(Pause::Trample(_)));
+            let live_sections = section_table.as_ref().filter(|_| {
+                trampling
+                    || matches!(
+                        pause,
+                        Some(Pause::AfterDamage(_) | Pause::FallToPassengers(_))
+                    )
+            });
             if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
@@ -841,7 +851,11 @@ impl Game<'_> {
                 }
                 if let Some(id) = retry_rider {
                     self.dismount_mob(id);
-                } else if let Some(paused) = pause.as_ref() {
+                } else if let Some((paused, (id, join))) = pause.as_ref().zip(resume_entity)
+                    && let Some(i) = self.mob_index.find(&self.mobs, id)
+                    && self.mobs[i].join == join
+                    && !self.mobs[i].removed
+                {
                     match paused {
                         Pause::Consumption { decision, .. } => {
                             self.apply_fox_consumption(decision);
@@ -850,14 +864,13 @@ impl Game<'_> {
                             air_answer = self.ask_mob_breath(air);
                         }
                         Pause::AfterDamage(_) => {
-                            let victim = snapshot[cursor].id;
-                            if let Some(i) = self.mob_index.find(&self.mobs, victim) {
-                                self.finish_mob_damage_at(i);
-                            }
+                            self.finish_mob_damage_at(i);
                         }
-                        Pause::Trample => {
-                            let trample = movement.as_ref().expect("the trample pause was stored");
-                            self.trample_farmland(trample.mob, false, trample.decision());
+                        Pause::Trample(trample) => {
+                            self.trample_farmland(id, false, *trample);
+                        }
+                        Pause::FallToPassengers(fall) => {
+                            self.fall_to_passengers(id, fall.distance, fall.modifier);
                         }
                     }
                 }

@@ -935,6 +935,303 @@ fn guest_burning_hit_posts_before_the_void_hurt_in_the_same_tick() {
 }
 
 #[derive(Debug, PartialEq)]
+enum MobLandingMoment {
+    Trample,
+    Death(Option<mod_api::Tag>, Option<[f64; 3]>),
+    Post,
+    Repath,
+    NextGoal,
+    TickFinished(Option<mod_api::Tag>),
+}
+
+type MobLandingTrace = Arc<Mutex<Vec<MobLandingMoment>>>;
+
+struct MobLandingProbe {
+    id: u32,
+    trace: MobLandingTrace,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for MobLandingProbe {
+    fn farmland_trample(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::FarmlandTrampleEvent,
+    ) -> mod_api::Flow {
+        if event.entity.entity().id() == self.id {
+            self.trace.lock().unwrap().push(MobLandingMoment::Trample);
+        }
+        mod_api::Flow::Continue
+    }
+
+    fn living_death(
+        &self,
+        host: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::LivingDeathEvent<'_>,
+    ) -> mod_api::Flow {
+        if event.entity == self.id && event.source.damage_type == "minecraft:fall" {
+            let entity = host.entity(self.id).unwrap();
+            let distance = entity
+                .nbt(host)
+                .unwrap()
+                .get(&"fall_distance".into())
+                .cloned();
+            let velocity = entity.velocity(host);
+            self.trace
+                .lock()
+                .unwrap()
+                .push(MobLandingMoment::Death(distance, velocity));
+            // Keep the landed mob alive so its remaining goals and travel can be observed.
+            assert!(host.living(entity).unwrap().set_health(host, 5.0));
+            return mod_api::Flow::Cancel;
+        }
+        mod_api::Flow::Continue
+    }
+
+    fn living_damage_post(&self, _: &mut dyn HitHost, event: &mut LivingDamagePostEvent<'_>) {
+        if event.entity as u32 == self.id && event.source.damage_type == "minecraft:fall" {
+            self.trace.lock().unwrap().push(MobLandingMoment::Post);
+        }
+    }
+
+    fn entity_tick_listened(
+        &self,
+        _: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickListenedEvent,
+    ) {
+        event.listened = true;
+    }
+
+    fn entity_tick_post(
+        &self,
+        host: mod_api::HostSide<'_>,
+        event: &mut mod_api::EntityTickPostEvent<'_>,
+    ) {
+        if event.entities.contains(&self.id)
+            && let mod_api::HostSide::Server(host) = host
+        {
+            let entity = host.entity(self.id).unwrap();
+            let distance = entity
+                .nbt(host)
+                .unwrap()
+                .get(&"fall_distance".into())
+                .cloned();
+            self.trace
+                .lock()
+                .unwrap()
+                .push(MobLandingMoment::TickFinished(distance));
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn borrowed_mob_landing_posts_before_the_travel_tail() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    const CASE: &str = "SUNRISE_MOB_LANDING_DAMAGE_CHILD";
+    if run_fresh_cases(
+        "game::native_damage_tests::borrowed_mob_landing_posts_before_the_travel_tail",
+        CASE,
+        &["stone", "farmland"],
+    ) {
+        return;
+    }
+    let farmland = std::env::var(CASE).unwrap() == "farmland";
+    let id = 225047;
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "mob-landing-order",
+        Box::new(MobLandingProbe {
+            id,
+            trace: Arc::clone(&trace),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.streaming
+                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            let registry = game.pack.assets.registry;
+            let block = registry
+                .default_state(if farmland {
+                    "minecraft:farmland"
+                } else {
+                    "minecraft:stone"
+                })
+                .unwrap();
+            game.world.set(1, 63, 1, block).unwrap();
+            let mut pig = mob(game, id, "minecraft:pig");
+            pig.position = Vec3::new(1.5, 64.125, 1.5);
+            pig.velocity.y = -0.5;
+            pig.fall_distance = 6.0;
+            pig.health = 0.5;
+            pig.ai.goals = Default::default();
+            pig.ai.targets = Default::default();
+            game.mobs.push(pig);
+            game.entity_section_joined(id, [1.5, 64.125, 1.5]);
+
+            game.tick_creature_entities().unwrap();
+
+            let mut expected = Vec::new();
+            let fall: f64 = if farmland {
+                expected.push(MobLandingMoment::Trample);
+                let dirt = registry.default_state("minecraft:dirt").unwrap();
+                assert_eq!(game.world.block(1, 63, 1), dirt);
+                6.1875
+            } else {
+                6.125
+            };
+            expected.extend([
+                MobLandingMoment::Death(
+                    Some(mod_api::Tag::Double(fall.to_bits())),
+                    Some([0.0, -0.5, 0.0]),
+                ),
+                MobLandingMoment::Post,
+                MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
+            ]);
+            assert_eq!(*trace.lock().unwrap(), expected);
+            let pig = &game.mobs[0];
+            assert_eq!(pig.position.y, 64.0);
+            assert_eq!(
+                pig.velocity.y,
+                -0.08 * f64::from(0.98_f32),
+                "one travel tail after the hurt"
+            );
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_dolphin_follow_move_posts_before_the_next_goal() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_client::mobs::{
+        dolphin::FollowPlayerRidden,
+        goals::{Cx, Goal},
+        living::TravelPause,
+    };
+
+    if run_fresh_cases(
+        "game::native_damage_tests::a_dolphin_follow_move_posts_before_the_next_goal",
+        "SUNRISE_DOLPHIN_FOLLOW_DAMAGE_CHILD",
+        &["follow"],
+    ) {
+        return;
+    }
+
+    // Use the real goal, observing its completion separately from the next goal's tick.
+    #[derive(Clone, Debug)]
+    struct Follow(FollowPlayerRidden, MobLandingTrace);
+    impl Goal for Follow {
+        fn flags(&self) -> u8 {
+            self.0.flags()
+        }
+        fn can_use(&mut self, mob: &mut Mob, cx: &mut Cx) -> bool {
+            self.0.can_use(mob, cx)
+        }
+        fn start(&mut self, mob: &mut Mob, cx: &mut Cx) {
+            self.0.start(mob, cx);
+        }
+        fn tick_until_movement_pause(&mut self, mob: &mut Mob, cx: &mut Cx) -> Option<TravelPause> {
+            self.0.tick_until_movement_pause(mob, cx)
+        }
+        fn after_movement(&mut self, mob: &mut Mob, cx: &mut Cx) -> bool {
+            if !self.0.after_movement(mob, cx) {
+                return false;
+            }
+            self.1.lock().unwrap().push(MobLandingMoment::Repath);
+            true
+        }
+        fn box_clone(&self) -> Box<dyn Goal> {
+            Box::new(self.clone())
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct FollowingGoal(MobLandingTrace);
+    impl Goal for FollowingGoal {
+        fn flags(&self) -> u8 {
+            0
+        }
+        fn can_use(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
+            true
+        }
+        fn tick(&mut self, _: &mut Mob, _: &mut Cx) {
+            self.0.lock().unwrap().push(MobLandingMoment::NextGoal);
+        }
+        fn box_clone(&self) -> Box<dyn Goal> {
+            Box::new(self.clone())
+        }
+    }
+
+    let id = 225048;
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "follow-landing-order",
+        Box::new(MobLandingProbe {
+            id,
+            trace: Arc::clone(&trace),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.build_registries();
+            game.streaming
+                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(1, 79, 1, stone).unwrap();
+
+            let at = Vec3::new(3.5, 80.0, 1.5);
+            let mut boat = super::boats::Boat::new(225049, "oak".into(), at, 0.0);
+            boat.velocity.x = 0.2;
+            game.riding = Some(boat.id);
+            game.boats.push(boat);
+            game.player = Some(PlayerMotion::new(game.motion, at).unwrap());
+
+            let mut dolphin = mob(game, id, "minecraft:dolphin");
+            dolphin.position = Vec3::new(1.5, 80.0, 1.5);
+            dolphin.velocity.y = -0.5;
+            dolphin.fall_distance = 6.0;
+            dolphin.health = 0.5;
+            dolphin.ai.goals = Default::default();
+            dolphin.ai.targets = Default::default();
+            dolphin.ai.goals.add(
+                0,
+                Follow(FollowPlayerRidden::new(false), Arc::clone(&trace)),
+            );
+            dolphin.ai.goals.add(1, FollowingGoal(Arc::clone(&trace)));
+            game.mobs.push(dolphin);
+            game.entity_section_joined(id, [1.5, 80.0, 1.5]);
+
+            game.tick_creature_entities().unwrap();
+
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    MobLandingMoment::Death(
+                        Some(mod_api::Tag::Double(6.0_f64.to_bits())),
+                        Some([0.0, -0.5, 0.0])
+                    ),
+                    MobLandingMoment::Post,
+                    MobLandingMoment::Repath,
+                    MobLandingMoment::NextGoal,
+                    MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
+                ]
+            );
+        })
+    });
+}
+
+#[derive(Debug, PartialEq)]
 enum GuestLandingMoment {
     Death(u32, Option<[f64; 3]>, Option<mod_api::Tag>),
     Post(i32),
