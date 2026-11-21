@@ -1,10 +1,10 @@
 //! Client item extensions, rebuilt with the equipment resource bindings.
 pub trait Hooks {
-    /// Register this load's worn equipment models, textures and item providers together.
-    /// Registration is client-only and repeats on every resource load. Models are baked once;
-    /// frame callbacks choose references, never geometry. Each registration can fail independently;
-    /// its error names the refused entry and does not discard successful calls. Server-only
-    /// packages cannot listen.
+    /// Register worn equipment providers on the client, like NeoForge's RegisterClientExtensionsEvent.
+    /// Each resource load bakes the requested models and binds the requested atlas sprites.
+    /// Draw callbacks borrow the live stack and asset layer and select from those bindings.
+    /// A registration error names the refused entry without discarding other successful calls.
+    /// Server-only packages cannot listen.
     #[hook(
         receiver = "associated",
         dispatch = "flat",

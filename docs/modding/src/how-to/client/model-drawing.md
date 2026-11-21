@@ -98,26 +98,36 @@ event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
 
 Trees are API-owned `ModelPart` trees, built directly or baked from a
 `LayerDefinition`. Register them once per resource load, never during a frame.
-Model names may use any valid namespace. Duplicate model names, non-finite
-geometry or poses, unknown textures or items, and a second provider for an item
-return an error from that registrar call. Other successful registrations still
-install. A duplicate item error names both providers and leaves the first in
-place. Disabling the owning mod stops its provider.
+Register only sprites the provider may select as overrides: `register_texture`
+binds each requested sprite and its UVs for the current load. Vanilla/pack/CIT
+selection requires no registration. Model names may use any valid namespace.
+Duplicate model names, non-finite geometry or poses, unknown textures or items,
+and a second provider for an item return an error from that registrar call.
+Other successful registrations still install. A duplicate item error names both
+providers and leaves the first in place. Disabling the owning mod stops its
+provider.
 A server-only package cannot declare this client registration hook.
 
 The worn stack must first pass the equippable component's asset and matching-slot
 checks, and the asset must have layers. Only the visible equipped item's provider
 is queried; random-texture inventory enumeration does not run frame callbacks.
-Every callback takes `&dyn ClientHost` and `&ItemStack`:
+Every callback takes `&dyn ClientHost` and a live `&ItemStackView<'_>`. Read a
+single stored component override with `stack.get(&descriptor)` or explicitly
+call `stack.project()` if you need an owned stack. Callbacks for individual
+layers also borrow `&EquipmentLayer<'_>`; its `texture` is the asset's texture
+name before any renderer override.
 
-1. `default_dye_color` runs once and returns packed ARGB, or zero when undyed.
+1. `default_dye_color` runs once. By default it reads the stack's dyed colour
+   override and returns packed ARGB, or zero when undyed.
 2. `armor_layer_tint_color` runs in asset layer order, with the layer and its index.
    Exactly zero skips the layer, without calling its texture or model method.
    The default is white for a nondyeable layer, or its dye/optional undyed colour
    for a dyeable layer. Without either colour, a dyeable layer is skipped.
-3. `armor_texture` receives the layer type, layer and the resolved default texture
-   reference, including pack/CIT selection. A returned override is final for that
-   layer; it is not replaced by another random-texture or custom-model texture.
+3. `armor_texture` receives the layer type, layer and `default_texture: &str`:
+   the renderer's texture name after pack/CIT selection, or the asset's name if
+   the renderer could not bind it. Return `ArmorTextureRef::DEFAULT` to keep that
+   selection. Returning a registered sprite is final for that layer; it is not
+   replaced by another random-texture or custom-model texture.
 4. `armor_layer_model` chooses the registered tree for that layer. Returning
    `ArmorModelRef::VANILLA` keeps the original model. The humanoid pose is copied
    onto the chosen tree, with only the current slot's parts visible.
@@ -137,8 +147,8 @@ If a callback is refused, the whole piece draws as vanilla for that draw, even
 if an earlier layer succeeded. A later draw can still use that provider. A panic
 also discards the custom draw, logs and shows an error toast naming the mod, and
 disables that mod's callback for that item for the rest of the session. A resource
-reload does not revive it. Callbacks work with references and layer values, not
-geometry or rebakes.
+reload does not revive it. Callbacks work with borrowed draw inputs and select
+reload-bound references, not geometry or rebakes.
 
 ## Standalone model bakers
 

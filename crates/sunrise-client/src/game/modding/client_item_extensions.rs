@@ -43,11 +43,15 @@ pub(super) struct ArmorModel {
     pub slots: [Arc<Part>; 4],
 }
 
+pub(super) struct ArmorTexture {
+    pub name: String,
+    pub uv: [f32; 4],
+}
+
 pub(super) struct ArmorExtensions {
     pub generation: u64,
     pub models: Vec<ArmorModel>,
-    pub textures: Vec<String>,
-    pub texture_keys: FxHashMap<String, u32>,
+    pub textures: Vec<ArmorTexture>,
     pub items: FxHashMap<ItemKey, ItemExtensionsPart>,
 }
 impl Default for ArmorExtensions {
@@ -57,7 +61,6 @@ impl Default for ArmorExtensions {
             generation: GENERATION.fetch_add(1, Ordering::Relaxed),
             models: Vec::new(),
             textures: Vec::new(),
-            texture_keys: FxHashMap::default(),
             items: FxHashMap::default(),
         }
     }
@@ -78,7 +81,8 @@ impl ArmorExtensions {
 
 struct Registration<'a> {
     state: ArmorExtensions,
-    sprite_exists: &'a dyn Fn(&str) -> bool,
+    texture_keys: FxHashMap<String, u32>,
+    sprite_uv: &'a dyn Fn(&str) -> Option<[f32; 4]>,
     owners: &'a mut ItemExtensionOwners,
 }
 impl ClientItemExtensionsRegistrar for Registration<'_> {
@@ -110,16 +114,17 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
         Ok(ArmorModelRef::__new(self.state.generation, index))
     }
     fn register_texture(&mut self, name: &str) -> std::result::Result<ArmorTextureRef, String> {
-        if !(self.sprite_exists)(name) {
-            return Err(format!("unknown armour texture {name}"));
-        }
-        if let Some(&index) = self.state.texture_keys.get(name) {
+        if let Some(&index) = self.texture_keys.get(name) {
             return Ok(ArmorTextureRef::__new(self.state.generation, index));
         }
+        let uv = (self.sprite_uv)(name).ok_or_else(|| format!("unknown armour texture {name}"))?;
         let index = u32::try_from(self.state.textures.len())
             .map_err(|_| format!("armour texture {name}: texture table exhausted"))?;
-        self.state.textures.push(name.to_owned());
-        self.state.texture_keys.insert(name.to_owned(), index);
+        self.state.textures.push(ArmorTexture {
+            name: name.to_owned(),
+            uv,
+        });
+        self.texture_keys.insert(name.to_owned(), index);
         Ok(ArmorTextureRef::__new(self.state.generation, index))
     }
     fn client_item_extensions(
@@ -256,13 +261,16 @@ impl Game<'_> {
         self.armor_stand_assets.extensions.dispose_item_providers();
         let mut registration = Registration {
             state: ArmorExtensions::default(),
-            sprite_exists: &|name| self.gui.atlas.sprites.contains_key(name),
+            texture_keys: FxHashMap::default(),
+            sprite_uv: &|name| {
+                self.gui
+                    .atlas
+                    .sprites
+                    .get(name)
+                    .map(|r| [r.u0, r.v0, r.u1, r.v1])
+            },
             owners: &mut self.client_item_extension_owners,
         };
-        // Prebind every default texture once, so frame callbacks receive only integer references.
-        for name in self.gui.atlas.sprites.keys() {
-            let _ = registration.register_texture(name);
-        }
         Self::native_register_client_item_extensions(
             &mod_api::RegistrationContext::new(),
             &mut registration,
@@ -280,18 +288,23 @@ impl Game<'_> {
         mut texture: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
         mut emissive: impl FnMut(&str) -> Option<super::equipment_piece::MaterialBinding<'a>>,
     ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
-        use super::api_values::TryIntoApi;
+        use sunrise_core::nbt::{JavaString, Tag};
         let state = &self.armor_stand_assets.extensions;
         if state.items.is_empty() {
             return None;
         }
-        let item = mod_api::__private::item_key(&stack.item)?;
+        let metadata = super::api_values::stack_read_metadata(stack);
+        let item = match &metadata {
+            Ok((item, ..)) => *item,
+            // Only warn about a refused stack when it would have reached an active provider.
+            Err(_) => mod_api::__private::item_key(&stack.item)?,
+        };
         let part = state.items.get(&item)?;
         if !part.owner.is_enabled() {
             return None;
         }
-        let stack = match stack.try_into_api() {
-            Ok(stack) => stack,
+        let metadata = match metadata {
+            Ok(metadata) => metadata,
             Err(why) => {
                 log::warn!(
                     "Sunrise: client item extensions for {}: invalid equipped stack: {why:?}",
@@ -300,24 +313,29 @@ impl Game<'_> {
                 return None;
             }
         };
-        let bind = |name: &str| {
-            self.gui.atlas.sprites.get_key_value(name).map(|(name, r)| {
-                super::equipment_piece::MaterialBinding {
-                    name,
-                    uv: [r.u0, r.v0, r.u1, r.v1],
-                }
-            })
+        let read_override = |id: &str| {
+            let bare = id.strip_prefix('!').unwrap_or(id);
+            let Tag::Compound(mut patch) =
+                sunrise_items::item_data::encode_extra_components_matching(stack, |name| {
+                    name == bare
+                })?
+            else {
+                return None;
+            };
+            patch.remove(&JavaString::from(id))
         };
+        let project = |metadata| super::api_values::project_stack(stack, metadata).ok();
+        let view =
+            mod_api::ItemStackView::resident_with_components(metadata, &project, &read_override);
         dispatch_equipment(
             self,
             state,
             part,
-            &stack,
+            &view,
             piece,
             EquipmentBindings {
                 trim,
                 default: &mut texture,
-                binding: &bind,
                 emissive: &mut emissive,
             },
         )
@@ -328,14 +346,13 @@ type Binding<'a> = super::equipment_piece::MaterialBinding<'a>;
 struct EquipmentBindings<'a, 'call> {
     trim: Option<Binding<'a>>,
     default: &'call mut dyn FnMut(&str) -> Option<Binding<'a>>,
-    binding: &'call dyn Fn(&str) -> Option<Binding<'a>>,
     emissive: &'call mut dyn FnMut(&str) -> Option<Binding<'a>>,
 }
 fn dispatch_equipment<'a>(
     host: &dyn mod_api::ClientHost,
     state: &'a ArmorExtensions,
     part: &ItemExtensionsPart,
-    stack: &mod_api::ItemStack,
+    stack: &mod_api::ItemStackView<'_>,
     piece: &super::equipment_piece::EquipmentPiece<'_>,
     lookups: EquipmentBindings<'a, '_>,
 ) -> Option<Vec<super::equipment_piece::EquipmentMaterial<'a>>> {
@@ -347,7 +364,6 @@ fn dispatch_equipment<'a>(
     let EquipmentBindings {
         trim,
         default: texture,
-        binding: bind,
         emissive,
     } = lookups;
     let provider = &part.provider;
@@ -369,14 +385,8 @@ fn dispatch_equipment<'a>(
             piece.resolved_materials(
                 trim,
                 |index, layer| {
-                    let original_ref = state
-                        .texture_keys
-                        .get(&layer.texture)
-                        .map_or(ArmorTextureRef::__new(0, 0), |&index| {
-                            ArmorTextureRef::__new(state.generation, index)
-                        });
                     let snapshot = EquipmentLayer::__new(
-                        original_ref,
+                        &layer.texture,
                         layer.dyeable,
                         layer.color_when_undyed,
                         layer.use_player_texture,
@@ -387,29 +397,32 @@ fn dispatch_equipment<'a>(
                         return None;
                     }
                     let default = texture(&layer.texture);
-                    let default_ref = default
-                        .and_then(|b| state.texture_keys.get(b.name))
-                        .map_or(ArmorTextureRef::__new(0, 0), |&index| {
-                            ArmorTextureRef::__new(state.generation, index)
-                        });
-                    let selected =
-                        provider.armor_texture(host, stack, layer_type, &snapshot, default_ref);
-                    let mut selected_texture_final = selected != default_ref;
-                    let binding = if selected == default_ref {
-                        default
+                    let selected = provider.armor_texture(
+                        host,
+                        stack,
+                        layer_type,
+                        &snapshot,
+                        default.map_or(layer.texture.as_str(), |b| b.name),
+                    );
+                    let (binding, final_texture) = if selected == ArmorTextureRef::DEFAULT {
+                        (default?, false)
                     } else {
                         let (generation, index) = selected.__parts();
-                        let name = (generation == state.generation)
-                            .then(|| state.textures.get(index as usize))
-                            .flatten();
-                        if let Some(name) = name {
-                            bind(name)
+                        if generation == state.generation
+                            && let Some(tex) = state.textures.get(index as usize)
+                        {
+                            (
+                                Binding {
+                                    name: &tex.name,
+                                    uv: tex.uv,
+                                },
+                                true,
+                            )
                         } else {
                             report_stale("texture");
-                            selected_texture_final = false;
-                            default
+                            (default?, false)
                         }
-                    }?;
+                    };
                     let selected = provider.armor_layer_model(
                         host,
                         stack,
@@ -438,7 +451,7 @@ fn dispatch_equipment<'a>(
                         binding,
                         color,
                         model,
-                        final_texture: selected_texture_final,
+                        final_texture,
                     })
                 },
                 emissive,
@@ -506,7 +519,6 @@ mod tests {
     struct TwoShapes {
         models: [ArmorModelRef; 2],
         textures: [ArmorTextureRef; 2],
-        original_first: ArmorTextureRef,
         calls: Arc<std::sync::Mutex<Vec<String>>>,
     }
     impl ClientItemExtensions for TwoShapes {
@@ -535,9 +547,13 @@ mod tests {
             _: &mod_api::ItemStackView<'_>,
             _: EquipmentLayerType,
             layer: &EquipmentLayer<'_>,
-            _: &str,
+            default_texture: &str,
         ) -> ArmorTextureRef {
-            let index = usize::from(layer.texture != self.original_first);
+            let index = match (layer.texture, default_texture) {
+                ("inner", "cit_inner") => 0,
+                ("outer", "outer") => 1,
+                pair => panic!("unexpected asset and default textures: {pair:?}"),
+            };
             self.calls.lock().unwrap().push(format!("texture{index}"));
             self.textures[index]
         }
@@ -554,7 +570,7 @@ mod tests {
         }
     }
     #[test]
-    fn two_shapes_two_textures_tint_skip_and_one_trim_use_the_real_dispatch_boundary() {
+    fn two_shapes_use_only_requested_reload_textures_and_one_trim() {
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("armor_test", Box::new(Empty))].into(),
             || {
@@ -565,9 +581,19 @@ mod tests {
                 let item = host.item_key(&id).unwrap();
                 let stack = mod_api::ItemStack::of(item);
                 let mut owners = ItemExtensionOwners::default();
+                let reload_lookups = std::cell::Cell::new(0);
                 let mut registry = Registration {
                     state: Default::default(),
-                    sprite_exists: &|_| true,
+                    texture_keys: FxHashMap::default(),
+                    sprite_uv: &|name| {
+                        reload_lookups.set(reload_lookups.get() + 1);
+                        match name {
+                            "custom_inner" => Some([0.0, 0.0, 0.25, 0.25]),
+                            "custom_outer" => Some([0.25, 0.25, 0.5, 0.5]),
+                            "inner" | "unrelated" => Some([0.75, 0.75, 1.0, 1.0]),
+                            _ => None,
+                        }
+                    },
                     owners: &mut owners,
                 };
                 let _owner = owner("armor_test");
@@ -579,12 +605,14 @@ mod tests {
                         .register_model("armor_test:outer", &tree(16.0))
                         .unwrap(),
                 ];
-                let original_first = registry.register_texture("inner").unwrap();
-                registry.register_texture("outer").unwrap();
                 let textures = [
                     registry.register_texture("custom_inner").unwrap(),
                     registry.register_texture("custom_outer").unwrap(),
                 ];
+                assert_eq!(
+                    registry.register_texture("custom_inner").unwrap(),
+                    textures[0]
+                );
                 let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
                 registry
                     .client_item_extensions(
@@ -592,7 +620,6 @@ mod tests {
                         Arc::new(TwoShapes {
                             models,
                             textures,
-                            original_first,
                             calls: calls.clone(),
                         }),
                     )
@@ -624,31 +651,28 @@ mod tests {
                     layers: &layers,
                     overlay: 36,
                 };
-                let bind = |name: &str| match name {
+                let state = registry.state;
+                assert_eq!(
+                    state
+                        .textures
+                        .iter()
+                        .map(|tex| tex.name.as_str())
+                        .collect::<Vec<_>>(),
+                    ["custom_inner", "custom_outer"],
+                );
+                let mut default = |name: &str| match name {
                     "inner" => Some(Binding {
-                        name: "inner",
+                        name: "cit_inner",
                         uv: [0.75, 0.75, 1.0, 1.0],
                     }),
-                    "outer" => Some(Binding {
-                        name: "outer",
-                        uv: [0.75, 0.75, 1.0, 1.0],
-                    }),
-                    "custom_inner" => Some(Binding {
-                        name: "custom_inner",
-                        uv: [0.0, 0.0, 0.25, 0.25],
-                    }),
-                    "custom_outer" => Some(Binding {
-                        name: "custom_outer",
-                        uv: [0.25, 0.25, 0.5, 0.5],
-                    }),
-                    _ => None,
+                    "outer" => None,
+                    _ => panic!("unexpected per-frame atlas lookup: {name}"),
                 };
-                let mut default = bind;
                 let mut glow = |_: &str| None;
                 let materials = dispatch_equipment(
                     &host,
-                    &registry.state,
-                    &registry.state.items[&item],
+                    &state,
+                    &state.items[&item],
                     &mod_api::ItemStackView::from_stack(&stack),
                     &piece,
                     EquipmentBindings {
@@ -657,11 +681,11 @@ mod tests {
                             uv: [0.5, 0.5, 1.0, 1.0],
                         }),
                         default: &mut default,
-                        binding: &bind,
                         emissive: &mut glow,
                     },
                 )
                 .unwrap();
+                assert_eq!(reload_lookups.get(), 2);
                 assert_eq!(
                     *calls.lock().unwrap(),
                     [
@@ -685,8 +709,8 @@ mod tests {
                     .iter()
                     .map(|m| m.model.unwrap())
                     .collect::<Vec<_>>();
-                assert!(Arc::ptr_eq(selected[0], &registry.state.models[0].slots[1]));
-                assert!(Arc::ptr_eq(selected[1], &registry.state.models[1].slots[1]));
+                assert!(Arc::ptr_eq(selected[0], &state.models[0].slots[1]));
+                assert!(Arc::ptr_eq(selected[1], &state.models[1].slots[1]));
                 assert!(
                     Arc::ptr_eq(selected[2], selected[1]),
                     "one trim on the last material's tree"
@@ -727,7 +751,8 @@ mod tests {
                 let mut owners = ItemExtensionOwners::default();
                 let mut registry = Registration {
                     state: Default::default(),
-                    sprite_exists: &|_| false,
+                    texture_keys: FxHashMap::default(),
+                    sprite_uv: &|_| None,
                     owners: &mut owners,
                 };
                 let _owner = owner("armor_test");
@@ -739,6 +764,147 @@ mod tests {
 
     struct DefaultProvider;
     impl ClientItemExtensions for DefaultProvider {}
+
+    #[test]
+    fn default_dye_color_reads_the_live_override_without_projecting() {
+        use mod_api::prelude::ItemsHost;
+        use std::{cell::Cell, num::NonZeroU32};
+
+        let mut host = mod_api::testing::FakeHost::new();
+        let id = mod_api::Identifier::parse("armor_test:chest").unwrap();
+        host.registries.resolve_items([id.clone()]).unwrap();
+        let item = host.item_key(&id).unwrap();
+        let dye = Cell::new(Some(0x12_34_56));
+        let project = |_| panic!("dye lookup projected the whole stack");
+        let read_override = |id: &str| {
+            assert_eq!(id, "minecraft:dyed_color");
+            dye.get().map(mod_api::Tag::Int)
+        };
+        let view = mod_api::ItemStackView::resident_with_components(
+            (item, NonZeroU32::MIN, None),
+            &project,
+            &read_override,
+        );
+        assert_eq!(DefaultProvider.default_dye_color(&host, &view), 0xFF12_3456);
+        dye.set(None);
+        assert_eq!(DefaultProvider.default_dye_color(&host, &view), 0);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn invalid_equipped_stack_warns_without_disabling_later_draws() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use std::sync::atomic::AtomicUsize;
+        use sunrise_client::items::ItemStack;
+
+        if run_fresh_cases(
+            "game::client_item_extensions::tests::invalid_equipped_stack_warns_without_disabling_later_draws",
+            "SUNRISE_INVALID_EQUIPPED_STACK_CHILD",
+            &["empty"],
+        ) {
+            return;
+        }
+        static WARNINGS: AtomicUsize = AtomicUsize::new(0);
+        struct Capture;
+        impl log::Log for Capture {
+            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                metadata.level() == log::Level::Warn
+            }
+            fn log(&self, record: &log::Record<'_>) {
+                if self.enabled(record.metadata())
+                    && record.args().to_string()
+                        == "Sunrise: client item extensions for armor_test: invalid equipped stack: Empty"
+                {
+                    WARNINGS.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+            fn flush(&self) {}
+        }
+        struct RegistersDefault;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for RegistersDefault {
+            fn register_client_item_extensions(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
+            ) {
+                let item = mod_api::__private::item_key("minecraft:iron_chestplate").unwrap();
+                event
+                    .extensions
+                    .client_item_extensions(item, Arc::new(DefaultProvider))
+                    .unwrap();
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "armor_test",
+                Box::new(RegistersDefault),
+            )]
+            .into(),
+            || {
+                with_client_game(|game| {
+                    game.resolve_client_item_extensions();
+                    assert!(!game.gui.atlas.sprites.is_empty());
+                    assert!(
+                        game.armor_stand_assets.extensions.textures.is_empty(),
+                        "no sprite was requested"
+                    );
+                    let game = &*game;
+                    let layers = [EquipmentAssetLayer {
+                        texture: "asset".into(),
+                        dyeable: true,
+                        use_player_texture: false,
+                        color_when_undyed: None,
+                    }];
+                    let piece = EquipmentPiece {
+                        asset: "minecraft:iron".into(),
+                        slot: ArmorSlot::Chest,
+                        kind: "humanoid",
+                        layers: &layers,
+                        overlay: 0,
+                    };
+                    let binding = Binding {
+                        name: "cit_texture",
+                        uv: [0.0, 0.0, 1.0, 1.0],
+                    };
+                    let mut stack = ItemStack::new("minecraft:iron_chestplate", 1);
+                    stack.data_mut().dyed_color = Some(0x12_34_56);
+                    stack.count = 0;
+
+                    log::set_logger(&Capture).unwrap();
+                    log::set_max_level(log::LevelFilter::Warn);
+                    let draw = |stack: &ItemStack| {
+                        game.extended_equipment_materials(
+                            &piece,
+                            stack,
+                            None,
+                            |_| Some(binding),
+                            |_| None,
+                        )
+                    };
+                    assert!(
+                        draw(&stack).is_none(),
+                        "invalid stack selects the vanilla draw"
+                    );
+                    assert!(
+                        draw(&stack).is_none(),
+                        "a second invalid draw is also refused"
+                    );
+                    assert_eq!(
+                        WARNINGS.load(Ordering::Relaxed),
+                        2,
+                        "every refusal reports the mod and invalid stack",
+                    );
+                    stack.count = 1;
+                    let materials = draw(&stack).unwrap();
+                    assert_eq!(materials.len(), 1);
+                    assert_eq!(materials[0].binding.name, "cit_texture");
+                    assert_eq!(materials[0].color, 0xFF56_3412);
+                    assert!(!materials[0].final_texture);
+                });
+            },
+        );
+    }
 
     #[test]
     #[ignore = "daily"]
@@ -872,11 +1038,15 @@ mod tests {
                 let mut owners = ItemExtensionOwners::default();
                 let mut registry = Registration {
                     state: Default::default(),
-                    sprite_exists: &|_| true,
+                    texture_keys: FxHashMap::default(),
+                    sprite_uv: &|_| Some([0.5, 0.5, 1.0, 1.0]),
                     owners: &mut owners,
                 };
                 let _owner = owner("armor_test");
-                registry.register_texture("original").unwrap();
+                registry.register_texture("other").unwrap();
+                registry
+                    .register_model("armor_test:other", &tree(0.0))
+                    .unwrap();
                 registry
                     .client_item_extensions(item, Arc::new(Stale(old.generation)))
                     .unwrap();
@@ -900,7 +1070,6 @@ mod tests {
                 let part = &registry.state.items[&item];
                 for _ in 0..2 {
                     let mut default = |_: &str| Some(binding);
-                    let bind = |_: &str| Some(binding);
                     let mut glow = |_: &str| None;
                     let out = dispatch_equipment(
                         &host,
@@ -911,7 +1080,6 @@ mod tests {
                         EquipmentBindings {
                             trim: None,
                             default: &mut default,
-                            binding: &bind,
                             emissive: &mut glow,
                         },
                     )
@@ -980,10 +1148,10 @@ mod tests {
                 for mod_id in ["armor_test", "armor_test", "other"] {
                     let mut registry = Registration {
                         state: Default::default(),
-                        sprite_exists: &|_| true,
+                        texture_keys: FxHashMap::default(),
+                        sprite_uv: &|_| None,
                         owners: &mut owners,
                     };
-                    registry.register_texture("original").unwrap();
                     {
                         let _owner = owner("armor_test");
                         registry
@@ -1009,7 +1177,6 @@ mod tests {
                             EquipmentBindings {
                                 trim: None,
                                 default: &mut |_| Some(binding),
-                                binding: &|_| Some(binding),
                                 emissive: &mut |_| None,
                             },
                         )
@@ -1084,12 +1251,12 @@ mod tests {
                     let mut owners = ItemExtensionOwners::default();
                     let mut registry = Registration {
                         state: Default::default(),
-                        sprite_exists: &|_| true,
+                        texture_keys: FxHashMap::default(),
+                        sprite_uv: &|_| None,
                         owners: &mut owners,
                     };
                     {
                         let _owner = owner("gated");
-                        registry.register_texture("original").unwrap();
                         registry
                             .client_item_extensions(item, Arc::new(Gated(answered.clone())))
                             .unwrap();
@@ -1105,7 +1272,6 @@ mod tests {
                             EquipmentBindings {
                                 trim: None,
                                 default: &mut |_| Some(binding),
-                                binding: &|_| Some(binding),
                                 emissive: &mut |_| None,
                             },
                         )
