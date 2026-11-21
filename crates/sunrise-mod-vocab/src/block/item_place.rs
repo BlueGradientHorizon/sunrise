@@ -1042,7 +1042,7 @@ impl ItemPlace {
                         .then(|| table.item_provider(key.name, item, index))
                         .flatten()
                 },
-                crate::ItemProviderOf::get::<T>,
+                crate::NativeCapabilityProvider::get::<std::sync::Arc<crate::ItemProvider<T>>>,
                 |provider, host| provider.provide(host, self),
                 |host| {
                     game = match &key.default {

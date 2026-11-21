@@ -13,7 +13,9 @@ r.block_entity_capability(&ITEMS, &pipe, |_, at| {
 
 Here, `PipeItems` is your implementation of `ResourceHandler<ItemResource>`. Its `BlockSide` context
 contains the level, position and requested side. Return `None` to let another provider answer.
-This registration corresponds to NeoForge's `RegisterCapabilitiesEvent`.
+This registration corresponds to NeoForge's `RegisterCapabilitiesEvent`. Use the typed
+methods on `dyn Registrar` for built-in and [mod-defined capabilities](capabilities/own-capability.md);
+both take native callbacks typed by their keys.
 
 ## Register and look up providers
 

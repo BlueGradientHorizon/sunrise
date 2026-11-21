@@ -216,7 +216,7 @@ impl EntitiesRegistrar for PartRegistrar {
         name: &'static str,
         kind: &str,
         before_game: bool,
-        provider: EntityProviderOf,
+        provider: NativeCapabilityProvider,
     ) {
         self.capability(
             |p| &mut p.entity_capabilities,
@@ -225,8 +225,9 @@ impl EntitiesRegistrar for PartRegistrar {
             ProviderTarget::Id(kind),
             before_game,
             {
-                let handler =
-                    mod_vocab::__private::parts_installation::entity_provider_handler(&provider);
+                let handler = mod_vocab::__private::parts_installation::capability_provider_handler(
+                    &provider,
+                );
                 (provider, handler)
             },
         );

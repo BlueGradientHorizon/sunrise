@@ -1,8 +1,7 @@
 use super::*;
 pub(crate) type Capabilities<P> = HashMap<&'static str, HashMap<Box<str>, Vec<CapabilityPart<P>>>>;
 
-/// A capability provider a mod registered: a [`BlockProviderOf`], [`ItemProviderOf`] or
-/// [`EntityProviderOf`].
+/// A capability provider a mod registered, with its dispatch metadata.
 #[derive(Clone)]
 pub(crate) struct CapabilityPart<P> {
     pub(crate) mod_id: &'static str,
@@ -17,17 +16,28 @@ pub(crate) struct CapabilityPart<P> {
     pub(crate) provider: P,
 }
 
-/// A capability provider whose handler type is a mod's own (a key a library's `[api]` crate
-/// publishes), erased: only mods linked with that crate know its handler type.
-// hidden: the registrar's erased provider, not part of the mod surface
+/// Opaque native provider bound by the typed capability methods on `dyn Registrar`.
+// hidden: the registrar's erased provider, not a mod construction surface
 // exhaustive: its fields are private, so mods cannot build or destructure it
-// no wire: transfers the handler name and a retained provider resource id, reporting unsupported handlers rather than serializing the native Any object.
+// no wire: it retains an in-process typed callback.
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct OwnProvider {
-    /// The `Arc` of the provider trait object, which a lookup of that handler type downcasts.
-    pub(crate) provider: Arc<dyn Any + Send + Sync>,
-    pub(crate) handler: Arc<str>,
+pub struct NativeCapabilityProvider {
+    provider: Arc<dyn Any + Send + Sync>,
+    pub(crate) handler: &'static str,
+}
+
+impl NativeCapabilityProvider {
+    pub(crate) fn of<T: ?Sized + 'static, P: Send + Sync + 'static>(provider: P) -> Self {
+        Self {
+            provider: Arc::new(provider),
+            handler: type_name::<T>(),
+        }
+    }
+
+    pub(crate) fn get<P: 'static>(&self) -> Option<&P> {
+        self.provider.downcast_ref::<P>()
+    }
 }
 
 /// The registrar's table, as the game reads it.
@@ -82,19 +92,7 @@ pub(crate) fn next_merged<P: Clone>(
     }
 }
 
-/// A provider by its handler type: one case for each handler type `mod_api`'s keys name
-/// (generated from them), and [`OwnProvider`] for a mod's own.
-#[allow(missing_docs)]
-pub(crate) mod providers_of {
-    use super::*;
-    // The keys' handler types and contexts, as the generated cases name them.
-    #[allow(unused_imports)]
-    use crate::*;
-    include!(concat!(
-        env!("OUT_DIR"),
-        "/capability_providers_generated.rs"
-    ));
-}
+include!(concat!(env!("OUT_DIR"), "/builtin_capability_keys.rs"));
 
 /// Who answers a capability: a mod's provider, the game's own, or nobody.
 pub(crate) enum Answer<T: ?Sized> {
@@ -121,9 +119,8 @@ pub(crate) fn answered<T: ?Sized>(
 /// Asks the providers `next` gives (advancing a registration cursor in dispatch order: those
 /// registered `before_game`, then the others), and the game's own (`game`: whether it answers) between the
 /// two, in the fork's chosen order (NeoForge's javadoc doesn't state one between mods'
-/// providers and the game's); the first to answer wins. `get` takes a provider of this
-/// capability's handler type out of its case: a provider of a mod's own type the asker isn't
-/// linked with is passed over.
+/// providers and the game's); the first to answer wins. `get` borrows the bound provider
+/// if it matches the capability's handler type and context.
 pub(crate) fn ask_providers<O, P: ?Sized + 'static, T: ?Sized>(
     host: &mut dyn ServerHost,
     next: impl Fn(&mut u32) -> Option<(O, &'static str, bool)>,
@@ -154,7 +151,7 @@ pub(crate) fn ask_providers<O, P: ?Sized + 'static, T: ?Sized>(
 }
 
 /// CapabilityProviders operations for capabilities.
-// hidden: per-kind lookup implementation, exposed for generated provider bindings
+// hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait CapabilitiesCapabilityProviders {
     /// Whether any mod registered capability `name` for the things `by` names. This presence
@@ -188,7 +185,7 @@ impl CapabilitiesCapabilityProviders for InstalledProviders {
                 .iter()
                 .map(|name| (*name).to_owned())
                 .collect(),
-            None => providers_of::builtin_block_capabilities()
+            None => builtin_block_capabilities()
                 .into_iter()
                 .map(|(name, _)| name.to_owned())
                 .collect(),

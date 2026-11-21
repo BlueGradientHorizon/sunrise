@@ -2025,7 +2025,7 @@ impl ItemsRegistrar for PartRegistrar {
         name: &'static str,
         item: &str,
         before_game: bool,
-        provider: ItemProviderOf,
+        provider: NativeCapabilityProvider,
     ) {
         self.capability(
             |p| &mut p.item_capabilities,
@@ -2034,8 +2034,9 @@ impl ItemsRegistrar for PartRegistrar {
             ProviderTarget::Id(item),
             before_game,
             {
-                let handler =
-                    mod_vocab::__private::parts_installation::item_provider_handler(&provider);
+                let handler = mod_vocab::__private::parts_installation::capability_provider_handler(
+                    &provider,
+                );
                 (provider, handler)
             },
         );

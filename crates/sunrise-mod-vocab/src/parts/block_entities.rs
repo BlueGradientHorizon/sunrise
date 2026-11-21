@@ -18,8 +18,6 @@ where
 /// A block capability provider, as the registrar keeps it.
 pub type BlockProvider<T> = dyn BlockCapabilityProvider<T>;
 
-pub use super::capabilities::providers_of::{BlockProviderOf, EntityProviderOf, ItemProviderOf};
-
 /// Snapshot the callbacks once at registry preparation for worldgen workers.
 pub fn block_entity_transforms()
 -> std::collections::HashMap<String, Arc<dyn crate::BlockEntityTransform>> {
@@ -118,8 +116,8 @@ pub fn block_providers<T: ?Sized + 'static>(
 /// A position's providers of one capability ([`block_providers`]).
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct BlockProviders<T: ?Sized + 'static> {
-    pub(crate) entity: &'static [CapabilityPart<BlockProviderOf>],
-    pub(crate) block: &'static [CapabilityPart<BlockProviderOf>],
+    pub(crate) entity: &'static [CapabilityPart<NativeCapabilityProvider>],
+    pub(crate) block: &'static [CapabilityPart<NativeCapabilityProvider>],
     pub(crate) at: BlockSide,
     pub(crate) handler: PhantomData<fn() -> Box<T>>,
 }
@@ -133,7 +131,7 @@ impl<T: ?Sized + 'static> BlockProviders<T> {
         let answer = ask_providers(
             host,
             |index| next_merged(self.entity, self.block, index),
-            BlockProviderOf::get::<T>,
+            NativeCapabilityProvider::get::<Arc<BlockProvider<T>>>,
             |provider, host| provider.provide(host, at),
             |_| game,
         );
@@ -206,11 +204,12 @@ impl dyn Registrar + '_ {
         kind: &crate::BlockEntityTypeKey,
         provider: impl Fn(&mut dyn ServerHost, BlockSide) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
+        let provider: Arc<BlockProvider<T>> = Arc::new(provider);
         self.provide_block_entity_capability(
             key.name,
             kind,
             false,
-            BlockProviderOf::of(Arc::new(provider)),
+            NativeCapabilityProvider::of::<T, _>(provider),
         );
     }
     /// `block_entity_capability`, asked ahead of the game's own
@@ -222,11 +221,12 @@ impl dyn Registrar + '_ {
         kind: &crate::BlockEntityTypeKey,
         provider: impl Fn(&mut dyn ServerHost, BlockSide) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
+        let provider: Arc<BlockProvider<T>> = Arc::new(provider);
         self.provide_block_entity_capability(
             key.name,
             kind,
             true,
-            BlockProviderOf::of(Arc::new(provider)),
+            NativeCapabilityProvider::of::<T, _>(provider),
         );
     }
 }
@@ -275,6 +275,6 @@ pub trait BlockEntitiesRegistrar {
         name: &'static str,
         kind: &crate::BlockEntityTypeKey,
         before_game: bool,
-        provider: BlockProviderOf,
+        provider: NativeCapabilityProvider,
     );
 }

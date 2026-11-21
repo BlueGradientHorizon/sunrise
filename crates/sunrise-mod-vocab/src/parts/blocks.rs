@@ -346,17 +346,19 @@ fn block_provider<T: ?Sized + 'static>(
     + Send
     + Sync
     + 'static,
-) -> BlockProviderOf {
-    BlockProviderOf::of(Arc::new(move |host: &mut dyn ServerHost, at: BlockSide| {
-        // The block may have changed since the lookup chose this provider: an earlier provider
-        // replaced it, say. Then it is another block's position, and this one has no answer.
-        if at.level.block(host, at.pos)? != block {
-            return None;
-        }
-        let state = at.level.block_state(host, at.pos)?;
-        let entity = host.block_entity(at.level, at.pos);
-        provider(host, at, state, entity)
-    }) as Arc<dyn BlockCapabilityProvider<T>>)
+) -> NativeCapabilityProvider {
+    let provider: Arc<BlockProvider<T>> =
+        Arc::new(move |host: &mut dyn ServerHost, at: BlockSide| {
+            // The block may have changed since the lookup chose this provider: an earlier provider
+            // replaced it, say. Then it is another block's position, and this one has no answer.
+            if at.level.block(host, at.pos)? != block {
+                return None;
+            }
+            let state = at.level.block_state(host, at.pos)?;
+            let entity = host.block_entity(at.level, at.pos);
+            provider(host, at, state, entity)
+        });
+    NativeCapabilityProvider::of::<T, _>(provider)
 }
 
 /// Registrar operations for blocks.
@@ -382,12 +384,12 @@ pub trait BlocksRegistrar {
         name: &'static str,
         block: &crate::BlockKey,
         before_game: bool,
-        provider: BlockProviderOf,
+        provider: NativeCapabilityProvider,
     );
 }
 
 /// CapabilityProviders operations for blocks.
-// hidden: per-kind lookup implementation, exposed for generated provider bindings
+// hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait BlocksCapabilityProviders {
     /// The next enabled provider of block capability `name` at a position: those registered for
@@ -401,7 +403,7 @@ pub trait BlocksCapabilityProviders {
         kind: Option<crate::BlockEntityTypeKey>,
         block: Option<crate::BlockKey>,
         index: &mut u32,
-    ) -> Option<(BlockProviderOf, &'static str, bool)>;
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)>;
 }
 
 impl BlocksCapabilityProviders for InstalledProviders {
@@ -411,7 +413,7 @@ impl BlocksCapabilityProviders for InstalledProviders {
         kind: Option<crate::BlockEntityTypeKey>,
         block: Option<crate::BlockKey>,
         index: &mut u32,
-    ) -> Option<(BlockProviderOf, &'static str, bool)> {
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)> {
         use crate::content::registry_keys::{block_entity_type_name, block_id};
         let keys = &installed()?.keys;
         let kind = kind.and_then(block_entity_type_name);

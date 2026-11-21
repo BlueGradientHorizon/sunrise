@@ -66,7 +66,7 @@ impl BlocksRegistrar for PartRegistrar {
         name: &'static str,
         block: &crate::BlockKey,
         before_game: bool,
-        provider: BlockProviderOf,
+        provider: NativeCapabilityProvider,
     ) {
         let slot = mod_vocab::__private::parts_installation::block_key_slot(*block);
         let id = self
@@ -89,8 +89,9 @@ impl BlocksRegistrar for PartRegistrar {
             ProviderTarget::Id(&id),
             before_game,
             {
-                let handler =
-                    mod_vocab::__private::parts_installation::block_provider_handler(&provider);
+                let handler = mod_vocab::__private::parts_installation::capability_provider_handler(
+                    &provider,
+                );
                 (provider, handler)
             },
         );

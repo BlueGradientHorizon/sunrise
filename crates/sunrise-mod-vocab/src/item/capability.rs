@@ -324,7 +324,7 @@ impl LevelRef {
             crate::ask_providers(
                 host,
                 |index| table.block_provider(key.name, kind, block, index),
-                crate::BlockProviderOf::get::<T>,
+                crate::NativeCapabilityProvider::get::<std::sync::Arc<crate::BlockProvider<T>>>,
                 |provider, host| provider.provide(host, at),
                 |host| {
                     game = key.default.and_then(|default| default(host, at));

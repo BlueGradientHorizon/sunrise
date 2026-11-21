@@ -1,7 +1,7 @@
 //! Read the built-in declarations derived from the public capability keys.
 /// Built-in block capability identities and handler types, in their exported order.
 pub fn builtin_block_capabilities() -> Vec<(&'static str, &'static str)> {
-    crate::parts::capabilities::providers_of::builtin_block_capabilities()
+    crate::parts::capabilities::builtin_block_capabilities()
 }
 
 /// Type-only item default coverage from the same bucket owner used by `ITEM_FLUIDS`.

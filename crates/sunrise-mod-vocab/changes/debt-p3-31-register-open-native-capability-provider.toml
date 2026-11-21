@@ -1,0 +1,30 @@
+ids = [
+    "type:BlockProviderOf",
+    "type:ItemProviderOf",
+    "type:EntityProviderOf",
+    "type:OwnProvider",
+    "type:NativeCapabilityProvider",
+    "method:BlocksRegistrar::provide_block_capability",
+    "method:BlockEntitiesRegistrar::provide_block_entity_capability",
+    "method:ItemsRegistrar::provide_item_capability",
+    "method:EntitiesRegistrar::provide_entity_capability",
+]
+why = """
+Built-in and mod-defined capability keys now both bind typed native callbacks instead of carrying
+separate provider enum cases inherited from the guest runtime. This follows NeoForge's typed
+RegisterCapabilitiesEvent and BlockCapability.getCapability, ItemCapability.getCapability and
+EntityCapability.getCapability. Lookup precedence and the vanilla container path
+(HopperBlockEntity.getBlockContainer) are unchanged.
+"""
+migrate = """
+Do not construct or match BlockProviderOf, ItemProviderOf, EntityProviderOf or OwnProvider.
+Replace direct calls with the typed registrar helpers:
+- provide_block_capability -> r.block_capability(&key, &block, callback)
+- provide_block_entity_capability -> r.block_entity_capability(&key, &kind, callback)
+- provide_item_capability -> r.item_capability(&key, item_id, callback)
+- provide_entity_capability -> r.entity_capability(&key, kind_id, callback)
+Use the matching _before_game helper when the old before_game argument was true. Pass the typed
+key instead of key.name. Existing calls to these typed helpers are unchanged. Mock or forwarding
+Registrar implementations replace the provider argument type of each raw provide_*_capability
+method with NativeCapabilityProvider and may pass that opaque value through unchanged.
+"""

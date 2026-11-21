@@ -187,11 +187,12 @@ impl dyn Registrar + '_ {
         item: &str,
         provider: impl Fn(&mut dyn ServerHost, &ItemPlace) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
+        let provider: Arc<ItemProvider<T>> = Arc::new(provider);
         self.provide_item_capability(
             key.name,
             item,
             false,
-            ItemProviderOf::of(Arc::new(provider)),
+            NativeCapabilityProvider::of::<T, _>(provider),
         );
     }
     /// `item_capability`, asked ahead of the game's own provider.
@@ -201,7 +202,13 @@ impl dyn Registrar + '_ {
         item: &str,
         provider: impl Fn(&mut dyn ServerHost, &ItemPlace) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
-        self.provide_item_capability(key.name, item, true, ItemProviderOf::of(Arc::new(provider)));
+        let provider: Arc<ItemProvider<T>> = Arc::new(provider);
+        self.provide_item_capability(
+            key.name,
+            item,
+            true,
+            NativeCapabilityProvider::of::<T, _>(provider),
+        );
     }
 }
 
@@ -249,7 +256,7 @@ pub trait ItemsRegistrar {
         name: &'static str,
         item: &str,
         before_game: bool,
-        provider: ItemProviderOf,
+        provider: NativeCapabilityProvider,
     );
 
     /// Read and write the item places `ItemPlace::Mod { provider: name, .. }` with `provider`,
@@ -271,7 +278,7 @@ pub trait ItemsRegistrar {
 }
 
 /// CapabilityProviders operations for items.
-// hidden: per-kind lookup implementation, exposed for generated provider bindings
+// hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait ItemsCapabilityProviders {
     /// The next enabled provider of item capability `name` for item `item`, advancing `index`.
@@ -280,7 +287,7 @@ pub trait ItemsCapabilityProviders {
         name: &str,
         item: crate::ItemKey,
         index: &mut u32,
-    ) -> Option<(ItemProviderOf, &'static str, bool)>;
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)>;
 
     /// The enabled provider of the item places named `name`, with its mod.
     fn place_provider(&self, name: &str) -> Option<(Arc<dyn PlaceProvider>, &'static str)>;
@@ -292,7 +299,7 @@ impl ItemsCapabilityProviders for InstalledProviders {
         name: &str,
         item: crate::ItemKey,
         index: &mut u32,
-    ) -> Option<(ItemProviderOf, &'static str, bool)> {
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)> {
         let item = crate::content::registry_keys::item_id(item)?;
         next(&installed()?.keys.item_capabilities, name, item, index)
     }

@@ -117,7 +117,7 @@ impl EntityRef {
             crate::ask_providers(
                 host,
                 |index| table.entity_provider(key.name, kind.as_deref()?, index),
-                crate::EntityProviderOf::get::<T, C>,
+                crate::NativeCapabilityProvider::get::<std::sync::Arc<crate::EntityProvider<T, C>>>,
                 |provider, host| provider.provide(host, self, context),
                 |host| {
                     game = key.default.and_then(|default| default(host, self, context));

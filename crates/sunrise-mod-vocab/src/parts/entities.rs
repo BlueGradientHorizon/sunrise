@@ -105,7 +105,7 @@ pub fn entity_providers<T: ?Sized + 'static, C: Copy + 'static>(
 /// An entity's providers of one capability ([`entity_providers`]).
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct EntityProviders<T: ?Sized + 'static, C: 'static> {
-    pub(crate) parts: &'static [CapabilityPart<EntityProviderOf>],
+    pub(crate) parts: &'static [CapabilityPart<NativeCapabilityProvider>],
     pub(crate) entity: EntityRef,
     pub(crate) context: C,
     pub(crate) handler: PhantomData<fn() -> Box<T>>,
@@ -119,7 +119,7 @@ impl<T: ?Sized + 'static, C: Copy + 'static> EntityProviders<T, C> {
         match ask_providers(
             host,
             |index| next_provider(self.parts, index),
-            EntityProviderOf::get::<T, C>,
+            NativeCapabilityProvider::get::<Arc<EntityProvider<T, C>>>,
             |provider, host| provider.provide(host, entity, context),
             |_| game,
         ) {
@@ -169,11 +169,12 @@ impl dyn Registrar + '_ {
         kind: &str,
         provider: impl Fn(&mut dyn ServerHost, EntityRef, C) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
+        let provider: Arc<EntityProvider<T, C>> = Arc::new(provider);
         self.provide_entity_capability(
             key.name,
             kind,
             false,
-            EntityProviderOf::of(Arc::new(provider)),
+            NativeCapabilityProvider::of::<T, _>(provider),
         );
     }
     /// `entity_capability`, asked ahead of the game's own provider,
@@ -184,11 +185,12 @@ impl dyn Registrar + '_ {
         kind: &str,
         provider: impl Fn(&mut dyn ServerHost, EntityRef, C) -> Option<Box<T>> + Send + Sync + 'static,
     ) {
+        let provider: Arc<EntityProvider<T, C>> = Arc::new(provider);
         self.provide_entity_capability(
             key.name,
             kind,
             true,
-            EntityProviderOf::of(Arc::new(provider)),
+            NativeCapabilityProvider::of::<T, _>(provider),
         );
     }
 }
@@ -219,7 +221,7 @@ pub trait EntitiesRegistrar {
         name: &'static str,
         kind: &str,
         before_game: bool,
-        provider: EntityProviderOf,
+        provider: NativeCapabilityProvider,
     );
 
     /// Tell `entity_tick_pre` and `entity_tick_post` for each entity of type `entity`
@@ -289,7 +291,7 @@ pub fn entity_tick_each() -> Option<&'static EntityTickEach> {
 }
 
 /// CapabilityProviders operations for entities.
-// hidden: per-kind lookup implementation, exposed for generated provider bindings
+// hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait EntitiesCapabilityProviders {
     /// The next enabled provider of entity capability `name` for entity type `kind`, advancing `index`.
@@ -298,7 +300,7 @@ pub trait EntitiesCapabilityProviders {
         name: &str,
         kind: &str,
         index: &mut u32,
-    ) -> Option<(EntityProviderOf, &'static str, bool)>;
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)>;
 }
 
 impl EntitiesCapabilityProviders for InstalledProviders {
@@ -307,7 +309,7 @@ impl EntitiesCapabilityProviders for InstalledProviders {
         name: &str,
         kind: &str,
         index: &mut u32,
-    ) -> Option<(EntityProviderOf, &'static str, bool)> {
+    ) -> Option<(NativeCapabilityProvider, &'static str, bool)> {
         next(&installed()?.keys.entity_capabilities, name, kind, index)
     }
 }
