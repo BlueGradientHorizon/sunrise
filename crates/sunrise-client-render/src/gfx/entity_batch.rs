@@ -722,6 +722,75 @@ mod tests {
         assert_eq!(batch.combined[8].layer, 2);
     }
 
+    const DISPLAY_PARITY_WITNESS_26_3: &str =
+        include_str!("../../../../tools/witness/26.3/display_parity/witness.json");
+
+    fn witness_sort_quads(layer: u32) -> Vec<Vertex> {
+        let centroids: [[f32; 3]; 5] = [
+            [0.0, 0.0, 4.20025],
+            [0.0, 0.0, 4.89025],
+            [3.0, 4.0, 0.0],
+            [4.0, 3.0, 0.0],
+            [0.0, 0.0, 4.85080],
+        ];
+        centroids
+            .into_iter()
+            .enumerate()
+            .flat_map(|(id, c)| {
+                [Vertex {
+                    layer,
+                    pos: c,
+                    color: id as u32,
+                    ..geometry(1, false)[0]
+                }; 4]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn classic_polygon_offset_text_quads_sort_far_to_near_like_vanilla_26_3() {
+        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let section = &witness["text_submit_phases_and_sorting"];
+        assert_eq!(
+            section["pipelines"]["rt_text_polygon_offset_sort_on_upload"],
+            true
+        );
+        let expected: Vec<u32> = section["vertex_sorting_distance_to_origin_order"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u32)
+            .collect();
+        let entities = witness_sort_quads(TEXT_POLYGON_OFFSET_OVERLAY);
+        let mut batch = EntityBatch::default();
+        batch.update(&entities, &[], &[], &[], false);
+        let got: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn classic_translucent_item_quads_sort_far_to_near_like_vanilla_26_3() {
+        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        assert_eq!(
+            witness["block_display_render_type_and_cull"]["translucent_sort_on_upload"],
+            true
+        );
+        let expected: Vec<u32> =
+            witness["text_submit_phases_and_sorting"]["vertex_sorting_distance_to_origin_order"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as u32)
+                .collect();
+        let entities = witness_sort_quads(TRANSLUCENT_ITEM_OVERLAY);
+        let mut batch = EntityBatch::default();
+        batch.update(&entities, &[], &[], &[], false);
+        let got: Vec<u32> = batch.combined.iter().step_by(4).map(|v| v.color).collect();
+        assert_eq!(got, expected);
+    }
+
     #[test]
     fn stable_material_order_tails_and_reuse() {
         let mut batch = EntityBatch::default();

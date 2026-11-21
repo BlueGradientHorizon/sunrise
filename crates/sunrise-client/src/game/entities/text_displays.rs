@@ -669,3 +669,7 @@ mod tests {
         assert_eq!((d.previous, d.position), (seat, next));
     }
 }
+
+#[cfg(test)]
+#[path = "text_displays/display_parity_tests.rs"]
+mod display_parity_tests;

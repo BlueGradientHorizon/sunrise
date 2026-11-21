@@ -737,4 +737,153 @@ mod tests {
         assert_eq!(shown.blend(&from, 0.0).shadow_radius, 0.0);
         assert_eq!(shown.blend(&from, 1.0).shadow_strength, 0.25);
     }
+
+    const DISPLAY_PARITY_WITNESS_26_3: &str =
+        include_str!("../../../tools/witness/26.3/display_parity/witness.json");
+
+    fn hex_u32(v: &serde_json::Value) -> u32 {
+        u32::from_str_radix(v.as_str().unwrap(), 16).unwrap()
+    }
+
+    fn hex_u64(v: &serde_json::Value) -> u64 {
+        u64::from_str_radix(v.as_str().unwrap(), 16).unwrap()
+    }
+
+    fn hex_u32_vec(v: &serde_json::Value) -> Vec<u32> {
+        v.as_array().unwrap().iter().map(hex_u32).collect()
+    }
+
+    fn hex_u64_vec(v: &serde_json::Value) -> Vec<u64> {
+        v.as_array().unwrap().iter().map(hex_u64).collect()
+    }
+
+    #[test]
+    fn non_unit_quaternion_blend_and_matrix_match_vanilla_26_3_bits() {
+        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let case = &witness["non_unit_quat_and_blend"];
+        let from = TextDisplayData {
+            left_rotation: [0.0, 2.0, 0.0, 0.0],
+            right_rotation: [1.0, 1.0, 1.0, 1.0],
+            ..Default::default()
+        };
+        let to = TextDisplayData {
+            translation: [1.0, 2.0, 3.0],
+            left_rotation: [0.0, 0.0, 2.0, 0.0],
+            right_rotation: [0.0, 1.0, 0.0, 1.0],
+            ..Default::default()
+        };
+        let at_1 = to.blend(&from, 1.0);
+        assert_eq!(
+            at_1.left_rotation.map(f32::to_bits).to_vec(),
+            hex_u32_vec(&case["at_1_left_rot_bits"])
+        );
+        assert_eq!(
+            at_1.right_rotation.map(f32::to_bits).to_vec(),
+            hex_u32_vec(&case["at_1_right_rot_bits"])
+        );
+        assert_eq!(
+            at_1.matrix([0.0, 0.0], [0.0, 0.0])
+                .to_cols_array()
+                .map(f32::to_bits)
+                .to_vec(),
+            hex_u32_vec(&case["at_1_matrix_bits"])
+        );
+        let at_half = to.blend(&from, 0.5);
+        assert_eq!(
+            at_half.left_rotation.map(f32::to_bits).to_vec(),
+            hex_u32_vec(&case["at_half_left_rot_bits"])
+        );
+        assert_eq!(
+            at_half.right_rotation.map(f32::to_bits).to_vec(),
+            hex_u32_vec(&case["at_half_right_rot_bits"])
+        );
+        assert_eq!(
+            at_half
+                .matrix([0.0, 0.0], [0.0, 0.0])
+                .to_cols_array()
+                .map(f32::to_bits)
+                .to_vec(),
+            hex_u32_vec(&case["at_half_matrix_bits"])
+        );
+    }
+
+    #[test]
+    fn negative_width_or_height_culling_box_matches_vanilla_26_3_bits() {
+        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let case = &witness["live_culling_and_no_culling"];
+        let origin = glam::DVec3::new(0.5, 301.62, 0.5);
+        assert_eq!(
+            !no_culling(2.0, 3.0),
+            case["after_wh_affected_by_culling"].as_bool().unwrap()
+        );
+        let (lo, hi) = culling_box(origin, 2.0, 3.0);
+        assert_eq!(
+            vec![
+                lo.x.to_bits(),
+                lo.y.to_bits(),
+                lo.z.to_bits(),
+                hi.x.to_bits(),
+                hi.y.to_bits(),
+                hi.z.to_bits(),
+            ],
+            hex_u64_vec(&case["wh_culling_box_bits"])
+        );
+        assert_eq!(
+            !no_culling(-2.0, -3.0),
+            case["neg_wh_affected_by_culling"].as_bool().unwrap()
+        );
+        let (lo, hi) = culling_box(origin, -2.0, -3.0);
+        assert_eq!(
+            vec![
+                lo.x.to_bits(),
+                lo.y.to_bits(),
+                lo.z.to_bits(),
+                hi.x.to_bits(),
+                hi.y.to_bits(),
+                hi.z.to_bits(),
+            ],
+            hex_u64_vec(&case["neg_wh_culling_box_bits"])
+        );
+    }
+
+    #[test]
+    fn billboard_matrix_matches_vanilla_26_3_bits() {
+        let witness: serde_json::Value = serde_json::from_str(DISPLAY_PARITY_WITNESS_26_3).unwrap();
+        assert_eq!(witness["meta"]["game_version"], "26.3");
+        let cases = witness["billboard_camera_angles"]["cases"]
+            .as_array()
+            .unwrap();
+        assert_eq!(cases.len(), 16);
+        for case in cases {
+            let d = TextDisplayData {
+                billboard: case["billboard"].as_u64().unwrap() as u8,
+                translation: [-1.395, 0.3885, -4.2],
+                scale: [0.525, 0.525, 0.525],
+                left_rotation: [0.0, 1.0, 0.0, 0.0],
+                ..Default::default()
+            };
+            let entity = [
+                f32::from_bits(hex_u32(&case["entity_yRot_bits"])),
+                f32::from_bits(hex_u32(&case["entity_xRot_bits"])),
+            ];
+            let camera = [
+                f32::from_bits(hex_u32(&case["camera_yRot_bits"])),
+                f32::from_bits(hex_u32(&case["camera_xRot_bits"])),
+            ];
+            let got = d
+                .matrix(entity, camera)
+                .to_cols_array()
+                .map(f32::to_bits)
+                .to_vec();
+            assert_eq!(
+                got,
+                hex_u32_vec(&case["pose_bits"]),
+                "case {} billboard {}",
+                case["name"],
+                case["billboard"]
+            );
+        }
+    }
 }

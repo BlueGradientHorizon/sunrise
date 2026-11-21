@@ -1,0 +1,932 @@
+{
+  "meta": {
+    "game_version": "26.3",
+    "java_version": "25.0.5.1+2-LTS",
+    "oracle": "VanillaDisplayParityOracle"
+  },
+  "lifecycle": {
+    "block_display_pre_tick_and_swap": {
+      "on_spawn_render_state_present": false,
+      "on_spawn_block_state_present": false,
+      "after_empty_tick_render_state_present": false,
+      "after_empty_tick_block_state_present": false,
+      "after_metadata_before_tick_render_state_present": false,
+      "after_metadata_before_tick_block_state_present": false,
+      "after_first_meta_tick_render_state_present": true,
+      "after_first_meta_tick_block_id": "minecraft:stone",
+      "tick2_progress_0_bits": "00000000",
+      "tick2_progress_half_bits": "3e000000",
+      "tick2_translation_at_0_bits": [
+        "40000000",
+        "40400000",
+        "40800000"
+      ],
+      "tick2_translation_at_half_bits": [
+        "40000000",
+        "40400000",
+        "40800000"
+      ],
+      "tick2_scale_at_0_bits": [
+        "40000000",
+        "40000000",
+        "40000000"
+      ],
+      "after_swap_before_tick_block_id": "minecraft:stone",
+      "after_swap_after_tick_block_id": "minecraft:blue_terracotta",
+      "swap_tick_progress_half_bits": "3e000000",
+      "swap_tick_translation_half_bits": [
+        "40200000",
+        "40400000",
+        "40800000"
+      ]
+    },
+    "item_display_pre_tick_and_swap": {
+      "before_tick_has_item_state": false,
+      "after_tick1_item": "minecraft:end_crystal",
+      "after_tick1_context": "GUI",
+      "after_swap_before_tick_item": "minecraft:end_crystal",
+      "after_swap_before_tick_context": "GUI",
+      "after_swap_after_tick_item": "minecraft:diamond_sword",
+      "after_swap_after_tick_context": "FIXED"
+    },
+    "initial_start_min_value": {
+      "progress_at_0_bits": "3f800000",
+      "progress_at_half_bits": "3f800000",
+      "translation_at_0_bits": [
+        "41200000",
+        "00000000",
+        "00000000"
+      ]
+    },
+    "last_progress_while_culled": {
+      "visible_progress_bits": "3e800000",
+      "retarget_progress_0_bits": "00000000",
+      "retarget_start_translation_bits": [
+        "40200000",
+        "00000000",
+        "00000000"
+      ]
+    },
+    "duration_zero_and_negative": {
+      "progress_before_zero_bits": "3e800000",
+      "progress_during_zero_bits": "3f800000",
+      "progress_after_zero_bits": "00000000",
+      "translation_after_zero_bits": [
+        "40000000",
+        "00000000",
+        "00000000"
+      ],
+      "neg_duration_progress_bits": "3f800000",
+      "neg_duration_translation_bits": [
+        "41100000",
+        "00000000",
+        "00000000"
+      ],
+      "neg_duration_shadow_radius_bits": "40000000"
+    }
+  },
+  "non_unit_quat_and_blend": {
+    "at_1_left_rot_bits": [
+      "00000000",
+      "00000000",
+      "40000000",
+      "00000000"
+    ],
+    "at_1_right_rot_bits": [
+      "00000000",
+      "3f800000",
+      "00000000",
+      "3f800000"
+    ],
+    "at_1_matrix_bits": [
+      "00000000",
+      "00000000",
+      "c1000000",
+      "00000000",
+      "00000000",
+      "c1000000",
+      "00000000",
+      "00000000",
+      "c1000000",
+      "00000000",
+      "00000000",
+      "00000000",
+      "3f800000",
+      "40000000",
+      "40400000",
+      "3f800000"
+    ],
+    "at_half_left_rot_bits": [
+      "00000000",
+      "3fb504f3",
+      "3fb504f3",
+      "00000000"
+    ],
+    "at_half_right_rot_bits": [
+      "3f000000",
+      "3f800000",
+      "3f000000",
+      "3f800000"
+    ],
+    "at_half_matrix_bits": [
+      "00000000",
+      "c0bfffff",
+      "40ffffff",
+      "00000000",
+      "00000000",
+      "40ffffff",
+      "40bfffff",
+      "00000000",
+      "c11fffff",
+      "00000000",
+      "00000000",
+      "00000000",
+      "3f000000",
+      "3f800000",
+      "3fc00000",
+      "3f800000"
+    ]
+  },
+  "live_culling_and_no_culling": {
+    "live_vr_at_1_91": true,
+    "live_vr_at_1_93": false,
+    "initial_affected_by_culling": false,
+    "after_wh_affected_by_culling": true,
+    "wh_culling_box_bits": [
+      "bfe0000000000000",
+      "4072d9eb851eb852",
+      "bfe0000000000000",
+      "3ff8000000000000",
+      "407309eb851eb852",
+      "3ff8000000000000"
+    ],
+    "neg_wh_affected_by_culling": true,
+    "neg_wh_culling_box_bits": [
+      "bfe0000000000000",
+      "4072a9eb851eb852",
+      "bfe0000000000000",
+      "3ff8000000000000",
+      "4072d9eb851eb852",
+      "3ff8000000000000"
+    ],
+    "no_culling_outside_frustum_should_render": true,
+    "finite_box_behind_camera_should_render": false,
+    "moving_uninterpolated_outside_range_partial_0": false,
+    "moving_uninterpolated_inside_range_partial_0": true
+  },
+  "billboard_camera_angles": {
+    "cases": [
+      {
+        "name": "genpvp_fixed_interaction_cam_0_0",
+        "billboard": 0,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "entity_yRot_bits": "00000000",
+        "entity_xRot_bits": "00000000",
+        "pose_bits": [
+          "bf066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf066666",
+          "00000000",
+          "bfb28f5c",
+          "3ec6e979",
+          "c0866666",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "genpvp_fixed_interaction_cam_0_0",
+        "billboard": 1,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "entity_yRot_bits": "00000000",
+        "entity_xRot_bits": "00000000",
+        "pose_bits": [
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "3fb28f5c",
+          "3ec6e979",
+          "40866666",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "genpvp_fixed_interaction_cam_0_0",
+        "billboard": 2,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "entity_yRot_bits": "00000000",
+        "entity_xRot_bits": "00000000",
+        "pose_bits": [
+          "bf066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf066666",
+          "00000000",
+          "bfb28f5c",
+          "3ec6e979",
+          "c0866666",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "genpvp_fixed_interaction_cam_0_0",
+        "billboard": 3,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000",
+        "entity_yRot_bits": "00000000",
+        "entity_xRot_bits": "00000000",
+        "pose_bits": [
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f066666",
+          "00000000",
+          "3fb28f5c",
+          "3ec6e979",
+          "40866666",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_first_person",
+        "billboard": 0,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d207",
+          "31866666",
+          "be0b2421",
+          "00000000",
+          "bd6b36de",
+          "3ef39d92",
+          "3e5b753c",
+          "00000000",
+          "3dfc3599",
+          "3e633318",
+          "beeb5084",
+          "00000000",
+          "becf3dce",
+          "4008225d",
+          "c078459e",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_first_person",
+        "billboard": 1,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "3ed540dc",
+          "00000000",
+          "3ea3a293",
+          "00000000",
+          "3e0a4f72",
+          "3ef39d91",
+          "be343fe1",
+          "00000000",
+          "be944dc1",
+          "3e633317",
+          "3ec145ef",
+          "00000000",
+          "bf8e2710",
+          "4008225c",
+          "406f496f",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_first_person",
+        "billboard": 2,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d208",
+          "b0866666",
+          "be0b2421",
+          "00000000",
+          "bce76ebb",
+          "3f03768a",
+          "3dd7edf2",
+          "00000000",
+          "3e0819be",
+          "3ddf8bf1",
+          "befdf793",
+          "00000000",
+          "be9c3454",
+          "3fa06a26",
+          "c0880a61",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_first_person",
+        "billboard": 3,
+        "camera_type": "FIRST_PERSON",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "3ed540db",
+          "31866666",
+          "3ea3a294",
+          "00000000",
+          "3d881629",
+          "3f037689",
+          "bdb159fa",
+          "00000000",
+          "bea00f2a",
+          "3ddf8bf0",
+          "3ed097de",
+          "00000000",
+          "bfac29ce",
+          "3fa06a26",
+          "40816bcd",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_back",
+        "billboard": 0,
+        "camera_type": "THIRD_PERSON_BACK",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d207",
+          "31866666",
+          "be0b2421",
+          "00000000",
+          "bd6b36de",
+          "3ef39d92",
+          "3e5b753c",
+          "00000000",
+          "3dfc3599",
+          "3e633318",
+          "beeb5084",
+          "00000000",
+          "becf3dce",
+          "4008225d",
+          "c078459e",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_back",
+        "billboard": 1,
+        "camera_type": "THIRD_PERSON_BACK",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "3ed540dc",
+          "00000000",
+          "3ea3a293",
+          "00000000",
+          "3e0a4f72",
+          "3ef39d91",
+          "be343fe1",
+          "00000000",
+          "be944dc1",
+          "3e633317",
+          "3ec145ef",
+          "00000000",
+          "bf8e2710",
+          "4008225c",
+          "406f496f",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_back",
+        "billboard": 2,
+        "camera_type": "THIRD_PERSON_BACK",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d208",
+          "b0866666",
+          "be0b2421",
+          "00000000",
+          "bce76ebb",
+          "3f03768a",
+          "3dd7edf2",
+          "00000000",
+          "3e0819be",
+          "3ddf8bf1",
+          "befdf793",
+          "00000000",
+          "be9c3454",
+          "3fa06a26",
+          "c0880a61",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_back",
+        "billboard": 3,
+        "camera_type": "THIRD_PERSON_BACK",
+        "camera_yRot_bits": "42160000",
+        "camera_xRot_bits": "c1400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "3ed540db",
+          "31866666",
+          "3ea3a294",
+          "00000000",
+          "3d881629",
+          "3f037689",
+          "bdb159fa",
+          "00000000",
+          "bea00f2a",
+          "3ddf8bf0",
+          "3ed097de",
+          "00000000",
+          "bfac29ce",
+          "3fa06a26",
+          "40816bcd",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_front",
+        "billboard": 0,
+        "camera_type": "THIRD_PERSON_FRONT",
+        "camera_yRot_bits": "43598000",
+        "camera_xRot_bits": "41400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d207",
+          "31866666",
+          "be0b2421",
+          "00000000",
+          "bd6b36de",
+          "3ef39d92",
+          "3e5b753c",
+          "00000000",
+          "3dfc3599",
+          "3e633318",
+          "beeb5084",
+          "00000000",
+          "becf3dce",
+          "4008225d",
+          "c078459e",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_front",
+        "billboard": 1,
+        "camera_type": "THIRD_PERSON_FRONT",
+        "camera_yRot_bits": "43598000",
+        "camera_xRot_bits": "41400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bed540dc",
+          "00000000",
+          "bea3a292",
+          "00000000",
+          "be0a4f71",
+          "3ef39d91",
+          "3e343fe1",
+          "00000000",
+          "3e944dc0",
+          "3e633317",
+          "bec145ef",
+          "00000000",
+          "3f8e270e",
+          "4008225c",
+          "c06f496e",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_front",
+        "billboard": 2,
+        "camera_type": "THIRD_PERSON_FRONT",
+        "camera_yRot_bits": "43598000",
+        "camera_xRot_bits": "41400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bf01d208",
+          "30866666",
+          "be0b2421",
+          "00000000",
+          "3ce76ebb",
+          "3f03768a",
+          "bdd7edf2",
+          "00000000",
+          "3e0819be",
+          "bddf8bf1",
+          "befdf793",
+          "00000000",
+          "be86cc04",
+          "befc872a",
+          "c08d08ae",
+          "3f800000"
+        ]
+      },
+      {
+        "name": "spectated_angled_third_person_front",
+        "billboard": 3,
+        "camera_type": "THIRD_PERSON_FRONT",
+        "camera_yRot_bits": "43598000",
+        "camera_xRot_bits": "41400000",
+        "entity_yRot_bits": "41700000",
+        "entity_xRot_bits": "41c80000",
+        "pose_bits": [
+          "bed540dc",
+          "b1866666",
+          "bea3a294",
+          "00000000",
+          "3d881629",
+          "3f037688",
+          "bdb159fa",
+          "00000000",
+          "3ea00f2a",
+          "bddf8bf0",
+          "bed097df",
+          "00000000",
+          "3fb8c056",
+          "befc872a",
+          "c08585ba",
+          "3f800000"
+        ]
+      }
+    ]
+  },
+  "text_submit_phases_and_sorting": {
+    "phase_routing": [
+      {
+        "name": "opaque_panel",
+        "improved_transparency": false,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [
+          "background:POLYGON_OFFSET"
+        ],
+        "oit_translucent": [],
+        "see_through": []
+      },
+      {
+        "name": "translucent_panel_with_opaque_text",
+        "improved_transparency": false,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [
+          "background:POLYGON_OFFSET"
+        ],
+        "oit_translucent": [],
+        "see_through": []
+      },
+      {
+        "name": "transparent_bg_opaque_label",
+        "improved_transparency": false,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": []
+      },
+      {
+        "name": "translucent_text_and_bg",
+        "improved_transparency": false,
+        "solid": [],
+        "texts": [
+          "background:POLYGON_OFFSET",
+          "text:POLYGON_OFFSET"
+        ],
+        "oit_translucent": [],
+        "see_through": []
+      },
+      {
+        "name": "see_through_near",
+        "improved_transparency": false,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_far",
+        "improved_transparency": false,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_tie_a",
+        "improved_transparency": false,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_tie_b",
+        "improved_transparency": false,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "opaque_panel",
+        "improved_transparency": true,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [],
+        "oit_translucent": [
+          "background:POLYGON_OFFSET"
+        ],
+        "see_through": []
+      },
+      {
+        "name": "translucent_panel_with_opaque_text",
+        "improved_transparency": true,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [],
+        "oit_translucent": [
+          "background:POLYGON_OFFSET"
+        ],
+        "see_through": []
+      },
+      {
+        "name": "transparent_bg_opaque_label",
+        "improved_transparency": true,
+        "solid": [
+          "text:POLYGON_OFFSET"
+        ],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": []
+      },
+      {
+        "name": "translucent_text_and_bg",
+        "improved_transparency": true,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [
+          "background:POLYGON_OFFSET",
+          "text:POLYGON_OFFSET"
+        ],
+        "see_through": []
+      },
+      {
+        "name": "see_through_near",
+        "improved_transparency": true,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_far",
+        "improved_transparency": true,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_tie_a",
+        "improved_transparency": true,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      },
+      {
+        "name": "see_through_tie_b",
+        "improved_transparency": true,
+        "solid": [],
+        "texts": [],
+        "oit_translucent": [],
+        "see_through": [
+          "background:SEE_THROUGH",
+          "text:SEE_THROUGH"
+        ]
+      }
+    ],
+    "see_through_sorted_order": [
+      "far_6",
+      "tie_first_4",
+      "tie_second_4",
+      "near_2"
+    ],
+    "vertex_sorting_distance_to_origin_order": [
+      2,
+      3,
+      1,
+      4,
+      0
+    ],
+    "pipelines": {
+      "text_polygon_offset_write_depth": true,
+      "text_polygon_offset_bias_scale_bits": "3f800000",
+      "text_polygon_offset_bias_constant_bits": "41200000",
+      "text_polygon_offset_cull": true,
+      "oit_text_polygon_offset_write_depth": false,
+      "oit_text_polygon_offset_bias_scale_bits": "00000000",
+      "oit_text_polygon_offset_bias_constant_bits": "00000000",
+      "oit_text_polygon_offset_cull": true,
+      "rt_text_polygon_offset_sort_on_upload": true,
+      "rt_text_see_through_sort_on_upload": false
+    }
+  },
+  "block_display_render_type_and_cull": {
+    "cutout_cull": true,
+    "cutout_sort_on_upload": false,
+    "cutout_has_blending": false,
+    "translucent_cull": true,
+    "translucent_sort_on_upload": true,
+    "translucent_has_blending": true,
+    "setup_model_opaque_is_cutout_sheet": true,
+    "setup_model_translucent_is_translucent_sheet": true,
+    "blocks": {
+      "minecraft:black_concrete": {
+        "light_emission": 0,
+        "packed_block_light_coords": 0
+      },
+      "minecraft:blue_terracotta": {
+        "light_emission": 0,
+        "packed_block_light_coords": 0
+      },
+      "minecraft:blue_stained_glass": {
+        "light_emission": 0,
+        "packed_block_light_coords": 0
+      },
+      "minecraft:ice": {
+        "light_emission": 0,
+        "packed_block_light_coords": 0
+      },
+      "minecraft:slime_block": {
+        "light_emission": 0,
+        "packed_block_light_coords": 0
+      },
+      "minecraft:glowstone": {
+        "light_emission": 15,
+        "packed_block_light_coords": 240
+      },
+      "minecraft:sea_lantern": {
+        "light_emission": 15,
+        "packed_block_light_coords": 240
+      },
+      "minecraft:torch": {
+        "light_emission": 14,
+        "packed_block_light_coords": 224
+      }
+    }
+  },
+  "display_entity_features": {
+    "name_tags": {
+      "pre_tick_extracted_name": "DisplayTag",
+      "pre_tick_submitted_name_tag": false,
+      "post_tick_empty_text_has_sub_state": true,
+      "post_tick_empty_text_submitted_name_tag": true,
+      "attachment_offset_bits": [
+        "0000000000000000",
+        "0000000000000000",
+        "0000000000000000"
+      ],
+      "beyond_64_extracted_name": false,
+      "name_visible_false_extracted_name": false,
+      "crosshair_pick_extracted_name": true
+    },
+    "fire": {
+      "is_on_fire": true,
+      "display_fire_animation": true,
+      "bb_width_bits": "00000000",
+      "bb_height_bits": "00000000",
+      "block_light_no_override_on_fire": 15,
+      "block_light_with_override_on_fire": 3,
+      "flame_feature_vertex_count": 0
+    },
+    "invisibility_shadow": {
+      "pre_tick_shadow_radius_bits": "00000000",
+      "pre_tick_shadow_pieces": 0,
+      "visible_shadow_radius_bits": "40000000",
+      "visible_shadow_pieces": 50,
+      "invisible_shadow_radius_bits": "00000000",
+      "invisible_shadow_pieces": 0
+    }
+  },
+  "teleport_duration_and_pos_rot_lerp": {
+    "client_unclamped_100": {
+      "tick_1_x_bits": "3ff0000000000000",
+      "tick_2_x_bits": "4000000000000000",
+      "tick_50_x_bits": "4049000000000000",
+      "tick_59_x_bits": "404d800000000000",
+      "tick_100_x_bits": "4059000000000000"
+    },
+    "nbt_clamped_100": 59,
+    "negative_teleport_duration": {
+      "has_active_interpolation": false,
+      "before_tick_x_bits": "0000000000000000",
+      "after_tick_x_bits": "0000000000000000"
+    },
+    "same_target_no_restart": {
+      "x_after_2_ticks_bits": "4000000000000000",
+      "x_after_repeat_and_tick3_bits": "4008000000000000"
+    },
+    "rotation_lerp_and_clamp": {
+      "step1_yRot_bits": "00000000",
+      "step1_xRot_bits": "00000000",
+      "partial_half_yRot_bits": "43b18000",
+      "partial_half_xRot_bits": "c2200000",
+      "setXRot_120_bits": "42b40000",
+      "setXRot_neg120_bits": "c2b40000"
+    }
+  },
+  "section_compiled_and_visible_gate": {
+    "inside_build_uncompiled": false,
+    "inside_build_empty_fading_0_2": false,
+    "inside_build_empty_fading_0_4": true,
+    "inside_build_empty_fade_0": true,
+    "above_build_height_uncompiled": true,
+    "below_build_height_uncompiled": true
+  }
+}
