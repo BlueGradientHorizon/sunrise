@@ -1,0 +1,3 @@
+sunrise-client game::native_chunk_relight_tests::relight_chunks_accepts_large_batches_without_synthetic_quotas lib daily resources
+sunrise-client game::native_chunk_relight_tests::parked_level_relight_and_resend_target_the_owning_dimension lib daily resources
+sunrise-client game::native_chunk_relight_tests::parked_chunk_resend_checks_sent_watchers_on_owning_dimension lib daily resources

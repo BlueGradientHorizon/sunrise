@@ -9,6 +9,25 @@ use sunrise_protocol::{
 };
 
 impl Hub {
+    /// Whether any player currently holds (was sent) chunk `key` in `dimension`, either as their
+    /// own level or via an active viewed-level view, or is an in-memory client watching `dimension`
+    /// (matching `ChunkHolder.broadcastChanges` and `PlayerChunkSender`).
+    pub fn has_chunk_resend_target(&self, dimension: &str, key: (i32, i32)) -> bool {
+        let viewed = self.viewed.active();
+        (0..self.guests.len()).any(|i| {
+            let g = &self.guests[i];
+            if g.watches_level(dimension) {
+                g.sent_chunks.contains(&key) || g.address() == crate::lan::conn::MEMORY_ADDRESS
+            } else if viewed && g.views_level(dimension) {
+                g.viewed
+                    .view(dimension)
+                    .is_some_and(|v| v.sent.contains(&key))
+            } else {
+                false
+            }
+        })
+    }
+
     /// The players sent chunk `key` of the level in place: those in it (None), and those whose
     /// client views it, with the level to wrap with. The chunks each was sent come with it.
     fn chunk_holders(

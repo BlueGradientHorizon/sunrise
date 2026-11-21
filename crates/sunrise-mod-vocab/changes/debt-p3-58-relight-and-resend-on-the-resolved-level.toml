@@ -1,0 +1,10 @@
+ids = [
+    "type:ChunkRefusal.NotInPlace",
+    "type:ChunkRefusal.TooManyChunks",
+]
+why = "Removed parked-level refusals (ChunkRefusal::NotInPlace) and synthetic 256-per-call / 4096-queued quotas (ChunkRefusal::TooManyChunks) from LevelRef::relight_chunks and ChunkRef::resend. Both operations now resolve any open server dimension (active or parked), schedule work onto that dimension's own world and light engine without depending on Game's swap state, invalidate stale in-flight light jobs when re-dirtied, batch light worker execution across updates (matching vanilla net.minecraft.server.level.ThreadedLevelLightEngine), and check real loaded/sent-chunk watchers on the owning dimension (matching vanilla net.minecraft.server.level.ServerChunkCache, ChunkHolder.broadcastChanges, and PlayerChunkSender)."
+migrate = """
+- Remove match arms for `ChunkRefusal::NotInPlace` and `ChunkRefusal::TooManyChunks` (and any manual 256-chunk splitting or retry loops around those refusals).
+- `level.relight_chunks(host, chunks)` and `chunk.resend(host)` now work on any open server level handle, active or parked, and fail only with `ChunkRefusal::Stale`, `ChunkRefusal::Client`, or (for `chunk.resend`) `ChunkRefusal::NotLoaded`.
+- Behavior note (`handle:LevelRef::relight_chunks`, `handle:ChunkRef::resend`): signatures are unchanged; relights on parked dimensions advance asynchronously on their own light engine and batch worker jobs without artificial call/queue caps, and unloaded entries passed to `relight_chunks` no longer queue their loaded neighbours.
+"""

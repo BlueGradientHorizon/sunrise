@@ -5376,6 +5376,27 @@ mod tests {
     }
 
     #[test]
+    fn has_chunk_resend_target_checks_owning_dimension_sent_chunks() {
+        let (mut hub, _rx) = hub_with_a_guest();
+        // Guest 0 is placed in overworld on loopback TCP, with no sent chunks yet.
+        assert!(!hub.has_chunk_resend_target("minecraft:overworld", (2, 3)));
+        assert!(!hub.has_chunk_resend_target("minecraft:the_nether", (2, 3)));
+
+        // Sending the chunk in overworld targets only overworld, not another dimension.
+        hub.guests.update(0, |g| _ = g.sent_chunks.insert((2, 3)));
+        assert!(hub.has_chunk_resend_target("minecraft:overworld", (2, 3)));
+        assert!(!hub.has_chunk_resend_target("minecraft:overworld", (2, 4)));
+        assert!(!hub.has_chunk_resend_target("minecraft:the_nether", (2, 3)));
+
+        // Switching the guest to the Nether moves the sent-chunk ownership to that dimension.
+        hub.guests.update(0, |g| {
+            g.dimension = "minecraft:the_nether".into();
+        });
+        assert!(!hub.has_chunk_resend_target("minecraft:overworld", (2, 3)));
+        assert!(hub.has_chunk_resend_target("minecraft:the_nether", (2, 3)));
+    }
+
+    #[test]
     fn self_pose_wire_lifecycle_preserves_existing_publishers() {
         use crate::pose::Pose;
         fn drain(

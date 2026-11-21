@@ -1903,6 +1903,7 @@ impl Streaming {
         }
         self.requeue();
         self.relight_edits(world);
+        self.invalidate_dirty_light(world);
         hz_laps.lap("st_relight_edits");
         let deferred = std::mem::take(&mut self.deferred).into_iter();
         let received = self.shared.done.take();
@@ -1950,7 +1951,9 @@ impl Streaming {
                 Done::Saved(protos) => self.receive_saved(protos),
                 Done::LightView(x, z, proto, view) => self.receive_light_view(x, z, proto, view),
                 Done::Lit(x, z, sections, seq) => {
-                    if self.lighting.get(&(x, z)) != Some(&seq) {
+                    if self.lighting.get(&(x, z)) != Some(&seq)
+                        || world.dirty_light.contains(&(x, z))
+                    {
                         continue;
                     }
                     self.lighting.remove(&(x, z));
@@ -2112,10 +2115,6 @@ impl Streaming {
         if paused {
             return (uploads, removed);
         }
-        let mut light = std::mem::take(&mut self.light_scratch);
-        light.clear();
-        let mut gone = std::mem::take(&mut self.gone_scratch);
-        gone.clear();
         let mut candidates = std::mem::take(&mut self.mesh_candidates_scratch);
         candidates.clear();
         let mut columns = std::mem::take(&mut self.mesh_columns_scratch);
@@ -2285,48 +2284,12 @@ impl Streaming {
         hz_laps.lap("st_decorate");
         self.schedule_generation(world, workers);
         hz_laps.lap("st_generate");
-        // Lighting once all neighbours exist, nearest first and only as
-        // much of it as the workers can chew. Vanilla's light engine also
-        // hands a bounded queue to its workers and reschedules what did
-        // not fit by distance; submitted whole, the light jobs of every
-        // unlit column at once — each carrying a 3x3 region snapshot —
-        // grew with the render distance and outlived the columns they
-        // were queued for (#3629). What stays in `dirty_light` is asked
-        // for again, from the current centre, as capacity frees.
-        for &(x, z) in world.dirty_light.iter() {
-            if !world.chunks.contains_key(&(x, z)) {
-                gone.push((x, z));
-            } else if self.light_region_ready(world, x, z) {
-                light.push((self.distance(x, z), x, z));
-            }
-        }
-        for key in gone.drain(..) {
-            world.dirty_light.remove(&key);
-        }
-        let room = (self.workers * 4).saturating_sub(self.lighting.len());
-        nearest_first(&mut light, room);
-        for (_, x, z) in light.drain(..) {
-            let Some(region) = self.light_region(world, x, z) else {
-                continue;
-            };
-            world.dirty_light.remove(&(x, z));
-            self.sequence += 1;
-            self.lighting.insert((x, z), self.sequence);
-            self.light_snapshots
-                .insert((x, z), self.light_edit_sequence);
-            self.submit(
-                Some((x, z)),
-                1,
-                Job::Light(x, z, region, self.sequence, self.sky_light),
-            );
-        }
+        self.schedule_light(world);
         hz_laps.lap("st_light");
         // A server draws nothing: its sections are never meshed.
         if !self.mesh {
             world.dirty_sections.clear();
             self.cover_current = false;
-            self.light_scratch = light;
-            self.gone_scratch = gone;
             self.mesh_candidates_scratch = candidates;
             self.mesh_columns_scratch = columns;
             return (uploads, removed);
@@ -2502,11 +2465,106 @@ impl Streaming {
             }
         }
         self.cover_current = false;
-        self.light_scratch = light;
-        self.gone_scratch = gone;
         self.mesh_candidates_scratch = candidates;
         self.mesh_columns_scratch = columns;
         (uploads, removed)
+    }
+    /// Drop in-flight light jobs for columns re-dirtied after they were queued,
+    /// so stale worker results cannot overwrite or skip a newer relight request.
+    fn invalidate_dirty_light(&mut self, world: &World) {
+        if world.dirty_light.is_empty() || self.lighting.is_empty() {
+            return;
+        }
+        self.lighting.retain(|k, _| !world.dirty_light.contains(k));
+        self.light_snapshots
+            .retain(|k, _| !world.dirty_light.contains(k));
+        if self.light_snapshots.is_empty() {
+            self.light_log.clear();
+        }
+    }
+    /// Schedule queued whole-column light jobs once all neighbours exist,
+    /// nearest first and bounded to what the light workers can chew per pass
+    /// (matching vanilla `ThreadedLevelLightEngine`).
+    fn schedule_light(&mut self, world: &mut World) {
+        let mut light = std::mem::take(&mut self.light_scratch);
+        light.clear();
+        let mut gone = std::mem::take(&mut self.gone_scratch);
+        gone.clear();
+        for &(x, z) in world.dirty_light.iter() {
+            if !world.chunks.contains_key(&(x, z)) {
+                gone.push((x, z));
+            } else if self.light_region_ready(world, x, z) {
+                light.push((self.distance(x, z), x, z));
+            }
+        }
+        for key in gone.drain(..) {
+            world.dirty_light.remove(&key);
+        }
+        let room = (self.workers * 4).saturating_sub(self.lighting.len());
+        nearest_first(&mut light, room);
+        for (_, x, z) in light.drain(..) {
+            let Some(region) = self.light_region(world, x, z) else {
+                continue;
+            };
+            world.dirty_light.remove(&(x, z));
+            self.sequence += 1;
+            self.lighting.insert((x, z), self.sequence);
+            self.light_snapshots
+                .insert((x, z), self.light_edit_sequence);
+            self.submit(
+                Some((x, z)),
+                1,
+                Job::Light(x, z, region, self.sequence, self.sky_light),
+            );
+        }
+        self.light_scratch = light;
+        self.gone_scratch = gone;
+    }
+    /// Advance light work only, without streaming generation, unloads or meshing.
+    /// Used for parked server levels so relights queued on them run and batch on
+    /// their own worker pool without waiting for that dimension to be ticked.
+    pub fn update_light(&mut self, world: &mut World) {
+        if self.paused {
+            return;
+        }
+        if !self.has_pending_light(world) {
+            return;
+        }
+        self.relight_edits(world);
+        self.invalidate_dirty_light(world);
+        let pending = std::mem::take(&mut self.deferred)
+            .into_iter()
+            .chain(self.shared.done.take());
+        for done in pending {
+            match done {
+                Done::LightView(x, z, proto, view) => self.receive_light_view(x, z, proto, view),
+                Done::Lit(x, z, sections, seq) => {
+                    if self.lighting.get(&(x, z)) != Some(&seq)
+                        || world.dirty_light.contains(&(x, z))
+                    {
+                        continue;
+                    }
+                    self.lighting.remove(&(x, z));
+                    let snapshot = self.light_snapshots.remove(&(x, z)).unwrap_or(u64::MAX);
+                    self.apply_lit(world, x, z, sections, snapshot);
+                }
+                other => self.deferred.push(other),
+            }
+        }
+        self.schedule_light(world);
+        if !self.mesh {
+            world.dirty_sections.clear();
+        }
+    }
+    /// Whether this level has light work still running or ready to schedule.
+    pub fn has_pending_light(&self, world: &World) -> bool {
+        !self.lighting.is_empty()
+            || !self.viewing.is_empty()
+            || !world.light_edits.is_empty()
+            || world
+                .dirty_light
+                .iter()
+                .any(|&(x, z)| self.light_region_ready(world, x, z))
     }
     fn schedule_generation(&mut self, world: &World, workers: usize) {
         let input = GenerationInputs {

@@ -1425,6 +1425,11 @@ impl Game<'_> {
         if result.is_ok() {
             result = self.run_view_passes(&order);
         }
+        // Parked levels that did not tick or run a view pass still advance any light
+        // work scheduled on them directly (for example via `LevelRef::relight_chunks`).
+        if result.is_ok() {
+            self.update_parked_light(&order);
+        }
         if let Some(&first) = order.first()
             && self.dim != first
         {
@@ -1612,6 +1617,28 @@ impl Game<'_> {
             .collect()
     }
 
+    /// Advance light jobs queued on parked levels that neither ticked nor ran a view pass
+    /// this server tick, without switching `self.dim` or running chunk generation/unloads.
+    pub(super) fn update_parked_light(&mut self, ticked: &[Dim]) {
+        let viewed_active = self.lan.as_ref().is_some_and(|h| h.hub.viewed.active());
+        let skip_view: Vec<Dim> = if viewed_active {
+            self.levels
+                .parked
+                .keys()
+                .copied()
+                .filter(|d| !ticked.contains(d) && self.needs_view_pass(*d))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for (dim, parked) in &mut self.levels.parked {
+            if ticked.contains(dim) || skip_view.contains(dim) {
+                continue;
+            }
+            parked.streaming.update_light(&mut parked.world);
+        }
+    }
+
     /// Count the parked levels' empty ticks, and save and close the ones
     /// (other than the Overworld) nobody has been in for a while.
     pub(super) fn close_idle_levels(&mut self) -> Result<()> {
@@ -1628,7 +1655,10 @@ impl Game<'_> {
             .collect();
         let mut closing = Vec::new();
         for (dim, p) in &mut self.levels.parked {
-            if occupied.contains(dim) || waiting.contains(dim) {
+            if occupied.contains(dim)
+                || waiting.contains(dim)
+                || p.streaming.has_pending_light(&p.world)
+            {
                 p.idle = 0;
                 continue;
             }
