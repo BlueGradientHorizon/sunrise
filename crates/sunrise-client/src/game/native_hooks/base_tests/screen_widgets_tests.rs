@@ -134,29 +134,58 @@ fn take_log(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
 // Fast pure unit tests (run in `verify`)
 // ---------------------------------------------------------------------------
 
-/// `ScreenState::is_double_click` matches vanilla's 250ms window on the same screen id,
-/// generation, and mouse button (`MouseHandler.java:101-106`).
+/// `ScreenState::is_double_click` matches vanilla's 250ms window on the same screen
+/// instance and mouse button (`MouseHandler.java:101-106`), surviving same-instance
+/// widget rebuilds (`widgets.clear()` on resize) while clearing on replacement screens
+/// (`bump_instance()`).
 #[test]
 fn double_click_window_checks_250ms_button_screen_and_generation() {
     let mut state = crate::game::screen_build::ScreenState::default();
     let t0 = Instant::now();
-    assert!(!state.is_double_click(t0, "mod", 0));
+    let inst = state.screen_instance;
+    assert!(!state.is_double_click(t0, inst, 0));
 
-    state.record_click(t0, "mod", 0);
-    assert!(state.is_double_click(t0 + Duration::from_millis(100), "mod", 0));
-    assert!(state.is_double_click(t0 + Duration::from_millis(249), "mod", 0));
-    assert!(!state.is_double_click(t0 + Duration::from_millis(250), "mod", 0));
-    assert!(!state.is_double_click(t0 + Duration::from_millis(50), "mod", 1));
-    assert!(!state.is_double_click(t0 + Duration::from_millis(50), "paused", 0));
+    state.record_click(t0, inst, 0);
+    assert!(state.is_double_click(t0 + Duration::from_millis(100), inst, 0));
+    assert!(state.is_double_click(t0 + Duration::from_millis(249), inst, 0));
+    assert!(!state.is_double_click(t0 + Duration::from_millis(250), inst, 0));
+    assert!(!state.is_double_click(t0 + Duration::from_millis(50), inst, 1));
+    assert!(!state.is_double_click(t0 + Duration::from_millis(50), inst + 1, 0));
 
-    // Clearing widgets bumps generation and drops last_click.
+    // Same-instance widget rebuild (e.g. resize) preserves `last_click`.
     state.widgets.clear();
-    assert!(!state.is_double_click(t0 + Duration::from_millis(50), "mod", 0));
+    assert!(state.is_double_click(t0 + Duration::from_millis(50), inst, 0));
 
-    // Even if a stale LastScreenClick remained from an earlier generation, generation check fails.
-    state.record_click(t0, "mod", 0);
-    state.widgets.generation = state.widgets.generation.wrapping_add(1);
-    assert!(!state.is_double_click(t0 + Duration::from_millis(10), "mod", 0));
+    // Replacing the screen bumps `screen_instance` and clears `last_click`.
+    let next_inst = state.bump_instance();
+    assert_ne!(next_inst, inst);
+    assert!(!state.is_double_click(t0 + Duration::from_millis(50), next_inst, 0));
+    assert!(!state.is_double_click(t0 + Duration::from_millis(50), inst, 0));
+}
+
+/// `ObservedScreen::view` preserves `mod_screen` so Post listeners can identify
+/// which mod's screen received an input event even after A->B or A->close transitions.
+#[test]
+fn observed_screen_view_carries_mod_screen_owner() {
+    let observed = crate::game::screen_build::ObservedScreen {
+        id: "mod",
+        overlay: false,
+        mod_screen: Some("mod_a".to_owned()),
+        menu: None,
+        menu_generation: None,
+        title: None,
+        rect: [0.0, 0.0, 320.0, 240.0],
+        screen_size: [320.0, 240.0],
+        slots: 0,
+        mouse: [10.0, 20.0],
+        partial_tick: 0.5,
+        instance: 7,
+    };
+    let view = observed.view();
+    assert_eq!(view.id, "mod");
+    assert_eq!(view.mod_screen, Some("mod_a"));
+    let other = screen_view_for_mod(&view, "mod_b");
+    assert_eq!(other.mod_screen, Some("mod_b"));
 }
 
 // ---------------------------------------------------------------------------
@@ -296,15 +325,15 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             // The removed custom widget was dropped immediately during init; 3 live drop counters remain.
             assert_eq!(drops.load(Ordering::SeqCst), 1);
             // 4 entries stay mounted (btn, tf, kept custom, inactive btn) and tf (index 1) has focus.
-            assert_eq!(game.screen_state.widgets.entries.len(), 4);
-            assert_eq!(game.screen_state.widgets.focused, Some(1));
+            assert_eq!(game.screen_state.widgets.len(), 4);
+            assert_eq!(game.screen_state.widgets.focused_index(), Some(1));
 
             // Click into the text field to establish drag state, then resize the window.
             move_mouse(game, win_id, 30.0, 50.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
-            assert_eq!(game.screen_state.widgets.dragging, Some((1, 0)));
+            assert_eq!(game.screen_state.widgets.dragging(), Some((1, 0)));
 
-            let gen_before_resize = game.screen_state.widgets.generation;
+            let gen_before_resize = game.screen_state.widgets.generation();
             game.handle_window_event(
                 &NoLoop,
                 win_id,
@@ -313,20 +342,20 @@ fn mounting_lifecycle_focus_remove_resize_and_close_dispose() {
             );
             game.observe_screen();
             assert_eq!(init_count.load(Ordering::SeqCst), 2);
-            assert_ne!(game.screen_state.widgets.generation, gen_before_resize);
+            assert_ne!(game.screen_state.widgets.generation(), gen_before_resize);
             // Prior 3 live drop counters + 1 newly removed drop counter = 5 total drops.
             assert_eq!(drops.load(Ordering::SeqCst), 5);
             // Drag state cleared on rebuild; initial focus re-applied to the newly mounted text field.
-            assert_eq!(game.screen_state.widgets.dragging, None);
-            assert_eq!(game.screen_state.widgets.focused, Some(1));
+            assert_eq!(game.screen_state.widgets.dragging(), None);
+            assert_eq!(game.screen_state.widgets.focused_index(), Some(1));
 
             // Closing the screen disposes the remaining 3 widgets and clears focus/drag state.
             assert!(game.close_screen());
             assert_eq!(game.screen, Screen::Playing);
             assert_eq!(drops.load(Ordering::SeqCst), 8);
-            assert!(game.screen_state.widgets.entries.is_empty());
-            assert_eq!(game.screen_state.widgets.focused, None);
-            assert_eq!(game.screen_state.widgets.dragging, None);
+            assert!(game.screen_state.widgets.is_empty());
+            assert_eq!(game.screen_state.widgets.focused_index(), None);
+            assert_eq!(game.screen_state.widgets.dragging(), None);
         });
     });
 }
@@ -485,7 +514,7 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
             );
             // Extracted mod_a button was disposed rather than written back into mod_b's table.
             assert_eq!(mod_a_btn_drops.load(Ordering::SeqCst), 1);
-            assert_eq!(game.screen_state.widgets.entries.len(), 1);
+            assert_eq!(game.screen_state.widgets.len(), 1);
             assert_eq!(mod_b_btn_drops.load(Ordering::SeqCst), 0);
 
             // Pressing Enter on mod_b's focused button calls host.close_screen() synchronously.
@@ -494,7 +523,7 @@ fn button_on_press_state_mutation_keyboard_and_synchronous_transitions() {
             assert_eq!(game.mod_screen(), None);
             assert_eq!(take_log(&log), vec!["close_b:true:None"]);
             assert_eq!(mod_b_btn_drops.load(Ordering::SeqCst), 1);
-            assert!(game.screen_state.widgets.entries.is_empty());
+            assert!(game.screen_state.widgets.is_empty());
         });
     });
 }
@@ -677,7 +706,7 @@ fn text_field_editing_ime_and_double_click_word_selection() {
             move_mouse(game, win_id, 400.0, 400.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.screen_state.widgets.focused, None);
+            assert_eq!(game.screen_state.widgets.focused_index(), None);
             assert!(!game.text_field_focused());
             game.ime_preedit("go", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:go"]);
@@ -934,36 +963,21 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
             move_mouse(game, win_id, 40.0, 60.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(
-                game.screen_state.widgets.entries[1]
-                    .as_ref()
-                    .unwrap()
-                    .disabled
-            );
+            assert!(game.screen_state.widgets.is_disabled(1));
 
             // 2) Panic in TextField on_change disables only the text field.
             move_mouse(game, win_id, 40.0, 90.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
             assert!(game.mounted_widget_char_typed('a', 0));
-            assert!(
-                game.screen_state.widgets.entries[2]
-                    .as_ref()
-                    .unwrap()
-                    .disabled
-            );
+            assert!(game.screen_state.widgets.is_disabled(2));
 
             // 3) Panic in custom ScreenWidget mouse_clicked disables only the custom widget.
             panic_custom.store(true, Ordering::SeqCst);
             move_mouse(game, win_id, 40.0, 30.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert!(
-                game.screen_state.widgets.entries[0]
-                    .as_ref()
-                    .unwrap()
-                    .disabled
-            );
+            assert!(game.screen_state.widgets.is_disabled(0));
 
             let notices = mod_api::__private::game::take_callback_panic_notices();
             assert_eq!(notices.len(), 3, "{notices:?}");
@@ -988,12 +1002,7 @@ fn custom_screen_widget_callbacks_and_per_widget_panic_isolation() {
                 take_log(&log),
                 vec!["sibling_open:false", "sibling_open:false"]
             );
-            assert!(
-                !game.screen_state.widgets.entries[3]
-                    .as_ref()
-                    .unwrap()
-                    .disabled
-            );
+            assert!(!game.screen_state.widgets.is_disabled(3));
             assert!(mod_api::__private::game::take_callback_panic_notices().is_empty());
         });
     });
@@ -1477,18 +1486,39 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             cancel_key_post.store(false, Ordering::SeqCst);
             send_key_control(game, "key w down");
             assert!(game.keys.raw(&KeyCode::KeyW));
-            //    Direct screen_key_post_on for release: Flow::Cancel returns true (blocks mapped_key_event),
-            //    Flow::Continue returns false.
-            let receiver = game.observed_input_screen();
+            //    Releasing through the control socket (`key w up`) runs KeyReleased.Pre and
+            //    KeyReleased.Post on the receiving screen; cancelling Post blocks mapped_key_event.
             take_log(&log);
             cancel_key_post.store(true, Ordering::SeqCst);
-            assert!(game.screen_key_post_on(receiver.as_ref(), KeyCode::KeyW, false, false));
-            cancel_key_post.store(false, Ordering::SeqCst);
-            assert!(!game.screen_key_post_on(receiver.as_ref(), KeyCode::KeyW, false, false));
+            send_key_control(game, "key w up");
+            assert!(game.keys.raw(&KeyCode::KeyW));
             assert_eq!(
                 take_log(&log),
                 vec![
+                    "key_rel_pre:mod:key.keyboard.w",
                     "key_rel_post:mod:key.keyboard.w",
+                ]
+            );
+            cancel_key_post.store(false, Ordering::SeqCst);
+            send_key_control(game, "key w up");
+            assert!(!game.keys.raw(&KeyCode::KeyW));
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "key_rel_pre:mod:key.keyboard.w",
+                    "key_rel_post:mod:key.keyboard.w",
+                ]
+            );
+            //    `key w tap` runs both press and release phases through Pre and Post.
+            take_log(&log);
+            send_key_control(game, "key w tap");
+            assert!(!game.keys.raw(&KeyCode::KeyW));
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "key_press_pre:mod:key.keyboard.w",
+                    "key_press_post:mod:key.keyboard.w",
+                    "key_rel_pre:mod:key.keyboard.w",
                     "key_rel_post:mod:key.keyboard.w",
                 ]
             );
@@ -1502,6 +1532,25 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             assert_eq!(
                 take_log(&log),
                 vec!["press_pre:mod:0:false", "press_post:mod:0:false:true"]
+            );
+
+            // 8) Advancements blank-space press/release and no-tab scroll report unhandled.
+            game.set_screen(Screen::Advancements);
+            take_log(&log);
+            move_mouse(game, win_id, 5.0, 5.0);
+            send_mouse_button(game, win_id, MouseButton::Left, true);
+            send_mouse_button(game, win_id, MouseButton::Left, false);
+            send_scroll(game, win_id, 0.0, 1.0);
+            assert_eq!(
+                take_log(&log),
+                vec![
+                    "press_pre:advancements:0:false",
+                    "press_post:advancements:0:false:false",
+                    "release_pre:advancements:0",
+                    "release_post:advancements:0:false",
+                    "scroll_pre:advancements",
+                    "scroll_post:advancements",
+                ]
             );
         });
     });

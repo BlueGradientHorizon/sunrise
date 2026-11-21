@@ -1016,6 +1016,7 @@ impl Game<'_> {
             u32::MAX,
             true,
         );
+        self.draw_overlay_mounted_widgets(batch, "sign_editor");
     }
 }
 

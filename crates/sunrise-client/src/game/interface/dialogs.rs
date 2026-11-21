@@ -505,6 +505,7 @@ impl Game<'_> {
             let mut confirm = Confirm::new(&atlas.font, (w, h), &title, &message);
             confirm.declare_no();
             confirm.draw(batch, atlas, cursor, [&disconnect, &back]);
+            self.draw_overlay_mounted_widgets(batch, "dialog");
             return;
         }
         if let Some(since) = self.dialogs.waiting {
@@ -544,6 +545,7 @@ impl Game<'_> {
                     hover,
                 );
             }
+            self.draw_overlay_mounted_widgets(batch, "dialog");
             return;
         }
         let Some(layout) = self.dialog_layout() else {
@@ -809,6 +811,8 @@ impl Game<'_> {
                 open.scroll.amount,
             );
         }
+        self.dialogs.open = Some(open);
+        self.draw_overlay_mounted_widgets(batch, "dialog");
         if warn_hover {
             tooltip = Some(Text::translate("menu.custom_screen_info.tooltip", &[]));
         }
@@ -821,7 +825,6 @@ impl Game<'_> {
                 .collect();
             ui::tooltip(batch, atlas, &lines, cursor);
         }
-        self.dialogs.open = Some(open);
         if let Some(stack) = item_tip {
             self.draw_stack_tooltip(batch, &stack, cursor.0, cursor.1);
         }

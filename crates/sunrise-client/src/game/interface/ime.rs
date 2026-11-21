@@ -39,11 +39,8 @@ impl HeldKeyText {
 }
 
 impl Game<'_> {
-    /// Whether a text box has focus right now (the fields `ime_commit` can fill).
-    pub(super) fn text_field_focused(&mut self) -> bool {
-        if self.mounted_widget_captures_input() {
-            return true;
-        }
+    /// Whether a vanilla (non-mounted) text box has focus right now.
+    pub(super) fn vanilla_text_field_focused(&mut self) -> bool {
         if self.dialog_open() {
             return self.dialog_has_text_field();
         }
@@ -77,16 +74,61 @@ impl Game<'_> {
         }
     }
 
-    /// Allow the input method only while a text box has focus.
+    /// Whether a text box or input-capturing mounted widget has focus right now
+    /// (so OS IME commits and text typing are enabled). Note that `ime_preedit`
+    /// separately checks `mounted_widget_preedit`, never `captures_input()`.
+    pub(super) fn text_field_focused(&mut self) -> bool {
+        if self.screen_state.widgets.has_focus() {
+            return self.mounted_widget_captures_input();
+        }
+        self.vanilla_text_field_focused()
+    }
+
+    /// Identity of the text box currently owning IME composition, so switching
+    /// directly from one field to another (including synchronous replacement
+    /// with an initially focused field) clears the old field's preedit and area.
+    fn ime_focus_identity(&mut self) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        if !self.text_field_focused() {
+            return None;
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.screen_state.screen_instance.hash(&mut h);
+        if let Some(id) = self.screen_state.widgets.focused_id() {
+            1u8.hash(&mut h);
+            id.raw().hash(&mut h);
+        } else {
+            0u8.hash(&mut h);
+            std::mem::discriminant(&self.screen).hash(&mut h);
+            self.dialog_open().hash(&mut h);
+            self.sign_edit.is_some().hash(&mut h);
+            self.book.is_some().hash(&mut h);
+            self.mod_browser_typing().hash(&mut h);
+            self.recipe_search_focused().hash(&mut h);
+            self.station_typing().hash(&mut h);
+            if let Some(title) = self.title.as_mut() {
+                title.mode.id().hash(&mut h);
+                title.focused_field().map(|(id, _, _)| id).hash(&mut h);
+            }
+        }
+        Some(h.finish())
+    }
+
+    /// Allow the input method only while a text box has focus, and reset
+    /// composition whenever the focused text box itself changes.
     pub(super) fn sync_ime(&mut self) {
-        let want = self.text_field_focused();
+        let focus = self.ime_focus_identity();
+        let want = focus.is_some();
+        if focus != self.screen_state.ime_focus {
+            self.screen_state.ime_focus = focus;
+            self.ime_area = None;
+            preedit::reset();
+        }
         if want != self.ime_allowed
             && let Some(window) = &self.window
         {
             window.set_ime_allowed(want);
             self.ime_allowed = want;
-            // The field lost the focus (or a new one took it): the composition
-            // and the candidate window's place belong to the old one.
             self.ime_area = None;
             if !want {
                 preedit::reset();
@@ -101,15 +143,22 @@ impl Game<'_> {
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
         .then(|| self.observed_now())
         .flatten();
+        let initial_instance = self.screen_state.screen_instance;
         let event = PreeditEvent::from_winit(text, cursor);
         // ScreenEvent.Preedit.Pre, then the screen's handler (the focused
-        // field takes it), then Preedit.Post on the captured receiver when no
-        // field did.
+        // child takes it), then Preedit.Post on the captured receiver when no
+        // child handled it.
         let shown = event.clone().unwrap_or_default();
         if self.dispatch_preedit_pre_hook(preedit_receiver.as_ref(), &shown) {
             return;
         }
-        let taken = self.text_field_focused();
+        let taken = if self.screen_state.screen_instance != initial_instance {
+            false
+        } else if self.screen_state.widgets.has_focus() {
+            self.mounted_widget_preedit(event.as_ref())
+        } else {
+            self.vanilla_text_field_focused()
+        };
         preedit::set_preedit(event.filter(|_| taken));
         if !taken {
             self.dispatch_preedit_post_hook(preedit_receiver.as_ref(), &shown);
@@ -209,7 +258,7 @@ impl Game<'_> {
     /// widgets are offered first by `screen_chars_dispatch`). Returns whether
     /// a text box handled the character.
     fn ime_type(&mut self, text: &str) -> bool {
-        if !self.text_field_focused() || self.mounted_widget_captures_input() {
+        if self.mounted_widget_captures_input() || !self.vanilla_text_field_focused() {
             return false;
         }
         if self.dialog_type(text) {

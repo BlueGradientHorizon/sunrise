@@ -21,6 +21,7 @@ use super::{Game, Screen};
 
 /// What the native hooks see of the screen showing (`observe_screen`), kept
 /// beside its build so one `ScreenState` holds both.
+#[derive(Clone)]
 pub(super) struct ObservedScreen {
     pub(super) id: &'static str,
     /// Not a `Screen` value: the title's own screen or an overlay drawn over
@@ -29,8 +30,14 @@ pub(super) struct ObservedScreen {
     pub(super) overlay: bool,
     pub(super) mod_screen: Option<String>,
     pub(super) menu: Option<String>,
+    pub(super) menu_generation: Option<u64>,
     pub(super) title: Option<std::sync::Arc<mod_api::Text>>,
     pub(super) rect: [f32; 4],
+    /// Actual GUI-scaled screen dimensions (`width`, `height`), used to detect
+    /// viewport/GUI-scale resizes independently of a panel's `rect`.
+    pub(super) screen_size: [f32; 2],
+    /// Receiving screen instance identity (`ScreenState::screen_instance`).
+    pub(super) instance: u64,
     pub(super) slots: usize,
     pub(super) mouse: [f32; 2],
     pub(super) partial_tick: f32,
@@ -40,6 +47,7 @@ impl ObservedScreen {
     pub(super) fn view(&self) -> ScreenView<'_> {
         ScreenView::from(mod_api::__private::built::ScreenView {
             id: self.id,
+            mod_screen: self.mod_screen.as_deref(),
             menu: self.menu.as_deref(),
             title: self.title.as_deref(),
             rect: self.rect,
@@ -298,8 +306,7 @@ impl ScreenBuild {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct LastScreenClick {
     pub(super) time: std::time::Instant,
-    pub(super) generation: u64,
-    pub(super) screen_id: &'static str,
+    pub(super) screen_instance: u64,
     pub(super) button: i32,
 }
 
@@ -310,6 +317,13 @@ pub(super) struct ScreenState {
     pub(super) observed: Option<ObservedScreen>,
     pub(super) build: ScreenBuildState,
     pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
+    /// Monotonic identity of the currently open screen instance. Bumped on
+    /// every screen open, close, or replacement, and preserved across
+    /// same-instance resize/rebuild (`Screen.resize`/`rebuildWidgets`).
+    pub(super) screen_instance: u64,
+    /// Identity of the text field that last owned IME composition, so switching
+    /// directly between two fields clears the old field's preedit and area.
+    pub(super) ime_focus: Option<u64>,
     /// Last handled screen mouse press for 250ms double-click detection.
     pub(super) last_click: Option<LastScreenClick>,
     /// A mod's `ScreenOpening::Vanilla` answer is opening its screen: that
@@ -322,20 +336,19 @@ pub(super) struct ScreenState {
 }
 
 impl ScreenState {
-    /// Whether a press at `now` on `screen_id` with `button` is a vanilla
+    /// Whether a press at `now` on `screen_instance` with `button` is a vanilla
     /// double-click (within 250ms on the same screen instance and button,
     /// `MouseHandler.java:101-106`).
     pub(super) fn is_double_click(
         &self,
         now: std::time::Instant,
-        screen_id: &'static str,
+        screen_instance: u64,
         button: i32,
     ) -> bool {
         self.last_click.is_some_and(|last| {
             now.checked_duration_since(last.time)
                 .is_some_and(|elapsed| elapsed < std::time::Duration::from_millis(250))
-                && last.generation == self.widgets.generation
-                && last.screen_id == screen_id
+                && last.screen_instance == screen_instance
                 && last.button == button
         })
     }
@@ -344,13 +357,12 @@ impl ScreenState {
     pub(super) fn record_click(
         &mut self,
         now: std::time::Instant,
-        screen_id: &'static str,
+        screen_instance: u64,
         button: i32,
     ) {
         self.last_click = Some(LastScreenClick {
             time: now,
-            generation: self.widgets.generation,
-            screen_id,
+            screen_instance,
             button,
         });
     }
@@ -530,7 +542,7 @@ impl Game<'_> {
     /// The framebuffer's size and its GUI-scaled size and scale, as the HUD
     /// computes them (`HudBatch::new`). Never asks for the renderer: before one
     /// exists, the window's own size serves.
-    fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
+    pub(super) fn gui_frame_now(&self) -> ([u32; 2], GuiSize) {
         let framebuffer = self.renderer.as_ref().map_or_else(
             || {
                 self.window.as_ref().map_or([1280, 720], |window| {

@@ -4477,7 +4477,7 @@ impl Game<'_> {
                 } else {
                     self.screen_change_view(self.screen)
                 };
-                let new = self.screen_change_view(Screen::Mod);
+                let new = screen_view_for_mod(&self.screen_change_view(Screen::Mod), mod_id);
                 self.decide_screen_for_mod_open(&current, &new, current.id != "playing")
             };
             match decision {
@@ -4485,15 +4485,11 @@ impl Game<'_> {
                 ScreenDecision::Vanilla(target) => {
                     self.close_replaced_screen_for_mod();
                     self.open_screen_target(target);
-                    self.screen_state.observed = self.observed_now();
-                    self.shown_init_post();
                     return false;
                 }
                 ScreenDecision::ModScreen(other_mod) => {
                     self.close_replaced_screen_for_mod();
                     self.apply_screen(Screen::Mod, Some(other_mod));
-                    self.screen_state.observed = self.observed_now();
-                    self.shown_init_post();
                     return self.mod_screen() == Some(mod_id);
                 }
                 ScreenDecision::Open => {}
@@ -4501,8 +4497,6 @@ impl Game<'_> {
         }
         self.close_replaced_screen_for_mod();
         self.apply_screen(Screen::Mod, Some(mod_id));
-        self.screen_state.observed = self.observed_now();
-        self.shown_init_post();
         self.mod_screen() == Some(mod_id)
     }
     /// Closes mod `mod_id`'s own screen, if it is open.

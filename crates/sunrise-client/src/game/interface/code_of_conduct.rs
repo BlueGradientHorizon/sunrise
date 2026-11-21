@@ -259,6 +259,7 @@ impl Game<'_> {
             let hover = ui::hovered(cursor, x, y, bw, bh);
             ui::button(batch, atlas, x, y, bw, bh, label, true, hover);
         }
+        self.draw_overlay_mounted_widgets(batch, "code_of_conduct");
     }
 
     /// A left click: the box toggles, a button answers.

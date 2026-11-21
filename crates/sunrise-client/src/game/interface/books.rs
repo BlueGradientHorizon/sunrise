@@ -1688,6 +1688,9 @@ impl Game<'_> {
                 hovered = pages.get(*page).and_then(|t| self.book_style_at(t, left));
             }
         }
+        if let Some(book_id) = self.book.as_ref().map(BookScreen::id) {
+            self.draw_overlay_mounted_widgets(batch, book_id);
+        }
         if let Some(style) = hovered {
             if let Some(cursor) = link_cursor(&style) {
                 sunrise_client::widgets::request_cursor(cursor);

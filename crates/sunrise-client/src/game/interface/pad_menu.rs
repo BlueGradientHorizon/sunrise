@@ -291,6 +291,7 @@ impl Game<'_> {
             || self.screen != Screen::Playing
             || self.sign_edit.is_some()
             || self.book.is_some()
+            || (self.prompt_open() && !self.screen_state.widgets.is_empty())
     }
 
     /// Which prompt is up: another one starts the controller's focus again.
@@ -435,6 +436,17 @@ impl Game<'_> {
 
     fn pad_all_targets(&self) -> Vec<Target> {
         let mut targets = key_focus::drawn_targets();
+        for t in self.mounted_widget_targets() {
+            if !targets.iter().any(|existing| {
+                existing
+                    .rect
+                    .iter()
+                    .zip(t.rect)
+                    .all(|(a, b)| (a - b).abs() < 0.5)
+            }) {
+                targets.push(t);
+            }
+        }
         if self.title.is_some()
             || self.sign_edit.is_some()
             || self.book.is_some()
@@ -1283,6 +1295,7 @@ impl Game<'_> {
             self.clear_screen_click_focus();
             self.pad.menu.armed = None;
         }
+        self.sync_mounted_focus_to_rect(target.rect);
         self.pad.menu.pending = None;
         self.pad.menu.nudge = None;
         if !self.pad.menu.held[0] {

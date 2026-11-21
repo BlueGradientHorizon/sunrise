@@ -177,14 +177,9 @@ impl Game<'_> {
 
 impl Game<'_> {
     /// `ScreenEvent.Render.Post`, after the screen's drawing and tooltips,
-    /// including when Pre cancelled. Gameplay overlays keep their exclusions.
-    pub(super) fn draw_screen_with_post_hook(&mut self, batch: &mut HudBatch) {
-        if self.screen != Screen::Playing
-            && self.server_packs.prompt.is_none()
-            && self.book.is_none()
-        {
-            self.draw_mounted_screen_widgets(batch);
-        }
+    /// including when Pre cancelled. Notification-only; mounted children draw
+    /// inside the Pre-guarded contents pass (`draw_screen_phase`).
+    pub(super) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch) {
         if let Some(view) = self.screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
@@ -199,12 +194,20 @@ impl Game<'_> {
     }
     /// `draw_screen_with_post_hook` for the title's own screen, once a frame,
     /// after it has drawn and before the toasts.
-    pub(super) fn draw_title_screen_with_post_hook(&mut self, batch: &mut HudBatch) {
-        if self.screen == Screen::Playing && !self.screen_over_playing() && !self.remote_loading() {
-            self.draw_mounted_screen_widgets(batch);
-        }
+    pub(super) fn draw_title_screen_with_post_hook(&self, batch: &mut HudBatch) {
         if let Some(view) = self.title_screen_render_view(batch) {
             self.screen_render_end(batch, &view);
+        }
+    }
+    /// Draw mounted widgets belonging to the topmost active overlay screen
+    /// (`overlay_id`) inside that overlay's own draw pass, before tooltips.
+    pub(super) fn draw_overlay_mounted_widgets(
+        &self,
+        batch: &mut HudBatch,
+        overlay_id: &'static str,
+    ) {
+        if self.observed_overlay_now() == Some(overlay_id) {
+            self.draw_mounted_screen_widgets(batch);
         }
     }
     /// `draw_screen_with_pre_hook` for the title's own screens.
@@ -266,6 +269,9 @@ impl Game<'_> {
     ) {
         use sunrise_client::screen_draw::RenderPhase;
         if matches!(phase, RenderPhase::Foreground) {
+            if !self.screen_over_playing() {
+                self.draw_mounted_screen_widgets(batch);
+            }
             self.draw_container_hooks(batch);
         }
         let hook = match phase {

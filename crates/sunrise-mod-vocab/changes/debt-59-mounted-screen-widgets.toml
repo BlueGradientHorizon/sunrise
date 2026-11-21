@@ -15,6 +15,7 @@ ids = [
     "hook:screen_init_post",
     "hook:screen_init_post.widgets",
     "type:ScreenInitPostEvent.widgets",
+    "type:ScreenView.mod_screen",
     "hook:screen_mouse_button_pressed_pre",
     "hook:screen_mouse_button_pressed_pre.double_click",
     "type:ScreenMouseButtonPressedPreEvent.double_click",
@@ -103,16 +104,34 @@ with `event.widgets.add_button(Button::new(rect, label, |state, host| { ... }).s
 `Button::inactive(rect, label)` for disabled buttons). Mutate `state: &mut ButtonState` and call \
 `host.close_screen()`, `host.mod_screen_close(...)`, or `host.mod_screen_open(...)` synchronously \
 inside `on_press`.
-   - Text fields: replace `TextField` field mutations, `value()`, and `set_value(...)` with \
-`TextField::new(rect, max_length).value(initial).hint(...).editable(...).bordered(...).on_change(|text, host| ...).on_submit(|text, host| ...)` \
+   - Text fields: replace `TextField.rect`, `edit`, `active`, `bordered`, `value()`, and \
+`set_value(...)` with `TextField::new(rect, max_length).value(initial).hint(...).active(...).editable(...).bordered(...).on_change(|text, host| ...).on_submit(|text, host| ...)` \
 mounted via `event.widgets.add_text_field(...)`, storing shared state on your mod struct across \
 resizes. Call `event.widgets.set_initial_focus(id)` to focus a widget on open.
+     - Removed `TextField` fields without a built-in builder: `TextField.text_color`, \
+`TextField.suggestion`, and `TextField.message` were removed. Use `.hint(Text)` only for \
+empty-state placeholder text (`EditBox.setHint`, not an inline completion suffix or narration \
+label). For custom text colours, inline completion suggestions, or custom narration/rendering, \
+implement `ScreenWidget` with a local `TextEdit` and `DrawContext`, mounted via \
+`event.widgets.add_widget(Box::new(...))`.
    - Custom controls: implement `ScreenWidget` and mount via `event.widgets.add_widget(Box::new(...))`.
-2. `ClientHost::mod_screen_open`: no signature change; it now opens over any open vanilla screen, \
+2. `ScreenView.mod_screen` and `ClientHost::mod_screen_open`:
+   - `ScreenView` now carries `mod_screen: Option<&str>`, naming the owning mod of that screen \
+snapshot when `screen.id == "mod"` (and `None` for vanilla/title/overlay screens). Migrate \
+`screen_closing` and `screen_*_post` listeners from checking live `host.mod_screen()` to checking \
+`event.screen.mod_screen` so they still identify the receiving mod screen after a synchronous \
+`mod_a -> mod_b` replacement or close; keep `host.mod_screen()` when querying whichever mod screen \
+is currently open.
+   - `ClientHost::mod_screen_open`: no signature change; it now opens over any open vanilla screen, \
 title screen, overlay, or other mod screen through `screen_opening` / `screen_closing` rather than \
 returning `false` outside bare `Screen::Playing`. Remove any workaround that closed another screen \
 first only to satisfy the old restriction.
-3. Screen input hooks (all bumped to version 2):
+3. Screen input hooks (all Post/Pre double-click hooks bumped to version 2):
+   - `screen_char_typed_pre.field`: preserved for focused vanilla boxes and focused mounted \
+built-in `TextField`s (modifications to `event.field` are applied back through the `EditBox` \
+filter, `max_length`, and `on_change` responder). Focused custom `ScreenWidget`s own their own \
+state and therefore report `event.field == None`; filter or rewrite characters in \
+`ScreenWidget::char_typed` or cancel in `screen_char_typed_pre`.
    - `screen_mouse_button_pressed_pre` and `screen_mouse_button_pressed_post`: read `event.double_click` \
 for vanilla's 250 ms double-click flag (update exhaustive pattern matches or literals).
    - `screen_mouse_button_pressed_post` and `screen_mouse_button_released_post`: read `event.handled` \

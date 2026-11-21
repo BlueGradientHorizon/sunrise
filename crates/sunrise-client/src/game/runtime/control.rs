@@ -785,132 +785,167 @@ impl Game<'_> {
                     }
                 }
                 let action = arg(2)?;
-                let key_receiver = self.observed_input_screen();
-                // ScreenEvent.KeyPressed.Pre: the open screen hears of the
-                // press before it acts on it. A cancelled press goes no further.
-                if action != "up"
-                    && self.screen_key_pressed_on(
-                        key_receiver.as_ref(),
-                        physical,
-                        action == "repeat",
-                    )
-                {
-                    if action == "tap" {
-                        self.physical_keys.remove(&physical);
-                    }
-                    return ok();
-                }
-                if action != "up"
-                    && physical == KeyCode::Escape
-                    && self.screen == Screen::Mod
-                    && !self.prompt_open()
-                    && !self.dialog_open()
-                {
-                    self.close_mod_screen();
-                    if action == "tap" {
-                        self.physical_keys.remove(&physical);
-                    }
-                    return ok();
-                }
-                if action != "up"
-                    && key_receiver.is_some()
-                    && self.mounted_widget_key_pressed(
-                        physical,
-                        action == "repeat",
-                        super::glfw_modifiers(self.modifiers),
-                    )
-                {
-                    if action == "tap" {
-                        self.physical_keys.remove(&physical);
-                    }
-                    return ok();
-                }
-                if action != "up"
-                    && physical != KeyCode::Escape
-                    && self.mounted_widget_captures_input()
-                {
-                    if action == "tap" {
-                        self.physical_keys.remove(&physical);
-                    }
-                    return ok();
-                }
-                self.native_panel_key_event(physical, action != "up", action == "repeat");
-                // The merchant's focused offer and the recipe book's last
-                // recipe take Enter and Space, as the window's.
-                if action != "up"
-                    && self.screen == Screen::Inventory
-                    && (self.merchant_key(physical) || self.recipe_book_key(physical))
-                {
-                    return ok();
-                }
-                // Text screens consume raw presses; releases follow key binds.
-                let typing = matches!(
-                    self.screen,
-                    Screen::Chat | Screen::Options | Screen::CommandBlock | Screen::BlockEditor
-                );
-                // ScreenEvent.KeyPressed.Post: no screen arm took the press; a
-                // cancel keeps it from the key bindings.
-                if !typing
-                    && arg(2)? != "up"
-                    && self.screen_key_post_on(
-                        key_receiver.as_ref(),
-                        physical,
-                        true,
-                        arg(2)? == "repeat",
-                    )
-                {
-                    if arg(2)? == "tap" {
-                        self.physical_keys.remove(&physical);
-                    }
-                    return ok();
-                }
-                let key = if typing && arg(2)? != "up" {
-                    key
-                } else {
-                    match self.settings.keys.translate(key) {
-                        Some(Ok(k)) => k,
-                        Some(Err(button)) => {
-                            let action = arg(2)?;
-                            if self.screen == Screen::Playing
-                                && self.shared_default_acts(
-                                    button,
-                                    sunrise_client::keybinds::key_name(physical),
-                                )
+                let is_press = action != "up";
+                let is_release = action == "up" || action == "tap";
+                let repeat = action == "repeat";
+                let modifiers = super::glfw_modifiers(self.modifiers);
+                if is_press {
+                    let press_instance = self.screen_state.screen_instance;
+                    let key_receiver = self.observed_input_screen();
+                    // ScreenEvent.KeyPressed.Pre: the open screen hears of the
+                    // press before it acts on it. A cancelled press goes no further.
+                    let pre_canceled =
+                        self.screen_key_pressed_on(key_receiver.as_ref(), physical, repeat);
+                    if !pre_canceled {
+                        if self.screen_state.screen_instance != press_instance {
+                            let _ = self.screen_key_post_on(
+                                key_receiver.as_ref(),
+                                physical,
+                                true,
+                                repeat,
+                            );
+                        } else if physical == KeyCode::Escape
+                            && self.screen == Screen::Mod
+                            && !self.prompt_open()
+                            && !self.dialog_open()
+                        {
+                            self.close_mod_screen();
+                        } else if self.observed_screen_view().is_some()
+                            && self.mounted_widget_key_pressed(physical, repeat, modifiers)
+                        {
+                            // Handled by the focused mounted widget.
+                        } else if self.screen_state.screen_instance != press_instance {
+                            let _ = self.screen_key_post_on(
+                                key_receiver.as_ref(),
+                                physical,
+                                true,
+                                repeat,
+                            );
+                        } else {
+                            self.native_panel_key_event(physical, true, repeat);
+                            let mounted_captures = self.mounted_widget_captures_input();
+                            // The merchant's focused offer and the recipe book's last
+                            // recipe take Enter and Space, as the window's.
+                            let inv_handled = !mounted_captures
+                                && self.screen == Screen::Inventory
+                                && (self.merchant_key(physical) || self.recipe_book_key(physical));
+                            // Text screens consume raw presses; releases follow key binds.
+                            let typing = matches!(
+                                self.screen,
+                                Screen::Chat
+                                    | Screen::Options
+                                    | Screen::CommandBlock
+                                    | Screen::BlockEditor
+                            );
+                            if !inv_handled
+                                && (typing
+                                    || !self.screen_key_post_on(
+                                        key_receiver.as_ref(),
+                                        physical,
+                                        true,
+                                        repeat,
+                                    ))
+                                && (physical == KeyCode::Escape || !mounted_captures)
                             {
-                                if action != "up" {
-                                    self.mouse_mapping(button, true, Source::Agent)?;
-                                }
-                                // A repeat keeps the key held, as the window's.
-                                if action == "up" || action == "tap" {
-                                    self.mouse_mapping(button, false, Source::Agent)?;
+                                if typing {
+                                    if repeat {
+                                        self.physical_keys.insert(physical);
+                                        self.mapped_key(key, true, true, key, Source::Agent)?;
+                                    } else {
+                                        self.control_key_down(key, physical)?;
+                                    }
+                                } else {
+                                    match self.settings.keys.translate(key) {
+                                        Some(Ok(k)) => {
+                                            if repeat {
+                                                self.physical_keys.insert(physical);
+                                                self.mapped_key(k, true, true, k, Source::Agent)?;
+                                            } else {
+                                                self.control_key_down(k, physical)?;
+                                            }
+                                        }
+                                        Some(Err(button)) => {
+                                            if self.screen == Screen::Playing
+                                                && self.shared_default_acts(
+                                                    button,
+                                                    sunrise_client::keybinds::key_name(physical),
+                                                )
+                                            {
+                                                self.mouse_mapping(button, true, Source::Agent)?;
+                                            }
+                                        }
+                                        None => {}
+                                    }
                                 }
                             }
-                            if action == "tap" {
-                                self.physical_keys.remove(&physical);
-                            }
-                            return ok();
                         }
-                        None => return ok(),
                     }
-                };
-                match arg(2)? {
-                    "down" => self.control_key_down(key, physical)?,
-                    "up" => {
-                        self.control_key_up(key);
-                        self.physical_keys.remove(&key);
-                    }
-                    // The system's auto-repeat while the key is held.
-                    "repeat" => {
-                        self.physical_keys.insert(physical);
-                        self.mapped_key(key, true, true, key, Source::Agent)?;
-                    }
-                    "tap" => {
-                        self.control_key_down(key, physical)?;
-                        self.control_key_up(key);
+                }
+                if is_release {
+                    if action == "tap" {
+                        self.press_modifier_key(physical, false);
                         self.physical_keys.remove(&physical);
                         self.debug_key(physical, sunrise_client::debug_keys::KeyAction::Release);
                     }
-                    _ => unreachable!("checked above"),
+                    let release_instance = self.screen_state.screen_instance;
+                    let release_receiver = self.observed_input_screen();
+                    let release_modifiers = super::glfw_modifiers(self.modifiers);
+                    let mut run_binding_release = true;
+                    if self.screen_key_released_on(release_receiver.as_ref(), physical) {
+                        // Screen cancellation must not leave a held keyboard mapping down.
+                        self.keys.remove(&physical);
+                    } else if self.screen_state.screen_instance != release_instance {
+                        let _ = self.screen_key_post_on(
+                            release_receiver.as_ref(),
+                            physical,
+                            false,
+                            false,
+                        );
+                        self.keys.remove(&physical);
+                        run_binding_release = false;
+                    } else if self.observed_screen_view().is_some()
+                        && self.mounted_widget_key_released(physical, release_modifiers)
+                    {
+                        run_binding_release = false;
+                    } else if self.screen_state.screen_instance != release_instance {
+                        let _ = self.screen_key_post_on(
+                            release_receiver.as_ref(),
+                            physical,
+                            false,
+                            false,
+                        );
+                        self.keys.remove(&physical);
+                        run_binding_release = false;
+                    } else {
+                        self.native_panel_key_event(physical, false, false);
+                        if self.screen_key_post_on(
+                            release_receiver.as_ref(),
+                            physical,
+                            false,
+                            false,
+                        ) {
+                            run_binding_release = false;
+                        }
+                    }
+                    if run_binding_release {
+                        match self.settings.keys.translate(key) {
+                            Some(Ok(k)) => {
+                                self.control_key_up(k);
+                                self.physical_keys.remove(&k);
+                            }
+                            Some(Err(button)) => {
+                                if self.screen == Screen::Playing
+                                    && self.shared_default_acts(
+                                        button,
+                                        sunrise_client::keybinds::key_name(physical),
+                                    )
+                                {
+                                    self.mouse_mapping(button, false, Source::Agent)?;
+                                }
+                            }
+                            None => {}
+                        }
+                    }
                 }
                 ok()
             }
@@ -1212,22 +1247,39 @@ impl Game<'_> {
                 // `type` types the survivors only.
                 // `\b` is the socket's backspace sentinel, not two characters.
                 if text == "\\b" {
+                    if self.observed_screen_view().is_some() && self.mounted_widget_captures_input()
+                    {
+                        self.mounted_widget_key_pressed(
+                            KeyCode::Backspace,
+                            false,
+                            super::glfw_modifiers(self.modifiers),
+                        );
+                        return ok();
+                    }
                     self.type_into_screen(text)?;
                     return ok();
                 }
                 let mut typed = Ok(());
-                let modifiers = super::glfw_modifiers(self.modifiers);
-                self.screen_text_each(text, |game, c| {
-                    if typed.is_ok() {
-                        if let Some(ch) = c.chars().next()
-                            && !ch.is_control()
-                            && game.mounted_widget_char_typed(ch, modifiers)
-                        {
-                            return;
+                if self.observed_screen_view().is_some() {
+                    self.screen_chars_dispatch(text, |game, c| {
+                        if typed.is_err() {
+                            return false;
                         }
-                        typed = game.type_into_screen(c);
-                    }
-                });
+                        match game.type_into_screen(c) {
+                            Ok(()) => true,
+                            Err(e) => {
+                                typed = Err(e);
+                                false
+                            }
+                        }
+                    });
+                } else {
+                    self.screen_text_each(text, |game, c| {
+                        if typed.is_ok() {
+                            typed = game.type_into_screen(c);
+                        }
+                    });
+                }
                 typed?;
                 ok()
             }

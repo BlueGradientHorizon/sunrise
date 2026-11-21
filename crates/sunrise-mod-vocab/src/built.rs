@@ -130,6 +130,7 @@ impl From<ItemFished> for super::ItemFished {
 // no wire: borrowed game-to-hook adapter; its call fields cross separately.
 pub struct ScreenView<'a> {
     pub id: &'static str,
+    pub mod_screen: Option<&'a str>,
     pub menu: Option<&'a str>,
     pub title: Option<&'a Text>,
     pub rect: [f32; 4],
@@ -141,6 +142,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
     fn from(v: ScreenView<'a>) -> Self {
         let ScreenView {
             id,
+            mod_screen,
             menu,
             title,
             rect,
@@ -150,6 +152,7 @@ impl<'a> From<ScreenView<'a>> for super::ScreenView<'a> {
         } = v;
         Self {
             id,
+            mod_screen,
             menu,
             title,
             rect,

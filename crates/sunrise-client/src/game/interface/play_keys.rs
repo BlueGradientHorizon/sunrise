@@ -282,10 +282,10 @@ impl Game<'_> {
                 }
             }
             _ if self.screen == Screen::Paused && self.pause_menu => {
-                self.pause_key(key)?;
+                let _ = self.pause_key(key)?;
             }
             _ if self.screen == Screen::Dead => {
-                self.death_key(key)?;
+                let _ = self.death_key(key)?;
             }
             _ if self.screen == Screen::Stats => self.stats_key(raw),
             _ => {}

@@ -260,13 +260,16 @@ and on vanilla screens alike, matching vanilla's `Screen.addRenderableWidget` an
 {{#include ../../../examples/src/widget_screen.rs:widget_screen}}
 ```
 
-The engine owns drawing order (mounted widgets draw right before `screen_render_post`), hover,
-focus, Tab / Shift+Tab cycling, controller navigation, narration, and mouse/keyboard dispatch.
-Mounted widgets are cleared and rebuilt whenever the screen initializes or resizes, so keep any
-persistent text or selection state on your mod struct and seed widgets from it in
-`screen_init_post`. Use `event.widgets.set_initial_focus(id)` to focus a mounted widget on open
-(`Screen.setInitialFocus`), or `event.widgets.remove(id)` to remove a widget added during the
-same `screen_init_post` call (`Screen.removeWidget`).
+The engine owns drawing order (mounted widgets draw inside the screen's Pre-guarded contents pass,
+before `screen_render_foreground` and tooltips, so cancelling `screen_render_pre` skips them),
+hover, focus, unified Tab / Shift+Tab and arrow navigation across native and mounted controls,
+controller navigation, narration, and mouse/keyboard dispatch on screens, title screens, and
+overlays alike. Mounted widgets are cleared and rebuilt whenever the screen initializes or resizes
+(while preserving same-instance `MouseHandler` double-click timing), so keep any persistent text or
+selection state on your mod struct and seed widgets from it in `screen_init_post`. Use
+`event.widgets.set_initial_focus(id)` to focus a mounted widget on open (`Screen.setInitialFocus`),
+or `event.widgets.remove(id)` to remove a widget added during the same `screen_init_post` call
+(`Screen.removeWidget`).
 
 ### Buttons with your own art
 
@@ -352,8 +355,14 @@ the screen, the engine discards the previous screen's mounted widgets once the c
 Screen mouse, keyboard, character, and preedit hooks match NeoForge's `ScreenEvent.*` Pre/Post
 contract on the **receiving screen**:
 
-- **Receiving screen**: the engine snapshots the open screen at Pre time and passes that same
-  `ScreenView` to the matching Post hook, even if handling closed the screen or opened another.
+- **Receiving screen**: the engine snapshots the open screen at Pre time (including
+  `event.screen.mod_screen` when a mod screen is open) and passes that same `ScreenView` to the
+  matching Post hook, even if handling closed the screen or opened another mod's screen. Read
+  `event.screen.mod_screen` in screen Post hooks rather than `host.mod_screen()`, which always
+  reports the screen currently open at the moment it is called.
+- **Focused text-box rewrites (`screen_char_typed_pre.field`)**: `event.field` is `Some` for
+  vanilla edit boxes and for focused mounted built-in `TextField`s (whose edits and `on_change`
+  callback stay in sync), and `None` for custom `ScreenWidget`s (which own their own state).
 - **Double-click**: `screen_mouse_button_pressed_pre` and `screen_mouse_button_pressed_post` carry
   `event.double_click`, following vanilla `MouseHandler`'s 250 ms same-screen same-button rule.
 - **Mouse press and release Post (`collect`, non-cancellable)**:

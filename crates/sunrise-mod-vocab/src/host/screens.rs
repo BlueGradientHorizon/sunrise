@@ -85,8 +85,10 @@ pub trait ScreensClientHost {
     /// transition and `screen_init_post` runs once it opens, so the mod mounts
     /// widgets in `screen_init_post`, draws in `screen_render_post`, and takes its
     /// clicks, scroll, keys, and typing there; the mouse is freed, and Escape
-    /// closes it. Every mod's own screen has the `ScreenView.id` `mod`, so a mod's
-    /// screen hooks check `mod_screen()` is its own before mounting or drawing. It
+    /// closes it. Every mod's own screen has the `ScreenView.id` `mod` and sets
+    /// `ScreenView.mod_screen` to its owning mod id, so a mod's screen hooks
+    /// check `event.screen.mod_screen == Some("my_mod")` (or live `mod_screen()`
+    /// to query the currently open screen). It
     /// doesn't pause a single-player game (as the inventory doesn't). Can replace
     /// any open vanilla screen, title screen, overlay (book, sign editor, dialog,
     /// or prompt), or another mod's screen, running the replaced screen's close
@@ -133,8 +135,11 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn sign_editor(&self) -> Option<SignEditView>;
     /// Side: client.
-    /// The mod whose own screen is open, if one is (Escape, or another screen
-    /// replacing it, closes it).
+    /// The mod whose own screen is currently open, if one is (Escape, or
+    /// another screen replacing it, closes it). This is a live query for the
+    /// screen open right now; inside `screen_closing` or `screen_*_post` hooks,
+    /// read `event.screen.mod_screen` to identify the screen that received the
+    /// event even after a synchronous replacement or close.
     #[access(ClientSetup)]
     fn mod_screen(&self) -> Option<&str>;
     /// Side: client.

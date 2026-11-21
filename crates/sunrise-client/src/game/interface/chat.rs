@@ -1594,6 +1594,7 @@ impl Game<'_> {
         let mut layout = self.link_prompt_layout(url, (w, h));
         layout.declare_no(2);
         layout.draw(batch, atlas, self.cursor, &labels);
+        self.draw_overlay_mounted_widgets(batch, "link_prompt");
     }
     /// The prompt's answer: the link opens on yes; either way the chat is back.
     pub(super) fn answer_link_prompt(&mut self, yes: bool) {

@@ -2938,27 +2938,30 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
         }
     }
     /// A left press after `click` focused a field: the cursor goes under the
-    /// pointer (`EditBox.onClick`).
+    /// pointer (`EditBox.onClick`). Returns `true` when the click hit the
+    /// focused field.
     pub fn press_field(
         &mut self,
         atlas: &HudAtlas,
         (x, y): (f32, f32),
         size: (f32, f32),
         shift: bool,
-    ) {
+    ) -> bool {
         let (w, h) = (size.0.ceil(), size.1.ceil());
         if self.rules.get_mut().is_some() {
-            return;
+            return false;
         }
         let Some(rect @ [fx, fy, fw, fh]) = self.focused_rect((w, h)) else {
-            return;
+            return false;
         };
         if !crate::ui::hovered((x, y), fx, fy, fw, fh) {
-            return;
+            return false;
         }
         if let Some(field) = caret_field(&mut self.mode, self.search_focused, &mut self.search) {
             self.caret.get_mut().press(atlas, field, rect, x, shift);
+            return true;
         }
+        false
     }
     /// The pointer moved with the button held (`EditBox.onDrag`).
     pub fn drag_field(&mut self, atlas: &HudAtlas, x: f32) {
