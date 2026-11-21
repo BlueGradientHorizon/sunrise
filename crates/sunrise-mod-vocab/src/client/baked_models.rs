@@ -4,7 +4,7 @@
 //! once into one immutable store for that resource generation. A mod retains keys into the store;
 //! looking up a key borrows the model's geometry and sprites.
 use crate::{Direction, ModelRef};
-use std::{fmt, iter::FusedIterator};
+use std::{fmt, iter::FusedIterator, ops::Range};
 
 /// One baked model of the published model store: a block state's variant model or a standalone
 /// model, for one resource generation. Get it from
@@ -35,8 +35,9 @@ impl From<ModelRef> for BakedModelKey {
 
 /// A block state's baked model alternatives, borrowed from the published resource generation.
 /// Keep the keys produced by [`Self::iter`], not this view, across host calls.
+/// Equality compares the generation and the ordered list of keys.
 // no wire: borrows the published resource generation's slot list.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct BakedModelKeys<'a> {
     generation: u64,
@@ -44,14 +45,59 @@ pub struct BakedModelKeys<'a> {
 }
 
 impl<'a> BakedModelKeys<'a> {
+    /// Number of baked model alternatives in the list.
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    /// Whether this state has no baked model alternatives.
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
     /// The keys in bake order, without repeats. No random model selection is performed.
     pub fn iter(self) -> impl ExactSizeIterator<Item = BakedModelKey> + 'a {
-        let Self { generation, slots } = self;
-        slots
-            .iter()
-            .map(move |&slot| BakedModelKey(generation, slot))
+        self.into_iter()
     }
 }
+
+impl<'a> IntoIterator for BakedModelKeys<'a> {
+    type Item = BakedModelKey;
+    type IntoIter = BakedModelKeyIter<'a>;
+
+    /// The keys in bake order, without repeats. No random model selection is performed.
+    fn into_iter(self) -> Self::IntoIter {
+        BakedModelKeyIter {
+            generation: self.generation,
+            slots: self.slots.iter(),
+        }
+    }
+}
+
+/// An iterator over a block state's baked model keys, yielding keys by value.
+// no wire: borrows the published resource generation's slot list.
+// exhaustive: private fields; only a baked model key list creates it.
+pub struct BakedModelKeyIter<'a> {
+    generation: u64,
+    slots: std::slice::Iter<'a, u32>,
+}
+
+impl Iterator for BakedModelKeyIter<'_> {
+    type Item = BakedModelKey;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.slots
+            .next()
+            .map(|&slot| BakedModelKey(self.generation, slot))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.slots.size_hint()
+    }
+}
+
+impl ExactSizeIterator for BakedModelKeyIter<'_> {}
+impl FusedIterator for BakedModelKeyIter<'_> {}
 
 /// Immutable geometry and metadata borrowed from one published baked model. Keep its
 /// [`BakedModelKey`] to borrow the model again; this view cannot outlive the asset borrow.
@@ -75,17 +121,74 @@ impl<'a> BakedModelView<'a> {
 
     /// Its quads in bake order, already turned and UV-locked as the variant asks. Traversal
     /// borrows geometry and sprite names and does not resolve a block tint or draw material.
-    pub fn quads(self) -> impl FusedIterator<Item = BakedQuad<'a>> {
-        let geometry = self.geometry;
-        (0..).map_while(move |index| geometry.quad(index)).fuse()
+    /// `len()` and `count()` give the remaining count in constant time. Traverse in either
+    /// direction, or skip straight to a quad with `nth()` or `nth_back()`.
+    pub fn quads(
+        self,
+    ) -> impl ExactSizeIterator<Item = BakedQuad<'a>> + DoubleEndedIterator + FusedIterator {
+        BakedQuadIter {
+            geometry: self.geometry,
+            indices: 0..self.geometry.len(),
+        }
     }
 }
 
+struct BakedQuadIter<'a> {
+    geometry: &'a dyn BakedQuadSource,
+    indices: Range<usize>,
+}
+
+impl<'a> BakedQuadIter<'a> {
+    fn at(&self, index: usize) -> BakedQuad<'a> {
+        self.geometry
+            .quad(index)
+            .expect("baked quad index within source length")
+    }
+}
+
+impl<'a> Iterator for BakedQuadIter<'a> {
+    type Item = BakedQuad<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.nth(0)
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        let index = self.indices.nth(n)?;
+        Some(self.at(index))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.indices.size_hint()
+    }
+
+    fn count(self) -> usize {
+        self.indices.len()
+    }
+}
+
+impl DoubleEndedIterator for BakedQuadIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.nth_back(0)
+    }
+
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        let index = self.indices.nth_back(n)?;
+        Some(self.at(index))
+    }
+}
+
+impl ExactSizeIterator for BakedQuadIter<'_> {}
+impl FusedIterator for BakedQuadIter<'_> {}
+
 impl PartialEq for BakedModelView<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.ambient_occlusion == other.ambient_occlusion
-            && self.particle == other.particle
-            && self.quads().eq(other.quads())
+        if self.ambient_occlusion != other.ambient_occlusion || self.particle != other.particle {
+            return false;
+        }
+        let left = self.quads();
+        let right = other.quads();
+        left.len() == right.len() && left.eq(right)
     }
 }
 
@@ -126,9 +229,16 @@ pub struct BakedQuad<'a> {
 }
 
 /// Renderer-side backing for a model's immutable quads. Indices are contiguous in bake order.
+#[allow(
+    clippy::len_without_is_empty,
+    reason = "indexed traversal needs only the length"
+)]
 pub trait BakedQuadSource: Sync {
     /// Borrow the quad at `index` in constant time, or return `None` past the last quad.
     fn quad(&self, index: usize) -> Option<BakedQuad<'_>>;
+
+    /// Number of quads, in constant time. Every index in `0..len()` must have a quad.
+    fn len(&self) -> usize;
 }
 
 /// Borrow a state's precomputed slots from a published model store.

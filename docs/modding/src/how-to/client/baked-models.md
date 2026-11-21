@@ -43,16 +43,18 @@ fn model_baking_completed(&self, host: &mut dyn ClientHost, _: &mut ModelBakingC
 
 | Call | Answers |
 | --- | --- |
-| `block_state_models(state: BlockState)` | A borrowed `BakedModelKeys` view of every model the state can select, in bake order without repeats. `iter()` yields keys by value without picking a position's seeded variant. Empty for a valid state with no baked binding. `UnknownModel` if the live state index lacks the state. |
+| `block_state_models(state: BlockState)` | A borrowed `BakedModelKeys<'_>` view of every model the state can select, in bake order without repeats. Read `len()` or `is_empty()` without scanning, or iterate over the view directly or with `iter()` to get keys by value without picking a position's seeded variant. Equality compares the generation and the ordered keys. Empty for a valid state with no baked binding. `UnknownModel` if the live state index lacks the state. |
 | `block_state_model(state: BlockState)` | The state as one drawable `ModelRef` (see [Model drawing](model-drawing.md)). `UnknownModel` for air, a state no blockstate file binds, or a state the live state index lacks. |
-| `baked_model(key)` | A `BakedModelView` borrowing the geometry and `particle` sprite name, and giving the model's `ambient_occlusion` flag. `StaleModel` once a reload superseded the key; `UnknownModel` for a slot the store lacks. |
+| `baked_model(key)` | A `BakedModelView<'_>` borrowing the geometry and `particle` sprite name, and giving the model's `ambient_occlusion` flag. `StaleModel` once a reload superseded the key; `UnknownModel` for a slot the store lacks. |
 
 The model borrows from `render_assets()`. `view.quads()` iterates in bake order without copying the
 geometry or allocating a list. Use `view.quad(i)` for direct, zero-based lookup in the same order;
 it returns `None` out of range. Keep the keys, not the views, between callbacks. `quad.baked_argb`
 is the baked `0xAARRGGBB` colour if set; `quad.tint_index` names a block tint source, or is `-1`
 for none. Neither is the final rendered colour. The view does not carry resolved lighting,
-render passes, per-quad ambient occlusion overrides, or shading overrides.
+render passes, per-quad ambient occlusion overrides, or shading overrides. The quad iterator
+reports its remaining length in constant time (`quads.len()` or `quads.count()`) and can walk
+from either end (`quads.next_back()` or `view.quads().rev()`).
 
 ## Generations
 

@@ -42,6 +42,10 @@ impl RenderAssets {
 }
 
 impl BakedQuadSource for BakedModel {
+    fn len(&self) -> usize {
+        self.faces.len()
+    }
+
     fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
         let quad = &self.faces.get(index)?.quad;
         Some(built::baked_quad(

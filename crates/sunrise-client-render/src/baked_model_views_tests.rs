@@ -91,6 +91,10 @@ fn a_view_lends_quads_in_bake_order_with_baked_argb_separate_from_tint() {
 
     struct CountedSource<'a>(&'a BakedModel, AtomicUsize);
     impl BakedQuadSource for CountedSource<'_> {
+        fn len(&self) -> usize {
+            self.0.len()
+        }
+
         fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
             self.1.fetch_add(1, Ordering::Relaxed);
             self.0.quad(index)
@@ -109,6 +113,105 @@ fn a_view_lends_quads_in_bake_order_with_baked_argb_separate_from_tint() {
 }
 
 #[test]
+fn quad_iteration_reports_the_remaining_count_and_reads_both_ends() {
+    let model = BakedModel {
+        ambient_occlusion: true,
+        particle: None,
+        faces: [
+            "fixture:block/first",
+            "fixture:block/middle",
+            "fixture:block/last",
+        ]
+        .into_iter()
+        .map(|sprite| BakedFace::new(quad(FaceDirection::Up, None, sprite), 0, false, false, None))
+        .collect(),
+        cube: None,
+    };
+    let view = built::baked_model_view(true, None, &model);
+    let mut quads = view.quads();
+    assert_eq!(quads.size_hint(), (3, Some(3)));
+    assert_eq!(quads.next_back().unwrap().sprite, "fixture:block/last");
+    assert_eq!(quads.len(), 2);
+    assert_eq!(quads.next().unwrap().sprite, "fixture:block/first");
+    assert_eq!(quads.len(), 1);
+    assert_eq!(quads.next_back().unwrap().sprite, "fixture:block/middle");
+    assert_eq!(quads.len(), 0);
+    assert!(quads.next().is_none());
+    assert!(quads.next_back().is_none());
+}
+
+#[test]
+fn quad_iteration_skips_without_fetching_the_skipped_quads() {
+    use std::sync::Mutex;
+
+    struct RecordingGeometry {
+        model: BakedModel,
+        fetched: Mutex<Vec<usize>>,
+    }
+
+    impl BakedQuadSource for RecordingGeometry {
+        fn len(&self) -> usize {
+            self.model.len()
+        }
+
+        fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
+            self.fetched.lock().unwrap().push(index);
+            self.model.quad(index)
+        }
+    }
+
+    let geometry = RecordingGeometry {
+        model: BakedModel {
+            ambient_occlusion: true,
+            particle: None,
+            faces: (0..7)
+                .map(|_| {
+                    BakedFace::new(
+                        quad(FaceDirection::Up, None, "fixture:block/stone"),
+                        0,
+                        false,
+                        false,
+                        None,
+                    )
+                })
+                .collect(),
+            cube: None,
+        },
+        fetched: Mutex::new(Vec::new()),
+    };
+    let mut quads = built::baked_model_view(true, None, &geometry).quads();
+
+    assert!(quads.nth(2).is_some());
+    assert_eq!(geometry.fetched.lock().unwrap().as_slice(), &[2]);
+    assert_eq!(quads.len(), 4);
+
+    assert!(quads.nth_back(1).is_some());
+    assert_eq!(geometry.fetched.lock().unwrap().as_slice(), &[2, 5]);
+    assert_eq!(quads.len(), 2);
+}
+
+#[test]
+fn quad_count_and_unequal_lengths_do_not_read_geometry() {
+    struct UnreadGeometry(usize);
+    impl BakedQuadSource for UnreadGeometry {
+        fn len(&self) -> usize {
+            self.0
+        }
+
+        fn quad(&self, index: usize) -> Option<BakedQuad<'_>> {
+            panic!("unexpected geometry lookup at {index}");
+        }
+    }
+
+    let two_quads = UnreadGeometry(2);
+    let three_quads = UnreadGeometry(3);
+    let left = built::baked_model_view(true, None, &two_quads);
+    let right = built::baked_model_view(true, None, &three_quads);
+    assert_eq!(left.quads().count(), 2);
+    assert_ne!(left, right);
+}
+
+#[test]
 fn a_model_can_have_no_quads() {
     let model = BakedModel {
         ambient_occlusion: true,
@@ -118,6 +221,31 @@ fn a_model_can_have_no_quads() {
     };
     let view = built::baked_model_view(true, None, &model);
     assert!(view.quads().next().is_none());
+}
+
+#[test]
+fn baked_model_keys_are_a_sized_sequence_in_one_generation() {
+    let keys = built::baked_model_keys(4, &[7, 3]);
+    let empty = built::baked_model_keys(4, &[]);
+    assert_eq!((keys.len(), keys.is_empty()), (2, false));
+    assert_eq!((empty.len(), empty.is_empty()), (0, true));
+    assert_eq!(keys, built::baked_model_keys(4, &[7, 3]));
+    assert_ne!(keys, built::baked_model_keys(4, &[3, 7]));
+    assert_ne!(keys, built::baked_model_keys(5, &[7, 3]));
+
+    let mut iter = keys.into_iter();
+    assert_eq!(iter.len(), 2);
+    assert_eq!(
+        iter.next(),
+        Some(BakedModelKey::from(built::model_ref(4, 7)))
+    );
+    assert_eq!(iter.len(), 1);
+    assert_eq!(
+        iter.next(),
+        Some(BakedModelKey::from(built::model_ref(4, 3)))
+    );
+    assert_eq!(iter.next(), None);
+    assert_eq!(empty.into_iter().next(), None);
 }
 
 #[test]
