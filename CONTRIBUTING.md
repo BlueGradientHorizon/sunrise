@@ -174,8 +174,8 @@ still fails by binary name. Move a network test with `tools/ci/move_to_daily.py`
 - If a daily run fails on a test your pull request added or touched, an issue is filed that names the test, where it
   panicked and the pull requests merged since the last green daily run. The fix is an ordinary pull request.
 
-Three kinds of build: a **snapshot**, from main's head on request, needs only the gate tier and no in-game tests
-(it is published as `snapshot-<date>-<short>`, which no launcher offers, to test packages and platforms after a
+Three kinds of build: a **Dev build**, from a commit on main on request, needs only the gate tier and no in-game tests
+(it is published as `dev-<date>-<short>`, installed only by explicit tag, to test packages and platforms after a
 merge); the **nightly** is published by the daily run when every part of it is green; a **release** is cut from a
 nightly.
 
