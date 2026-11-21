@@ -1036,7 +1036,7 @@ impl Game<'_> {
             }
             // PingDebugMonitor.onPongReceived.
             C::PongResponse(p) => {
-                let delay = self.debug_millis() - p.time;
+                let delay = sunrise_client::net::ping_millis().wrapping_sub(p.time);
                 self.debug_charts.ping.log(delay);
             }
             C::Login(p) => self.apply_login_packet(p),
@@ -2459,10 +2459,11 @@ pub(crate) mod tests {
         game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
         let (client, server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
-        finish_play_test(Connection::local(server), configure)
+        finish_play_test(game, Connection::local(server), configure)
     }
 
     fn finish_play_test(
+        game: &mut super::Game<'_>,
         server: sunrise_protocol::connection::Connection,
         configure: impl FnOnce(
             &mut sunrise_protocol::connection::ConnReader,
@@ -2503,6 +2504,7 @@ pub(crate) mod tests {
         writer
             .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
             .unwrap();
+        game.acknowledge_test_configuration();
         let (id, body) = reader.recv().unwrap();
         assert!(matches!(
             cfg::Serverbound::decode(id, &body).unwrap(),

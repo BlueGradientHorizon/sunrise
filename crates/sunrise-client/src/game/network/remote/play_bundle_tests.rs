@@ -1,7 +1,5 @@
 use super::{connect_play_test, finish_play_test, spawn_menu_test};
-use crate::game::{
-    native_entity_refs::tests::with_client_game, remote::Received, viewed_worlds::tests::column,
-};
+use crate::game::{native_entity_refs::tests::with_client_game, viewed_worlds::tests::column};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadWork, PayloadWorkStatus, Registrar,
@@ -25,6 +23,7 @@ use sunrise_protocol::{
 
 const MAIN: &str = "bundle_probe:main";
 const NETWORK: &str = "bundle_probe:network";
+const SERVER_ONLY: &str = "bundle_probe:server_only";
 
 struct Witness {
     main: ThreadId,
@@ -120,32 +119,18 @@ impl Hooks for Probe {
                 })
                 .play_bidirectional(PayloadId(id.into()), handler.clone(), Some(handler));
         }
-    }
-}
-
-fn wait_for_event(game: &mut crate::game::Game<'_>, until: impl Fn(&Event) -> bool) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let remote = game.remote.as_mut().unwrap();
-    let mut backlog = std::mem::take(&mut remote.backlog);
-    loop {
-        remote.receive_credited_backlog(&mut backlog);
-        if backlog
-            .iter()
-            .any(|item| matches!(item, Received::Event(event, _) if until(event)))
-        {
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "expected event did not reach main"
+        registrar.payload_handlers().registrar("1").play_to_server(
+            PayloadId(SERVER_ONLY.into()),
+            Arc::new(Handler {
+                witness: self.0.clone(),
+                network: false,
+            }),
         );
-        thread::yield_now();
     }
-    remote.backlog = backlog;
 }
 
 fn wait_for_bundle(game: &mut crate::game::Game<'_>) {
-    wait_for_event(game, |event| matches!(event, Event::Bundle(_)));
+    game.wait_for_test_remote_event(|event| matches!(event, Event::Bundle(_)));
 }
 
 fn with_probe(test: impl FnOnce(&mut crate::game::Game<'_>, Arc<Witness>)) {
@@ -354,9 +339,10 @@ fn a_grouped_column_split_across_tcp_reads_is_adopted_as_one_bundle() {
         game.connect_remote_session(&address, "BundleProbe", None, None, false, false)
             .unwrap();
         let local = raw_payloads::Local::capture(raw_payloads::Side::Server).unwrap();
-        let (_reader, mut writer) = finish_play_test(accept_tcp(listener), |reader, writer| {
-            offer_probe(reader, writer, &local);
-        });
+        let (_reader, mut writer) =
+            finish_play_test(game, accept_tcp(listener), |reader, writer| {
+                offer_probe(reader, writer, &local);
+            });
         spawn_menu_test(game);
         let counters = game
             .remote
@@ -514,6 +500,22 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
         let (started, observed) = mpsc::channel();
         let (finished, after_members) = mpsc::channel();
         *witness.transfer_started.lock().unwrap() = Some(observed);
+        let queued = "bundle_probe:after_bundle";
+        let rejected = CustomPayload {
+            channel: SERVER_ONLY.into(),
+            data: vec![0],
+        };
+        assert!(matches!(
+            raw_payloads::Incoming::classify(
+                source.payload_endpoint().transport(),
+                sunrise_protocol::payload_negotiation::Phase::Play,
+                rejected.clone(),
+            ),
+            Err(raw_payloads::Failure {
+                error: mod_api::PayloadSendError::WrongDirection(_),
+                ..
+            })
+        ));
         let cookie = "bundle_probe:transfer";
         old.lock().unwrap().insert(cookie.into(), vec![16]);
         let target = thread::spawn(move || {
@@ -529,12 +531,18 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
                 channel: NETWORK.into(),
                 data: vec![4],
             }),
+            C::CustomPayload(rejected),
             C::StoreCookie(cfg::StoreCookie {
                 key: cookie.into(),
                 payload: vec![27],
             }),
             transfer_to(unexpected.local_addr().unwrap()),
             C::BundleDelimiter(Empty),
+            C::StoreCookie(cfg::StoreCookie {
+                key: queued.into(),
+                payload: vec![42],
+            }),
+            C::Ping(cfg::Ping { id: 33 }),
         ] {
             writer
                 .send(
@@ -544,13 +552,16 @@ fn a_bundled_transfer_starts_the_next_session_before_later_members() {
                 )
                 .unwrap();
         }
-        wait_for_bundle(game);
+        game.wait_for_test_remote_event(|event| {
+            matches!(event, Event::Packet(packet) if matches!(&**packet, C::Ping(p) if p.id == 33))
+        });
         game.poll_remote_events(true).unwrap();
         finished.send(()).unwrap();
         assert_eq!(*witness.order.lock().unwrap(), ["network after transfer"]);
         let next = &game.remote.as_ref().unwrap().session;
         assert_eq!(next.address, destination.to_string());
         assert_eq!(old.lock().unwrap().get(cookie), Some(&vec![27]));
+        assert_eq!(old.lock().unwrap().get(queued), Some(&vec![42]));
         target.join().unwrap();
         assert!(
             matches!(unexpected.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
@@ -572,6 +583,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
             let destination = listener.local_addr().unwrap();
             let bundled = "bundle_probe:bundled";
             let standalone = "bundle_probe:standalone";
+            let late = "bundle_probe:after_transfer";
             let target = thread::spawn(move || {
                 let mut target = accept_transfer_login(listener);
                 assert_eq!(login_cookie(&mut target, bundled), (!eof).then(|| vec![1]));
@@ -596,17 +608,26 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
                     key: standalone.into(),
                 }),
                 transfer_to(destination),
+                C::StoreCookie(cfg::StoreCookie {
+                    key: late.into(),
+                    payload: vec![43],
+                }),
+                C::Ping(cfg::Ping { id: 34 }),
             ] {
                 writer.send(&packet.encode()).unwrap();
             }
-            wait_for_event(game, |event| matches!(event, Event::Transfer(_)));
+            game.wait_for_test_remote_event(|event| {
+                matches!(event, Event::Packet(packet) if matches!(&**packet, C::Ping(p) if p.id == 34))
+            });
             assert!(
                 old.lock().unwrap().is_empty(),
                 "cookies run on main, not receive"
             );
             if eof {
                 writer.shutdown();
-                wait_for_event(game, |event| matches!(event, Event::Disconnected { .. }));
+                game.wait_for_test_remote_event(|event| {
+                    matches!(event, Event::Disconnected { .. })
+                });
             }
             game.poll_remote_events(true).unwrap();
             assert_eq!(
@@ -614,6 +635,7 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
                 destination.to_string()
             );
             assert_eq!(old.lock().unwrap().get(standalone), Some(&vec![2]));
+            assert_eq!(old.lock().unwrap().get(late), Some(&vec![43]));
             if !eof {
                 loop {
                     let (id, body) = reader.recv().unwrap();

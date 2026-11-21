@@ -1,5 +1,5 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
-use super::*;
+use super::{session::RemoteOpening, *};
 
 fn local_transfer_notice() -> Event {
     Event::Disconnected {
@@ -7,6 +7,12 @@ fn local_transfer_notice() -> Event {
         key: Some("disconnect.transfer".into()),
         from_server: true,
     }
+}
+
+#[derive(Default)]
+struct ListenerTurn {
+    opening: Option<RemoteOpening>,
+    end: Option<Event>,
 }
 
 impl Remote {
@@ -29,6 +35,34 @@ impl Remote {
 }
 
 impl Game<'_> {
+    #[cfg(test)]
+    pub(in crate::game) fn wait_for_test_remote_event(&mut self, until: impl Fn(&Event) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let remote = self.remote.as_mut().unwrap();
+        let mut backlog = std::mem::take(&mut remote.backlog);
+        loop {
+            remote.receive_credited_backlog(&mut backlog);
+            if backlog
+                .iter()
+                .any(|item| matches!(item, Received::Event(event, _) if until(event)))
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "expected event did not reach main"
+            );
+            std::thread::yield_now();
+        }
+        remote.backlog = backlog;
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn acknowledge_test_configuration(&mut self) {
+        self.wait_for_test_remote_event(|event| matches!(event, Event::FinishConfiguration(_)));
+        self.poll_remote_events(true).unwrap();
+    }
+
     /// Handle what the server sent, in order. `before_tick`: a tick is about to
     /// run, so what an earlier poll left for later is taken whole (no frame
     /// budget, each column waited for) and nothing newer is received.
@@ -48,7 +82,22 @@ impl Game<'_> {
         // teleport at 32 chunks) is forgotten at once, before whatever follows it.
         let mut forgotten = sunrise_client::fast_hash::FxHashSet::default();
         let mut forgotten_credits = Vec::new();
+        let mut turn = ListenerTurn::default();
         while let Some(item) = events.pop_front() {
+            // PacketProcessor checks eligibility for the queued outer action,
+            // before any handler, including worker-decoded columns.
+            let needs_open = match &item {
+                Received::Event(event, _) => event.requires_open_listener(),
+                Received::Chunk(..) => true,
+            };
+            if needs_open
+                && !self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.session.accepts_packets())
+            {
+                continue;
+            }
             if let Received::Event(Event::Packet(packet), _) = &item
                 && let C::ForgetLevelChunk(p) = &**packet
             {
@@ -92,6 +141,13 @@ impl Game<'_> {
                             continue;
                         }
                     };
+                    if !self
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| r.session.accepts_packets())
+                    {
+                        continue;
+                    }
                     self.observe_client_packet(&packet);
                     if let C::LevelChunkWithLight(p) = *packet {
                         sunrise_client::spans::time("pr_chunk", || {
@@ -102,13 +158,33 @@ impl Game<'_> {
                     continue;
                 }
             };
-            if !self.handle_remote_event(event)? {
+            self.handle_remote_event(event, &mut turn)?;
+            if let Some(opening) = turn.opening.take() {
+                // Only the old listener's admitted StoreCookie tasks survive
+                // this handoff. Snapshot its remaining FIFO without waiting.
+                for item in events {
+                    if let Received::Event(Event::Cookie(task), _credit) = item {
+                        task.handle();
+                    }
+                }
+                if let Some(old) = &self.remote {
+                    for receipt in old.session.poll() {
+                        if let (Event::Cookie(task), _credit) = receipt.into_parts() {
+                            task.handle();
+                        }
+                    }
+                }
+                self.install_remote_transfer(opening)?;
                 return Ok(());
             }
             chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
             if self.remote.is_none() {
                 break;
             }
+        }
+        if let Some(end) = turn.end.take() {
+            self.finish_remote_disconnect(end)?;
+            return Ok(());
         }
         if self.remote.is_some() {
             sunrise_client::spans::time("pr_forget", || {
@@ -129,16 +205,20 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleBundlePacket`: use one main-thread turn, so
     /// the chunk decoder/frame quota cannot split a bundle at a column packet.
-    fn handle_play_bundle(&mut self, bundle: sunrise_client::net::CompletedBundle) -> Result<bool> {
+    fn handle_play_bundle(
+        &mut self,
+        bundle: sunrise_client::net::CompletedBundle,
+        turn: &mut ListenerTurn,
+    ) -> Result<()> {
         use sunrise_client::net::BundleStep;
         use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
         use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
         let Some(remote) = self.remote.as_ref() else {
-            return Ok(false);
+            return Ok(());
         };
         if !io.accepts_bundle() {
-            return Ok(true);
+            return Ok(());
         }
         let endpoint = remote.session.payload_endpoint();
         let negotiated = endpoint.transport().epoch().is_some_and(|epoch| {
@@ -148,14 +228,12 @@ impl Game<'_> {
                     .engine_receives(Phase::Play, connection_groups::CHANNEL)
         });
         if self.route_connection_group_bundle(&packets, negotiated)? {
-            return Ok(self.remote.is_some());
+            return Ok(());
         }
-        let mut end = None;
-        let mut transfer = None;
         for packet in packets {
             match io.bundle_member(packet) {
                 BundleStep::Event(event) => {
-                    self.handle_remote_event(event)?;
+                    self.handle_remote_event(event, turn)?;
                 }
                 BundleStep::Payload(payload) => {
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
@@ -165,45 +243,38 @@ impl Game<'_> {
                             }
                         }
                         Ok(Classified::Other(payload)) => {
-                            self.handle_remote_event(Event::Packet(Box::new(C::CustomPayload(
-                                payload,
-                            ))))?;
+                            self.handle_remote_event(
+                                Event::Packet(Box::new(C::CustomPayload(payload))),
+                                turn,
+                            )?;
                         }
                         Ok(Classified::Raw(_)) => {}
                         Err(error) => {
                             log::warn!("Sunrise: bundle payload refused: {error}");
-                            return self.handle_remote_event(io.invalid_bundle_payload());
+                            turn.end.get_or_insert(io.invalid_bundle_payload());
                         }
                     }
                 }
                 BundleStep::Transfer(packet) => {
                     // ConnectScreen.startConnecting keeps the first opening.
-                    if transfer.is_none() {
-                        transfer = self.start_remote_transfer(packet)?;
-                        if transfer.is_none() {
-                            end.get_or_insert_with(local_transfer_notice);
+                    if turn.opening.is_none() {
+                        turn.opening = self.start_remote_transfer(packet)?;
+                        if turn.opening.is_none() {
+                            turn.end.get_or_insert_with(local_transfer_notice);
                         }
                     }
                 }
                 BundleStep::Close(notice) => {
                     // Discard the old listener only after its remaining handlers run.
-                    end.get_or_insert(notice);
+                    turn.end.get_or_insert(notice);
                 }
                 BundleStep::Continue => {}
             }
         }
-        if let Some(opening) = transfer {
-            self.install_remote_transfer(opening)?;
-            return Ok(false);
-        }
-        if let Some(end) = end {
-            return self.handle_remote_event(end);
-        }
-        Ok(true)
+        Ok(())
     }
 
-    /// False means the old connection ended, even if it transferred to a new server.
-    fn handle_remote_event(&mut self, event: Event) -> Result<bool> {
+    fn handle_remote_event(&mut self, event: Event, turn: &mut ListenerTurn) -> Result<()> {
         match event {
             Event::Status(s) => {
                 if let Some(r) = self.remote.as_mut() {
@@ -255,9 +326,12 @@ impl Game<'_> {
                 }
             }
             Event::Cookie(task) => task.handle(),
-            Event::FinishConfiguration(resume) => {
-                let _ = resume.send(());
+            Event::Configuration(task) => {
+                if let Some(effect) = task.handle() {
+                    self.handle_remote_event(effect, turn)?;
+                }
             }
+            Event::FinishConfiguration(change) => change.acknowledge(),
             Event::Reconfiguring(resume) => {
                 self.reset_book_view();
                 // handleConfigurationStart: the held-back chat shows, then
@@ -321,14 +395,9 @@ impl Game<'_> {
                 self.set_registries(registries);
             }
             Event::Transfer(packet) => {
-                // This task was received on the old transferring listener.
-                // The source writer may already be closed.
-                if self.remote.is_some() {
-                    if let Some(opening) = self.start_remote_transfer(packet)? {
-                        self.install_remote_transfer(opening)?;
-                        return Ok(false);
-                    }
-                    return self.handle_remote_event(local_transfer_notice());
+                turn.opening = self.start_remote_transfer(packet)?;
+                if turn.opening.is_none() {
+                    turn.end.get_or_insert_with(local_transfer_notice);
                 }
             }
             Event::PackPush(p) => self.handle_pack_push(p),
@@ -351,30 +420,16 @@ impl Game<'_> {
                     }
                 }
             }
-            Event::Disconnected {
-                reason,
-                key,
-                from_server,
-            } => {
-                self.reset_book_view();
-                log::info!("Sunrise: disconnected: {reason}");
-                let by = if from_server {
-                    sunrise_hooks::connection::By::Server
-                } else {
-                    sunrise_hooks::connection::By::Connection
-                };
-                self.connection_ended(&reason, key.as_deref(), by);
-                self.leave_server(Some(Text::literal(reason)))?;
-                return Ok(false);
+            event @ Event::Disconnected { .. } => {
+                turn.end.get_or_insert(event);
             }
-            Event::Bundle(bundle) => return self.handle_play_bundle(*bundle),
+            Event::Bundle(bundle) => self.handle_play_bundle(*bundle, turn)?,
             Event::RawPayload(incoming) => {
-                if let Some(remote) = self.remote.as_ref()
-                    && remote.session.connected()
-                {
+                if let Some(remote) = self.remote.as_ref() {
                     self.run_payload(remote.session.payload_endpoint(), *incoming);
                 }
             }
+            Event::ObservePacket(packet) => self.observe_client_packet(&packet),
             Event::Packet(packet) => match *packet {
                 C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)
@@ -382,6 +437,26 @@ impl Game<'_> {
                 packet => self.handle_packet(packet)?,
             },
         }
-        Ok(true)
+        Ok(())
+    }
+
+    fn finish_remote_disconnect(&mut self, event: Event) -> Result<()> {
+        let Event::Disconnected {
+            reason,
+            key,
+            from_server,
+        } = event
+        else {
+            unreachable!("listener only retains the disconnect notice");
+        };
+        self.reset_book_view();
+        log::info!("Sunrise: disconnected: {reason}");
+        let by = if from_server {
+            sunrise_hooks::connection::By::Server
+        } else {
+            sunrise_hooks::connection::By::Connection
+        };
+        self.connection_ended(&reason, key.as_deref(), by);
+        self.leave_server(Some(Text::literal(reason)))
     }
 }
