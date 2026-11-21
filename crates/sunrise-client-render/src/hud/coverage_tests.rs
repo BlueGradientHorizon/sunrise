@@ -377,6 +377,53 @@ fn bounded_affine_repeats_sample_fractional_base_and_mirrored_overlay_uvs() {
     }
 }
 
+#[test]
+#[ignore = "daily"]
+fn bounded_quarter_turn_repeats_select_u_by_y_and_v_by_x() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let mut atlas = HudAtlas::boot();
+    (atlas.width, atlas.height) = (2, 2);
+    atlas.pixels = [RED, GREEN, BLUE, YELLOW].concat();
+    let Some(mut gpu) = Gpu::with_atlas([atlas.width, atlas.height], &atlas.pixels) else {
+        return;
+    };
+    let size = [3, 3];
+    let mut batch = HudBatch::scratch(size);
+    assert!(blit_gui_sprite(
+        &mut batch,
+        &atlas,
+        "test:turned",
+        GuiSpriteBlit {
+            rect: Rect {
+                u0: 0.0,
+                v0: 0.0,
+                u1: 1.0,
+                v1: 1.0,
+                w: 2,
+                h: 2,
+            },
+            scaling: Some(GuiSpriteScaling::Tile([1, 1])),
+            dst: [0.0, 0.0, 4.0, 4.0],
+            color: u32::MAX,
+            region: None,
+            blend: SpriteBlend::Textured,
+        },
+        // Exactly axis-aligned after a 90° turn, to exercise strips rather than
+        // affine coefficients (composing a floating-point angle leaves a nonzero cosine).
+        [0.0, 0.75, -0.75, 0.0, 3.1875, 0.3125],
+        None,
+    ));
+    // At device centers, local X = (Y - 5/16) / (3/4) samples U indices [0, 1, 1]
+    // down the rows; local Y = (51/16 - X) / (3/4) samples V [1, 0, 1] across columns.
+    assert_eq!(
+        gpu.draw_prepared(&batch, size),
+        [
+            BLUE, RED, BLUE, YELLOW, GREEN, YELLOW, YELLOW, GREEN, YELLOW
+        ]
+        .concat()
+    );
+}
+
 pub(super) struct Gpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
