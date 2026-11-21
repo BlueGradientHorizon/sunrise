@@ -131,17 +131,16 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 .unwrap();
             game.world.set(4, 64, 4, state).unwrap();
             game.particles.clear();
-            game.audio.capture.as_mut().unwrap().clear();
+            game.audio.heard.clear();
             game.particles.seed_randoms(10, 11, 12);
             game.breaking_block_effects([4, 64, 4], [-1, 0, 0], true);
             assert_eq!(admit(game), expected, "{name}");
-            let sounds = game.audio.capture.as_ref().unwrap();
             if name == "glass" {
-                let [sound] = sounds.as_slice() else {
-                    panic!("one original hit sound")
-                };
-                assert_eq!(sound.position, [4.5, 64.5, 4.5]);
-                assert_eq!(sound.event, "minecraft:block.glass.hit");
+                // The client-only hit sound intentionally bypasses the server's effect capture.
+                assert_eq!(
+                    game.audio.heard,
+                    [("minecraft:block.glass.hit".into(), 1)].into()
+                );
                 let mut expected_random = LegacyRandom::new(11);
                 expected_random.next_int();
                 for _ in 0..3 {
@@ -162,7 +161,7 @@ fn hit_effect_replaces_the_crumb_but_not_the_sound_or_level_random() {
                 assert_eq!(quads.len(), 4);
                 assert!(quads.iter().all(|vertex| vertex.pos[0] > 7.0));
             } else if name == "air" {
-                assert!(sounds.is_empty());
+                assert!(game.audio.heard.is_empty());
             }
         }
         let pos = BlockPos::new(4, 64, 4);
