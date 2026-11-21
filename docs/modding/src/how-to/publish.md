@@ -139,9 +139,10 @@ cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories u
   --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
 ```
 
-Upload the exact `.smod` and `.smod.minisig` that `PULL_REQUEST.md` lists, then submit the entry to the registry.
-The `file` field already points to your release asset. Registry CI downloads it from there, verifies it and
-mirrors it after merge. For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
+Upload only the author-release assets listed in `PULL_REQUEST.md`: the exact `.smod` and `.smod.minisig`.
+Submit `mods/<id>.toml` to the registry with `icons/<id>.png` if an icon was staged. The `file` field already
+points to your release asset. Registry CI downloads it from there, verifies it and mirrors it after merge.
+For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
 
 ## Publishing native binaries
 
@@ -189,12 +190,12 @@ pin and the target commit. To describe the archives with `--describe-binaries`, 
    existing stable pin, key and signature and adds one build row without touching them. Keep `--asset-base`
    on the original author release. `publish` checks the signed assets and the registry's fit verdict before writing output.
    Use the output only after `publish` succeeds.
-4. Upload and verify every asset named in `PULL_REQUEST.md` on the author release at `--asset-base` before opening
-   the pull request. This includes each output archive, the descriptor and its `.binaries.json.minisig`, and, for
-   a new mod version only, the source package and its `.smod.minisig`. The descriptor embeds the archive signatures,
-   so no separate archive signature uploads are needed. If an upload fails partway through, upload the missing
-   files from the same verified output rather than rebuilding or re-signing. The tool does not upload anything.
-   Then copy the entry to your fork as above; do not commit the release assets. See the
+4. Upload and verify only the author-release assets listed in `PULL_REQUEST.md` on the release at `--asset-base`
+   before opening the pull request. These are the archives, the descriptor and its `.binaries.json.minisig`, and,
+   for a new mod version only, the source package and its `.smod.minisig`. The descriptor embeds the archive
+   signatures, so no separate archive signature uploads are needed. If an upload fails partway through, upload
+   the missing files from the same verified output rather than rebuilding or re-signing. The tool does not upload anything.
+   Submit `mods/<id>.toml` with `icons/<id>.png` if an icon was staged; do not commit the release assets. See the
    [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
 ## A collection
