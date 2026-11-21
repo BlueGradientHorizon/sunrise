@@ -825,6 +825,9 @@ jobs:
       - name: Check generated extension tag catalog
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/surface_extension_tags.py --check
+      - name: Check native hook wiring
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && needs.changes.outputs.rust_required != 'false' }}
+        run: bash tools/ci/check_hook_wiring.sh
       # A pull request adds only its own commits to main, so it reads those; main's pushes read every ref's history.
       - name: Keep game artifacts out of Git
         id: keep_game_artifacts_out_of_git

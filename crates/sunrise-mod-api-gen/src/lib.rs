@@ -3,6 +3,7 @@ mod catalog;
 mod dispatch_fixtures;
 mod exports;
 mod game_modules;
+mod hook_wiring;
 #[doc(hidden)]
 pub use dispatch_fixtures::layout as dispatch_fixture_layout;
 pub use game_modules::materialize_generated_host;
@@ -12,6 +13,7 @@ mod parts;
 pub use catalog::DECLARATIONS;
 use catalog::{Catalog, Contract, DrawContext, Hook, HostAccess, PartKind, PhaseContext, Side};
 use heck::ToSnakeCase;
+pub use hook_wiring::check_hook_wiring;
 pub use layout::native_hook_layout;
 use quote::ToTokens;
 use std::{
@@ -20,7 +22,7 @@ use std::{
     path::Path,
     process::Command,
 };
-use syn::{FnArg, ImplItem, Item, Pat, Type, visit::Visit, visit_mut::VisitMut};
+use syn::{FnArg, ImplItem, Item, Pat, Type, visit_mut::VisitMut};
 
 fn impl_functions(item: syn::ItemImpl) -> impl Iterator<Item = syn::ItemFn> {
     item.items.into_iter().filter_map(|item| match item {
@@ -92,36 +94,11 @@ fn api_types(source: &str) -> Result<ApiTypes, String> {
 }
 
 fn has_call(block: &syn::Block, expected: &str) -> bool {
-    struct Calls<'a> {
-        expected: &'a str,
-        found: bool,
-    }
-    impl<'ast> Visit<'ast> for Calls<'_> {
-        fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
-            if call.method == self.expected {
-                self.found = true;
-            }
-            syn::visit::visit_expr_method_call(self, call);
-        }
-        fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
-            if let syn::Expr::Path(path) = &*call.func
-                && path
-                    .path
-                    .segments
-                    .last()
-                    .is_some_and(|s| s.ident == self.expected)
-            {
-                self.found = true;
-            }
-            syn::visit::visit_expr_call(self, call);
-        }
-    }
-    let mut calls = Calls {
-        expected,
-        found: false,
-    };
-    calls.visit_block(block);
-    calls.found
+    use hook_wiring::Callee;
+    hook_wiring::has_call_matching(block, |call| match call {
+        Callee::Method(method) => method == expected,
+        Callee::Function(path) => path.segments.last().is_some_and(|s| s.ident == expected),
+    })
 }
 
 fn fresh_name(base: &str, used: &mut HashSet<String>) -> String {
@@ -300,20 +277,18 @@ pub fn neoforge_catalog(root: &Path) -> Result<String, String> {
     serde_json::to_string(&serde_json::json!({ "hooks": hooks })).map_err(|e| e.to_string())
 }
 
-/// The crate folder and module path of a hook target that is a free function
-/// outside `Game`. `sunrise-client-lib` builds from `sunrise-client/src`
-/// (`client_lib.rs`).
-fn free_function_source(target: &str) -> Option<(&'static str, String)> {
+/// The Cargo package and module path of a hook target that is a free function outside `Game`.
+fn free_function_source(target: &str) -> Option<(&'static str, &str)> {
     let prefixes = [
         ("sunrise_world::", "sunrise-world"),
         ("mod_api::", "sunrise-mod-vocab"),
         ("mod_render::", "sunrise-mod-render"),
-        ("sunrise_client_lib::", "sunrise-client"),
+        ("sunrise_client_lib::", "sunrise-client-lib"),
         ("sunrise_client_render::", "sunrise-client-render"),
     ];
     prefixes
         .into_iter()
-        .find_map(|(prefix, krate)| target.strip_prefix(prefix).map(|p| (krate, p.to_owned())))
+        .find_map(|(prefix, krate)| target.strip_prefix(prefix).map(|path| (krate, path)))
 }
 
 /// Whether a hook function needs its dispatch `call` filled in: false when it
@@ -922,10 +897,8 @@ mod tests {
         );
     }
 
-    /// `item_picked_up` taken back to how a new hook arrives (its body the
-    /// placeholder) in a copy of the sources: any other body is left alone, a hook without its attribute fails by name, and the
-    /// generator brings back the shipped file byte for byte with the generated
-    /// code unchanged.
+    /// Vocabulary generation needs no game sources. The wiring check refuses an unfinished
+    /// pickup hook; the authoring command fills its placeholder without changing the vocabulary.
     #[test]
     #[ignore = "daily"]
     fn new_hook_placeholder_is_reported_then_filled() {
@@ -944,30 +917,9 @@ mod tests {
         let root = real
             .join("target")
             .join(format!("mod-api-fill-{}", std::process::id()));
-        let mut inputs: Vec<String> = [
-            "crates/sunrise-mod-vocab/src/hooks",
-            "crates/sunrise-mod-vocab/src/exports",
-            "crates/sunrise-mod-vocab/src/host",
-            "crates/sunrise-mod-vocab/src/parts",
-            "crates/sunrise-client/src/game.rs",
-            "crates/sunrise-client/src/game",
-            "crates/sunrise-mod-vocab/src/lib.rs",
-        ]
-        .map(str::to_owned)
-        .into();
-        for hook in super::Catalog::load(&real).unwrap().hooks {
-            if let Some((krate, path)) = super::free_function_source(&hook.target) {
-                let (module, _) = path.rsplit_once("::").unwrap();
-                inputs.push(format!(
-                    "crates/{krate}/src/{}.rs",
-                    module.replace("::", "/")
-                ));
-            }
-        }
-        for input in &inputs {
-            copy(&real.join(input), &root.join(input));
-        }
-        // The first hook and helper, by declaration order, and the file declaring each.
+        let vocabulary = "crates/sunrise-mod-vocab/src";
+        copy(&real.join(vocabulary), &root.join(vocabulary));
+        // Find hook declarations in the vocabulary-only checkout.
         let catalog = super::Catalog::load(&real).unwrap();
         let declaring = |name: &str| {
             std::fs::read_dir(root.join(super::catalog::DECLARATIONS))
@@ -994,7 +946,18 @@ mod tests {
         .unwrap();
         assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
         std::fs::write(&first, original).unwrap();
-        let hooks = root.join("crates/sunrise-client/src/game/native_hooks/item_picked_up.rs");
+        let hook_dir = "crates/sunrise-client/src/game/native_hooks";
+        copy(&real.join(hook_dir), &root.join(hook_dir));
+        let client = root.join("crates/sunrise-client");
+        std::fs::write(client.join("Cargo.toml"), "").unwrap();
+        std::fs::write(client.join("src/lib.rs"), "mod game;").unwrap();
+        std::fs::write(client.join("src/game.rs"), "mod native_hooks;").unwrap();
+        let hooks = root.join(hook_dir).join("item_picked_up.rs");
+        let pickup = catalog
+            .hooks
+            .iter()
+            .find(|hook| hook.name == "item_picked_up")
+            .unwrap();
         let shipped = std::fs::read_to_string(&hooks).unwrap();
         let call = "self.fire_item_picked_up(player, item, can_pickup);";
         assert_eq!(shipped.matches(call).count(), 1);
@@ -1008,7 +971,10 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&hooks).unwrap(), unfinished);
         let placeholder = shipped.replace(call, "let _ = (player, item, can_pickup);");
         std::fs::write(&hooks, &placeholder).unwrap();
-        assert_eq!(super::sources(&root).unwrap().hooks, without_counterparts);
+        assert_eq!(
+            super::hook_wiring::check(&root, std::slice::from_ref(pickup)).unwrap_err(),
+            "item_picked_up (sunrise_client::game::native_hooks::item_picked_up::Game<'_>::native_item_picked_up): target does not call fire_item_picked_up or Self::fire_item_picked_up"
+        );
         assert_eq!(std::fs::read_to_string(&hooks).unwrap(), placeholder);
         // A hook without its attribute fails by name.
         let declared = declaring("item_picked_up");
@@ -1043,6 +1009,7 @@ mod tests {
         let decoy_source = "impl Game<'_> { /// mentions fn native_item_picked_up(\n fn unrelated(&self) { let _ = self; } }\n";
         std::fs::write(&decoy, decoy_source).unwrap();
         super::fill_hooks(&root).unwrap();
+        super::hook_wiring::check(&root, std::slice::from_ref(pickup)).unwrap();
         // The generator writes LF; a Windows checkout (core.autocrlf) has CRLF.
         let lf = |s: &str| s.replace("\r\n", "\n");
         assert_eq!(
@@ -1104,14 +1071,11 @@ mod tests {
     fn library_crate_targets_resolve_to_their_source() {
         assert_eq!(
             super::free_function_source("sunrise_client_lib::menu::native_menu_slot_rules"),
-            Some(("sunrise-client", "menu::native_menu_slot_rules".to_owned()))
+            Some(("sunrise-client-lib", "menu::native_menu_slot_rules"))
         );
         assert_eq!(
             super::free_function_source("sunrise_client_lib::breathing::native_living_drown"),
-            Some((
-                "sunrise-client",
-                "breathing::native_living_drown".to_owned()
-            ))
+            Some(("sunrise-client-lib", "breathing::native_living_drown"))
         );
         assert_eq!(
             super::free_function_source(
@@ -1119,7 +1083,7 @@ mod tests {
             ),
             Some((
                 "sunrise-client-render",
-                "sound_engine::hooks::native_play_sound".to_owned()
+                "sound_engine::hooks::native_play_sound"
             ))
         );
         for target in [
@@ -1130,7 +1094,7 @@ mod tests {
         }
         assert_eq!(
             super::free_function_source("sunrise_client_lib::crafting::native_ingredient"),
-            Some(("sunrise-client", "crafting::native_ingredient".to_owned()))
+            Some(("sunrise-client-lib", "crafting::native_ingredient"))
         );
         assert_eq!(
             super::free_function_source(

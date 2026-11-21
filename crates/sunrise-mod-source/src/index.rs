@@ -24,6 +24,8 @@ pub enum Found {
     External(Vec<String>),
 }
 
+type ModuleLoader<'a> = dyn FnMut(&str, &[String]) -> Result<Vec<Item>, String> + 'a;
+
 /// The indexed crates' modules, parsed as they are first reached.
 pub struct Index<'a> {
     root: &'a Path,
@@ -43,6 +45,7 @@ pub struct Index<'a> {
     extra: Vec<(&'static str, &'static str)>,
     /// A crate's root file where it is not `lib.rs` (a library's `[lib] path`).
     root_files: HashMap<&'static str, String>,
+    load_module: Option<Box<ModuleLoader<'a>>>,
 }
 
 /// The file a module's `#[path = "..."]` names.
@@ -83,7 +86,17 @@ impl<'a> Index<'a> {
             read: Default::default(),
             extra: Vec::new(),
             root_files: HashMap::new(),
+            load_module: None,
         }
+    }
+
+    /// Resolve function items using the caller's view of the active module tree.
+    pub fn loading_functions(
+        mut self,
+        load: impl FnMut(&str, &[String]) -> Result<Vec<Item>, String> + 'a,
+    ) -> Self {
+        self.load_module = Some(Box::new(load));
+        self
     }
 
     /// Names the file `krate`'s root module lives in, below its source directory.
@@ -126,7 +139,23 @@ impl<'a> Index<'a> {
         if let Some(&id) = self.by_path.get(&(krate, path.to_vec())) {
             return Ok(id);
         }
-        let items = match path.split_last() {
+        let items = if let Some(load) = &mut self.load_module {
+            load(krate, path)?
+        } else {
+            self.parse_module(krate, path)?
+        };
+        let id = self.modules.len();
+        self.modules.push(Module {
+            krate,
+            path: path.to_vec(),
+            items,
+        });
+        self.by_path.insert((krate, path.to_vec()), id);
+        Ok(id)
+    }
+
+    fn parse_module(&mut self, krate: &'static str, path: &[String]) -> Result<Vec<Item>, String> {
+        Ok(match path.split_last() {
             None => {
                 let file = self.root_files.get(krate).map_or("lib.rs", String::as_str);
                 self.parse(krate, file)?
@@ -163,15 +192,7 @@ impl<'a> Index<'a> {
                     }
                 }
             }
-        };
-        let id = self.modules.len();
-        self.modules.push(Module {
-            krate,
-            path: path.to_vec(),
-            items,
-        });
-        self.by_path.insert((krate, path.to_vec()), id);
-        Ok(id)
+        })
     }
 
     fn parse(&self, krate: &str, file: &str) -> Result<Vec<Item>, String> {
@@ -249,7 +270,7 @@ impl<'a> Index<'a> {
         let reachable = |vis: &Visibility| holders.iter().all(|&h| self.visible(module, h, vis));
         let mut shadowed = false;
         for (item, definition) in items.iter().enumerate() {
-            if let Some(vis) = definition_visibility(definition, name) {
+            if let Some(vis) = definition_visibility(definition, name, self.load_module.is_some()) {
                 if reachable(vis) {
                     return Ok(Some(Found::Item(ItemId { module, item })));
                 }
@@ -281,9 +302,13 @@ impl<'a> Index<'a> {
             None => {}
         }
         for glob in globs {
-            if let Some((krate, path)) = self.absolute(module, &glob)
-                && let Ok(target) = self.module(krate, &path)
-            {
+            let target = if self.load_module.is_some() {
+                self.resolve_module_path(module, &glob)
+            } else {
+                self.absolute(module, &glob)
+                    .and_then(|(krate, path)| self.module(krate, &path).ok())
+            };
+            if let Some(target) = target {
                 holders.push(module);
                 let found = self.lookup(target, name, holders, seen);
                 holders.pop();
@@ -320,12 +345,55 @@ impl<'a> Index<'a> {
         }
     }
 
+    /// Resolve a function-body path with its active block imports, innermost first.
+    pub fn resolve_with_imports(
+        &mut self,
+        module: usize,
+        path: &[String],
+        imports: &[&UseTree],
+    ) -> Result<Found, String> {
+        if imports.is_empty() {
+            return self.resolve_path(module, path);
+        }
+        let mut path = path.to_vec();
+        let mut seen = std::collections::HashSet::new();
+        while let Some(first) = path.first() {
+            let mut named = None;
+            for tree in imports {
+                uses(tree, &mut Vec::new(), &mut |prefix, alias| {
+                    if named.is_none() && alias.as_ref() == Some(first) {
+                        named = Some(prefix);
+                    }
+                });
+                if named.is_some() {
+                    break;
+                }
+            }
+            let Some(mut prefix) = named else { break };
+            if !seen.insert(first.clone()) {
+                return Err(format!("{first} imports itself"));
+            }
+            let same_name = prefix.first() == Some(first);
+            prefix.extend_from_slice(&path[1..]);
+            path = prefix;
+            if same_name {
+                break;
+            }
+        }
+        self.resolve_path(module, &path)
+    }
+
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
         if path.len() == 1 {
             return self.resolve(module, &path[0]);
         }
         let (last, parent) = path.split_last().unwrap();
+        if self.load_module.is_some()
+            && let Some(parent) = self.resolve_module_path(module, parent)
+        {
+            return self.resolve(parent, last);
+        }
         match self.absolute(module, parent) {
             Some((krate, parent)) => {
                 // A path through a type (`Enum::Variant`) is not a module.
@@ -344,6 +412,32 @@ impl<'a> Index<'a> {
                 Ok(Found::External(path.to_vec()))
             }
         }
+    }
+
+    /// A path can cross a module imported by name or by a glob, not just declarations.
+    fn resolve_module_path(&mut self, module: usize, path: &[String]) -> Option<usize> {
+        if let Some((krate, absolute)) = self.absolute(module, path)
+            && let Ok(target) = self.module(krate, &absolute)
+        {
+            return Some(target);
+        }
+        let (last, parent) = path.split_last()?;
+        let parent = if parent.is_empty() {
+            module
+        } else {
+            self.resolve_module_path(module, parent)?
+        };
+        let Found::Item(id) = self.resolve(parent, last).ok()? else {
+            return None;
+        };
+        let Item::Mod(declared) = self.item(id) else {
+            return None;
+        };
+        let m = &self.modules[id.module];
+        let krate = m.krate;
+        let mut path = m.path.clone();
+        path.push(declared.ident.to_string());
+        self.module(krate, &path).ok()
     }
 
     /// `path`, written in `module`, as a module of an indexed crate, if it is one.
@@ -377,7 +471,11 @@ impl<'a> Index<'a> {
 }
 
 /// The visibility of an indexed definition named `name`, if this item defines it.
-fn definition_visibility<'a>(item: &'a Item, name: &str) -> Option<&'a Visibility> {
+fn definition_visibility<'a>(
+    item: &'a Item,
+    name: &str,
+    functions: bool,
+) -> Option<&'a Visibility> {
     let (ident, vis) = match item {
         Item::Struct(item) => (&item.ident, &item.vis),
         Item::Enum(item) => (&item.ident, &item.vis),
@@ -385,6 +483,8 @@ fn definition_visibility<'a>(item: &'a Item, name: &str) -> Option<&'a Visibilit
         Item::Trait(item) => (&item.ident, &item.vis),
         Item::Union(item) => (&item.ident, &item.vis),
         Item::Const(item) => (&item.ident, &item.vis),
+        Item::Fn(item) if functions => (&item.sig.ident, &item.vis),
+        Item::Mod(item) if functions => (&item.ident, &item.vis),
         _ => return None,
     };
     (ident == name).then_some(vis)

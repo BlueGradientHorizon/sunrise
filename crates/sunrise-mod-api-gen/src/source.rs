@@ -2,13 +2,44 @@
 //! and the `cfg`s they are compiled under, following `mod` declarations, `#[path]`s and inline
 //! modules.
 
-use mod_source::modules::{ModuleFile, walk_module_files};
+use mod_source::modules::{ModuleFile, test_only, walk_module_files};
 use quote::ToTokens;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
-use syn::Type;
+use syn::{Attribute, Expr, Item, Type};
+
+/// Production inline declarations of `name` inside the parent module's items.
+pub(crate) fn inline_module_items<'a>(
+    items: &'a [Item],
+    name: &'a str,
+) -> impl Iterator<Item = &'a [Item]> {
+    items.iter().filter_map(move |item| match item {
+        Item::Mod(module) if module.ident == name && !test_only(&module.attrs) => {
+            module.content.as_ref().map(|(_, items)| items.as_slice())
+        }
+        _ => None,
+    })
+}
+
+/// Syn puts attributes on the concrete expression nodes, not on the enclosing enum.
+pub(crate) fn expr_attrs(expr: &Expr) -> &[Attribute] {
+    macro_rules! attrs {
+        ($($variant:ident),+ $(,)?) => {
+            match expr {
+                $(Expr::$variant(node) => &node.attrs,)+
+                _ => &[],
+            }
+        };
+    }
+    attrs!(
+        Array, Assign, Async, Await, Binary, Block, Break, Call, Cast, Closure, Const, Continue,
+        Field, ForLoop, Group, If, Index, Infer, Let, Lit, Loop, Macro, Match, MethodCall, Paren,
+        Path, Range, RawAddr, Reference, Repeat, Return, Struct, Try, TryBlock, Tuple, Unary,
+        Unsafe, While, Yield,
+    )
+}
 
 /// The files of the game's module `module` ([`walk_module_files`]), each parsed with the game's
 /// generated module lists expanded. With `every_build`, the replaceable functions: those every
