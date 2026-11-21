@@ -94,7 +94,7 @@ impl Game<'_> {
         for renderer in &self.debug_renderers {
             let _owner = enter_native_mod(ModCall {
                 id: renderer.mod_id,
-                hook: "debug_renderer_draw",
+                hook: "debug_renderer_callback",
                 part: None,
             });
             renderer

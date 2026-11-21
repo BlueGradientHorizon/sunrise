@@ -6,6 +6,8 @@ pub trait Hooks {
     /// layer through `event.draw`, or return `Flow::Cancel` to skip its entire body
     /// and `gui_layer_post`. Cancellation skips painting, not the layer's game logic.
     /// A wrapped or replaced layer fires this once, with the slot's original ID.
+    /// To change a layer's body rather than veto the whole slot, wrap or replace it
+    /// at startup in `register_gui_layers`.
     ///
     /// The vanilla anchors, in HUD order, are `minecraft:crosshair`, `hotbar`,
     /// `effects`, `boss_overlay`, `vehicle_health` (while riding a mount),

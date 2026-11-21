@@ -52,11 +52,17 @@ closes; there is no close that skips it, because the vanilla client never omits 
 ## Drawing a dimension transition
 
 In `Hooks::register_dimension_transition_screen`, push a `DimensionTransitionScreen` for
-each trip you want to cover. `Conditional { to, from }` wins over `Incoming(to)`, then
-`Outgoing(from)`. The first valid registration for each key wins. Use a namespaced,
-non-`minecraft` screen ID for diagnostics; nothing looks it up during drawing.
+each trip you want to cover. Each mod receives an empty batch at client startup.
+`Conditional { to, from }` wins over `Incoming(to)`, then `Outgoing(from)`. The first valid
+registration for each key wins. Use a namespaced, non-`minecraft` screen ID for diagnostics;
+nothing looks it up during drawing.
 
 ```rust,ignore
+use mod_api::{
+    ClientHost, DimensionTransition, DimensionTransitionReason, DimensionTransitionScreen,
+    DrawContext, RegisterDimensionTransitionScreenEvent, RegistrationContext,
+};
+
 fn register_dimension_transition_screen(
     &self,
     _context: &RegistrationContext,
@@ -65,11 +71,16 @@ fn register_dimension_transition_screen(
     event.screens.push(DimensionTransitionScreen::new(
         "example:arrival".into(),
         DimensionTransition::Incoming("example:moon".into()),
-        |_, _initial_reason| {
+        |_, initial_reason| {
+            // Chosen once when the screen opens, not when the tracker restarts.
+            let backdrop = match initial_reason {
+                DimensionTransitionReason::NetherPortal => 0xFF301010,
+                _ => 0xFF101030,
+            };
             Box::new(
-                |_: &dyn ClientHost, _reason, progress, draw: &mut dyn DrawContext| {
+                move |_: &dyn ClientHost, _reason, progress, draw: &mut dyn DrawContext| {
                     let [w, h] = draw.size();
-                    draw.fill([0.0, 0.0, w, h], 0xFF101030);
+                    draw.fill([0.0, 0.0, w, h], backdrop);
                     if let Some(progress) = progress {
                         draw.fill([0.0, h - 8.0, w * progress, 8.0], 0xFF6060FF);
                     }
@@ -81,11 +92,13 @@ fn register_dimension_transition_screen(
 ```
 
 The client calls the matching factory once when it opens a new loading screen for travel.
-The returned closure or `DimensionTransitionPresentation` object draws the entire screen.
+The returned `Box<dyn DimensionTransitionPresentation>` can hold a closure, as above, or an
+object implementing the trait. It draws the entire screen under its registering mod's identity.
 Its `reason` and optional smoothed integrated-server `progress` are current each frame.
 If another load starts while the screen is open, the same presentation stays in place,
-even if the reason changes. The existing tracker still decides when the screen closes.
-Login, death respawn and unmatched travel use vanilla when they open a new loading screen.
+even if the reason changes. The tracker still decides when the screen closes. Login and death
+respawn do not look up dimension keys; like unmatched travel, they use vanilla when opening
+a new loading screen.
 
 ## Reading open trades
 

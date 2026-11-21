@@ -4,7 +4,8 @@ use crate::{ClientHost, DrawContext};
 
 // no wire: the callable and its captures are kept in the client process.
 /// Draws one registered HUD layer with the current client and drawing context.
-/// The closure is owned by the client for its lifetime; put per-layer data in its captures.
+/// The client owns the closure for the session and calls it as the mod that installed it.
+/// Capture per-layer data; the host and canvas are borrowed only for this draw.
 pub type GuiLayerDraw = dyn Fn(&dyn ClientHost, &mut dyn DrawContext) + Send + Sync + 'static;
 
 // no wire: the wrapper and its captures are kept in the client process.
@@ -21,10 +22,12 @@ pub trait GuiLayerWrapContext {
     /// Paint into the current HUD batch with a draw context scoped to this call.
     fn with_draw(&mut self, draw: &mut dyn FnMut(&mut dyn DrawContext));
 
-    /// Draw the previous body into the same batch at this point, without firing layer hooks again.
+    /// Paint the previous body at this point in the same batch without firing layer hooks again.
+    /// This can call another wrapper. Omit it to skip the previous body for this draw.
     fn draw_previous(&mut self);
 }
 
+// no wire: the registrar borrows the live HUD registration for one hook call.
 /// The HUD layer registrar handed to `register_gui_layers` once at client startup.
 /// Registrations are applied in call order; the registrar is only available during that hook.
 pub trait GuiLayerRegistrar {
@@ -40,7 +43,8 @@ pub trait GuiLayerRegistrar {
     ) -> bool;
 
     /// Replace an already registered layer (including a vanilla layer) with `draw`.
-    /// Discards the entire previous body but keeps the layer's ID, position and draw conditions.
+    /// Discards the entire previous body, including any wrappers, but keeps the layer's ID,
+    /// position and draw conditions.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 

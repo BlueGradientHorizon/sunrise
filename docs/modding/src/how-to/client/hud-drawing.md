@@ -10,14 +10,16 @@ F3 off. F1 hides the overlay unless a screen is open. The read is available only
 
 ## Registering a HUD layer
 
-In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box::new(draw))`.
+In `Hooks::register_gui_layers`, call `event.layers.register(id, placement, Box::new(draw))` on the
+`GuiLayerRegistrar`. Registration runs once at client startup.
 Use your own namespaced ID and a `GuiLayerPlacement`: below or above all layers, or immediately
 below or above a vanilla anchor or a layer already registered. The client logs and refuses
 invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it installed the layer.
 
-The client owns the callback for its lifetime. Capture any state the layer needs in the
-closure, and use the current `ClientHost` and `DrawContext` passed on each draw. The callback
-runs only for its own layer, and not when the HUD is hidden or `gui_layer_pre` cancels the layer.
+The client keeps the callback for the session and calls it as the mod that installed it. Capture
+any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
+passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
+or `gui_layer_pre` cancels the layer.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The vehicle
 health, player health and contextual bar anchors follow that paint order.
 
@@ -44,9 +46,10 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 }));
 ```
 
-`gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. If Pre cancels, neither
-its body nor Post runs. For work that must happen even when the HUD is hidden, use the independent
-foreground `gui_render_post` hook.
+`gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
+wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
+runs. For work that must happen even when the HUD is hidden, use the independent foreground
+`gui_render_post` hook.
 
 ## Registering F3 text
 
@@ -67,8 +70,8 @@ fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDe
 }
 ```
 
-The client keeps the closure and calls it as your mod only while the entry is visible.
-Reduced debug info hides it, even if it is set to always on.
+Each mod starts with an empty batch. The client keeps the closure and calls it as your mod only
+while the entry is visible. Reduced debug info hides it, even if it is set to always on.
 
 ## Registering world-space debug renderers
 
@@ -78,21 +81,30 @@ with the same ID. Use the callback's `ClientHost`, `WorldRenderView` and `WorldD
 draw, and capture any state specific to this renderer instead of handling an ID in a draw hook.
 
 ```rust,ignore
-use mod_api::{DebugRenderer, RegisterDebugRenderersEvent, RegistrationContext, WorldDepth, WorldLine};
+use mod_api::{
+    DebugEntry, DebugRenderer, RegisterDebugEntriesEvent, RegisterDebugRenderersEvent,
+    RegistrationContext, WorldDepth, WorldLine,
+};
+
+const GUIDE_LINE: &str = "example:guide_line";
+
+fn register_debug_entries(&self, _: &RegistrationContext, event: &mut RegisterDebugEntriesEvent<'_>) {
+    event.entries.push(DebugEntry::renderer(GUIDE_LINE.into()));
+}
 
 fn register_debug_renderers(&self, _: &RegistrationContext, event: &mut RegisterDebugRenderersEvent<'_>) {
     let line = WorldLine::new([0.0, 65.0, 0.0], [2.0, 65.0, 0.0], 0xFF00_FF00, 2.0, WorldDepth::Tested);
-    event.renderers.push(DebugRenderer::new("example:guide_line".into(), move |_host, _view, draw| {
+    event.renderers.push(DebugRenderer::new(GUIDE_LINE.into(), move |_host, _view, draw| {
         let _ = draw.lines(std::slice::from_ref(&line));
     }));
 }
 ```
 
-The client collects a fresh list at startup, login and when the debug selection changes. Push all
-your renderers on each refresh, even if their toggles are off. The first active registration for
-a switch wins. Only installed callbacks run in a world view, as their registering mods, after
-`submit_custom_geometry` and within its shared draw limits. A toggle that is off or hidden by
-reduced debug info does not draw.
+The client collects a fresh list at startup, login, the first world view and the next world view
+after a selection rebuild or respawn. Keep per-refresh state in the new callbacks. Push all
+renderers every time, even if their toggles are off; the first active registration for a switch
+wins. Only installed callbacks run in a world view, as their registering mods, after
+`submit_custom_geometry` and within its shared draw limits. Off or hidden toggles do not draw.
 
 ## Gradient fills
 

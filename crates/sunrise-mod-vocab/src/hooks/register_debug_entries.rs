@@ -3,15 +3,16 @@
 pub trait Hooks {
     /// Register F3 debug entries once at client startup (NeoForge's `RegisterDebugEntriesEvent`).
     /// Each mod receives an empty batch. Push `DebugEntry::text` with its line callback or
-    /// `DebugEntry::renderer` for a renderer toggle. Malformed or duplicate IDs, and IDs in the
-    /// `minecraft` namespace, are logged and left out.
+    /// `DebugEntry::renderer` for a renderer toggle. Text callbacks run only while their entry
+    /// is visible. Malformed or duplicate IDs, and IDs in the `minecraft` namespace, are
+    /// logged and left out.
     #[notes = r#"## Debug screen entries
 
 `Hooks::register_debug_entries` is the client registration-phase counterpart of NeoForge
 26.3's `RegisterDebugEntriesEvent`. It receives a `RegistrationContext` once at client startup
-and gives each mod an empty batch to push its entries to. Use a non-vanilla `<namespace>:<path>`
-for the ID.
-A malformed or duplicate ID, or one in the `minecraft` namespace, is logged and left out.
+and gives each mod an empty `event.entries` batch. Use a non-vanilla `<namespace>:<path>`
+for the ID. A malformed or duplicate ID, or one in the `minecraft` namespace, is logged
+and left out.
 
 Declare text with `DebugEntry::text(id, group, lines)`. The `DebugGroup` chooses which
 vanilla lines it joins: `Position`, `Light`, `Memory`, `LookingAtBlock`, `LookingAtEntity`,

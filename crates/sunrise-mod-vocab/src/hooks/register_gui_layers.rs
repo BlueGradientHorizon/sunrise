@@ -3,7 +3,9 @@
 pub trait Hooks {
     /// Register, wrap or replace a HUD layer with an owned draw callback (NeoForge's
     /// `RegisterGuiLayersEvent`). Asked once at client startup. The installed body runs
-    /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it.
+    /// between `gui_layer_pre` and `gui_layer_post` unless Pre cancels it. Use
+    /// `event.layers.register(id, placement, Box::new(draw))` to insert a new slot,
+    /// or `replace_layer` and `wrap_layer` to change an existing slot's body.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -14,7 +16,7 @@ are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, 
 `registerAbove` and `registerAboveAll`. `Below` and `Above` name a vanilla layer (the IDs
 `Hooks::gui_layer_pre` lists) or a layer already registered. Calls take effect in order, in mod
 load order. Invalid, reserved or duplicate IDs and unknown relative anchors are logged and
-refused.
+refused. The client calls each installed callback as the mod that registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,

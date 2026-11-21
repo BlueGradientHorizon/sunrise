@@ -8,7 +8,8 @@ type TransitionFactory = dyn Fn(&dyn ClientHost, DimensionTransitionReason) -> B
     + 'static;
 
 // no wire: the registration owns a factory with process-local code and captures.
-/// A factory registered once by `Hooks::register_dimension_transition_screen`.
+/// A loading-screen factory registered once by `Hooks::register_dimension_transition_screen`.
+/// Only travel that opens a new loading screen can select it; login and death never select one.
 pub struct DimensionTransitionScreen {
     screen: String,
     transition: DimensionTransition,
@@ -20,6 +21,7 @@ impl DimensionTransitionScreen {
     /// The ID is only used for validation and diagnostics. On a matching new load, the
     /// client calls the factory once as the registering mod and owns the returned presentation
     /// until the loading screen closes, even if the tracker restarts for another level.
+    /// Capture per-load state in the returned presentation, not in the registration itself.
     pub fn new(
         screen: String,
         transition: DimensionTransition,
@@ -59,7 +61,8 @@ impl DimensionTransitionScreen {
 }
 
 // no wire: each presentation is a process-local callback or object retained by one load.
-/// The complete presentation of one loading screen. A draw closure can implement this trait.
+/// The complete presentation of one loading screen, either an object or a draw closure.
+/// It controls what is painted, not when the client finishes loading.
 pub trait DimensionTransitionPresentation: Send + Sync + 'static {
     /// Draw under the registering mod's identity using this frame's reason and optional
     /// smoothed integrated-server progress. The tracker, not the presentation, decides when

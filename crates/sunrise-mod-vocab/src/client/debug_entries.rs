@@ -16,8 +16,9 @@ pub struct DebugEntry {
 
 impl DebugEntry {
     /// Declare a text entry under a non-vanilla `<namespace>:<path>` such as `mymod:tick_cost`.
-    /// Only while the entry is visible, the client calls `lines` as the registering mod.
-    /// Append lines to the supplied vector; legacy colour codes (§) are supported.
+    /// The client retains `lines` for the session and calls it as the registering mod only
+    /// while the entry is visible. Append lines to the supplied vector; legacy colour codes (§)
+    /// work. Appending nothing leaves the group unchanged.
     pub fn text(
         id: String,
         group: DebugGroup,
@@ -29,8 +30,8 @@ impl DebugEntry {
         }
     }
 
-    /// Declare a renderer toggle under the same non-vanilla `<namespace>:<path>` as its renderer.
-    /// A toggle has no text group or line callback.
+    /// Declare a renderer toggle under the same non-vanilla `<namespace>:<path>` as the
+    /// corresponding [`DebugRenderer`]. A toggle has no text group or line callback.
     pub fn renderer(id: String) -> Self {
         Self { id, text: None }
     }
@@ -58,8 +59,9 @@ pub struct DebugRenderer {
 
 impl DebugRenderer {
     /// Bind drawing to the ID of a [`DebugEntry::renderer`] toggle, such as `mymod:pipe_network`.
-    /// The client calls `draw` for each world view while the toggle is active, under the
-    /// registering mod's identity. Capture any renderer-specific state in the callback.
+    /// Submit a new declaration on each renderer-list refresh. If selected, the client calls
+    /// `draw` after custom geometry in each world view, as the registering mod. Capture any
+    /// renderer-specific state in the callback.
     pub fn new(
         id: String,
         draw: impl Fn(&dyn ClientHost, &WorldRenderView, &mut dyn WorldDrawContext)

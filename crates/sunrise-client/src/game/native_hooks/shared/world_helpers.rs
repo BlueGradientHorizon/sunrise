@@ -267,7 +267,7 @@ impl<'g> Game<'g> {
                 let _guard = owner.map(|id| {
                     enter_native_mod(ModCall {
                         id,
-                        hook: "gui_layer_draw",
+                        hook: "gui_layer_callback",
                         part: None,
                     })
                 });
@@ -281,7 +281,7 @@ impl<'g> Game<'g> {
                 let _guard = owner.map(|id| {
                     enter_native_mod(ModCall {
                         id,
-                        hook: "gui_layer_wrap",
+                        hook: "gui_layer_wrapper",
                         part: None,
                     })
                 });

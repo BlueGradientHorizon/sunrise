@@ -302,7 +302,7 @@ pub fn mod_lines<'a>(
         }
         let _owner = enter_native_mod(ModCall {
             id: registered.owner,
-            hook: "debug_entry_lines",
+            hook: "debug_entry_callback",
             part: None,
         });
         let mut lines = Vec::new();
