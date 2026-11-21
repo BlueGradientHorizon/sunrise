@@ -270,6 +270,7 @@ mod tests {
                 "mod:own".into(),
                 "mod:other".into(),
             ],
+            ["mod:own".into(), "mod:other".into()],
         );
         types.template(
             "mod:vault".into(),
@@ -298,7 +299,13 @@ mod tests {
         assert_eq!(types.memberships().count(), 4);
         let slot = OnceLock::new();
         freeze(&slot, types).unwrap();
-        assert!(freeze(&slot, BlockEntityTypes::new(BTreeMap::new(), Vec::new())).is_err());
+        assert!(
+            freeze(
+                &slot,
+                BlockEntityTypes::new(BTreeMap::new(), Vec::new(), [])
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -312,6 +319,11 @@ mod tests {
             .into(),
             vec![
                 "minecraft:chest".into(),
+                "test:machine".into(),
+                "test:single".into(),
+                "test:empty".into(),
+            ],
+            [
                 "test:machine".into(),
                 "test:single".into(),
                 "test:empty".into(),
@@ -347,6 +359,7 @@ mod tests {
                 ]
                 .into(),
                 vec!["minecraft:sign".into(), "test:machine".into()],
+                ["test:machine".into()],
             )
         };
         freeze(&slot, types()).unwrap();
