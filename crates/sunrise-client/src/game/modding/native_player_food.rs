@@ -3,24 +3,15 @@
 //! handle's `food()` doesn't give, the writes, and the experience give an
 //! orb hands over (Mending first). Reads return None for a
 //! stale handle or a player who isn't online here, as `food()` does. Writes
-//! return false for those, for a dead player, and, inside another player's
-//! turn, for anyone but that player. What changes reaches the player's client as any
-//! change to their food or experience does.
+//! fail when the player's state is unavailable. A resident player can be edited
+//! while dead. What changes reaches the player's client as any change to their food
+//! or experience does.
 use super::Game;
 use mod_api::{PlayerExperience, PlayerRef};
 use sunrise_client::entities::Experience;
 
 impl Game<'_> {
-    /// Whether `player` still names the same player on this server.
-    fn native_player_valid(&self, player: PlayerRef) -> bool {
-        self.player_handle_read(player).is_some()
-    }
-    /// Runs `f` with `player`'s state in place, when the handle is current
-    /// and they are alive (`native_as_player`).
-    fn native_player_write(&mut self, player: PlayerRef, f: impl FnOnce(&mut Self)) -> bool {
-        self.native_player_valid(player) && self.native_as_player_handle(player, f)
-    }
-    /// The acting player's food data, inside `native_player_write`.
+    /// The acting player's food data, inside their player turn.
     fn native_food_mut(&mut self) -> Option<&mut sunrise_world::food::FoodData> {
         self.player.as_mut().map(|p| &mut p.health.food)
     }
@@ -49,7 +40,7 @@ impl Game<'_> {
         nutrition: i32,
         saturation_modifier: f32,
     ) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             if let Some(food) = game.native_food_mut() {
                 food.eat(nutrition, saturation_modifier);
             }
@@ -59,7 +50,7 @@ impl Game<'_> {
     /// sprinting or jumping does. An invulnerable player (creative) or a
     /// spectator gets none, and the call still returns true.
     pub(super) fn player_add_exhaustion(&mut self, player: PlayerRef, amount: f32) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             if let Some(p) = game.player.as_mut() {
                 p.cause_food_exhaustion(amount);
             }
@@ -68,7 +59,7 @@ impl Game<'_> {
     /// `FoodData.setFoodLevel`: sets the food level as it is, unclamped,
     /// as vanilla does.
     pub(super) fn player_set_food_level(&mut self, player: PlayerRef, level: i32) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             if let Some(food) = game.native_food_mut() {
                 food.food = level;
             }
@@ -76,7 +67,7 @@ impl Game<'_> {
     }
     /// `FoodData.setSaturation`: sets the saturation as it is, unclamped.
     pub(super) fn player_set_saturation(&mut self, player: PlayerRef, saturation: f32) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             if let Some(food) = game.native_food_mut() {
                 food.saturation = saturation;
             }
@@ -85,7 +76,7 @@ impl Game<'_> {
     /// Sets the exhaustion as it is (Paper's `HumanEntity#setExhaustion`;
     /// vanilla's `FoodData` only adds to it).
     pub(super) fn player_set_exhaustion(&mut self, player: PlayerRef, exhaustion: f32) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             if let Some(food) = game.native_food_mut() {
                 food.exhaustion = exhaustion;
             }
@@ -120,7 +111,7 @@ impl Game<'_> {
     /// level to `points` of the points it needs, kept below a full bar. The
     /// level and the total are kept.
     pub(super) fn player_set_experience_points(&mut self, player: PlayerRef, points: i32) -> bool {
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             let limit = Experience::needed(game.experience.level) as f32;
             let max = (limit - 1.0) / limit;
             // Mth.clamp; `limit` is at least 7, so nothing here is NaN.
@@ -135,13 +126,13 @@ impl Game<'_> {
     /// `ServerPlayer.setExperienceLevels`: sets the level, keeping the
     /// progress and the total.
     pub(super) fn player_set_experience_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
-        self.native_player_write(player, |game| game.experience.level = levels)
+        self.native_as_player_handle(player, |game| game.experience.level = levels)
     }
     /// `Player.totalExperience`: sets the total as it is, keeping the level
     /// and the progress. A negative total is refused: a mod-API policy, as
     /// `Player.giveExperiencePoints` never takes it below 0.
     pub(super) fn player_set_total_experience(&mut self, player: PlayerRef, total: i32) -> bool {
-        total >= 0 && self.native_player_write(player, |game| game.experience.total = total)
+        total >= 0 && self.native_as_player_handle(player, |game| game.experience.total = total)
     }
     /// `ExperienceOrb.playerTouch`: Mending repairs the player's damaged
     /// items with `points` first (`ExperienceOrb.repairPlayerItems`), then
@@ -154,7 +145,7 @@ impl Game<'_> {
         let Ok(points) = i32::try_from(points) else {
             return false;
         };
-        self.native_player_write(player, |game| {
+        self.native_as_player_handle(player, |game| {
             let rest = if points > 0 {
                 game.mending(points as u32)
             } else {
@@ -170,7 +161,7 @@ impl Game<'_> {
     /// negative, as the anvil and the enchanting table charge with. Below 0
     /// the level, the total and the progress toward the next level are all 0.
     pub(super) fn player_give_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
-        self.native_player_write(player, |game| game.give_levels(levels))
+        self.native_as_player_handle(player, |game| game.give_levels(levels))
     }
 }
 
