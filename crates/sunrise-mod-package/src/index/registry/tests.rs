@@ -911,6 +911,31 @@ fn invalid_optional_binaries_keep_the_source_and_its_dependents() {
 }
 
 #[test]
+fn duplicate_fields_refuse_only_the_affected_binary() {
+    // Add a second `size` to the first binary, leaving the server binary unchanged.
+    let original: serde_json::Value = serde_json::from_str(STABLE_NATIVE).unwrap();
+    let size = &original["projects"][0]["versions"][0]["native_binaries"][0]["file"]["size"];
+    let text = STABLE_NATIVE.replacen(
+        &format!("\"size\": {size},"),
+        &format!("\"size\": {size}, \"size\": {size},"),
+        1,
+    );
+    assert_ne!(text, STABLE_NATIVE);
+    let read = Index::parse(&text).unwrap();
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    let commit = "b".repeat(40);
+    let client = "x86_64-unknown-linux-gnu";
+    let server = "x86_64-unknown-linux-gnu-server";
+    assert!(matches!(
+        version.native_binary(&commit, client),
+        Err(super::super::NativeBinaryUnavailable::Refused(_))
+    ));
+    assert!(version.native_binary(&commit, server).is_ok());
+    assert_eq!(version.verdicts["26.3-0.1.1"].targets, [server]);
+}
+
+#[test]
 fn native_binary_build_limits() {
     let mut index = Index::parse(STABLE_NATIVE).unwrap();
     let version = &mut index.projects[0].versions[0];

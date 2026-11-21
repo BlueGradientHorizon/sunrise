@@ -1,7 +1,7 @@
 //! The index reader isolates malformed optional rows; writers deserialize the strict types.
 use super::{Index, LeftOut, NativeBinary, NativeBinaryRefusal, Project, Version, check_binary};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, value::RawValue};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Deserialize)]
@@ -27,11 +27,11 @@ struct ReadVersion {
     #[serde(flatten)]
     version: Version,
     #[serde(default = "empty_rows")]
-    native_binaries: Value,
+    native_binaries: Box<RawValue>,
 }
 
-fn empty_rows() -> Value {
-    Value::Array(Vec::new())
+fn empty_rows() -> Box<RawValue> {
+    RawValue::from_string("[]".into()).expect("empty JSON array")
 }
 
 impl ReadIndex {
@@ -97,24 +97,28 @@ impl ReadVersion {
         let mut rejected = |reason| left_out.push(LeftOut::version(&project.id, &version, reason));
         let mut refused = Vec::new();
         let mut accepted = Vec::new();
-        match native_binaries {
-            Value::Array(rows) => {
-                let tuple = |row: &Value| {
-                    row.get("build")
-                        .and_then(Value::as_str)
-                        .zip(row.get("target").and_then(Value::as_str))
-                        .map(|(build, target)| (build.to_owned(), target.to_owned()))
-                };
+        match serde_json::from_str::<Vec<&RawValue>>(native_binaries.get()) {
+            Ok(rows) => {
+                #[derive(Deserialize, PartialEq, Eq, Hash)]
+                struct Key {
+                    build: String,
+                    target: String,
+                }
+                // Read just the coordinates even if the rest of the row is malformed. Ambiguous
+                // coordinates (including duplicate fields) cannot identify a refusal for a host.
+                let keys: Vec<_> = rows
+                    .iter()
+                    .map(|row| serde_json::from_str::<Key>(row.get()).ok())
+                    .collect();
                 let mut counts = HashMap::new();
-                for key in rows.iter().filter_map(tuple) {
+                for key in keys.iter().flatten() {
                     *counts.entry(key).or_insert(0) += 1;
                 }
-                for (position, row) in rows.into_iter().enumerate() {
-                    let key = tuple(&row);
+                for (position, (row, key)) in rows.into_iter().zip(&keys).enumerate() {
                     let result = if key.as_ref().is_some_and(|key| counts[key] > 1) {
                         Err("duplicate native build and target".into())
                     } else {
-                        serde_json::from_value::<NativeBinary>(row)
+                        serde_json::from_str::<NativeBinary>(row.get())
                             .map_err(|e| e.to_string())
                             .and_then(|binary| {
                                 check_binary(project, &binary, local_files)?;
@@ -123,12 +127,12 @@ impl ReadVersion {
                     };
                     match (result, key) {
                         (Ok(binary), _) => accepted.push(binary),
-                        (Err(error), Some((build, target))) => {
+                        (Err(error), Some(Key { build, target })) => {
                             let reason = format!("native binary {build} / {target}: {error}");
                             rejected(reason.clone());
                             refused.push(NativeBinaryRefusal {
-                                build,
-                                target,
+                                build: build.clone(),
+                                target: target.clone(),
                                 reason,
                             });
                         }
@@ -138,7 +142,7 @@ impl ReadVersion {
                     }
                 }
             }
-            _ => rejected("native_binaries must be a list".into()),
+            Err(_) => rejected("native_binaries must be a list".into()),
         }
         for (release, verdict) in &mut version.verdicts {
             verdict.targets.retain(|target| {
