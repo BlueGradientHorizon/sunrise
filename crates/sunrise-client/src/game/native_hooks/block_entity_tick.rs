@@ -1,5 +1,6 @@
 use super::*;
 use crate::game::{
+    Dim,
     api_values::{TryIntoApi, TryIntoEngine},
     transactions::OpenTransactions,
 };
@@ -106,6 +107,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
             return;
         }
         let mut data = TickData {
+            dim: self.game.dim,
             pos,
             loan,
             slot_count,
@@ -124,6 +126,7 @@ impl BlockEntityTickAccess for TickAccess<'_, '_> {
 }
 
 struct TickData<'a> {
+    dim: Dim,
     pos: Pos,
     loan: BlockEntityLoan<'a>,
     slot_count: usize,
