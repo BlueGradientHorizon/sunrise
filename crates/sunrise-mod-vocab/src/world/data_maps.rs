@@ -1,8 +1,9 @@
 //! Typed reads of data maps (NeoForge's `DataMapType` and `IWithData.getData`): the value the
 //! server's data packs and mods' files gave a registry entry, after every pack was applied.
 use crate::{
-    Backend, BiomeKey, BlockEntityTypeKey, BlockKey, DataMapType, EffectKey, EnchantmentKey,
-    EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey, RegistryName, Tag,
+    Backend, BiomeKey, BiomeView, BlockEntityTypeKey, BlockKey, DataMapType, EffectKey,
+    EnchantmentKey, EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey, RegistryName,
+    Tag,
 };
 use entry::EntryName;
 
@@ -169,23 +170,48 @@ impl entry::Entry for BiomeKey {
     const REGISTRY: &'static str = "minecraft:worldgen/biome";
     fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
         backend
-            .biome_key_id(*self)
-            .map(EntryName::Borrowed)
+            .biome_view(self)
+            .map(|view| EntryName::Borrowed(view.id()))
             .map_err(|error| match error {
                 crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
-                crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
+                crate::BiomeKeyError::InvalidIdentifier
+                | crate::BiomeKeyError::UnknownBiome
+                | crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
             })
     }
 }
 impl BiomeKey {
-    /// Read this biome's data as for [`ItemKey::data`]. Expired or foreign tokens
-    /// return [`DataMapError::InvalidKey`]; no installed registry returns `Unavailable`.
+    /// Read this biome's data as for [`ItemKey::data`], validating the key against the
+    /// currently installed server world biome registry. Unknown biomes return
+    /// [`DataMapError::InvalidKey`]; no installed registry returns `Unavailable`.
+    pub fn data<M: DataMap<Entry = BiomeKey>>(
+        &self,
+        host: &dyn Host,
+        map: &M,
+    ) -> Result<Option<M::Value>, DataMapError> {
+        data(self, host, map)
+    }
+}
+impl BiomeView<'_> {
+    /// Read this scoped biome view's data as for [`ItemKey::data`]. A view from another world
+    /// or world-data generation returns [`DataMapError::InvalidKey`]; no installed registry
+    /// returns `Unavailable`.
     pub fn data<M: DataMap<Entry = BiomeKey>>(
         self,
         host: &dyn Host,
         map: &M,
     ) -> Result<Option<M::Value>, DataMapError> {
-        data(&self, host, map)
+        let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
+        let id = backend.biome_view_id(self).map_err(|error| match error {
+            crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
+            crate::BiomeKeyError::InvalidIdentifier
+            | crate::BiomeKeyError::UnknownBiome
+            | crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
+        })?;
+        match backend.data_map_value(<BiomeKey as entry::Entry>::REGISTRY, id, map.id())? {
+            Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
+            None => Ok(None),
+        }
     }
 }
 impl DataMapEntry for ProfessionKey {}

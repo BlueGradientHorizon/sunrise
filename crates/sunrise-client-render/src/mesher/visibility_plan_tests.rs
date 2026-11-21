@@ -142,13 +142,18 @@ fn the_raw_input_reads_the_world_and_names_missing_columns() {
         let mut region: Region = Default::default();
         region[1][1] = Some(Arc::new(chunk));
         region[1][2] = Some(Arc::new(east));
-        let input = capture_input(&region, 1, state);
+        let desert = mod_api::BiomeKey::parse("minecraft:desert").unwrap();
+        let plains = mod_api::BiomeKey::parse("minecraft:plains").unwrap();
+        let input = capture_input(&region, 1, state, |raw| {
+            if raw == 5 {
+                desert.clone()
+            } else {
+                plains.clone()
+            }
+        });
         assert_eq!(input.cell([15, 15, 15]), Ok(SectionCell::State(state(7))));
         assert_eq!(input.cell([16, 0, 0]), Ok(SectionCell::State(state(9))));
-        assert_eq!(
-            input.biome([16, 0, 0]),
-            Ok(Some(mod_api::__private::biome_id(5)))
-        );
+        assert_eq!(input.biome([16, 0, 0]), Ok(Some(&desert)));
         assert_eq!(input.cell([0, 0, 0]), Ok(SectionCell::State(state(0))));
         assert_eq!(input.cell([-1, 0, 0]), Ok(SectionCell::Missing));
         assert_eq!(input.cell([16, 0, 16]), Ok(SectionCell::Missing));

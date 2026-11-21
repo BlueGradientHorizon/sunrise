@@ -285,6 +285,9 @@ impl sunrise_world::worldgen::structure::start::StartContext for StubContext {
     fn noise_biome(&mut self, _: [i32; 3]) -> sunrise_world::worldgen::biome::BiomeId {
         sunrise_world::worldgen::biome::BiomeId(0)
     }
+    fn biome_name(&self, _: sunrise_world::worldgen::biome::BiomeId) -> &str {
+        "minecraft:plains"
+    }
     fn noise_biomes(
         &mut self,
         quarts: &[[i32; 3]],

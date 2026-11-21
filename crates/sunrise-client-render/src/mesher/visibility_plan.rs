@@ -8,7 +8,8 @@
 use super::{ALL_VISIBLE, B, Mesher, P, Region, SectionMesh, pi};
 use crate::chunk::Chunk;
 use mod_api::{
-    BlockState, SectionCell, SectionVisibility, SectionVisibilityInput, SectionVisibilityRefusal,
+    BiomeKey, BlockState, SectionCell, SectionVisibility, SectionVisibilityInput,
+    SectionVisibilityRefusal,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -356,21 +357,26 @@ pub fn capture_input(
     region: &Region,
     sy: i32,
     mut state_of: impl FnMut(u32) -> BlockState,
+    biome_of: impl FnMut(u16) -> BiomeKey,
 ) -> SectionVisibilityInput {
     let centre = region[1][1].as_ref().expect("centre chunk");
     let base_y = centre.min_y() + sy * 16;
-    SectionVisibilityInput::capture([centre.x * 16, base_y, centre.z * 16], |[x, y, z]| {
-        let column = &region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
-        let (lx, wy, lz) = (x.rem_euclid(16), base_y + y, z.rem_euclid(16));
-        match column {
-            Some(chunk) => (
-                SectionCell::State(state_of(chunk.get(lx, wy, lz))),
-                chunk.light(lx, wy, lz),
-                Some(mod_api::__private::biome_id(chunk.biome(lx, wy, lz).into())),
-            ),
-            None => (SectionCell::Missing, 0, None),
-        }
-    })
+    SectionVisibilityInput::capture(
+        [centre.x * 16, base_y, centre.z * 16],
+        |[x, y, z]| {
+            let column = &region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
+            let (lx, wy, lz) = (x.rem_euclid(16), base_y + y, z.rem_euclid(16));
+            match column {
+                Some(chunk) => (
+                    SectionCell::State(state_of(chunk.get(lx, wy, lz))),
+                    chunk.light(lx, wy, lz),
+                    Some(chunk.biome(lx, wy, lz)),
+                ),
+                None => (SectionCell::Missing, 0, None),
+            }
+        },
+        biome_of,
+    )
 }
 
 #[cfg(test)]

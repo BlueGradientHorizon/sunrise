@@ -1,0 +1,22 @@
+ids = [
+    "type:BiomeKey",
+    "type:BiomeView",
+    "type:BiomeKeyError",
+    "type:BiomeId",
+    "host:biome_key",
+    "host:biome",
+    "handle:BiomeKey::id",
+    "handle:BiomeKey::view",
+    "handle:BiomeKey::data",
+    "handle:BiomeView::data",
+    "method:BiomeSource::possible_biomes",
+    "method:GenerationContext::noise_biome",
+    "method:SectionVisibilityInput::biome",
+]
+why = "Unify biome identity onto one persistent registered BiomeKey (matching vanilla 26.3 net.minecraft.resources.ResourceKey<Biome> and ResourceKey.streamCodec) and a distinct scoped, generation-bound, non-Wire BiomeView<'a> (matching vanilla 26.3 net.minecraft.core.Holder<Biome>). Removes the duplicate opaque BiomeId(u32) type and the guest-carried (u32, u64) BiomeKey wire codec, and routes worldgen (BiomeSource.possibleBiomes, Structure.GenerationContext) and section visibility through BiomeKey while keeping generation validation on BiomeView and server-world data-map lookups (NeoForge BaseMappedRegistry.getData)."
+migrate = """
+- Replace `BiomeId` with `BiomeKey`. `GenerationContext::noise_biome` now returns `BiomeKey`, `SectionVisibilityInput::biome` now returns `Result<Option<&BiomeKey>, SectionVisibilityRefusal>`, and `BiomeSource::possible_biomes` now returns `Vec<BiomeKey>`.
+- Construct persistent biome identities with `BiomeKey::new(identifier)`, `BiomeKey::parse("minecraft:plains")`, or `BiomeKey::from_parts("minecraft", "plains")`. `BiomeKey` implements `Wire` via its `Identifier` (no longer a `(u32, u64)` generation token) and survives world reloads.
+- Replace `host.biome_key("minecraft:plains")` with `host.biome("minecraft:plains")`, which returns `Result<BiomeView<'_>, BiomeKeyError>` borrowing from the installed world-data generation (refusing wrong phases with `BiomeKeyError::Unavailable` instead of unwinding). Use `view.id()` to borrow `&str` without a second host call, `view.key()` to borrow `&BiomeKey` (clone it to keep the persistent identity past the borrow), and `key.view(host)` to re-resolve a kept `BiomeKey` against the current generation.
+- `BiomeKey::data(&self, host, &map)` now borrows `&self` and validates membership against the currently installed server world biome registry. `BiomeView::data(self, host, &map)` validates the view's generation against `host` and reads the data map.
+"""

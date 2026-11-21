@@ -7,12 +7,12 @@ use crate::mesher::{
 };
 use crate::section_mask::SectionMask;
 use crate::world::World;
-use mod_api::{BiomeId, CellVisibility, MAX_CELL_RECORDS, SECTION_INPUT_CELLS, SectionCell};
+use mod_api::{CellVisibility, MAX_CELL_RECORDS, SECTION_INPUT_CELLS, SectionCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const SNAPSHOT_BYTES: usize = SECTION_INPUT_CELLS
-    * (size_of::<SectionCell>() + size_of::<u8>() + size_of::<Option<BiomeId>>());
+const SNAPSHOT_BYTES: usize =
+    SECTION_INPUT_CELLS * (size_of::<SectionCell>() + size_of::<u8>() + size_of::<Option<u16>>());
 const WORKER_BYTES: usize = PLAN_BYTES + size_of::<Region>() + size_of::<FrozenPlan>();
 const HALO_BYTES: usize = size_of::<HaloAnswers>();
 const CACHE_BYTES: usize = ANSWER_BYTES + size_of::<HeldAnswer>() - size_of::<SectionAnswer>();
@@ -522,7 +522,9 @@ pub(super) mod tests {
                     for request in streaming.take_visibility_requests() {
                         let mut builder = SectionPlanBuilder::new();
                         if request.key == CENTRE {
-                            let input = capture_input(&request.region, 0, state);
+                            let plains = mod_api::BiomeKey::parse("minecraft:plains").unwrap();
+                            let input =
+                                capture_input(&request.region, 0, state, |_| plains.clone());
                             assert_eq!(input.cell([16, 4, 8]), Ok(expected));
                             captured = true;
                         } else if request.key == (1, 0, 0) {
@@ -609,7 +611,10 @@ pub(super) mod tests {
                     for request in streaming.take_visibility_requests() {
                         let mut answer = SectionPlanBuilder::new();
                         if request.key == EAST
-                            && capture_input(&request.region, EAST.1, state).cell([8, 4, 8])
+                            && capture_input(&request.region, EAST.1, state, |_| {
+                                mod_api::BiomeKey::parse("minecraft:plains").unwrap()
+                            })
+                            .cell([8, 4, 8])
                                 == Ok(SectionCell::State(state(marker.0)))
                         {
                             answer.restrict([0, 4, 8], false, false, 0);

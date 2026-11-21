@@ -1495,6 +1495,9 @@ where
         self.worker.structure_biomes.insert(quart, id);
         id
     }
+    fn biome_name(&self, biome: BiomeId) -> &str {
+        self.pipeline.data.biome_name(biome)
+    }
     fn noise_biomes(&mut self, quarts: &[[i32; 3]]) -> Vec<BiomeId> {
         let mut resolver = self.pipeline.source.resolver(
             &self.pipeline.climate,

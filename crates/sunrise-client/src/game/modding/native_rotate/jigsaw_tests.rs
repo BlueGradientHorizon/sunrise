@@ -136,6 +136,9 @@ impl StartContext for Flat {
     fn noise_biome(&mut self, _: [i32; 3]) -> BiomeId {
         BiomeId(0)
     }
+    fn biome_name(&self, _: BiomeId) -> &str {
+        "minecraft:plains"
+    }
     fn noise_biomes(&mut self, positions: &[[i32; 3]]) -> Vec<BiomeId> {
         vec![BiomeId(0); positions.len()]
     }
