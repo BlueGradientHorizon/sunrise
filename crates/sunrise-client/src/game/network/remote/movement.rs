@@ -2,7 +2,7 @@ use sunrise_world::stepped_interpolation::{Path, PosRot, Start, SteppedInterpola
 
 /// The packet a living entity's move came in.
 #[derive(Clone, Copy, PartialEq)]
-pub(in crate::game) enum MovePacket {
+pub(super) enum MovePacket {
     /// `handleMoveEntity`: always interpolated.
     Move,
     /// `handleEntityPositionSync`.

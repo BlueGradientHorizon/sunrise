@@ -6,7 +6,7 @@ impl Game<'_> {
     /// rotation alone), turned to `rotation` if it has one. `packet` says
     /// whether a living entity more than 64 blocks away is put there at once
     /// (its `snaps`).
-    pub(in crate::game) fn move_entity(
+    pub(super) fn move_entity(
         &mut self,
         id: i32,
         path: Option<Path>,
