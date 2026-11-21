@@ -11,34 +11,24 @@ mod draw;
 #[path = "stations/tooltip.rs"]
 mod tooltip;
 use super::smithing_icons::smithing_slot_icons;
-/// Invalid measurements must not reach tooltip positioning or reserve empty space.
-fn tooltip_component_size(size: Option<[f32; 2]>) -> Option<[f32; 2]> {
-    size.filter(|size| size.iter().all(|v| v.is_finite() && *v > 0.0))
-}
 
 fn tooltip_position(
     (x, y): (f32, f32),
     (width, height): (f32, f32),
     (w, h): (f32, f32),
 ) -> (f32, f32) {
-    let mut x = (x + 12.0).round();
-    let mut y = (y - 12.0).round();
-    if x + w > width - 4.0 {
-        x = (x - 28.0 - w).max(4.0);
-    }
-    if x + w > width - 4.0 {
-        x = (width - w - 4.0).max(4.0);
-    }
-    if y + h + 3.0 > height {
-        y = height - h - 3.0;
-    }
-    y = y.max(4.0);
-    (x.round(), y.round())
+    let pos = mod_api::ClientTooltipPositioner::position_tooltip(
+        &mod_api::DefaultTooltipPositioner,
+        [width as i32, height as i32],
+        [x.round() as i32, y.round() as i32],
+        [w.ceil() as i32, h.ceil() as i32],
+    );
+    (pos[0] as f32, pos[1] as f32)
 }
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, Screen};
-use mod_api::{TooltipElement, TooltipImage};
+use mod_api::TooltipElement;
 use std::cell::Cell;
 use sunrise_client::{
     block_entity_item, brewing,
@@ -2145,19 +2135,19 @@ impl Game<'_> {
         lines: &[(T, u32)],
         x: f32,
         y: f32,
-    ) {
+    ) -> Option<[f32; 4]> {
         if lines.is_empty() {
-            return;
+            return None;
         }
-        let lines = Self::resolved(lines);
-        let screen = (batch.width, batch.height);
-        let Some(at) = self.tooltip_pre(batch, None, &lines, &[], (x, y), screen) else {
-            return;
-        };
-        let atlas = &self.gui.atlas;
-        let (x, y, w, h) = Self::tooltip_geometry(atlas, &lines, at, screen, [0.0; 2]);
-        self.tooltip_box(batch, None, x, y, w, h);
-        Self::tooltip_text(batch, atlas, &lines, x, y);
+        let components: Vec<mod_api::PreparedTooltipComponent> = Self::resolved(lines)
+            .into_iter()
+            .filter_map(|(text, color)| {
+                text.try_into_api()
+                    .ok()
+                    .map(|api| mod_api::PreparedTooltipComponent::__text(api, color))
+            })
+            .collect();
+        self.draw_prepared_tooltip(batch, None, &components, (x, y), true)
     }
     /// A tooltip's lines with their legacy codes resolved and their colours.
     fn resolved<T: Clone + Into<sunrise_client::text::Text>>(
@@ -2170,30 +2160,6 @@ impl Game<'_> {
                 (text.resolve_legacy(), *color)
             })
             .collect()
-    }
-    /// The tooltip's text's top-left corner and the box's size: beside the
-    /// cursor, kept on screen. `extra` is [minimum width, height after the text].
-    pub(super) fn tooltip_geometry(
-        atlas: &sunrise_client::hud::HudAtlas,
-        lines: &[(sunrise_client::text::Text, u32)],
-        (x, y): (f32, f32),
-        (width, height): (f32, f32),
-        extra: [f32; 2],
-    ) -> (f32, f32, f32, f32) {
-        let w = lines
-            .iter()
-            .map(|(t, _)| atlas.font.width_text(t))
-            .fold(0.0, f32::max)
-            .max(extra[0]);
-        let text_h = match lines.len() {
-            0 => 0.0,
-            1 => 8.0,
-            n => 8.0 + 2.0 + (n - 1) as f32 * 10.0,
-        };
-        let h = text_h + extra[1];
-        let (w, h) = (w.ceil(), h.ceil());
-        let (x, y) = tooltip_position((x, y), (width, height), (w, h));
-        (x, y, w, h)
     }
     /// The box around a tooltip's contents at `x`, `y`, `w` × `h`: solid fills, or the
     /// background and frame sprites of the tooltip style a mod names.
@@ -2252,19 +2218,6 @@ impl Game<'_> {
             border_bottom,
         );
     }
-    pub(super) fn tooltip_text(
-        batch: &mut HudBatch,
-        atlas: &sunrise_client::hud::HudAtlas,
-        lines: &[(sunrise_client::text::Text, u32)],
-        x: f32,
-        y: f32,
-    ) {
-        let mut ty = y;
-        for (i, (text, color)) in lines.iter().enumerate() {
-            batch.text_styled(atlas, text, x, ty, *color, true);
-            ty += if i == 0 { 12.0 } else { 10.0 };
-        }
-    }
     /// `ClientBundleTooltip.extractSelectedItemTooltip`: the selected item's
     /// name in a box of its own, centred over the grid (less 12) and 15 above
     /// the component, placed by `DefaultTooltipPositioner` (+12, -12, kept on
@@ -2276,6 +2229,7 @@ impl Game<'_> {
         x: f32,
         y: f32,
         w: f32,
+        default_font: &str,
     ) {
         let Some((_, stack)) = layout.selected.and_then(|i| layout.slots.get(i)) else {
             return;
@@ -2284,30 +2238,27 @@ impl Game<'_> {
             sunrise_client::item_tooltip::styled_name(stack, || self.stack_hover_name(stack));
         let lines = Self::resolved(&[(name, self.rarity_color(stack))]);
         let atlas = &self.gui.atlas;
-        let tw = atlas.font.width_text(&lines[0].0);
+        let tw = atlas.font.width_text_with_font(&lines[0].0, default_font);
         let center = x + (w / 2.0).floor() - 12.0;
-        let mut px = center - (tw / 2.0).floor() + 12.0;
-        let mut py = y - 15.0 - 12.0;
-        if px + tw > batch.width {
-            px = (px - 24.0 - tw).max(4.0);
-        }
-        if py + 8.0 + 3.0 > batch.height {
-            py = batch.height - 8.0 - 3.0;
-        }
+        let (px, py) = tooltip_position(
+            (center - (tw / 2.0).floor(), y - 15.0),
+            (batch.width, batch.height),
+            (tw, 8.0),
+        );
         self.tooltip_box(batch, Some(stack), px, py, tw, 8.0);
-        Self::tooltip_text(batch, atlas, &lines, px, py);
+        batch.text_styled_with_font(atlas, &lines[0].0, px, py, lines[0].1, true, default_font);
     }
     /// `ClientBundleTooltip.extractImage`: the slots, the count past them and
     /// the progress bar.
     fn draw_bundle_tooltip(
-        &mut self,
+        &self,
         batch: &mut HudBatch,
         layout: &sunrise_client::bundle::TooltipLayout,
+        default_font: &str,
     ) {
         for (i, (at, stack)) in layout.slots.iter().enumerate() {
             let selected = layout.selected == Some(i);
             let sprite = |name: &str| format!("container/bundle/{name}");
-            // Each draw takes the atlas on its own: the item's needs `&mut self`.
             sunrise_client::ui::nine_slice(
                 batch,
                 &self.gui.atlas,
@@ -2322,9 +2273,8 @@ impl Game<'_> {
                 24.0,
                 u32::MAX,
             );
-            let stack = stack.clone();
             let [x, y] = *at;
-            self.draw_item(batch, &stack, x + 4.0, y + 4.0);
+            self.draw_item(batch, stack, x + 4.0, y + 4.0);
             if selected {
                 sunrise_client::ui::nine_slice(
                     batch,
@@ -2341,14 +2291,15 @@ impl Game<'_> {
         let atlas = &self.gui.atlas;
         if let Some((at, hidden)) = layout.overflow {
             let label = sunrise_client::text::Text::literal(format!("+{hidden}"));
-            let w = atlas.font.width_text(&label);
-            batch.text_styled(
+            let w = atlas.font.width_text_with_font(&label, default_font);
+            batch.text_styled_with_font(
                 atlas,
                 &label,
                 at[0] + 12.0 - (w / 2.0).floor(),
                 at[1] + 10.0,
                 u32::MAX,
                 true,
+                default_font,
             );
         }
         if let Some((at, description)) = layout
@@ -2357,8 +2308,19 @@ impl Game<'_> {
         {
             let text = sunrise_client::text::Text::translate(description, &[]);
             let mut ty = at[1];
-            for line in atlas.font.split_lines(&text, layout.width) {
-                batch.text_styled(atlas, &line.0, at[0], ty, 0xFFAA_AAAA, false);
+            for line in atlas
+                .font
+                .split_formatted_with_font(&text, layout.width, default_font)
+            {
+                batch.text_styled_with_font(
+                    atlas,
+                    &line,
+                    at[0],
+                    ty,
+                    0xFFAA_AAAA,
+                    false,
+                    default_font,
+                );
                 ty += 9.0;
             }
         }
@@ -2390,23 +2352,28 @@ impl Game<'_> {
         );
         if let Some(key) = layout.label {
             let label = sunrise_client::text::Text::translate(key, &[]);
-            let w = atlas.font.width_text(&label);
-            batch.text_styled(
+            let w = atlas.font.width_text_with_font(&label, default_font);
+            batch.text_styled_with_font(
                 atlas,
                 &label,
                 bx + 48.0 - (w / 2.0).floor(),
                 by + 3.0,
                 u32::MAX,
                 true,
+                default_font,
             );
         }
     }
     /// `AbstractContainerScreen.showTooltipWithItemInHand`: a hovered stack's
-    /// tooltip shows while a stack is carried only when its image says so, as
-    /// a bundle's contents do (`ClientBundleTooltip`).
+    /// tooltip shows while a stack is carried only when its prepared tooltip
+    /// component says so, as a bundle's contents do (`ClientBundleTooltip`).
     pub(super) fn tooltip_with_carried(&self, stack: &ItemStack) -> bool {
-        self.carried.is_none()
-            || sunrise_client::bundle::Contents::of(self.items(), stack).is_some()
+        if self.carried.is_none() {
+            return true;
+        }
+        self.resolve_item_tooltip_image(stack)
+            .and_then(|component| self.prepare_tooltip_component(&component))
+            .is_some_and(|prepared| prepared.show_tooltip_with_item_in_hand())
     }
     /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
     pub(super) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
@@ -3133,18 +3100,39 @@ mod tests {
             });
         });
     }
-    /// `render_tooltip_gather_components` gets the lines and the part's image as one list before
-    /// anything is wrapped or measured: unset, `max_width` leaves the lines alone; a mod that sets
-    /// it wraps them with `Font.split`, can add an image of its own, and a cancel draws nothing.
+    /// `render_tooltip_gather_components` gets the lines and the part's component as one list
+    /// before anything is wrapped or prepared: unset, `max_width` leaves fitting lines alone; a
+    /// mod that sets it wraps them with `Font.split`, can add a custom component of its own, and
+    /// a cancel draws nothing.
     #[test]
     #[ignore = "daily"]
     fn gathered_tooltip_components_wrap_only_when_a_mod_sets_the_width() {
         use mod_api::{
-            self, ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent,
-            TooltipElement, TooltipImage,
+            self, ClientHost, ClientTooltipComponent, ClientTooltipComponentFactoriesRegistrar,
+            Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent, TooltipComponent,
+            TooltipComponentData, TooltipElement, TooltipFont,
         };
         use std::sync::atomic::{AtomicU8, Ordering};
-        use sunrise_client::text::Text;
+        use sunrise_client::{
+            text::Text,
+            tooltip_components::{TooltipComponentFactories, with_test_factories},
+        };
+
+        struct KnownData(i32, i32);
+        impl TooltipComponentData for KnownData {}
+
+        struct UnknownData;
+        impl TooltipComponentData for UnknownData {}
+
+        struct KnownClient(i32, i32);
+        impl ClientTooltipComponent for KnownClient {
+            fn width(&self, _: &dyn TooltipFont) -> i32 {
+                self.0
+            }
+            fn height(&self, _: &dyn TooltipFont) -> i32 {
+                self.1
+            }
+        }
 
         static MODE: AtomicU8 = AtomicU8::new(0);
         struct Mod;
@@ -3166,23 +3154,18 @@ mod tests {
                         event.max_width = 40;
                         event.elements.insert(
                             1,
-                            TooltipElement::Image(TooltipImage {
-                                source: mod_api::TooltipImageSource::ItemPart(event.stack.clone()),
-                                size: [16.0, 8.0],
-                            }),
+                            TooltipElement::Component(TooltipComponent::custom(KnownData(16, 8))),
                         );
-                        event.elements.push(TooltipElement::Image(TooltipImage {
-                            source: mod_api::TooltipImageSource::ItemPart(event.stack.clone()),
-                            size: [f32::NAN, 8.0],
-                        }));
+                        event
+                            .elements
+                            .push(TooltipElement::Component(TooltipComponent::custom(
+                                UnknownData,
+                            )));
                     }
                     3 => {
                         *event.elements = vec![
                             TooltipElement::Text(mod_api::Text::literal("Name"), u32::MAX),
-                            TooltipElement::Image(TooltipImage {
-                                source: mod_api::TooltipImageSource::ItemPart(event.stack.clone()),
-                                size: [12.0, 16.0],
-                            }),
+                            TooltipElement::Component(TooltipComponent::custom(KnownData(12, 16))),
                             TooltipElement::Text(mod_api::Text::literal("Second"), u32::MAX),
                             TooltipElement::Text(mod_api::Text::literal("Third"), u32::MAX),
                         ];
@@ -3193,62 +3176,66 @@ mod tests {
                 mod_api::Flow::Continue
             }
         }
+        let mut factories = TooltipComponentFactories::default();
+        let registrar: &mut dyn ClientTooltipComponentFactoriesRegistrar = &mut factories;
+        registrar.register::<KnownData, KnownClient>(|d| KnownClient(d.0, d.1));
+
         let mods: Mods = vec![ModEntry::new("gather", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let stick = super::ItemStack::new("minecraft:stick", 1);
-                let long = Text::literal("one two three four five six seven eight");
-                let lines = vec![(long.clone(), u32::MAX)];
-                let gather = |game: &super::Game<'_>| {
-                    game.gather_tooltip_components(
-                        &stick,
-                        lines.clone(),
-                        Vec::new(),
-                        (320.0, 240.0),
-                    )
-                };
-                MODE.store(0, Ordering::Relaxed);
-                let plain = gather(game).unwrap();
-                assert_eq!(plain.len(), 1);
-                assert!(matches!(plain[0], tooltip::Element::Text(_, _)));
-                MODE.store(1, Ordering::Relaxed);
-                let elements = gather(game).unwrap();
-                let wrapped: Vec<_> = elements
-                    .iter()
-                    .filter_map(|e| match e {
-                        tooltip::Element::Text(t, c) => Some((t, c)),
-                        _ => None,
-                    })
-                    .collect();
-                let images: Vec<_> = elements
-                    .iter()
-                    .filter_map(|e| match e {
-                        tooltip::Element::Image(i) => Some(i),
-                        _ => None,
-                    })
-                    .collect();
-                let font = &game.gui.atlas.font;
-                let expected = font.split(&long, 40.0);
-                assert!(expected.len() > 1);
-                assert_eq!(
-                    wrapped.iter().map(|(t, _)| t.plain()).collect::<Vec<_>>(),
-                    expected.iter().map(Text::plain).collect::<Vec<_>>()
-                );
-                assert!(wrapped.iter().all(|(t, _)| font.width_text(t) <= 40.0));
-                // The invalid image is dropped, the valid one stays.
-                assert_eq!(images.len(), 1);
-                assert_eq!(images[0].size, [16.0, 8.0]);
-                // Wrapping expands text in place, never moving the image behind later text.
-                assert!(matches!(elements.last(), Some(tooltip::Element::Image(_))));
-                MODE.store(3, Ordering::Relaxed);
-                let mixed = gather(game).unwrap();
-                assert_eq!(mixed.len(), 4);
-                assert!(matches!(mixed[0], tooltip::Element::Text(_, _)));
-                assert!(matches!(mixed[1], tooltip::Element::Image(_)));
-                assert!(matches!(mixed[2], tooltip::Element::Text(_, _)));
-                assert!(matches!(mixed[3], tooltip::Element::Text(_, _)));
-                MODE.store(2, Ordering::Relaxed);
-                assert!(gather(game).is_none());
+            with_test_factories(factories, || {
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let stick = super::ItemStack::new("minecraft:stick", 1);
+                    let long = Text::literal("one two three four five six seven eight");
+                    let lines = vec![(long.clone(), u32::MAX)];
+                    let gather = |game: &super::Game<'_>| {
+                        game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0))
+                    };
+                    MODE.store(0, Ordering::Relaxed);
+                    let plain = gather(game).unwrap();
+                    assert_eq!(plain.len(), 1);
+                    assert!(plain[0].as_text().is_some());
+                    MODE.store(1, Ordering::Relaxed);
+                    let elements = gather(game).unwrap();
+                    let wrapped: Vec<_> = elements
+                        .iter()
+                        .filter_map(|e| {
+                            let (text, color) = e.as_text()?;
+                            let engine: Text = text.try_into_engine(&()).ok()?;
+                            Some((engine, color))
+                        })
+                        .collect();
+                    let custom: Vec<_> = elements
+                        .iter()
+                        .filter_map(|e| e.downcast_ref::<KnownClient>())
+                        .collect();
+                    let font = &game.gui.atlas.font;
+                    let expected = font.split_formatted(&long, 40.0);
+                    assert!(expected.len() > 1);
+                    assert_eq!(
+                        wrapped.iter().map(|(t, _)| t.plain()).collect::<Vec<_>>(),
+                        expected.iter().map(Text::plain).collect::<Vec<_>>()
+                    );
+                    assert!(wrapped.iter().all(|(t, _)| font.width_text(t) <= 40.0));
+                    // The unregistered custom component is dropped, the registered one stays.
+                    assert_eq!(custom.len(), 1);
+                    assert_eq!((custom[0].0, custom[0].1), (16, 8));
+                    // Wrapping expands text in place, never moving the component behind later text.
+                    assert!(
+                        elements
+                            .last()
+                            .and_then(|e| e.downcast_ref::<KnownClient>())
+                            .is_some()
+                    );
+                    MODE.store(3, Ordering::Relaxed);
+                    let mixed = gather(game).unwrap();
+                    assert_eq!(mixed.len(), 4);
+                    assert!(mixed[0].as_text().is_some());
+                    assert!(mixed[1].downcast_ref::<KnownClient>().is_some());
+                    assert!(mixed[2].as_text().is_some());
+                    assert!(mixed[3].as_text().is_some());
+                    MODE.store(2, Ordering::Relaxed);
+                    assert!(gather(game).is_none());
+                });
             });
         });
     }
@@ -3269,23 +3256,6 @@ mod tests {
             tooltip_position((90.0, 90.0), (200.0, 80.0), (128.0, 42.0)),
             (4.0, 35.0)
         );
-    }
-    #[test]
-    fn image_tooltip_measurements_are_finite_and_nonempty() {
-        use super::tooltip_component_size;
-        assert_eq!(tooltip_component_size(None), None);
-        assert_eq!(
-            tooltip_component_size(Some([128.0, 32.0])),
-            Some([128.0, 32.0])
-        );
-        for size in [
-            [0.0, 32.0],
-            [32.0, -1.0],
-            [f32::NAN, 32.0],
-            [32.0, f32::INFINITY],
-        ] {
-            assert_eq!(tooltip_component_size(Some(size)), None);
-        }
     }
     use super::*;
 
@@ -3408,16 +3378,17 @@ mod cycling_tests {
         assert_eq!(smithing_slot_icons(None).3, 0);
     }
 
-    /// `render_tooltip_pre` sees a tooltip's lines, stack and screen, can move the point it hangs
-    /// from, and cancels it; with no mod the point is the cursor's.
+    /// `render_tooltip_pre` sees a tooltip's prepared components, stack, positioner, font and
+    /// screen, can move the point it hangs from, and cancels it; with no mod the point is the
+    /// cursor's.
     #[test]
     #[ignore = "daily"]
     fn a_tooltip_pre_answer_moves_or_cancels_the_tooltip() {
         use mod_api::{
-            self, ClientHost, Hooks, ModEntry, Mods, RenderTooltipPreEvent, TooltipElement,
+            self, ClientHost, Hooks, Identifier, ModEntry, Mods, PreparedTooltipComponent,
+            RenderTooltipPreEvent,
         };
         use std::sync::atomic::{AtomicU8, Ordering};
-        use sunrise_client::text::Text;
 
         static MODE: AtomicU8 = AtomicU8::new(0);
         struct Mod;
@@ -3428,12 +3399,13 @@ mod cycling_tests {
                 _: &dyn ClientHost,
                 event: &mut RenderTooltipPreEvent<'_>,
             ) -> mod_api::Flow {
-                assert_eq!(event.elements.len(), 1);
+                assert_eq!(event.components.len(), 1);
                 assert!(
-                    matches!(&event.elements[0], TooltipElement::Text(t, _) if *t == mod_api::Text::literal("Tip"))
+                    matches!(event.components[0].as_text(), Some((t, _)) if *t == mod_api::Text::literal("Tip"))
                 );
                 assert_eq!((event.place.x, event.place.y), (10, 20));
-                assert_eq!((event.screen_width, event.screen_height), (320, 240));
+                assert_eq!(event.screen, [320.0, 240.0]);
+                assert_eq!(*event.font, Identifier::parse("minecraft:default").unwrap());
                 match MODE.load(Ordering::Relaxed) {
                     1 => {
                         event.place.x = 50;
@@ -3456,19 +3428,29 @@ mod cycling_tests {
                 mod_api::Flow::Continue
             }
         }
-        let lines = vec![(Text::literal("Tip"), u32::MAX)];
+        let default_font = Identifier::parse("minecraft:default").unwrap();
+        let components = vec![PreparedTooltipComponent::__text(
+            mod_api::Text::literal("Tip"),
+            u32::MAX,
+        )];
         let mods: Mods = vec![ModEntry::new("pre", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut batch = HudBatch::scratch([320, 240]);
                 let mut pre = |game: &super::Game<'_>| {
-                    game.tooltip_pre(&mut batch, None, &lines, &[], (10.6, 20.4), (320.0, 240.0))
+                    game.tooltip_pre_components(
+                        &mut batch,
+                        None,
+                        &components,
+                        (10.6, 20.4),
+                        (320.0, 240.0),
+                    )
                 };
                 MODE.store(0, Ordering::Relaxed);
                 // Unmoved, the cursor's own fractional point stays.
-                assert_eq!(pre(game), Some((10.6, 20.4)));
+                assert_eq!(pre(game), Some(((10.6, 20.4), default_font.clone())));
                 MODE.store(1, Ordering::Relaxed);
-                assert_eq!(pre(game), Some((50.0, 60.0)));
+                assert_eq!(pre(game), Some(((50.0, 60.0), default_font.clone())));
                 MODE.store(2, Ordering::Relaxed);
                 assert_eq!(pre(game), None);
                 assert!(
@@ -3484,18 +3466,18 @@ mod cycling_tests {
         let (x, y) = tooltip_position((10.3, 20.7), (640.0, 360.0), (100.0, 20.0));
         assert_eq!((x, y), (22.0, 9.0));
 
-        // When overflowing right boundary, flips to left
+        // When overflowing right boundary, flips to left (DefaultTooltipPositioner: x - 24 - w)
         let (x, _y) = tooltip_position((600.0, 50.0), (640.0, 360.0), (100.0, 20.0));
-        assert_eq!(x, 484.0);
+        assert_eq!(x, 488.0);
 
         // Clamps to min 4.0 margin
         let (x, y) = tooltip_position((50.0, 50.0), (100.0, 100.0), (120.0, 20.0));
         assert_eq!(x, 4.0);
         assert_eq!(y, 38.0);
 
-        // Near top screen edge
+        // Near top screen edge (vanilla DefaultTooltipPositioner applies no top clamp)
         let (_x, y) = tooltip_position((50.0, 5.0), (640.0, 360.0), (100.0, 20.0));
-        assert_eq!(y, 4.0);
+        assert_eq!(y, -7.0);
     }
 }
 

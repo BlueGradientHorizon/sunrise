@@ -5,6 +5,15 @@ use crate::game::{
 };
 use mod_api::{prelude::*, *};
 
+/// Borrow `minecraft:default` directly or format another font identifier.
+pub(in crate::game) fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow<'static, str> {
+    if id.namespace() == "minecraft" && id.path() == "default" {
+        std::borrow::Cow::Borrowed(sunrise_client::font::DEFAULT)
+    } else {
+        std::borrow::Cow::Owned(id.to_string())
+    }
+}
+
 /// Engine font view lent to [`ClientTooltipComponent`] and `render_tooltip_pre`.
 pub(in crate::game) struct EngineTooltipFont<'a> {
     pub font: &'a sunrise_client::font::Font,
@@ -19,12 +28,12 @@ impl TooltipFont for EngineTooltipFont<'_> {
     }
     fn width(&self, text: &Text) -> Result<i32, TextFormError> {
         let text: crate::text::Text = text.try_into_engine(&())?;
-        Ok(self.font.width_text_with_font(&text, self.id.as_str()) as i32)
+        Ok(self.font.width_text_with_font(&text, &font_id_str(self.id)) as i32)
     }
     fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
         let text: crate::text::Text = text.try_into_engine(&())?;
         self.font
-            .split_formatted_with_font(&text, max_width as f32, self.id.as_str())
+            .split_formatted_with_font(&text, max_width as f32, &font_id_str(self.id))
             .into_iter()
             .map(|line| line.try_into_api())
             .collect()
@@ -107,7 +116,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             at[1],
             crate::hud::rgba(r, g, b, a),
             shadow,
-            font.as_str(),
+            &font_id_str(font),
         ))
     }
     fn with_tooltip_font_raw(&self, font: &Identifier, f: &mut dyn FnMut(&dyn TooltipFont)) {
