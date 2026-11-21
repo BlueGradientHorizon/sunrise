@@ -23,6 +23,14 @@ REGISTRARS = {
     "special_model_renderer": ("renderers", "SpecialModelRenderers", "SpecialModelRendererRegistry"),
     "game_tests": ("functions", "GameTests", "GameTestFunctions"),
     "load_conditions": ("conditions", "LoadConditions", "LoadConditionDeclarations"),
+    "entity_layers": ("layers", "EntityLayers", "LayerRegistration"),
+    "client_item_extensions": ("extensions", "mod_api::ClientItemExtensionsRegistrar", "Registration"),
+    "cauldron_interaction": ("interactions", "CauldronInteractions", "Registrar"),
+}
+GAME_OWNERS = {
+    "entity_layers": ("modding/native_entity_layers.rs", "native_entity_layers", "pub(super) "),
+    "client_item_extensions": ("modding/client_item_extensions.rs", "client_item_extensions", ""),
+    "cauldron_interaction": ("blocks/cauldron_interactions.rs", "cauldron_interactions", ""),
 }
 
 
@@ -61,7 +69,25 @@ def main():
                     source = replace(source, "use super::*;\nuse mod_api::LoadConditions;\nimpl", "use super::*;\nimpl", path)
                 prefix = f"fn native_{hook}(\n        context: &mod_api::RegistrationContext,\n        "
                 old = f"{prefix}{argument}: &mut dyn {trait},"
-                new = f"{prefix}{argument}: &mut mod_api::{owner},"
+                if suffix in GAME_OWNERS:
+                    owner_file, module, visibility = GAME_OWNERS[suffix]
+                    owner_path = GAME / owner_file
+                    pending[owner_path] = replace(
+                        owner_path.read_text(),
+                        f"\n{visibility}struct {owner}<'a>",
+                        f"\npub(in crate::game) struct {owner}<'a>",
+                        owner_path,
+                    )
+                    gap = "\n" if suffix == "entity_layers" else ""
+                    source = replace(
+                        source,
+                        f"use super::*;\n{gap}impl Game",
+                        f"use super::*;\nuse crate::game::{module}::{owner};\n{gap}impl Game",
+                        path,
+                    )
+                    new = f"{prefix}{argument}: &mut {owner}<'_>,"
+                else:
+                    new = f"{prefix}{argument}: &mut mod_api::{owner},"
         else:
             prefix = f"self.fire_{hook}(" if suffix == "game_tests" else f"Self::fire_{hook}(context, "
             old = f"{prefix}{argument});"

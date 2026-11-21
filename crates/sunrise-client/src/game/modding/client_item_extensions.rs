@@ -44,7 +44,7 @@ impl Default for ArmorExtensions {
     }
 }
 
-struct Registration<'a> {
+pub(in crate::game) struct Registration<'a> {
     state: ArmorExtensions,
     sprite_exists: &'a dyn Fn(&str) -> bool,
     refused: Option<String>,

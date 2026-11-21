@@ -36,7 +36,7 @@ enum Target {
     Item(String),
     Tag(String),
 }
-struct Registrar<'a> {
+pub(in crate::game) struct Registrar<'a> {
     table: Table,
     items: &'a Items,
     registry: &'a sunrise_world::registry::BlockRegistry,
