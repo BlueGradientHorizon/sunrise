@@ -453,6 +453,8 @@ pub struct RegistrationData {
     block_entity_coverage: Option<fn(&str, &str) -> bool>,
     /// Each package's checked runtime files, by mod ID.
     runtime_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::RuntimeFileSource>>>,
+    /// Each enabled package's content files, by mod ID.
+    package_files: Arc<std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>>,
 }
 
 impl RegistrationData {
@@ -470,6 +472,7 @@ impl RegistrationData {
             capability_coverage: None,
             block_entity_coverage: None,
             runtime_files: Default::default(),
+            package_files: Default::default(),
             registries: registries
                 .into_iter()
                 .map(|(name, ids)| (name, ids.into()))
@@ -497,6 +500,18 @@ impl RegistrationData {
     }
     pub(crate) fn runtime_source(&self, mod_id: &str) -> Option<Arc<dyn crate::RuntimeFileSource>> {
         self.runtime_files.get(mod_id).cloned()
+    }
+    /// Bind each enabled package's content files, by mod ID: what
+    /// [`RegistrationContext::package_files`] serves.
+    pub fn with_package_files(
+        mut self,
+        files: std::collections::BTreeMap<String, Arc<dyn crate::PackageFileSource>>,
+    ) -> Self {
+        self.package_files = Arc::new(files);
+        self
+    }
+    pub(crate) fn package_source(&self, mod_id: &str) -> Option<Arc<dyn crate::PackageFileSource>> {
+        self.package_files.get(mod_id).cloned()
     }
     /// Bind the game's pure type-coverage projection. It reads no world or runtime position.
     pub fn with_capability_coverage(

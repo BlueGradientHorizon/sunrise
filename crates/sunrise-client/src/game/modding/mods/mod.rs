@@ -7,6 +7,7 @@ use super::{
     registration_capability_coverage as coverage,
 };
 mod menu_books;
+pub(in crate::game) mod package_files;
 pub(in crate::game) mod runtime_files;
 mod standalone;
 use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
@@ -310,6 +311,7 @@ fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String
 pub(super) fn install_registration_data(
     root: &Path,
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
+    package_files: BTreeMap<String, Arc<dyn mod_api::PackageFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
     let directory = Game::game_dir();
@@ -326,7 +328,8 @@ pub(super) fn install_registration_data(
             crate::entry::runtime_environment::get().clone(),
         )
         .with_capability_coverage(coverage::builtin, coverage::block_entity)
-        .with_runtime_files(runtime_files),
+        .with_runtime_files(runtime_files)
+        .with_package_files(package_files),
     );
     Ok(())
 }

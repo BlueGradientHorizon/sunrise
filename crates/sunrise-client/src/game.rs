@@ -11635,7 +11635,11 @@ pub(crate) fn run_with(
     mods::validate_startup_packages(&options.mods)?;
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
-    mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
+    mods::install_registration_data(
+        &vanilla_root,
+        mods::runtime_files::sources(&options.mods),
+        mods::package_files::sources(&options.mods),
+    )?;
     mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
     crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
     // The structure types those mods registered, handed to the engine before

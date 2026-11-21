@@ -48,6 +48,32 @@ it sits on disk. A
 package installed as a `.smod` archive has no path (`NotAFolder`), and a later edit of a folder is yours to guard
 against. A mod whose package declares no `[runtime]` gets `RuntimeFilesError::NoRuntimeFiles`.
 
+## Another package's files
+
+A mod that turns other packages' files into what it registers (a script host whose script packages carry
+`data/<namespace>/lumen/*.luau`, a runtime that serves a content package) reads them during registration with
+`cx.package_files(id)`, NeoForge's `getModFileById(id).getFile().getContents()`. It works for any enabled
+package, your own included, and gives a handle you may keep and use from any thread:
+
+```rust
+fn scripts(cx: &mod_api::RegistrationContext) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error>> {
+    let files = cx.package_files("lumen_demo")?;
+    let mut scripts = Vec::new();
+    for path in files.list("data/lumen_demo/lumen/") {
+        scripts.push(files.read(path)?);
+    }
+    Ok(scripts)
+}
+```
+
+The view is content loading's: the same `assets/` and `data/` files, the same checks, and each `read` goes to the
+package then, so a `--dev-mod` folder gives what it holds at that moment. The file list is taken on the first call
+and stays fixed. `list(folder)` returns the paths under that prefix in sorted order (`""` lists them all). `read`
+returns `PackageReadError::NotFound` for a path the package doesn't have, including `..` and absolute paths.
+`package_files` returns `PackageFilesError::NotEnabled` for a package that isn't enabled (the packages
+`cx.mods()` lists), `Unreadable` when the package's files can't be listed, and `Unavailable` outside a mod's
+registration.
+
 Although the archive accepts `build.rs`, a native build refuses it unless you disable it with
 `build = false` in Cargo's `[package]` table and remove build dependencies.
 

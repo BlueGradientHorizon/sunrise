@@ -55,7 +55,9 @@ whatever the dispatch order: the loaded packages, the built-in registries as `re
 lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A
 mod validates the keys it declares against them from `Hooks::register`; a name that is not a
 namespaced identifier, an unknown registry, an empty or path-like setting key, a package that is
-not loaded, or a context the engine gave no data returns a `RegistrationReadError`. Client setup
+not loaded, or a context the engine gave no data returns a `RegistrationReadError`. From registration on,
+`package_files(id)` lists and reads any enabled package's `assets/` and `data/` files, before content loading
+reads them ([Data files](../how-to/native-mods/03-data-files.md#another-packages-files)). Client setup
 runs once after the initial asset apply. The window's Client/Common configs load once immediately after client setup and before title,
 connection, input, render or ordinary tick callbacks. This includes pack-error recovery: the failed
 selection is cleared and saved during initialization, but its options screen opens only after Config
