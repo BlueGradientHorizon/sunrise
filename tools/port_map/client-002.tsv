@@ -40,7 +40,7 @@ ClientPacketListener.handleContainerClose	port	crates/sunrise-client/src/game/ne
 ClientPacketListener.handleBlockEvent	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_block_event_packet	BlockEvent arm: client block event, then the block entity event
 ClientPacketListener.handleGameEvent	port	crates/sunrise-client/src/game/network/remote/packets_world.rs::Game::apply_game_event_packet	GameEvent arm (weather, mode, credits, respawn, arrow hit, sting, limited crafting, chunks load start); gap: minor: demo mode (5) is not shown
 ClientPacketListener.openDemoIntroScreen	skip:other		demo mode only (GameEvent 5); Sunrise has no demo mode
-ClientPacketListener.startWaitingForNewLevel	inline	crates/sunrise-client/src/game/network/remote/mod.rs::Game::enter_remote_dimension	the tracker starts and the LevelLoadingScreen draws until the player's section is shown
+ClientPacketListener.startWaitingForNewLevel	inline	crates/sunrise-client/src/game/network/remote/session.rs::Game::enter_remote_dimension	the tracker starts and the LevelLoadingScreen draws until the player's section is shown
 ClientPacketListener.handleMapItemData	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data
 ClientPacketListener.handleUpdateAdvancementsPacket	port	crates/sunrise-client/src/game/interface/advancements/mod.rs::Game::remote_advancements	UpdateAdvancements arm passes the added icons
 ClientPacketListener.handleSelectAdvancementsTab	missing		minor: the server's advancement tab choice is ignored
