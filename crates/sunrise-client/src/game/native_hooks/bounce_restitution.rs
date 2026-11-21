@@ -36,18 +36,33 @@ impl StepOnView<'_> {
         };
         let mut blocks = Vec::new();
         let mut entity_writes = Vec::new();
+        let mut composed = *call.movement;
         mod_api::dispatch_step_on(side, call, |part, level, event| {
             let previous = *event.movement;
             part.step_on(level, event);
             let (requests, writes) = event.__take_writes();
+            // Entity writes drain in order after the callbacks' direct velocity edits.
+            // Reuse the composed prefix unless this Part changed the starting velocity.
+            let edited = *event.movement != previous;
+            let mut velocity = if edited { *event.movement } else { composed };
+            let mut accepts = |write: &mod_api::EntityWrite| match *write {
+                mod_api::EntityWrite::Push(v) => {
+                    for (axis, push) in velocity.iter_mut().zip(v) {
+                        *axis += push;
+                    }
+                    velocity.iter().all(|v| v.is_finite())
+                }
+                mod_api::EntityWrite::SetMovement(v) => {
+                    velocity = v;
+                    v.iter().all(|v| v.is_finite())
+                }
+                mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
+                mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
+                _ => true,
+            };
             let valid = event.movement.iter().all(|v| v.is_finite())
-                && writes.iter().all(|write| match write {
-                    mod_api::EntityWrite::Push(v)
-                    | mod_api::EntityWrite::SetMovement(v)
-                    | mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
-                    mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
-                    _ => true,
-                });
+                && (!edited || entity_writes.iter().all(&mut accepts))
+                && writes.iter().all(accepts);
             let kept = blocks.len();
             if valid
                 && requests
@@ -56,6 +71,7 @@ impl StepOnView<'_> {
                     .try_for_each(|write| write.map(|write| blocks.push(write)))
                     .is_ok()
             {
+                composed = velocity;
                 entity_writes.extend(writes);
             } else {
                 blocks.truncate(kept);

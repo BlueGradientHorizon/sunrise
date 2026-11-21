@@ -1296,6 +1296,7 @@ impl Game<'_> {
                 boat.stuck = b.stuck;
                 boat.fall_distance = b.fall_distance;
                 boat.velocity = b.velocity;
+                boat.fire_ticks = b.fire_ticks;
             });
             self.refresh_boat_status(i);
         }

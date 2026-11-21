@@ -945,10 +945,8 @@ impl Game<'_> {
         }
     }
 
-    /// A typed entity write an `entity_inside` part queued for an item, applied
-    /// in its own tick. An item takes no effects and keeps no stuck multiplier
-    /// (its tick's friction reads none): `StuckIn` scales the movement once,
-    /// `AddEffect` is skipped, as vanilla's items keep no effect list.
+    /// Apply a contact Part's write to the moving item. Items hold a multiplier
+    /// for the next move (`makeStuckInBlock`), but keep no active effects.
     fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
@@ -957,11 +955,8 @@ impl Game<'_> {
             }
             mod_api::EntityWrite::SetMovement(v) => item.velocity = triple(v),
             mod_api::EntityWrite::StuckIn(v) => {
-                item.velocity = Vec3::new(
-                    item.velocity.x * v[0],
-                    item.velocity.y * v[1],
-                    item.velocity.z * v[2],
-                );
+                item.stuck = triple(v);
+                item.fall_distance = 0.0;
             }
             mod_api::EntityWrite::Hurt { amount } => {
                 self.hurt_moving_item(item, amount);

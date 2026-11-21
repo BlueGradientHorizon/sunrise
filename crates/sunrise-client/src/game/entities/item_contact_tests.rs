@@ -533,13 +533,21 @@ impl BlockPart for StepProbe {
         };
         let pos = [event.pos.x, event.pos.y, event.pos.z];
         assert_eq!(host.block_state(pos), Some(event.state));
-        self.calls
-            .lock()
-            .unwrap()
-            .push((client, event.entity, pos, event.stepping_carefully));
+        let first = {
+            let mut calls = self.calls.lock().unwrap();
+            let first = !calls.iter().any(|call| call.1 == event.entity);
+            calls.push((client, event.entity, pos, event.stepping_carefully));
+            first
+        };
         event.movement[0] = 0.25;
-        if event.kind == "minecraft:armor_stand" {
-            assert!(event.write_entity(mod_api::EntityWrite::Push([0.25, 0.0, 0.0])));
+        if !client {
+            let write = match event.kind {
+                "minecraft:armor_stand" => mod_api::EntityWrite::Push([0.25, 0.0, 0.0]),
+                "minecraft:item" => mod_api::EntityWrite::StuckIn([0.5, 0.25, 0.5]),
+                "minecraft:oak_boat" if first => mod_api::EntityWrite::SetFireTicks(40),
+                _ => return,
+            };
+            assert!(event.write_entity(write));
         }
     }
 
@@ -647,6 +655,15 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     assert_eq!(item.position, Vec3::new(4.5, 64.0, 4.5));
                     assert_eq!(item.velocity.x, 0.25); // no movement drag on an idle tick
                     assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    let displacement = if client { 0.25 } else { 0.125 };
+                    assert_eq!(item.position.x, 4.5 + displacement);
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+                    if !client {
+                        // The actual next move spent the preceding multiplier and
+                        // the stone Part installed a fresh one on its own step.
+                        assert_eq!(item.stuck, Vec3::new(0.5, 0.25, 0.5));
+                    }
 
                     assert_eq!(tick(game, &mut item, Some(0.1)), (true, false));
                     let mut airborne = spawn(game, 2, 69.0);
@@ -701,6 +718,27 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         assert_eq!(game.armor_stands[0].position.y, 64.0);
                         assert_eq!(game.armor_stands[0].velocity.x, 0.5);
                         assert_eq!(clear_calls(), [(false, 78, floor, false)]);
+
+                        use crate::game::native_entity_refs::tests::{
+                            bind_acting_guest, bind_local_player,
+                        };
+                        let seat = Vec3::new(8.5, 64.0, 4.5);
+                        game.world.set(8, 63, 4, stone).unwrap();
+                        game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
+                        bind_local_player(game, 80, 1);
+                        game.lan_acting = Some(2);
+                        game.lan_acting_name = Some("boat_step".into());
+                        bind_acting_guest(game);
+                        game.lan_acting = None;
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                            guest.vehicle = Some(79);
+                        });
+                        let mut boat = crate::game::boats::Boat::new(79, "oak".into(), seat, 0.0);
+                        boat.ground.on_ground = true;
+                        game.boats.push(boat);
+                        game.tick_boats();
+                        assert_eq!(game.boats[0].fire_ticks, 40);
+                        assert_eq!(clear_calls(), [(false, 79, [8, 63, 4], false); 2]);
                     }
                 };
                 with_game(|game| run(game, false));
@@ -876,7 +914,8 @@ impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
         match ORDER {
             ACCEPT_BEFORE => {
                 event.movement[0] = 0.25;
-                event.write_entity(EntityWrite::Push([0.5, 0.0, 0.0]));
+                let push = if event.pos.x == 9 { f64::MAX } else { 0.5 };
+                event.write_entity(EntityWrite::Push([push, 0.0, 0.0]));
                 event.request(LandingWrite::SetBlock(
                     level.block_state_id("minecraft:glass").unwrap(),
                 ));
@@ -896,6 +935,13 @@ impl<const ORDER: u8> BlockPart for StepAnswer<ORDER> {
                     }
                     6 => {
                         event.write_entity(EntityWrite::Push([f64::NAN, 0.0, 0.0]));
+                    }
+                    8 => {
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
+                    }
+                    9 => {
+                        event.write_entity(EntityWrite::Push([f64::MAX, 0.0, 0.0]));
                     }
                     _ => event.movement[0] = f64::NAN,
                 }
@@ -941,7 +987,7 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                     game.world
                         .chunks
                         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                    for x in 4..=7 {
+                    for x in 4..=9 {
                         game.world.set(x, 63, 4, stone).unwrap();
                         game.spawn_item(
                             ItemStack::new("minecraft:iron_ingot", 1),
@@ -967,7 +1013,8 @@ fn step_on_refuses_only_the_invalid_part_outputs() {
                             },
                         );
                         assert_eq!(item.health, 5);
-                        assert_eq!(item.velocity.x, 2.0 * f64::from(0.98_f32 * 0.6_f32));
+                        let written = if x == 9 { f64::MAX } else { 2.0 };
+                        assert_eq!(item.velocity.x, written * f64::from(0.98_f32 * 0.6_f32));
                         assert_eq!(game.world.block(x, 63, 4), stone);
                         game.drain_entity_inside();
                         assert_eq!(game.world.block(x, 63, 4), glass);

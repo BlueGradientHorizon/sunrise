@@ -284,14 +284,12 @@ impl ItemEntity {
     pub fn finish_move_block_effects(&mut self, world: &World, facts: &BlockFacts, step: ItemStep) {
         if step.movement.is_some() {
             self.apply_honey_slide(world, facts);
-            self.stuck = match self.stuck_multiplier(world, facts) {
-                // Entity.makeStuckInBlock resets the fall.
-                Some(stuck) => {
-                    self.fall_distance = 0.0;
-                    stuck
-                }
-                None => Vec3::ZERO,
-            };
+            if let Some(stuck) = self.stuck_multiplier(world, facts) {
+                // Entity.makeStuckInBlock resets the fall. No contact leaves
+                // a multiplier already set by step-on or an inside Part alone.
+                self.fall_distance = 0.0;
+                self.stuck = stuck;
+            }
         }
     }
 }
