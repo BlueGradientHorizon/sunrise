@@ -1,4 +1,3 @@
-cargo-sunrise-mod native_release::a_nightly_only_listing_can_add_its_first_stable_key_without_replacing_metadata test:publish daily child-process
 cargo-sunrise-mod native_release::a_reviewed_exact_source_can_add_binaries_without_repacking test:publish daily child-process
 cargo-sunrise-mod native_release::an_asset_write_failure_leaves_no_registry_entry_or_pr_draft test:publish daily child-process
 cargo-sunrise-mod native_release::binaries_with_a_known_source_break_or_missing_sdk_leave_no_output test:publish daily child-process
