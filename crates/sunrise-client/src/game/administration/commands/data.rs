@@ -1875,7 +1875,7 @@ impl Game<'_> {
             });
             set_key(&mut tag, "home_pos", Tag::IntArray(home.to_vec()));
         }
-        if self.ui.difficulty == 0 {
+        if self.difficulty_id() == 0 {
             self.prune_peaceful_summon_passengers(&mut tag);
         }
         place_summoned(&mut tag, pos);

@@ -64,7 +64,7 @@ impl Game<'_> {
                     return None;
                 }
                 let kind = sunrise_client::command::args::normalized(kind);
-                if self.ui.difficulty == 0
+                if self.difficulty_id() == 0
                     && self
                         .res
                         .mob_types()

@@ -2371,7 +2371,7 @@ impl Game<'_> {
             return Err(err("commands.summon.invalidPosition", &[]));
         }
         let mob_type = self.res.mob_types().get(&kind);
-        if self.ui.difficulty == 0 && mob_type.is_some_and(|t| !t.allowed_in_peaceful()) {
+        if self.difficulty_id() == 0 && mob_type.is_some_and(|t| !t.allowed_in_peaceful()) {
             return Err(err("commands.summon.failed.peaceful", &[]));
         }
         let short = kind.trim_start_matches("minecraft:").to_owned();
