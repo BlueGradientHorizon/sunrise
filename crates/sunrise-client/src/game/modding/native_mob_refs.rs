@@ -158,6 +158,22 @@ impl Game<'_> {
             _ => false,
         }
     }
+    /// `Warden.getTarget` resolves the stored entity and validates the read;
+    /// the brain memory is not changed when that entity becomes invalid.
+    pub(super) fn warden_attack_target(&self, mob: &Mob) -> Option<(u32, Target)> {
+        use sunrise_client::join_seq::residency::table::EntityLookup;
+        let id = mobs::warden::brain_target_id(mob)?;
+        match self.server_resident_entity(id) {
+            EntityLookup::Found { location, value }
+                if location.owner.dimension == self.dim.key()
+                    && self.warden_valid_target(mob, value) =>
+            {
+                Some((id, value))
+            }
+            _ => None,
+        }
+    }
+
     /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
     pub(super) fn warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
         use sunrise_core::geometry::Axis;
@@ -166,7 +182,7 @@ impl Game<'_> {
                 let Some(other) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
                     return false;
                 };
-                if !other.alive() || other.invulnerable_flag || other.species() == Species::Warden {
+                if !other.alive() || other.is_invulnerable() || other.species() == Species::Warden {
                     return false;
                 }
                 (other.bounds(), self.mob_team(id))
@@ -178,6 +194,10 @@ impl Game<'_> {
                 else {
                     return false;
                 };
+                let (flag, window) = self.saved_invulnerability(id);
+                if flag || window > 0 {
+                    return false;
+                }
                 (target.bounds, self.mob_team(id))
             }
             Target::Guest(conn) => {
@@ -188,7 +208,9 @@ impl Game<'_> {
                     || g.dead
                     || g.health <= 0.0
                     || matches!(g.game_mode, 1 | 3)
-                    || g.motion.as_ref().is_some_and(|p| p.invulnerable)
+                    || g.motion.as_ref().is_some_and(|p| {
+                        p.health.permanently_invulnerable || p.health.invulnerable_time > 0
+                    })
                 {
                     return false;
                 }
@@ -200,7 +222,8 @@ impl Game<'_> {
                 };
                 if matches!(self.mode_id(), 1 | 3)
                     || player.health.dead_or_dying()
-                    || player.invulnerable
+                    || player.health.permanently_invulnerable
+                    || player.health.invulnerable_time > 0
                 {
                     return false;
                 }
@@ -247,6 +270,13 @@ impl Game<'_> {
             return self.native_dragon_target(mob.entity());
         };
         let mob = self.mobs.iter().find(|m| m.id == id)?;
+        if mob.species() == Species::Warden {
+            let (id, _) = self.warden_attack_target(mob)?;
+            return Some(LivingRef::new(EntityRef::new(
+                self.native_lifecycle.epoch()?,
+                id,
+            )));
+        }
         let target = brain_target(mob).unwrap_or(mob.ai.target)?;
         let target_id = match target {
             Who::Mob(id) => id,
@@ -406,10 +436,9 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        self.mobs
-            .iter_mut()
-            .find(|m| m.id == id)
-            .is_some_and(|m| sunrise_client::mobs::ai::set_brain_target(m, who))
+        self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+            sunrise_client::mobs::ai::set_brain_target(m, who, target.map(|t| t.entity().id()))
+        })
     }
 
     /// The mob flag a handle names: a mob's, or the dragon's own.
@@ -1570,16 +1599,7 @@ mod tests {
             assert_eq!(brain.target(game), Some(other));
             let warden = game.mob(game.entity(19).unwrap()).unwrap();
             let ghast = game.living(game.entity(21).unwrap()).unwrap();
-            let warden_mob = game.mobs.iter_mut().find(|m| m.id == 19).unwrap();
-            warden_mob
-                .extra
-                .warden
-                .as_mut()
-                .unwrap()
-                .brain
-                .mem
-                .attack_target
-                .set(Who::Mob(21));
+            assert!(warden.set_brain_target(game, Some(ghast)));
             assert_eq!(
                 warden.target(game),
                 Some(ghast),

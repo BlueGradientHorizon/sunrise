@@ -546,10 +546,13 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
     fn attack_target(&self) -> Option<LivingRef> {
         // The brain's own target read through the engine's path, the handle
         // resolved in the tick's view.
-        let who = mobs::ai::brain_target(self.m)??;
         let host = self.w.goal_host?;
         let epoch = host.epoch()?;
-        let id = match who {
+        if self.m.species() == mobs::Species::Warden {
+            let id = mobs::warden::brain_target_id(self.m)?;
+            return self.lookup_living(EntityRef::new(epoch, id));
+        }
+        let id = match mobs::ai::brain_target(self.m)?? {
             Who::Mob(id) => id,
             Who::Player => self.w.player_identity?.1,
         };
@@ -577,7 +580,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
                 Some(Resolved::Dragon(_) | Resolved::Unavailable) | None => return false,
             },
         };
-        mobs::ai::set_brain_target(self.m, who)
+        mobs::ai::set_brain_target(self.m, who, target.map(|t| t.entity().id()))
     }
 
     fn set_walk_target(&mut self, at: [i32; 3], speed: f64, close: i32) {

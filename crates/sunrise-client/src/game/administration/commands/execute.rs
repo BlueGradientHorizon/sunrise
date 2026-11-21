@@ -880,14 +880,16 @@ impl Game<'_> {
                         .find(|m| m.id == id)
                         .and_then(|m| {
                             use sunrise_client::mobs::{Species, Who, ai::brain_target};
-                            let warden_target = !attacker && m.species() == Species::Warden;
+                            if !attacker && m.species() == Species::Warden {
+                                return self.warden_attack_target(m).map(|(_, target)| target);
+                            }
                             let who = if attacker {
                                 m.ai.last_hurt_by
                             } else {
                                 // `Mob.getTarget`, as brain-backed mobs override it.
                                 brain_target(m).unwrap_or(m.ai.target)
                             }?;
-                            let target = match who {
+                            match who {
                                 Who::Player => {
                                     let conn = if attacker {
                                         // `getLastHurtByMob`: the player who hit it,
@@ -895,23 +897,17 @@ impl Game<'_> {
                                         self.last_hurt_by_player.get(&id).and_then(|credit| {
                                             self.resolve_player_credit(*credit).flatten()
                                         })
-                                    } else if warden_target {
-                                        self.lan
-                                            .as_ref()
-                                            .and_then(|host| host.mob_players.get(&id).copied())
                                     } else {
                                         None
                                     };
-                                    conn.filter(|&conn| self.lan_acting != Some(conn))
-                                        .map_or(Target::Player, Target::Guest)
+                                    Some(
+                                        conn.filter(|&conn| self.lan_acting != Some(conn))
+                                            .map_or(Target::Player, Target::Guest),
+                                    )
                                 }
-                                Who::Mob(i) if attacker => Target::Mob(i),
-                                Who::Mob(i) => self.level_entity(i as i32)?,
-                            };
-                            // `Warden.getTarget` uses `Mob.asValidTarget` on
-                            // read; the brain still holds the supplied target.
-                            (!warden_target || self.warden_valid_target(m, target))
-                                .then_some(target)
+                                Who::Mob(i) if attacker => Some(Target::Mob(i)),
+                                Who::Mob(i) => self.level_entity(i as i32),
+                            }
                         })
                         .into_iter()
                         .collect(),
