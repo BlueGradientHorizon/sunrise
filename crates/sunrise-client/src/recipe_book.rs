@@ -26,7 +26,7 @@ pub mod settings_codec;
 pub mod settings_connection;
 pub mod settings_sync;
 pub mod slot_layout;
-pub use custom_books::{BookError, BookFlags, CustomBooks, read_saved};
+pub use custom_books::{BookFlags, CustomBooks};
 pub use mod_index::{DisplayLoadError, DisplayResources, ModBookIndex, ModBookPanel};
 
 /// `RecipeBookType`: the menus with a recipe book and their own settings.

@@ -6246,7 +6246,9 @@ mod tests {
             filtering: true,
         };
         hub.guests.update(0, |g| {
-            let book = crate::recipe_book::placement_sync::ResourceId::try_from("test:cooking".to_owned()).unwrap();
+            let book =
+                crate::recipe_book::placement_sync::ResourceId::try_from("test:cooking".to_owned())
+                    .unwrap();
             g.recipe_book.custom.set(&book, flags);
         });
         open(&mut hub);

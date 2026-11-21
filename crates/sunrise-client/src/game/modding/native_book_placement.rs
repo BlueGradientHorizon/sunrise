@@ -1,14 +1,8 @@
 //! Placement transport state belongs to the actual connection and open menu.
-use super::*;
+use super::{native_book_net::book_payload, *};
 use std::collections::{BTreeMap, HashMap};
-use sunrise_client::recipe_book::{
-    ModBookIndex, placement_sync as sync, settings_codec,
-    settings_sync::{CHANNEL, Message},
-};
-use sunrise_protocol::packets::{
-    configuration::CustomPayload,
-    play::{Clientbound as C, Serverbound as S},
-};
+use sunrise_client::recipe_book::{ModBookIndex, placement_sync as sync, settings_sync::Message};
+use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
 
 // no wire: live connection authority and validated engine presentation caches.
 #[derive(Default)]
@@ -45,23 +39,17 @@ pub(super) struct View {
 
 impl Game<'_> {
     pub(super) fn send_mod_book_placement(&mut self, frame: sync::Frame) {
-        if let Some(data) = settings_codec::encode(&Message::Placement(frame)) {
+        if let Some(payload) = book_payload(&Message::Placement(frame)) {
             self.native_net.placement.deadline =
                 Some(std::time::Instant::now() + std::time::Duration::from_secs(30));
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            self.send(S::CustomPayload(payload));
         }
     }
     pub(super) fn send_guest_mod_book_placement(&self, conn: u32, frame: sync::Frame) {
         if let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
-            && let Some(data) = settings_codec::encode(&Message::Placement(frame))
+            && let Some(payload) = book_payload(&Message::Placement(frame))
         {
-            guest.send(&C::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            guest.send(&C::CustomPayload(payload));
         }
     }
     pub(super) fn begin_mod_book_placement(&mut self) {

@@ -1,32 +1,31 @@
 //! Connection-scoped authoritative custom book synchronization.
-use super::{BookFlags, CustomBooks};
+use super::{BookFlags, CustomBooks, placement_sync::ResourceId};
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 pub use sunrise_protocol::custom_book::CHANNEL;
-pub const MAX_BYTES: usize = 512 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Message {
     Busy,
     Hello,
     Ready,
-    Offer(Vec<String>),
+    Offer(Vec<ResourceId>),
     Snapshot {
         epoch: u64,
         revision: u64,
-        entries: Vec<(String, BookFlags)>,
+        entries: Vec<(ResourceId, BookFlags)>,
     },
     Request {
         epoch: u64,
         number: u64,
-        key: String,
+        key: ResourceId,
         flags: BookFlags,
     },
     Update {
         epoch: u64,
         revision: u64,
-        key: String,
+        key: ResourceId,
         flags: BookFlags,
     },
     Resnapshot,
@@ -64,7 +63,7 @@ impl RequestBudget {
 pub struct Authority {
     pub epoch: u64,
     pub revision: u64,
-    keys: BTreeSet<String>,
+    keys: BTreeSet<ResourceId>,
     last_request: u64,
     window: Instant,
     requests: u32,
@@ -75,7 +74,11 @@ impl Authority {
     pub fn contains(&self, key: &str) -> bool {
         self.keys.contains(key)
     }
-    pub fn negotiate(epoch: u64, offered: Vec<String>, registered: &BTreeSet<String>) -> Self {
+    pub fn negotiate(
+        epoch: u64,
+        offered: Vec<ResourceId>,
+        registered: &BTreeSet<ResourceId>,
+    ) -> Self {
         Self {
             epoch,
             revision: 0,
@@ -89,14 +92,12 @@ impl Authority {
         }
     }
     pub fn server_update(&mut self, key: &str, flags: BookFlags) -> Option<Message> {
-        if !self.keys.contains(key) {
-            return None;
-        }
+        let key = self.keys.get(key)?.clone();
         self.revision = self.revision.checked_add(1)?;
         Some(Message::Update {
             epoch: self.epoch,
             revision: self.revision,
-            key: key.into(),
+            key,
             flags,
         })
     }
@@ -107,7 +108,7 @@ impl Authority {
             entries: self
                 .keys
                 .iter()
-                .map(|id| (id.clone(), books.get(id)))
+                .map(|id| (id.clone(), books.get(id.as_str())))
                 .collect(),
         }
     }
@@ -117,7 +118,7 @@ impl Authority {
         books: &mut CustomBooks,
         epoch: u64,
         number: u64,
-        key: &str,
+        key: &ResourceId,
         flags: BookFlags,
         now: Instant,
     ) -> (Message, bool) {
@@ -134,32 +135,19 @@ impl Authority {
             return (self.snapshot(books), false);
         }
         self.last_request = number;
-        self.apply(books, key, flags)
-    }
-    pub fn apply(
-        &mut self,
-        books: &mut CustomBooks,
-        key: &str,
-        flags: BookFlags,
-    ) -> (Message, bool) {
-        if !self.keys.contains(key) || self.revision == u64::MAX {
+        if self.revision == u64::MAX || !books.set(key, flags) {
             return (self.snapshot(books), false);
         }
-        match books.set(key, flags) {
-            Ok(true) => {
-                self.revision += 1;
-                (
-                    Message::Update {
-                        epoch: self.epoch,
-                        revision: self.revision,
-                        key: key.into(),
-                        flags,
-                    },
-                    true,
-                )
-            }
-            _ => (self.snapshot(books), false),
-        }
+        self.revision += 1;
+        (
+            Message::Update {
+                epoch: self.epoch,
+                revision: self.revision,
+                key: key.clone(),
+                flags,
+            },
+            true,
+        )
     }
 }
 
@@ -171,13 +159,13 @@ pub struct ClientView {
     pub revision: u64,
     pub ready: bool,
     pub books: CustomBooks,
-    keys: BTreeSet<String>,
+    keys: BTreeSet<ResourceId>,
 }
 impl ClientView {
     pub fn contains(&self, key: &str) -> bool {
         self.keys.contains(key)
     }
-    pub fn receive(&mut self, message: Message, registered: &BTreeSet<String>) -> bool {
+    pub fn receive(&mut self, message: Message, registered: &BTreeSet<ResourceId>) -> bool {
         match message {
             Message::Snapshot {
                 epoch,
@@ -186,20 +174,18 @@ impl ClientView {
             } => {
                 if self.epoch.is_some_and(|current| current != epoch)
                     || (self.epoch == Some(epoch) && revision < self.revision)
-                    || entries.len() > 1024
                 {
                     return false;
                 }
                 let mut books = CustomBooks::default();
                 let mut keys = BTreeSet::new();
                 for (key, flags) in entries {
-                    if !registered.contains(&key)
-                        || !keys.insert(key.clone())
-                        || books.set(&key, flags).is_err()
-                    {
+                    if !registered.contains(&key) {
                         self.ready = false;
                         return false;
                     }
+                    books.set(&key, flags);
+                    keys.insert(key);
                 }
                 self.epoch = Some(epoch);
                 self.revision = revision;
@@ -224,10 +210,7 @@ impl ClientView {
                     self.ready = false;
                     return false;
                 }
-                if self.books.set(&key, flags).is_err() {
-                    self.ready = false;
-                    return false;
-                }
+                self.books.set(&key, flags);
                 self.revision = revision;
                 true
             }

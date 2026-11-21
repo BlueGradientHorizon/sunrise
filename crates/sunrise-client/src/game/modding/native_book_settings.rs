@@ -4,6 +4,7 @@ use mod_api::{
     PlayerRef,
     item::recipe_book::{RecipeBookSettings, RecipeBookTypeKey},
 };
+use sunrise_client::recipe_book::{BookFlags, placement_sync::ResourceId};
 
 impl Game<'_> {
     pub(super) fn player_synced_recipe_book_settings(
@@ -33,20 +34,17 @@ impl Game<'_> {
         if !book.is_registered() || !self.native_player_current(player) {
             return false;
         }
-        let flags = sunrise_client::recipe_book::BookFlags {
+        let flags = BookFlags {
             open: settings.open,
             filtering: settings.filtering,
         };
-        let mut result = Err(sunrise_client::recipe_book::BookError::Full);
-        let ran = self.native_as_player_handle(player, |game| {
-            result = game.level.recipe_book.custom.set(book.as_str(), flags);
-        });
-        if !ran {
+        let id = ResourceId::from_registered_book(book);
+        let mut changed = false;
+        if !self.native_as_player_handle(player, |game| {
+            changed = game.level.recipe_book.custom.set(&id, flags);
+        }) {
             return false;
         }
-        let Ok(changed) = result else {
-            return false;
-        };
         if changed {
             self.sync_server_book_write(player, book, flags);
             if mod_api::__private::listened(mod_api::HookId::PlayerRecipeBookSettingsChange)

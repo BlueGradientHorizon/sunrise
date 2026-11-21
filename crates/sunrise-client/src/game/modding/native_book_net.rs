@@ -5,7 +5,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use sunrise_client::recipe_book::{
-    placement_sync::ResourceId, settings_codec,
+    placement_sync::ResourceId,
+    settings_codec,
     settings_sync::{CHANNEL, Message},
 };
 use sunrise_protocol::packets::{
@@ -13,6 +14,20 @@ use sunrise_protocol::packets::{
     play::{Clientbound as C, Serverbound as S},
 };
 static EPOCH: AtomicU64 = AtomicU64::new(1);
+
+pub(super) fn book_payload(message: &Message) -> Option<CustomPayload> {
+    match settings_codec::encode(message) {
+        Ok(data) => Some(CustomPayload {
+            channel: CHANNEL.into(),
+            data,
+        }),
+        Err(error) => {
+            log::warn!("[recipe book] cannot send {CHANNEL}: {error}");
+            None
+        }
+    }
+}
+
 fn registered() -> BTreeSet<ResourceId> {
     mod_api::RecipeBookTypeKey::registered()
         .into_iter()
@@ -33,11 +48,8 @@ impl Game<'_> {
                 Message::Resnapshot
             };
             self.native_net.book_retry_at = None;
-            if let Some(data) = settings_codec::encode(&message) {
-                self.send(S::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data,
-                }));
+            if let Some(payload) = book_payload(&message) {
+                self.send(S::CustomPayload(payload));
             }
         }
     }
@@ -61,11 +73,8 @@ impl Game<'_> {
             return;
         };
         authority.revision = revision;
-        if let Some(data) = settings_codec::encode(&authority.snapshot(&guest.recipe_book.custom)) {
-            guest.send(&C::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+        if let Some(payload) = book_payload(&authority.snapshot(&guest.recipe_book.custom)) {
+            guest.send(&C::CustomPayload(payload));
         }
     }
 
@@ -142,14 +151,11 @@ impl Game<'_> {
                 filtering: flags.filtering,
             },
         };
-        let Some(data) = settings_codec::encode(&message) else {
+        let Some(payload) = book_payload(&message) else {
             return false;
         };
         self.native_net.book_request = number;
-        self.send(S::CustomPayload(CustomPayload {
-            channel: CHANNEL.into(),
-            data,
-        }));
+        self.send(S::CustomPayload(payload));
         true
     }
 
@@ -179,12 +185,9 @@ impl Game<'_> {
             return;
         };
         if let Some(message) = authority.server_update(book.as_str(), flags)
-            && let Some(data) = settings_codec::encode(&message)
+            && let Some(payload) = book_payload(&message)
         {
-            guest.send(&C::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            guest.send(&C::CustomPayload(payload));
         }
     }
 
@@ -194,12 +197,9 @@ impl Game<'_> {
             .remote
             .as_ref()
             .is_some_and(|r| r.custom_books && r.joined)
-            && let Some(data) = settings_codec::encode(&Message::Hello)
+            && let Some(payload) = book_payload(&Message::Hello)
         {
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            self.send(S::CustomPayload(payload));
         }
     }
     pub(super) fn guest_book_settings(&mut self, conn: u32, data: &[u8]) {
@@ -232,11 +232,8 @@ impl Game<'_> {
                     || EPOCH.fetch_add(1, Ordering::Relaxed),
                     std::time::Instant::now(),
                 )?;
-                if let Some(data) = settings_codec::encode(&reply.message) {
-                    guest.send(&C::CustomPayload(CustomPayload {
-                        channel: CHANNEL.into(),
-                        data,
-                    }));
+                if let Some(payload) = book_payload(&reply.message) {
+                    guest.send(&C::CustomPayload(payload));
                 }
                 reply
                     .changed
@@ -288,13 +285,9 @@ impl Game<'_> {
                 return;
             }
             self.native_net.book_ready = true;
-            if let Some(data) =
-                settings_codec::encode(&Message::Offer(registered().into_iter().collect()))
+            if let Some(payload) = book_payload(&Message::Offer(registered().into_iter().collect()))
             {
-                self.send(S::CustomPayload(CustomPayload {
-                    channel: CHANNEL.into(),
-                    data,
-                }));
+                self.send(S::CustomPayload(payload));
             }
             return;
         }
@@ -306,12 +299,9 @@ impl Game<'_> {
         let previous_epoch = self.native_net.book_view.epoch;
         if !self.native_net.book_view.receive(message, &registered())
             && !self.native_net.book_view.ready
-            && let Some(data) = settings_codec::encode(&Message::Resnapshot)
+            && let Some(payload) = book_payload(&Message::Resnapshot)
         {
-            self.send(S::CustomPayload(CustomPayload {
-                channel: CHANNEL.into(),
-                data,
-            }));
+            self.send(S::CustomPayload(payload));
         }
         if previous_epoch != self.native_net.book_view.epoch {
             self.native_net.placement.client = Default::default();

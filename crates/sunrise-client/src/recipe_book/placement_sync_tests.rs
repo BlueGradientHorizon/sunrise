@@ -107,14 +107,41 @@ fn catalogue_authority_requires_a_completed_current_response() {
     assert_eq!(client.catalog(), Some(&current));
 }
 #[test]
-fn bounded_fixed_fragments_cannot_publish_partial_or_reordered_data() {
+fn catalogue_larger_than_a_frame_needs_complete_ordered_fragments() {
+    use super::super::{
+        settings_codec,
+        settings_sync::{CHANNEL, Message},
+    };
+    use sunrise_protocol::{
+        frame,
+        packets::{configuration::CustomPayload, play},
+    };
+
     let mut client = client();
     let identity = open(&mut client);
-    assert_eq!(
-        client.start(identity.clone(), layout(), (MAX_CATALOG_BYTES + 1) as u32),
-        Err(Refusal::TooLarge)
-    );
-    let data: Vec<_> = (0..CHUNK_BYTES + 5).map(|i| (i % 251) as u8).collect();
+    let data: Vec<_> = (0..=frame::MAX_FRAME)
+        .scan(1_u32, |state, _| {
+            *state ^= *state << 13;
+            *state ^= *state >> 17;
+            *state ^= *state << 5;
+            Some(*state as u8)
+        })
+        .collect();
+    let first = Message::Placement(Frame::Part {
+        epoch: identity.epoch,
+        number: identity.number,
+        offset: 0,
+        bytes: data[..CHUNK_BYTES].to_vec(),
+    });
+    let packet = play::Clientbound::CustomPayload(CustomPayload {
+        channel: CHANNEL.into(),
+        data: settings_codec::encode(&first).unwrap(),
+    })
+    .try_encode()
+    .unwrap();
+    assert_eq!(packet.len(), frame::MAX_GUARANTEED_PACKET_BODY);
+    assert!(frame::encode(&packet, None).is_ok());
+    assert!(frame::encode(&packet, Some(256)).is_ok());
     client
         .start(identity.clone(), layout(), data.len() as u32)
         .unwrap();
@@ -127,7 +154,7 @@ fn bounded_fixed_fragments_cannot_publish_partial_or_reordered_data() {
         Err(Refusal::Invalid)
     ));
     assert!(matches!(
-        client.part(identity.epoch, identity.number, 0, vec![0]),
+        client.part(identity.epoch, identity.number, 0, vec![]),
         Err(Refusal::Invalid)
     ));
     assert!(
@@ -150,6 +177,15 @@ fn bounded_fixed_fragments_cannot_publish_partial_or_reordered_data() {
             vec![0; 5]
         ),
         Err(Refusal::Stale)
+    ));
+    assert!(matches!(
+        client.part(
+            identity.epoch,
+            identity.number,
+            CHUNK_BYTES as u32,
+            vec![0; data.len() - CHUNK_BYTES + 1],
+        ),
+        Err(Refusal::Invalid)
     ));
     let result = client
         .part(
@@ -242,13 +278,13 @@ fn server_replay_guard_binds_epoch_instance_generation_and_catalogue() {
     assert_eq!(authority.publish(identity), Err(Refusal::Stale));
 }
 #[test]
-fn placement_frames_share_the_bounded_settings_channel_without_vanilla_ids() {
+fn placement_frames_share_the_registered_settings_channel_without_vanilla_ids() {
     let mut client = client();
     let identity = open(&mut client);
     complete(&mut client, &identity);
     let selection = select(&mut client);
     let frame = Frame::Reply {
-        selection,
+        selection: selection.clone(),
         outcome: Outcome::MissingIngredients,
     };
     let message = super::super::settings_sync::Message::Placement(frame);
@@ -257,8 +293,27 @@ fn placement_frames_share_the_bounded_settings_channel_without_vanilla_ids() {
     assert_eq!(super::super::settings_codec::decode(&bytes), Some(message));
     bytes.push(0);
     assert!(super::super::settings_codec::decode(&bytes).is_none());
-    assert!(ResourceId::try_from(format!("demo:{}", "a".repeat(RESOURCE_ID_BYTES - 5))).is_ok());
-    assert!(ResourceId::try_from(format!("demo:{}", "a".repeat(RESOURCE_ID_BYTES - 4))).is_err());
+    let mut selection = selection;
+    selection.display.recipe = id(&format!("demo:{}", "a".repeat(32_762)));
+    let message = super::super::settings_sync::Message::Placement(Frame::Place {
+        selection: selection.clone(),
+        use_max: true,
+    });
+    let encoded = super::super::settings_codec::encode(&message).unwrap();
+    assert_eq!(
+        super::super::settings_codec::decode(&encoded),
+        Some(message)
+    );
+
+    selection.display.recipe = id(&format!("demo:{}", "a".repeat(32_763)));
+    let frame = Frame::Place {
+        selection,
+        use_max: true,
+    };
+    assert!(super::super::placement_codec::encode(&frame).is_err());
+    let mut raw = mod_api::wire::Writer::new();
+    raw.put(&frame);
+    assert!(super::super::placement_codec::decode(raw.bytes()).is_none());
     let slash_path = ResourceId::try_from("demo:kitchen/pot".to_owned()).unwrap();
     assert_eq!(slash_path.as_str(), "demo:kitchen/pot");
     for id in ["..:pot", "pot", ":pot", "demo:", "demo:bad path"] {

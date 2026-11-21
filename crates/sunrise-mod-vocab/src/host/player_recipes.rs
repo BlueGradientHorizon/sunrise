@@ -34,8 +34,8 @@ pub trait PlayerRecipesBackend {
 pub trait PlayerRecipesBackendMut {
     /// Side: server.
     /// Set a registered custom book's authoritative pair and synchronize an
-    /// accepted change. Returns false for an unavailable player, unknown key
-    /// or exhausted storage. An unchanged pair succeeds without notification.
+    /// accepted change. Returns false for an unavailable player or unknown key.
+    /// An unchanged pair succeeds without notification.
     #[access(WorldOnly)]
     fn player_set_recipe_book_settings(
         &mut self,

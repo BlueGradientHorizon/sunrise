@@ -9,7 +9,8 @@ your mod. These IDs use `Identifier::parse_namespaced`: `..:pot` is invalid,
 `recipe_book_type("example:cooking")` saves the book's open and craftable-only
 filtering flags in the engine's `sunrise:book_settings` compound inside the
 player's `recipeBook` compound. Existing books using this declaration keep that
-layout, including entries saved while their mod is absent.
+layout. Malformed entries are skipped independently, and well-formed entries are
+kept when their mod is absent.
 
 For a book that needs Java-compatible flat settings, declare the two saved field
 names instead:
@@ -32,13 +33,17 @@ Changing a book's storage declaration is not a migration mechanism.
 Like other custom flags, explicit fields load independently of vanilla recipe-list
 validation; malformed recipe lists do not erase them, unlike Java's whole packed decode.
 
-Names preserve their exact spelling and may contain any characters. Each must be
-nonempty and at most 256 UTF-8 bytes. The two names must differ, and neither may
-clash with any other book's declared field, vanilla's eight flag fields,
-`recipes`, `toBeDisplayed`, or `sunrise:book_settings`. Invalid declarations refuse
-installation even if the mod ignores the returned error. IDs still follow the
-normal namespaced-ID ownership, 256-byte, and 1024-book limits. Registration
-freezes before player files are loaded.
+Names preserve their exact spelling and may contain any characters. They must be
+nonempty and distinct, and neither may clash with another book's declared field,
+vanilla's flag fields, `recipes`, `toBeDisplayed`, or `sunrise:book_settings`.
+Invalid declarations refuse installation even if the mod ignores the returned
+error. Registration freezes before player files are loaded.
+
+The NBT writer's modified UTF-8 encoding constrains saved names (book IDs in
+extension entries and explicit flat field names). A book ID sent to a peer must
+fit vanilla's Identifier stream codec. A longer ID stays local and is logged
+when settings sync is negotiated. Each packet must fit the active connection's
+framing. These encoding limits are not registration limits.
 
 The saved field names do not change the book ID used by menus or synchronization.
 Both flags live in the player's whole recipe-book state, rather than in a menu
@@ -78,8 +83,8 @@ the same identifier grammar as book IDs. The ID names the file
 `assets/<namespace>/textures/gui/sprites/<path>.png`; the highlighted pair shows while the cursor is
 over the button. The tooltip is a translation key, shown while filtering is on; while it is off the
 button keeps vanilla's `gui.recipebook.toggleRecipes.all`. Only the book's own mod may declare its
-look. A second declaration, a malformed sprite id, or a tooltip key that is empty or over 256 bytes
-refuses installation even if the mod ignores the returned error. A sprite the resources lack draws nothing.
+look. A second declaration, a malformed sprite ID, or an empty tooltip key refuses
+installation even if the mod ignores the returned error. Missing sprites draw nothing.
 
 A category's tab can show two icons: set `RecipeBookCategory::secondary_icon` (see
 [Recipe book categories and displays](../how-to/items/recipe-book-categories.md)).

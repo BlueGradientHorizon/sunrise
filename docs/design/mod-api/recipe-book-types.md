@@ -35,7 +35,7 @@ Add an API-owned `RecipeBookTypeKey`, a validated namespaced resource id, and
 register declarations in the existing mod registration phase. Registration
 returns a typed key; it does not extend `BookType` or its ordinals. Require an
 explicit namespace owned by the registering mod, lowercase resource-id syntax,
-a nonempty namespace and path, and at most 256 UTF-8 bytes. Reject `minecraft:`.
+and a nonempty namespace and path. Reject `minecraft:`.
 Duplicate keys fail registration with the key and both declaring mod identities;
 invalid ids report the mod, supplied id and violated rule. Never silently select
 a winner. Freeze the registry when registration finishes, before loading player
@@ -70,8 +70,8 @@ constructor exists. The key explicitly derives `Wire`.
 For Java-compatible flat persistence, call
 `r.recipe_book_type_with_fields(id, open_field, filtering_field)` instead. Both
 methods return the same key and enforce the same ID rules. The explicit field
-names are case-sensitive nonempty strings of at most 256 UTF-8 bytes, with no
-character-set restriction. Reject equal names and collisions with vanilla's eight
+names are case-sensitive nonempty strings with no character-set restriction.
+The ordinary NBT writer encodes them as modified UTF-8. Reject equal names and collisions with vanilla's
 flag fields, `recipes`, `toBeDisplayed`, `sunrise:book_settings`, or another book's
 fields. Invalid field declarations refuse installation even if ignored.
 
@@ -103,15 +103,11 @@ extension and do not fall back to extension entries for them. Like existing cust
 flags, read the flat fields independently of recipe-list validation. In-memory
 state and synchronization continue to use the book ID, not its saved field names.
 
-Bound the extension to 1024 entries, 256 bytes per key and 512 KiB encoded data.
-Check lengths before allocating or iterating nested values. Accept only a
-compound of compounds with both flags byte 0 or 1; skip malformed individual
-entries with a diagnostic. Reject a duplicate key or an over-limit extension
-as a whole, leaving the custom map empty and vanilla settings intact. The NBT
-reader must enforce the byte/depth budget before materializing this subtree.
-Registration also caps custom types at 1024, reporting overflow at registration.
-Do not evict absent-mod entries to make room: a write exceeding the cap fails
-without changing state. This bounds retention as well as network input.
+Use the ordinary saved NBT reader, including its compound duplicate handling
+and file-level bounds. Accept only a compound of compounds with both flags
+byte 0 or 1; skip malformed individual entries with a diagnostic and keep the
+rest, including books from absent mods. Registration and flag storage impose
+no separate entry or size ceiling.
 
 Copy is an independent value copy of all four vanilla pairs and every custom
 entry, including absent-mod entries. Mutating either player afterward cannot
@@ -131,8 +127,8 @@ local registration indices, identify entries on the wire. Vanilla settings and
 seen/add/remove packets retain their current fields, ordinals and meaning;
 a vanilla client receives exactly the existing four-book traffic.
 
-After player load and ordinary initial recipe-book packets, send one bounded
-custom snapshot on the negotiated mod payload channel, before enabling custom
+After player load and ordinary initial recipe-book packets, send a custom
+snapshot on the negotiated mod payload channel, before enabling custom
 book UI. Snapshot includes every negotiated key, explicitly `(false,false)` when
 absent from storage. Applying it replaces the client's custom view. Retained
 unregistered or unnegotiated keys never leave the server. Snapshot delivery is
@@ -153,9 +149,10 @@ Server writes use the same apply path, then send the resulting update. Notify
 gameplay once after an accepted change, never for rejection or an unchanged
 pair, through the existing settings-change moment extended to typed identity.
 
-Cap payloads at 512 KiB and snapshots at 1024 distinct entries; updates contain
-exactly one entry. Reject malformed/oversized payloads before allocation or
-mutation, including duplicate snapshot keys. Rate-limit requests to 20 per
+Offers and snapshots encode entry counts as VarInts checked against the bytes
+available. Updates contain exactly one entry. The codec refuses duplicate keys
+and validates each Identifier at decode; the connection frames the complete
+registered packet. Rate-limit requests to 20 per
 second per player; excess requests are rejected and cannot alter flags. Client
 UI may show pending intent but only authoritative replies enter saved state.
 The design called for single-player to use the same server apply operation without serialization; this build instead preserves the existing integrated server's byte-pipe connection and identical negotiated, rate-limited authority semantics, because a typed local route needs per-connection ordered queues bound to integrated player ownership and reconnect lifetime.
@@ -275,8 +272,9 @@ The dedicated `sunrise:recipe_book_settings` channel is used only after the
 server announces mod transport and the client offers its frozen registered
 keys. The server intersects those keys with its own registry before replying
 with the initial snapshot. Vanilla clients never send the offer and receive no
-custom settings. The bounded binary codec refuses oversized payloads, invalid
-flags, trailing bytes and duplicate snapshot keys before applying anything.
+custom settings. The binary codec refuses inconsistent lengths, invalid flags,
+trailing bytes and duplicate keys before applying anything. Placement catalogue
+parts fit individual frames; a catalogue can span multiple frames.
 
 Negotiation, snapshots and requests do work only on connection or a settings
 change. There is no per-tick mod scan or new tick allocation. A connection's

@@ -5,25 +5,42 @@ mod catalogue;
 #[path = "placement_sync_tests.rs"]
 mod tests;
 
-pub const RESOURCE_ID_BYTES: usize = 32767;
-pub const CHUNK_BYTES: usize = super::settings_sync::MAX_BYTES / 2;
-pub const MAX_CATALOG_BYTES: usize = sunrise_protocol::frame::MAX_FRAME;
+/// The Identifier stream codec uses STRING_UTF8 (32,767 UTF-16 code units).
+/// Valid namespaced identifiers are ASCII, so this is their byte limit on the wire only.
+pub(super) const RESOURCE_ID_BYTES: usize = 32767;
+/// Budget for a Part in one play packet, including packet ID (a one-byte VarInt),
+/// channel length (a one-byte VarInt), channel, settings tag, Wire variant tag,
+/// epoch, request number, offset and byte-vector length.
+pub const CHUNK_BYTES: usize = sunrise_protocol::frame::MAX_GUARANTEED_PACKET_BODY
+    - (1 + 1 + super::settings_sync::CHANNEL.len() + 1 + 4 + 8 + 8 + 4 + 4);
 
-/// A resource location that can cross vanilla's resource-location string boundary.
-#[derive(Clone, Debug, PartialEq, Eq, mod_api::Wire)]
+/// A validated fully qualified identifier shared by book settings and placement.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, mod_api::Wire)]
 #[wire(via = String)]
 pub struct ResourceId(String);
 impl ResourceId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub(super) fn fits_wire(&self) -> bool {
+        self.0.len() <= RESOURCE_ID_BYTES
+    }
+
+    /// Takes a key obtained from or already checked against the frozen book registry.
+    pub fn from_registered_book(book: &mod_api::RecipeBookTypeKey) -> Self {
+        Self(book.as_str().to_owned())
+    }
+}
+impl std::borrow::Borrow<str> for ResourceId {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
 }
 impl TryFrom<String> for ResourceId {
     type Error = ();
     fn try_from(value: String) -> Result<Self, ()> {
-        if value.len() <= RESOURCE_ID_BYTES
-            && mod_api::Identifier::parse_namespaced(&value).is_some()
-        {
+        if mod_api::Identifier::parse_namespaced(&value).is_some() {
             Ok(Self(value))
         } else {
             Err(())
@@ -131,17 +148,20 @@ pub enum Frame {
     },
 }
 
-/// Bump when `Frame` or the code-free catalogue body changes on the wire. The
-/// fragmentation limits are part of `schema()` independently.
-const PROTOCOL: u64 = 2;
+/// Bump when the placement frame or catalogue protocol changes. Part size is
+/// also included independently in `schema()`.
+const PROTOCOL: u64 = 3;
 
 /// Encode the remote display projection of already validated native declarations.
 pub fn encode_catalogue(declarations: &[mod_api::RecipeBookCategory]) -> Result<Vec<u8>, Refusal> {
     let categories: Vec<_> = declarations.iter().map(catalogue::Category::from).collect();
     let mut writer = mod_api::wire::Writer::new();
-    writer.limit(MAX_CATALOG_BYTES);
+    // Start.total and Part.offset are u32. Individual Parts, not this whole
+    // catalogue, have to fit the connection's frame.
+    writer.limit(u32::MAX as usize);
     writer.put(&categories);
-    if writer.error().is_some() {
+    if let Some(error) = writer.error() {
+        log::warn!("[recipe book] cannot encode placement catalogue: {error}");
         return Err(Refusal::TooLarge);
     }
     Ok(writer.into_bytes())
@@ -156,16 +176,11 @@ pub fn decode_catalogue(bytes: &[u8]) -> Result<Vec<mod_api::RecipeBookCategory>
 
 /// What the client and the server must agree on before either sends a frame.
 pub fn schema() -> u64 {
-    [
-        PROTOCOL,
-        CHUNK_BYTES as u64,
-        MAX_CATALOG_BYTES as u64,
-        RESOURCE_ID_BYTES as u64,
-    ]
-    .into_iter()
-    .fold(0xcbf2_9ce4_8422_2325, |hash, word| {
-        (hash ^ word).wrapping_mul(0x0100_0000_01b3)
-    })
+    [PROTOCOL, CHUNK_BYTES as u64, RESOURCE_ID_BYTES as u64]
+        .into_iter()
+        .fold(0xcbf2_9ce4_8422_2325, |hash, word| {
+            (hash ^ word).wrapping_mul(0x0100_0000_01b3)
+        })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -303,8 +318,8 @@ impl Client {
         {
             return Err(Refusal::Stale);
         }
-        if total == 0 || total > MAX_CATALOG_BYTES {
-            return Err(Refusal::TooLarge);
+        if total == 0 {
+            return Err(Refusal::Invalid);
         }
         if pending.incoming.is_some() {
             return Err(Refusal::Invalid);
@@ -331,7 +346,8 @@ impl Client {
         let incoming = pending.incoming.as_mut().ok_or(Refusal::Invalid)?;
         let offset = usize::try_from(offset).map_err(|_| Refusal::Invalid)?;
         if offset != incoming.bytes.len()
-            || bytes.len() != (incoming.total - incoming.bytes.len()).min(CHUNK_BYTES)
+            || bytes.is_empty()
+            || bytes.len() > incoming.total - incoming.bytes.len()
         {
             return Err(Refusal::Invalid);
         }

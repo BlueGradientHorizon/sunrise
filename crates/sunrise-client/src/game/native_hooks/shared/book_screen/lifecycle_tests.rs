@@ -1,6 +1,8 @@
 use super::*;
 use std::sync::{Mutex, OnceLock};
-use sunrise_client::recipe_book::{BookFlags, placement_sync::ResourceId, settings_codec, settings_sync::Message};
+use sunrise_client::recipe_book::{
+    BookFlags, placement_sync::ResourceId, settings_codec, settings_sync::Message,
+};
 
 static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
 struct BookMod;

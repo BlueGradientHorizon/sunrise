@@ -3,7 +3,9 @@
 #[path = "settings_placement.rs"]
 mod placement;
 use super::{
-    BookFlags, CustomBooks, placement_sync::ResourceId, settings_codec,
+    BookFlags, CustomBooks,
+    placement_sync::ResourceId,
+    settings_codec,
     settings_sync::{Authority, Message, RequestBudget},
 };
 use std::{collections::BTreeSet, time::Instant};
