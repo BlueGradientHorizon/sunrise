@@ -113,11 +113,13 @@ only the changed components in place: no equip sound, equip event or immediate a
 reapplication. The usual slot sync sends the changed stack. `Strict` keeps this behavior.
 Cursors, `OneByOne` and `InfiniteMaterials` return `ItemPlaceEditError::UnsupportedPlace`
 instead of editing a partial, virtual or unsynced stack. Other places use their exchange rules.
-`ItemPlaceEditError::NotHeld` means no stack was available to edit; `Stack(error)` means
-validation refused the component edits. A refusal leaves the place unchanged. Successful edits
-are part of the current transaction and roll back with it. `stack.set` and `stack.remove` edit
-typed overrides; `get` sees earlier edits in the same callback. Use `stack.original().project()`
-if you need an owned copy of the stack as it was before the edits.
+`ItemPlaceEditError::NotHeld` means no readable stack was available to edit; `Stack(error)`
+means validation refused the component edits. For player slots, hands and equipment, a closed
+transaction returns `Unavailable` without calling the editor. Unchanged overrides are not
+rewritten. A refusal leaves the place unchanged, and successful edits roll back with the
+transaction. `stack.set` and `stack.remove` edit typed overrides; `get` sees earlier edits in
+the same callback. Use `stack.original().project()` if you need an owned copy of the stack as
+it was before the edits.
 `stack.apply_components(&patch)` merges values and `!id` removals without losing unrelated
 components, refusing malformed or conflicting damage atomically.
 `stack.copy_component_from(&other, id)` copies an own value or removal; when `other`

@@ -301,6 +301,12 @@ impl crate::NoBackend for ItemPlaceEditError {
     }
 }
 
+impl crate::AccessRefusal for ItemPlaceEditError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
+
 /// A mod's own places ([`ItemPlace::Mod`]), registered with
 /// [`Registrar::place_provider`](crate::ItemsRegistrar::place_provider): NeoForge's own `ItemAccess`s.
 /// Like a handler, it holds no borrow: its stacks live where the mod keeps them (a player's
@@ -662,11 +668,13 @@ impl ItemPlace {
     /// Edit the components of the whole stack here, keeping its item and count. The editor
     /// reads staged overrides and never lends the host. Player slots (including armour and the
     /// off hand), hands, and a mob's or armour stand's equipment update only the changed
-    /// components in place, like `ItemStack.set`: no equip effects or
-    /// attribute reapplication. The usual slot sync sends the new stack. `Strict` preserves this
-    /// contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse the edit because they do not
-    /// provide a synced whole-stack write. Other places use their usual exchange rules. A refusal
-    /// leaves the place unchanged; aborting `tx` restores a successful write.
+    /// components in place, like `ItemStack.set`: no equip effects or attribute reapplication.
+    /// The editor runs only on a readable stack in an open transaction for those slots. An
+    /// unchanged batch needs no write. The usual slot sync sends the new stack. `Strict`
+    /// preserves this contract. Cursors, `OneByOne` and `InfiniteMaterials` refuse the edit
+    /// because they do not provide a synced whole-stack write. Other places use their usual
+    /// exchange rules. A refusal leaves the place unchanged; aborting `tx` restores a successful
+    /// write.
     pub fn edit(
         &self,
         host: &mut dyn ServerHost,
@@ -683,6 +691,19 @@ impl ItemPlace {
         ) {
             return Err(ItemPlaceEditError::UnsupportedPlace);
         }
+        if matches!(
+            place,
+            Self::PlayerSlot { .. } | Self::PlayerHand { .. } | Self::Equipment { .. }
+        ) {
+            let mut edit = Some(edit);
+            return backend_mut_of(host)
+                .ok_or(ItemPlaceEditError::Unavailable)?
+                .game_edit_stack(place, tx, &mut |editor| {
+                    if let Some(edit) = edit.take() {
+                        edit(editor);
+                    }
+                });
+        }
         let before = place
             .with_stack(host, |stack| stack.project())
             .flatten()
@@ -693,32 +714,6 @@ impl ItemPlace {
         edits.apply_to(&mut stack);
         if stack == before {
             return Ok(());
-        }
-        if matches!(
-            place,
-            Self::PlayerSlot { .. } | Self::PlayerHand { .. } | Self::Equipment { .. }
-        ) {
-            // The native bridge still takes a projected stack and its changed component names.
-            let old = before.components().map(crate::Components::as_nbt);
-            let new = stack.components().map(crate::Components::as_nbt);
-            let mut changed: Vec<_> = old
-                .into_iter()
-                .flat_map(|patch| patch.keys())
-                .chain(new.into_iter().flat_map(|patch| patch.keys()))
-                .filter(|&key| old.and_then(|p| p.get(key)) != new.and_then(|p| p.get(key)))
-                .map(|key| {
-                    let key = key.to_string_lossy();
-                    key.strip_prefix('!').map(str::to_owned).unwrap_or(key)
-                })
-                .collect();
-            if before.damage_component() != stack.damage_component() {
-                changed.push("minecraft:damage".into());
-            }
-            changed.sort_unstable();
-            changed.dedup();
-            return backend_mut_of(host)
-                .ok_or(ItemPlaceEditError::Unavailable)?
-                .game_edit_stack(place, stack, &changed, tx);
         }
         let count = stack.count();
         if self.exchange(host, tx, &ItemResource::of(&stack), count) == count {

@@ -1335,17 +1335,59 @@ impl<'a> EquipmentRead<'a> {
 
     /// The complete stack: still borrowed unless its gear data needs overlaying.
     pub fn project(&self) -> Cow<'a, ItemStack> {
-        let Some((gear, index)) = self.overlays else {
+        if self.overlays.is_none() {
             return Cow::Borrowed(self.base);
-        };
+        }
         let mut stack = self.base.clone();
-        if !gear.slots[index].is_empty() {
+        self.overlay_gear(&mut stack, |_| true);
+        Cow::Owned(stack)
+    }
+
+    /// Encode selected extra components with the same gear overlay as a full projection.
+    /// Encode only the selected gear values over the resident patch, without cloning the slot.
+    pub fn extra_components_matching(
+        &self,
+        select: impl Fn(&str) -> bool,
+    ) -> Option<sunrise_core::nbt::Tag> {
+        use sunrise_core::nbt::Tag;
+        use sunrise_items::item_data::encode_extra_components_matching;
+
+        let base = encode_extra_components_matching(self.base, &select);
+        if self.overlays.is_none()
+            || !(select("minecraft:enchantments") || select("minecraft:trim"))
+        {
+            return base;
+        }
+
+        let mut shell = ItemStack {
+            item: self.base.item.clone(),
+            count: self.base.count,
+            damage: 0,
+            extra: None,
+        };
+        self.overlay_gear(&mut shell, &select);
+        let Some(Tag::Compound(gear)) = encode_extra_components_matching(&shell, select) else {
+            return base;
+        };
+        let Some(Tag::Compound(mut patch)) = base else {
+            return Some(Tag::Compound(gear));
+        };
+        patch.extend(gear);
+        Some(Tag::Compound(patch))
+    }
+
+    fn overlay_gear(&self, stack: &mut ItemStack, select: impl Fn(&str) -> bool) {
+        let Some((gear, index)) = self.overlays else {
+            return;
+        };
+        if select("minecraft:enchantments") && !gear.slots[index].is_empty() {
             stack.data_mut().enchantments = gear.slots[index].clone();
         }
-        if let Some(trim) = &gear.trims[index] {
+        if select("minecraft:trim")
+            && let Some(trim) = &gear.trims[index]
+        {
             stack.data_mut().trim = Some(trim.clone());
         }
-        Cow::Owned(stack)
     }
 }
 

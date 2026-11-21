@@ -286,7 +286,7 @@ pub(crate) mod component_edits {
     use std::collections::BTreeMap;
 
     /// One staged operation on an override; removal and inheritance are distinct.
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, PartialEq, Eq)]
     pub enum ComponentEdit<T> {
         /// Replace the override with this value.
         Value(T),
@@ -318,18 +318,40 @@ pub(crate) mod component_edits {
             self.damage
         }
 
-        /// Take the ordinary component operations, keyed by bare namespaced id.
-        pub fn into_components(self) -> impl Iterator<Item = (String, ComponentEdit<Tag>)> {
-            self.components.into_iter()
+        /// Read one staged ordinary operation by its bare component name.
+        pub fn component(&self, id: &str) -> Option<&ComponentEdit<Tag>> {
+            self.components.get(id)
         }
 
-        /// Apply the batch to an owned stack for a place whose write goes through exchange.
+        /// Borrow the ordinary operations for admission.
+        pub fn components(&self) -> impl Iterator<Item = (&str, &ComponentEdit<Tag>)> {
+            self.components.iter().map(|(id, edit)| (id.as_str(), edit))
+        }
+
+        /// Remove unchanged operations, including damage, before validating a write.
+        pub fn retain(
+            &mut self,
+            mut component: impl FnMut(&str, &ComponentEdit<Tag>) -> bool,
+            damage: impl FnOnce(ComponentEdit<u32>) -> bool,
+        ) {
+            self.components.retain(|id, edit| component(id, edit));
+            self.damage = self.damage.filter(|&edit| damage(edit));
+        }
+
+        /// Borrow the names to apply, including damage only when the batch changes it.
+        pub fn names(&self) -> impl Iterator<Item = &str> + Clone {
+            self.components
+                .keys()
+                .map(String::as_str)
+                .chain(self.damage.map(|_| "minecraft:damage"))
+        }
+
+        /// Apply the batch to an API-owned value, as used for exchange and by the test host.
         pub(crate) fn apply_to(self, stack: &mut ItemStack) {
-            let damage = self.damage();
-            for (id, edit) in self.into_components() {
+            for (id, edit) in self.components {
                 stack.apply_component_edit(&id, edit);
             }
-            if let Some(edit) = damage {
+            if let Some(edit) = self.damage {
                 stack.apply_damage_edit(edit);
             }
         }

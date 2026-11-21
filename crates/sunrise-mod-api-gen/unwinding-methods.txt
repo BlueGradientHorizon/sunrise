@@ -441,7 +441,6 @@ items::entity_automation_size
 items::entity_container_size
 items::entity_equipment_size
 items::entity_type_in_tag
-items::game_edit_stack
 items::game_extract
 items::game_insert
 items::game_on_crafted_by

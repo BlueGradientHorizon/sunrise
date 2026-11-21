@@ -7,7 +7,7 @@
 //! `attributes` and `attribute_modifiers`), which on a client answer for the
 //! local player from the client's own copy; and `effect`/`effects`.
 use super::Game;
-use super::api_values::{project_stack, stack_read_metadata};
+use super::api_values::{StackReadMetadata, project_stack, stack_read_metadata};
 use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
 use crate::mobs::Who;
@@ -57,9 +57,18 @@ pub(super) fn lend_equipment(
     read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
 ) -> Option<()> {
     let metadata = stack_read_metadata(stack.base()).ok()?;
-    let project = |metadata| project_stack(&stack.project(), metadata).ok();
-    read(ItemStackView::resident(metadata, &project));
+    with_equipment_view(&stack, metadata, read);
     Some(())
+}
+
+/// Use checked slot metadata to lend the same lazy view to readers and component editors.
+pub(super) fn with_equipment_view<R>(
+    stack: &EquipmentRead<'_>,
+    metadata: StackReadMetadata,
+    read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+) -> R {
+    let project = |metadata| project_stack(&stack.project(), metadata).ok();
+    read(ItemStackView::resident(metadata, &project))
 }
 
 /// The equipment slot of a hand (`LivingEntity.getItemInHand`/`setItemInHand`).

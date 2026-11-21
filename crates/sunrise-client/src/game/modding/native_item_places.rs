@@ -4,12 +4,13 @@
 //! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
 //! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use super::Game;
+use super::api_values::component_edit::{GearEdits, prepare_component_edit};
 use super::native_server::PlayerRead;
 use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
-    CraftedByError, EquipmentSlot, ItemPlace, ItemPlaceEditError, ItemStackView, LivingRef,
-    MenuSlotBacking, Transaction,
+    CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
+    ItemStackView, LivingRef, MenuSlotBacking, Transaction,
 };
 use sunrise_client::{
     first_person::Hand,
@@ -75,11 +76,6 @@ impl PlayerStackSlot {
         .as_mut()
         .expect("prepared player slot")
     }
-}
-
-struct GearEdits {
-    enchantments: bool,
-    trim: bool,
 }
 
 impl Game<'_> {
@@ -248,31 +244,18 @@ impl Game<'_> {
         }
         self.unscoped_game_stack_source(place)
     }
-    /// Component-only write, without going through an equipment setter or stopping item use.
+    /// Edit the resolved slot without going through an equipment setter or stopping item use.
     pub(super) fn game_edit_stack(
         &mut self,
         place: &ItemPlace,
-        stack: ItemStack,
-        changed: &[String],
         tx: &Transaction,
+        edit: &mut dyn for<'a> FnMut(&mut ItemComponentEditor<'a>),
     ) -> Result<(), ItemPlaceEditError> {
         self.edit_resolved_stack(
             place,
             tx,
-            |_, _| {
-                if changed.is_empty() {
-                    return Ok(None);
-                }
-                let worn = matches!(place, ItemPlace::Equipment { slot, .. } if *slot as usize <= finalize::HEAD);
-                let gear = GearEdits {
-                    enchantments: worn && changed.iter().any(|id| id == "minecraft:enchantments"),
-                    trim: worn && changed.iter().any(|id| id == "minecraft:trim"),
-                };
-                Ok(Some((stack, gear)))
-            },
-            |held, stack| {
-                held.apply_component_fields_from(stack, changed.iter().map(String::as_str))
-            },
+            |read, items| prepare_component_edit(read, items, edit),
+            |held, patch| patch.apply(held),
         )
     }
 
@@ -1384,8 +1367,15 @@ pub(super) mod tests {
             game.audio.capture = Some(Vec::new());
             let place = ItemPlace::Equipment { entity: id, slot };
             super::super::dispense_fixture::start_recording();
-            game.transaction(|host, tx| place.edit(host, tx, |stack| stack.set_damage(7)))
-                .unwrap();
+            game.transaction(|host, tx| {
+                place.edit(host, tx, |stack| {
+                    let original = stack.original().project().unwrap();
+                    stack.copy_component_from(&original, "minecraft:enchantments");
+                    stack.copy_component_from(&original, "minecraft:trim");
+                    stack.set_damage(7);
+                })
+            })
+            .unwrap();
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
@@ -1490,7 +1480,7 @@ pub(super) mod tests {
                     player: player.uuid(),
                     inner: Box::new(hand.clone()),
                 })),
-                ItemPlace::OneByOne(Box::new(hand)),
+                ItemPlace::OneByOne(Box::new(hand.clone())),
                 menu.cursor(),
             ] {
                 assert_eq!(
@@ -1500,6 +1490,14 @@ pub(super) mod tests {
                     Err(ItemPlaceEditError::UnsupportedPlace)
                 );
             }
+            let closed = game.transaction_open();
+            game.transaction_close(&closed, true);
+            assert_eq!(
+                hand.edit(game, closed.transaction(), |_| {
+                    panic!("closed transaction ran editor")
+                }),
+                Err(ItemPlaceEditError::Unavailable)
+            );
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
@@ -1529,11 +1527,15 @@ pub(super) mod tests {
             };
             game.lan.as_mut().unwrap().hub.guests.push(player);
 
+            let name = Tag::String("live contents".into());
             game.transaction(|host, tx| {
                 place.edit(host, tx, |stack| {
+                    let original = stack.original().project().unwrap();
+                    stack.copy_component_from(&original, "minecraft:bundle_contents");
                     stack
                         .apply_components(
                             &[
+                                ("minecraft:item_name".into(), name.clone()),
                                 (
                                     "!minecraft:custom_name".into(),
                                     Tag::Compound(Default::default()),
@@ -1576,6 +1578,7 @@ pub(super) mod tests {
             assert!(data.other("!minecraft:villager_food").is_some());
             assert!(data.custom_name.is_none());
             assert!(data.other("!minecraft:custom_name").is_some());
+            assert_eq!(data.other("minecraft:item_name"), Some(&name));
             assert_eq!(data.bundle_selected.0, 0);
             let map = data.bundle_contents[0].data().unwrap();
             assert_eq!(map.map_id, Some(27));
