@@ -48,16 +48,6 @@ mod stubs {
         }
     }
 }
-mod root {
-    mod __private {
-        pub(super) mod game {
-            use crate::tests::{Answered, DeclarationError};
-
-            pub(in crate::tests) type DeclarationListener<'a, D> =
-                dyn FnMut(&mut dyn FnMut(Answered<D>) -> Result<(), DeclarationError>) -> bool + 'a;
-        }
-    }
-}
 use stubs::declaration_ownership as parts;
 
 thread_local! {

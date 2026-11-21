@@ -13,6 +13,8 @@ pub mod client {
     }
     pub mod hud_layout {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub enum HeartKind {}
+        pub enum HeartKind {
+            Normal,
+        }
     }
 }
