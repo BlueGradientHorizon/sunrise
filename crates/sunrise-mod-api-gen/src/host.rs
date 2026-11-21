@@ -398,17 +398,6 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
     let mut choices = String::new();
     let mut partial_impls = String::new();
     let mut read_names = std::collections::BTreeSet::new();
-    // This macro expands in the caller; qualify standard paths not provided by its imports.
-    struct QualifyPathBuf;
-    impl syn::visit_mut::VisitMut for QualifyPathBuf {
-        fn visit_type_path_mut(&mut self, ty: &mut syn::TypePath) {
-            if ty.qself.is_none() && ty.path.is_ident("PathBuf") {
-                ty.path = syn::parse_quote!(::std::path::PathBuf);
-            } else {
-                syn::visit_mut::visit_type_path_mut(self, ty);
-            }
-        }
-    }
     for area in &areas {
         for tier in [Tier::Backend, Tier::ClientBackend] {
             let Some(entries) = area.tiers.get(&tier) else {
@@ -425,9 +414,7 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
                 if read_names.insert(name) {
                     writeln!(choices, "(@known {name}) => {{}};\n([{name} $($tail:ident)*] {name} $forward:item {{$($refused:item)*}}) => {{ $forward }};").unwrap();
                 }
-                let mut sig = entry.sig.clone();
-                syn::visit_mut::VisitMut::visit_signature_mut(&mut QualifyPathBuf, &mut sig);
-                let sig = sig.to_token_stream();
+                let sig = entry.sig.to_token_stream();
                 let args = signature_args(&entry.sig, name)?;
                 let call_args = if args.is_empty() {
                     "self".to_owned()
