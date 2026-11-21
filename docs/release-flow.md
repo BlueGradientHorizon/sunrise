@@ -162,7 +162,8 @@ runner with no launcher on its PATH, since the mod tools never need one. The ins
 release, as a reader's does. The mod pages then run with `cargo-sunrise-mod` built from the commit as a debug-assertions build and
 against this run's own SDK, not the previous Nightly's, so a red quickstart cannot block the Nightly that would clear it. The SDK
 folder is laid out by `tools/ci/assemble_sdk_folder.sh`, which `fn-replace-check.yml` uses too (its `sdk-<sha>` folder, signed with a
-throwaway key that only a debug-assertions build trusts through `SUNRISE_SDK_TRUSTED_KEY`), plus `nightly/sdk.json` so a `new`
+throwaway key that only a debug-assertions build trusts through `SUNRISE_SDK_TRUSTED_KEY`; `prebuilt_game.py tool`,
+which builds the tool every SDK and mod-tool release ships, refuses a build that reads that variable), plus `nightly/sdk.json` so a `new`
 with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary leg, outside `sdk_green`. A hand dispatch of
 `book-quickstart.yml` checks the published release instead.
 
@@ -326,7 +327,8 @@ so a signed list can't be reused under another tag.
   compiled: no binary of the release runs, and on a release branch the script is the branch's own, which its
   ruleset protects (see below). It reads `SHA256SUMS` and its signature as the native verifier
   does (one signature line that verifies is enough), and also refuses a listed file whose name is a path, and a
-  signed list that names no file. While that file lists no key, releases go out with SHA256SUMS
+  signed list that names no file. It reads release-keys.txt as the native verifier does too: a line that is no
+  Ed25519 public key would make launchers trust none, so it refuses. While that file lists no key, releases go out with SHA256SUMS
   alone and a warning (today's releases keep working). Once it lists one, a missing secret or a key it doesn't
   list fails the release before anything is published, instead of publishing something launchers would refuse.
 - Making the key: `tools/ci/new_release_key.sh` pipes a new key from `sunrise-release-sign keygen` straight into
@@ -477,9 +479,11 @@ The version must follow the parent: the first release is `0.1.0`, a patch keeps 
 the parent's own `sunrise-stage` judges the mod API, never the candidate's: built from the parent's tree alone (its
 own folder and target, no inherited compiler wrapper or job token), it exports both trees, its export of the parent
 must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. The
-candidate's signed `surface.json`, which modders build against, must match that tool's export of the candidate's tree:
-exactly for a patch, and for a minor it must hold every exported record unchanged (it may add records its own exporter
-knows), and the parent's tool must read it as the SDK's readers do. A patch requires an identical mod API; a
+candidate's signed `surface.json`, which modders build against, is written by the candidate's own exporter, so the
+parent's tool reads it as the SDK's readers do and diffs it against its own export of the candidate's tree: that
+diff, too, must be identical for a patch and at most additive for a minor (a minor's exporter may add records or
+fields the parent's reader doesn't know). A patch's file must also be that export exactly, in any order. A file the
+reader refuses, one with another schema, or one listing native internals is refused. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
 minor refuses them too. For content mods, the SDK's `content_api` version string must stay the same within a line.
 Until [#3817](https://github.com/sunrise-org/sunrise/issues/3817) exports the declarations for comparison, the check
@@ -536,8 +540,11 @@ waives the full daily on the release commit and nothing else:
   means the full daily, and so does any change to the code that judges a release (`release_train.judge_graph`: the
   crates of its mod API surface, packages and signature and every local crate they build from, through path and
   workspace dependencies and the root manifest's `[patch]` and `[replace]`), to those two tables, to a
-  `[workspace.dependencies]` entry those crates take, or to the `Cargo.lock` entries they build from (by version,
-  source and checksum, and the dependencies each one lists):
+  `[workspace.dependencies]` entry those crates take, to what the root manifest sets for every crate (its profiles,
+  `[workspace.package]`, `[workspace.lints]` and the resolver: a release profile with debug assertions would turn on
+  the developer SDK key), or to the `Cargo.lock` entries they build from (by version, source with its locked commit,
+  and checksum, and the packages each one depends on, resolved as Cargo writes them; a dependency that names no
+  entry or several counts as a change):
   the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
   run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
   game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots

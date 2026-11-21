@@ -314,8 +314,8 @@ jobs:
 
   publish:
     needs: [decide, verify]
-    # The only job with a write token, and only for a publishing run on main. It runs no code but
-    # tools/ci/mod_tool.py of a commit `decide` found on main, and compiles nothing.
+    # The only job with a write token, and only for a publishing run on main. It runs no code but the workflow's own
+    # tools/ci/mod_tool.py (never the built commit's), and compiles nothing.
     if: needs.decide.outputs.publish == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -326,11 +326,11 @@ jobs:
       GH_REPO: ${{ github.repository }}
       COMMIT: ${{ needs.decide.outputs.commit }}
     steps:
+      # The workflow's own checkout, with main's history: `decide` found the built commit on main.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ needs.decide.outputs.commit }}
       - uses: actions/download-artifact@v4
         with:
           name: mod-tool-release
