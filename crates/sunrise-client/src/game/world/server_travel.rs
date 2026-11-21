@@ -1427,9 +1427,12 @@ impl Game<'_> {
                 if let Some(pitch) = pitch {
                     g.pitch = pitch;
                 }
-                // A new body at the exit: no fall distance or motion carried over,
-                // but the player's attributes (ServerPlayer.teleport keeps the entity).
-                if !trip.hold {
+                // A respawn, including the End credits, creates a new ServerPlayer and
+                // therefore resets Entity.tickCount. Other arrivals keep the same player,
+                // even though Sunrise rebuilds its motion body at the exit.
+                if trip.respawn.is_some() {
+                    g.new_body(false);
+                } else if !trip.hold {
                     g.new_body(true);
                 }
             });
