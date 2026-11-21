@@ -667,9 +667,9 @@ fn a_parked_level_holds_the_counter_until_it_returns() {
 }
 
 /// The containment row: a native panic in a row's tick rolls the row's
-/// writes back (the counter keeps its value), the later row ticks on, and
-/// the panicking row's own next tick proceeds. A subscriber is not
-/// auto-disabled.
+/// writes back (the counter keeps its value) and disables that mod's
+/// `general_entity_tick` for the rest of the session, so later rows and
+/// later ticks proceed without invoking the disabled callback again.
 #[test]
 #[ignore = "daily"]
 fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
@@ -679,16 +679,16 @@ fn a_panicking_row_rolls_back_and_the_next_tick_proceeds() {
         l.panic_on
             .store(first, std::sync::atomic::Ordering::Relaxed);
         tick(game);
-        assert_eq!(
-            *l.trace.lock().unwrap(),
-            [second],
-            "only the later row ticked"
+        assert!(
+            l.trace.lock().unwrap().is_empty(),
+            "the panicking mod's general_entity_tick is disabled after its first panic"
         );
         assert_eq!(counter(game, first), 41, "the panic rolled the write back");
-        assert_eq!(counter(game, second), 8);
+        assert_eq!(counter(game, second), 7);
         tick(game);
-        assert_eq!(*l.trace.lock().unwrap(), [second, first, second]);
-        assert_eq!(counter(game, first), 42);
+        assert!(l.trace.lock().unwrap().is_empty());
+        assert_eq!(counter(game, first), 41);
+        assert_eq!(counter(game, second), 7);
     });
 }
 

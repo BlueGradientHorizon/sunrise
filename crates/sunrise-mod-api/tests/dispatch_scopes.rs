@@ -111,6 +111,11 @@ fn dispatch_snapshot_nested_scopes_and_unwind_restore_the_outer_owner() {
         state.calls.each_ref().map(|count| count.load(SeqCst)),
         [4, 4]
     );
+    dispatch_client_tick_pre(&mut host);
+    assert_eq!(
+        state.calls.each_ref().map(|count| count.load(SeqCst)),
+        [5, 4]
+    );
     drop(outer);
     assert_eq!(mod_api::content::crash::current_native_call(), None);
 }
