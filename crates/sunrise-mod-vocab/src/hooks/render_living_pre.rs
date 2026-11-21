@@ -20,7 +20,7 @@ pub trait Hooks {
     /// `draw.keep()` does nothing here.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",

@@ -6,7 +6,6 @@
 pub mod ai;
 mod ai_pause;
 pub mod allay;
-pub mod ambient;
 pub mod anim;
 pub mod animal_brain;
 pub mod aquatic;
@@ -128,7 +127,6 @@ mod invisible_follow_tests;
 mod template_mob_tests;
 mod world;
 pub use world::{TargetInfo, single_player_pos, visual_clip};
-pub mod dragon_contacts;
 pub mod zombie_villager;
 /// A mob's stored active effect with its registry index resolved once at creation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -389,6 +387,7 @@ impl MobTypes {
             .transpose()?;
         let entity_type_tags =
             crate::items::load_tags(root, "entity_type", &sunrise_world::loot::PackOverlay::NONE)?;
+        let burn_in_daylight = entity_type_tags.get("minecraft:burn_in_daylight");
         let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &sunrise_world::loot::PackOverlay::NONE)
@@ -494,6 +493,7 @@ impl MobTypes {
             flags.powder_snow_walkable = entity_type_tags
                 .get("minecraft:powder_snow_walkable_mobs")
                 .is_some_and(|members| members.contains(&id));
+            flags.burns_in_day = burn_in_daylight.is_some_and(|members| members.contains(&id));
             let passenger_attachments =
                 riders::parse_passenger_attachments(&t["passenger_attachments"]);
             out.insert(
@@ -5371,13 +5371,14 @@ mod teams_tests {
         }
     }
 }
-#[cfg(test)]
-pub(crate) mod sensor_scan_tests {
+#[cfg(any(test, feature = "test-mob-kind"))]
+#[cfg_attr(not(test), allow(dead_code))] // only kind() is used by the gameplay crates' tests
+pub mod sensor_scan_tests {
     use super::*;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
 
-    pub(crate) fn kind() -> Arc<MobType> {
+    pub fn kind() -> Arc<MobType> {
         Arc::new(MobType {
             shadow: None,
             id: "minecraft:cow".into(),

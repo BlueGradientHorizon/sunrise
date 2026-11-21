@@ -123,8 +123,8 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 |---|---|
 | `sunrise-client` | Gameplay library (`src/lib.rs`: `game.rs` + `game/`, `entry.rs`) and thin executable (`src/main.rs`). Also the dedicated server (`--dedicated`). Re-exports `sunrise-client-lib` for existing mod paths. |
 | `sunrise-client-lib` | Reusable client systems, `sunrise-ctl`, probes and their tests. Its manifest points to the existing sources under `crates/sunrise-client/`; the library root is `src/client_lib.rs`. It never depends on gameplay. |
-| `sunrise-gameplay` | Vanilla's logical side, what the server jar holds (common code included), moved out of `sunrise-client` module by module ([#2210](https://github.com/sunrise-org/sunrise/issues/2210)). Engine layer, not yet portable: `portable.pending` lets it take `sunrise-client-lib` until the types it needs move down. Never depends on `sunrise-client-gameplay` |
-| `sunrise-client-gameplay` | Client-only gameplay moved out of `sunrise-client`: depends on `sunrise-client-lib` and portable crates, never on `sunrise-gameplay`. Engine layer, desktop |
+| `sunrise-gameplay` | Vanilla's logical side, what the server jar holds (common code included), moved out of `sunrise-client` module by module ([#2210](https://github.com/sunrise-org/sunrise/issues/2210)). Holds the `MobLevel` service trait and the mob families on it (`allays.rs`, `foxes.rs`, `mob_looting.rs`), the cat spawner's clock and picks (`cat_spawner.rs`) and the wandering trader spawner's state (`wandering_trader.rs`), `mob_index.rs`, `trident.rs`, `stats.rs`, the block-entity ticker helpers (`block_entity_ticks.rs`), `item_areas.rs`, `interaction_shapes.rs`, `tick_profile.rs`, and the server-side halves of `lan/` and `dedicated/`. `LanHost`, `World`, `ChunkMap`, `Mob`, `ItemEntity`, the level-event dispatchers, the custom spawners' dispatch (`G/mobs/custom_spawners.rs`), the village siege (`G/mobs/raids/mod.rs`) and the block-entity tick loop (`G/blocks/block_entity_ticks.rs`) have not moved. Engine layer, not yet portable: `portable.pending` lets it take `sunrise-client-lib` until the types it needs move down. Never depends on `sunrise-client-gameplay` |
+| `sunrise-client-gameplay` | Client-only gameplay moved out of `sunrise-client`: occlusion and entity culling (`occlusion_culling/`, `entity_occlusion.rs`, `particle_culling.rs`), `section_scene.rs` and `transient_blocks.rs`. Depends on `sunrise-client-lib` and portable crates, never on `sunrise-gameplay`. Engine layer, desktop |
 | `sunrise-items` | Blocks and items below gameplay: `blocks.rs` (block facts), `items.rs`, `item_data.rs` (components), `enchant.rs`, `cooldowns.rs`, `bundle.rs`, `item_nbt.rs`. Re-exported as `sunrise_client::items`... |
 | `sunrise-command` | Command parsing (Brigadier): the vanilla tree, argument types, selectors, suggestions, the tree's network form. Re-exported as `sunrise_client::command` |
 | `sunrise-client-core` | The client lib's bottom layer: `text.rs`, `lang.rs`, `snbt.rs`, `nbt_path.rs`, `component.rs`, `scoreboard.rs`, `bossbar.rs`, `gamerules.rs`, `block_entity_nbt.rs`, registry/particle/sound tables. Re-exported under the old paths (`sunrise_client::text`...) |
@@ -243,7 +243,10 @@ python3 tools/lang_coverage.py --summary --show-keys   # the same, then the keys
 
 `L:` = lib (`crates/sunrise-client/src/`, or `crates/sunrise-client-render/src/` for the modules that crate holds, under
 the same `sunrise_client::<module>` paths), `G:` = gameplay (`crates/sunrise-client/src/game/`), also in the lib in normal builds.
-Gameplay keeps its `sunrise_client::<module>` imports through a self-crate alias. The executable
+Gameplay keeps its `sunrise_client::<module>` imports through a self-crate alias.
+Gameplay code that needs no `Game` lives in the side crate of its side: `crates/sunrise-gameplay/src/` (SG) for the
+server's logic, `crates/sunrise-client-gameplay/src/` (SCG) for client-only code. `G:` keeps the `impl Game` glue
+under the old names, and the two side crates never depend on each other (the `sides` in `tools/layers.json`). The executable
 contains only the allocator, mod API marker and a call to `entry::main`. For unit tests, the lib
 excludes `entry` and `game`, and the executable test target owns `game` so its process-wide test
 state stays separate from the library tests. This compiles gameplay twice for executable tests.
@@ -261,7 +264,7 @@ state stays separate from the library tests. This compiles gameplay twice for ex
 | Inventory and containers | L: `menu.rs` (`AbstractContainerMenu.clicked`), `container_screen.rs`, `containers.rs`, `creative.rs`, `crafting.rs`, `recipe_book*.rs`, `stations.rs`, `merchant.rs`; game.rs `fn menu_ops`, `fn click_inventory`; G: `stations.rs`, `trading.rs`, `recipe_book.rs`, `machines.rs` |
 | Commands | parse: crate `sunrise-command` (`args.rs`, `selector.rs`, `tree_*.rs`, `vanilla.rs`); run: G: `commands.rs` (dispatch) + `commands/*.rs` (`admin`, `execute`, `items`, `players`, `world_cmds`...); L: `scoreboard_cmd.rs`, `data_cmd.rs`; `sunrise-client-core`: `nbt_path.rs`, `scoreboard.rs`; G: `functions.rs`, `command_blocks.rs` |
 | UI screens | `Screen` enum in game.rs; L: `title.rs` + `title/`, `options_ui.rs`, `multiplayer.rs`, `pack_screen.rs`, `settings_shell.rs` (Sunrise's settings screens on it: `extras_ui.rs`, `graphics_ui.rs`, `controller_ui.rs`), `screen_draw.rs`, `ui.rs` (widgets), `hud.rs`, `hud_layout.rs`, `hud_overlays.rs`, `hud_kit/` (Sunrise overlays' `Room` and `Plate`, the collapsed page strip `tabs` that Shaders' screens use, [docs/ui-kit.md](docs/ui-kit.md)), `pad_glyph.rs` (controller glyphs, by what the button does), `chat.rs`, `tab_list.rs`; G: `startup_menu.rs`, `loading_screen.rs` (the loading screen, the pre-game `App`), `screens.rs` (pause, death), `options.rs`, `lan_screen.rs`, `chat.rs`, `sign_edit.rs`, `books.rs`, `creative_screen.rs` |
-| Multiplayer client | L: `net.rs` (network thread); G: `remote.rs` (`fn handle_packet`, `fn tick_remote`), `remote_*.rs` (mob data, objects, projectiles, vehicles, stations) |
+| Multiplayer client | L: `net.rs` (network thread); G: `network/remote/mod.rs` (`Game::apply_packet`), `network/remote/packets_*.rs` (packet handlers), `network/remote/tick.rs` (`Game::tick_remote`), `remote_*.rs` (mob data, objects, projectiles, vehicles, stations) |
 | LAN host / server side | L: `lan/` (`conn.rs` handshake + login threads, `hub.rs` + `hub/` play state, `chunks.rs`, `entity.rs`, `tracking.rs`, `guest.rs`, `playerdata.rs`); G: `lan.rs` (`LanHost`), `network/lan_actions/` (`turns.rs`: `fn as_guest`, `tick.rs`: `fn tick_guests`), `lan_*.rs` per feature, `lan_entities.rs` (tracked entities) |
 | Integrated server | G: `integrated.rs` (the server thread), `levels.rs` (one level per dimension, `fn tick_server`), `server_travel.rs` |
 | Dedicated server | G: `dedicated.rs`, `dedicated/status.rs`; crates `sunrise-server-files`, `sunrise-server` |
@@ -275,6 +278,10 @@ state stays separate from the library tests. This compiles gameplay twice for ex
 
 ## How `Game` is organised
 
+- A module that needs no `Game` moves to `sunrise-gameplay` or `sunrise-client-gameplay` (#2210), and its `game/` file
+  keeps the `impl Game` glue under the old name. A service trait (`MobLevel`) carries a family's
+  level calls, statically dispatched because it runs per mob per tick. `tools/layers.json` forbids any dependency
+  between the two side crates.
 - `struct Game` (game.rs) keeps the core loop and fields. Each `game/<area>/<feature>.rs` (or
   `<feature>/mod.rs`) adds an `impl Game<'_>` block and state types. Logical modules remain direct
   children of `game`; an area's `.game-area` marker enables build-derived declarations.

@@ -20,8 +20,7 @@ mod mob_conversion;
 mod mob_dispatch_panic_tests;
 mod player_loot_entity;
 mod projectile_targets;
-mod projectile_world;
-pub(super) use projectile_world::ProjWorld;
+pub(super) use sunrise_gameplay::projectile_world::ProjWorld;
 mod pufferfish_player;
 mod residency;
 #[cfg(test)]
@@ -49,7 +48,6 @@ use sunrise_client::{
     Result,
     arrows::EntityHit,
     blocks::Fluid,
-    collisions::SceneCollisions,
     crafting::Recipes,
     graphics::EntityCullingMode,
     health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
@@ -63,11 +61,11 @@ use sunrise_client::{
         spawning::{self, BiomeFacts},
     },
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
+    projectiles::{Hit, Projectile, ProjectileKind},
 };
 use sunrise_client_render::render_geometry::EntitySpan;
 use sunrise_core::{
-    geometry::{Aabb, Direction, Vec3, traverse_blocks, trig::Mth},
+    geometry::{Aabb, Direction, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
 };
@@ -264,8 +262,8 @@ pub(super) struct Creatures {
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
-    /// The cat spawner's countdown (`CatSpawner.nextTick`).
-    pub cat_tick: i32,
+    /// The cat spawner (`CatSpawner`): its countdown.
+    pub cat: super::cat_spawner::CatSpawner,
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
@@ -1603,12 +1601,7 @@ impl Game<'_> {
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
         for (id, at, width, height, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
+            self.finish_mob_death_animation(id, at, width, height, split);
         }
         laps.lap("creature_retain");
         self.sync_riders();
@@ -1710,6 +1703,24 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
+    /// also splits a large cube before it reaches `Entity.setRemoved`.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        let at = at.components();
+        self.lan_entity_event(id as i32, 60, at);
+        self.death_poof(at, width, height);
+        if let Some(mob) = split {
+            self.split_dead_cube(mob);
+        }
+    }
+
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
     pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
         let options = sunrise_client::particles::ParticleOptions::simple(
@@ -2626,9 +2637,7 @@ impl Game<'_> {
                         if self.died.insert(target) {
                             self.mob_died(&m);
                         }
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target) {
-                            m.removed = true;
-                        }
+                        self.remove_mob_now(target, false);
                     }
                 }
                 MobEvent::Push { target, velocity } => {
@@ -6791,7 +6800,7 @@ impl Game<'_> {
             let id = self.mobs[index].id as i32;
             // Leashable.dropLeash, then discard.
             self.break_leash(id as u32, true, false);
-            self.mobs[index].removed = true;
+            self.remove_mob_now(id as u32, false);
             if self.creative {
                 if let Some(rest) = self.add_stack_to_inventory(filled) {
                     self.spawn_item(rest, self.eye_position().unwrap_or([0.0; 3]), [0.0; 3], 40);
@@ -6980,11 +6989,9 @@ impl Game<'_> {
         let is_food = m.kind.food.contains(&item);
         let baby_turtle = species == Species::Turtle && m.is_baby();
         // MushroomCow.getEffectsFromItemStack: the item's block supplies them.
-        let flower = if species == Species::Mooshroom {
-            sunrise_client::flowers::stew_effect(&item)
-        } else {
-            None
-        };
+        let stew_effects = (species == Species::Mooshroom && m.extra.variant == 1 && !m.is_baby())
+            .then(|| world_items!(self).suspicious_stew_effects(&item))
+            .flatten();
         let mut give_stew: Option<Vec<(Arc<str>, i32)>> = None;
         // `Some(true)` for the four spell particles, `Some(false)` for the two
         // smoke puffs of a cow that already holds effects.
@@ -7032,14 +7039,13 @@ impl Game<'_> {
                 self.post_game_event("minecraft:shear", feet, ctx);
                 self.damage_held_tool();
             }
-            // MushroomCow.mobInteract: a brown adult takes the flower's effects
+            // MushroomCow.mobInteract: a brown adult takes the block's effects
             // unless it holds some already, when it only puffs smoke.
-            Species::Mooshroom if m.extra.variant == 1 && !m.is_baby() && flower.is_some() => {
+            Species::Mooshroom if let Some(effects) = stew_effects => {
                 if m.extra.stew_effects.is_some() {
                     stew_particles = Some(false);
                 } else {
-                    let (effect, ticks) = flower.expect("the guard checked");
-                    m.extra.stew_effects = Some(vec![(Arc::from(effect), ticks)]);
+                    m.extra.stew_effects = Some(effects.to_vec());
                     consume = true;
                     eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
                     stew_particles = Some(true);
@@ -8106,7 +8112,7 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.pack_shadow_casters.0 {
+                if self.occlusion.shadow_casters.0 {
                     let mut frame = self.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
@@ -8164,12 +8170,13 @@ impl Game<'_> {
         // keep the existing exact mesh-culling path.
         if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .async_occlusion_culler
+                .occlusion
+                .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.pack_shadow_casters.0
+            && !self.occlusion.shadow_casters.0
             && mod_api::__private::mods().is_empty()
         {
             self.mob_geometry_inner::<true>(camera, alpha, out);

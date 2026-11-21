@@ -14,8 +14,11 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
         id: "review:menu",
+        owner: "review",
         slots: 3,
+        player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![2],
         inputs: Vec::new(),
         crafting: None,
@@ -55,11 +58,13 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
             sent: vec![],
             drag: None,
             sent_data: vec![],
+            blockless_data: Vec::new(),
             hidden: vec![],
             mod_type: Some(kind),
             craft: None,
             links: vec![],
             asks_still_valid: false,
+            opening_item: None,
         });
     });
     let before = game.mod_book_menu_snapshot(12, 1, "review:menu").unwrap();

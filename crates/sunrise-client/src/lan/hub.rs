@@ -2667,17 +2667,11 @@ impl Hub {
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
         let mut g = self.guests.remove(i);
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        if let Some(m) = g
+        let closed = g
             .menu
             .as_ref()
-            .filter(|m| m.slots == super::menu::Slots::Native)
-        {
-            self.native_menu_events
-                .push(super::menu::NativeMenuEvent::Closed {
-                    uuid: g.uuid,
-                    window: m.window,
-                });
-        }
+            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
+        self.native_menu_events.extend(closed);
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -6181,8 +6175,11 @@ mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:kept",
+                owner: "test",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -6226,12 +6223,14 @@ mod tests {
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: Some(mod_type),
                     registry_id: "test:kept".into(),
                     craft: None,
                     links: Vec::new(),
                     asks_still_valid: true,
+                    opening_item: None,
                 });
             });
         };
