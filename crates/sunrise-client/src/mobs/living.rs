@@ -460,8 +460,7 @@ impl TravelTail {
                             damage,
                             super::Damage::of(super::DamageKind::FlyIntoWall),
                         );
-                        if handoff
-                            && (mob.pending_damage_post.is_some() || was_alive && !mob.alive())
+                        if handoff && (mob.damage_completion.is_some() || was_alive && !mob.alive())
                         {
                             return ControlFlow::Break(TravelPause(TravelStop::AfterHit));
                         }
@@ -1917,7 +1916,7 @@ impl Mob {
             }
             let was_alive = self.alive();
             self.damage(level, damage as f32, super::Damage::of(source));
-            if handoff && (self.pending_damage_post.is_some() || was_alive && !self.alive()) {
+            if handoff && (self.damage_completion.is_some() || was_alive && !self.alive()) {
                 return Err(FallHurtStop::AfterHurt(horse.then_some(fall)));
             }
             if horse {

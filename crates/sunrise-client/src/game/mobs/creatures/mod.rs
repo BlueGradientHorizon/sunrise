@@ -1407,7 +1407,7 @@ impl Game<'_> {
             .collect();
         for m in killed {
             self.died.insert(m.id);
-            self.mob_died(&m);
+            self.mob_die(&m);
         }
         // Their victims have been looted and mourned: no charged creeper is
         // waiting any more.
@@ -1617,7 +1617,7 @@ impl Game<'_> {
         self.villager_pickups();
         laps.lap("creature_villagers");
         for m in dead {
-            self.mob_died(&m);
+            self.mob_die(&m);
         }
         for mut m in corpses {
             let names: Vec<&'static str> = m
@@ -1729,7 +1729,7 @@ impl Game<'_> {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
-        let post = mob.pending_damage_post.take();
+        let post = mob.damage_completion.take();
         let killed = mob.health <= 0.0;
         if post.is_none() && !killed {
             return;
@@ -1740,7 +1740,7 @@ impl Game<'_> {
             // The death hooks may remove or revive the body. Do not hold a row borrow
             // across them or recover the hit state from the body afterward.
             let death = mob.clone();
-            self.mob_die(&death);
+            self.apply_mob_death(&death);
         }
         if let Some(post) = post {
             self.finish_damage_post(id as i32, &kind.id, &post);
@@ -1748,14 +1748,14 @@ impl Game<'_> {
     }
 
     /// LivingEntity.die / dropAllDeathLoot.
-    pub(super) fn mob_died(&mut self, m: &Mob) {
-        self.mob_die(m);
-        if let Some(post) = &m.pending_damage_post {
+    pub(super) fn mob_die(&mut self, m: &Mob) {
+        self.apply_mob_death(m);
+        if let Some(post) = &m.damage_completion {
             self.finish_damage_post(m.id as i32, &m.kind.id, post);
         }
     }
 
-    fn mob_die(&mut self, m: &Mob) {
+    fn apply_mob_death(&mut self, m: &Mob) {
         // The killing blow for the drop hooks, before the player's hit is forgotten.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self
@@ -2128,7 +2128,7 @@ impl Game<'_> {
             );
             hurt = hit;
             // Squid.hurtServer can report false after its superclass accepted a lethal hit.
-            settle = t.pending_damage_post.is_some();
+            settle = t.damage_completion.is_some();
             if hit && catch_up && t.invulnerable > previous_invulnerable {
                 t.hurt_time = (t.hurt_time - 1).max(0);
                 t.invulnerable = (t.invulnerable - 1).max(0);
@@ -2662,7 +2662,7 @@ impl Game<'_> {
                         .cloned()
                     {
                         if self.died.insert(target) {
-                            self.mob_died(&m);
+                            self.mob_die(&m);
                         }
                         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target) {
                             m.removed = true;

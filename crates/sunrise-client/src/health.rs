@@ -1036,7 +1036,7 @@ pub struct PlayerHealth {
     pub indicated_dir: Option<f32>,
     pub dead: bool,
     /// The lethal or totem-saving damage Post, pending the game's owning continuation.
-    pub pending_damage_post: Option<std::sync::Arc<PendingDamagePost>>,
+    pub damage_completion: Option<std::sync::Arc<PendingDamagePost>>,
     pub sync_velocity: bool,
     pub game_time: i64,
     pub tick_count: i32,
@@ -1094,7 +1094,7 @@ impl PlayerHealth {
             hurt_dir: 0.0,
             indicated_dir: None,
             dead: false,
-            pending_damage_post: None,
+            damage_completion: None,
             sync_velocity: false,
             game_time: 0,
             tick_count: 0,
@@ -1482,7 +1482,7 @@ impl PlayerMotion {
             living_cause: hit.living_cause,
             events: &mut self.events,
             dead: &mut h.dead,
-            pending_damage_post: &mut h.pending_damage_post,
+            damage_completion: &mut h.damage_completion,
             sync_velocity: &mut h.sync_velocity,
             game_time: h.game_time,
             status: self.status.clone(),
@@ -1579,7 +1579,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) living_cause: bool,
     pub(crate) events: &'a mut Vec<MotionEvent>,
     pub(crate) dead: &'a mut bool,
-    pub(crate) pending_damage_post: &'a mut Option<std::sync::Arc<PendingDamagePost>>,
+    pub(crate) damage_completion: &'a mut Option<std::sync::Arc<PendingDamagePost>>,
     pub(crate) sync_velocity: &'a mut bool,
     pub(crate) game_time: i64,
     /// Resistance, fire resistance and armor protection (effects.rs).
@@ -2187,7 +2187,7 @@ impl HurtWorld for Environment<'_> {
             container,
             *self.dead || self.totem_fired,
         ) {
-            *self.pending_damage_post = Some(post);
+            *self.damage_completion = Some(post);
         }
         Ok(())
     }

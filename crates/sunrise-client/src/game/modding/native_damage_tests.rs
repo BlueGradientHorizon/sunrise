@@ -352,7 +352,7 @@ fn post_fires_once_for_a_killing_blow_on_a_mob() {
             Damage::of(DamageKind::Generic)
         ));
         assert_eq!(pig.health, 0.0);
-        game.mob_died(&pig);
+        game.mob_die(&pig);
     });
     assert_eq!(heard.post, [(225016, 100.0)]);
 }

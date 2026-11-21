@@ -94,7 +94,7 @@ fn death_weapon_immune_crossbow_cannot_replace_accepted_crossbow() {
             let mut dead = game.mobs.iter().find(|m| m.id == 70).unwrap().clone();
             assert_eq!(dead.last_damage.unwrap().1, committed.1);
             dead.health = 0.0;
-            game.mob_died(&dead);
+            game.mob_die(&dead);
         });
     });
 }
@@ -177,7 +177,7 @@ fn death_weapon_riptide_iii_uses_spin_trident() {
             dead.health = 0.0;
             dead.ai.last_hurt_by_player = 100;
             game.remember_mob_player_credit(dead.id);
-            game.mob_died(&dead);
+            game.mob_die(&dead);
         });
     });
 }
@@ -205,7 +205,7 @@ fn death_weapon_harming_potion_does_not_read_thrower_sword() {
             game.mob_damage_source(&dead),
             ("minecraft:indirect_magic", 11)
         );
-        game.mob_died(&dead);
+        game.mob_die(&dead);
     });
 }
 
@@ -226,7 +226,7 @@ fn death_weapon_different_killing_source_discards_projectile() {
         let mut dead = game.mobs[0].clone();
         dead.last_damage = Some((Damage::of(DamageKind::Fall), i64::from(dead.age) + 1));
         dead.health = 0.0;
-        game.mob_died(&dead);
+        game.mob_die(&dead);
         assert!(game.mobs[0].accepted_hit.is_none());
     });
 }
@@ -290,7 +290,7 @@ fn death_weapon_removal_clears_capture_and_vehicle_transfer_keeps_its_owner() {
         }
         let mut dead = victim(game);
         dead.health = 0.0;
-        game.mob_died(&dead);
+        game.mob_die(&dead);
     });
 }
 
@@ -321,7 +321,7 @@ fn death_weapon_same_tick_stronger_arrow_replaces_weapon() {
                 Some(expected.clone())
             );
             dead.health = 0.0;
-            game.mob_died(&dead);
+            game.mob_die(&dead);
         });
     });
 }

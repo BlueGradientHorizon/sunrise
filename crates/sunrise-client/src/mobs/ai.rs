@@ -1359,7 +1359,7 @@ pub fn resume_after_breathing(
     if let Some(breath) = breath {
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
-    let progress = if m.pending_damage_post.is_some() && movement.is_some() {
+    let progress = if m.damage_completion.is_some() && movement.is_some() {
         BaseTick::AfterDamage {
             contact: air.contact,
             next: BaseStage::Effects,
@@ -1549,7 +1549,7 @@ fn start_ai_tail(
 ) -> TickProgress {
     let no_ai = m.no_ai;
     let next = AiStage::BlockWalk;
-    if pause_damage && m.pending_damage_post.is_some() {
+    if pause_damage && m.damage_completion.is_some() {
         return TickProgress::Paused(Pause::AfterDamage(DamageResume {
             join: m.join,
             tail: DamageTail::Ai {
@@ -1579,7 +1579,7 @@ fn continue_ai_tail(
                     m.apply_effects_from_blocks(w, events);
                 }
                 let mut walk = start_block_walk(m, w, level, events);
-                if pause_damage && m.pending_damage_post.is_some()
+                if pause_damage && m.damage_completion.is_some()
                     || !walk.run(m, w, level, events, pause_damage)
                 {
                     AiStage::ResumeBlockWalk(Box::new(walk))
@@ -1679,7 +1679,7 @@ fn continue_ai_tail(
                 return TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events));
             }
         };
-        if pause_damage && m.pending_damage_post.is_some() {
+        if pause_damage && m.damage_completion.is_some() {
             return TickProgress::Paused(Pause::AfterDamage(DamageResume {
                 join: m.join,
                 tail: DamageTail::Ai {
@@ -1927,7 +1927,7 @@ impl MobBlockWalk {
                 events,
             };
             let halt = |inside: &MobInside<'_, '_, '_>| {
-                pause_damage && inside.m.pending_damage_post.is_some()
+                pause_damage && inside.m.damage_completion.is_some()
             };
             // Begin at the old box before sweeping the captured movement. The
             // two passes share the visited set and the collector's first step.
@@ -1968,7 +1968,7 @@ impl MobBlockWalk {
             }
             if let mod_api::PlannedInside::Write(write) = planned {
                 apply_entity_write(m, w, level, events, write);
-                if pause_damage && m.pending_damage_post.is_some() {
+                if pause_damage && m.damage_completion.is_some() {
                     return false;
                 }
             }
@@ -2548,7 +2548,7 @@ fn base_tick(
     if burning && m.fire_ticks % 20 == 0 && !m.fluids.in_lava {
         m.damage(level, 1.0, Damage::of(DamageKind::OnFire));
         hurt_teleports(m, w, events);
-        if m.pending_damage_post.is_some() {
+        if m.damage_completion.is_some() {
             return BaseTick::AfterDamage {
                 contact,
                 next: BaseStage::AfterBurn,
@@ -2576,7 +2576,7 @@ fn continue_base_tick(
                 if m.position.y < f64::from(w.world.bottom_y() - 64) {
                     m.damage(level, 4.0, Damage::of(DamageKind::OutOfWorld));
                     hurt_teleports(m, w, events);
-                    if m.pending_damage_post.is_some() {
+                    if m.damage_completion.is_some() {
                         return BaseTick::AfterDamage {
                             contact,
                             next: BaseStage::AfterVoid,
@@ -2641,7 +2641,7 @@ fn continue_base_tick(
                 {
                     m.damage(level, 1.0, Damage::of(DamageKind::InWall));
                     hurt_teleports(m, w, events);
-                    if m.pending_damage_post.is_some() {
+                    if m.damage_completion.is_some() {
                         return BaseTick::AfterDamage {
                             contact,
                             next: BaseStage::Air,
@@ -2707,7 +2707,7 @@ fn continue_base_tick(
                         });
                     }
                     finish_air(m, w, level, events, step, damage, step.vanilla);
-                    if m.pending_damage_post.is_some() {
+                    if m.damage_completion.is_some() {
                         return BaseTick::AfterDamage {
                             contact,
                             next: BaseStage::Effects,
@@ -2739,7 +2739,7 @@ fn continue_base_tick(
                     cursor,
                     &mut |m| {
                         hurt_teleports(m, w, events);
-                        m.pending_damage_post.is_some()
+                        m.damage_completion.is_some()
                     },
                 ) {
                     return BaseTick::AfterDamage {
@@ -2769,7 +2769,7 @@ fn continue_base_tick(
                     );
                     m.damage(level, fire, Damage::of(DamageKind::InFire));
                     hurt_teleports(m, w, events);
-                    if m.pending_damage_post.is_some() {
+                    if m.damage_completion.is_some() {
                         return BaseTick::AfterDamage { contact, next };
                     }
                 }
@@ -2781,7 +2781,7 @@ fn continue_base_tick(
                     m.ignite_for_ticks(300);
                     m.damage(level, 4.0, Damage::of(DamageKind::Lava));
                     hurt_teleports(m, w, events);
-                    if m.pending_damage_post.is_some() {
+                    if m.damage_completion.is_some() {
                         return BaseTick::AfterDamage { contact, next };
                     }
                 }

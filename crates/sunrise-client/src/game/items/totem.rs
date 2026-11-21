@@ -83,7 +83,7 @@ impl Game<'_> {
             return None;
         }
         let entity = p.entity_id;
-        let post = p.health.pending_damage_post.take();
+        let post = p.health.damage_completion.take();
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
             self.native_player_totem(uuid, &name);
@@ -169,7 +169,7 @@ impl Game<'_> {
             if !player.health.dead || player.health.health() > 0.0 {
                 return Ok(());
             }
-            let post = player.health.pending_damage_post.take();
+            let post = player.health.damage_completion.take();
             let Some(host) = self.lan.as_ref() else {
                 return Err(std::mem::take(&mut player.events));
             };

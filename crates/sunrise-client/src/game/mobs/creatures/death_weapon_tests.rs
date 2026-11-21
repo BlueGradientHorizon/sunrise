@@ -186,7 +186,7 @@ fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap
                 damage.kind = game.projectile_damage_kind(&shot);
                 assert!(game.damage_projectile_with_weapon(&shot, 70, 100.0, damage, None));
             } else {
-                game.mob_died(&victim);
+                game.mob_die(&victim);
             }
         });
         assert_eq!(*seen.lock().unwrap(), 1);
@@ -269,7 +269,7 @@ fn death_weapon_e_fall_has_no_weapon() {
             let mut victim = Mob::new(70, ty, Vec3::ZERO, 0.0);
             victim.health = 0.0;
             victim.last_damage = Some((Damage::fall(), 0));
-            game.mob_died(&victim);
+            game.mob_die(&victim);
         });
         assert_eq!(*seen.lock().unwrap(), 1);
     });

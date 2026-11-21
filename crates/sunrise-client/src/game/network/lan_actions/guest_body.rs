@@ -33,7 +33,7 @@ macro_rules! motion_world {
 // distinct hurt site the next operation must already see the same hit's settlement.
 macro_rules! settle_guest_hit {
     ($game:ident, $side:ident, $world:ident, $id:ident) => {
-        if $world.player.health.totem_used || $world.player.health.pending_damage_post.is_some() {
+        if $world.player.health.totem_used || $world.player.health.damage_completion.is_some() {
             if let Err(collected) = $game.finish_guest_damage_before_resume() {
                 return (collected, None, ServerTravel::Continue);
             }

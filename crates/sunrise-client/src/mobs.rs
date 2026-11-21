@@ -1688,7 +1688,7 @@ pub struct Mob {
     pub last_damage: Option<(Damage, i64)>,
     pub accepted_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
     /// The killing hit's Post, pending the owning game's death continuation.
-    pub pending_damage_post: Option<std::sync::Arc<crate::health::PendingDamagePost>>,
+    pub damage_completion: Option<std::sync::Arc<crate::health::PendingDamagePost>>,
     pub death_canceled: bool,
     /// `DamageSource.getDirectEntity` of `last_damage` when [`Damage`] cannot name it (a
     /// thrown potion, an area effect cloud): its entity type.
@@ -3821,7 +3821,7 @@ impl Mob {
             dealt_absorbed: 0,
             last_damage: None,
             accepted_hit: None,
-            pending_damage_post: None,
+            damage_completion: None,
             death_canceled: false,
             last_direct: None,
             combat: combat::Tracker::default(),
@@ -4433,7 +4433,7 @@ impl Mob {
         }
         // The last of `LivingEntity.hurtServer`: Post also runs for a hit taking no health.
         // A killing hit's owner runs it after die, including when death is vetoed.
-        self.pending_damage_post = level.finish_damage(
+        self.damage_completion = level.finish_damage(
             crate::health::Hurting::Mob(self, &source),
             container,
             self.health <= 0.0,

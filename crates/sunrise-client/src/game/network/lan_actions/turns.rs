@@ -612,7 +612,7 @@ impl Game<'_> {
         let death_post = self
             .player
             .as_mut()
-            .and_then(|p| Some((p.entity_id, p.health.pending_damage_post.take()?)));
+            .and_then(|p| Some((p.entity_id, p.health.damage_completion.take()?)));
         let GuestSwap {
             attachments,
             conn,

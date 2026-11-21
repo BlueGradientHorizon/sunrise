@@ -155,7 +155,7 @@ fn the_totem_hook_fires_after_the_health_is_gone_and_a_cancel_lets_the_mob_die()
             Damage::of(DamageKind::Generic),
         );
         assert_eq!(hit.health, 0.0);
-        game.mob_died(&hit);
+        game.mob_die(&hit);
     });
     assert_eq!(
         heard.totem,
