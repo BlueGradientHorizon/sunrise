@@ -8,7 +8,7 @@
 use super::Vertex;
 use glam::Mat4;
 
-/// Initial per-view line and quad limits, shared by CPU submission and GPU setup.
+/// Initial per-view line and quad pre-reservation hint; buffers grow dynamically as needed.
 pub const DEFAULT_CAPACITY: u32 = 4096;
 
 /// The stages a frame draws primitives at, in frame order (`RenderLevelStage`).

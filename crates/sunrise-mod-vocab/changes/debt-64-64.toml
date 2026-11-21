@@ -1,0 +1,38 @@
+ids = [
+  "type:WorldDrawUsage",
+  "handle:WorldDrawUsage::new",
+  "method:WorldDrawContext::usage",
+  "type:DrawError",
+  "type:DrawError.CapacityExceeded",
+  "type:DrawError.TextTooDeep",
+  "type:PipelineDrawError",
+  "type:PipelineDrawError.CapacityExceeded",
+  "type:InstanceError",
+  "type:InstanceError.CapacityExceeded",
+  "type:GroupError",
+  "type:GroupError.CapacityExceeded",
+  "type:text::Text",
+  "handle:text::Text::validate_payloads",
+]
+why = """
+Vanilla's `SubmitNodeStorage` / `SubmitNodeCollection` and NeoForge's `SubmitCustomGeometryEvent` and
+`RenderLevelStageEvent` grow their per-frame collections dynamically with no fixed 4,096-line/quad,
+16,384-instance, or 65,536-group-copy caps, no `usage()` budget query, no component-depth cap on
+in-memory `submitNameTag` labels (vanilla enforces `NbtAccounter.MAX_STACK_DEPTH` = 512 only on NBT
+payloads), and no atomic whole-batch rollback on model instance submission. Remove `WorldDrawUsage`,
+`WorldDrawContext::usage`, `CapacityExceeded` across `DrawError`/`PipelineDrawError`/`InstanceError`/
+`GroupError`, and `DrawError::TextTooDeep`. `WorldGeometry` now grows dynamically (with GPU instance
+overflow falling back to CPU baking), `draw_model_instances` culls first and skips individual invalid
+visible copies without rolling back valid ones, `Text::validate_payloads` validates opaque NBT and
+profile payloads without a component-tree depth cap for in-memory rendering, and `Text` implements
+iterative `Drop` so deeply nested component trees drop without stack overflow.
+"""
+migrate = """
+Remove calls to `WorldDrawContext::usage()`, references to `WorldDrawUsage`, and match arms for
+`DrawError::CapacityExceeded`, `DrawError::TextTooDeep`, `PipelineDrawError::CapacityExceeded`,
+`InstanceError::CapacityExceeded`, and `GroupError::CapacityExceeded`. For `draw_model_instances`,
+only stale/unknown model handles return `Err(InstanceError::Model(_))`; invalid visible copies are
+skipped individually without rolling back valid copies. Because `Text` now implements `Drop`, replace
+any by-value field moves out of `Text` (such as `text.style` or `text.content`) with `.take()`,
+`std::mem::take`, `.clone()`, or borrowing (`&text.style.hover`).
+"""

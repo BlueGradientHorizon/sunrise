@@ -848,15 +848,7 @@ fn capture(root: Source<'_>) -> Result<Text, Error> {
                 .map(|(child, _, _)| ready.remove(&child.key()).expect("child was built"))
                 .unwrap_or_default()
         } else {
-            match captured_shallow(&node) {
-                Ok(value) => value,
-                Err(error) => {
-                    for text in ready.into_values() {
-                        discard_api_text(text);
-                    }
-                    return Err(error);
-                }
-            }
+            captured_shallow(&node)?
         };
         for &(child, relation, _) in node.edges.iter().skip(usize::from(node.merge)) {
             attach(
@@ -886,55 +878,6 @@ pub fn to_api(text: &engine::Text) -> Result<Text, TextFormError> {
     capture(Source::Engine(text))
 }
 
-fn discard_api_text(root: Text) {
-    let mut pending = vec![root];
-    while let Some(mut text) = pending.pop() {
-        pending.append(&mut text.children);
-        nbt::discard_tag(text.metadata);
-        nbt::discard_tag(text.style.metadata);
-        match text.content {
-            TextContent::Translatable { arguments, .. } => pending.extend(arguments),
-            TextContent::Selector { separator, .. } | TextContent::Nbt { separator, .. } => {
-                pending.extend(separator.map(|t| *t))
-            }
-            TextContent::Object(object) => {
-                let fallback = match object {
-                    TextObject::Player {
-                        profile, fallback, ..
-                    } => {
-                        nbt::discard_tag(profile.metadata);
-                        for property in profile.properties {
-                            nbt::discard_tag(property.metadata);
-                        }
-                        fallback
-                    }
-                    TextObject::Atlas { fallback, .. } => fallback,
-                };
-                pending.extend(fallback.map(|t| *t));
-            }
-            _ => {}
-        }
-        match text.style.hover {
-            Some(TextHover::Text(t)) => pending.push(*t),
-            Some(TextHover::Entity { name, .. }) => pending.extend(name.map(|t| *t)),
-            Some(TextHover::Item {
-                components: Some(tag),
-                ..
-            }) => nbt::discard_tag(tag),
-            _ => {}
-        }
-        #[allow(clippy::single_match)] // TODO(#2273): rewrite as `if let`.
-        match text.style.click {
-            Some(
-                TextClick::ShowDialog(tag)
-                | TextClick::Custom {
-                    payload: Some(tag), ..
-                },
-            ) => nbt::discard_tag(tag),
-            _ => {}
-        }
-    }
-}
 fn api_nodes(root: &Text) -> Vec<&Text> {
     let mut work = vec![(root, false)];
     let mut nodes = Vec::new();
@@ -1333,8 +1276,15 @@ fn emitted_node<'a>(
     }
     Value::Object(out)
 }
-fn owned_text_component(text: &Text) -> Result<Value, Error> {
-    text.validate()?;
+fn owned_text_component_with_depth_check(
+    text: &Text,
+    check_component_depth: bool,
+) -> Result<Value, Error> {
+    if check_component_depth {
+        text.validate()?;
+    } else {
+        text.validate_payloads()?;
+    }
     let nodes = api_nodes(text);
     let payloads = Payloads::new(&nodes)?; // Refuse all representation errors before any JSON clone.
     let mut ready = HashMap::new();
@@ -1350,9 +1300,19 @@ fn owned_text_component(text: &Text) -> Result<Value, Error> {
         .remove(&(text as *const _ as usize))
         .expect("root was built"))
 }
+#[cfg(test)]
+fn owned_text_component(text: &Text) -> Result<Value, Error> {
+    owned_text_component_with_depth_check(text, true)
+}
 /// Encode API text, preserving the boundary's validation and representation errors.
 pub fn to_engine(text: &Text) -> Result<engine::Text, TextFormError> {
-    owned_text_component(text).map(Into::into)
+    owned_text_component_with_depth_check(text, true).map(Into::into)
+}
+/// Encode API text for in-memory client rendering (such as world name tags) without enforcing
+/// a component-tree depth cap, matching vanilla `SubmitNodeCollection.submitNameTag`. Opaque
+/// NBT payloads still obey `NbtAccounter.MAX_STACK_DEPTH` (512).
+pub fn to_engine_for_render(text: &Text) -> Result<engine::Text, TextFormError> {
+    owned_text_component_with_depth_check(text, false).map(component::render_component)
 }
 
 #[cfg(test)]
@@ -1427,7 +1387,7 @@ mod text_capture_tests {
         ] {
             let source = json!({"text":"x", "hover_event":hover});
             let engine = EngineText::from(source);
-            let expected = engine.try_into_api().unwrap().style.hover;
+            let expected = engine.try_into_api().unwrap().style.hover.take();
             assert!(expected.is_some());
             assert_eq!(super::style_hover(&engine.spans[0].style), expected);
         }
@@ -1916,6 +1876,29 @@ mod iterative_tests {
             engine.component_view(),
             std::borrow::Cow::Borrowed(_)
         ));
+    }
+
+    #[test]
+    fn render_encoding_accepts_component_trees_deeper_than_512() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let mut text = mod_api::text::Text::literal("leaf");
+                for _ in 0..600 {
+                    text = mod_api::text::Text::literal("").append(text);
+                }
+                assert_eq!(
+                    super::to_engine(&text),
+                    Err(mod_api::text::TextFormError::TooDeep)
+                );
+                let rendered = super::to_engine_for_render(&text).unwrap();
+                assert_eq!(rendered.plain(), "leaf");
+                drop(rendered);
+                drop(text);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 }
 

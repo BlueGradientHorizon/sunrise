@@ -289,6 +289,15 @@ pub(crate) fn spans_of(v: Value) -> Text {
     text
 }
 
+/// Render `v` into spans and iteratively discard `v` without retaining the raw JSON tree,
+/// so arbitrarily deep in-memory component trees can be rendered and dropped safely on
+/// constrained stacks.
+pub fn render_component(v: Value) -> Text {
+    let text = render_source(&v, &|_| Origin::Remote);
+    discard_component(v);
+    text
+}
+
 pub(crate) fn render_source(v: &Value, origin: &dyn Fn(&Value) -> Origin) -> Text {
     build_source(v, origin, None).unwrap_or_default()
 }

@@ -140,7 +140,6 @@ reload answers `Stale`.
 | `RenderPipelineError::Invalid` | The pipeline is optional and its shader file is missing, was refused or was rejected by the GPU. The log has a line `render pipeline <id> from mod <owner> refused: <file>: <reason>`, with the file's line number for a syntax or type error, or `render pipeline <id> from mod <owner> refused by the GPU: <reason>`. |
 | `RenderPipelineError::Stale` | The handle is from before a resource reload. |
 | `PipelineDrawError::NonFinite` | A corner or texture coordinate is not finite, or a camera-relative coordinate overflows `f32`. |
-| `PipelineDrawError::CapacityExceeded` | The view's 4,096 quads, shared with `WorldDrawContext::quads`, are used up. |
 
 A refused batch draws nothing. An `Invalid` pipeline never stops the game from starting; a required
 pipeline that cannot be built does.

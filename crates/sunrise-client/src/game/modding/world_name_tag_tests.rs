@@ -310,12 +310,11 @@ fn the_text_background_opacity_sets_the_backdrop_and_the_faded_text() {
     });
 }
 
-/// A label refused for capacity after its layout rasterized a new glyph still uploads that
-/// glyph's pixels: a later accepted label with the glyph needs none of its own and samples
-/// atlas texels that are queued.
+/// Labels grow past the initial 4,096 quad pre-reservation hint alongside plain quads,
+/// and newly rasterized glyphs upload their atlas patches.
 #[test]
 #[ignore = "daily"]
-fn glyphs_of_a_label_refused_for_capacity_still_upload() {
+fn labels_grow_past_initial_quad_hint_and_upload_glyphs() {
     with_client_game(|game| {
         face_south(game);
         // The default font's runes are already packed bitmap glyphs, not runtime uploads, and
@@ -363,31 +362,22 @@ fn glyphs_of_a_label_refused_for_capacity_still_upload() {
         let mut draw = WorldGeometry::default();
         draw.reset(CAMERA, Mat4::IDENTITY, [0.5, 0.5]);
         let quad = mod_api::WorldQuad::new([[0.5, 70.5, 0.0]; 4], !0, mod_api::WorldDepth::Tested);
-        let capacity = draw.usage().quad_capacity as usize;
-        draw.quads(&vec![quad; capacity - 1]).unwrap();
+        draw.quads(&vec![
+            quad;
+            sunrise_client::gfx::world_primitives::DEFAULT_CAPACITY
+                as usize
+        ])
+        .unwrap();
         game.text_patches.borrow_mut().clear();
-        let refused = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
-        assert_eq!(refused, Err(DrawError::CapacityExceeded));
-        assert!(draw.labels().iter().all(|label| label.is_empty()));
+        let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
+        assert_eq!(accepted, Ok(()));
         let queued: Vec<[u32; 4]> = game
             .text_patches
             .borrow()
             .iter()
             .map(|p| [p.x, p.y, p.width, p.height])
             .collect();
-        assert!(
-            !queued.is_empty(),
-            "the refused label's new glyphs still upload"
-        );
-
-        draw.reset(CAMERA, Mat4::IDENTITY, [0.5, 0.5]);
-        let accepted = GameWorldDrawContext::new(game, &mut draw).name_tag(at, &text, options);
-        assert_eq!(accepted, Ok(()));
-        assert_eq!(
-            game.text_patches.borrow().len(),
-            queued.len(),
-            "the glyphs were cached by the refused label"
-        );
+        assert!(!queued.is_empty(), "new glyphs upload their atlas patches");
         let size = [game.gui.atlas.width as f32, game.gui.atlas.height as f32];
         let glyphs: Vec<&[Vertex; 4]> = draw.labels()[0]
             .as_chunks::<4>()
@@ -481,15 +471,25 @@ fn labels_four_times_as_far_are_a_quarter_the_size_on_screen() {
 
 #[test]
 #[ignore = "daily"]
-fn a_label_too_deep_or_not_finite_is_refused_and_draws_nothing() {
+fn a_deep_label_renders_and_non_finite_is_refused() {
     with_client_game(|game| {
-        let mut too_deep = Text::literal("leaf");
-        for _ in 1..513 {
-            too_deep = Text::literal("parent").append(too_deep);
+        let mut deep = Text::literal("leaf");
+        for _ in 1..520 {
+            deep = Text::literal("").append(deep);
         }
         let options = NameTagOptions::new(true, true, 0xF0);
-        let (refused, drawn) = labels(game, [0.5, 70.0, 0.5], &too_deep, options);
-        assert_eq!(refused, Err(DrawError::TextTooDeep));
+        let (ok, [world, through]) = labels(game, [0.5, 70.0, 0.5], &deep, options);
+        assert_eq!(ok, Ok(()));
+        assert!(!world.is_empty() && !through.is_empty());
+        let mut bad_nbt = Text::literal("x");
+        bad_nbt.metadata = sunrise_core::nbt::Tag::compound([(
+            "deep",
+            (0..512).fold(sunrise_core::nbt::Tag::Byte(1), |t, _| {
+                sunrise_core::nbt::Tag::List(vec![t])
+            }),
+        )]);
+        let (refused, drawn) = labels(game, [0.5, 70.0, 0.5], &bad_nbt, options);
+        assert_eq!(refused, Err(DrawError::TextRefused));
         assert!(drawn.iter().all(Vec::is_empty));
         for at in [[f64::NAN, 70.0, 0.5], [0.5, f64::INFINITY, 0.5]] {
             let (refused, drawn) = labels(game, at, &Text::literal("x"), options);

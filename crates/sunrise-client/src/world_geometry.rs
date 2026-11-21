@@ -1,14 +1,14 @@
-//! Fixed-capacity output for a view's custom geometry; the GPU consumer owns drawing.
+//! Per-view custom geometry; buffers pre-reserve initial space and grow dynamically.
 use crate::gfx::mod_pipelines::{self, PipelineRun, PipelineVertex};
 use crate::gfx::world_primitives::{Batch, DEFAULT_CAPACITY as CAPACITY, STAGES};
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, PipelineDrawError, PipelineQuad, RenderLevelStage,
-    WorldDepth, WorldDrawUsage, WorldLine, WorldQuad,
+    WorldDepth, WorldLine, WorldQuad,
 };
 
-/// Copies of resolved models accepted for one view. Reserved once, never grown in a frame.
+/// Initial pre-reservation hint for model copies per view; storage grows dynamically.
 pub(crate) const INSTANCE_CAPACITY: u32 = 16_384;
 
 /// One accepted copy, already checked. `light` and `overlay` are the renderer's vanilla packing.
@@ -50,11 +50,11 @@ pub struct WorldGeometry {
     lines: [Vec<[f32; 8]>; 2],
     quads: [Vec<Vertex>; 2],
     /// Quads drawn by mod pipelines, 4 vertices each, and the runs that share a pipeline and
-    /// a stage. They count against the quad capacity.
+    /// a stage.
     pipeline_quads: Vec<PipelineVertex>,
     pipeline_runs: Vec<PipelineRun>,
     /// Labels (`name_tag`), 4 vertices a quad: drawn with the world's name tags, then their
-    /// see-through copies. They count against the quad capacity.
+    /// see-through copies.
     labels: [Vec<Vertex>; 2],
     /// Each label's span of `labels[0]` and its squared distance from the camera, so the
     /// translucent name tags draw far to near ([`Self::sort_labels`]).
@@ -65,7 +65,6 @@ pub struct WorldGeometry {
     time: f32,
     copies: Vec<ModelCopy>,
     groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
-    accepted_models: u32,
     model_cut: u32,
     /// The stage lines and quads go to now (`RenderLevelStage::ALL`'s index).
     stage: usize,
@@ -88,7 +87,6 @@ impl Default for WorldGeometry {
             time: 0.0,
             copies: Vec::with_capacity(INSTANCE_CAPACITY as usize),
             groups: std::collections::HashSet::with_capacity(INSTANCE_CAPACITY as usize),
-            accepted_models: 0,
             model_cut: 0,
             stage: 0,
             stage_ends: [[0; 4]; STAGES - 1],
@@ -140,54 +138,36 @@ impl WorldGeometry {
     pub fn camera(&self) -> [f64; 3] {
         self.camera
     }
-    /// The current counts and setup-time limits across both depth modes.
-    pub fn usage(&self) -> WorldDrawUsage {
-        WorldDrawUsage::new(
-            self.lines.iter().map(|v| v.len() as u32).sum(),
-            CAPACITY,
-            self.quads.iter().map(|v| v.len() as u32 / 4).sum::<u32>()
-                + self.pipeline_quads.len() as u32 / 4
-                + self.labels.iter().map(|v| v.len() as u32 / 4).sum::<u32>(),
-            CAPACITY,
-            self.accepted_models,
-            INSTANCE_CAPACITY,
-        )
-    }
-    /// Accept every visible copy, or leave the output unchanged.
-    ///
-    /// Culled copies are omitted and do not count. A fault in any input, including one
-    /// that would have been culled, refuses the whole batch. `stage` returns true
-    /// for copies it consumes directly; its caller rolls back that output on error.
+    /// Cull each copy against the frustum first, then skip individual visible copies whose
+    /// coordinates/transform are non-finite or whose light channels exceed 15 without rolling
+    /// back earlier valid copies. `stage` returns true for copies it consumes directly.
     pub fn submit_model(
         &mut self,
         batch: ModelBatch,
         instances: &[ModelInstance],
         cull: Option<&impl crate::gfx::Cull>,
-        stage: impl FnMut(&ModelCopy) -> bool,
-    ) -> Result<(), InstanceError> {
-        if instances.len() > INSTANCE_CAPACITY as usize {
-            return Err(InstanceError::CapacityExceeded);
-        }
-        validate_instances(instances)?;
-        let mut stage = stage;
-        self.submit_validated_model(batch, instances, cull, |_, copy| stage(copy))
+        mut stage: impl FnMut(&ModelCopy) -> bool,
+    ) {
+        self.submit_model_inner(batch, instances, cull, true, |_, copy| stage(copy));
     }
-    /// Submit copies validated when written into persistent storage.
+    /// Submit copies already validated when written into persistent storage.
     pub fn submit_validated_model(
         &mut self,
         batch: ModelBatch,
         instances: &[ModelInstance],
         cull: Option<&impl crate::gfx::Cull>,
+        stage: impl FnMut(usize, &ModelCopy) -> bool,
+    ) {
+        self.submit_model_inner(batch, instances, cull, false, stage);
+    }
+    fn submit_model_inner(
+        &mut self,
+        batch: ModelBatch,
+        instances: &[ModelInstance],
+        cull: Option<&impl crate::gfx::Cull>,
+        check_valid: bool,
         mut stage: impl FnMut(usize, &ModelCopy) -> bool,
-    ) -> Result<(), InstanceError> {
-        if instances.is_empty() {
-            return Ok(());
-        }
-        if instances.len() > INSTANCE_CAPACITY as usize {
-            return Err(InstanceError::CapacityExceeded);
-        }
-        let start = self.copies.len();
-        let accepted = self.accepted_models;
+    ) {
         for (index, instance) in instances.iter().enumerate() {
             if !copy_visible(
                 batch.bounds,
@@ -198,12 +178,8 @@ impl WorldGeometry {
             ) {
                 continue;
             }
-            // Validation above has already checked even the culled inputs. Roll back
-            // only this submission on overflow; cull each copy just once.
-            if self.accepted_models == INSTANCE_CAPACITY {
-                self.copies.truncate(start);
-                self.accepted_models = accepted;
-                return Err(InstanceError::CapacityExceeded);
+            if check_valid && !instance_valid(instance) {
+                continue;
             }
             let copy = ModelCopy {
                 slot: batch.slot,
@@ -219,12 +195,7 @@ impl WorldGeometry {
             if !stage(index, &copy) {
                 self.copies.push(copy);
             }
-            self.accepted_models += 1;
         }
-        Ok(())
-    }
-    pub fn group_room(&self) -> bool {
-        self.groups.len() < INSTANCE_CAPACITY as usize
     }
     pub fn has_group(&self, group: mod_api::InstanceGroupRef) -> bool {
         self.groups.contains(&group)
@@ -240,7 +211,6 @@ impl WorldGeometry {
     }
     pub fn clear_copies(&mut self) {
         self.copies.clear();
-        self.accepted_models = 0;
     }
     /// Validate once at the submission boundary, before any output is appended.
     fn validate_positions(&self, points: impl Iterator<Item = [f64; 3]>) -> Result<(), DrawError> {
@@ -255,9 +225,6 @@ impl WorldGeometry {
     }
     /// Append an entire line batch or leave the output unchanged.
     pub fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
-        if lines.len() > (CAPACITY - self.usage().lines) as usize {
-            return Err(DrawError::CapacityExceeded);
-        }
         self.validate_positions(lines.iter().flat_map(|l| [l.from, l.to]))?;
         for l in lines {
             if !l.width.is_finite() {
@@ -281,9 +248,6 @@ impl WorldGeometry {
     }
     /// Append an entire quad batch or leave the output unchanged.
     pub fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
-        if quads.len() > (CAPACITY - self.usage().quads) as usize {
-            return Err(DrawError::CapacityExceeded);
-        }
         self.validate_positions(quads.iter().flat_map(|q| q.corners))?;
         for q in quads {
             let color = crate::world_primitives::vertex_color(q.color, 255);
@@ -306,18 +270,9 @@ impl WorldGeometry {
         self.validate_positions(std::iter::once(at))
     }
     /// Append one label's quads, laid out by the caller (`world` drawn with the name tags,
-    /// `see_through` over everything), or leave the output unchanged. `distance_sq` is the
-    /// label's squared distance from the camera, by which the name tags are sorted.
-    pub fn label(
-        &mut self,
-        distance_sq: f64,
-        world: &[Vertex],
-        see_through: &[Vertex],
-    ) -> Result<(), DrawError> {
-        let quads = (world.len() + see_through.len()) / 4;
-        if quads > (CAPACITY - self.usage().quads) as usize {
-            return Err(DrawError::CapacityExceeded);
-        }
+    /// `see_through` over everything). `distance_sq` is the label's squared distance from
+    /// the camera, by which the name tags are sorted.
+    pub fn label(&mut self, distance_sq: f64, world: &[Vertex], see_through: &[Vertex]) {
         if !world.is_empty() {
             let start = self.labels[0].len() as u32;
             self.label_runs.push(LabelRun {
@@ -328,7 +283,6 @@ impl WorldGeometry {
         }
         self.labels[0].extend_from_slice(world);
         self.labels[1].extend_from_slice(see_through);
-        Ok(())
     }
     /// Orders the labels drawn with the name tags far to near, as vanilla sorts its translucent
     /// name tags (`NameTagFeatureRenderer`): equally far ones keep their submission order.
@@ -364,9 +318,6 @@ impl WorldGeometry {
         slot: u32,
         quads: &[PipelineQuad],
     ) -> Result<(), PipelineDrawError> {
-        if quads.len() > (CAPACITY - self.usage().quads) as usize {
-            return Err(PipelineDrawError::CapacityExceeded);
-        }
         self.validate_positions(quads.iter().flat_map(|q| q.corners))
             .map_err(|_| PipelineDrawError::NonFinite)?;
         if quads
@@ -520,6 +471,13 @@ fn copy_visible(
     !min.is_finite() || !max.is_finite() || cull.intersects(min, max)
 }
 
+fn instance_valid(instance: &ModelInstance) -> bool {
+    instance.origin.iter().all(|v| v.is_finite())
+        && instance.transform.iter().all(|v| v.is_finite())
+        && instance.light.block <= 15
+        && instance.light.sky <= 15
+}
+
 pub fn validate_instances(instances: &[ModelInstance]) -> Result<(), InstanceError> {
     for instance in instances {
         if instance.origin.iter().any(|v| !v.is_finite())
@@ -594,7 +552,7 @@ mod tests {
         bad = line;
         bad.to[0] = f64::MAX;
         assert_eq!(draw.lines(&[line, bad]), Err(DrawError::NonFinite));
-        assert_eq!(draw.usage().lines, 1);
+        assert_eq!(draw.batch().lines.len(), 1);
         let quad = WorldQuad::new([line.from; 4], line.color, WorldDepth::ThroughWalls);
         draw.quads(&[quad]).unwrap();
         assert_eq!(draw.batch().quads_through.len(), 4);
@@ -606,13 +564,16 @@ mod tests {
         let mut invalid_quad = quad;
         invalid_quad.corners[3][1] = f64::INFINITY;
         assert_eq!(draw.quads(&[quad, invalid_quad]), Err(DrawError::NonFinite));
-        assert_eq!(draw.usage().quads, 1);
+        assert_eq!(draw.batch().quads_through.len(), 4);
         let mut through = line;
         through.depth = WorldDepth::ThroughWalls;
-        draw.lines(&vec![through; CAPACITY as usize - 1]).unwrap();
-        assert_eq!(draw.lines(&[line]), Err(DrawError::CapacityExceeded));
-        draw.quads(&vec![quad; CAPACITY as usize - 1]).unwrap();
-        assert_eq!(draw.quads(&[quad]), Err(DrawError::CapacityExceeded));
+        draw.lines(&vec![through; CAPACITY as usize + 1]).unwrap();
+        assert_eq!(draw.batch().lines_through.len(), CAPACITY as usize + 1);
+        draw.quads(&vec![quad; CAPACITY as usize + 1]).unwrap();
+        assert_eq!(
+            draw.batch().quads_through.len(),
+            (CAPACITY as usize + 2) * 4
+        );
         let capacities = (
             draw.lines.each_ref().map(Vec::capacity),
             draw.quads.each_ref().map(Vec::capacity),
@@ -629,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_quads_are_atomic_share_the_quad_capacity_and_run_by_pipeline_and_stage() {
+    fn pipeline_quads_are_atomic_grow_dynamically_and_run_by_pipeline_and_stage() {
         use RenderLevelStage::*;
         let mut draw = WorldGeometry::default();
         draw.reset([30_000_000.0, 20.0, 0.0], Mat4::IDENTITY, [0.5, 0.5]);
@@ -683,19 +644,17 @@ mod tests {
                 Err(PipelineDrawError::NonFinite)
             );
         }
-        assert_eq!(draw.usage().quads, 6);
+        assert_eq!(draw.batch().pipelines.vertices.len(), 24);
 
-        // One capacity for plain and pipeline quads.
+        // Plain and pipeline quads both grow past the initial hint.
         let plain = WorldQuad::new(quad.corners, !0, WorldDepth::Tested);
-        draw.quads(&vec![plain; CAPACITY as usize - 7]).unwrap();
+        draw.quads(&vec![plain; CAPACITY as usize]).unwrap();
+        draw.pipeline_quads(4, &vec![quad; CAPACITY as usize])
+            .unwrap();
         assert_eq!(
-            draw.pipeline_quads(4, &[quad, quad]),
-            Err(PipelineDrawError::CapacityExceeded)
+            draw.batch().pipelines.vertices.len(),
+            (6 + CAPACITY as usize) * 4
         );
-        draw.pipeline_quads(4, &[quad]).unwrap();
-        assert_eq!(draw.quads(&[plain]), Err(DrawError::CapacityExceeded));
-        assert_eq!(draw.usage().quads, CAPACITY);
-
         let capacity = (
             draw.pipeline_quads.capacity(),
             draw.pipeline_runs.capacity(),
@@ -708,7 +667,7 @@ mod tests {
                 draw.pipeline_quads.capacity(),
                 draw.pipeline_runs.capacity()
             ),
-            "a view's pipeline quads never grow the storage reserved at setup"
+            "reset keeps grown capacity for the next view"
         );
     }
 
@@ -723,7 +682,7 @@ mod tests {
     }
 
     #[test]
-    fn model_batches_are_atomic_cull_and_stop_at_the_view_budget() {
+    fn model_batches_cull_first_skip_invalid_visible_and_grow_dynamically() {
         let mut draw = WorldGeometry::default();
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         let batch = ModelBatch {
@@ -731,128 +690,56 @@ mod tests {
             generation: 9,
             bounds: [[0.0; 3], [1.0; 3]],
         };
-        let oversized = vec![ModelInstance::at([f64::NAN; 3], 0); 16_385];
-        assert_eq!(
-            draw.submit_model(batch, &oversized, None::<&NearX>, |_| panic!(
-                "oversized batch staged"
-            )),
-            Err(InstanceError::CapacityExceeded)
-        );
-        let kept = draw.usage();
-        let mut bad = ModelInstance::at([1.0, 0.0, 0.0], 0xFF11_2233);
-        bad.light.block = 16;
-        assert_eq!(
-            draw.submit_model(
-                batch,
-                &[ModelInstance::at([1.0, 0.0, 0.0], 1), bad],
-                None::<&NearX>,
-                |_| false
-            ),
-            Err(InstanceError::InvalidLight)
-        );
-        bad.light.block = 15;
-        bad.origin[0] = f64::NAN;
-        assert_eq!(
-            draw.submit_model(batch, &[bad], None::<&NearX>, |_| false),
-            Err(InstanceError::NonFinite)
-        );
-        bad.origin[0] = 1.0;
-        bad.transform[4] = f32::INFINITY;
-        assert_eq!(
-            draw.submit_model(batch, &[bad], None::<&NearX>, |_| false),
-            Err(InstanceError::NonFinite)
-        );
-        assert_eq!(draw.usage(), kept);
         let near = ModelInstance::at([1.0, 2.0, 3.0], 0xFF80_C040);
         let far = ModelInstance::at([40.0, 0.0, 0.0], 0xFF80_C040);
-        draw.submit_model(batch, &[near, far], Some(&NearX), |_| false)
-            .unwrap();
+        let mut bad_light = near;
+        bad_light.light.block = 16;
+        let mut bad_origin = near;
+        bad_origin.origin[0] = f64::NAN;
+        let mut bad_transform = near;
+        bad_transform.transform[4] = f32::INFINITY;
+        let mut culled_bad_light = far;
+        culled_bad_light.light.block = 16;
+        // Valid copies survive alongside culled and invalid visible copies; no rollback.
+        draw.submit_model(
+            batch,
+            &[
+                near,
+                far,
+                bad_light,
+                bad_origin,
+                bad_transform,
+                culled_bad_light,
+            ],
+            Some(&NearX),
+            |_| false,
+        );
         assert_eq!(draw.copy_count(), 1);
         assert_eq!(draw.copy(0).light, 0xF0F0);
         assert_eq!(draw.copy(0).overlay, 0);
-        assert_eq!(draw.usage().instances_used, 1);
-        assert_eq!(draw.usage().instances_capacity, INSTANCE_CAPACITY);
         let mut hurt = near;
         hurt.overlay = mod_api::Overlay::new(8, true).unwrap();
         hurt.light = mod_api::LightCoords::new(15, 3).unwrap();
-        draw.submit_model(batch, &[hurt], None::<&NearX>, |_| false)
-            .unwrap();
+        draw.submit_model(batch, &[hurt], None::<&NearX>, |_| false);
+        assert_eq!(draw.copy_count(), 2);
         assert_eq!(draw.copy(1).light, 0xF030);
         assert_eq!(draw.copy(1).overlay, 1);
-        let fill = INSTANCE_CAPACITY as usize - draw.copy_count();
-        draw.submit_model(batch, &vec![near; fill], None::<&NearX>, |_| false)
-            .unwrap();
-        assert_eq!(
-            draw.submit_model(batch, &[near], None::<&NearX>, |_| false),
-            Err(InstanceError::CapacityExceeded)
+        // Growth past the initial 16,384 hint succeeds without error.
+        draw.submit_model(
+            batch,
+            &vec![near; INSTANCE_CAPACITY as usize],
+            None::<&NearX>,
+            |_| false,
         );
-        assert_eq!(draw.copy_count(), INSTANCE_CAPACITY as usize);
+        assert_eq!(draw.copy_count(), INSTANCE_CAPACITY as usize + 2);
         let reserved = draw.copies.capacity();
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert_eq!(draw.copy_count(), 0);
         assert!(draw.copies.capacity() >= reserved);
     }
+
     #[test]
-    fn model_capacity_failure_restores_the_previous_submission() {
-        struct Visible;
-        impl crate::gfx::Cull for Visible {
-            fn intersects(&self, _: Vec3, _: Vec3) -> bool {
-                true
-            }
-            fn contains(&self, _: Vec3, _: Vec3) -> bool {
-                false
-            }
-        }
-        let batch = ModelBatch {
-            slot: 7,
-            generation: 3,
-            bounds: [[0.0; 3], [1.0; 3]],
-        };
-        let mut draw = WorldGeometry::default();
-        let original = ModelInstance::at([1.0, 2.0, 3.0], 0xFF123456);
-        draw.submit_model(
-            batch,
-            &vec![original; INSTANCE_CAPACITY as usize - 1],
-            Some(&Visible),
-            |_| false,
-        )
-        .unwrap();
-        let incoming = ModelInstance::at([4.0, 5.0, 6.0], 0xFFABCDEF);
-        let usage = draw.usage();
-        let capacity = draw.copies.capacity();
-        assert_eq!(
-            draw.submit_model(batch, &[incoming, incoming], Some(&Visible), |_| false),
-            Err(InstanceError::CapacityExceeded)
-        );
-        assert_eq!(draw.usage(), usage);
-        assert_eq!(draw.copies.capacity(), capacity);
-        assert!(
-            draw.copies
-                .iter()
-                .all(|copy| copy.origin == original.origin && copy.tint == original.tint)
-        );
-        // A later invalid copy still wins over capacity failure.
-        let mut invalid = incoming;
-        invalid.origin[0] = f64::NAN;
-        assert_eq!(
-            draw.submit_model(
-                batch,
-                &[incoming, incoming, invalid],
-                Some(&Visible),
-                |_| false
-            ),
-            Err(InstanceError::NonFinite)
-        );
-        assert_eq!(draw.usage(), usage);
-        draw.submit_model(batch, &[incoming], Some(&Visible), |_| false)
-            .unwrap();
-        assert_eq!(
-            draw.copy(INSTANCE_CAPACITY as usize - 1).origin,
-            incoming.origin
-        );
-    }
-    #[test]
-    fn directly_staged_models_share_the_view_budget() {
+    fn directly_staged_models_are_not_baked_and_grow_past_initial_hint() {
         let mut draw = WorldGeometry::default();
         let batch = ModelBatch {
             slot: 7,
@@ -860,20 +747,18 @@ mod tests {
             bounds: [[0.0; 3], [1.0; 3]],
         };
         let copy = ModelInstance::at([1.0, 2.0, 3.0], u32::MAX);
+        let mut staged = 0usize;
         draw.submit_model(
             batch,
-            &vec![copy; INSTANCE_CAPACITY as usize],
+            &vec![copy; INSTANCE_CAPACITY as usize + 5],
             None::<&crate::gfx::Frustum>,
-            |_| true,
-        )
-        .unwrap();
-        assert_eq!(draw.copy_count(), 0, "direct copies must not also be baked");
-        assert_eq!(draw.usage().instances_used, INSTANCE_CAPACITY);
-        assert_eq!(
-            draw.submit_model(batch, &[copy], None::<&crate::gfx::Frustum>, |_| true),
-            Err(InstanceError::CapacityExceeded)
+            |_| {
+                staged += 1;
+                true
+            },
         );
-        assert_eq!(draw.usage().instances_used, INSTANCE_CAPACITY);
+        assert_eq!(staged, INSTANCE_CAPACITY as usize + 5);
+        assert_eq!(draw.copy_count(), 0, "direct copies must not also be baked");
     }
 
     #[test]
@@ -928,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn labels_share_the_quad_capacity_atomically_and_reset_per_view() {
+    fn labels_grow_dynamically_and_reset_per_view() {
         let mut draw = WorldGeometry::default();
         draw.reset([30_000_000.0, 20.0, 0.0], Mat4::IDENTITY, [0.5, 0.5]);
         assert_eq!(draw.check_label([30_000_000.5, 70.0, 0.5]), Ok(()));
@@ -941,20 +826,13 @@ mod tests {
         }
         let quad = [<Vertex as bytemuck::Zeroable>::zeroed(); 4];
         // One glyph in the world, and its see-through copy on a backdrop: three quads.
-        draw.label(1.0, &quad, &[quad, quad].concat()).unwrap();
-        assert_eq!(draw.usage().quads, 3);
+        draw.label(1.0, &quad, &[quad, quad].concat());
         assert_eq!(draw.labels().map(<[Vertex]>::len), [4, 8]);
         let world = WorldQuad::new([[30_000_000.0, 20.0, -1.0]; 4], !0, WorldDepth::Tested);
-        draw.quads(&vec![world; CAPACITY as usize - 4]).unwrap();
-        // One quad left: a label of two is refused whole, one of one fits.
-        assert_eq!(
-            draw.label(1.0, &quad, &quad),
-            Err(DrawError::CapacityExceeded)
-        );
-        assert_eq!(draw.labels().map(<[Vertex]>::len), [4, 8]);
-        draw.label(1.0, &[], &quad).unwrap();
-        assert_eq!(draw.usage().quads, CAPACITY);
-        assert_eq!(draw.quads(&[world]), Err(DrawError::CapacityExceeded));
+        draw.quads(&vec![world; CAPACITY as usize]).unwrap();
+        // Labels grow past the initial 4,096 quad hint alongside plain quads.
+        draw.label(1.0, &quad, &quad);
+        assert_eq!(draw.labels().map(<[Vertex]>::len), [8, 12]);
         let capacities = draw.labels.each_ref().map(Vec::capacity);
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
         assert_eq!(draw.labels().map(<[Vertex]>::len), [0, 0]);
@@ -979,11 +857,10 @@ mod tests {
                 .map(|v| v.color)
                 .collect()
         };
-        draw.label(4.0, &quad(1), &[]).unwrap();
-        draw.label(16.0, &[quad(2), quad(2)].concat(), &quad(9))
-            .unwrap();
-        draw.label(4.0, &quad(3), &[]).unwrap();
-        draw.label(1.0, &quad(4), &[]).unwrap();
+        draw.label(4.0, &quad(1), &[]);
+        draw.label(16.0, &[quad(2), quad(2)].concat(), &quad(9));
+        draw.label(4.0, &quad(3), &[]);
+        draw.label(1.0, &quad(4), &[]);
         draw.sort_labels();
         assert_eq!(colors(&draw), [2, 2, 1, 3, 4]);
         assert_eq!(
@@ -992,10 +869,10 @@ mod tests {
             "see-through copies are not reordered"
         );
         // Sorted runs stay sorted when labels are added and sorted again.
-        draw.label(9.0, &quad(5), &[]).unwrap();
+        draw.label(9.0, &quad(5), &[]);
         draw.sort_labels();
         assert_eq!(colors(&draw), [2, 2, 5, 1, 3, 4]);
-        assert_eq!(draw.usage().quads, 7);
+        assert_eq!(draw.labels()[0].len() + draw.labels()[1].len(), 28);
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
         draw.sort_labels();
         assert!(draw.labels()[0].is_empty());

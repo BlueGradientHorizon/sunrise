@@ -556,18 +556,17 @@ pub trait CameraDrawContext {
         unimplemented!("CameraDrawContext::sprite")
     }
 }
-/// Per-view untextured geometry, cleared even without listeners; `usage` reports fixed setup-time limits shared across listeners and depth modes.
+/// Per-view world geometry, cleared even without listeners; backing storage grows dynamically.
 pub trait WorldDrawContext {
     /// Draw a retained group once per view, with per-view culling and the batch route rules.
-    /// Repeated submissions in one view are ignored. Only visible copies consume its budget.
-    /// The shared limit is 16,384 visible copies and 16,384 groups per view. Refusal is atomic.
+    /// Repeated submissions in one view are ignored. Storage grows dynamically across views.
     /// Shader packs and overlays use the same CPU path as transient model batches.
     /// Retired or foreign groups return [`GroupError::Stale`], even if drawn earlier this view.
     fn draw_instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {
         unimplemented!("WorldDrawContext::draw_instance_group")
     }
-    /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
-    /// or a batch exceeding the view's fixed capacity, leave the batch unchanged.
+    /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths leave the
+    /// submitted geometry unchanged.
     fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::world_draw_lines")
     }
@@ -576,8 +575,7 @@ pub trait WorldDrawContext {
         unimplemented!("WorldDrawContext::world_draw_quads")
     }
     /// Submit world quads drawn by the mod pipeline `pipeline`, atomically: its shader gets each
-    /// quad's texture coordinate and colour, and its blend and depth modes apply. The quads
-    /// count against the same per-view capacity as [`quads`](Self::quads), and within a stage
+    /// quad's texture coordinate and colour, and its blend and depth modes apply. Within a stage
     /// they draw after its plain quads and lines, in the order submitted. On `Err`, nothing
     /// from this call is drawn.
     fn pipeline_quads(
@@ -596,13 +594,9 @@ pub trait WorldDrawContext {
     /// it, twice, as an unsneaking name: opaque in the world (sky and block light each at least
     /// 2, or exactly [`NameTagOptions::light`] with [`NameTagOptions::exact_light`]), and
     /// faded on the backdrop over everything, walls included, unlit. Labels draw with the
-    /// world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both
-    /// copies counted, takes one of the view's 4,096 quads shared with
-    /// [`quads`](Self::quads) ([`usage`](Self::usage)).
-    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), text deeper than 512 component
-    /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]),
-    /// and a label past the quads left ([`DrawError::CapacityExceeded`]); on `Err` nothing
-    /// is drawn.
+    /// world's name tags, far to near, whatever the stage.
+    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]) or text refused at the boundary
+    /// ([`DrawError::TextRefused`]); on `Err` nothing is drawn.
     fn name_tag(
         &mut self,
         at: [f64; 3],
@@ -611,12 +605,7 @@ pub trait WorldDrawContext {
     ) -> Result<(), DrawError> {
         unimplemented!("WorldDrawContext::name_tag")
     }
-    /// Queued counts and fixed capacities, shared by both depth modes and all listeners.
-    /// Capacity is allocated during setup, never grown during submission.
-    fn usage(&self) -> WorldDrawUsage {
-        unimplemented!("WorldDrawContext::world_draw_usage")
-    }
-    /// Draw every copy in `instances` of the resolved `model`.
+    /// Draw every valid visible copy in `instances` of the resolved `model`.
     ///
     /// One batch per model. The engine uploads only the instance records on the opaque
     /// and cutout route, and bakes the same prepared geometry on the CPU when a shader
@@ -632,10 +621,11 @@ pub trait WorldDrawContext {
     /// Tint is `0xAARRGGBB` and light is [`LightCoords`]: both stay in
     /// vanilla's space, and the engine converts them to the frame. A tint's alpha
     /// multiplies only faces that have a tint index, the same as vanilla's model
-    /// renderer; [`ModelInstance::color`] multiplies every face. The view budget is 16,384 copies. Pass at most that many: a longer
-    /// list is refused with [`InstanceError::CapacityExceeded`] before any copy is
-    /// examined. Within the bound, copies outside the frustum
-    /// are omitted and do not count. On `Err`, nothing from this call is drawn.
+    /// renderer; [`ModelInstance::color`] multiplies every face. Each copy is culled against
+    /// the view frustum first; individual visible copies with non-finite coordinates or
+    /// transforms, or light channels outside `0..=15`, are skipped without rolling back
+    /// valid copies in the same slice. Storage grows dynamically (falling back to CPU baking
+    /// beyond GPU buffer room). Stale or unknown models return [`InstanceError::Model`].
     fn draw_model_instances(
         &mut self,
         model: ModelRef,

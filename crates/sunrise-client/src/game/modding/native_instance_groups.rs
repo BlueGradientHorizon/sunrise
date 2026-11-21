@@ -6,8 +6,6 @@ use mod_api::{GroupError, InstanceGroupRef, InstanceGroups, ModelInstance, Model
 use glam::{DVec3, Mat4};
 use sunrise_client::{gfx::PreparedModelInstance, world_geometry::row_major_3x4};
 
-const MOD_CAPACITY: usize = 65_536;
-
 struct Group {
     generation: u64,
     owner: Option<&'static str>,
@@ -106,17 +104,9 @@ impl InstanceGroups for Game<'_> {
             .ok_or(GroupError::Model(mod_api::ModelError::UnknownModel))?;
         let owner = mod_api::content::crash::current_native_mod();
         let mut storage = self.instance_groups.borrow_mut();
-        let reserved: usize = storage
-            .groups
-            .iter()
-            .flatten()
-            .filter(|g| g.owner == owner)
-            .map(|g| g.copies.len().max(1))
-            .sum();
-        if capacity > 16_384 || reserved + (capacity as usize).max(1) > MOD_CAPACITY {
-            return Err(GroupError::CapacityExceeded);
-        }
-        self.prepared_model_draws.borrow_mut().reserve(16_384);
+        self.prepared_model_draws
+            .borrow_mut()
+            .reserve((capacity as usize).min(16_384));
         storage.next = storage
             .next
             .checked_add(1)
@@ -225,9 +215,6 @@ impl Game<'_> {
         let group = storage.get(handle, self.standalone_geometry.generation())?;
         if draw.has_group(handle) {
             return Ok(());
-        }
-        if !draw.group_room() {
-            return Err(GroupError::CapacityExceeded);
         }
         self.draw_cached_model_instances(
             draw,

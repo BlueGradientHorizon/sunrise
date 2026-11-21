@@ -72,7 +72,7 @@ fn api_number_format(format: &sb::NumberFormat) -> Result<NumberFormat, TextForm
             if let Comp::Object(fields) = &mut json {
                 fields.insert("text".into(), Comp::String(String::new()));
             }
-            NumberFormat::Styled(api_text(&comp_text(&json))?.style)
+            NumberFormat::Styled(std::mem::take(&mut api_text(&comp_text(&json))?.style))
         }
     })
 }

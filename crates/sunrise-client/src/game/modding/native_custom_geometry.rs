@@ -5,7 +5,7 @@ use crate::game::host::draw::GameWorldDrawContext;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{
     DrawError, InstanceError, ModelInstance, ModelRef, NameTagOptions, PipelineDrawError,
-    PipelineQuad, RenderLevelStage, RenderPipelineRef, WorldDrawUsage, WorldLine, WorldQuad,
+    PipelineQuad, RenderLevelStage, RenderPipelineRef, WorldLine, WorldQuad,
     content::crash::{ModCall, enter_native_mod},
 };
 use sunrise_client::mesher::Vertex;
@@ -119,8 +119,8 @@ impl Game<'_> {
     /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before any layout, for a position that is not finite; glyphs a refused
-    /// label rasterized still upload.
+    /// Refused whole, before any layout, for a position that is not finite or text refused at
+    /// the boundary.
     pub(super) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -128,12 +128,9 @@ impl Game<'_> {
         text: &mod_api::Text,
         options: NameTagOptions,
     ) -> Result<(), DrawError> {
-        use super::api_values::TryIntoEngine;
         draw.check_label(at)?;
-        let text = text.try_into_engine(&()).map_err(|error| match error {
-            mod_api::TextFormError::TooDeep => DrawError::TextTooDeep,
-            _ => DrawError::TextRefused,
-        })?;
+        let text = sunrise_client::api_text::to_engine_for_render(text)
+            .map_err(|_| DrawError::TextRefused)?;
         let from_camera = DVec3::from(at) - DVec3::from(draw.camera());
         let o = from_camera + DVec3::new(0.0, 0.5, 0.0);
         let lines = [(text, 0.0)];
@@ -168,14 +165,12 @@ impl Game<'_> {
             let lit = sunrise_client::block_entity_render::vertex_light(light);
             quads(faded, backdrop, 0, lit, &mut world)
         };
-        // The layout cached any glyph it rasterized; its pixels upload even if the label is
-        // refused, or a later label using that glyph would sample an atlas never written.
-        let labelled = draw.label(from_camera.length_squared(), &world, &see_through);
+        draw.label(from_camera.length_squared(), &world, &see_through);
         self.text_patches.borrow_mut().append(&mut patches);
-        labelled
+        Ok(())
     }
-    /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths,
-    /// or a batch exceeding the view's fixed capacity, leave the batch unchanged.
+    /// Submit unlit ARGB world lines atomically. Invalid coordinates or widths leave the batch
+    /// unchanged.
     pub(super) fn native_world_draw_lines(
         &self,
         draw: &mut WorldGeometry,
@@ -207,28 +202,9 @@ impl Game<'_> {
             .map_err(PipelineDrawError::Pipeline)?;
         draw.pipeline_quads(slot, quads)
     }
-    /// Queued counts and fixed capacities, shared by both depth modes and all listeners.
-    /// Capacity is allocated during setup, never grown during submission.
-    pub(super) fn native_world_draw_usage(&self, draw: &WorldGeometry) -> WorldDrawUsage {
-        draw.usage()
-    }
-    /// Resolve `model` once and accept every copy, or leave the view unchanged.
+    /// Resolve `model` once, cull copies against the frustum first, and skip any individual
+    /// invalid visible copy without rolling back valid copies.
     pub(super) fn native_world_draw_model_instances(
-        &self,
-        draw: &mut WorldGeometry,
-        model: ModelRef,
-        instances: &[ModelInstance],
-    ) -> Result<(), InstanceError> {
-        if instances.len() > 16_384 {
-            return Err(InstanceError::CapacityExceeded);
-        }
-        sunrise_client::world_geometry::validate_instances(instances)?;
-        self.prepared_model_draws
-            .borrow_mut()
-            .reserve(instances.len().min(16_384));
-        self.draw_validated_model_instances(draw, model, instances)
-    }
-    pub(super) fn draw_validated_model_instances(
         &self,
         draw: &mut WorldGeometry,
         model: ModelRef,
@@ -265,11 +241,12 @@ impl Game<'_> {
             fields.generation,
         );
         let mut staged = self.prepared_model_draws.borrow_mut();
-        let start = staged.len();
         let mut gpu_left = if gpu {
-            self.prepared_copy_room(start as u64, instances.len())
-                .unwrap_or(0)
-                .min(staged.capacity() - start)
+            let room = self
+                .prepared_copy_room(staged.len() as u64, instances.len())
+                .unwrap_or(0);
+            staged.reserve(room);
+            room
         } else {
             0
         };
@@ -277,57 +254,57 @@ impl Game<'_> {
         let cut = draw.model_cut();
         let camera = DVec3::from(draw.camera());
         let mut builder = sunrise_client::gfx::PreparedInstanceBuilder::default();
-        let result = draw.submit_validated_model(
-            ModelBatch {
-                slot: fields.slot,
-                generation: fields.generation,
-                bounds: slot.bounds,
-            },
-            instances,
-            self.view_frustum.as_ref(),
-            |index, copy| {
-                // The instance route draws one fixed index range per model: a copy that needs
-                // other faces, another colour, translucency or a block state takes the CPU route.
-                if copy.overlay != 0
-                    || copy.color != u32::MAX
-                    || copy.hidden_faces != 0
-                    || cpu_only
-                    || gpu_left == 0
-                {
-                    return false;
+        let batch = ModelBatch {
+            slot: fields.slot,
+            generation: fields.generation,
+            bounds: slot.bounds,
+        };
+        let mut stage_copy = |index: usize, copy: &world_geometry::ModelCopy| {
+            // The instance route draws one fixed index range per model: a copy that needs
+            // other faces, another colour, translucency or a block state takes the CPU route.
+            if copy.overlay != 0
+                || copy.color != u32::MAX
+                || copy.hidden_faces != 0
+                || cpu_only
+                || gpu_left == 0
+            {
+                return false;
+            }
+            gpu_left -= 1;
+            let instance = if let Some(records) = cached {
+                let mut record = records[index];
+                let delta = (DVec3::from(copy.origin) - camera).as_vec3();
+                for axis in 0..3 {
+                    record.model[3][axis] += delta[axis];
                 }
-                gpu_left -= 1;
-                let instance = if let Some(records) = cached {
-                    let mut record = records[index];
-                    let delta = (DVec3::from(copy.origin) - camera).as_vec3();
-                    for axis in 0..3 {
-                        record.model[3][axis] += delta[axis];
-                    }
-                    record
-                } else {
-                    let mut instance = builder.instance(
-                        world_geometry::row_major_3x4(copy.transform),
-                        DVec3::from(copy.origin),
-                        camera,
-                        super::native_block_entity_draw::prepared_tint(copy.tint),
-                        copy.light,
-                    );
-                    instance.tint[3] = (copy.tint >> 24) as f32 / 255.0;
-                    instance
-                };
-                staged.push(sunrise_client::gfx::PreparedModelDraw {
-                    cpu_vertices: cut,
-                    generation: copy.generation,
-                    slot: copy.slot,
-                    instance,
-                });
-                true
-            },
-        );
-        if result.is_err() {
-            staged.truncate(start);
+                record
+            } else {
+                let mut instance = builder.instance(
+                    world_geometry::row_major_3x4(copy.transform),
+                    DVec3::from(copy.origin),
+                    camera,
+                    super::native_block_entity_draw::prepared_tint(copy.tint),
+                    copy.light,
+                );
+                instance.tint[3] = (copy.tint >> 24) as f32 / 255.0;
+                instance
+            };
+            staged.push(sunrise_client::gfx::PreparedModelDraw {
+                cpu_vertices: cut,
+                generation: copy.generation,
+                slot: copy.slot,
+                instance,
+            });
+            true
+        };
+        if cached.is_some() {
+            draw.submit_validated_model(batch, instances, self.view_frustum.as_ref(), stage_copy);
+        } else {
+            draw.submit_model(batch, instances, self.view_frustum.as_ref(), |copy| {
+                stage_copy(0, copy)
+            });
         }
-        result
+        Ok(())
     }
     /// Bake copies the instance route could not take onto the entity stream. Opaque ones of a
     /// standalone model go as block entities (`mark_model_copies`), one run per overlay. Copies
@@ -681,10 +658,8 @@ mod tests {
                     hook: "test",
                     part: None,
                 });
-            assert_eq!(
-                game.create_group(model, 16_385),
-                Err(GroupError::CapacityExceeded)
-            );
+            let large_group = game.create_group(model, 16_385).unwrap();
+            large_group.destroy(game).unwrap();
             let glass = game
                 .native_model(&Identifier::parse("minecraft:block/glass").unwrap())
                 .unwrap();
@@ -730,11 +705,12 @@ mod tests {
                     Err(GroupError::Stale)
                 );
             }
-            let oversized = vec![ModelInstance::at([f64::NAN; 3], 0); 16_385];
-            assert_eq!(
-                context(game, &mut draw).draw_model_instances(model, &oversized),
-                Err(InstanceError::CapacityExceeded)
-            );
+            let invalid_only = vec![ModelInstance::at([f64::NAN; 3], 0); 4];
+            context(game, &mut draw)
+                .draw_model_instances(model, &invalid_only)
+                .unwrap();
+            assert!(game.prepared_model_draws.borrow().is_empty());
+            assert_eq!(draw.copy_count(), 0);
             let render = |game: &Game<'_>| {
                 let staged = game.prepared_model_draws.borrow();
                 assert_eq!(staged.len(), 1, "the far copy must be culled");
@@ -869,16 +845,13 @@ mod tests {
                 // Subtract world coordinates in f64: each fractional block survives.
                 assert_eq!(staged[0].instance.model[3], [0.25, 0.5, 0.75, 1.0]);
             }
-            // The mod's 65,536 copies: the glass group's 1, this group's 8, three of 16,384 and the rest.
+            // Groups grow past the old 65,536 per-mod cap.
             let sibling = game.create_group(model, 16_384).unwrap();
             let third = game.create_group(model, 16_384).unwrap();
             let fourth = game.create_group(model, 16_384).unwrap();
-            let fifth = game.create_group(model, 16_375).unwrap();
-            assert_eq!(
-                game.create_group(model, 1),
-                Err(GroupError::CapacityExceeded)
-            );
-            for handle in [sibling, third, fourth, fifth] {
+            let fifth = game.create_group(model, 16_384).unwrap();
+            let sixth = game.create_group(model, 1).unwrap();
+            for handle in [sibling, third, fourth, fifth, sixth] {
                 handle.destroy(game).unwrap();
             }
             group.destroy(game).unwrap();
@@ -1024,48 +997,25 @@ mod tests {
                     .draw_instance_group(replacement)
                     .unwrap();
                 assert_eq!(draw.copy_count(), 0);
-                assert_eq!(draw.usage().instances_used, 0);
                 replacement.destroy(game).unwrap();
             }
-            let budget_group = game.create_group(model, 2).unwrap();
-            budget_group.write(game, 0, &[copy, copy]).unwrap();
-            let mut budget = WorldGeometry::default();
-            budget.reset(camera.to_array(), Mat4::IDENTITY, [0.0; 2]);
-            context(game, &mut budget)
+            let extra_group = game.create_group(model, 2).unwrap();
+            extra_group.write(game, 0, &[copy, copy]).unwrap();
+            let mut large = WorldGeometry::default();
+            large.reset(camera.to_array(), Mat4::IDENTITY, [0.0; 2]);
+            context(game, &mut large)
                 .draw_model_instances(model, &vec![copy; 16_383])
                 .unwrap();
-            assert_eq!(
-                context(game, &mut budget).draw_instance_group(budget_group),
-                Err(GroupError::CapacityExceeded)
-            );
-            assert_eq!(
-                budget.copy_count(),
-                16_383,
-                "refusal must not append a prefix"
-            );
-            budget_group.set_len(game, 1).unwrap();
-            context(game, &mut budget)
-                .draw_instance_group(budget_group)
+            context(game, &mut large)
+                .draw_instance_group(extra_group)
                 .unwrap();
             assert_eq!(
-                budget.usage().instances_used,
-                16_384,
-                "refusal must not mark the group drawn"
+                large.copy_count(),
+                16_385,
+                "groups and batches grow past the initial 16,384 hint"
             );
-            budget_group.destroy(game).unwrap();
-            let full: Vec<_> = (0..4)
-                .map(|_| game.create_group(model, 16_384).unwrap())
-                .collect();
-            assert_eq!(
-                game.create_group(model, 1),
-                Err(GroupError::CapacityExceeded)
-            );
-            full[0].destroy(game).unwrap();
+            extra_group.destroy(game).unwrap();
             let released = game.create_group(model, 16_384).unwrap();
-            assert_eq!(
-                game.create_group(model, 1),
-                Err(GroupError::CapacityExceeded)
-            );
             let other_group = {
                 let _other = mod_platform::content::crash::enter_native_mod(
                     mod_api::content::crash::ModCall {
@@ -1387,7 +1337,7 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn draw_model_instances_refuses_offscreen_and_over_budget() {
+    fn draw_model_instances_culls_skips_invalid_and_grows_past_initial_hint() {
         let _fixture =
             sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -1410,18 +1360,13 @@ mod tests {
                 .draw_model_instances(model, &[far, near])
                 .unwrap();
             assert_eq!(
-                draw.usage().instances_used,
+                game.prepared_model_draws.borrow().len(),
                 1,
-                "an offscreen copy must not count"
+                "only the visible copy is staged"
             );
             let mut committed = Vec::new();
             game.commit_model_instances(&mut draw, DVec3::ZERO, &mut committed);
-            assert_eq!(
-                game.prepared_model_draws.borrow().len(),
-                1,
-                "an accepted copy must be staged"
-            );
-            assert_eq!(draw.usage().instances_used, 0, "commit takes the copies");
+            assert_eq!(draw.copy_count(), 0, "commit takes the copies");
             assert!(committed.is_empty(), "the staged copy is not also baked");
             game.prepared_model_draws.borrow_mut().clear();
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0, 0.0]);
@@ -1430,35 +1375,20 @@ mod tests {
                 ctx.draw_model_instances(model, &[near]).unwrap();
                 let mut bad = near;
                 bad.light.block = 16;
-                assert_eq!(
-                    ctx.draw_model_instances(model, &[near, bad]),
-                    Err(InstanceError::InvalidLight)
-                );
-                assert_eq!(
-                    ctx.usage().instances_used,
-                    1,
-                    "a refused batch must draw nothing"
-                );
-                ctx.draw_model_instances(model, &vec![near; 16_382])
+                // Invalid visible copies are skipped individually; valid copies stay staged.
+                ctx.draw_model_instances(model, &[near, bad]).unwrap();
+                assert_eq!(game.prepared_model_draws.borrow().len(), 2);
+                // Copies past the GPU slot cap fall back to CPU baking instead of failing.
+                ctx.draw_model_instances(model, &vec![near; 16_384])
                     .unwrap();
-                let staged = game.prepared_model_draws.borrow().len();
-                assert_eq!(
-                    ctx.draw_model_instances(model, &[near, near]),
-                    Err(InstanceError::CapacityExceeded)
-                );
-                assert_eq!(ctx.usage().instances_used, 16_383);
-                assert_eq!(game.prepared_model_draws.borrow().len(), staged);
-                ctx.draw_model_instances(model, &[near]).unwrap();
-                assert_eq!(ctx.usage().instances_used, 16_384);
+                assert_eq!(game.prepared_model_draws.borrow().len(), 16_384);
+                assert_eq!(ctx.surface.copy_count(), 2);
                 game.prepared_model_draws.borrow_mut().clear();
                 ctx.surface.reset([0.0; 3], Mat4::IDENTITY, [0.0, 0.0]);
-                assert_eq!(
-                    ctx.draw_model_instances(model, &vec![far; 16_385]),
-                    Err(InstanceError::CapacityExceeded)
-                );
-                assert_eq!(ctx.usage().instances_used, 0);
-                ctx.draw_model_instances(model, &vec![far; 16_384]).unwrap();
-                assert_eq!(ctx.usage().instances_used, 0);
+                // Large off-screen slices cull cleanly without error.
+                ctx.draw_model_instances(model, &vec![far; 16_385]).unwrap();
+                assert_eq!(game.prepared_model_draws.borrow().len(), 0);
+                assert_eq!(ctx.surface.copy_count(), 0);
             }
         });
     }
@@ -1581,7 +1511,7 @@ mod tests {
                 1,
                 "fill_world_geometry must commit the accepted copy"
             );
-            assert_eq!(draw.usage().instances_used, 0);
+            assert_eq!(draw.copy_count(), 0);
             assert_eq!(entities.len(), 4);
             assert_eq!(game.prepared_model_draws.borrow()[0].cpu_vertices, 4);
         });

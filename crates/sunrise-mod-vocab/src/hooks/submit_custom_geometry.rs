@@ -15,17 +15,19 @@ pub trait Hooks {
 `Hooks::submit_custom_geometry` runs on the client after particles, before rendering. Its
 `WorldRenderView` holds camera, partial tick and game time; `WorldDrawContext::lines` and `quads`
 accept unlit world-space ARGB geometry with depth testing or through walls. Batches fail atomically
-for invalid inputs or overflow. `usage()` reports shared limits (4,096 of each by default);
-output clears every view. Submit extracted state, without world writes or resource loading.
+for invalid inputs; backing storage grows dynamically and output clears every view. Submit
+extracted state, without world writes or resource loading.
 
 `WorldDrawContext::draw_model_instances` draws one batch of a resolved `ModelRef`. Each
 `ModelInstance` carries an f64 world origin, a row-major 3×4 local transform, an `0xAARRGGBB`
 tint (the same convention as `WorldQuad::color`) and `LightCoords` block and sky light, each
 0 to 15, in vanilla's own convention. The engine converts tint and light to the frame format;
-mods never assume that format or supply a packed light word. The view holds 16,384 instances,
-counted by `usage().instances_used` against `instances_capacity`. A refused batch draws nothing.
+mods never assume that format or supply a packed light word. Copies outside the frustum are
+culled first, and any individual visible copy with non-finite coordinates/transforms or light
+outside `0..=15` is skipped without rolling back earlier valid copies. Backing storage grows
+dynamically, with copies past GPU buffer room falling back to CPU baking.
 `ModelInstance::color` (`0xAARRGGBB`, white by default) multiplies every face's colour; with alpha below `0xFF`, or for a model with a translucent face, the copy is drawn in the sorted translucent material (vanilla's `translucent_moving_block`), its quads far to near. `ModelInstance::hidden_faces` leaves out faces whose `cull` side is set.
-Copies outside the frustum are omitted and do not count. Shader packs and any route that cannot
+Shader packs and any route that cannot
 take GPU instances bake the same prepared geometry on the CPU instead of dropping the model; a
 `shaders/` pack shades those copies as block entities, as it shades `BlockEntityDrawContext::model`.
 
@@ -40,11 +42,9 @@ the faded text on the backdrop, in `light` as given, hidden behind what is in fr
 raised to at least 2, and faded on the backdrop over everything, walls included, unlit. The
 backdrop's alpha is 255 times the text background opacity (0.25 when it is set for chat only), the
 faded text's 255 times the larger of (opacity + 0.75) / 2 and 0.5. Labels draw with the world's
-name tags whatever the stage, sorted far to near. Each glyph and backdrop quad, both copies
-counted, takes one of the 4,096 quads `quads` uses (`usage().quads`). A position that is not
-finite (`DrawError::NonFinite`), text deeper than 512 component nodes (`DrawError::TextTooDeep`)
-or otherwise refused (`DrawError::TextRefused`), and a label past the quads left
-(`DrawError::CapacityExceeded`) are refused whole: nothing is drawn. `see_through` can show a
+name tags whatever the stage, sorted far to near. A position that is not
+finite (`DrawError::NonFinite`) or text refused at the boundary (`DrawError::TextRefused`) is
+refused whole: nothing is drawn. `see_through` can show a
 label through any wall, which vanilla does only for the names its own renderers choose; the call
 sends nothing and reads nothing the client does not already hold."#]
     #[hook(

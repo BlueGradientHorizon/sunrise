@@ -511,6 +511,13 @@ impl Text {
     /// representation restrictions on NBT data; engine emission may refuse those.
     pub fn validate(&self) -> Result<(), TextFormError> {
         self.validate_depth()?;
+        self.validate_payloads()
+    }
+    /// Validate opaque NBT containers (which remain subject to vanilla's
+    /// `NbtAccounter.MAX_STACK_DEPTH`) and typed profile fields on every node without
+    /// enforcing a component-tree depth cap, matching vanilla's in-memory `Component`
+    /// rendering (`SubmitNodeCollection.submitNameTag`).
+    pub fn validate_payloads(&self) -> Result<(), TextFormError> {
         let mut pending = vec![self];
         while let Some(text) = pending.pop() {
             let profile = match &text.content {
@@ -569,6 +576,88 @@ impl Text {
                 name: Some(child), ..
             }) => visit(child, TextRelation::HoverEntityName),
             _ => {}
+        }
+    }
+}
+
+fn take_nested_tag(tag: &mut Tag, tags: &mut Vec<Tag>) {
+    if matches!(tag, Tag::Compound(m) if !m.is_empty())
+        || matches!(tag, Tag::List(l) if !l.is_empty())
+    {
+        tags.push(std::mem::replace(tag, Tag::End));
+    }
+}
+
+impl Drop for Text {
+    fn drop(&mut self) {
+        let mut texts = Vec::new();
+        let mut tags = Vec::new();
+        let mut drain = |node: &mut Text| {
+            texts.append(&mut node.children);
+            match &mut node.content {
+                TextContent::Translatable { arguments, .. } => texts.append(arguments),
+                TextContent::Selector { separator, .. } | TextContent::Nbt { separator, .. } => {
+                    if let Some(child) = separator.take() {
+                        texts.push(*child);
+                    }
+                }
+                TextContent::Object(TextObject::Player {
+                    profile, fallback, ..
+                }) => {
+                    if let Some(child) = fallback.take() {
+                        texts.push(*child);
+                    }
+                    take_nested_tag(&mut profile.metadata, &mut tags);
+                    for property in &mut profile.properties {
+                        take_nested_tag(&mut property.metadata, &mut tags);
+                    }
+                }
+                TextContent::Object(TextObject::Atlas { fallback, .. }) => {
+                    if let Some(child) = fallback.take() {
+                        texts.push(*child);
+                    }
+                }
+                _ => {}
+            }
+            if let Some(click) = &mut node.style.click {
+                match click {
+                    TextClick::ShowDialog(tag)
+                    | TextClick::Custom {
+                        payload: Some(tag), ..
+                    } => take_nested_tag(tag, &mut tags),
+                    _ => {}
+                }
+            }
+            if let Some(hover) = &mut node.style.hover {
+                match hover {
+                    TextHover::Text(_) => {
+                        if let Some(TextHover::Text(child)) = node.style.hover.take() {
+                            texts.push(*child);
+                        }
+                    }
+                    TextHover::Entity { name, .. } => {
+                        if let Some(child) = name.take() {
+                            texts.push(*child);
+                        }
+                    }
+                    TextHover::Item {
+                        components: Some(tag),
+                        ..
+                    } => take_nested_tag(tag, &mut tags),
+                    TextHover::Item {
+                        components: None, ..
+                    } => {}
+                }
+            }
+            take_nested_tag(&mut node.metadata, &mut tags);
+            take_nested_tag(&mut node.style.metadata, &mut tags);
+        };
+        drain(self);
+        while let Some(mut node) = texts.pop() {
+            drain(&mut node);
+        }
+        for tag in tags {
+            sunrise_core::nbt::discard_tag(tag);
         }
     }
 }
@@ -1282,8 +1371,18 @@ mod tests {
                 assert!(matches!(leaf.metadata.get("deep"), Some(Tag::List(_))));
                 let too_deep = Text::literal("root").append(tree);
                 assert_eq!(TextForm::from_text(&too_deep), Err(TextFormError::TooDeep));
-                std::mem::forget(too_deep);
-                std::mem::forget(decoded);
+                assert!(too_deep.validate_payloads().is_ok());
+                drop(too_deep);
+                drop(decoded);
+                let mut very_deep = Text::literal("leaf");
+                for _ in 0..4096 {
+                    very_deep = Text::literal("p").append(very_deep);
+                }
+                assert!(very_deep.validate_payloads().is_ok());
+                drop(very_deep);
+                let mut bad_nbt = Text::literal("bad");
+                bad_nbt.metadata = Tag::compound([("deep", nested_tag(512))]);
+                assert_eq!(bad_nbt.validate_payloads(), Err(TextFormError::TooDeep));
                 let mut bad = TextForm::from_text(&Text::literal("bad")).unwrap();
                 bad.nodes[0].metadata = Tag::compound([("deep", nested_tag(4096))]);
                 // The consuming decoder must iteratively release refused input too.

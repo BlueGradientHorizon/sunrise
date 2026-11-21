@@ -64,7 +64,7 @@ impl WorldQuad {
     }
 }
 
-/// Why a whole geometry batch was refused; nothing from that batch was appended.
+/// Why a whole geometry batch or label was refused; nothing from that call was appended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -73,11 +73,7 @@ pub enum DrawError {
     NonFinite,
     /// A finite line width is zero or negative.
     InvalidWidth,
-    /// The batch would exceed this view's setup-time capacity.
-    CapacityExceeded,
-    /// A label's text is deeper than 512 component nodes (`MAX_TEXT_DEPTH`).
-    TextTooDeep,
-    /// A label's text is otherwise refused at the boundary (`TextFormError`).
+    /// A label's text was refused at the boundary (`TextFormError`).
     TextRefused,
 }
 
@@ -190,50 +186,6 @@ impl WorldRenderView {
             camera,
             partial_tick,
             game_time,
-        }
-    }
-}
-
-/// Queued primitive counts and fixed capacities, shared across both depth modes.
-///
-/// `instances_capacity` is the per-view budget of 16,384 model copies. It is reserved
-/// when the view's storage is created and is never grown during submission.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct WorldDrawUsage {
-    /// Lines queued for this view after near-plane clipping.
-    pub lines: u32,
-    /// Maximum lines per view.
-    pub line_capacity: u32,
-    /// Quads queued for this view.
-    pub quads: u32,
-    /// Maximum quads per view.
-    pub quad_capacity: u32,
-    /// Model copies accepted for this view. Culled copies are not included.
-    /// A call may pass at most [`instances_capacity`](Self::instances_capacity)
-    /// copies; that bound is applied before culling.
-    pub instances_used: u32,
-    /// Maximum model copies per view, and the most copies one call may pass.
-    pub instances_capacity: u32,
-}
-impl WorldDrawUsage {
-    /// Describe the current usage and setup-time limits.
-    pub fn new(
-        lines: u32,
-        line_capacity: u32,
-        quads: u32,
-        quad_capacity: u32,
-        instances_used: u32,
-        instances_capacity: u32,
-    ) -> Self {
-        Self {
-            lines,
-            line_capacity,
-            quads,
-            quad_capacity,
-            instances_used,
-            instances_capacity,
         }
     }
 }
