@@ -11,7 +11,7 @@ use super::{
 };
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_assets::item_model::DisplayContext;
-use sunrise_client::health::{Attack, DamageLevel};
+use sunrise_client::health::Attack;
 use sunrise_client::{
     block_entity_render::vertex_light,
     brewing,
@@ -20,7 +20,7 @@ use sunrise_client::{
     hud_layout, hud_overlays, inventory_effects,
     items::ItemStack,
     mesher::Vertex,
-    mobs::{Damage, DamageKind, Mob, NamedDamage, Who},
+    mobs::{Damage, DamageKind, Mob, MobEffectAction, ModEffectTick, NamedDamage, Who},
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     text::Text,
@@ -2751,14 +2751,16 @@ impl Game<'_> {
 impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool {
+    ) -> ModEffectTick {
         let Some(epoch) = self.native_lifecycle.epoch() else {
-            return true;
+            return ModEffectTick {
+                keep: true,
+                actions: Vec::new(),
+            };
         };
         let holder = LivingRef::new(EntityRef::new(epoch, mob.id));
         let (keep, changes) = self.mod_effect_tick(
@@ -2775,21 +2777,21 @@ impl sunrise_client::mobs::ModEffectTicks for Game<'_> {
                 .iter()
                 .filter_map(|effect| effect.registry_index),
         );
-        for change in changes {
-            match change {
-                EffectTickChange::Heal(amount) => mob.heal(&self.loop_context, amount),
+        let registry = &self.health_resources.damage;
+        let actions = changes
+            .into_iter()
+            .filter_map(|change| match change {
+                EffectTickChange::Heal(amount) => Some(MobEffectAction::Heal(amount)),
                 // An unregistered damage type hurts nothing.
                 EffectTickChange::Hurt(source, amount) => {
-                    let registry = &self.health_resources.damage;
-                    if registry.id(&source).is_some() {
-                        let kind = Self::damage_kind(registry, &source);
-                        mob.damage(level, amount, Damage::of(kind));
-                    }
+                    Self::registered_damage_kind(registry, &source)
+                        .map(|kind| MobEffectAction::Hurt(kind, amount))
                 }
-                _ => {}
-            }
-        }
-        keep
+                // Mobs have no FoodData.
+                _ => None,
+            })
+            .collect();
+        ModEffectTick { keep, actions }
     }
     fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
         if let Some(living) = self.effect_living_ref(Some(mob as i32))
@@ -2812,7 +2814,7 @@ fn client_tick_effects(effects: &mut PlayerEffects, darkness: &mut (f32, f32)) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::super::sculk::darkness_blend_added;
     use super::*;
     use sunrise_client::{motion::PlayerMotion, screen_effects::nausea_blend_added};
@@ -3308,14 +3310,21 @@ mod tests {
         );
     }
 
-    fn effect_test_mod() {
+    pub(in crate::game) fn effect_test_mod(
+        extra: impl IntoIterator<Item = mod_api::ModEntry>,
+    ) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
         use mod_api::{self, *};
-        struct TestMod;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering::Relaxed},
+        };
+
+        struct TestMod(Arc<AtomicUsize>);
         #[mod_api::__subscriptions]
         impl Hooks for TestMod {
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
                 let key = r.effect_key("test:effect");
-                r.mob_effect_part(&key, TestMod).unwrap();
+                r.mob_effect_part(&key, TestMod(self.0.clone())).unwrap();
             }
         }
         #[mod_api::sunrise_part]
@@ -3328,6 +3337,7 @@ mod tests {
                 event.apply = true;
             }
             fn apply_effect_tick(&self, _: &dyn Host, event: &mut ApplyEffectTickEvent<'_>) {
+                self.0.fetch_add(1, Relaxed);
                 match event.amplifier {
                     0 => {
                         event.heal(10.0);
@@ -3337,14 +3347,23 @@ mod tests {
                     1 => event.hurt("minecraft:magic", 3.0),
                     3 if event.health > 1.0 => event.hurt("minecraft:magic", 1.0),
                     3 => {}
+                    4 => {
+                        event.hurt("minecraft:wither", 1.0);
+                        event.hurt("minecraft:indirect_magic", 2.0);
+                        event.heal(1.0);
+                    }
                     _ => event.hurt("minecraft:wither", 100.0),
                 }
             }
         }
-        mod_platform::__private::install(std::sync::Arc::from([mod_api::ModEntry::new(
-            "test-potions",
-            Box::new(TestMod),
-        )]));
+        let applied = Arc::new(AtomicUsize::new(0));
+        let effects = ModEntry::new("test-potions", Box::new(TestMod(applied.clone())));
+        mod_platform::__private::install(
+            std::iter::once(effects)
+                .chain(extra)
+                .collect::<Vec<_>>()
+                .into(),
+        );
         assert!(brewing::register_mod_effects([(
             "test:effect".into(),
             0,
@@ -3352,6 +3371,7 @@ mod tests {
             None,
             "test-potions".into(),
         )]));
+        applied
     }
 
     #[test]
@@ -3365,7 +3385,7 @@ mod tests {
         ) {
             return;
         }
-        effect_test_mod();
+        effect_test_mod([]);
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let player = game.player.as_mut().unwrap();
@@ -3394,7 +3414,7 @@ mod tests {
         ) {
             return;
         }
-        effect_test_mod();
+        effect_test_mod([]);
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let id = brewing::effect("test:effect").unwrap().id;
@@ -3417,7 +3437,7 @@ mod tests {
         ) {
             return;
         }
-        effect_test_mod();
+        effect_test_mod([]);
         super::super::native_entity_refs::tests::with_game(|game| {
             // Death drops read the server's loot, which a world open loads.
             game.load_server_loot();
@@ -3463,7 +3483,7 @@ mod tests {
         ) {
             return;
         }
-        effect_test_mod();
+        effect_test_mod([]);
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.player

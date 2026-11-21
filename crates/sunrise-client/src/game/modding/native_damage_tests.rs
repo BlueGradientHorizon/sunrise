@@ -363,6 +363,7 @@ struct DeathOrder {
     heard: Mutex<Vec<(&'static str, i64)>>,
     cancel: std::sync::atomic::AtomicBool,
     revive: std::sync::atomic::AtomicBool,
+    clear_cooldown: bool,
 }
 
 struct DeathProbe(Arc<DeathOrder>);
@@ -382,6 +383,12 @@ impl Hooks for DeathProbe {
         mod_api::Flow::Continue
     }
     fn living_damage_pre(&self, _: &mut dyn HitHost, event: &mut LivingDamagePreEvent<'_>) {
+        if self.0.clear_cooldown {
+            event
+                .container
+                .set_post_attack_invulnerability_ticks(0)
+                .unwrap();
+        }
         self.0
             .heard
             .lock()
@@ -752,6 +759,68 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
             });
         });
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn borrowed_mod_effect_posts_before_the_next_action() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use super::potions::tests::effect_test_mod;
+    use std::sync::atomic::Ordering::Relaxed;
+
+    if run_fresh_cases(
+        "game::native_damage_tests::borrowed_mod_effect_posts_before_the_next_action",
+        "SUNRISE_BORROWED_EFFECT_DAMAGE_CHILD",
+        &["effect"],
+    ) {
+        return;
+    }
+    let trace = Arc::new(DeathOrder {
+        clear_cooldown: true,
+        ..DeathOrder::default()
+    });
+    trace.cancel.store(true, Relaxed);
+    trace.revive.store(true, Relaxed);
+    let applied = effect_test_mod([mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]);
+    with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        game.build_registries();
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+        let mut pig = mob(game, 225046, "minecraft:pig");
+        pig.position = Vec3::new(1.0, 80.0, 1.0);
+        pig.health = 0.5;
+        let effect = sunrise_client::brewing::effect("test:effect").unwrap().id;
+        pig.add_effect(effect, 10, 4);
+        game.mobs.push(pig);
+
+        game.tick_creature_entities().unwrap();
+
+        assert_eq!(
+            *trace.heard.lock().unwrap(),
+            [
+                ("incoming", 225046),
+                ("pre", 225046),
+                ("death", 225046),
+                ("post", 225046),
+                ("incoming", 225046),
+                ("pre", 225046),
+                ("post", 225046),
+            ]
+        );
+        assert_eq!(applied.load(Relaxed), 1);
+        let pig = game.mobs.iter().find(|m| m.id == 225046).unwrap();
+        assert_eq!(pig.health, 4.0, "revived to 5, lost 2, healed once for 1");
+        assert_eq!(
+            super::creatures::source_damage_type(pig.last_damage.unwrap().0),
+            "minecraft:indirect_magic"
+        );
+        assert_eq!(pig.extra.effects[0].duration, 9);
+    });
 }
 
 #[test]

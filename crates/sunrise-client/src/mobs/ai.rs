@@ -4489,8 +4489,8 @@ pub fn forgive_dead_player(m: &mut Mob) {
         _ => super::tame::forgive_dead_player(m),
     }
 }
-/// [`tick_effects_hurting`] with no hook, for the effect tests: a hurt it
-/// deals leaves its teleport pending.
+/// Run the effect pass without pausing for a damage owner, for the effect tests.
+/// A hurt it deals leaves its teleport pending.
 #[cfg(test)]
 pub(crate) fn tick_effects(
     m: &mut Mob,
@@ -4502,9 +4502,7 @@ pub(crate) fn tick_effects(
     let _ = tick_effects_hurting(m, context, level, mods, cursor, &mut |_| false);
 }
 /// `LivingEntity.tickEffects`: each active effect's `MobEffectInstance.tickServer`.
-/// `after_effect` runs after each effect's tick, before its countdown, so a
-/// hurt the tick dealt finishes there: `Enderman.hurtServer` teleports inside
-/// the hurt, before the next effect's hurt draws (#1608).
+/// Only the current effect's accepted actions can outlive its callback.
 #[derive(Debug)]
 struct EffectCursor {
     first: usize,
@@ -4527,10 +4525,12 @@ impl EffectCursor {
 #[derive(Debug)]
 struct EffectCountdown {
     effect: &'static str,
-    infinite: bool,
     expired: bool,
+    actions: std::vec::IntoIter<super::MobEffectAction>,
 }
 
+/// `after_effect` finishes a vanilla effect's hurt or one queued hurt at a
+/// time: `Enderman.hurtServer` teleports before the next hurt draws (#1608).
 fn tick_effects_hurting(
     m: &mut Mob,
     context: &LoopContext,
@@ -4567,12 +4567,8 @@ fn tick_effects_hurting(
     };
     let mut i = cursor.index;
     while cursor.countdown.is_some() || (i < m.extra.effects.len() && i < first) {
-        let EffectCountdown {
-            effect,
-            infinite,
-            expired,
-        } = if let Some(countdown) = cursor.countdown.take() {
-            countdown
+        let (mut countdown, vanilla_tick) = if let Some(countdown) = cursor.countdown.take() {
+            (countdown, false)
         } else {
             let (effect, amp) = (m.extra.effects[i].id, m.extra.effects[i].amplifier);
             // MobEffectInstance.tickServer: an infinite (-1) effect times its
@@ -4594,8 +4590,8 @@ fn tick_effects_hurting(
                 m.extra.effects[i].duration
             };
             let interval = |base: i32| base.wrapping_shr(amp as u32).max(1);
-            // A refused mod effect expires before the next effect ticks.
             let mut expired = false;
+            let mut actions = None;
             match effect {
                 "minecraft:poison"
                     if count % interval(25) == 0 && !m.kind.flags.undead && m.health > 1.0 =>
@@ -4633,75 +4629,90 @@ fn tick_effects_hurting(
                 id if sunrise_client_core::potions::is_mod_effect(id) => {
                     if let Some(mods) = mods
                         && let Some(index) = m.extra.effects[i].registry_index
-                        && !mods.tick_mod_effect(level, index, m, count, amp)
                     {
-                        // Removed before it counts down.
-                        expired = true;
+                        let tick = mods.tick_mod_effect(index, m, count, amp);
+                        expired = !tick.keep;
+                        actions = Some(tick.actions);
                     }
                 }
                 _ => {}
             }
-            let countdown = EffectCountdown {
-                effect,
-                infinite,
-                expired,
-            };
-            if after_effect(m) {
-                return Some(EffectCursor {
-                    first,
-                    index: i,
-                    old_max_absorption: cursor.old_max_absorption,
-                    countdown: Some(countdown),
-                });
-            }
-            countdown
+            let vanilla_tick = actions.is_none();
+            (
+                EffectCountdown {
+                    effect,
+                    expired,
+                    actions: actions.unwrap_or_default().into_iter(),
+                },
+                vanilla_tick,
+            )
         };
-        if m.extra.effects.get(i).is_some_and(|e| e.id == effect) {
-            if !expired {
-                if let Some(hidden) = m.extra.effect_chains.iter_mut().find(|e| e.id == effect) {
-                    hidden.tick_down();
+        if (vanilla_tick && after_effect(m))
+            || countdown.actions.by_ref().any(|action| match action {
+                super::MobEffectAction::Heal(amount) => {
+                    m.heal(context, amount);
+                    false
                 }
-                if !infinite {
-                    m.extra.effects[i].duration -= 1;
+                super::MobEffectAction::Hurt(kind, amount) => {
+                    m.damage(level, amount, Damage::of(kind));
+                    after_effect(m)
                 }
-            } else {
-                m.extra.effects[i].duration = 0;
-            }
-            if !expired
-                && m.extra.effects[i].duration == 0
-                && let Some(chain) = m.extra.effect_chains.iter().position(|e| e.id == effect)
-            {
-                let mut hidden = m.extra.effect_chains.remove(chain);
-                if effect == "minecraft:absorption" {
-                    m.absorption = m.absorption.min(4.0 * (hidden.amplifier + 1) as f32);
-                }
-                m.extra.effects[i] = super::StoredEffect::from_instance(effect, &hidden);
-                // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
-                // the modifiers of the amplifier that is active now.
-                m.set_effect_modifiers(effect, Some(hidden.amplifier));
-                m.extra.ambient_effects.retain(|e| *e != effect);
-                if hidden.ambient {
-                    m.extra.ambient_effects.push(effect);
-                }
-                m.extra.hidden_effects.retain(|e| *e != effect);
-                if !hidden.visible {
-                    m.extra.hidden_effects.push(effect);
-                }
-                if let Some(next) = hidden.hidden.take() {
-                    m.extra.effect_chains.push(*next);
-                }
-                m.effects_dirty = true;
-            }
-        }
-        // LivingEntity.tickEffects refreshes a surviving effect every 600 ticks.
-        if m.extra
-            .effects
-            .get(i)
-            .is_some_and(|e| e.id == effect && e.duration > 0 && e.duration % 600 == 0)
+            })
         {
+            cursor.first = first;
+            cursor.index = i;
+            cursor.countdown = Some(countdown);
+            return Some(cursor);
+        }
+        let EffectCountdown {
+            effect, expired, ..
+        } = countdown;
+        // A hit can remove or move the active effect. Its accepted actions above
+        // still run, but an invalidated slot must not count down another effect.
+        let Some(active) = m.extra.effects.get_mut(i).filter(|e| e.id == effect) else {
+            break;
+        };
+        if !expired {
+            if let Some(hidden) = m.extra.effect_chains.iter_mut().find(|e| e.id == effect) {
+                hidden.tick_down();
+            }
+            if active.duration != -1 {
+                active.duration = active.duration.wrapping_sub(1);
+            }
+        } else {
+            active.duration = 0;
+        }
+        if !expired
+            && active.duration == 0
+            && let Some(chain) = m.extra.effect_chains.iter().position(|e| e.id == effect)
+        {
+            let mut hidden = m.extra.effect_chains.remove(chain);
+            if effect == "minecraft:absorption" {
+                m.absorption = m.absorption.min(4.0 * (hidden.amplifier + 1) as f32);
+            }
+            *active = super::StoredEffect::from_instance(effect, &hidden);
+            // `tickServer`'s onExpire: `onEffectUpdated(instance, true, null)`,
+            // the modifiers of the amplifier that is active now.
+            m.set_effect_modifiers(effect, Some(hidden.amplifier));
+            m.extra.ambient_effects.retain(|e| *e != effect);
+            if hidden.ambient {
+                m.extra.ambient_effects.push(effect);
+            }
+            m.extra.hidden_effects.retain(|e| *e != effect);
+            if !hidden.visible {
+                m.extra.hidden_effects.push(effect);
+            }
+            if let Some(next) = hidden.hidden.take() {
+                m.extra.effect_chains.push(*next);
+            }
             m.effects_dirty = true;
         }
-        if m.extra.effects.get(i).is_some_and(|e| e.id == effect) && expire(m, i) {
+        // LivingEntity.tickEffects refreshes a surviving effect every 600 ticks.
+        let duration = m.extra.effects[i].duration;
+        if duration > 0 && duration % 600 == 0 {
+            m.effects_dirty = true;
+        }
+        if expire(m, i) {
             // Removal shifts the next original effect into this slot. Shrink the
             // original-pass boundary too, so newly appended effects still wait.
             first -= 1;
@@ -8423,17 +8434,19 @@ mod hidden_speed_causal_tests {
             fn effect_expired(&self, _: u32, _: usize, _: i32, _: &mut bool) {}
             fn tick_mod_effect(
                 &self,
-                _: &mut DamageLevel<'_>,
                 _: usize,
-                m: &mut Mob,
+                m: &Mob,
                 count: i32,
                 amp: i32,
-            ) -> bool {
+            ) -> crate::mobs::ModEffectTick {
                 let (id, mob) = (m.extra.effects[0].id, m.id);
                 assert_eq!((id, mob, amp), ("h202:cancel", 202, 1));
                 assert!(count == 1 || count == 17);
                 self.0.set(self.0.get() + 1);
-                false
+                crate::mobs::ModEffectTick {
+                    keep: false,
+                    actions: Vec::new(),
+                }
             }
         }
         for duration in [1, -1] {

@@ -3427,18 +3427,31 @@ pub struct MobWorld<'a> {
     pub border: Option<&'a sunrise_core::geometry::border::BorderGeometry>,
     pub section_writer: Option<living::section_writes::Observer>,
 }
+/// The read-only decision from a registered effect's native tick Parts.
+pub struct ModEffectTick {
+    /// False ends the effect before its countdown, after applying its actions.
+    pub keep: bool,
+    pub actions: Vec<MobEffectAction>,
+}
+
+/// A write to the ticking mob, with damage resolved by the owning registry.
+#[derive(Debug)]
+pub enum MobEffectAction {
+    Heal(f32),
+    Hurt(DamageKind, f32),
+}
+
 /// `MobEffectInstance.tickServer` for a content mod's effect: its
 /// `shouldApplyEffectTickThisTick` and `applyEffectTick`, which the game's
-/// native mods answer. False removes the effect.
+/// native mods answer. The mob's tick applies their queued actions.
 pub trait ModEffectTicks {
     fn tick_mod_effect(
         &self,
-        level: &mut DamageLevel<'_>,
         effect: usize,
-        mob: &mut Mob,
+        mob: &Mob,
         tick_count: i32,
         amplifier: i32,
-    ) -> bool;
+    ) -> ModEffectTick;
     /// `MobEffectEvent.Expired`: `mob`'s `effect` (`amplifier` from 0)
     /// counted down to nothing. A mod that cancels refuses the expiry: the
     /// effect stays at no ticks and asks again next tick.

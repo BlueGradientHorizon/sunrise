@@ -140,7 +140,24 @@ impl Game<'_> {
     /// factory chooses the type based on the attacker; an explicit registry
     /// type must not. Other registered types keep their id and tags as `Named`.
     pub(in crate::game) fn damage_kind(catalog: &DamageCatalog, ty: &str) -> DamageKind {
-        match ty.strip_prefix("minecraft:").unwrap_or(ty) {
+        Self::builtin_damage_kind(ty)
+            .or_else(|| NamedDamage::registered(catalog, ty).map(DamageKind::Named))
+            .unwrap_or(DamageKind::Generic)
+    }
+
+    /// Resolve a mod-supplied source against the world's registry, with no default on a miss.
+    pub(in crate::game) fn registered_damage_kind(
+        catalog: &DamageCatalog,
+        ty: &str,
+    ) -> Option<DamageKind> {
+        match Self::builtin_damage_kind(ty) {
+            Some(kind) => catalog.id(ty).map(|_| kind),
+            None => NamedDamage::registered(catalog, ty).map(DamageKind::Named),
+        }
+    }
+
+    fn builtin_damage_kind(ty: &str) -> Option<DamageKind> {
+        Some(match ty.strip_prefix("minecraft:").unwrap_or(ty) {
             "player_attack" => DamageKind::PlayerAttack,
             "mace_smash" => DamageKind::MaceSmash,
             "spear" => DamageKind::Spear,
@@ -181,10 +198,8 @@ impl Game<'_> {
             "wind_charge" => DamageKind::WindCharge,
             "wither" => DamageKind::Wither,
             "generic" => DamageKind::Generic,
-            _ => {
-                NamedDamage::registered(catalog, ty).map_or(DamageKind::Generic, DamageKind::Named)
-            }
-        }
+            _ => return None,
+        })
     }
     /// `DamageCommand.damage`: apply its source and report an accepted hit.
     pub(super) fn cmd_damage(&mut self, ctx: &Context) -> R<i32> {

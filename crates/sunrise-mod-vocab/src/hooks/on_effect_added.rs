@@ -16,6 +16,8 @@ pub trait Hooks {
     /// The current level's game rules remain readable through `host.level(dimension)`.
     /// Called only when this Part's own cadence requests it. All Parts see
     /// the same snapshots; their queued changes apply in Part order afterward.
+    /// On mobs, each queued hurt finishes its damage, death or protection, and
+    /// `living_damage_post` before the next queued change or the effect countdown.
     /// Clearing `keep` skips later Parts. Server-side.
     #[hook(
         side = "server",
