@@ -146,6 +146,9 @@ pub struct Identity {
     pub registry_patches: Option<toml::Table>,
     #[serde(default)]
     pub native_links: Option<Vec<super::registry_inventory::NativeLink>>,
+    /// The prebuilt API exports the native log sink and the entry template must install it.
+    #[serde(default)]
+    pub native_log: bool,
     #[serde(default)]
     facade_crates: std::collections::BTreeSet<String>,
     /// The game crate's features the SDK was built with: a patched function copied out of its

@@ -35,6 +35,18 @@ fn compiler_plan(
     }
 }
 
+const LOGGERS: &str = "/* MOD_LOGGERS */";
+
+fn check_log_template(template: &str, native_log: bool) -> Result<(), String> {
+    if native_log && template.matches(LOGGERS).count() != 1 {
+        return Err(trf(
+            "The prebuilt SDK declares native log forwarding, but {file} must contain exactly one {marker} slot.",
+            &[("file", super::api_route::TEMPLATE), ("marker", LOGGERS)],
+        ));
+    }
+    Ok(())
+}
+
 /// `out` is the mods folder's staging folder, rewritten every build; `target_dir` is cargo's build
 /// folder, kept between builds of the same game build (see `prebuilt::compile`).
 #[allow(clippy::too_many_arguments)]
@@ -49,6 +61,8 @@ pub fn compile(
     options: Options<'_>,
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
     let sdk = prebuilt::identity(game)?;
+    let template = api::template(&game.join(super::api_route::TEMPLATE))?;
+    check_log_template(&template, sdk.native_log)?;
     let lock = sdk.registry_lock.as_ref().ok_or_else(|| tr("The prebuilt SDK does not declare a locked registry graph; install an SDK that supports registry-bearing native mods").to_string())?;
     let mut patches = sdk.registry_patches.clone().ok_or_else(|| {
         tr("The prebuilt SDK does not declare game registry patches; install a newer SDK")
@@ -95,7 +109,6 @@ pub fn compile(
         fs::rename(out, &previous).map_err(|e| e.to_string())?;
     }
     fs::create_dir_all(out).map_err(|e| e.to_string())?;
-    let template = api::template(&game.join(super::api_route::TEMPLATE))?;
     let mut bindings = BTreeMap::new();
     let mut members = Vec::new();
     let mut wrapper_deps = toml::Table::new();
@@ -423,9 +436,8 @@ pub fn compile(
     // from one library, so a mod depending on several mods doesn't reach a copy of each through
     // each of them (`registry_shared`). The mods' manifests were checked above without it; it adds
     // no package cargo hasn't already resolved and locked.
-    const LOGGERS: &str = "/* MOD_LOGGERS */";
     // The SDK owns the entry template and the sink it can call. The mod's lock still owns log.
-    let logs = if template.contains(LOGGERS) {
+    let logs = if sdk.native_log {
         metadata.runtime_logs()?
     } else {
         Default::default()
@@ -714,6 +726,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn forwarding_sdk_requires_one_logger_slot_in_its_template() {
+        assert!(check_log_template("fn entry() {}", false).is_ok());
+        assert!(check_log_template("fn entry() {}", true).is_err());
+        assert!(check_log_template("/* MOD_LOGGERS */", true).is_ok());
+        assert!(check_log_template("/* MOD_LOGGERS */ /* MOD_LOGGERS */", true).is_err());
+    }
 
     #[test]
     #[ignore = "daily"]
