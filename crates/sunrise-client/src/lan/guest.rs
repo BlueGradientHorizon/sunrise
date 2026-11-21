@@ -166,6 +166,27 @@ pub struct GuestMove {
     pub sneaking: bool,
 }
 
+pub(crate) enum InventoryMenuSlot {
+    Result,
+    Grid(usize),
+    Armor(usize),
+    Main(usize),
+    Offhand,
+}
+
+/// Map `InventoryMenu`'s slot index to the storage it shows.
+pub(crate) fn inventory_menu_slot(slot: usize) -> Option<InventoryMenuSlot> {
+    Some(match slot {
+        0 => InventoryMenuSlot::Result,
+        1..=4 => InventoryMenuSlot::Grid(slot - 1),
+        5..=8 => InventoryMenuSlot::Armor(slot - 5),
+        9..=35 => InventoryMenuSlot::Main(slot),
+        36..=44 => InventoryMenuSlot::Main(slot - 36),
+        45 => InventoryMenuSlot::Offhand,
+        _ => return None,
+    })
+}
+
 pub struct Guest {
     /// Identity generation and journal binding travel with the actual player record.
     pub residency: crate::join_seq::residency::member::Member,
@@ -1174,14 +1195,12 @@ impl Guest {
     /// result, 1..=4 crafting grid, 5..=8 armor, 9..=35 main, 36..=44 hotbar,
     /// 45 off hand.
     pub fn menu_slot(&self, slot: usize) -> Option<ItemStack> {
-        match slot {
-            0 => self.craft_result.clone(),
-            1..=4 => self.craft_grid[slot - 1].clone(),
-            5..=8 => self.armor[slot - 5].clone(),
-            9..=35 => self.inventory.get(slot).cloned().flatten(),
-            36..=44 => self.inventory.get(slot - 36).cloned().flatten(),
-            45 => self.offhand.clone(),
-            _ => None,
+        match inventory_menu_slot(slot)? {
+            InventoryMenuSlot::Result => self.craft_result.clone(),
+            InventoryMenuSlot::Grid(n) => self.craft_grid[n].clone(),
+            InventoryMenuSlot::Armor(n) => self.armor[n].clone(),
+            InventoryMenuSlot::Main(n) => self.inventory.get(n).cloned().flatten(),
+            InventoryMenuSlot::Offhand => self.offhand.clone(),
         }
     }
     /// The open menu's packets told the client every inventory slot: the
@@ -1211,14 +1230,13 @@ impl Guest {
         }
     }
     pub fn set_menu_slot(&mut self, slot: usize, item: Option<ItemStack>) {
-        match slot {
-            0 => self.craft_result = item,
-            1..=4 => self.craft_grid[slot - 1] = item,
-            5..=8 => self.armor[slot - 5] = item,
-            9..=35 => self.inventory[slot] = item,
-            36..=44 => self.inventory[slot - 36] = item,
-            45 => self.offhand = item,
-            _ => {}
+        match inventory_menu_slot(slot) {
+            Some(InventoryMenuSlot::Result) => self.craft_result = item,
+            Some(InventoryMenuSlot::Grid(n)) => self.craft_grid[n] = item,
+            Some(InventoryMenuSlot::Armor(n)) => self.armor[n] = item,
+            Some(InventoryMenuSlot::Main(n)) => self.inventory[n] = item,
+            Some(InventoryMenuSlot::Offhand) => self.offhand = item,
+            None => {}
         }
     }
 }

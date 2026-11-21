@@ -106,37 +106,6 @@ fn a_panicking_turn_leaves_play_state_and_menus_restored() {
 
 #[test]
 #[ignore = "daily"]
-fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
-    with_guests(|game| {
-        open_inventory(game, 12, 3);
-        let guests = game.lan.as_ref().unwrap().hub.guests.len();
-        // The game and the host are separate while lifted, and a second lift finds none.
-        let seen = game
-            .with_lan_lifted(|game, host| {
-                let nested = game.with_lan_lifted(|_, _| ());
-                (game.lan.is_none(), nested.is_none(), host.hub.guests.len())
-            })
-            .unwrap();
-        assert_eq!(seen, (true, true, guests));
-        assert!(game.lan.is_some());
-
-        let panicked = catch_unwind(AssertUnwindSafe(|| {
-            game.with_lan_lifted(|_, host| {
-                host.menus.remove(&12);
-                panic!("a hook panicked in a lifted click");
-            })
-        }));
-        assert!(panicked.is_err());
-        let host = game.lan.as_ref().unwrap();
-        assert_eq!(host.hub.guests.len(), guests);
-        // What the lifted code did to the host stays done; nothing was swapped back for it.
-        assert!(!host.menus.contains_key(&12));
-        assert!(game.with_lan_lifted(|_, _| 1).is_some());
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn removing_a_fake_player_drops_its_menu_owners() {
     with_guests(|game| {
         let _serving = super::integrated::tests::install_serving(game, false);

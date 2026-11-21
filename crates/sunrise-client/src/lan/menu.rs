@@ -753,9 +753,46 @@ impl<'a> ContainerSlotRules<'a> {
     }
 }
 
+/// Player storage staged by one Hub click. Rules read the unedited, live player through the
+/// Host while the menu engine edits this working copy, just as the other menu engine does.
+pub(crate) struct ClickPlayer {
+    pub(crate) inventory: Vec<Option<ItemStack>>,
+    pub(crate) armor: [Option<ItemStack>; 4],
+    pub(crate) offhand: Option<ItemStack>,
+    pub(crate) carried: Option<ItemStack>,
+    pub(crate) craft_grid: [Option<ItemStack>; 4],
+    pub(crate) craft_result: Option<ItemStack>,
+    uuid: u128,
+    entity_id: i32,
+    selected: usize,
+    game_mode: i32,
+}
+
+impl ClickPlayer {
+    pub(crate) fn read(guest: &Guest) -> Self {
+        Self {
+            inventory: guest.inventory.clone(),
+            armor: guest.armor.clone(),
+            offhand: guest.offhand.clone(),
+            carried: guest.carried.clone(),
+            craft_grid: guest.craft_grid.clone(),
+            craft_result: guest.craft_result.clone(),
+            uuid: guest.uuid,
+            entity_id: guest.entity_id,
+            selected: guest.selected,
+            game_mode: guest.game_mode,
+        }
+    }
+
+    fn creative(&self) -> bool {
+        self.game_mode == super::guest::CREATIVE
+    }
+}
+
 /// Slots of a menu seen as one list.
-pub struct View<'a> {
-    pub guest: &'a mut Guest,
+pub(crate) struct View<'a> {
+    pub guest: &'a mut ClickPlayer,
+    pub open: Option<&'a Menu>,
     /// The container's slots, or None for the inventory menu.
     pub container: Option<&'a mut [Option<ItemStack>]>,
     /// The container is a shulker box (`ShulkerBoxSlot`).
@@ -788,7 +825,16 @@ impl View<'_> {
                 .get(player_slot(i - c.len()))
                 .cloned()
                 .flatten(),
-            None => self.guest.menu_slot(i),
+            None => match super::guest::inventory_menu_slot(i) {
+                Some(super::guest::InventoryMenuSlot::Result) => self.guest.craft_result.clone(),
+                Some(super::guest::InventoryMenuSlot::Grid(n)) => self.guest.craft_grid[n].clone(),
+                Some(super::guest::InventoryMenuSlot::Armor(n)) => self.guest.armor[n].clone(),
+                Some(super::guest::InventoryMenuSlot::Main(n)) => {
+                    self.guest.inventory.get(n).cloned().flatten()
+                }
+                Some(super::guest::InventoryMenuSlot::Offhand) => self.guest.offhand.clone(),
+                None => None,
+            },
         }
     }
     pub fn set(&mut self, i: usize, item: Option<ItemStack>) {
@@ -799,12 +845,19 @@ impl View<'_> {
                 let n = c.len();
                 self.guest.inventory[player_slot(i - n)] = item;
             }
-            None => self.guest.set_menu_slot(i, item),
+            None => match super::guest::inventory_menu_slot(i) {
+                Some(super::guest::InventoryMenuSlot::Result) => self.guest.craft_result = item,
+                Some(super::guest::InventoryMenuSlot::Grid(n)) => self.guest.craft_grid[n] = item,
+                Some(super::guest::InventoryMenuSlot::Armor(n)) => self.guest.armor[n] = item,
+                Some(super::guest::InventoryMenuSlot::Main(n)) => self.guest.inventory[n] = item,
+                Some(super::guest::InventoryMenuSlot::Offhand) => self.guest.offhand = item,
+                None => {}
+            },
         }
     }
     fn container_slot_rules(&self) -> Option<ContainerSlotRules<'_>> {
         Some(ContainerSlotRules {
-            open: self.guest.menu.as_ref(),
+            open: self.open,
             player: self.guest.uuid,
             slots: self.container.as_deref()?,
             shulker: self.shulker,
@@ -1172,7 +1225,7 @@ fn is_container_click_button(button: i32) -> bool {
 }
 
 /// Apply one click; returns the stacks thrown out and the slots changed.
-pub fn click(
+pub(crate) fn click(
     view: &mut View,
     drag: &mut Option<(u8, Vec<usize>)>,
     slot: i32,
@@ -1887,10 +1940,11 @@ pub(crate) mod tests {
     fn hosted_slot_view_respects_limits_and_transfers() {
         use crate::menu::SlotView;
         let Some(rules) = rules() else { return };
-        let mut guest = guest();
+        let guest = guest();
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 60))];
         let mut view = View {
-            guest: &mut guest,
+            guest: &mut ClickPlayer::read(&guest),
+            open: guest.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -1922,7 +1976,8 @@ pub(crate) mod tests {
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 10))];
         g.carried = Some(ItemStack::new("minecraft:bundle", 1));
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -1960,13 +2015,14 @@ pub(crate) mod tests {
     #[test]
     fn pickup_all_walks_from_the_buttons_side() {
         let rules = SwapRules;
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![None; 5];
         chest[0] = Some(ItemStack::new("minecraft:stone", 5));
         chest[1] = Some(ItemStack::new("minecraft:stone", 5));
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2003,7 +2059,7 @@ pub(crate) mod tests {
         let Some(rules) = rules() else {
             return;
         };
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![
             Some(ItemStack::new("minecraft:stone", 48)),
             None,
@@ -2011,7 +2067,8 @@ pub(crate) mod tests {
         ];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2078,13 +2135,14 @@ pub(crate) mod tests {
             return;
         };
         let rules = Refusing { items };
-        let mut g = guest();
+        let g = guest();
         let mut bundle = ItemStack::new("minecraft:bundle", 1);
         bundle.data_mut().bundle_contents = vec![ItemStack::new("minecraft:apple", 16)];
         let mut chest = vec![Some(ItemStack::new("minecraft:bundle", 1)), Some(bundle)];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2116,10 +2174,11 @@ pub(crate) mod tests {
         let Some(ItemRules(items)) = rules() else {
             return;
         };
-        let mut guest = guest();
+        let guest = guest();
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 8))];
         let mut view = View {
-            guest: &mut guest,
+            guest: &mut ClickPlayer::read(&guest),
+            open: guest.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2227,7 +2286,8 @@ pub(crate) mod tests {
         {
             use mod_api::MenuContainer::{Grid, Main, Player, Result};
             let mut view = View {
-                guest: &mut g,
+                guest: &mut ClickPlayer::read(&g),
+                open: g.menu.as_ref(),
                 container: Some(&mut read),
                 shulker: false,
                 container_limits: Vec::new(),
@@ -2415,7 +2475,8 @@ pub(crate) mod tests {
             g.inventory[0] = Some(ItemStack::new("minecraft:dirt", 1));
             let mut drag = None;
             let mut view = View {
-                guest: &mut g,
+                guest: &mut ClickPlayer::read(&g),
+                open: g.menu.as_ref(),
                 container: Some(&mut read),
                 shulker: false,
                 container_limits: Vec::new(),
@@ -2457,7 +2518,8 @@ pub(crate) mod tests {
         let hidden = [0, 2];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut container),
             shulker: false,
             container_limits: Vec::new(),
@@ -2479,10 +2541,11 @@ pub(crate) mod tests {
     #[test]
     fn quick_craft_uses_original_stack_and_clamps_existing_count() {
         let Some(rules) = rules() else { return };
-        let mut guest = guest();
+        let guest = guest();
         let mut chest = vec![None; 2];
         let mut view = View {
-            guest: &mut guest,
+            guest: &mut ClickPlayer::read(&guest),
+            open: guest.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2517,7 +2580,8 @@ pub(crate) mod tests {
                     chest[0] = Some(ItemStack::new(id, existing));
                 }
                 let mut view = View {
-                    guest: &mut guest,
+                    guest: &mut ClickPlayer::read(&guest),
+                    open: guest.menu.as_ref(),
                     container: Some(&mut chest),
                     shulker: false,
                     container_limits: Vec::new(),
@@ -2565,11 +2629,12 @@ pub(crate) mod tests {
     #[test]
     fn a_clone_drag_needs_infinite_materials() {
         let rules = SwapRules;
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![None; 3];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2690,7 +2755,8 @@ pub(crate) mod tests {
         guest.inventory[0] = Some(ItemStack::new("minecraft:stone", 80));
         let mut chest = vec![Some(dirt)];
         let mut view = View {
-            guest: &mut guest,
+            guest: &mut ClickPlayer::read(&guest),
+            open: guest.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2731,7 +2797,8 @@ pub(crate) mod tests {
         ];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2787,7 +2854,8 @@ pub(crate) mod tests {
         let mut chest = vec![Some(ItemStack::new("minecraft:diamond", 1)), None];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -2833,11 +2901,12 @@ pub(crate) mod tests {
             return;
         };
         for shulker in [true, false] {
-            let mut g = guest();
+            let g = guest();
             let mut container = vec![None; 27];
             let mut drag = None;
             let mut view = View {
-                guest: &mut g,
+                guest: &mut ClickPlayer::read(&g),
+                open: g.menu.as_ref(),
                 container: Some(&mut container),
                 shulker,
                 container_limits: Vec::new(),
@@ -2884,10 +2953,11 @@ pub(crate) mod tests {
     #[test]
     fn inventory_quick_move_equips_an_off_hand_item() {
         let rules = ItemRules(Items::for_tests(Default::default()));
-        let mut g = guest();
+        let g = guest();
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: None,
             shulker: false,
             container_limits: Vec::new(),
@@ -2963,14 +3033,15 @@ pub(crate) mod tests {
     #[test]
     fn guest_pickup_and_quick_move_need_the_slots_consent() {
         let rules = StrictRules::new(&[0]);
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![
             Some(ItemStack::new("minecraft:stone", 5)),
             Some(ItemStack::new("minecraft:dirt", 2)),
         ];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3011,11 +3082,12 @@ pub(crate) mod tests {
     #[test]
     fn guest_pickup_all_starts_from_an_empty_or_refusing_slot() {
         let rules = StrictRules::new(&[]);
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 5)), None];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3052,11 +3124,12 @@ pub(crate) mod tests {
     fn guest_throw_needs_can_drop_items() {
         let mut rules = StrictRules::new(&[]);
         rules.drops = false;
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![Some(ItemStack::new("minecraft:stone", 5))];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3100,7 +3173,8 @@ pub(crate) mod tests {
                 g.game_mode = game_mode;
                 let mut drag = None;
                 let mut view = View {
-                    guest: &mut g,
+                    guest: &mut ClickPlayer::read(&g),
+                    open: g.menu.as_ref(),
                     container: None,
                     shulker: false,
                     container_limits: Vec::new(),
@@ -3137,7 +3211,8 @@ pub(crate) mod tests {
                 g.game_mode = game_mode;
                 let mut drag = None;
                 let mut view = View {
-                    guest: &mut g,
+                    guest: &mut ClickPlayer::read(&g),
+                    open: g.menu.as_ref(),
                     container: None,
                     shulker: false,
                     container_limits: Vec::new(),
@@ -3170,9 +3245,10 @@ pub(crate) mod tests {
         );
         let mut clicked = Vec::new();
         for slot in 5..=8_usize {
-            let mut g = guest();
+            let g = guest();
             let mut view = View {
-                guest: &mut g,
+                guest: &mut ClickPlayer::read(&g),
+                open: g.menu.as_ref(),
                 container: None,
                 shulker: false,
                 container_limits: Vec::new(),
@@ -3186,9 +3262,10 @@ pub(crate) mod tests {
                 clicked.push(slot);
             }
         }
-        let mut g = guest();
+        let g = guest();
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: None,
             shulker: false,
             container_limits: Vec::new(),
@@ -3249,10 +3326,11 @@ pub(crate) mod tests {
     #[test]
     fn inventory_quick_move_wears_armor_from_the_off_hand() {
         let rules = ItemRules(Items::for_tests(Default::default()));
-        let mut g = guest();
+        let g = guest();
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: None,
             shulker: false,
             container_limits: Vec::new(),
@@ -3296,13 +3374,14 @@ pub(crate) mod tests {
     #[test]
     fn container_override_caps_guest_pickup_and_shift_click() {
         let rules = ItemRules(Items::for_tests(Default::default()));
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![None; 3];
         let context = crate::test_resources::loop_context(
             sunrise_world::native_load_context::LoopSide::Server,
         );
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: vec![Some(10); 3],
@@ -3342,11 +3421,12 @@ pub(crate) mod tests {
             }
         }
         let rules = SmallRules;
-        let mut g = guest();
+        let g = guest();
         let mut chest = vec![Some(ItemStack::new("minecraft:snowball", 40))];
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3394,10 +3474,11 @@ pub(crate) mod tests {
     #[test]
     fn guest_clicks_with_a_button_other_than_0_or_1_move_nothing() {
         let rules = ItemRules(Items::for_tests(Default::default()));
-        let mut g = guest();
+        let g = guest();
         let mut drag = None;
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: None,
             shulker: false,
             container_limits: Vec::new(),
@@ -3444,7 +3525,8 @@ pub(crate) mod tests {
             sunrise_world::native_load_context::LoopSide::Server,
         );
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3468,7 +3550,8 @@ pub(crate) mod tests {
             sunrise_world::native_load_context::LoopSide::Server,
         );
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
@@ -3511,7 +3594,8 @@ pub(crate) mod tests {
             sunrise_world::native_load_context::LoopSide::Server,
         );
         let mut view = View {
-            guest: &mut g,
+            guest: &mut ClickPlayer::read(&g),
+            open: g.menu.as_ref(),
             container: Some(&mut chest),
             shulker: false,
             container_limits: Vec::new(),
