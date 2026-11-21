@@ -2,7 +2,7 @@
 //! Resolve those texels with the active render target's scale, then let the HUD rasterize the
 //! original geometry (including its scissor and blend) against that map.
 
-use super::{HudBatch, HudVertex, Rect};
+use super::{HudBatch, HudVertex};
 use crate::{gfx::upload::Uploads, hud_layout::Pose};
 use num_bigint::{BigInt, Sign};
 use std::ops::Range;
@@ -11,7 +11,21 @@ pub(crate) struct SpriteRepeat {
     pub(crate) pose: Pose,
     pub(crate) origin: [f32; 2],
     pub(crate) period: [f32; 2],
-    pub(crate) uv: Rect,
+    pub(crate) source: [SpriteTexelRegion; 2],
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SpriteTexelEdge {
+    Packed(u32),
+    // Polytone can explicitly replace a packed edge with an arbitrary atlas UV.
+    Normalized(f32),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct SpriteTexelRegion {
+    pub(crate) edges: [SpriteTexelEdge; 2],
+    pub(crate) offset: f32,
+    pub(crate) size: f32,
 }
 
 // Every finite f32 is an integer multiple of 2^-149. Keep those integers until after
@@ -84,10 +98,10 @@ impl SpriteRepeat {
         let [ox, oy] = self.origin.map(units);
         let [w, h] = self.period.map(units);
         let axes = [
-            (d, -c, ox, w, self.uv.u0, self.uv.u1, atlas[0]),
-            (-b, a, oy, h, self.uv.v0, self.uv.v1, atlas[1]),
+            (d, -c, ox, w, self.source[0], atlas[0]),
+            (-b, a, oy, h, self.source[1], atlas[1]),
         ]
-        .map(|(u, v, origin, period, uv0, uv1, extent)| {
+        .map(|(u, v, origin, tile, source, extent)| {
             // Inverse pose at device centers, minus the local origin, divided by the
             // tile period. Give both slopes and the offset a common denominator.
             let dx = &u << (3 * SHIFT);
@@ -97,7 +111,7 @@ impl SpriteRepeat {
             let start = &dx * (2 * u64::from(left) + 1) + &dy * (2 * u64::from(top) + 1)
                 - translation
                 - local_origin;
-            let denominator = (&determinant * period * &scale) << 1usize;
+            let denominator = (&determinant * &tile * &scale) << 1usize;
             let sign = denominator.sign();
             let period = BigInt::from(denominator.magnitude().clone());
             let reduce = |value: BigInt| {
@@ -118,14 +132,30 @@ impl SpriteRepeat {
                 .min()
                 .unwrap_or(0) as usize;
             let period = period >> shift;
-            let uv0 = units(uv0) * extent;
+            // The source offsets are in metadata units, not atlas UVs. Compute the
+            // fractional texel edges from the full integer placement, then wrap and
+            // interpolate using one denominator, without rounding either edge.
+            let [uv0, uv1] = source.edges.map(|edge| match edge {
+                SpriteTexelEdge::Packed(texel) => BigInt::from(texel) << SHIFT,
+                SpriteTexelEdge::Normalized(uv) => units(uv) * extent,
+            });
+            let span = uv1 - &uv0;
+            let size = units(source.size);
+            let uv_start = (uv0 * &size + &span * units(source.offset)) * &period;
+            let uv_step = span * tile;
+            let uv_divisor = (&period * size) << SHIFT;
+            let shift_uv = [&uv_start, &uv_step, &uv_divisor]
+                .into_iter()
+                .filter_map(BigInt::trailing_zeros)
+                .min()
+                .unwrap_or(0) as usize;
             TexelAxis {
                 dx: dx >> shift,
                 dy: dy >> shift,
                 start: start >> shift,
-                uv_start: &uv0 * &period,
-                uv_step: units(uv1) * extent - uv0,
-                uv_divisor: &period << SHIFT,
+                uv_start: uv_start >> shift_uv,
+                uv_step: uv_step >> shift_uv,
+                uv_divisor: uv_divisor >> shift_uv,
                 period,
                 extent,
             }

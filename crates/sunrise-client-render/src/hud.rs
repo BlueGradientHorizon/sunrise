@@ -26,7 +26,7 @@ pub(crate) mod pack_text;
 pub mod pictures;
 pub(crate) mod sprite_modifiers;
 mod sprite_repeat;
-pub(crate) use sprite_repeat::SpriteRepeat;
+pub(crate) use sprite_repeat::{SpriteRepeat, SpriteTexelEdge, SpriteTexelRegion};
 
 /// GUI sprite ids a draw asked for that the atlas lacks, each warned about once.
 static MISSING_GUI_SPRITES: std::sync::Mutex<BTreeSet<String>> =

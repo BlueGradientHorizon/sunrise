@@ -80,20 +80,32 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
     const BLUE: [u8; 4] = [0, 0, 255, 255];
     const YELLOW: [u8; 4] = [255, 255, 0, 255];
     let _gpu = crate::gfx::test_gpu::lock();
-    let Some(mut gpu) = Gpu::with_atlas([1, 4], &[RED, GREEN, BLUE, YELLOW].concat()) else {
+    let mut atlas = HudAtlas::boot();
+    (atlas.width, atlas.height) = (1, 5120);
+    atlas.pixels = vec![0; 5120 * 4];
+    atlas.pixels[5 * 4..9 * 4].copy_from_slice(&[RED, GREEN, BLUE, YELLOW].concat());
+    let Some(mut gpu) = Gpu::with_atlas([atlas.width, atlas.height], &atlas.pixels) else {
         return;
     };
-    let atlas = HudAtlas::boot();
     let atlas_rect = Rect {
         u0: 0.0,
-        v0: 0.0,
+        v0: 5.0 / 5120.0,
         u1: 1.0,
-        v1: 1.0,
+        v1: 9.0 / 5120.0,
         w: 1,
         h: 4,
     };
     let extreme = 3.0 * f32::from_bits(67 << 23); // 3 * 2^-60
     for (pose, dst, zoom, size, expected) in [
+        // y=0.5 is phase 1/4, exactly row 6 of the offset [5, 9) sprite.
+        // Interpolating the rounded atlas UVs in exact arithmetic falls below that edge.
+        (
+            [0.5, 0.0, 0.0, 2.0, 0.0, 0.0],
+            [0.0, 0.0, 8.0, 3.0],
+            1.0,
+            [4, 6],
+            [GREEN, YELLOW, GREEN, YELLOW, GREEN, YELLOW],
+        ),
         // Extreme scale: the first centers hit phases 2/3, 0 and 1/3.
         (
             [1.0, 0.0, 0.0, extreme, 0.0, 0.0],

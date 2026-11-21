@@ -2,7 +2,9 @@
 //! metadata), buttons, sliders, tiled menu backgrounds, separators and the
 //! EditBox text field with vanilla cursor, selection and scrolling.
 use crate::{
-    hud::{GuiSprite, HudAtlas, HudBatch, Rect, SpriteRepeat, rgba},
+    hud::{
+        GuiSprite, HudAtlas, HudBatch, Rect, SpriteRepeat, SpriteTexelEdge, SpriteTexelRegion, rgba,
+    },
     hud_layout::{Blend, IDENTITY, Pose, pose_point},
     text::Text,
 };
@@ -160,11 +162,28 @@ impl SpriteViewport {
     }
 }
 
+#[derive(Clone, Copy)]
+struct SpriteSource {
+    rect: Rect,
+    atlas_size: [u32; 2],
+    uv_overridden: [bool; 4],
+}
+
+impl SpriteSource {
+    fn packed(rect: Rect, atlas_size: [u32; 2]) -> Self {
+        Self {
+            rect,
+            atlas_size,
+            uv_overridden: [false; 4],
+        }
+    }
+}
+
 /// `blitTiledSprite`: `src` (a region of a sprite `size` large, in its units) repeated over
 /// `dst` from its top left, the last row and column cut.
 fn tile(
     batch: &mut HudBatch,
-    r: Rect,
+    source: SpriteSource,
     size: [f32; 2],
     [sx, sy, sw, sh]: [f32; 4],
     dst @ [dx, dy, dw, dh]: [f32; 4],
@@ -195,18 +214,32 @@ fn tile(
     if subpixel {
         // A device sample crosses a tile in one step. Emit the destination once; the
         // renderer resolves the atlas texels at the active target's pixel centers.
-        let uv = sub(r, size, [sx, sy, sw, sh]);
+        let Rect { u0, v0, u1, v1, .. } = source.rect;
+        let uvs = [u0, v0, u1, v1];
+        let edge = |i: usize| {
+            if source.uv_overridden[i] {
+                SpriteTexelEdge::Normalized(uvs[i])
+            } else {
+                // Decode the *whole* packed sprite's integer edges. At the atlas's
+                // maximum size the normalization round trip is well under half a texel.
+                SpriteTexelEdge::Packed((uvs[i] * source.atlas_size[i % 2] as f32).round() as u32)
+            }
+        };
         batch.sprite_repeats.push(SpriteRepeat {
             pose: viewport.pose,
             origin: [dx, dy],
             period: [sw, sh],
-            uv,
+            source: std::array::from_fn(|i| SpriteTexelRegion {
+                edges: [edge(i), edge(i + 2)],
+                offset: [sx, sy][i],
+                size: size[i],
+            }),
         });
         let repeat = batch.sprite_repeats.len() as u32;
         let start = batch.vertices.len();
         batch.quad(
             [[dx, dy], [dx + dw, dy], [dx + dw, dy + dh], [dx, dy + dh]],
-            [[uv.u0, uv.v0]; 4],
+            [[0.0; 2]; 4],
             color,
         );
         for vertex in &mut batch.vertices[start..] {
@@ -227,7 +260,7 @@ fn tile(
     };
     for (y, h) in axis(oy, height, periods[1], lo_y, hi_y) {
         for (x, w) in axis(ox, width, periods[0], lo_x, hi_x) {
-            batch.rect_uv(x, y, w, h, sub(r, size, [sx, sy, w, h]), color);
+            batch.rect_uv(x, y, w, h, sub(source.rect, size, [sx, sy, w, h]), color);
         }
     }
 }
@@ -315,6 +348,7 @@ pub fn blit_gui_sprite(
             .all(f32::is_finite)
     };
     let start = batch.vertices.len();
+    let atlas_size = [atlas.width, atlas.height];
     match crate::hud::sprite_modifiers::draws(atlas, sprite, rect, dst, color) {
         Some(draws) => {
             if !draws.iter().all(|draw| finite(draw.at)) {
@@ -328,7 +362,11 @@ pub fn blit_gui_sprite(
                 let viewport = scaling.and_then(|_| SpriteViewport::new(batch, pose, scissor));
                 draw_sprite(
                     batch,
-                    draw.rect,
+                    SpriteSource {
+                        rect: draw.rect,
+                        atlas_size,
+                        uv_overridden: draw.uv_overridden,
+                    },
                     scaling,
                     draw.at,
                     draw.color,
@@ -341,7 +379,14 @@ pub fn blit_gui_sprite(
                 return false;
             }
             let viewport = base_scaling.and_then(|_| SpriteViewport::new(batch, pose, scissor));
-            draw_sprite(batch, rect, base_scaling, dst, color, viewport.as_ref());
+            draw_sprite(
+                batch,
+                SpriteSource::packed(rect, atlas_size),
+                base_scaling,
+                dst,
+                color,
+                viewport.as_ref(),
+            );
         }
     }
     if !batch.try_pose_since(start, pose) {
@@ -364,27 +409,37 @@ pub fn blit_gui_sprite(
 }
 fn draw_sprite(
     batch: &mut HudBatch,
-    r: Rect,
+    source: SpriteSource,
     scaling: Option<GuiSpriteScaling>,
     dst @ [x, y, w, h]: [f32; 4],
     color: u32,
     viewport: Option<&SpriteViewport>,
 ) {
     match scaling {
-        Some(GuiSpriteScaling::NineSlice(n)) => draw_nine_slice(batch, r, n, dst, color, viewport),
+        Some(GuiSpriteScaling::NineSlice(n)) => {
+            draw_nine_slice(batch, source, n, dst, color, viewport)
+        }
         Some(GuiSpriteScaling::Tile(size)) => {
             let [sw, sh] = size.map(|n| n as f32);
             if let Some(viewport) = viewport {
-                tile(batch, r, [sw, sh], [0.0, 0.0, sw, sh], dst, color, viewport);
+                tile(
+                    batch,
+                    source,
+                    [sw, sh],
+                    [0.0, 0.0, sw, sh],
+                    dst,
+                    color,
+                    viewport,
+                );
             }
         }
-        None if w != 0.0 && h != 0.0 => batch.rect_uv(x, y, w, h, r, color),
+        None if w != 0.0 && h != 0.0 => batch.rect_uv(x, y, w, h, source.rect, color),
         None => {}
     }
 }
 fn draw_nine_slice(
     batch: &mut HudBatch,
-    r: Rect,
+    source: SpriteSource,
     n: NineSlice,
     [x, y, w, h]: [f32; 4],
     color: u32,
@@ -398,6 +453,7 @@ fn draw_nine_slice(
     let [l, t, rr, b] = n.border.map(|v| v as f32);
     let (half_w, half_h) = ((w / 2.0).floor(), (h / 2.0).floor());
     let (l, rr, t, b) = (l.min(half_w), rr.min(half_w), t.min(half_h), b.min(half_h));
+    let r = source.rect;
     // blitSprite(sprite, width, height, textureX, textureY, x, y, w, h).
     let part = |batch: &mut HudBatch, tx: f32, ty: f32, dst: [f32; 4]| {
         if dst[2] != 0.0 && dst[3] != 0.0 {
@@ -419,7 +475,7 @@ fn draw_nine_slice(
         if n.stretch_inner {
             batch.rect_uv(dst[0], dst[1], dst[2], dst[3], sub(r, size, src), color);
         } else if let Some(viewport) = viewport {
-            tile(batch, r, size, src, dst, color, viewport);
+            tile(batch, source, size, src, dst, color, viewport);
         }
     };
     if w == sw && h == sh {
@@ -483,7 +539,7 @@ pub fn tiled_sized(
     if let Some(viewport) = SpriteViewport::new(batch, IDENTITY, None) {
         tile(
             batch,
-            r,
+            SpriteSource::packed(r, [atlas.width, atlas.height]),
             size,
             [0.0, 0.0, size[0], size[1]],
             [x, y, w, h],
@@ -2166,15 +2222,18 @@ mod tests {
         );
     }
     /// A sprite filling the atlas, `w x h` texels as a 32x pack draws it.
-    fn sprite(w: u32, h: u32) -> Rect {
-        Rect {
-            u0: 0.0,
-            v0: 0.0,
-            u1: 1.0,
-            v1: 1.0,
-            w,
-            h,
-        }
+    fn sprite(w: u32, h: u32) -> SpriteSource {
+        SpriteSource::packed(
+            Rect {
+                u0: 0.0,
+                v0: 0.0,
+                u1: 1.0,
+                v1: 1.0,
+                w,
+                h,
+            },
+            [w, h],
+        )
     }
     fn faithful(json: &str) -> NineSlice {
         let GuiSpriteScaling::NineSlice(slice) =

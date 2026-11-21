@@ -146,7 +146,8 @@ pub trait GuiCanvas {
     /// `Blend::Textured` and `Blend::Crosshair`. Pack sprite modifiers are applied as in the HUD;
     /// non-finite resulting geometry is refused without affecting earlier draws. Tiled regions
     /// repeat from their original origin. Each render-target pixel samples its own tile at
-    /// the pixel center; a sample just before a seam stays on the ending side.
+    /// the pixel center; a sample just before a seam stays on the ending side, and a sample
+    /// on an interior texel edge selects the texel that starts there.
     fn blit_sprite(
         &mut self,
         name: &str,

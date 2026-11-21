@@ -1,0 +1,3 @@
+ids = ["method:GuiCanvas::blit_sprite"]
+why = "Vanilla GuiGraphicsExtractor.blitTiledSprite and TiledBlitRenderState.buildVertices use the sprite's subregion and original tile origin; NeoForge's GuiGraphicsExtractor patch leaves that tiled path intact. The bounded repeat now carries the integer placement of TextureAtlasSprite and derives subregion edges in texel space, so a sample exactly on an interior edge selects the texel beginning there even on an offset, non-power-of-two atlas."
+migrate = "Keep GuiCanvas::blit_sprite and GuiSpriteRegion unchanged. No call or manifest change is needed."

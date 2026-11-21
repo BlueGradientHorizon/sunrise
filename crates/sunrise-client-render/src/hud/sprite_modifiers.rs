@@ -22,6 +22,7 @@ pub struct SpriteModifiers {
 pub(crate) struct SpriteDraw {
     pub key: String,
     pub rect: SpriteRect,
+    pub uv_overridden: [bool; 4],
     pub at: [f32; 4],
     pub color: u32,
 }
@@ -111,6 +112,7 @@ fn apply(
     Some(SpriteDraw {
         key,
         rect,
+        uv_overridden: change.uv.map(|uv| uv.is_some()),
         at: [at[0] + dx, at[1] + dy, at[2] + dw, at[3] + dh],
         color: change.color.map_or(color, crate::hud_layout::abgr),
     })
@@ -169,9 +171,12 @@ impl SpriteModifiers {
                 &mut d.rect.u1,
                 &mut d.rect.v1,
             ];
-            for (slot, uv) in uvs.into_iter().zip(overlay.uv) {
+            for ((slot, overridden), uv) in
+                uvs.into_iter().zip(&mut d.uv_overridden).zip(overlay.uv)
+            {
                 if let Some(uv) = uv {
                     *slot = uv;
+                    *overridden = true;
                 }
             }
             if let Some(c) = overlay.color {
