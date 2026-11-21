@@ -1,0 +1,2 @@
+sunrise-client game::machines::native_items::storage_attempt_tests::item_capability_presence_does_not_open_loot_or_load_chunks lib daily child-process
+sunrise-client game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers lib daily child-process

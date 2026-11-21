@@ -235,6 +235,20 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         )]
         .into()
     };
+    let root = fixture_root();
+    let builtin = sunrise_protocol::registry::Builtin::load(
+        &sunrise_protocol::registry::Builtin::find(&root).unwrap(),
+    )
+    .unwrap();
+    let kinds = &builtin.get("minecraft:block_entity_type").unwrap().names;
+    let resolve_kinds = || {
+        // This fresh fixture bypasses content loading, which normally resolves
+        // provider keys against the engine's block-entity registry.
+        mod_api::__private::resolve_block_entity_types(kinds.iter().map(String::as_str), |id| {
+            kinds.iter().any(|kind| kind == id).then_some(())
+        })
+        .unwrap();
+    };
     let server_state = std::cell::Cell::new(None);
     let setup = |game: &mut Game<'_>, lit: bool| {
         let registry = game.pack.assets.registry;
@@ -262,7 +276,8 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         state
     };
     mod_platform::testing::with_mods(mods(), || {
-        with_game_role(fixture_root(), ExecutionRole::IntegratedServer, |game| {
+        with_game_role(root, ExecutionRole::IntegratedServer, |game| {
+            resolve_kinds();
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
@@ -294,6 +309,7 @@ fn placement_and_prediction_choose_from_their_local_item_providers() {
         });
     });
     on_a_client(mods(), |game| {
+        resolve_kinds();
         game.remote.as_mut().unwrap().logged_in = true;
         setup(game, false);
         let guess = game
