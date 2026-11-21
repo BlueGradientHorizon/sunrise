@@ -75,6 +75,10 @@ pub struct Shrunk {
 /// `case`, smaller, still failing with `signature`: steps dropped, then files, then runs of
 /// lines (halving the run until single lines), then files again, each kept only while the
 /// failure stays.
+///
+/// A `refusal` failure is about a program that must load (`request.expect`): without its stage
+/// files it would be a missing program, which loads nothing and needs no note (spec 2.5), so
+/// the failure would "stay" with the cause gone. Those files are never removed or emptied.
 pub fn shrink(
     ev: &mut dyn Evaluate,
     case: &Case,
@@ -82,6 +86,9 @@ pub fn shrink(
     signature: &str,
     mut budget: Budget,
 ) -> Shrunk {
+    let kept = |path: &str| {
+        signature.starts_with("refusal|") && request.expect.iter().any(|p| case.owns(p, path))
+    };
     let mut steps = case.steps.clone();
     let mut changed = true;
     while changed {
@@ -111,7 +118,7 @@ pub fn shrink(
     // Biggest first: they hold the most to remove.
     let mut paths: Vec<String> = files.keys().cloned().collect();
     paths.sort_by_key(|p| std::cmp::Reverse(files[p].len()));
-    for path in &paths {
+    for path in paths.iter().filter(|p| !kept(p)) {
         if !budget.spend() {
             break;
         }
@@ -134,9 +141,11 @@ pub fn shrink(
             while i < lines.len() && budget.spend() {
                 let mut fewer = lines.clone();
                 fewer.drain(i..(i + run).min(lines.len()));
+                let text = fewer.join(&b'\n');
                 let mut candidate = files.clone();
-                candidate.insert(path.clone(), fewer.join(&b'\n'));
-                if fails(ev, &candidate, request, signature) {
+                let emptied = text.iter().all(u8::is_ascii_whitespace) && kept(&path);
+                candidate.insert(path.clone(), text);
+                if !emptied && fails(ev, &candidate, request, signature) {
                     lines = fewer;
                     files = candidate;
                 } else {
@@ -150,7 +159,7 @@ pub fn shrink(
         }
     }
     // Files the lines left empty, or no longer needed.
-    let paths: Vec<String> = files.keys().cloned().collect();
+    let paths: Vec<String> = files.keys().filter(|p| !kept(p)).cloned().collect();
     for path in paths {
         if !budget.spend() {
             break;

@@ -8,14 +8,14 @@
 
 crates/sunrise-render-shaderpack/examples/shader_fuzz/ does the work. A case is a pack of the corpus (the seed pack
 under examples/shader_fuzz/seeds/, and each zip or folder of --corpus, which is read and never copied into the
-repository) cut down to one or two programs and what they include, then mutated by one to six named steps
-(declaration forms, #include chains and cycles, preprocessor nesting and macros, array sizes, names that collide with
-the game's inputs or later keywords, number extremes, truncation, encodings, duplicated or reordered lines,
-shaders.properties values) drawn from a SplitMix64 stream seeded per case. Each case loads through load_post as the
-game loads a pack, with the game's inputs, in a worker process, and must keep every invariant: no panic, within
---time-limit and --memory-limit, every stage file within --size-limit once preprocessed, every loaded program valid
-in naga, every note naming its subject (and a program the unmutated case loaded loaded or named), the same output
-twice.
+repository) cut down to one or two programs (both stages, or compute shaders only) and what they include, then
+mutated by one to six named steps (declaration forms, #include chains and cycles, preprocessor nesting and macros,
+array sizes, names that collide with the game's inputs or later keywords, number extremes, truncation, encodings,
+duplicated or reordered lines, shaders.properties values) drawn from a SplitMix64 stream seeded per case. Each case
+loads through load_post as the game loads a pack, with the game's inputs, in a worker process, and must keep every
+invariant: no panic, within --time-limit and --memory-limit, every stage file within --size-limit once preprocessed,
+every loaded program valid in naga, every note starting with a subject (a `key` or a word before its first ": ") and
+a program the unmutated case loaded loaded or named by a note, the same output twice.
 
 Failures are grouped by invariant, first failing step and detail. Each group's smallest case is shrunk while the
 same failure stays (steps, then files, then runs of lines) and written as a pack folder under

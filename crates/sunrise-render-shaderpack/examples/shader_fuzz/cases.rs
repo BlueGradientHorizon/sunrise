@@ -45,7 +45,7 @@ pub const DIMENSIONS: [(&str, i32); 3] = [
 ];
 
 /// A corpus pack: its files by path inside `shaders`, and per dimension the folder the game
-/// loads and the programs (both stages there) in it.
+/// loads and the programs in it: both stages there, or compute shaders only.
 pub struct Source {
     pub name: String,
     pub files: BTreeMap<String, Vec<u8>>,
@@ -62,13 +62,26 @@ impl Source {
             .collect();
         let folders = DIMENSIONS.map(|(id, legacy)| {
             let folder = sunrise_shaders::dimension_folder_named(&pack, id, legacy);
-            let programs = pack
-                .list(&folder)
+            let listed = pack.list(&folder);
+            let has = |n: &str| pack.exists(&in_folder(&folder, n));
+            // Programs with both stages (a geometry or tessellation stage goes with them), and
+            // composite-style programs of compute shaders only (spec 1.3, 2.2).
+            let mut programs: Vec<String> = listed
                 .iter()
                 .filter_map(|f| f.strip_suffix(".fsh"))
-                .filter(|n| pack.exists(&in_folder(&folder, &format!("{n}.vsh"))))
+                .filter(|n| has(&format!("{n}.vsh")))
                 .map(str::to_owned)
                 .collect();
+            programs.extend(
+                listed
+                    .iter()
+                    .filter_map(|f| f.strip_suffix(".csh"))
+                    .map(compute_owner)
+                    .filter(|n| compute_only(n) && !has(&format!("{n}.fsh")))
+                    .map(str::to_owned),
+            );
+            programs.sort();
+            programs.dedup();
             (folder, programs)
         });
         Some(Source {
@@ -77,6 +90,29 @@ impl Source {
             folders,
         })
     }
+}
+
+/// The program a compute shader belongs to: `composite1_b` → `composite1`.
+fn compute_owner(stem: &str) -> &str {
+    match stem.rsplit_once('_') {
+        Some((owner, c)) if c.len() == 1 && c.as_bytes()[0].is_ascii_lowercase() => owner,
+        _ => stem,
+    }
+}
+
+/// A program that may be compute shaders alone: `setup`, and the composite-style passes
+/// with their numbers (spec 2.2).
+fn compute_only(name: &str) -> bool {
+    let base = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    [
+        "setup",
+        "begin",
+        "prepare",
+        "deferred",
+        "composite",
+        "shadowcomp",
+    ]
+    .contains(&base)
 }
 
 pub fn in_folder(folder: &str, name: &str) -> String {
@@ -1313,6 +1349,7 @@ mod tests {
         let corpus = seeds();
         let names = [
             "composite",
+            "composite1",
             "deferred",
             "final",
             "gbuffers_terrain",
@@ -1322,6 +1359,26 @@ mod tests {
         for (folder, programs) in &corpus[0].folders {
             assert_eq!(folder, "");
             assert_eq!(programs, &names);
+        }
+    }
+
+    #[test]
+    fn compute_shaders_alone_make_a_composite_style_program() {
+        assert_eq!(compute_owner("shadowcomp_b"), "shadowcomp");
+        assert_eq!(compute_owner("composite12"), "composite12");
+        assert_eq!(compute_owner("composite_ab"), "composite_ab");
+        for name in [
+            "setup",
+            "begin",
+            "prepare1",
+            "deferred",
+            "composite12",
+            "shadowcomp",
+        ] {
+            assert!(compute_only(name), "{name}");
+        }
+        for name in ["final", "gbuffers_terrain", "shadow", "composite_ab"] {
+            assert!(!compute_only(name), "{name}");
         }
     }
 

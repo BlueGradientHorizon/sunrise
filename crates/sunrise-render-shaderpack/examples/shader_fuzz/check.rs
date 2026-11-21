@@ -204,9 +204,10 @@ pub fn observe(post: &Post) -> Observed {
     seen
 }
 
-/// A note names what it is about: a `` `key` ``, a program or a `file:line`, before a colon.
-/// The one note about the whole pack, that it has no program for a kind of geometry
-/// (`no program for terrain; nothing draws it`), refuses nothing the pack wrote.
+/// A note starts with a subject: a non-empty `` `key` ``, or a word without spaces (a program,
+/// a key, a `file:line`) before its first `: `. Whether that word is one of the pack's names is
+/// not checked. The one note about the whole pack, that it has no program for a kind of
+/// geometry (`no program for terrain; nothing draws it`), refuses nothing the pack wrote.
 pub fn named(note: &str) -> bool {
     if note.starts_with("no program for ") {
         return true;
