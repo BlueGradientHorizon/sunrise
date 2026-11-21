@@ -1,4 +1,4 @@
-use super::{run, success};
+use super::{icon_png, run, success};
 use serde_json::json;
 use std::{fs, io::Read, path::Path};
 use sunrise_mod_package::{
@@ -256,6 +256,8 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     let entry = |folder: &str| -> Entry {
         toml::from_str(&fs::read_to_string(root.join(folder).join(ROW)).unwrap()).unwrap()
     };
+    let icon = icon_png();
+    fs::write(root.join("icon.png"), &icon).unwrap();
     success(fixture.publish("new", None, true));
     fixture.assert_assets_staged("new");
     fs::create_dir_all(root.join("base/mods")).unwrap();
@@ -286,6 +288,14 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     );
     let draft = fs::read_to_string(root.join("new/PULL_REQUEST.md")).unwrap();
     assert!(draft.contains(&format!("{ASSET_BASE}/{signature}")));
+    let staged_icon = "icons/release_probe.png";
+    assert_eq!(fs::read(root.join("new").join(staged_icon)).unwrap(), icon);
+    assert!(
+        draft
+            .lines()
+            .any(|line| line.contains(ROW) && line.contains(staged_icon))
+    );
+    assert!(!draft.contains(&format!("{ASSET_BASE}/{staged_icon}")));
     assert!(!draft.contains("staging") && !draft.contains("Artifact URL"));
     assert_eq!(
         entry("new").versions[0].file,
@@ -331,6 +341,9 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     fs::write(path, manifest).unwrap();
     success(fixture.publish("append", Some("reviewed"), true));
     fixture.assert_assets_staged("append");
+    assert!(!root.join("append").join(staged_icon).exists());
+    let append_draft = fs::read_to_string(root.join("append/PULL_REQUEST.md")).unwrap();
+    assert!(!append_draft.contains(staged_icon));
     let append = entry("append");
     let mut restored = append.clone();
     assert_eq!(

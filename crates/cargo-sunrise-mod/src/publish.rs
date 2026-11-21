@@ -633,7 +633,12 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             let signature = &submission.descriptor_signature_name;
             body.push_str(&format!("- `{signature}`: `{base}/{signature}`\n"));
         }
-        body.push_str(&format!("\nThen submit `mods/{id}.toml` in the registry pull request. Do not commit the release assets.\n"));
+        let staged_icon = if icons.is_some() {
+            format!(" and `icons/{id}.png`")
+        } else {
+            String::new()
+        };
+        body.push_str(&format!("\nThen submit `mods/{id}.toml`{staged_icon} in the registry pull request. Do not commit the release assets.\n"));
     }
     for dir in [Some(&mods), Some(&files), icons.as_ref()]
         .into_iter()
