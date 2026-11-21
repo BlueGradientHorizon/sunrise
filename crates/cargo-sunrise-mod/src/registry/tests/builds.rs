@@ -87,8 +87,9 @@ impl Release {
 
     fn add_build(&self, descriptor: &[u8], signature: &str) {
         let hash = Self::keep(&self.0, descriptor);
-        let name = registry::builds::descriptor_name(ID, VERSION, BUILD_TAG);
         self.0.edit(ID, |t| {
+            let entry: registry::Entry = toml::from_str(&t).unwrap();
+            let name = registry::builds::descriptor_name(ID, &entry.versions[0].version, BUILD_TAG);
             format!(
                 "{t}[[versions.builds]]\nsunrise='{BUILD_TAG}'\n\
             binaries='{URL}/{name}'\nsha256='{hash}'\nsignature='''{signature}'''\n"
@@ -156,6 +157,28 @@ fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
     assert_eq!(
         version.native_binaries,
         fixture.project(ID).unwrap().versions[0].native_binaries
+    );
+}
+
+#[test]
+fn rebuilds_use_the_signed_sources_canonical_version_without_changing_the_label() {
+    let release = Release::new("source.smod");
+    release.0.edit(ID, |text| {
+        text.replace("version='1.0.0'", "version='1.0'")
+            .replace("release_probe-1.0.0.smod", "release_probe-1.0.smod")
+    });
+    release.0.make_base();
+    release.use_descriptor("shorthand");
+    release.check().unwrap();
+    let index = release.build();
+    let row = &index.project(ID).unwrap().versions[0];
+    assert_eq!(row.version, "1.0");
+    assert_eq!(row.file.name, "release_probe-1.0.smod");
+    assert_eq!(row.native_binaries.len(), 2);
+    assert!(
+        row.native_binaries
+            .iter()
+            .all(|binary| binary.file.name.starts_with("release_probe-1.0+"))
     );
 }
 

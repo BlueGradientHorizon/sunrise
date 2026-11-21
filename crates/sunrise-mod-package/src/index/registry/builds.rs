@@ -152,7 +152,13 @@ impl Submission<'_> {
             .map_err(|e| format!("{}: {e}", self.name))?;
         let descriptor: Descriptor =
             serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", self.name))?;
-        if descriptor.id != self.entry.id || descriptor.version != self.version.version {
+        if descriptor.id != self.entry.id
+            || !super::super::same_version(
+                &self.entry.kind,
+                &descriptor.version,
+                &self.version.version,
+            )
+        {
             return Err(format!(
                 "{}: descriptor id or version does not match the entry",
                 self.name
@@ -168,7 +174,7 @@ impl Submission<'_> {
         for archive in &descriptor.archives {
             let expected = archive_name(
                 &descriptor.id,
-                &descriptor.version,
+                &self.version.version,
                 &self.row.sunrise,
                 &archive.target,
             );
@@ -319,10 +325,14 @@ pub(super) fn verify(
                 "must cover every SDK host: missing {missing:?}, unexpected {extra:?}"
             )));
         }
+        let identity = format!(
+            "{} {} {} {} unwind",
+            descriptor.build, descriptor.id, source.manifest.version, descriptor.rust
+        );
         for archive in &descriptor.archives {
             let checked = read_regular(src.files, Path::new(&archive.sha256), archive.size)
                 .map_err(|e| e.to_string())
-                .and_then(|bytes| check_archive(bytes, archive, &descriptor, submission.key));
+                .and_then(|bytes| check_archive(bytes, archive, &identity, submission.key));
             checked.map_err(|e| format!("{}: {e}", archive.name))?;
         }
         records.extend(descriptor.archives.into_iter().map(|archive| NativeBinary {
@@ -348,18 +358,14 @@ pub(super) fn verify(
 fn check_archive(
     bytes: Vec<u8>,
     archive: &Archive,
-    descriptor: &Descriptor,
+    identity: &str,
     key: &str,
 ) -> Result<(), String> {
     if bytes.len() as u64 != archive.size || crate::index::sha256(&bytes) != archive.sha256 {
         return Err("archive size or SHA-256 does not match the descriptor".into());
     }
     crate::index::verify_signature_bytes(key, &archive.signature, &bytes)?;
-    let identity = format!(
-        "{} {} {} {} unwind",
-        descriptor.build, descriptor.id, descriptor.version, descriptor.rust
-    );
-    inspect_archive(bytes, &archive.target, &identity)
+    inspect_archive(bytes, &archive.target, identity)
 }
 
 /// The library suffix the SDK host can load, including hosts with a `-server` suffix.
