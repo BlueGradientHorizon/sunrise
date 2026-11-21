@@ -162,10 +162,34 @@ impl Game<'_> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_held(*id);
         }
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_game_stack(place);
+        if !self.places_simulated() {
+            return None;
         }
-        self.unscoped_game_stack(place)
+        if let ItemPlace::ItemEntity { id } = place {
+            return self
+                .dropped
+                .iter()
+                .find(|e| e.id == *id)
+                .map(|e| e.stack.clone());
+        }
+        if let ItemPlace::EntitySlot { entity, slot } = place {
+            return self
+                .edit_entity_slots(*entity, |slots, _| {
+                    slots.get(*slot).cloned().flatten().filter(|s| s.count > 0)
+                })
+                .flatten();
+        }
+        if let ItemPlace::Equipment { entity, slot } = place {
+            return self
+                .equipment_stack(*entity, *slot)
+                .flatten()
+                .filter(|s| s.count > 0);
+        }
+        let mut stack = None;
+        self.native_as_player(self.place_player(place)?, |g| {
+            stack = g.player_place(place).and_then(|slot| slot.clone());
+        });
+        stack.filter(|s| s.count > 0)
     }
     /// Component-only write, without going through an equipment setter or stopping item use.
     pub(super) fn game_edit_stack(
@@ -601,8 +625,6 @@ impl Game<'_> {
         }
     }
 }
-
-include!("native_item_places/tick_item_read.rs");
 
 #[cfg(test)]
 pub(super) mod tests {

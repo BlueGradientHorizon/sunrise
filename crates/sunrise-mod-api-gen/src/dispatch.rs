@@ -883,13 +883,6 @@ pub(super) fn emit<'a>(
                 inits.join(", "),
             )
         };
-        let write_back = if name == "block_entity_tick" {
-            format!(
-                "*{event}.reply = if tick_changed {{ BlockEntityTickReply::Changed }} else {{ BlockEntityTickReply::Unchanged }}; {write_back}"
-            )
-        } else {
-            write_back
-        };
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
@@ -900,7 +893,6 @@ pub(super) fn emit<'a>(
             let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace);
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (!reply_outside_event && !shared_collect_output)
-                || (!write_back.is_empty() && name == "block_entity_tick")
                 || !stack_outputs.is_empty()
                 || hook.owner.is_some()
                 || hook.context == Some(PhaseContext::ChunkDisk)
@@ -919,11 +911,6 @@ pub(super) fn emit<'a>(
             (String::new(), write_back)
         } else {
             (write_back, String::new())
-        };
-        let build = if name == "block_entity_tick" {
-            format!("{build} let mut tick_changed = false;")
-        } else {
-            build
         };
         // A trait mod's call is marked with the mod for a panic to name.
         let each = match &hook.owner {
@@ -1014,9 +1001,6 @@ pub(super) fn emit<'a>(
             };
             let plain_call = run(&format!("{callee}.{name}({invoke})"));
             let invocation = match contract {
-                _ if name == "block_entity_tick" => format!(
-                    "*{event}.reply = BlockEntityTickReply::Changed; {event}.entity.__begin_tick_listener(); {plain_call}; let listener_reply = *{event}.reply; {event}.entity.__finish_tick_listener(listener_reply); tick_changed |= listener_reply == BlockEntityTickReply::Changed;"
-                ),
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",
                     o = out.unwrap()

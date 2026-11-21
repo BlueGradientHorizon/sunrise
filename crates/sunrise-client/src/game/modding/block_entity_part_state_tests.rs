@@ -47,14 +47,17 @@ struct Press;
 impl BlockPart for Press {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Press {
-    fn block_entity_tick(&self, host: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-        let level = host.level(host.dimension()).unwrap();
+    fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+        let (level, pos, entity) = event
+            .subject
+            .with_view(|entity| (entity.level(), entity.position(), entity.handle()))
+            .unwrap();
+        let host = event.subject.host();
         assert_eq!(
-            host.block_entity(level, event.pos),
-            None,
-            "out for its tick"
+            host.block_entity(level, pos),
+            Some(entity),
+            "resident during its tick"
         );
-        let entity = host.block_entity_identity(level, event.pos).unwrap();
         Press::edit_state(host, entity, |_, ticks| *ticks += 1).unwrap();
     }
 }
@@ -391,7 +394,12 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
         assert_eq!(entity.set_data_slots(game, vec![23]), Ok(true));
         assert_eq!(entity.set_data_slot(game, 0, 42), Ok(true));
         assert_eq!(entity.data_slots(game), Some(vec![42]));
-        assert!(game.world.modified.is_empty(), "menu data is not saved");
+        assert!(
+            game.world.modified.contains(&(0, 0)),
+            "successful menu edits mark the chunk even though slots are transient"
+        );
+        game.save_level(true).unwrap();
+        assert!(game.world.modified.is_empty());
 
         // Both growing a lazy slot list and editing an existing slot must save
         // without an explicit notification, a ticker, or another dirty write.

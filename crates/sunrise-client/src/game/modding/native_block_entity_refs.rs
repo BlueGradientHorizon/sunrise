@@ -25,14 +25,14 @@ impl Game<'_> {
     }
 
     /// Find a block entity in a loaded chunk of an open level, or on a client in
-    /// the level it shows. An entity taken out for its tick cannot be read in that tick.
+    /// the level it shows.
     pub(super) fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
         let world = self.native_level_read_world(level)?;
         world_block_entity(world, level, pos)
     }
 
-    /// `block_entity`, also for a block entity taken out for its own tick: its generation
-    /// stays in place while it is out.
+    /// `block_entity`, also for a block entity temporarily detached for a menu operation:
+    /// its generation stays in place while it is out.
     pub(super) fn block_entity_identity(
         &self,
         level: LevelRef,
@@ -246,6 +246,8 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data[index] = value);
+        self.transactions
+            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 
@@ -273,6 +275,8 @@ impl Game<'_> {
             return Ok(false);
         }
         self.write_mod_block_entity(key, |block_entity| block_entity.data = values);
+        self.transactions
+            .mark_block_entity_saved(self.dim, &mut self.world.modified, key);
         Ok(true)
     }
 

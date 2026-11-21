@@ -143,9 +143,7 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
     use self::mod_api::StandaloneModelRegistration;
-    pub(super) use self::mod_api::{
-        BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
-    };
+    pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
     pub use sunrise_mod_api_macros::__subscriptions;
 }
 use generated::*;
@@ -707,5 +705,5 @@ fn part(id: u32, calls: &Arc<Mutex<Vec<u32>>>) -> &'static Mod {
 
 mod stubs {
     pub(super) use super::generated::mod_api::LivingRef;
-    pub(super) use crate::tests::mod_api::mod_api::{BlockEntityTickReply, DamageContainer};
+    pub(super) use crate::tests::mod_api::mod_api::DamageContainer;
 }

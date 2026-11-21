@@ -98,10 +98,22 @@ impl Game<'_> {
 
     /// What a handle names now, or None for a stale or foreign one.
     pub(super) fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_native_entity_target(entity);
+        if self.held_out.contains(&entity.id())
+            || !self.is_logical_server()
+            || self.native_lifecycle.epoch() != Some(entity.epoch())
+        {
+            return None;
         }
-        self.unscoped_native_entity_target(entity)
+        let sunrise_client::join_seq::residency::table::EntityLookup::Found { location, value } =
+            self.server_resident_entity(entity.id())
+        else {
+            return None;
+        };
+        // Players are server-wide records. Ordinary body operations retain
+        // their existing current-level domain; source membership is global.
+        (matches!(value, Target::Player | Target::Guest(_))
+            || location.owner.dimension == self.dim.key())
+        .then_some(value)
     }
     /// What a handle names on a client: the local player, or an entity the
     /// server told this client of (`ClientLevel.getEntity`, whose entities are
@@ -231,11 +243,33 @@ impl Game<'_> {
     /// All lookup members of the active server level, without spatial filtering.
     /// Parts are not lookup members. Refuses remote, stale and parked levels.
     pub(super) fn level_all_entities(&self, level: LevelRef) -> Option<Vec<EntityRef>> {
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_level_all_entities(level);
+        if !self.is_logical_server()
+            || !self.level_handle_current(level)
+            || level.dimension() != self.dim.key()
+        {
+            return None;
         }
-        self.unscoped_level_all_entities(level)
+        let ids = self
+            .resident_entities
+            .table
+            .borrow_mut()
+            .level_entities(level.dimension());
+        ids.into_iter()
+            .filter(|id| {
+                !self
+                    .persist
+                    .removals
+                    .iter()
+                    .chain(self.persist.destroying_vehicles.iter())
+                    .any(|target| matches!(*target, Target::Boat(n) | Target::Cart(n) if n == *id))
+            })
+            .map(|id| {
+                let entity = EntityRef::new(level.epoch(), id);
+                self.native_entity_target(entity).map(|_| entity)
+            })
+            .collect()
     }
+
     /// Entities whose bounding boxes intersect this box (`Level.getEntities`).
     /// Face-only contact does not intersect; spectator players are excluded.
     /// Returns None for a stale handle or a parked level: its entity handles
@@ -978,8 +1012,104 @@ fn uuid_from_words(words: [i32; 4]) -> u128 {
         .fold(0, |uuid, w| (uuid << 32) | u128::from(*w as u32))
 }
 
-include!("native_entity_refs/tick_item_read.rs");
-include!("native_entity_refs/tick_item_selector.rs");
+#[cfg(test)]
+mod general_handle_tests {
+    use super::tests::with_game;
+    use crate::game::commands::Target;
+    use crate::game::general::GeneralRow;
+    use mod_api::{EntityRef, WorldEpoch};
+    use sunrise_core::geometry::Vec3;
+
+    fn row(id: u32, uuid: [i32; 4], fall: f64) -> GeneralRow {
+        GeneralRow {
+            id,
+            uuid,
+            join: sunrise_client::join_seq::JoinSeq::UNJOINED,
+            type_slot: 0,
+            position: Vec3::new(0.5, 64.0, 0.5),
+            previous: Vec3::new(0.5, 64.0, 0.5),
+            velocity: Vec3::ZERO,
+            rotation: [0.0, 0.0],
+            owner: None,
+            fall_distance: fall,
+            payload_version: 1,
+            payload_bytes: Vec::new(),
+            mount: None,
+            vehicle_order: 0,
+            boarding_cooldown: 0,
+            attachment_lifetime: Default::default(),
+        }
+    }
+
+    /// #792's stale-handle row, as the id counter really behaves: a removed
+    /// row's handle refuses, and the next row never reuses the id — ids come
+    /// from the game's one monotonic counter (`take_entity_id`,
+    /// game/network/lan_entities.rs:25: `next_entity += 1`, never decreased,
+    /// and `EntityRef`'s contract says ids are never reused while the world
+    /// is open), so the old handle has nothing to latch onto. Red without
+    /// the resident lookup refusing a gone id: the old handle would resolve.
+    #[test]
+    #[ignore = "daily"]
+    fn removed_general_row_refuses_its_handle_and_the_next_row_takes_a_new_id() {
+        with_game(|game| {
+            let uuid = [21, 22, 23, 24];
+            game.resident_entities.general.rows.push(row(42, uuid, 7.0));
+            let handle = game.entity(42).expect("the row became a handle");
+            assert_eq!(handle.id(), 42);
+            assert!(game.native_entity_target(handle).is_some());
+
+            // The row leaves; the handle refuses.
+            game.resident_entities
+                .general
+                .rows
+                .retain(|row| row.id != 42);
+            assert!(game.entity(42).is_none());
+            assert!(game.native_entity_target(handle).is_none());
+
+            // The next row is id 43 — the counter moved on, the same UUID
+            // notwithstanding — and the old handle still refuses.
+            game.resident_entities.general.rows.push(row(43, uuid, 7.0));
+            let fresh = game.entity(43).expect("the next row became a handle");
+            assert_ne!(fresh.id(), handle.id());
+            assert!(
+                game.native_entity_target(handle).is_none(),
+                "the old handle resolved the next row"
+            );
+            let target = game
+                .native_entity_target(fresh)
+                .expect("the next row's handle resolves");
+            assert!(matches!(target, Target::General(43)));
+            let next = game
+                .resident_entities
+                .general
+                .rows
+                .iter()
+                .find(|row| row.id == 43)
+                .expect("the next row is in its list");
+            assert_eq!(next.fall_distance, 7.0);
+        });
+    }
+
+    /// A handle from an earlier epoch of the world — what a reload's restore
+    /// of the same UUID leaves in a mod's hands — refuses by the epoch check
+    /// alone, before any row is consulted.
+    #[test]
+    #[ignore = "daily"]
+    fn general_handle_of_an_earlier_epoch_refuses_by_the_epoch_check() {
+        with_game(|game| {
+            game.resident_entities
+                .general
+                .rows
+                .push(row(42, [21, 22, 23, 24], 7.0));
+            let handle = game.entity(42).expect("the row became a handle");
+            assert!(game.native_entity_target(handle).is_some());
+            // A reload opens a new epoch; a handle minted against the old one
+            // refuses even though a row of the same UUID and id is resident.
+            let stale = EntityRef::new(WorldEpoch::new(handle.epoch().get() + 1), handle.id());
+            assert!(game.native_entity_target(stale).is_none());
+        });
+    }
+}
 
 #[cfg(test)]
 mod ray_tests {

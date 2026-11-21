@@ -3374,15 +3374,14 @@ mod tests {
             ) -> Option<Compound> {
                 Some(Compound::from([("energy".into(), Tag::Long(6300))]))
             }
-            fn block_entity_tick(
-                &self,
-                _: &mut dyn ServerHost,
-                event: &mut BlockEntityTickEvent<'_>,
-            ) {
-                let Some(Tag::Long(energy)) = event.entity.nbt.get_mut(&"energy".into()) else {
-                    panic!("factory payload missing");
-                };
-                *energy += 1;
+            fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+                event.subject.with_view(|mut entity| {
+                    let key = "energy".into();
+                    let Some(Tag::Long(energy)) = entity.nbt().get(&key) else {
+                        panic!("factory payload missing");
+                    };
+                    assert!(entity.set_nbt(key, Some(Tag::Long(energy + 1))));
+                });
             }
         }
         struct User {

@@ -23,10 +23,12 @@ impl Game<'_> {
 
     /// `ItemEntity.getItem`: the complete stack, or None if unavailable.
     pub(super) fn item_entity_stack(&self, item: ItemEntityRef) -> Option<ItemStack> {
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_item_entity_stack(item);
-        }
-        self.unscoped_item_entity_stack(item)
+        Some(
+            self.dropped
+                .get(self.native_item_entity_index(item)?)?
+                .stack
+                .clone(),
+        )
     }
     /// Writes a nonempty complete stack using `ItemEntity.setItem`. Empty
     /// stacks are refused: vanilla discards the item on its next tick. To
@@ -39,7 +41,7 @@ impl Game<'_> {
         {
             return false;
         }
-        self.native_set_item_entity(self.dim.id(), item.entity().id(), stack)
+        self.journal_set_item_entity(item.entity().id(), stack)
     }
 
     /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's
@@ -123,8 +125,6 @@ impl Game<'_> {
         self.entity(id)
     }
 }
-
-include!("native_item_entity_refs/tick_item_read.rs");
 
 #[cfg(test)]
 mod tests {

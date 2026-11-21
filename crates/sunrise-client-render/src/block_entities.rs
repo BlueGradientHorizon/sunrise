@@ -23,7 +23,9 @@
 //! Which states tick is a table by state id, built by the game from the block
 //! registry; whether a slot is made is decided when the slot is promoted at
 //! the start of the next tick, from the block state then.
-use crate::chunk::block_entity::{BlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks};
+use crate::chunk::block_entity::{
+    BlockEntity, ModBlockEntity, ModContainer, ModEnergyBuffer, ModFluidTanks,
+};
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
 use std::sync::{
@@ -151,6 +153,14 @@ pub struct BlockEntities {
     /// The API snapshots a client's mod block entities are ticked with
     /// (`take_client_snapshots`), by position.
     client_snapshots: FxHashMap<Pos, ClientSnapshot>,
+}
+
+/// Split borrows used by a resident editor and its lazy before-image.
+pub struct BlockEntityLoan<'a> {
+    pub entity: &'a mut ModBlockEntity,
+    pub identity: BlockEntityIdentity,
+    pub attachments: Option<&'a Attachments>,
+    pub contents_watches: &'a ContentsWatches,
 }
 
 /// A removed block entity held for the `block_drops` event of its break: its position, the
@@ -745,6 +755,24 @@ impl BlockEntities {
         self.asleep.clear();
         self.map.values_mut()
     }
+    /// Lends the resident instance and the indexes needed for a journal before-image.
+    /// Unlike a mutable simulation lookup, a read-only loan does not wake the row.
+    pub fn loan_mod_entity(&mut self, pos: Pos, generation: u64) -> Option<BlockEntityLoan<'_>> {
+        let identity = self.identity(pos)?;
+        if identity.generation != generation {
+            return None;
+        }
+        let BlockEntity::Mod(entity) = self.map.get_mut(&pos)? else {
+            return None;
+        };
+        Some(BlockEntityLoan {
+            entity,
+            identity,
+            attachments: self.attachments.get(&pos),
+            contents_watches: &self.contents_watches,
+        })
+    }
+
     pub fn sleep(&mut self, pos: Pos) {
         if self.map.contains_key(&pos) {
             self.asleep.insert(pos);

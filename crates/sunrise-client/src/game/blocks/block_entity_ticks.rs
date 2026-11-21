@@ -1618,8 +1618,12 @@ mod own_block_entity_tests {
                 event.ticks = true;
             }
         }
-        fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
-            event.entity.data.push(mark(self.0));
+        fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+            event.subject.with_view(|mut entity| {
+                let mut data = entity.data_slots().to_vec();
+                data.push(mark(self.0));
+                entity.set_data_slots(&data).unwrap();
+            });
         }
     }
     /// What a tick of mod A's type (1) or mod B's (2) leaves in a block entity's data.

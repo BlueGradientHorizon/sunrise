@@ -170,22 +170,6 @@ mod block_entity_part_state_tests;
 #[cfg(test)]
 #[path = "game/blocks/block_entity_reach_draw_tests.rs"]
 mod block_entity_reach_draw_tests;
-#[cfg(test)]
-#[path = "game/modding/block_entity_tick_item_preconditions_tests.rs"]
-mod block_entity_tick_item_preconditions_tests;
-#[path = "game/modding/block_entity_tick_items.rs"]
-mod block_entity_tick_items;
-#[cfg(test)]
-#[path = "game/modding/block_entity_tick_items_bench_tests.rs"]
-mod block_entity_tick_items_bench_tests;
-#[cfg(test)]
-#[path = "game/modding/block_entity_tick_items_tests.rs"]
-mod block_entity_tick_items_tests;
-#[path = "game/modding/block_entity_tick_reply.rs"]
-mod block_entity_tick_reply;
-#[cfg(test)]
-#[path = "game/modding/block_entity_tick_reply_tests.rs"]
-mod block_entity_tick_reply_tests;
 #[path = "game/blocks/block_entity_ticks.rs"]
 mod block_entity_ticks;
 #[path = "game/blocks/block_items.rs"]
@@ -2336,7 +2320,7 @@ mod xp_repair_ratio_tests;
 mod zombie_reinforcements;
 #[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
-pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+pub use hot_paths::{HotPathsMods, hot_paths_next_block_entity, note_hot_paths_listener_call};
 use sunrise_client_gameplay::frame_autotune;
 use sunrise_client_gameplay::occlusion_culling;
 use sunrise_gameplay::lan::idle as lan_idle;
@@ -4321,8 +4305,6 @@ struct Game<'a> {
     fangs: fangs::FangState,
     /// The local player as a model (third person, the inventory).
     player_model: Option<Mob>,
-    block_entity_tick_key: Option<block_entity_tick_items::Key>,
-    block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -13508,8 +13490,6 @@ impl<'a> Game<'a> {
             tnts: Default::default(),
             hoppers: HashMap::new(),
             transactions: Default::default(),
-            block_entity_tick_key: None,
-            block_entity_tick_items: None,
             contents_changing: Vec::new(),
             mod_screen: None,
             mod_container_viewers: HashMap::new(),
