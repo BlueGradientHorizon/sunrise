@@ -449,15 +449,6 @@ fn particle_record_has_declared_field_bytes() {
             ),
         ),
     );
-    let kind = BlockEntityTypeKey::from_slot(0).unwrap();
-    fields(BlockEntityPartError::VanillaType { kind }, (0u32, kind));
-    fields(
-        BlockEntityPartError::Duplicate {
-            kind,
-            part: "example::Machine",
-        },
-        (1u32, kind, "example::Machine".to_owned()),
-    );
 }
 
 #[test]

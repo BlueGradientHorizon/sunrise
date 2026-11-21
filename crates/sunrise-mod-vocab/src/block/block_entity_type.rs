@@ -80,7 +80,15 @@ where
 }
 
 /// A native Part cannot be attached to this type during registration.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockEntityPartError>();
+/// ```
+// no wire: local block-entity Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityPartError {
     /// Vanilla entities do not expose a native Part's payload.

@@ -98,9 +98,16 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
 
 /// Why a block entity's or an entity's Part state could not be read or changed. Nothing was
 /// stored.
+///
+/// This is a process-local access refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateError>();
+/// ```
+// no wire: local Part state access refusal carrying static names and runtime states.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum PartStateError {
     /// The handle names a block entity or an entity of another level than the one this host
     /// is in.
@@ -156,7 +163,15 @@ impl fmt::Display for PartStateError {
 impl std::error::Error for PartStateError {}
 
 /// Why a Part's state declaration was refused at registration.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration refusal, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateRefusal>();
+/// ```
+// no wire: local Part state registration refusal carrying &'static str type names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PartStateRefusal {
     /// `DATA.sync` is set: Part state is not sent to clients yet.
@@ -194,7 +209,15 @@ impl PartStateRefusal {
 }
 
 /// A Part with state could not be attached.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+///
+/// This is a process-local registration error, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::BlockEntityStateError>();
+/// ```
+// no wire: local block-entity Part registration error.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityStateError {
     /// The Part itself was refused, as by `block_entity_part`.
@@ -246,7 +269,15 @@ impl From<BlockEntityPartError> for BlockEntityStateError {
 }
 
 /// One Part state declaration, as the registrar checks it.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// This is a process-local startup declaration, not a `Wire` type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::PartStateDeclaration>();
+/// ```
+// no wire: local startup declaration carrying a Rust type name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct PartStateDeclaration {
     /// The state's namespace.

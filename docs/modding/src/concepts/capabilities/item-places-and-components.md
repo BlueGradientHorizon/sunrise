@@ -3,7 +3,9 @@
 Use an `ItemPlace` to read or change a stack where it lives. A place can identify a player's
 slot, hand or cursor, a block entity's slot, an item entity, an entity's inventory or equipment,
 a menu slot, or a stack inside another item (`ItemPlace::Nested`). For storage you manage,
-register a `PlaceProvider` with `r.place_provider` and use `ItemPlace::Mod`.
+register a `PlaceProvider` with `r.place_provider` and use `ItemPlace::Mod`. `ItemPlace`,
+`ItemPlaceEditError`, and `CraftedByError` are process-local values without `Wire`; encode an
+`ItemStack` or your own `Wire` schema when crossing a boundary.
 
 `place.with_stack(host, |stack| stack.item())` reads the item at a nonempty place. The
 callback receives an `ItemStackView` for that call only. Read `item()`, `count()` and

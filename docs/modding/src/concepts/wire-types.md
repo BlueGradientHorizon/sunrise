@@ -12,7 +12,11 @@ an event, copy the fields you intend to send into your own `Wire` payload type. 
 [loader metadata](load-phases.md) such as `PackageInfo`, `DataLoadOrigin` and `LoopSide`: read it locally,
 then select the facts you need for your protocol. Keep issued packet-hold and chunk-ticket controller
 handles in the process that issued them; use a ticket controller's namespaced `id()` when you need to
-record its name.
+record its name. Local Part, capability, item-place, resource-identity, and Part-state values and
+errors (`BlockSide`, `ItemPlace`, `ItemResource`, `FluidResource`, `PartStateError`,
+`BlockEntityPartError`, and their sibling registration and refusal types) also stay in process;
+convert to `ItemStack` or `FluidStack`, or copy the fields you need into your own
+`#[derive(mod_api::Wire)]` schema when sending across a boundary.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]
@@ -34,7 +38,7 @@ variants and `Box`/`Arc` values (`MAX_DEPTH`). Collection iteration, `Option`
 and tuples do not consume a level. The reader returns `WireError::Depth` before
 entering level 33; the writer records the same error. Always check `Writer::error`
 before sending its bytes. This is a transport budget for unbounded mod-defined
-trees, including ingredients, item places, loot vehicles and recipe slot displays.
+trees, including ingredients, loot vehicles and recipe slot displays.
 
 Typed payloads use the same encoding with their own limits. They count lists, present
 options, boxes, shared pointers, NBT containers and explicit recursion, not derived record

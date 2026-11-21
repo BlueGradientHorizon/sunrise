@@ -148,6 +148,11 @@ everything, `InfiniteResourceHandler::new(resource)` for an endless supply of on
 There is no `simulate` parameter. To try an operation without keeping its changes, run it in a
 transaction and return `Err` to abort. See [Transactions](transactions.md).
 
+`BlockSide`, `ItemResource`, `FluidResource`, `Overanswered`, and the other local capability and
+Part values and errors are native in-process types and do not implement `Wire`. Use `ItemStack`,
+`FluidStack`, or a mod-owned `#[derive(mod_api::Wire)]` schema at network or recipe boundaries;
+attachment storage keeps using its own attachment codecs.
+
 ### Hopper and dropper attempts
 
 Vanilla containers, composter-provided containers and container entities keep their direct

@@ -1,0 +1,20 @@
+ids = [
+    "type:BlockSide",
+    "type:Overanswered",
+    "type:ItemResource",
+    "type:FluidResource",
+    "type:FluidIngredientError",
+    "type:ItemPlace",
+    "type:ItemPlaceEditError",
+    "type:CraftedByError",
+    "type:PartStateError",
+    "type:PartStateRefusal",
+    "type:BlockEntityStateError",
+    "type:PartStateDeclaration",
+    "type:EntityResidency",
+    "type:EntityPartStateError",
+    "type:BlockEntityPartError",
+    "type:MobEffectPartError",
+]
+why = "These Part, capability, resource-transfer, ItemPlace, Part-state, and Part-registration values and errors are process-local native types whose incidental Wire codecs outlived transport. NeoForge 26.3 has no wire codec for these local capability, resource, ItemAccess, or registration-error objects; handles, attachment codecs (`ITEM_STACKS`, `FLUID_STACKS`, `AttachmentForm`, `AttachmentBatch`), `ItemStack` and `FluidStack`, lifecycle, and transaction journaling remain intact."
+migrate = "Remove these types from `#[derive(Wire)]` structs and enums and from `Writer`/`Reader` calls, and use them directly as native in-process values. Where serialization is needed at a network or recipe boundary (including in Create and ironfurnaces), define a separate mod-owned `#[derive(mod_api::Wire)]` schema carrying `ItemStack`, `FluidStack`, block coordinates or directions, or the specific domain fields to transmit."

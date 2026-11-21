@@ -586,14 +586,6 @@
       "canonical_path": "crate::world::types::ProgressType"
     },
     {
-      "name": "ProvidedBy",
-      "path": "crate::ProvidedBy",
-      "hash": "fe10e188155f9b86",
-      "contract_change": "arismoko/horizon#3519 appends ProvidedBy::Block; the frozen hash was 5d265204eef1d102",
-      "canonical_path": "crate::parts::shared::ProvidedBy",
-      "alias_provenance": "rustc E0603 public re-export suggestion from generated direct-type test compilation"
-    },
-    {
       "name": "PushReaction",
       "path": "crate::content::content_declarations::PushReaction",
       "hash": "ca956b109ca86e24",
@@ -838,6 +830,7 @@
     "crate::content::payloads::PayloadPhase",
     "crate::content::payloads::PeerPolicy",
     "crate::item::item_stack::StackError",
+    "crate::parts::shared::ProvidedBy",
     "crate::world::phase::DataLoadOrigin",
     "crate::world::phase::LoadAccess",
     "crate::world::phase::LoopSide",
@@ -847,9 +840,6 @@
   "manual_contract_changes": {
     "AttachmentError": {
       "contract_change": "#4614 appends Undeclared at u32 ordinal 9 with package_id:String and attachment_id:String. Existing ordinals 0 through 8 remain unchanged. This manual data-carrying Wire enum is pinned by every_attachment_error_and_write_case_has_declared_tag_type; fieldless enum layouts are unchanged."
-    },
-    "PartStateRefusal": {
-      "contract_change": "#4614 removes the former UnownedNamespace refusal: attachment usages may reference another loaded owner. Incompatible and EntityKind move from ordinals 5 and 6 to 4 and 5; this data-carrying enum is outside the fieldless baseline. All declarations still require the declaring package namespace."
     }
   }
 }
