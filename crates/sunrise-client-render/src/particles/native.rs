@@ -104,7 +104,7 @@ impl super::ParticleEngine {
         {
             return Ok(None);
         }
-        if let Some(frame) = particle.take(&view, false) {
+        if let Some(frame) = particle.take(&view) {
             self.set_sprite_frame(&mut particle, frame);
         }
         Ok((!particle.removed).then_some(particle))
@@ -317,7 +317,7 @@ impl Batch {
                 continue;
             }
             for (view, &i) in self.views.iter().zip(bucket) {
-                if let Some(frame) = particles[i].take(view, true) {
+                if let Some(frame) = particles[i].take(view) {
                     set_frame(&mut particles[i], frame);
                 }
             }
@@ -350,7 +350,7 @@ impl Particle {
         }
     }
     /// Apply native output after validating that the renderer can use its numbers.
-    fn take(&mut self, view: &ModParticle, clamp_tick_values: bool) -> Option<usize> {
+    fn take(&mut self, view: &ModParticle) -> Option<usize> {
         let finite = |v: &[f64; 3]| v.iter().all(|c| c.abs() <= LIMIT);
         let facing = match view.facing {
             ParticleFacing::Fixed(q) => {
@@ -384,15 +384,9 @@ impl Particle {
         self.previous = view.previous;
         self.velocity = view.velocity;
         self.lifetime = view.lifetime;
-        // Keep the existing tick write-back policy. Creation uses SingleQuadParticle's
-        // unclamped scale and color setters, not the declarative behaviour's ranges.
-        if clamp_tick_values {
-            self.size = view.size.clamp(0.0, 16.0);
-            self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
-        } else {
-            self.size = view.size;
-            self.rgba = view.rgba;
-        }
+        // SingleQuadParticle's scale and colour setters do not apply the pack's ranges.
+        self.size = view.size;
+        self.rgba = view.rgba;
         self.roll = view.roll;
         provided.facing = facing;
         provided.state = view.state;
@@ -1117,6 +1111,16 @@ pub(super) mod tests {
         assert!(matches!(particle.sprite, Sprite::Index(1)));
         assert_eq!(particle.provided.as_ref().unwrap().state[0], 1.0);
         assert_eq!(e.random.next_long(), expected_provider_rng.next_long());
+
+        let level = scene.level();
+        e.tick(&level); // Admit the pending particle.
+        e.tick(&level); // The provider's no-op batched tick.
+        let particle = e.live().next().unwrap();
+        assert_eq!(particle.age, 1);
+        assert_eq!(
+            (particle.size, particle.rgba),
+            (20.0, [first, -0.25, 2.0, 1.5])
+        );
     }
 
     #[test]
@@ -1292,7 +1296,7 @@ pub(super) mod tests {
         );
         tick_one(&mut e, &mut p, &level);
         assert!(!p.removed);
-        assert_eq!((p.size, p.rgba), (16.0, [1.0, 0.0, 0.5, 1.0]));
+        assert_eq!((p.size, p.rgba), (1.0e9, [2.0, -1.0, 0.5, 9.0]));
         assert!(matches!(p.sprite, Sprite::Index(1)));
         assert_eq!((p.lifetime, p.age), (i32::MIN, 1)); // the age stays the engine's
         tick_one(&mut e, &mut p, &level);
@@ -1659,6 +1663,7 @@ pub(super) mod tests {
     fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
         let resources = ResourceSource::indexed([
             ("orbit", br#"{"textures":[],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.as_slice()),
+            ("empty_asset", br#"{"textures":[]}"#.as_slice()),
             ("plain", br#"{"textures":["mymod:one","mymod:two"],"sunrise:behaviour":{"lifetime":7,"size":[0.3,0.3]}}"#.as_slice()),
         ].map(|(name, bytes)| (
             format!("assets/mymod/particles/{name}.json"),
@@ -1681,6 +1686,15 @@ pub(super) mod tests {
         assert!(e.typed_sets.contains_key(&orbit.key()));
         assert!(e.mod_sets["mymod:plain"].provider.is_none());
         assert!(!e.typed_sets.contains_key(&unmatched.key()));
+        assert!(
+            e.make(
+                &ParticleOptions::named("mymod:empty_asset"),
+                [0.0; 3],
+                [0.0; 3],
+                3
+            )
+            .is_none()
+        );
         let scene = Scene::new();
         let value = orbit.options(());
         let particle = e
