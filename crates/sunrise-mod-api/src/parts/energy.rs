@@ -111,7 +111,9 @@ pub mod tests {
             assert_eq!(
                 moved,
                 Err(crate::TransactionError::Aborted(
-                    mod_vocab::__private::parts_installation::overanswered(owner)
+                    crate::TransactionError::Aborted(
+                        mod_vocab::__private::parts_installation::overanswered(owner)
+                    )
                 )),
                 "{liar}"
             );
