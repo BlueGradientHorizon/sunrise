@@ -56,13 +56,28 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                 with_client_game(|game| {
                     let (client, _server) = sunrise_protocol::connection::Pipe::pair();
                     game.connect_local(client, "swim-client").unwrap();
+                    game.enter_remote_dimension(
+                        &play::SpawnInfo {
+                            dimension_type: 0,
+                            dimension: "minecraft:overworld".into(),
+                            seed: 0,
+                            game_type: 0,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: true,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 63,
+                        },
+                        false,
+                        sunrise_client::level_loading::Reason::Other,
+                    );
                     let remote = game.remote.as_mut().unwrap();
                     remote.logged_in = true;
                     remote.loaded_sent = true;
                     remote.entity_id = 42;
-                    remote.health = (20.0, 20, 5.0);
+                    remote.profile = 42;
                     remote.level_load.finish();
-                    game.screen = Screen::Playing;
                     game.streaming
                         .insert_remote(&mut game.world, Chunk::empty(0, 0));
                     water_column(game);
