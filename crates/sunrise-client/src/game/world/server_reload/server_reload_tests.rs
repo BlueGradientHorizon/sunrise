@@ -347,11 +347,17 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
             }
             event
                 .listeners
-                .add_dependency(id("reload_probe:before"), VanillaServerListeners::first())
+                .add_dependency(
+                    id("reload_probe:before"),
+                    VanillaServerListeners::functions(),
+                )
                 .unwrap();
             event
                 .listeners
-                .add_dependency(VanillaServerListeners::last(), id("reload_probe:after"))
+                .add_dependency(
+                    VanillaServerListeners::functions(),
+                    id("reload_probe:after"),
+                )
                 .unwrap();
         }
     }

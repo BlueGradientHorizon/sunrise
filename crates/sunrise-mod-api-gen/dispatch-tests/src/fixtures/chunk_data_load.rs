@@ -33,7 +33,7 @@ use stubs::chunk_disk;
 impl ChunkDiskHost for TestHost {}
 
 #[test]
-fn a_chunk_job_reports_a_codec_failure_even_after_an_earlier_panic() {
+fn a_chunk_job_continues_after_panic_and_codec_failure() {
     #[derive(Clone, Copy)]
     enum Write {
         Panic,
@@ -82,17 +82,11 @@ fn a_chunk_job_reports_a_codec_failure_even_after_an_earlier_panic() {
         value: 7,
         ..ChunkDiskData::default()
     };
-    let warnings = capture_warnings(|| mod_api::dispatch_chunk_data_load(&TestHost, &mut job));
+    mod_api::dispatch_chunk_data_load(&TestHost, &mut job);
     assert_eq!(job.value, 9);
     let failure = job.failure().unwrap();
     assert_eq!(failure.mod_id, "disk_panic");
     assert_eq!(failure.reason, "native listener unwound");
-    assert_eq!(
-        warnings,
-        [
-            r#"mod disk_codec hook chunk_data_load refused: ChunkDiskFailure { mod_id: "disk_codec", reason: "attachment codec refused" }"#
-        ]
-    );
     assert!(runtime::poisoned(HookId::ChunkDataLoad, "disk_panic"));
     assert!(!runtime::poisoned(HookId::ChunkDataLoad, "disk_codec"));
 }

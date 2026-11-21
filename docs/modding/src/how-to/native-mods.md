@@ -171,22 +171,24 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 **refused, not crashed**:
 
 - The call ends the mod's hook call (it unwinds out of the listener; the game makes no panic report). The game logs
-  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` once for each mod and method.
-  Retained HUD, F3, loading-screen, spawn-placement, configuration-task and special item callbacks report each
-  refused invocation instead, without disabling the callback.
+  `native refusal: <mod> hook <hook>: mod API <method> is unavailable during <phase>` on each refused callback.
 - The latch: after one refusal, every later Host call that hook call makes is refused too, whatever it asks, and the
   refusal counts even if the mod caught the unwind itself and returned normally.
 - The listener is dropped, and the hook goes on with the next one. The event outputs the listener touched are put
   back to what they were before its call, and the answers of earlier listeners stand. What its earlier allowed calls
   did (a sound, a narrator line, a HUD mode) stands too.
 - The hook uses its default return value: `Flow::Continue` for a cancel hook, `None` for a replace
-  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A hook that
-  isolates its listeners (`entity_move`) disables the refused listener for the session, and a retained callback
-  (loot types, payload handlers, selectors, command argument types) is refused for that call only.
+  hook that answers an `Option`, and the type's default (`false`, an empty list, `()`) for any other. A
+  refused listener is not disabled for the session; a panicking listener is.
 - A method with a typed phase refusal (for example, one returning `Result<_, LevelReadError>`,
   `Result<_, LevelWriteError>`, or `Result<_, TeamMembersReadError>`) returns its `Err(Unavailable)`
   instead of unwinding, and the mod goes on.
   `LevelRef::with_random` returns `None` without calling your closure when world access is unavailable.
+
+A panic is logged and shown in a client error toast naming the mod and hook. Only that callback is
+disabled for the session. Its staged outputs are discarded, and writes covered by an existing
+transaction are undone. Effects outside a transaction, such as a dynamic texture already created
+by `client_tick_pre`, are not undone.
 
 **The limit:** if the thread is already unwinding when the call is refused (a mod's `Drop` that calls the Host while
 another panic unwinds), the game logs the same line and panics, and a panic during an unwind aborts the process.

@@ -109,8 +109,11 @@ impl<T> ReloadOrder<T> {
         mut discard: impl FnMut(T),
     ) {
         self.edges.truncate(edges);
-        for (id, value) in self.listeners.drain(listeners..) {
-            self.indices.remove(&id);
+        let discarded = self.listeners.split_off(listeners);
+        for (id, _) in &discarded {
+            self.indices.remove(id);
+        }
+        for (_, value) in discarded {
             discard(value);
         }
     }

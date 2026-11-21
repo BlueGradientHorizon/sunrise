@@ -7,6 +7,8 @@ takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the 
 `ClientHost::debug_overlay_visible()` reports whether the client draws its debug overlay this frame. In
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
 F3 off. F1 hides the overlay unless a screen is open. The read is available only on the client host.
+An unfinished `render_gui_post` or `gui_render_post` callback leaves no drawing in the batch;
+its corner reservations do not affect the next listener.
 
 ## Registering a HUD layer
 

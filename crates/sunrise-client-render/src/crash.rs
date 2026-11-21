@@ -1587,6 +1587,83 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn dropping_panicking_startup_parts_does_not_crash_the_server_thread() {
+        use mod_platform::{BlockPart, HookId, Hooks, ModEntry, Registrar, RegistrationContext};
+        use std::sync::{Arc, atomic::AtomicBool};
+
+        struct BrokenPart;
+        impl Drop for BrokenPart {
+            fn drop(&mut self) {
+                panic!("discarded startup Part destructor");
+            }
+        }
+        impl BlockPart for BrokenPart {
+            fn block_subscribed(&self) -> &'static [Option<HookId>] {
+                &[]
+            }
+        }
+        struct Registers(Option<Arc<AtomicBool>>);
+        impl Hooks for Registers {
+            fn subscribed(&self) -> &'static [Option<HookId>] {
+                &[]
+            }
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                if let Some(healthy) = &self.0 {
+                    healthy.store(true, Ordering::Relaxed);
+                    return;
+                }
+                for id in ["minecraft:stone", "minecraft:dirt"] {
+                    let key = registrar.block_key(id);
+                    registrar.block_part(key, BrokenPart);
+                }
+                panic!("startup registration callback");
+            }
+        }
+
+        let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
+        let scratch = tempfile::tempdir().unwrap();
+        let previous = std::panic::take_hook();
+        REPORTED.store(false, Ordering::SeqCst);
+        SERVER_CRASHED.store(false, Ordering::Release);
+        install(scratch.path().to_path_buf(), "client");
+        let result = std::thread::Builder::new()
+            .name(INTEGRATED_SERVER_THREAD.into())
+            .spawn(|| {
+                let healthy = Arc::new(AtomicBool::new(false));
+                let mods: mod_platform::Mods = vec![
+                    ModEntry::new("broken_startup", Box::new(Registers(None))),
+                    ModEntry::new(
+                        "healthy_startup",
+                        Box::new(Registers(Some(healthy.clone()))),
+                    ),
+                ]
+                .into();
+                mod_platform::testing::with_mods(mods.clone(), || {
+                    mod_platform::__private::install_parts(
+                        &mods,
+                        &mod_platform::__private::part_tests::rule_schema(),
+                        |_| false,
+                    )
+                    .unwrap();
+                    assert!(healthy.load(Ordering::Relaxed));
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "broken_startup",
+                            hook: "register",
+                        }]
+                    );
+                });
+            })
+            .unwrap()
+            .join();
+        std::panic::set_hook(previous);
+        assert!(result.is_ok());
+        assert!(!server_crashed());
+        assert!(!scratch.path().join("crash-reports").exists());
+    }
+
+    #[test]
     fn contained_hook_panics_do_not_trigger_crash_reports_or_abort() {
         let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
         for (name, wrapped_in_contain) in [

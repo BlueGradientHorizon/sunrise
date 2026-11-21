@@ -204,11 +204,22 @@ impl Declaration for crate::Item {
     }
 }
 
+// no wire: in-process closures that stage one listener's declarations.
+/// The owner validates each submission immediately and publishes only an accepted batch.
+#[doc(hidden)]
+pub type DeclarationStage<'a, D> =
+    dyn FnMut(&mut dyn FnMut(&mut DeclarationSink<'_, D>) -> bool) + 'a;
+
+// no wire: an in-process closure borrowing the current declaration batch.
+/// The validated submission callback for one listener.
+#[doc(hidden)]
+pub type DeclarationSink<'a, D> = dyn FnMut(Answered<D>) -> Result<(), DeclarationError> + 'a;
+
 /// Validate at the call site and keep the dispatch owner with the declaration.
 pub(crate) fn submit_declaration<D: Declaration>(
-    context: &crate::RegistrationContext,
+    refusals: &mut Vec<DeclarationRefusal>,
     mod_id: &'static str,
-    submit: &mut dyn FnMut(Answered<D>) -> Result<(), DeclarationError>,
+    submit: &mut DeclarationSink<'_, D>,
     mut declaration: D,
 ) -> Result<(), DeclarationError> {
     if !crate::registration_open() {
@@ -230,12 +241,25 @@ pub(crate) fn submit_declaration<D: Declaration>(
         })
     })();
     result.inspect_err(|error| {
+        refusals.push(DeclarationRefusal::new(mod_id, D::KIND, error.clone()));
+    })
+}
+
+/// Commit the diagnostics only for a listener whose declaration proposal was accepted.
+pub(crate) fn declaration_listener(
+    context: &crate::RegistrationContext,
+    run: impl FnOnce(&mut Vec<DeclarationRefusal>) -> bool,
+) -> bool {
+    let mut refusals = Vec::new();
+    let accepted = run(&mut refusals);
+    if accepted && !refusals.is_empty() {
         context
             .declaration_refusals
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .push(DeclarationRefusal::new(mod_id, D::KIND, error.clone()));
-    })
+            .extend(refusals);
+    }
+    accepted
 }
 
 /// The engine consumes block/item declaration ownership refusals before loading

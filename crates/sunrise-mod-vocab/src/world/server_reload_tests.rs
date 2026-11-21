@@ -16,8 +16,6 @@ fn registry_views_and_explicit_order_before_vanilla() {
         "test_mod:after",
     ]
     .map(id);
-    assert_eq!(VanillaServerListeners::first(), functions);
-    assert_eq!(VanillaServerListeners::last(), functions);
     assert!(listeners.get_registry().iter().eq([&functions]));
     assert!(listeners.get_graph().iter().next().is_none());
 
@@ -38,10 +36,10 @@ fn registry_views_and_explicit_order_before_vanilla() {
             .eq([&functions, &mod_first, &mod_second, &mod_after,])
     );
     listeners
-        .add_dependency(mod_second.clone(), VanillaServerListeners::first())
+        .add_dependency(mod_second.clone(), VanillaServerListeners::functions())
         .unwrap();
     listeners
-        .add_dependency(VanillaServerListeners::last(), mod_after.clone())
+        .add_dependency(VanillaServerListeners::functions(), mod_after.clone())
         .unwrap();
     assert!(
         listeners

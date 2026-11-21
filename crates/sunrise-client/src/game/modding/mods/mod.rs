@@ -8,7 +8,7 @@ use super::{
 mod menu_books;
 pub(in crate::game) mod runtime_files;
 mod standalone;
-use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
+use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
@@ -433,38 +433,60 @@ struct NativeDeclared {
     batches: BTreeMap<&'static str, DeclaredContent>,
 }
 
+impl NativeDeclared {
+    fn stage<D, T>(
+        &mut self,
+        listen: &mut dyn FnMut(&mut DeclarationSink<'_, D>) -> bool,
+        mut validate: impl FnMut(D) -> Result<T, DeclarationError>,
+        mut publish: impl FnMut(&mut DeclaredContent, T),
+    ) {
+        let mut entries = Vec::new();
+        if listen(&mut |Answered { mod_id, answer, .. }| {
+            entries.push((mod_id, validate(answer)?));
+            Ok(())
+        }) {
+            for (owner, value) in entries {
+                publish(self.batches.entry(owner).or_default(), value);
+            }
+        }
+    }
+}
+
 /// The same native declarations serve startup and every pack reload.
 fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     let collect = || {
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
         let context = RegistrationContext::new();
-        Game::native_blocks(&context, &mut |Answered { mod_id, answer, .. }| {
-            let block = answer
-                .try_into_engine(&())
-                .and_then(|b| b.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared
-                .batches
-                .entry(mod_id)
-                .or_default()
-                .blocks
-                .push(block);
-            Ok(())
+        Game::native_blocks(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|b| b.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, block| batch.blocks.push(block),
+            );
         });
-        Game::native_items(&context, &mut |Answered { mod_id, answer, .. }| {
-            let item = answer
-                .try_into_engine(&())
-                .and_then(|i| i.validate_local())
-                .map_err(|reason| DeclarationError::Rejected {
-                    id: answer.id,
-                    reason,
-                })?;
-            declared.batches.entry(mod_id).or_default().items.push(item);
-            Ok(())
+        Game::native_items(&context, &mut |listen| {
+            declared.stage(
+                listen,
+                |answer| {
+                    answer
+                        .try_into_engine(&())
+                        .and_then(|i| i.validate_local())
+                        .map_err(|reason| DeclarationError::Rejected {
+                            id: answer.id,
+                            reason,
+                        })
+                },
+                |batch, item| batch.items.push(item),
+            );
         });
         declared.refusals = mod_api::__private::take_declaration_refusals(&context);
         for (owner, kind) in super::api_values::block_entity_declarations() {
@@ -2612,6 +2634,54 @@ mod tests {
                         "{record:?}"
                     );
                 }
+            },
+        );
+    }
+
+    #[test]
+    fn panicking_native_declarations_publish_neither_prefixes_nor_diagnostics() {
+        struct Declares {
+            panics: bool,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Declares {
+            fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+                event
+                    .register(mod_api::Block::new("pot", "minecraft:stone"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Block::new("Bad Block", "minecraft:stone"));
+                    panic!("failed after an invalid block declaration");
+                }
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
+                event
+                    .register(mod_api::Item::new("tool", "minecraft:stick"))
+                    .unwrap();
+                if self.panics {
+                    let _ = event.register(mod_api::Item::new("Bad Item", "minecraft:stick"));
+                    panic!("failed after an invalid item declaration");
+                }
+            }
+        }
+
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("failed", Box::new(Declares { panics: true })),
+                mod_api::ModEntry::new("healthy", Box::new(Declares { panics: false })),
+            ]
+            .into(),
+            || {
+                let declared = native_declared();
+                assert!(declared.refusals.is_empty());
+                assert_eq!(
+                    declared.batches.keys().copied().collect::<Vec<_>>(),
+                    ["healthy"]
+                );
+                let batch = &declared.batches["healthy"];
+                assert_eq!(batch.blocks[0].get().id, "healthy:pot");
+                assert_eq!(batch.items[0].get().id, "healthy:tool");
+                assert_eq!(mod_api::__private::take_hook_panics().len(), 2);
             },
         );
     }

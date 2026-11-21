@@ -81,9 +81,11 @@ distinguishes self movement, player packets, pistons, shulker boxes, shulkers an
 moving collider carrying a body (`Carried`, version 2 of the hook);
 boats and minecarts use self movement.
 
-A replacement must have finite components, each within ±64 blocks. The final
-output is checked as a whole: an invalid answer leaves the requested delta
-rather than clamping it. Cancellation skips the invocation: no position, velocity, collision-flag or fall
+A replacement must have finite components, each within ±64 blocks. Each invalid
+proposal is reported with its mod and discarded whole, including its cancellation,
+without disabling the listener. Later listeners see the preceding accepted delta.
+An unchanged game delta is not subject to the replacement budget. Cancellation
+skips the invocation: no position, velocity, collision-flag or fall
 change, and no displacement notice. An overridden player or vehicle packet move
 sends a correction even below the normal distance threshold, for creative players
 and from obstructed starts too. A replacement equal to the request retains the

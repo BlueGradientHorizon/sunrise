@@ -873,12 +873,11 @@ impl Game<'_> {
     /// Collect blocks from native mods once at startup on each side, before resources load.
     /// Each declaration belongs to the submitting package and joins the content declarations
     /// used by saves and the join check. The event's `register` call returns a typed error for
-    /// invalid IDs or fields. Refusals stop startup even if the caller ignores the error.
+    /// invalid IDs or fields. A completed listener's refusals stop startup even if ignored;
+    /// a panicking listener's batch and diagnostics are discarded.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Block>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        blocks: &mut mod_api::__private::DeclarationStage<'_, mod_api::Block>,
     ) {
         Self::fire_blocks(context, blocks);
     }
@@ -887,9 +886,7 @@ impl Game<'_> {
     /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut dyn FnMut(
-            mod_api::Answered<mod_api::Item>,
-        ) -> Result<(), mod_api::DeclarationError>,
+        items: &mut mod_api::__private::DeclarationStage<'_, mod_api::Item>,
     ) {
         Self::fire_items(context, items);
     }

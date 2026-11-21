@@ -10,11 +10,13 @@ pub trait Hooks {
     /// move's own handling, no-physics and the stuck multiplier included, in
     /// the one gate every kind's physics resolves through, so a forgotten
     /// family cannot move around it. Change `delta` to replace the movement
-    /// (still through every ordinary restriction) or set `canceled` to skip
-    /// the invocation: no position, velocity, collision-flag or fall change,
+    /// (still through every ordinary restriction) or set `event.cancelled` or
+    /// return `Flow::Cancel` to skip it: no position, velocity, collision-flag or fall change,
     /// and no displacement notice. A replacement component that is not a
-    /// finite number, or lies outside ±64 blocks, is refused whole - the move
-    /// stands as the requested delta would. If a listener panics or incurs a
+    /// finite number, or lies outside ±64 blocks, rejects that listener's delta
+    /// and veto together. The log names the mod and delta on each refusal. An
+    /// unchanged game delta is not subject to this replacement budget. An earlier
+    /// accepted veto cannot be cleared. If a listener panics or incurs a
     /// phase refusal, its edits and cancel flag are discarded; earlier results
     /// stand and later eligible listeners still run. Only a panic disables
     /// this mod's callback for the session. It takes no Host - the maintainer
@@ -23,7 +25,7 @@ pub trait Hooks {
     /// the body. Server-authoritative: the client does not predict a custom
     /// movement. Beyond NeoForge: there is no counterpart.
     ///
-    /// Version 2: `MoveCause::Carried`, a moving collider carrying a body that stands on it
+    /// Since version 2: `MoveCause::Carried`, a moving collider carrying a body that stands on it
     /// once a tick (`EntityRef::set_collider`), is a new cause under the same signature, so a
     /// listener written for version 1 hears moves it never heard. `MoveCause` is
     /// `#[non_exhaustive]`: match it with a wildcard arm.
@@ -34,6 +36,7 @@ pub trait Hooks {
         out = "canceled",
         context = "loop",
         cancellable = true,
+        output_validator = "crate::entity::types::refused_move_output",
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::move_gate::native_entity_move"
     )]

@@ -2,6 +2,10 @@
 
 A mod has one top-level `data/` tree and one `assets/` tree, with the same namespace and
 content checks as a content mod. They are normal pack resources, not a second native-only data folder.
+Native `blocks` and `items` listeners still receive each `DeclarationError` immediately from
+`event.register`. A returning listener's invalid declaration refuses startup even if it ignored
+the error. If a listener panics, neither its declarations nor its diagnostics join the cached
+startup/reload declaration batch.
 `Hooks::add_pack_finders` can also offer an optional bundled pack to a pack repository.
 `event.packs.add_pack_finders` returns and logs rejected entries; a pack does not enter the repository
 if its registration callback panics or incurs a phase refusal.
@@ -12,10 +16,11 @@ dependency pairs `(first, second)`. Both lend IDs from the registry, so clone on
 need after the borrow ends. `event.listeners.get_last_vanilla_listener()` always borrows
 `VanillaServerListeners::functions()` (matching NeoForge's
 `SortedReloadListenerEvent.getLastVanillaListener`); the built-in `neoforge:loot_modifiers`
-listener is registered before mod hooks without replacing it. `VanillaServerListeners::first()` and `last()` alias `functions()`, and
-`VanillaClientListeners::first()` / `last()` alias `model_manager()` (Sunrise's single modeled
-vanilla client reload anchor), with no synthetic `minecraft:first` or `minecraft:last` boundary
-nodes or automatic edges. During sorting, only dangling non-`minecraft` listeners are linked after
+listener is registered before mod hooks without replacing it. Use
+`VanillaServerListeners::functions()` or `VanillaClientListeners::model_manager()` in
+`add_dependency`. These names refer to the game's actual staged build and publish steps;
+there are no synthetic `minecraft:first` or `minecraft:last` nodes or automatic boundary edges.
+During sorting, only dangling non-`minecraft` listeners are linked after
 the anchor (matching NeoForge's `ReloadListenerSort`). A dependency orders both phases:
 `functions()` reads function files in prepare and admits the new library in apply;
 `model_manager()` builds the models in prepare. Its apply publishes the validated

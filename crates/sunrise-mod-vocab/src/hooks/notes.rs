@@ -2049,13 +2049,11 @@ failed `/datapack` change also preserves the selected packs on disk.
 `event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
 IDs as typed variants: unknown names fail immediately without latching a failure, and cycles fail
 after registration. `VanillaServerListeners::functions()` names Sunrise's function-library
-listener; `first()` and `last()` alias `functions()` (matching NeoForge's
-`VanillaServerListeners.FIRST`/`LAST`), with no synthetic `minecraft:first` or `minecraft:last`
-boundary nodes or automatic edges. These anchors and dependency ends use `Identifier`. Mod
-listeners run after vanilla by default, in registration order. Dependencies before
-`first()` or after `last()` order both the real function-file read and the function-library
-admission. Use these anchors rather than their string
-values. `event.listeners.get_registry().iter()` borrows the registered names in registration
+listener, with no synthetic `minecraft:first` or `minecraft:last` boundary nodes or automatic
+boundary edges. This anchor and dependency ends use `Identifier`. Mod listeners without a path to
+or from a vanilla listener run after vanilla by default, in registration order. Dependencies
+before or after `VanillaServerListeners::functions()` order both the real function-file read and
+the function-library admission. Use the named anchor rather than its string value. `event.listeners.get_registry().iter()` borrows the registered names in registration
 order, starting with the vanilla anchor. `event.listeners.get_graph().iter()` borrows
 `(first, second)` name pairs in edge insertion order. These views borrow the registration in
 progress: copy only the IDs you need to keep or use after registering another listener or

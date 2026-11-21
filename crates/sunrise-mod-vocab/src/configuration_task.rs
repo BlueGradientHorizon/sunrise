@@ -162,13 +162,25 @@ impl ConfigurationTaskRegistration {
         (self.tasks.len(), self.refusal.is_some())
     }
 
-    /// Discard only a phase-refused listener's tasks, reserved types and diagnostic.
+    /// Discard only a failed or phase-refused listener's tasks, reserved types and diagnostic.
     pub fn rollback(&mut self, (len, had_refusal): (usize, bool)) {
-        for task in self.tasks.drain(len..) {
+        let discarded = self.tasks.split_off(len);
+        for task in &discarded {
             self.types.remove(&task.kind);
         }
         if !had_refusal {
             self.refusal = None;
+        }
+        for task in discarded {
+            let owner = task.owner.id();
+            crate::runtime::discard_registration(
+                (
+                    crate::HookId::RegisterConfigurationTasks,
+                    "register_configuration_tasks",
+                ),
+                Some(owner),
+                task,
+            );
         }
     }
 

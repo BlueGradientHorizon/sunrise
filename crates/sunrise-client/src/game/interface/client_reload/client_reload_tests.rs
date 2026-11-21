@@ -69,13 +69,33 @@ fn root_with_asset(name: &str, bytes: &[u8]) -> PathBuf {
 #[test]
 #[ignore = "daily"]
 fn panicking_client_reload_registration_discards_its_listener_and_edges() {
+    use crate::game::{Progress, native_entity_refs::tests::with_client_game, packs::stage_pack};
     use mod_api::{AddClientReloadListenersEvent, Hooks, ModEntry, VanillaClientListeners};
-    use sunrise_assets::resource_source::ResourceSource;
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+
+    struct Listener {
+        prepare: &'static str,
+        apply: &'static str,
+        trace: Arc<Mutex<Vec<&'static str>>>,
+    }
+    impl ClientReloadListener for Listener {
+        fn prepare(
+            &self,
+            _: &ClientReloadContext,
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            self.trace.lock().unwrap().push(self.prepare);
+            let (apply, trace) = (self.apply, self.trace.clone());
+            Ok(Box::new(move || trace.lock().unwrap().push(apply)))
+        }
+    }
 
     struct Register {
         fails: bool,
-        registered: Arc<std::sync::atomic::AtomicBool>,
-        applied: Arc<std::sync::Mutex<Vec<String>>>,
+        staged_failure: Arc<AtomicBool>,
+        trace: Arc<Mutex<Vec<&'static str>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for Register {
@@ -84,87 +104,123 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
             _: &dyn ClientHost,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
-            let name = if self.fails { "failed" } else { "healthy" };
+            let anchor = VanillaClientListeners::model_manager();
+            let after = id("reload_fixture:after");
             event
                 .listeners
                 .add_listener(
-                    id(&format!("test_mod:{name}")),
+                    after.clone(),
                     hats(),
-                    Arc::new(HatListener {
-                        seen: Default::default(),
-                        applied: self.applied.clone(),
+                    Arc::new(Listener {
+                        prepare: if self.fails {
+                            "prepare discarded"
+                        } else {
+                            "prepare after"
+                        },
+                        apply: if self.fails {
+                            "apply discarded"
+                        } else {
+                            "apply after"
+                        },
+                        trace: self.trace.clone(),
                     }),
                 )
                 .unwrap();
             if self.fails {
-                event
-                    .listeners
-                    .add_dependency(
-                        id("test_mod:failed"),
-                        VanillaClientListeners::model_manager(),
-                    )
-                    .unwrap();
-                self.registered
-                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                event.listeners.add_dependency(after, anchor).unwrap();
+                self.staged_failure.store(true, Ordering::Relaxed);
                 panic!("client reload registrar failed after adding a listener and an edge");
             }
+            // Reuse the failed mod's name and reverse its edge. A leaked row
+            // would refuse this registration; a leaked edge would make a cycle.
+            event
+                .listeners
+                .add_dependency(anchor.clone(), after)
+                .unwrap();
+            let before = id("reload_fixture:before");
+            event
+                .listeners
+                .add_listener(
+                    before.clone(),
+                    hats(),
+                    Arc::new(Listener {
+                        prepare: "prepare before",
+                        apply: "apply before",
+                        trace: self.trace.clone(),
+                    }),
+                )
+                .unwrap();
+            event.listeners.add_dependency(before, anchor).unwrap();
         }
     }
-    super::super::native_entity_refs::tests::with_game(|game| {
-        for startup in [true, false] {
-            let registered = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let failed = Arc::new(std::sync::Mutex::new(Vec::new()));
-            let healthy = Arc::new(std::sync::Mutex::new(Vec::new()));
-            mod_platform::testing::with_mods(
-                vec![
-                    ModEntry::new(
-                        "failed",
-                        Box::new(Register {
-                            fails: true,
-                            registered: registered.clone(),
-                            applied: failed.clone(),
-                        }),
-                    ),
-                    ModEntry::new(
-                        "healthy",
-                        Box::new(Register {
-                            fails: false,
-                            registered: registered.clone(),
-                            applied: healthy.clone(),
-                        }),
-                    ),
+
+    with_client_game(|game| {
+        let staged_failure = Arc::new(AtomicBool::new(false));
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![
+            ModEntry::new(
+                "broken_reload",
+                Box::new(Register {
+                    fails: true,
+                    staged_failure: staged_failure.clone(),
+                    trace: trace.clone(),
+                }),
+            ),
+            ModEntry::new(
+                "healthy_reload",
+                Box::new(Register {
+                    fails: false,
+                    staged_failure: staged_failure.clone(),
+                    trace: trace.clone(),
+                }),
+            ),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let old = game.pack.render.generation;
+            let staged = stage_pack(
+                &game.vanilla_root(),
+                &[],
+                &[],
+                &game.mods,
+                game.register_client_reload_listeners(),
+                &[],
+                &game.pack.assets,
+                &game.res,
+                &game.pack.context,
+                game.settings.force_unicode,
+                game.settings.japanese_glyphs,
+                &Progress::new(),
+            )
+            .unwrap();
+            let candidate = staged.pack.render.generation;
+            assert_ne!(candidate, old);
+            assert_eq!(game.pack.render.generation, old);
+            assert!(staged_failure.load(Ordering::Relaxed));
+            assert_eq!(*trace.lock().unwrap(), ["prepare before", "prepare after"]);
+            APPLY_GENERATIONS.replace(Some(Vec::new()));
+            let result = game.apply_staged_pack(staged);
+            let generations = APPLY_GENERATIONS.take().unwrap();
+            result.unwrap();
+            assert_eq!(game.pack.render.generation, candidate);
+            assert_eq!(generations, [old, candidate]);
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    "prepare before",
+                    "prepare after",
+                    "apply before",
+                    "apply after",
                 ]
-                .into(),
-                || {
-                    let (listeners, phase) = if startup {
-                        (
-                            register_startup_client_reload_listeners(),
-                            mod_api::__private::ModPhase::Setup,
-                        )
-                    } else {
-                        (
-                            game.register_client_reload_listeners(),
-                            mod_api::__private::ModPhase::World,
-                        )
-                    };
-                    assert!(!listeners.get_registry().contains(&id("test_mod:failed")));
-                    assert!(listeners.get_registry().contains(&id("test_mod:healthy")));
-                    assert!(!listeners.get_graph().contains(&(
-                        id("test_mod:failed"),
-                        VanillaClientListeners::model_manager()
-                    )));
-                    let root = ResourceSource::indexed(Default::default());
-                    let ((), prepared) = stage_client_reload(&root, listeners, phase, || {
-                        Ok::<_, ReloadStageError>(())
-                    })
-                    .unwrap();
-                    apply_client_reload(&mod_api::__private::PhaseOwner::new(phase), prepared);
-                    assert!(registered.load(std::sync::atomic::Ordering::Relaxed));
-                    assert!(failed.lock().unwrap().is_empty());
-                    assert_eq!(healthy.lock().unwrap().as_slice(), ["hats"]);
-                },
             );
-        }
+            assert_eq!(
+                mod_api::__private::take_hook_panics().as_slice(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "broken_reload",
+                    hook: "add_client_reload_listeners",
+                },]
+            );
+        });
     });
 }
 
@@ -369,6 +425,34 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             Ok(Box::new(move || trace.lock().unwrap().push(apply)))
         }
     }
+    struct Broken(Arc<Mutex<Vec<&'static str>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Broken {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            let after = id("startup_anchor:after");
+            event
+                .listeners
+                .add_listener(
+                    after.clone(),
+                    FileToIdConverter::json("post_effect").unwrap(),
+                    Arc::new(Listener {
+                        trace: self.0.clone(),
+                        before: false,
+                    }),
+                )
+                .unwrap();
+            event
+                .listeners
+                .add_dependency(after, VanillaClientListeners::model_manager())
+                .unwrap();
+            self.0.lock().unwrap().push("discard registration");
+            panic!("do not stage this listener or its edge");
+        }
+    }
     thread_local! {
         static REFUSE_EXTENSIONS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
@@ -466,10 +550,10 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .spawn(|| {
             let trace = Arc::new(Mutex::new(Vec::new()));
-            let mods = vec![ModEntry::new(
-                "startup_anchor",
-                Box::new(Probe(trace.clone())),
-            )]
+            let mods = vec![
+                ModEntry::new("broken_startup_reload", Box::new(Broken(trace.clone()))),
+                ModEntry::new("startup_anchor", Box::new(Probe(trace.clone()))),
+            ]
             .into();
             mod_platform::testing::with_mods(mods, || {
                 let _phase = PhaseOwner::scope(ModPhase::Setup);
@@ -477,7 +561,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
-                for refusal in [Some("renderer"), Some("extensions"), None] {
+                for refusal in [None, Some("renderer"), Some("extensions")] {
                     REFUSE_EXTENSIONS.set(refusal == Some("extensions"));
                     trace.lock().unwrap().clear();
                     let root = fixture_root();
@@ -503,6 +587,17 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         &options.mods,
                     )
                     .unwrap();
+                    if refusal.is_none() {
+                        let reports = mod_api::__private::take_hook_panics();
+                        assert_eq!(
+                            reports.as_slice(),
+                            [mod_api::__private::HookPanicReport {
+                                mod_id: "broken_startup_reload",
+                                hook: "add_client_reload_listeners",
+                            }]
+                        );
+                        assert_eq!(trace.lock().unwrap().remove(0), "discard registration");
+                    }
                     assert_eq!(
                         *trace.lock().unwrap(),
                         ["prepare before", "bake model", "prepare after"]

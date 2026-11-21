@@ -45,8 +45,10 @@ Implement `ConfigurationTask` for a `Send + 'static` struct and pass an instance
 it must be nonempty and unique across all listeners for that connection. `register`
 returns `EmptyType` or `DuplicateType(id)` for an invalid type and `CallbackFailed(reason)`
 if reading the type panics. The first error refuses admission and supplies the disconnect
-diagnostic even if the listener ignores it. A phase refusal in the listener or in `task_type`
-instead discards only that listener's staged tasks, reservations and diagnostic. Rejected task
+diagnostic even if the listener ignores it. If a listener panics or hits a phase refusal in
+the listener or in `task_type`, only that listener's staged tasks, reservations, diagnostic
+and journaled writes are discarded; other listeners still configure the same peer, and only
+a panicking registration callback is skipped on later peers. Rejected task
 instances are dropped under the registering mod's panic policy, including when the implementation
 was already disabled and `task_type` was skipped. Keep `Drop` non-panicking: a destructor panic
 is logged and shown in an error toast with the mod's name; it does not replace the first diagnostic.

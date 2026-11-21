@@ -192,6 +192,57 @@ fn a_disk_codec_failure_remains_structured_and_does_not_disable_the_listener() {
     );
 }
 
+#[test]
+fn disk_operations_report_their_own_error_without_latching_and_later_mods_run() {
+    struct Refuses;
+    #[crate::__subscriptions]
+    impl Hooks for Refuses {
+        fn chunk_data_save(&self, _: &dyn ChunkDiskHost, event: &mut ChunkDataSaveEvent<'_>) {
+            let first = AttachmentType {
+                name: "first",
+                codec: None,
+                ..VALUE
+            };
+            let second = AttachmentType {
+                name: "second",
+                codec: None,
+                ..VALUE
+            };
+            let first = event.data.get(&first).unwrap_err();
+            assert_eq!(first.key, "disk_fixture:first");
+            assert_eq!(first.mod_id, "refuses");
+            let second = event.data.remove(&second).unwrap_err();
+            assert_eq!(second.key, "disk_fixture:second");
+            assert_eq!(second.mod_id, "refuses");
+            assert_eq!(event.data.failure(), Some(&first));
+            event.data.set(&VALUE, 99).unwrap();
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    testing::with_dispatch(
+        vec![
+            ModEntry::new("refuses", Box::new(Refuses)),
+            ModEntry::new(
+                "later",
+                Box::new(Listener {
+                    calls: calls.clone(),
+                    panics: false,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            let job = ChunkDiskJob::capture(&context(ChunkDiskPhase::Save), &store(7)).unwrap();
+            let failure = run(&job).unwrap_err();
+            assert_eq!(failure.key, "disk_fixture:first");
+            assert_eq!(failure.mod_id, "refuses");
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
+            assert!(crate::__private::take_hook_panics().is_empty());
+        },
+    );
+}
+
 fn opaque(value: Tag) -> Compound {
     Compound::from_iter([(
         "unknown".into(),
