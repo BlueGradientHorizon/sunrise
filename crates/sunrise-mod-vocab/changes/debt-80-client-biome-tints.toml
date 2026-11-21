@@ -1,7 +1,6 @@
 ids = [
     "method:prelude::ClientRenderClientHost::biome_tint",
     "behaviour:client_face_tint_refresh",
-    "method:prelude::WorldEditServerHost::read_columns",
     "type:ColumnBlocks",
     "type:ColumnBlocks.tints",
     "type:ColumnBlocks.water_colors",
