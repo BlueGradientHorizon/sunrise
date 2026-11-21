@@ -1075,9 +1075,10 @@ impl Game<'_> {
                     .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
                 for (effect, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
-                    let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+                    let Some(index) = self.mob_index.find(&self.mobs, id) else {
                         return;
                     };
+                    let m = &mut self.mobs[index];
                     match effect {
                         "instant_damage" | "instant_health" => {
                             // `LivingEntity.addEffect` refuses nothing here; the
@@ -1093,6 +1094,7 @@ impl Game<'_> {
                                     (6 << amp.min(30)) as f32,
                                     Damage::of(DamageKind::Magic),
                                 );
+                                self.finish_mob_damage_at(index);
                             } else {
                                 m.heal(&self.loop_context, (4 << amp.min(30)) as f32);
                             }
@@ -2164,10 +2166,10 @@ impl Game<'_> {
                                 let plan =
                                     self.prepare_knockback_credit(mob as i32, owner, &attack);
                                 let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                                let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
+                                let Some(index) = self.mob_index.find(&self.mobs, mob) else {
                                     return;
                                 };
-                                m.damage_by(
+                                self.mobs[index].damage_by(
                                     crate::game::entity::damage_level_of!(
                                         self,
                                         &attack,
@@ -2178,6 +2180,7 @@ impl Game<'_> {
                                     source,
                                     "minecraft:area_effect_cloud",
                                 );
+                                self.finish_mob_damage_at(index);
                             } else {
                                 m.heal(&self.loop_context, amount(4));
                             }
@@ -2564,6 +2567,7 @@ impl Game<'_> {
                         source,
                         "minecraft:splash_potion",
                     );
+                    self.finish_mob_damage_at(i);
                 } else {
                     m.heal(
                         &self.loop_context,

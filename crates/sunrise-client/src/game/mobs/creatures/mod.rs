@@ -3038,8 +3038,8 @@ impl Game<'_> {
                     let plan =
                         self.prepare_knockback_credit(mob as i32, None, self.combat.attack());
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) {
-                        m.damage(
+                    if let Some(index) = self.mob_index.find(&self.mobs, mob) {
+                        self.mobs[index].damage(
                             crate::game::entity::damage_level_of!(
                                 self,
                                 self.combat.attack(),
@@ -3049,6 +3049,7 @@ impl Game<'_> {
                             amount,
                             sunrise_client::mobs::Damage::of(kind),
                         );
+                        self.finish_mob_damage_at(index);
                     }
                 }
                 MobEvent::SetTarget { mob, target } => {
@@ -7381,6 +7382,7 @@ impl Game<'_> {
                 if hurt {
                     self.remember_mob_player_credit(id);
                 }
+                self.finish_mob_damage_at(index);
             }
             // Parrot.mobInteract: parrot food may tame a wild one (one time in
             // ten); a parrot never takes it as Animal food (isFood is false).

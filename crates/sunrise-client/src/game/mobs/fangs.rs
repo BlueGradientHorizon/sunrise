@@ -262,7 +262,7 @@ impl Game<'_> {
             let attack = self.attack_of_who(attacker);
             let plan = self.prepare_knockback_credit(id as i32, attacker, &attack);
             let mut credit = plan.lend(&mut self.last_hurt_by_player);
-            if self.mobs[index].damage(
+            let hurt = self.mobs[index].damage(
                 crate::game::entity::damage_level_of!(self, &attack, &mut credit, None),
                 6.0,
                 sunrise_client::mobs::Damage {
@@ -275,8 +275,9 @@ impl Game<'_> {
                     from: Some(f.pos),
                     attacker_species: None,
                 },
-            ) && owner.is_some()
-            {
+            );
+            self.finish_mob_damage_at(index);
+            if hurt && owner.is_some() {
                 self.mob_post_attack(
                     id,
                     attacker,
