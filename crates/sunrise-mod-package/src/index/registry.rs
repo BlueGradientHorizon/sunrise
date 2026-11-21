@@ -206,6 +206,17 @@ impl Entry {
         if version.sunrise.is_none() {
             return Ok(&version.file);
         }
+        self.stable_source_asset(version).map(|(_, _, asset)| asset)
+    }
+
+    /// The repository, tag and asset of a canonical stable source download on this project's release.
+    pub fn stable_source_asset<'a>(
+        &self,
+        version: &'a EntryVersion,
+    ) -> Result<(&'a str, &'a str, &'a str), String> {
+        if version.sunrise.is_none() {
+            return Err("a reviewed stable source row is required".into());
+        }
         if !plain_version(&version.version) || semver::Version::parse(&version.version).is_err() {
             return Err(
                 "a stable source must use the full SemVer version from its manifest".into(),
@@ -231,7 +242,7 @@ impl Entry {
                 "file must be hosted in the project's repository {source_repo}"
             ));
         }
-        Ok(asset)
+        Ok((repo, tag, asset))
     }
 
     /// The entry with the repository's page filling what it leaves out.

@@ -53,6 +53,12 @@ const COMMANDS: &[Command] = &[
         summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases and uses the author’s release at --asset-base. --binaries checks signed release assets and fit; to append to an existing version, give --registry and its original signed --package.",
     },
     Command {
+        name: "release",
+        everyday: false,
+        usage: crate::release::plan::USAGE,
+        summary: "Plans a tagged native release or a rebuild of reviewed source, and stages the verified SDK metadata. It does not build, sign or upload.",
+    },
+    Command {
         name: "keygen",
         everyday: false,
         usage: "keygen [--out <dir>] [--no-password]",

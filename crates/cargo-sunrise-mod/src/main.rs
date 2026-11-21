@@ -98,6 +98,7 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("publish") => publish::run(entry, &args[1..]),
+        Some("release") => release::plan::run(Path::new("."), &args[1..]),
         Some("keygen") => signing::keygen(&args[1..]),
         Some("sign") => signing::sign(&args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
@@ -846,7 +847,7 @@ mod tests {
     const OLD_BUILD: &str = "0123456789abcdef0123456789abcdef01234567";
 
     /// A build's SDK as its `sdk.json` names it, without a download.
-    fn offline(project: &Path, build: &str) -> Result<sdk_fetch::PinnedSdk, String> {
+    pub(super) fn offline(project: &Path, build: &str) -> Result<sdk_fetch::PinnedSdk, String> {
         Ok(sdk_fetch::PinnedSdk {
             build: build.to_owned(),
             name: build.to_owned(),

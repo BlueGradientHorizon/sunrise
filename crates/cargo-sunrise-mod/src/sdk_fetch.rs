@@ -295,12 +295,21 @@ pub(crate) fn fetch(
     dir: &Path,
     api: bool,
 ) -> Result<PinnedSdk, String> {
+    fetch_index(base, keys, build, dir, api).map(|index| pinned(&index, dir))
+}
+
+fn fetch_index(
+    base: &Base,
+    keys: &[PublicKey],
+    build: &str,
+    dir: &Path,
+    api: bool,
+) -> Result<Index, String> {
     let tag = format!("sdk-{build}");
     let stamp = CacheStamp::new(build, keys);
     if stamp.matches(dir) {
         let bytes = fs::read(dir.join(sdk::INDEX)).map_err(|e| format!("{DIR}: {e}"))?;
-        let index = Index::read(&bytes, build).map_err(|e| format!("{tag}: {e}"))?;
-        return Ok(pinned(&index, dir));
+        return Index::read(&bytes, build).map_err(|e| format!("{tag}: {e}"));
     }
     if let Err(e) = fs::remove_dir_all(dir)
         && e.kind() != std::io::ErrorKind::NotFound
@@ -340,7 +349,7 @@ pub(crate) fn fetch(
     }
     write(sdk::INDEX, &bytes)?;
     stamp.write(dir)?;
-    Ok(pinned(&index, dir))
+    Ok(index)
 }
 
 /// The compiled slices (`runtime`, `api`, `engine`) of the build `index` describes, for `target`,
@@ -464,18 +473,41 @@ fn build_data_from(
     if CacheStamp::new(build, keys).matches(&dir) && into.is_dir() {
         return Ok(into);
     }
-    fetch(base, keys, build, &dir, false)?;
-    let bytes = fs::read(dir.join(sdk::INDEX)).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let index = Index::read(&bytes, build).map_err(|e| format!("sdk-{build}: {e}"))?;
+    let index = fetch_index(base, keys, build, &dir, false)?;
+    unpack_build_data(base, &index, &dir)?;
+    Ok(into)
+}
+
+fn unpack_build_data(base: &Base, index: &Index, dir: &Path) -> Result<(), String> {
     unpack(
         base,
-        &index,
+        index,
         build_data::ARCHIVE,
-        &dir,
+        dir,
         BUILD_DATA,
         BUILD_DATA_LIMIT,
-    )?;
-    Ok(into)
+    )
+}
+
+/// Fetch release metadata into a private staging directory, not a reusable SDK cache.
+pub(crate) fn release_data(
+    base: &Base,
+    keys: &[PublicKey],
+    build: &str,
+    staging: &Path,
+    with_build_data: bool,
+) -> Result<Index, String> {
+    let dir = staging.join(build);
+    let index = fetch_index(base, keys, build, &dir, false)?;
+    if with_build_data {
+        unpack_build_data(base, &index, &dir)?;
+        // This staging folder has no other writers, unlike the shared SDK cache.
+        let lock = dir.join(format!("{BUILD_DATA}{}", sdk::LOCK_SUFFIX));
+        fs::remove_file(&lock).map_err(|e| format!("{}: {e}", lock.display()))?;
+    }
+    // A transported artifact must never be mistaken for a verified local SDK cache.
+    fs::remove_file(dir.join(STAMP)).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Ok(index)
 }
 
 #[cfg(test)]

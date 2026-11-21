@@ -795,7 +795,7 @@ impl Index {
 impl Revoked {
     /// Whether this takedown covers `id`'s file with this hash: every file of the project when it
     /// names no hash.
-    pub(crate) fn covers(&self, id: &str, sha256: &str) -> bool {
+    pub fn covers(&self, id: &str, sha256: &str) -> bool {
         self.id == id
             && self
                 .sha256

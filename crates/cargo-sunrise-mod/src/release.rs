@@ -20,6 +20,8 @@ use sunrise_mod_package::{
 };
 use sunrise_native_build::{library_record::Library, prebuilt::Route};
 
+pub(crate) mod plan;
+
 pub(crate) fn releases(path: &Path) -> Result<Vec<SunriseRelease>, String> {
     let text = bounded::read(path, 1 << 20)?;
     registry::parse_releases(&text).map_err(|e| format!("{}: {e}", path.display()))

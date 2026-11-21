@@ -10,6 +10,7 @@ folder.
 | `build` | Fetches the pinned SDK when needed, then packs the `.smod` with its [`uses.json`](04-fit.md#usesjson). For a native mod it then compiles the crate against the build's prebuilt game, as [`native-build`](08-native-build.md) does, with no launcher: see [`build` for a native mod](#build-for-a-native-mod). |
 | `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
 | `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
+| [`release plan`](#release-plan) | Writes a native release or rebuild plan and fetches the SDK metadata it needs, without building or publishing. |
 | `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
 | `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [-- <game args>]` | For a native mod, builds, stages the game with the mod in `target/sunrise-mod/run/` and starts it. |
@@ -45,6 +46,44 @@ When the pinned game supports `SUNRISE_LOG_STDERR`, `run` shows the native mod's
 live in the terminal. The full client log is normally in `target/sunrise-mod/run/home/logs/latest.log`.
 For a mod with `[[jar]]` entries, `run` verifies and stages the originals before building. See [Java jars as external
 assets](../../how-to/content-mods.md#java-jars-as-external-assets) for the default store, `--jars <dir>` and the development home requirements.
+
+## `release plan`
+
+For a tagged release, run from the checked-out mod project. The tag must be `v` followed by the manifest's
+full version, and its native pin must match exactly one stable release for its game:
+
+```sh
+cargo sunrise-mod registry releases --out releases.json
+cargo sunrise-mod release plan --tag v0.1.0 --releases releases.json --sdk-data sdk-data --out plan.json
+```
+
+For a rebuild, supply a checkout of the reviewed registry and its published `index.json`:
+
+```sh
+cargo sunrise-mod release plan --registry sunrise-mods --index index.json --id my_mod --repo you/my_mod \
+  --releases releases.json --sdk-data sdk-data --out plan.json
+```
+
+Without a requested pair, the newest eligible reviewed mod version wins, and only the newest stable release of its
+source line is considered for each version. An older target is not backfilled automatically. Pass `--version <version>`
+and `--target <stable-tag>` together for another pair; a requested pair that is unavailable, already covered, on a
+different line or otherwise ineligible is an error. Versions without published binaries and taken-down source are not
+rebuild candidates. Planning does not prove that the source fits the target: verify the reviewed package's bytes and
+signature, then use `publish` to check fit before submitting a build.
+
+The JSON output has `schema: 1`, `tool_commit` (the planning tool's commit) and `plan`. A scheduled rebuild with no
+candidate has `plan: null` and writes no SDK data. Otherwise `plan` has the mod `id`, `version`, `author_tag`, stable
+`source` and `target` records (`tag`, `commit`, `line`), `rust` (the target SDK's exact Rust release), and `hosts`.
+Each host records its `name`, Rust `triple`, Actions `runner`, `side`, optional `archive`, and whether it is the
+`source_producer`. The plan names the `source_asset` and, when making binaries, the `descriptor`. `mode` is `initial`
+for a release with binaries, `source-only` for a release with just one client job and a `reason`, or `rebuild` for a
+binary append with `reviewed_source` (author asset URL, size, SHA-256, key, signature and owners).
+
+`--sdk-data` must be a new directory under an existing parent. Release discovery supplies tags and commits; it does
+not authenticate an SDK. The command checks the signature for each `sdk-<commit>` tag, its SDK index, and the assets
+it fetches. It writes `sdk.json` and `surface.json` under `sdk-data/<commit>/` and extracts `build-data/` there for each
+SDK needed by a binary plan. It does not fetch compiled SDK slices. Failed verification leaves any existing plan
+file unchanged.
 
 ## `fits`
 
