@@ -1502,18 +1502,8 @@ fn receive_play(
                 else {
                     unreachable!("attachment sync is an engine declaration");
                 };
-                let event = match Event::decode_attachment_sync(payload) {
-                    Ok(event) => event,
-                    Err(error) if bundle.is_some() => {
-                        return Err(Reason::plain(format!(
-                            "attachment sync in play bundle: {error}"
-                        )));
-                    }
-                    Err(error) => {
-                        log::warn!("Sunrise: a bad attachment sync: {error}");
-                        continue;
-                    }
-                };
+                let event = Event::decode_attachment_sync(payload)
+                    .map_err(|error| Reason::plain(format!("attachment sync in play: {error}")))?;
                 if let Some(open) = bundle.as_mut() {
                     if let Err(exit) = stage_bundle_event(send, open, event) {
                         return exit;

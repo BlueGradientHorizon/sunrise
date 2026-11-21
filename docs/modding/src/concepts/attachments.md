@@ -128,8 +128,10 @@ default, on `set` and `remove`, and on demand with `AttachmentType::sync_data(ho
 holder)`; changes made in one tick are sent once, at its end. The recipients are the
 players who track the holder: guests who were sent a chunk for a chunk or block entity,
 who track an entity for an entity, the player and those tracking them for a player, and
-everyone in the level for the level. A viewer held during a proxy handoff receives changes
-and removals for the entities and other players it already tracks. A client also gets all
+everyone in the level for the level. A viewer held during a proxy handoff receives initial
+pairings, including entities that spawn between tracking passes. It can read updates and
+removals for tracked entities and other players through the same `Host::attachments` route
+before placement, without requesting a resync. A client also gets all
 of a holder's synced values when it starts seeing it: a chunk sent (with its block entities),
 a level joined or re-entered, an entity tracked, and its own player. The wire form is the
 codec's compound, so `sync` requires a codec.

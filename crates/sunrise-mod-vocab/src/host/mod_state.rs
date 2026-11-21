@@ -18,7 +18,9 @@ pub trait ModStateHost {
     /// Side: both.
     /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
     /// one. On a client it is the copy of what the server synced: `set` and
-    /// `remove` change only the copy.
+    /// `remove` change only the copy. While held during a proxy handoff, the
+    /// client can already read updates or removals for entities and other
+    /// players it tracks, without waiting for placement or requesting a resync.
     #[access(WorldOnly)]
     fn attachments(&mut self) -> &mut dyn AttachmentStore;
 }

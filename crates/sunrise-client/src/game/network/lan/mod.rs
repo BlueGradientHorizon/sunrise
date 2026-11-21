@@ -2654,7 +2654,7 @@ impl Game<'_> {
     /// tick. The counter prevents taking or draining an entity's state twice.
     pub(super) fn lan_pair_joined(&mut self, host: &mut LanHost) {
         if let Some(next) = host.states_next_entity
-            && host.hub.guests.iter().any(|g| host.hub.here(g))
+            && host.hub.guests.iter().any(|g| host.hub.watches(g))
         {
             self.lan_assign_ids();
             if self.next_entity != next {

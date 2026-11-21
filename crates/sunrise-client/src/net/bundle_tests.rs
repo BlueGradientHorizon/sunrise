@@ -88,58 +88,69 @@ fn malformed_metadata_aborts_the_open_bundle_and_refunds_its_prefix() {
 }
 
 #[test]
-fn malformed_pairing_attachment_aborts_before_publishing_the_spawn() {
+fn malformed_attachment_aborts_packet_decoding_with_or_without_a_bundle() {
     use sunrise_protocol::{attachment_sync, general_entity};
 
-    let (root, data) = empty_item_data("malformed-pairing-attachment");
-    let transport = Transport::capture(Side::Client).unwrap();
-    transport
-        .accept(transport.local.manifest.entries())
-        .unwrap();
-    transport.finish_configuration().unwrap();
-    let (client, server) = Pipe::pair();
-    let (reader, writer) = Connection::local(client).split();
-    let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
-    let (send, events) = event_channel();
-    let mut server = Connection::local(server);
-    let delimiter = play::Clientbound::BundleDelimiter(Empty);
-    let spawn = play::Clientbound::CustomPayload(cfg::CustomPayload {
-        channel: general_entity::CHANNEL.into(),
-        data: general_entity::encode(&general_entity::Message::Spawn {
-            id: 37,
-            uuid: 37,
-            type_key: "test:general".into(),
-            position: [0.5, 64.0, 0.5],
-            rotation: [0.0; 2],
-            velocity: [0.0; 3],
-        })
-        .unwrap(),
-    });
-    let broken = play::Clientbound::CustomPayload(cfg::CustomPayload {
-        channel: attachment_sync::CHANNEL.into(),
-        data: vec![5, 0, 0], // Invalid holder kind, but a valid outer CustomPayload.
-    });
-    for packet in [delimiter.clone(), spawn, broken, delimiter] {
-        server.send(&packet.encode()).unwrap();
+    for bundled in [false, true] {
+        assert_malformed_attachment_refused(bundled);
     }
-    drop(server);
-    let reader = play_reader(reader, writer.clone(), send, data, transport);
-    assert!(
-        matches!(
-            events.recv_timeout_owned(Duration::from_secs(5)),
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
-        ),
-        "the reader must close without publishing the spawn or its attachments"
-    );
-    let error = reader.join().unwrap().unwrap_err();
-    assert_eq!(
-        error.text,
-        "attachment sync in play bundle: attachment sync: holder kind 5"
-    );
-    assert_eq!(events.stats().reserved_bytes, 0);
-    assert!(events.stats().peak_reserved_bytes > 0);
-    writer.lock().unwrap().take().unwrap().shutdown();
-    std::fs::remove_dir_all(root).unwrap();
+
+    fn assert_malformed_attachment_refused(bundled: bool) {
+        let (root, data) = empty_item_data("malformed-pairing-attachment");
+        let transport = Transport::capture(Side::Client).unwrap();
+        transport
+            .accept(transport.local.manifest.entries())
+            .unwrap();
+        transport.finish_configuration().unwrap();
+        let (client, server) = Pipe::pair();
+        let (reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let (send, events) = event_channel();
+        let mut server = Connection::local(server);
+        let delimiter = play::Clientbound::BundleDelimiter(Empty);
+        let spawn = play::Clientbound::CustomPayload(cfg::CustomPayload {
+            channel: general_entity::CHANNEL.into(),
+            data: general_entity::encode(&general_entity::Message::Spawn {
+                id: 37,
+                uuid: 37,
+                type_key: "test:general".into(),
+                position: [0.5, 64.0, 0.5],
+                rotation: [0.0; 2],
+                velocity: [0.0; 3],
+            })
+            .unwrap(),
+        });
+        let broken = play::Clientbound::CustomPayload(cfg::CustomPayload {
+            channel: attachment_sync::CHANNEL.into(),
+            data: vec![5, 0, 0], // Invalid holder kind, but a valid outer CustomPayload.
+        });
+        if bundled {
+            server.send(&delimiter.encode()).unwrap();
+            server.send(&spawn.encode()).unwrap();
+        }
+        server.send(&broken.encode()).unwrap();
+        if bundled {
+            server.send(&delimiter.encode()).unwrap();
+        }
+        drop(server);
+        let reader = play_reader(reader, writer.clone(), send, data, transport);
+        assert!(
+            matches!(
+                events.recv_timeout_owned(Duration::from_secs(5)),
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected)
+            ),
+            "the reader must close without publishing the spawn or its attachments"
+        );
+        let error = reader.join().unwrap().unwrap_err();
+        assert_eq!(
+            error.text,
+            "attachment sync in play: attachment sync: holder kind 5"
+        );
+        assert_eq!(events.stats().reserved_bytes, 0);
+        assert_eq!(events.stats().peak_reserved_bytes > 0, bundled);
+        writer.lock().unwrap().take().unwrap().shutdown();
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[test]
@@ -184,6 +195,7 @@ fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
         channel: attachment_sync::CHANNEL.into(),
         data: body,
     });
+    let reader = play_reader(reader, writer.clone(), send, data, transport);
     for packet in [
         delimiter.clone(),
         spawn.encode(),
@@ -193,7 +205,6 @@ fn a_pairing_bundle_accepts_a_wire_valid_high_expansion_attachment() {
         server.send(&packet).unwrap();
     }
     drop(server);
-    let reader = play_reader(reader, writer.clone(), send, data, transport);
     let timeout = Duration::from_secs(5);
     let take = || events.recv_timeout_owned(timeout).unwrap().into_parts().0;
     assert!(matches!(take(), Event::BundleStart(None)));

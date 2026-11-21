@@ -608,6 +608,76 @@ fn a_global_level_event_keeps_its_level_when_another_level_is_in_place() {
 }
 
 #[test]
+fn a_late_spawn_pairs_with_the_only_held_viewer_before_the_next_pass() {
+    use crate::raw_payloads::{Side, Transport};
+    use sunrise_core::nbt::Tag;
+    use sunrise_mod_runtime::attachments::{AttachmentSync, Attachments};
+    use sunrise_protocol::attachment_sync;
+
+    let mut sync = SyncData::empty();
+    sync.builtin.registries.insert(
+        "minecraft:entity_type".into(),
+        sunrise_protocol::registry::Ids::from_names(vec!["minecraft:trident".into()]),
+    );
+    let (mut hub, _rx) = hub_with_sync(sync);
+    let transport = Transport::capture(Side::Server).unwrap();
+    transport
+        .accept(transport.local.manifest.entries())
+        .unwrap();
+    transport.finish_configuration().unwrap();
+    let (sender, inspect) = crate::lan::PlayerSender::payload_executor_test_sender(transport);
+    hub.sync_attachments = true;
+    hub.guests.update(0, |g| {
+        g.placed = false;
+        g.held = true;
+        g.sent_chunks.insert((0, 0));
+        g.sender = sender;
+    });
+    assert!(!hub.guests.iter().any(|g| hub.here(g)));
+    assert!(hub.guests.iter().any(|g| hub.watches(g)));
+
+    let trident = EntityState {
+        id: 37,
+        uuid: 37,
+        kind: "minecraft:trident".into(),
+        position: [0.5, 65.5, 0.5],
+        ..EntityState::default()
+    };
+    let change = AttachmentSync {
+        namespace: "test".into(),
+        name: "flight".into(),
+        value: Some([("n".into(), Tag::Int(9))].into()),
+    };
+    let mut map = Attachments::default();
+    map.apply_sync(change.clone());
+    let maps = [(37, map)].into_iter().collect();
+    let ticks = hub.tracking_ticks().unwrap_or_default();
+    hub.note_joined(&[trident], Some(&maps));
+
+    assert_eq!(hub.tracking_ticks(), Some(ticks));
+    let queued: Vec<_> = inspect().iter().map(|body| decode_packet(body)).collect();
+    let [
+        C::BundleDelimiter(_),
+        C::AddEntity(entity),
+        C::CustomPayload(sync),
+        C::BundleDelimiter(_),
+    ] = queued.as_slice()
+    else {
+        panic!("held viewer did not receive one complete pairing bundle: {queued:?}");
+    };
+    assert_eq!(entity.id, 37);
+    assert_eq!(sync.channel, attachment_sync::CHANNEL);
+    assert_eq!(
+        attachment_sync::decode(&sync.data).unwrap(),
+        attachment_sync::Message {
+            holder: Holder::Entity(37),
+            replace: true,
+            changes: vec![change],
+        }
+    );
+}
+
+#[test]
 fn late_pairing_is_one_publication_amid_concurrent_reliable_replies() {
     use crate::raw_payloads::{Side, Transport};
     use std::sync::Barrier;
