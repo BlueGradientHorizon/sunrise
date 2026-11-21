@@ -277,7 +277,7 @@ mod tests {
             game.world.block_log = Some(Vec::new());
             game.world.connection_group_log = Some(Vec::new());
             // Chunk (0, 0) has no block-ticking ticket: it is a held, non-ticking server column.
-            assert!(!game.tickets.block_ticking(0, 0));
+            assert!(!game.tickets.levels().block_ticking(0, 0));
 
             let level = game.level("minecraft:overworld").unwrap();
             let stone = state(game, "minecraft:stone");
