@@ -716,4 +716,163 @@ impl Game<'_> {
         self.capture(false);
         Ok(())
     }
+    /// Switch to a (possibly new) dimension: a fresh client level.
+    pub(in crate::game) fn enter_remote_dimension(
+        &mut self,
+        spawn: &play::SpawnInfo,
+        keep_world: bool,
+        reason: sunrise_client::level_loading::Reason,
+    ) {
+        // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
+        // table may still hold a local world's (a superflat Overworld's).
+        if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
+            sunrise_world::level::register_sea_level(key, spawn.sea_level);
+        }
+        self.track_remote_levels(&spawn.dimension);
+        // The replacement player starts with its inventory menu, even if the
+        // server switched levels without closing the previous container.
+        self.remote_close_local();
+        self.set_screen(Screen::Playing);
+        let Some(r) = self.remote.as_ref() else {
+            return;
+        };
+        // handleRespawn keeps the ClientLevel only for the same level key:
+        // two levels sharing a dimension type are still two levels.
+        let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
+        let transition_screen = sunrise_client_render::dimension_transition::select(
+            mod_api::__private::dimension_key(&spawn.dimension),
+            r.heard_level
+                .as_deref()
+                .map(mod_api::__private::dimension_key),
+        );
+        if !same {
+            self.forget_all_remote_columns();
+        }
+        let r = self.remote.as_mut().unwrap();
+        // A Sunrise server's bulk edit sends whole columns with the light
+        // from before its relight; any other server's packet light is final.
+        let relight_resent = r.quiet_commands;
+        let format = r.level_format(spawn);
+        let (dimension, shape) = (format.dimension, format.shape);
+        r.chunk_format = format.chunk_format;
+        r.level_facts = format.facts;
+        r.synced_type = format.synced_type;
+        r.dimension = dimension;
+        r.resolve_clocks();
+        self.world.day_time = r.clock_time(r.default_clock);
+        r.level = spawn.dimension.clone();
+        r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
+        r.hashed_seed = spawn.seed;
+        r.game_mode = spawn.game_type;
+        r.flat = spawn.flat;
+        r.loaded_sent = false;
+        // A replacement LevelLoadingScreen starts its bar from nothing (the
+        // first one carries on from the server's start).
+        if self.player.is_some() {
+            self.loading_progress = 0.0;
+        }
+        // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
+        // `LevelLoadingScreen`.
+        r.level_load.start_client_load(client_millis(), reason);
+        r.level_load.set_transition_screen(transition_screen);
+        // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
+        self.ambience.moodiness = 0.0;
+        r.position_sender = Default::default();
+        r.predictions.clear();
+        self.set_mode_id(spawn.game_type);
+        self.dim = Dim::from_id(&spawn.dimension);
+        self.build_level_environments();
+        self.audio.set_world(&spawn.dimension);
+        // ClientPacketListener.handleLogin / handleRespawn: the server's
+        // Player.getLastDeathLocation, for the recovery compass.
+        self.level.last_death = spawn
+            .last_death
+            .as_ref()
+            .map(|d| (d.dimension.clone(), d.pos));
+        if !same {
+            self.clock.reset_client_level_tick_state();
+            // A new ClientLevel: Minecraft.setLevel stops every sound.
+            self.stop_sounds_for_new_level();
+            let mut streaming = Streaming::new(
+                Arc::new(NoTerrain),
+                self.worker_context(),
+                self.res.threads(),
+            );
+            streaming.remote = true;
+            streaming.radius = self.streaming.radius;
+            self.streaming = streaming;
+            let (time, day, weather) = (
+                self.world.game_time,
+                self.world.day_time,
+                self.world.weather,
+            );
+            self.reset_client_world(spawn.seed);
+            // Entity IDs belong to this ClientLevel, not the connection. A
+            // same-level respawn keeps it; a replacement invalidates handles.
+            self.native_lifecycle_open_started();
+            self.native_lifecycle_world_ready();
+            self.world.shape = shape;
+            self.world.game_time = time;
+            self.world.day_time = day;
+            self.world.weather = weather;
+            self.mobs.clear();
+            self.clear_remote_objects();
+            self.clear_remote_projectiles();
+            self.dropped.clear();
+            self.clear_client_particles();
+            if let Some(r) = self.remote.as_mut() {
+                r.entities.clear();
+                r.passenger_vehicles.clear();
+                r.lerps.clear();
+                r.general.clear();
+                r.cart_lerps.clear();
+                r.stepped.clear();
+                r.head_lerps.clear();
+                r.pending_items.clear();
+                // The entity ids are the old world's; the new dimension's
+                // player entities re-map to their profiles on AddEntity.
+                r.level_players.clear();
+                r.level_player_names.clear();
+                r.level_player_textures.clear();
+                // A new ClientLevel: a new chunk storage, centred on 0, 0.
+                r.chunk_center = (0, 0);
+            }
+            self.clear_lod();
+            self.pending_uploads.clear();
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.clear_sections(self.world.layout());
+            }
+            // The new ClientLevel is told before setLevel drops the old one.
+            let old = self
+                .remote
+                .as_mut()
+                .and_then(|r| r.heard_level.replace(spawn.dimension.clone()));
+            self.native_client_level_load(&spawn.dimension);
+            if let Some(old) = old {
+                self.native_client_level_unload(&old);
+            }
+        }
+        self.streaming.relight_resent = relight_resent;
+        let has_sky = self
+            .remote
+            .as_ref()
+            .is_none_or(|r| r.dimension.has_skylight);
+        self.streaming.sky_light = has_sky;
+        self.streaming.nether_shading = self.nether_lighting();
+        // The seed in SpawnInfo is already the hashed one the client's BiomeManager holds.
+        self.streaming.biome_zoom = sunrise_core::biome::BiomeZoom::new(spawn.seed);
+        let player = self.player.as_ref();
+        self.particles
+            .detach_tracking_target(TrackingTarget::LocalPlayer, || {
+                player.map(player_tracking_body)
+            });
+        self.drop_remote_player();
+        // handleLogin / handleRespawn: LocalPlayer.setPortalCooldown, so a
+        // player who arrives standing in a portal gets no overlay from it.
+        self.portals.player.cooldown = spawn.portal_cooldown;
+        if let Some(profile) = self.remote.as_ref().map(|remote| remote.profile) {
+            self.initialize_entity(Holder::Player(profile), "minecraft:player");
+        }
+        self.finish_remote_level();
+    }
 }

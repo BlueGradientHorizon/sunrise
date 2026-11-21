@@ -829,4 +829,354 @@ impl Game<'_> {
             }
         }
     }
+    /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
+    /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
+    pub(super) fn tick_local_player(
+        &mut self,
+        entity_collisions: Vec<sunrise_core::geometry::Aabb>,
+        sprint_window: i32,
+    ) -> Result<Option<u8>> {
+        // Player.tick's ItemCooldowns.tick, after Pre and after
+        // handleKeybinds: this path replaces `tick_world`'s for a server's
+        // client (multiplayer and the default single player), so the entries
+        // advance here or the slot stays shaded until the server says the
+        // entry ended. `onCooldownEnded` is the plain ItemCooldowns' no-op on
+        // a client. Ticking it after the keybinds keeps a held use from
+        // trying again a tick before the server's entry ends.
+        self.cooldowns.tick();
+        // Player.tick's sleep counter (the darkening and the wake-up fade).
+        self.sleep_timer = crate::game::tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
+        if self.player.is_none() {
+            return Ok(None);
+        }
+        // The LevelLoadingScreen takes the input until the level is ready.
+        let loading = self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.level_load.is_active());
+        let playing = self.screen == Screen::Playing && !loading && !self.dialog_open();
+        let stick = self.pad_move();
+        let mut keys = if playing {
+            self.sample_movement_keys(stick)
+        } else {
+            Keys::default()
+        };
+        // On a server (not this game's own server thread), the stick moves as the keys it sets do
+        // (`KeyboardInput.tick`: 8 directions, full speed). The server only hears those keys
+        // (`ServerboundPlayerInputPacket`), and an anticheat that predicts from them pulls back
+        // a player moving at the stick's own angle and speed.
+        if self.integrated.is_none() && self.server_address().is_some() {
+            keys.analog = None;
+        }
+        let keys = self.mod_movement_keys(keys);
+        let input = u8::from(keys.forward)
+            | u8::from(keys.backward) << 1
+            | u8::from(keys.left) << 2
+            | u8::from(keys.right) << 3
+            | u8::from(keys.jump) << 4
+            | u8::from(keys.shift) << 5
+            | u8::from(keys.sprint) << 6;
+        // LocalPlayer.applyInput and aiStep: watching through another
+        // entity, the player does not move itself; its keys still reach the
+        // server, whose sneak check lets go of the camera.
+        let keys = if self.controls_camera() {
+            keys
+        } else {
+            Keys::default()
+        };
+        // The held lead's end eases from the look at the start of the tick
+        // (`yRotO`/`xRotO`), as the local tick does; `tick` returns before it
+        // reaches its own write when this window is a server client.
+        self.rope_rot_old = (self.yaw, self.pitch);
+        // Entity.rideTick: the vehicle ticks first, then its rider, which moves itself
+        // from where it sat before (`rider_tick`, in the riding branch below, once its
+        // look and the vehicle's fluid shelter are this tick's); positionRider then puts
+        // it on the new seat and changes nothing else.
+        let old_seat = self
+            .riding
+            .filter(|_| self.screen != Screen::Dead)
+            .and_then(|_| self.player.as_ref().map(|p| p.position));
+        let riding = self.screen != Screen::Dead && self.remote_ride(keys, sprint_window)?;
+        // LocalPlayer.isShiftKeyDown is the input's sneak, riding or not: the tick after a
+        // dismount crouches (a passenger never does) on the sneak held to get off.
+        if riding && let Some(p) = self.player.as_mut() {
+            p.shift_key_down = keys.shift;
+        }
+        // The server sends no passenger's position: they sit where their
+        // vehicles are now.
+        self.position_riders();
+        // Entity.getFluidInteractionBox asks the vehicle: a boat afloat shelters
+        // its passenger's eyes (AbstractBoat.modifyPassengerFluidInteractionBox).
+        let boat = self
+            .riding
+            .and_then(|id| self.boats.iter().find(|b| b.id == id))
+            .map(|b| sunrise_client::motion::RiddenBoat {
+                under_water: b.under_water(),
+                max_y: b.bounds().max_position().y,
+            });
+        let Some(player) = self.player.as_mut() else {
+            return Ok(None);
+        };
+        player.fluids.boat = boat;
+        if !riding && !self.replay.playing() {
+            self.previous_position = player.position;
+        }
+        let before = (
+            player.ground.on_ground,
+            [player.velocity.x, player.velocity.y, player.velocity.z],
+            [player.position.x, player.position.y, player.position.z],
+        );
+        let was_flying = player.flying;
+        self.sync_player_body();
+        // LivingEntity.tickDeath: the local player counts its deathTime once
+        // per client tick while dead (the camera's death roll and zoom).
+        if self.screen == Screen::Dead {
+            self.ui.death_time = self.ui.death_time.saturating_add(1);
+        }
+        let sleeping = self.sleeping;
+        if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
+            && let Some(player) = self.player.as_mut()
+        {
+            let from = std::mem::replace(&mut player.position, at);
+            if from != at
+                && let Ok(id) = u32::try_from(self.own_entity_id())
+            {
+                self.remote_entity_section_step(id, from, at);
+            }
+        }
+        let walks = self.can_move_local_player();
+        let section_scope = self.player_section_scope();
+        let Some(player) = self.player.as_mut() else {
+            return Ok(None);
+        };
+        let was_gliding = player.fall_flying;
+        let dead = self.screen == Screen::Dead;
+        // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
+        // shape is unavailable here; only the server decides when to wake.
+        if sleeping.is_some() {
+            player.velocity = Vec3::ZERO;
+            player.pitch = 0.0;
+        } else if walks {
+            let side = game_side!(self);
+            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+            player.client_side = true;
+            // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
+            // mob ends and bounces back; the server deals the hit.
+            player.spin_targets.clear();
+            if player.auto_spin_attack_ticks > 0 {
+                player.spin_targets.extend(
+                    self.mobs
+                        .iter()
+                        .filter(|m| !m.removed)
+                        .map(|m| (m.id, m.bounds())),
+                );
+            }
+            MotionWorld {
+                side: &side,
+                entities: &entity_collisions,
+                player,
+                scene: &mut self.world,
+                assets: &self.pack.assets,
+                collision_binding: self.collision,
+                resources: self.motion,
+                health: &self.health_resources,
+                loop_context: &self.loop_context,
+                damage_hooks: &self.damage_hooks,
+                tag_items: None,
+                block_registries: None,
+            }
+            .controlled_simulation_tick_with_sprint_window(keys, sprint_window)?;
+        } else {
+            // LivingEntity.baseTick counts hurtTime down for a dead or riding
+            // player too (controlled_simulation_tick does it otherwise): left
+            // at 10, the hurt tilt restarted every frame and shook the camera.
+            player.health.advance_clock();
+            if riding && !dead {
+                let side = game_side!(self);
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
+                player.client_side = true;
+                let mut passenger = MotionWorld {
+                    side: &side,
+                    entities: &entity_collisions,
+                    player: &mut *player,
+                    scene: &mut self.world,
+                    assets: &self.pack.assets,
+                    collision_binding: self.collision,
+                    resources: self.motion,
+                    health: &self.health_resources,
+                    loop_context: &self.loop_context,
+                    damage_hooks: &self.damage_hooks,
+                    tag_items: None,
+                    block_registries: None,
+                };
+                // The rider moves from its old seat; the new one is its place after.
+                let seat = passenger.player.position;
+                if let Some(from) = old_seat {
+                    passenger.player.position = from;
+                }
+                passenger.rider_tick(keys.direction())?;
+                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
+                // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
+                // frostbite overlay shows it (#8156).
+                passenger.passenger_block_effects_tick()?;
+            }
+        }
+        // The server decides fire the window cannot predict (blaze fireballs,
+        // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
+        // the predicted tick's countdown must not end it while it is set.
+        if !player.mod_fire_immune {
+            player.fire_ticks = hold_server_fire(
+                player.fire_ticks,
+                self.remote.as_ref().is_some_and(|r| r.own_on_fire),
+            );
+        }
+        // LocalPlayer.onUpdateAbilities: flight turned on or off (a double
+        // jump, a spectator, landing) is sent to the server.
+        let flying = player.flying;
+        // LocalPlayer.aiStep: a glide this client started is sent to the
+        // server (ServerboundPlayerCommandPacket START_FALL_FLYING).
+        let started_gliding = player.fall_flying && !was_gliding;
+        let events = std::mem::take(&mut player.events);
+        self.previous_eye = self.eye;
+        self.eye += (player.dimensions.eye_height - self.eye) * 0.5;
+        for event in events {
+            match event {
+                sunrise_client::motion::MotionEvent::Emission {
+                    position,
+                    state,
+                    muffled,
+                } => {
+                    let at = [position.x, position.y, position.z];
+                    let sounds = self.own_sound_type(at, state, mod_api::BlockSoundCause::Step);
+                    // Player.playStepSound: muffled under the swim sound in water.
+                    let (volume, pitch) = if muffled {
+                        (sounds.volume * 0.05, sounds.pitch * 0.8)
+                    } else {
+                        (sounds.volume * 0.15, sounds.pitch)
+                    };
+                    self.play_client_player_sound(&sounds.step, volume, pitch);
+                }
+                sunrise_client::motion::MotionEvent::Swim { volume, pitch } => {
+                    self.play_client_player_sound("minecraft:entity.player.swim", volume, pitch);
+                }
+                // Entity.doWaterSplashEffect on the client's own level: the
+                // server's splash skips this player (Player.playSound), and
+                // its particles are the client's own.
+                sunrise_client::motion::MotionEvent::Splash {
+                    high_speed,
+                    volume,
+                    pitch,
+                } => {
+                    let name = if high_speed {
+                        "minecraft:entity.player.splash.high_speed"
+                    } else {
+                        "minecraft:entity.player.splash"
+                    };
+                    self.play_client_player_sound(name, volume, pitch);
+                }
+                sunrise_client::motion::MotionEvent::SplashParticle {
+                    bubble,
+                    position,
+                    velocity,
+                } => {
+                    use sunrise_client::particles::{ParticleOptions, ParticleType};
+                    let kind = if bubble {
+                        ParticleType::Bubble
+                    } else {
+                        ParticleType::Splash
+                    };
+                    self.particles.add(
+                        &ParticleOptions::simple(kind),
+                        [position.x, position.y, position.z],
+                        [velocity.x, velocity.y, velocity.z],
+                    );
+                }
+                sunrise_client::motion::MotionEvent::Chime { volume, pitch } => {
+                    self.play_client_player_sound(
+                        "minecraft:block.amethyst_block.chime",
+                        volume,
+                        pitch,
+                    );
+                }
+                // NetherPortalBlock.entityInside on the client's own level:
+                // the portal overlay and its trigger sound (the server moves
+                // the player).
+                sunrise_client::motion::MotionEvent::PowderSnowMelt { pos } => {
+                    self.powder_snow_melt(pos);
+                }
+                sunrise_client::motion::MotionEvent::InsidePortal { .. } => {
+                    self.client_inside_nether_portal();
+                }
+                // HoneyBlock.maybeDoSlideEffects on the client's own level:
+                // the slide sound, heard here (LocalPlayer.playSound); the
+                // particles come from the server's event 53.
+                sunrise_client::motion::MotionEvent::HoneySlide { sound: true, .. } => {
+                    self.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
+                }
+                // LivingEntity.causeFallDamage and HoneyBlock.fallOn on the
+                // client's own level: the fall and honey sounds are heard here
+                // (LocalPlayer.playSound); the server's copy skips this player
+                // (Player.playSound).
+                sunrise_client::motion::MotionEvent::Fall(event) => self.block_fall(event),
+                _ => {}
+            }
+        }
+        // A stand riding the player follows this move (tickPassenger).
+        self.seat_own_stands();
+        // Other players on this player (possibly through a plugin seat) follow this tick too;
+        // the full pass only when something rides this player.
+        if self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.has_passengers(r.entity_id as u32))
+        {
+            self.position_riders();
+        }
+        // The server owns health and hunger.
+        self.apply_remote_health();
+        self.tick_avatar(before, false);
+        // LivingEntity.tick: a sleeper's xRot is 0.
+        if sleeping.is_some() {
+            self.pitch = 0.0;
+            self.snap_player_model_pitch();
+        }
+        // The player's own model (third person, the inventory's preview).
+        if !self.replay.playing() {
+            self.tick_player_model();
+        }
+        if !dead {
+            self.remote_tick_using();
+        }
+        if flying != was_flying {
+            self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
+                flags: if flying { 2 } else { 0 },
+            }));
+        }
+        if started_gliding {
+            let id = self.remote.as_ref().map_or(0, |r| r.entity_id);
+            self.send(S::PlayerCommand(play::PlayerCommand {
+                id,
+                action: 6,
+                data: 0,
+            }));
+        }
+        // LocalPlayer.sendChanges sends `input.keyPresses`, which an auto-jump's `makeJump` set to
+        // jump for this tick: the jump key goes as held in the tick the client jumps.
+        let auto_jumped = self.player.as_ref().is_some_and(|p| p.was_auto_jump);
+        Ok(Some(input | u8::from(auto_jumped) << 4))
+    }
+    /// `ClientClockManager.tick`: the clock moves on by the game time that
+    /// passed since its last tick, at its rate. A game time the server sets
+    /// forward (its sync every second) moves the clock with it.
+    pub(super) fn remote_clock_tick(&mut self) {
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        let delta = self.world.game_time - r.clock_game_time;
+        r.clock_game_time = self.world.game_time;
+        for clock in r.clocks.values_mut() {
+            let _ = client_level_tick::advance_clock(clock, delta);
+        }
+        self.world.day_time = r.clock_time(r.default_clock);
+    }
 }
