@@ -144,7 +144,7 @@ fn parse(file: &str, text: &str) -> Result<Declaration, BehaviourError> {
             .rsplit_once("::")
             .filter(|(path, function)| {
                 !path.is_empty()
-                    && !path.contains(['\\', ':'])
+                    && !path.contains(['\\', ':', '\0'])
                     && Path::new(path)
                         .components()
                         .all(|part| matches!(part, Component::Normal(_)))
@@ -374,6 +374,14 @@ mod tests {
                 BehaviourError::BadTest {
                     file: file(),
                     test: "C:/a.rs::pins".into(),
+                },
+            ),
+            (
+                "b.toml",
+                "version = 1\ndoc = \"d\"\ntests = [\"a\\u0000.rs::pins\"]\n",
+                BehaviourError::BadTest {
+                    file: file(),
+                    test: "a\0.rs::pins".into(),
                 },
             ),
             (
