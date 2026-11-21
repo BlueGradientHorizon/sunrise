@@ -23,6 +23,19 @@ What a hook's return value means depends on its kind:
 
 A hook with no receiver gets no `Host`.
 
+## Failures and panics
+
+Every hook's dispatcher catches panics in mod callbacks. A panicking callback is disabled for that
+hook for the rest of the session — the mod's other hooks and every other mod's listeners keep
+running — and the panic is reported once loudly with an error log line and an error toast naming
+the mod and the hook.
+
+Isolated hooks additionally roll the panicking listener's outputs back to the game's requested
+values and stop the current invocation so no later listener runs on that call.
+
+Any other failure or refusal — such as a load-phase refusal, an invalid output writeback, or an
+output-validator refusal — is reported each time it happens and is never latched.
+
 ## Player tick hooks
 
 `player_tick_pre` and `player_tick_post` bracket the player's body tick on both

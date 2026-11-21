@@ -1,3 +1,10 @@
+//! Generate hook traits, event structs, and dispatch functions from the catalog.
+//!
+//! Every generated `dispatch_*` function routes listener calls through `runtime::invoke`,
+//! enforcing one failure rule across the entire mod API: a panic in a mod callback disables that
+//! mod's callback for that hook for the rest of the session (leaving other hooks and other mods
+//! running) and reports it once via an error log line and error toast naming the mod and hook;
+//! any other failure or refusal is reported each time and never latched.
 use super::*;
 use crate::catalog::{DispatchStyle, EFFECT_TICK_TARGET, Receiver, RegistrationAppend};
 
@@ -41,6 +48,11 @@ pub(super) fn render(catalog: &Catalog) -> Result<HookSources, String> {
     )
 }
 
+/// Emit trait methods, event types, game adapters, and `dispatch_*` functions for `hooks`.
+///
+/// Every generated dispatcher invokes callbacks through `runtime::invoke` under the unified
+/// failure rule: panics disable only `(hook, mod)` for the rest of the session and report once,
+/// while phase and output-validator refusals report every time and are never latched.
 pub(super) fn emit<'a>(
     hooks: impl Iterator<Item = &'a Hook>,
     contexts: &[DrawContext],

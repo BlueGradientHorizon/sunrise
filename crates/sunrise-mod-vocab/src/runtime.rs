@@ -1,4 +1,12 @@
-//! The installed mods, who is subscribed to what, and the crash marks around a call.
+//! The installed mods, who is subscribed to what, the crash marks around a call, and the
+//! unified hook-dispatch failure rule.
+//!
+//! Every generated hook dispatcher runs mod callbacks through [`invoke`]:
+//! - A panic in a mod's callback disables that mod's callback for that hook for the rest of the
+//!   session, leaves the mod's other hooks and every other mod's listeners running, and reports the
+//!   panic once loudly via an `error!` log line and a queued error toast naming the mod and hook.
+//! - Any other failure or refusal (such as a load-phase refusal or output-validator refusal) is
+//!   reported each time and never latched or used to disable the listener.
 use crate::*;
 
 // no wire: installed hook trait objects and shared dispatch ownership are process-local.
@@ -175,9 +183,10 @@ pub fn isolated_failures() -> u64 {
     LISTENER_SERIAL.get().1
 }
 
-/// Mark `id`'s listener of `hook` poisoned for the session: it is skipped by
-/// that one hook alone — its other hooks and Parts are untouched, unlike a
-/// whole-mod disable. Returns `true` if this is the first poison for `(hook, id)`.
+/// Mark `id`'s listener of `hook` disabled for the rest of the session: it is skipped by
+/// that one hook alone — its other hooks, Parts, and every other mod's listeners are
+/// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
+/// `(hook, id)`, so the error log line and error toast fire once.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
     let (entered, trapped) = LISTENER_SERIAL.get();
     LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
@@ -215,6 +224,12 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     installed().is_some_and(|installed| is_poisoned(installed, hook, id))
 }
 
+/// Record a mod callback panic under the unified dispatch failure rule.
+///
+/// On the first panic for `(hook_id, mod_id)`, disables that mod's callback for that hook for the
+/// rest of the session (leaving other hooks and other mods running), logs an `error!` line naming
+/// the mod, hook, and panic message, and queues one [`HookPanicReport`] for the client's error
+/// toast.
 pub(crate) fn record_hook_panic(
     hook_id: generated::HookId,
     hook: &'static str,
@@ -242,6 +257,14 @@ pub(crate) enum DispatchOutcome<T> {
     Panicked,
 }
 
+/// Run one mod callback under the unified hook-dispatch failure rule.
+///
+/// A panic disables `(hook_id, mod_id)` for the rest of the session, reports it once via
+/// [`record_hook_panic`] (error log line plus error toast), and returns
+/// [`DispatchOutcome::Panicked`] without unwinding into the game or stopping other mods.
+/// Outside `World` (`contained == true`), a load-phase refusal returns
+/// [`DispatchOutcome::Refused`] so the caller reports it each time without latching or disabling
+/// the listener.
 #[inline]
 pub(crate) fn invoke<T>(
     hook_id: generated::HookId,

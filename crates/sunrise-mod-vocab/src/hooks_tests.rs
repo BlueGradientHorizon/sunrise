@@ -907,3 +907,92 @@ fn passages_take_a_server_host(server: &mut dyn ServerHost, level: LevelRef, pas
     let id: Result<PassageId, PassageRegistrationError> = level.register_passage(server, passage);
     let _: bool = level.remove_passage(server, id.unwrap());
 }
+
+#[test]
+fn panicking_listener_is_disabled_for_that_hook_and_reported_once() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct ModA {
+        pre: Arc<AtomicUsize>,
+        post: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ModA {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.pre.fetch_add(1, Ordering::Relaxed);
+            panic!("mod_a client_tick_pre failure");
+        }
+        fn client_tick_post(&self, _: &mut dyn ClientHost, _: &mut ClientTickPostEvent) {
+            self.post.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    struct ModB {
+        pre: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ModB {
+        fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
+            self.pre.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let a_pre = Arc::new(AtomicUsize::new(0));
+    let a_post = Arc::new(AtomicUsize::new(0));
+    let b_pre = Arc::new(AtomicUsize::new(0));
+
+    let _ = crate::__private::take_hook_panics();
+
+    testing::with_dispatch(
+        vec![
+            ModEntry::new(
+                "mod_a",
+                Box::new(ModA {
+                    pre: a_pre.clone(),
+                    post: a_post.clone(),
+                }),
+            ),
+            ModEntry::new("mod_b", Box::new(ModB { pre: b_pre.clone() })),
+        ]
+        .into(),
+        || {
+            let mut host = FakeHost::new();
+
+            // Dispatch #1: mod_a panics without unwinding out of dispatch, and mod_b still runs.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 1);
+
+            // Dispatch #2: mod_a is disabled for client_tick_pre, while mod_b keeps running.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 2);
+
+            // mod_a's other hook still runs: disablement is per (hook, mod), not whole-mod.
+            dispatch_client_tick_post(&mut host);
+            assert_eq!(a_post.load(Ordering::Relaxed), 1);
+
+            let reports: Vec<_> = crate::__private::take_hook_panics()
+                .into_iter()
+                .filter(|report| matches!(report.mod_id, "mod_a" | "mod_b"))
+                .collect();
+            assert_eq!(
+                reports,
+                [crate::__private::HookPanicReport {
+                    mod_id: "mod_a",
+                    hook: "client_tick_pre",
+                }]
+            );
+
+            // Dispatch #3: mod_a stays skipped and no duplicate report is queued.
+            dispatch_client_tick_pre(&mut host);
+            assert_eq!(a_pre.load(Ordering::Relaxed), 1);
+            assert_eq!(b_pre.load(Ordering::Relaxed), 3);
+            let later: Vec<_> = crate::__private::take_hook_panics()
+                .into_iter()
+                .filter(|report| matches!(report.mod_id, "mod_a" | "mod_b"))
+                .collect();
+            assert!(later.is_empty());
+        },
+    );
+}

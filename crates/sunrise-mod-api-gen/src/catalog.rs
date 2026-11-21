@@ -175,9 +175,9 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook whose dispatch runs every listener inside `catch_unwind`: one that
-    /// unwinds is switched off for this hook for the session, and the outputs it had written roll
-    /// back to what the game requested (#2414 ruling).
+    /// A global cancel hook that, on top of the universal per-`(hook, mod)` panic containment,
+    /// rolls a panicking listener's outputs back to what the game requested and stops the current
+    /// invocation (#2414 ruling).
     pub isolate: bool,
     /// An isolated hook's per-listener check of the outputs it wrote: a path to
     /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
