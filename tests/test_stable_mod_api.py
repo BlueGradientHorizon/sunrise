@@ -21,9 +21,10 @@ def digest(text):
     return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
-def sealed(surface):
-    """`surface` with the document hash the real reader computes from its records' ids and hashes."""
-    entries = [(record["id"], record["hash"]) for record in surface.get("behaviours", [])]
+def sealed(surface, later=()):
+    """`surface` with the document hash the real reader computes from its records' ids and hashes, `later`'s
+    (id, hash) pairs of a collection it doesn't know counted in too."""
+    entries = [(record["id"], record["hash"]) for record in surface.get("behaviours", [])] + list(later)
     entries += [(f"extension_tag:{tag['registry']}/{tag['id']}",
                  digest(json.dumps([tag["registry"], tag["id"]], separators=(",", ":"))))
                 for tag in surface.get("extension_tags", [])]

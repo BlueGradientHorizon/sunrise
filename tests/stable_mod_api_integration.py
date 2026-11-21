@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, digest, sdk_assets
+from test_stable_mod_api import ADDITIVE, BREAKING, CONDITIONAL, HEAD, OLD, PREVIOUS, SURFACE, sdk_assets, sealed
 from tools.ci import nightly
 
 # A record hash in the writer's form.
@@ -112,9 +112,7 @@ class StableModApiIntegration(unittest.TestCase):
         bumped = {**ADDITIVE, "behaviours": [ADDITIVE["behaviours"][0], {**ADDITIVE["behaviours"][1], "version": 2}]}
         def counting(*later):
             """ADDITIVE with an unknown collection of `later`'s (id, hash) records, counted in its document hash."""
-            entries = sorted([(record["id"], record["hash"]) for record in ADDITIVE["behaviours"]] + list(later))
-            return {**ADDITIVE, "later": [{"id": id, "hash": hash} for id, hash in later],
-                    "hash": digest("".join(f"{id} {hash}\n" for id, hash in entries))}
+            return sealed({**ADDITIVE, "later": [{"id": id, "hash": hash} for id, hash in later]}, later)
         counted = counting(("later:x", LATER_HASH))
         for fixture, signed, refused in (
                 ("as exported", ADDITIVE, False), ("unknown field", unknown_field, False),
