@@ -175,5 +175,11 @@ mod root {
                     })
             })
         }
+        pub(super) fn report_mod_panic(
+            _mod_id: &'static str,
+            _kind: &'static str,
+            _operation: &'static str,
+        ) {
+        }
     }
 }

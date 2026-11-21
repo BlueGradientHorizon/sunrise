@@ -699,4 +699,92 @@ mod tests {
             assert!(unanswered.source().contains(&star) && unanswered.source().contains(&heart));
         });
     }
+
+    #[test]
+    fn a_panicking_texture_atlas_listener_rolls_back_only_its_own_entries_and_is_poisoned() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct AtlasMod {
+            atlas: &'static str,
+            panic: bool,
+            calls: Arc<AtomicUsize>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for AtlasMod {
+            fn register_texture_atlases(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::RegisterTextureAtlasesEvent<'_>,
+            ) {
+                self.calls.fetch_add(1, Ordering::Relaxed);
+                event.register(registration(self.atlas, self.atlas));
+                if self.panic {
+                    panic!("atlas registration boom");
+                }
+            }
+        }
+
+        let calls_a = Arc::new(AtomicUsize::new(0));
+        let calls_b = Arc::new(AtomicUsize::new(0));
+        let calls_c = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![
+            mod_api::ModEntry::new(
+                "mod_a",
+                Box::new(AtlasMod {
+                    atlas: "mod_a:a",
+                    panic: false,
+                    calls: Arc::clone(&calls_a),
+                }),
+            ),
+            mod_api::ModEntry::new(
+                "mod_b",
+                Box::new(AtlasMod {
+                    atlas: "mod_b:b",
+                    panic: true,
+                    calls: Arc::clone(&calls_b),
+                }),
+            ),
+            mod_api::ModEntry::new(
+                "mod_c",
+                Box::new(AtlasMod {
+                    atlas: "mod_c:c",
+                    panic: false,
+                    calls: Arc::clone(&calls_c),
+                }),
+            ),
+        ]
+        .into();
+
+        let _ = mod_api::__private::game::take_mod_error_toasts();
+        mod_platform::testing::with_mods(mods, || {
+            let first = collect_texture_atlases();
+            let first_ids: Vec<String> =
+                first.iter().map(|entry| entry.atlas.to_string()).collect();
+            assert_eq!(first_ids, ["mod_a:a", "mod_c:c"]);
+            assert_eq!(calls_a.load(Ordering::Relaxed), 1);
+            assert_eq!(calls_b.load(Ordering::Relaxed), 1);
+            assert_eq!(calls_c.load(Ordering::Relaxed), 1);
+            let toasts = mod_api::__private::game::take_mod_error_toasts();
+            assert!(
+                toasts.contains(&("mod_b", "register_texture_atlases")),
+                "expected panic toast for mod_b, got {toasts:?}"
+            );
+
+            let second = collect_texture_atlases();
+            let second_ids: Vec<String> =
+                second.iter().map(|entry| entry.atlas.to_string()).collect();
+            assert_eq!(second_ids, ["mod_a:a", "mod_c:c"]);
+            assert_eq!(calls_a.load(Ordering::Relaxed), 2);
+            assert_eq!(
+                calls_b.load(Ordering::Relaxed),
+                1,
+                "poisoned listener must not run on a second dispatch"
+            );
+            assert_eq!(calls_c.load(Ordering::Relaxed), 2);
+        });
+    }
 }

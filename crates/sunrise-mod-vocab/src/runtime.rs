@@ -194,6 +194,10 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     })
 }
 
+pub(crate) fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {
+    crate::callback_owner::report_mod_panic(mod_id, kind, operation);
+}
+
 pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {
     crate::dispatch_scope::backend()
         .is_none_or(|backend| (backend.diagnostics.first_output_refusal)(hook, id))

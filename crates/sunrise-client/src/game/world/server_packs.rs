@@ -74,6 +74,7 @@ impl ServerPackState {
             .filter_map(|n| n.toast.as_ref())
             .chain(self.load_fail.as_ref())
             .chain(self.chunk_io.iter().flatten())
+            .chain(self.mod_errors.iter().flatten())
             .filter_map(|t| t.slot)
     }
 }
@@ -98,6 +99,8 @@ pub(super) struct ServerPackState {
     /// `SystemToastId.LOW_DISK_SPACE`, `CHUNK_LOAD_FAILURE` and `CHUNK_SAVE_FAILURE`:
     /// the toasts the integrated server's chunk IO reports add (`chunk_io`).
     pub(super) chunk_io: [Option<SystemToast>; 3],
+    /// Error toasts queued when a mod callback or hook panics and is disabled.
+    pub(super) mod_errors: Vec<Option<SystemToast>>,
 }
 /// `DownloadedPackSource.createDownloadNotifier`: one batch's progress in its
 /// own `SystemToast`.
@@ -527,11 +530,28 @@ impl Game<'_> {
         }
     }
 
+    fn add_mod_error_toasts(&mut self) {
+        for (mod_id, operation) in mod_api::__private::game::take_mod_error_toasts() {
+            let toast = SystemToast::new(
+                Text::tr("sunrise.mods.callback_panicked.title", &[]),
+                Some(Text::tr(
+                    "sunrise.mods.callback_panicked.description",
+                    &[&mod_id, &operation],
+                )),
+            )
+            .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
+            if let Some(shown) = self.add_system_toast(toast) {
+                self.server_packs.mod_errors.push(Some(shown));
+            }
+        }
+    }
+
     /// The download notifiers' toasts, each in a free 32-pixel slot of the
     /// `ToastManager` (`hidden`, F1, keeps them timing out undrawn).
     pub(super) fn draw_pack_toasts(&mut self, batch: &mut HudBatch, hidden: bool) {
         let multiplier = self.settings.notification_display_time;
         self.add_chunk_io_toasts();
+        self.add_mod_error_toasts();
         let mut used = self.toast_slots_used();
         let packs = &mut self.server_packs;
         for slot_toast in packs
@@ -540,6 +560,7 @@ impl Game<'_> {
             .map(|n| &mut n.toast)
             .chain(std::iter::once(&mut packs.load_fail))
             .chain(packs.chunk_io.iter_mut())
+            .chain(packs.mod_errors.iter_mut())
         {
             let Some(toast) = slot_toast else {
                 continue;
@@ -565,6 +586,7 @@ impl Game<'_> {
                 toast.draw(&self.gui.atlas, batch, 32.0 * slot as f32);
             }
         }
+        packs.mod_errors.retain(Option::is_some);
         self.draw_controller_notice(batch);
     }
     /// A left click on the prompt: its answer when it hit a button.

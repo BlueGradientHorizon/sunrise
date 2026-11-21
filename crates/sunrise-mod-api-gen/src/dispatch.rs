@@ -849,8 +849,8 @@ pub(super) fn emit<'a>(
             let entry = entry.to_token_stream();
             dispatch.push_str(&format!(
                 "impl{impl_params} {event_type}{event_params} {{\n\
-                 /// Stage one entry for registration. If the phase gate refuses this listener,\n\
-                 /// its entries are discarded and earlier registrations stand.\n\
+                 /// Stage one entry for registration. If the phase gate refuses this listener or it\n\
+                 /// panics, its entries are discarded and earlier registrations stand.\n\
                  pub fn register(&mut self, entry: {entry}) {{ self.{out}.push(entry); }}\n}}\n"
             ));
         }
@@ -915,7 +915,10 @@ pub(super) fn emit<'a>(
         // A trait mod's call is marked with the mod for a panic to name.
         let each = match &hook.owner {
             Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
-            None if answered || hook.collect_validator.is_some() => {
+            None if answered
+                || hook.collect_validator.is_some()
+                || registration_append.is_some() =>
+            {
                 format!("super::entered_with_id(HookId::{hook_id}, \"{name}\")")
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
@@ -1040,11 +1043,12 @@ pub(super) fn emit<'a>(
                 "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
             )
         };
-        let binding = if answered || hook.collect_validator.is_some() {
-            format!("(mod_id, {mod_item})")
-        } else {
-            mod_item.clone()
-        };
+        let binding =
+            if answered || hook.collect_validator.is_some() || registration_append.is_some() {
+                format!("(mod_id, {mod_item})")
+            } else {
+                mod_item.clone()
+            };
         // The #2414 ruling an isolated cancel hook carries: a listener that unwinds keeps the
         // **requested** outputs — not one an earlier listener had proposed — is skipped by this
         // hook for the session, and no later listener runs on this invocation.
@@ -1191,6 +1195,30 @@ pub(super) fn emit<'a>(
                     o = cancel_out.unwrap()
                 ),
             ),
+            None if registration_append.is_some() => {
+                let output = out.unwrap();
+                let (previous_stmt, on_ok) = if answered {
+                    (
+                        String::new(),
+                        format!(
+                            "{output}.extend({event}.{output}.drain(..).map(|answer| Answered {{ answer, mod_id }}));"
+                        ),
+                    )
+                } else if let Some(validator) = hook.collect_validator.as_ref() {
+                    (
+                        format!("let previous = {event}.{output}.clone(); "),
+                        format!("{validator}(mod_id, &previous, {event}.{output});"),
+                    )
+                } else {
+                    (String::new(), String::new())
+                };
+                (
+                    String::new(),
+                    format!(
+                        "for {binding} in {each} {{ if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} {local_event} let __len = {event}.{output}.len(); {previous_stmt}match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(())) => {{ {on_ok} {local_write_back} {stack_after} }} Ok(Err(refusal)) => {{ {event}.{output}.truncate(__len); {clear_batch}refusal.report(); }} Err(_unwound) => {{ {event}.{output}.truncate(__len); {clear_batch}super::runtime::poison(HookId::{hook_id}, mod_id); super::runtime::report_mod_panic(mod_id, \"hook\", \"{name}\"); }} }} }}"
+                    ),
+                )
+            }
             None => (
                 String::new(),
                 format!("for {binding} in {each} {{ {} }}", call(&mod_item, "break")),
