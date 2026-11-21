@@ -19,7 +19,7 @@ use sunrise_client::{
         menu::{ModCraft, Slots, linked_slot_count, read_links, write_links},
     },
     menu::{
-        Asked, Env, Input, Kind, Menu,
+        Env, Input, Kind, Menu,
         place::{PostPlace, TransferCheck, TransferError},
     },
 };
@@ -213,20 +213,18 @@ impl Game<'_> {
         menu: &mut Menu,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
-        self.guest_menu_op_with(gi, menu, None, None, op)
+        self.guest_menu_op_with(gi, menu, None, op)
     }
 
-    /// `guest_menu_op` with the slot rules a decision kept (instead of asking the mods) and the
-    /// mods' answer to the pickup it decided, when there is one.
+    /// `guest_menu_op` with the mods' answer to a decided pickup, when there is one.
     pub(super) fn guest_menu_op_with<R>(
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        rules: Option<&dyn sunrise_client::menu::SlotRules>,
         stacked: Option<&sunrise_client::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
-        let result = self.guest_menu_edit(gi, menu, rules, stacked, op)?;
+        let result = self.guest_menu_edit(gi, menu, stacked, op)?;
         let conn = self.lan.as_ref()?.hub.guests[gi].conn;
         self.publish_guest_menu_effects(conn, GuestMenuEffects::take(menu));
         Some(result)
@@ -238,7 +236,6 @@ impl Game<'_> {
         &mut self,
         gi: usize,
         menu: &mut Menu,
-        rules: Option<&dyn sunrise_client::menu::SlotRules>,
         stacked: Option<&sunrise_client::menu::StackedOutcome>,
         op: impl FnOnce(&mut Menu, &Env) -> R,
     ) -> Option<R> {
@@ -276,12 +273,8 @@ impl Game<'_> {
             limited_crafting: host.hub.limited_crafting,
             can_equip: Some(&parts),
             known_recipes: Some(&host.hub.guests[gi].recipe_book),
-            ..self.menu_env()
-        };
-        let env = Env {
-            slot_rules: rules.or(env.slot_rules),
             stacked,
-            ..env
+            ..self.menu_env()
         };
         let limits = host.hub.guests[gi]
             .menu
@@ -478,17 +471,6 @@ impl Game<'_> {
     /// blaze powder slots) or a content mod's menu type (`Kind::Mod`) over the
     /// block entity's slots. False for other windows.
     pub(super) fn lan_machine_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        self.lan_machine_click_asked(conn, p, Asked::default())
-    }
-
-    /// `lan_machine_click` with the slot rules' answers the server got for this click before it
-    /// reached the menu (`Menu::click_asked`).
-    pub(in crate::game) fn lan_machine_click_asked(
-        &mut self,
-        conn: u32,
-        p: &play::ContainerClick,
-        asked: Asked,
-    ) -> bool {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
@@ -741,16 +723,13 @@ impl Game<'_> {
                     &mut menu,
                     Some(click),
                     Some(&prepare),
-                    |game, menu, rules, stacked| {
-                        let (mut previous, (mut rest, mut answers)) =
-                            game.guest_menu_edit(gi, menu, rules, stacked, |menu, env| {
+                    |game, menu, stacked| {
+                        let (mut previous, mut rest) =
+                            game.guest_menu_edit(gi, menu, stacked, |menu, env| {
                                 prepare(menu, env);
                                 menu.track_takes(true);
                                 let before = menu.container_items();
-                                (
-                                    before,
-                                    menu.start_click(env, click.0, click.1, click.2, asked),
-                                )
+                                (before, menu.start_click(env, click.0, click.1, click.2))
                             })?;
                         loop {
                             let after = menu.container_items();
@@ -778,16 +757,14 @@ impl Game<'_> {
                             } else {
                                 break;
                             };
-                            let (next, kept) =
-                                game.guest_menu_edit(gi, menu, None, None, |menu, env| {
-                                    menu.resume_click(env, step, answers)
-                                })?;
+                            let next = game.guest_menu_edit(gi, menu, None, |menu, env| {
+                                menu.resume_click(env, step)
+                            })?;
                             if !menu_live {
                                 // Only the player's overflow was owed. Don't write back the menu.
                                 break;
                             }
                             rest = Ok(next);
-                            answers = kept;
                         }
                         menu.track_takes(false);
                         game.after_commit(After::GuestMenu(
@@ -859,7 +836,7 @@ impl Game<'_> {
                 let before: Vec<_> = (0..menu.slot_count())
                     .map(|s| menu.slot(s).cloned())
                     .collect();
-                let _ = menu.click_asked(env, click.0, click.1, click.2, asked);
+                let _ = menu.click(env, click.0, click.1, click.2);
                 (0..menu.slot_count())
                     .filter(|&s| menu.slot(s) != before[s].as_ref())
                     .collect::<Vec<_>>()

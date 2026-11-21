@@ -417,14 +417,14 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [0]);
         assert_eq!(served(game), predicted(&menu));
         assert_eq!(menu.slot(0), None);
-        // The rule is asked once for the clicked stack on each side: the server's ask before
-        // the hook is the one the game's routing uses. Main inventory index 30 (menu slot
-        // `SLOTS + 21`) moves into the pot, whose slots the move asks, so no other question
-        // names its index.
+        // On the server, `lan_mod_quick_move` checks the pickup rule before `menu_quick_move`;
+        // when the hook leaves the move to the game, `lan_machine_click` runs vanilla's live
+        // click routing, matching the client's asks.
         let (menu, client_asks, server_asks) =
             asked_by_both(game, rx, (&[(0, stone(5))], None), (0, 0, Input::QuickMove));
         assert_eq!(served(game), predicted(&menu));
-        assert_eq!(server_asks, client_asks);
+        assert_eq!(server_asks[0], (0, "minecraft:stone".to_owned(), 5));
+        assert_eq!(server_asks[1..], client_asks);
         // Reverse inventory traversal inserts into hotbar slot 8 (inventory index 8).
         assert_eq!(menu.player_item(8).map(|s| s.count), Some(5));
         assert_eq!(
@@ -442,19 +442,21 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         );
         assert_eq!(MOVED.with(|moved| moved.borrow().clone()), [from]);
         assert_eq!(served(game), predicted(&menu));
-        assert_eq!(server_asks, client_asks);
+        assert_eq!(server_asks[0], (30, "minecraft:stone".to_owned(), 5));
+        assert_eq!(server_asks[1..], client_asks);
         assert_eq!(
             times(&server_asks, (30, "minecraft:stone", 5)),
-            1,
+            2,
             "{server_asks:?}"
         );
-        // A refused shift-click asks once on each side too, and the hook is not heard.
+        // A refused shift-click refuses before the hook, and the click fallback refuses live too.
         MOVED.with(|moved| moved.borrow_mut().clear());
         let action = (SHOWN as i32, 0, Input::QuickMove);
         let (_, client_asks, server_asks) =
             asked_by_both(game, rx, (&[(SHOWN, stone(5))], None), action);
-        assert_eq!(server_asks, client_asks);
-        assert_eq!(server_asks, [(SHOWN, "minecraft:stone".to_owned(), 5)]);
+        assert_eq!(client_asks, [(SHOWN, "minecraft:stone".to_owned(), 5)]);
+        assert_eq!(server_asks[0], (SHOWN, "minecraft:stone".to_owned(), 5));
+        assert_eq!(server_asks[1..], client_asks);
         assert!(MOVED.with(|moved| moved.borrow().is_empty()));
     });
 }
@@ -507,9 +509,8 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
         let dirt = || Some(ItemStack::new("minecraft:dirt", 2));
         let (stone5, dirt2) = (("minecraft:stone", 5), ("minecraft:dirt", 2));
         // Pot slot 3 answers true, the shown slot refuses. Each row: the slots and cursor, the
-        // click, and how often the rule is asked each (slot, item, count) on each side. A take,
-        // `allowModification` and a throw's repeat reuse the click's answer for the held
-        // stack; the cursor's stack is a second question, for placing it.
+        // click, and how often vanilla's live `mayPickup` / `tryRemove` / `allowModification` /
+        // `mayPlace` / `getMaxStackSize` checks ask each (slot, item, count) on each side.
         type Row = (
             Vec<(usize, Option<ItemStack>)>,
             Option<ItemStack>,
@@ -517,18 +518,18 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
             Vec<(usize, (&'static str, u32), usize)>,
         );
         let rows: Vec<Row> = vec![
-            // Pickup with either button.
+            // Pickup with either button: `mayPickup` + `tryRemove` (`mayPickup`, `allowModification`).
             (
                 vec![(3, stone(5))],
                 None,
                 (3, 0, Input::Pickup),
-                vec![(3, stone5, 1)],
+                vec![(3, stone5, 4)],
             ),
             (
                 vec![(3, stone(5))],
                 None,
                 (3, 1, Input::Pickup),
-                vec![(3, stone5, 1)],
+                vec![(3, stone5, 4)],
             ),
             (
                 vec![(SHOWN, stone(5))],
@@ -542,12 +543,12 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 (1, 1, Input::Pickup),
                 vec![(SHOWN, stone5, 1)],
             ),
-            // A matching cursor: the held stack, then the cursor's for placing.
+            // A matching cursor: `mayPickup` on held, then `mayPlace` and `safeInsert` on carried.
             (
                 vec![(3, stone(5))],
                 stone(3),
                 (3, 0, Input::Pickup),
-                vec![(3, stone5, 1), (3, ("minecraft:stone", 3), 1)],
+                vec![(3, stone5, 1), (3, ("minecraft:stone", 3), 2)],
             ),
             (
                 vec![(SHOWN, stone(5))],
@@ -556,7 +557,7 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 vec![(SHOWN, stone5, 1), (SHOWN, ("minecraft:stone", 3), 0)],
             ),
             // Hotbar and offhand swaps; with both stacks present the hotbar's is asked for
-            // placing, unless the pickup is refused first.
+            // `mayPlace` and `getMaxStackSize`, unless the pickup is refused first.
             (
                 vec![(3, stone(5))],
                 None,
@@ -567,7 +568,7 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 vec![(3, stone(5)), (hotbar, dirt())],
                 None,
                 (3, 0, Input::Swap),
-                vec![(3, stone5, 1), (3, dirt2, 1)],
+                vec![(3, stone5, 1), (3, dirt2, 2)],
             ),
             (
                 vec![(3, stone(5))],
@@ -593,18 +594,18 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 (1, 40, Input::Swap),
                 vec![(SHOWN, stone5, 1)],
             ),
-            // Throws of one and of all.
+            // Throws of one and of all: `safeTake` -> `tryRemove` (`mayPickup`, `allowModification`).
             (
                 vec![(3, stone(5))],
                 None,
                 (3, 0, Input::Throw),
-                vec![(3, stone5, 1)],
+                vec![(3, stone5, 3)],
             ),
             (
                 vec![(3, stone(5))],
                 None,
                 (3, 1, Input::Throw),
-                vec![(3, stone5, 1)],
+                vec![(3, stone5, 3)],
             ),
             (
                 vec![(SHOWN, stone(5))],
@@ -618,19 +619,19 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 (1, 1, Input::Throw),
                 vec![(SHOWN, stone5, 1)],
             ),
-            // Pick-all on the refusing slot and on an empty one: each source once, over both
-            // passes and the take.
+            // Pick-all on the refusing slot and on an empty one: each pass checks live `mayPickup`
+            // and `safeTake` calls `tryRemove`.
             (
                 vec![(0, stone(3)), (SHOWN, stone(5))],
                 stone(1),
                 (1, 0, Input::PickupAll),
-                vec![(0, ("minecraft:stone", 3), 1), (SHOWN, stone5, 1)],
+                vec![(0, ("minecraft:stone", 3), 4), (SHOWN, stone5, 3)],
             ),
             (
                 vec![(0, stone(3)), (SHOWN, stone(5))],
                 stone(1),
                 (5, 0, Input::PickupAll),
-                vec![(0, ("minecraft:stone", 3), 1), (SHOWN, stone5, 1)],
+                vec![(0, ("minecraft:stone", 3), 4), (SHOWN, stone5, 2)],
             ),
             // The result slot onto a matching cursor, refused whole and taken whole.
             (
@@ -638,7 +639,7 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 stone(60),
                 (2, 0, Input::Pickup),
                 vec![
-                    (RESULT, ("minecraft:stone", 10), 1),
+                    (RESULT, ("minecraft:stone", 10), 4),
                     (RESULT, ("minecraft:stone", 60), 1),
                 ],
             ),
@@ -647,7 +648,7 @@ fn each_path_asks_the_rule_once_per_slot_and_stack_on_both_sides() {
                 stone(50),
                 (2, 0, Input::Pickup),
                 vec![
-                    (RESULT, ("minecraft:stone", 10), 1),
+                    (RESULT, ("minecraft:stone", 10), 4),
                     (RESULT, ("minecraft:stone", 50), 1),
                 ],
             ),

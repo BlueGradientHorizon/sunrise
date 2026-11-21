@@ -91,8 +91,7 @@ impl Menu {
         })
     }
 
-    /// `AbstractContainerMenu.clicked`: Err carries a vanilla exception name. The slot rules are
-    /// asked once for each slot and stack the click plans (`Asked`).
+    /// `AbstractContainerMenu.clicked`: Err carries a vanilla exception name.
     pub fn click(
         &mut self,
         env: &Env,
@@ -100,7 +99,18 @@ impl Menu {
         button: i32,
         input: Input,
     ) -> Result<(), &'static str> {
-        self.click_asked(env, slot_index, button, input, Asked::default())
+        self.start_click(env, slot_index, button, input).map(|_| ())
+    }
+
+    /// Start a click that may suspend at the first take.
+    pub fn start_click(
+        &mut self,
+        env: &Env,
+        slot_index: i32,
+        button: i32,
+        input: Input,
+    ) -> Result<Option<ClickContinuation>, &'static str> {
+        self.click_planned(env, slot_index, button, input)
     }
 
     pub(super) fn click_planned(
@@ -410,8 +420,11 @@ impl Menu {
                             && (self.state.slots[s].role == Role::Potion
                                 || !self.may_pickup(env, s)))
                         || clicked.as_ref().is_some_and(|stack| {
-                            !self.may_place(env, s, stack)
-                                || stack.count > self.slot_max(env, s, stack)
+                            if self.state.slots[s].role == Role::Hidden {
+                                return true;
+                            }
+                            let (may_place, _, max) = self.slot_rules(env, s, stack);
+                            !may_place || stack.count > self.limit_slot_max(s, max)
                         })
                     {
                         outcome.refused.set(true);
@@ -636,18 +649,9 @@ impl Menu {
             return None;
         }
         match input {
-            Input::QuickMove if (0..=1).contains(&button) => {
-                self.planned(Asked::default(), |menu| {
-                    menu.quick_move_step(env, 2, previous)
-                })
-                .0
-            }
+            Input::QuickMove if (0..=1).contains(&button) => self.quick_move_step(env, 2, previous),
             Input::Throw if self.carried.is_none() => {
-                let taken = self
-                    .planned(Asked::default(), |menu| {
-                        menu.throw_step(env, 2, throw_amount, previous)
-                    })
-                    .0;
+                let taken = self.throw_step(env, 2, throw_amount, previous);
                 taken.filter(|_| button == 1)
             }
             _ => {
@@ -700,17 +704,12 @@ impl Menu {
         }
         let container = self.state.slots[clicked].container;
         for t in 0..self.state.slots.len() {
-            // The screen's `mayPickup` and the click it sends are one question about slot `t`:
-            // the server, which hears only the click, asks it once too.
-            let clicked = self.planned(Asked::default(), |menu| {
-                let sent = menu.has_item(t)
-                    && menu.state.slots[t].container == container
-                    && menu.quick_replace(t, moved, env)
-                    && menu.may_pickup(env, t);
-                sent.then(|| menu.click(env, t as i32, 0, Input::QuickMove))
-            });
-            if let Some(clicked) = clicked.0 {
-                clicked?;
+            if self.has_item(t)
+                && self.state.slots[t].container == container
+                && self.quick_replace(t, moved, env)
+                && self.may_pickup(env, t)
+            {
+                self.click(env, t as i32, 0, Input::QuickMove)?;
                 each(self, t);
             }
         }
@@ -852,13 +851,12 @@ impl Menu {
         None
     }
 
-    /// Continue the suspended click with the same slot-rule answers.
+    /// Continue the suspended click.
     pub fn resume_click(
         &mut self,
         env: &Env,
         rest: ClickContinuation,
-        asked: Asked,
-    ) -> (Option<ClickContinuation>, Asked) {
-        self.planned(asked, |menu| menu.run_click_step(env, rest.0))
+    ) -> Option<ClickContinuation> {
+        self.run_click_step(env, rest.0)
     }
 }

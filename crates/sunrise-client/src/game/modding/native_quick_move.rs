@@ -12,7 +12,6 @@ use sunrise_client::{
     containers::{BlockEntity, ModBlockEntity, ModMenuType},
     items::ItemStack,
     lan::menu::Slots,
-    menu::Asked,
 };
 use sunrise_protocol::packets::play;
 
@@ -153,9 +152,7 @@ impl Game<'_> {
             return false;
         }
         let slot = p.slot as usize;
-        // The game's own routing reuses the pickup rule's answer asked before the hook, so the
-        // click asks it once, as the client's prediction does.
-        let Some((handled, asked)) =
+        let Some(handled) =
             self.decided_mod_quick_move(conn, pos, size, menu_type, slot, at, window)
         else {
             // The client predicted the game's routing: it gets the menu as it is.
@@ -165,7 +162,7 @@ impl Game<'_> {
             return true;
         };
         if !handled {
-            return !asked.is_empty() && self.lan_machine_click_asked(conn, p, asked);
+            return false;
         }
         // The mod menu type's engine starts over from the block entity next click.
         let Some(host) = self.lan.as_mut() else {
@@ -353,17 +350,16 @@ impl Game<'_> {
 
     /// `Slot.mayPickup` of the clicked slot, which `doClick` asks before the menu's
     /// `quickMoveStack`: a slot of a mod menu type its parts refuse (`menu_slot_rules`) asks no
-    /// mod, and the game's own routing refuses it with the same answer. The answers go to that
-    /// routing (`Menu::click_asked`), which does not ask again.
+    /// mod, and the game's own routing refuses it too.
     fn mod_menu_quick_move_gives(
         &self,
         pos: Pos,
         menu_type: Option<&'static ModMenuType>,
         slot: usize,
         at: MenuSlot,
-    ) -> (bool, Asked) {
+    ) -> bool {
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&pos) else {
-            return (true, Asked::default());
+            return true;
         };
         let held = match at {
             MenuSlot::Container(k) => m.items.get(k).cloned().flatten(),
@@ -373,12 +369,12 @@ impl Game<'_> {
             (Some(t), Some(stack)) => {
                 self.mod_menu_slot_gives(t, slot, &stack, [pos.0, pos.1, pos.2], &m.items)
             }
-            _ => (true, Asked::default()),
+            _ => true,
         }
     }
 
     /// Route a mod menu quick move as one decided action, after asking the slot rules.
-    /// `Some((handled, asked))`: the decision stood (a mod took the click), or no mod did and the
+    /// `Some(handled)`: the decision stood (a mod took the click), or no mod did and the
     /// action was cancelled with every write of the listeners undone, so the game routes the
     /// click (`handled` false), or the slot's rules refused the pickup before any mod was asked;
     /// `None`: it was refused (stale, an invalid answer, a failing listener, a busy menu) and
@@ -393,13 +389,13 @@ impl Game<'_> {
         slot: usize,
         at: MenuSlot,
         window: i32,
-    ) -> Option<(bool, Asked)> {
+    ) -> Option<bool> {
         let (actor, route) = (self.guest_actor(conn)?, self.guest_route(conn)?);
-        let (gives, asked) = self.as_guest(conn, |g| {
+        let gives = self.as_guest(conn, |g| {
             g.mod_menu_quick_move_gives(pos, menu_type, slot, at)
         })?;
         if !gives {
-            return Some((false, asked));
+            return Some(false);
         }
         let admitted = Admitted::of(self, conn, pos, size, window)?;
         let fired = Rc::new(RefCell::new(None));
@@ -467,9 +463,9 @@ impl Game<'_> {
             decide(self)
         };
         if applied {
-            Some((handled.get().unwrap_or(false), asked))
+            Some(handled.get().unwrap_or(false))
         } else {
-            untaken.get().then_some((false, asked))
+            untaken.get().then_some(false)
         }
     }
 }

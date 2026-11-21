@@ -1,13 +1,12 @@
 //! `menu_slot_rules` on the game's side. A menu click cannot reach the game, so the game lends
 //! itself to the click as its [`SlotRules`] (`Env::slot_rules`), with the read-only `Host`
-//! behind it: the click asks while it plans, once for each slot and stack it consults, and the
-//! answers stay in what it planned. A menu type no part answers is never asked, and nothing is
-//! converted for it.
+//! behind it: each live slot check asks the parts directly. A menu type no part answers is never
+//! asked, and nothing is converted for it.
 use super::*;
 use crate::game::api_values::TryIntoApi;
 use sunrise_client::{
     containers::ModMenuType,
-    menu::{Asked, Kind, Menu, SlotContext, SlotRules},
+    menu::{Kind, Menu, SlotContext, SlotRules},
 };
 
 impl SlotRules for Game<'_> {
@@ -75,8 +74,7 @@ impl SlotRules for Game<'_> {
 impl Game<'_> {
     /// `Slot.mayPickup` of slot `slot` (the menu's index) of mod menu type `menu` while it holds
     /// `stack`, as the click itself answers it: the slot's own answer, then the parts' `may_pickup`.
-    /// For the server's own steps that run before the click, as `menu_quick_move` does; the
-    /// answers go to the click (`Menu::click_asked`), which does not ask again.
+    /// For the server's own steps that run before the click, as `menu_quick_move` does.
     pub(super) fn mod_menu_slot_gives(
         &self,
         menu: &'static ModMenuType,
@@ -84,7 +82,7 @@ impl Game<'_> {
         stack: &ItemStack,
         pos: [i32; 3],
         items: &[Option<ItemStack>],
-    ) -> (bool, Asked) {
+    ) -> bool {
         let mut view = Menu::new(Kind::Mod(menu));
         view.set_registry_id(Some(menu.id));
         view.set_block_pos(Some(pos));
@@ -93,6 +91,6 @@ impl Game<'_> {
             view.set_player_item(i, held.clone());
         }
         view.load_slot(slot, Some(stack.clone()));
-        view.ask_pickup(&self.menu_env(), slot)
+        view.may_pickup(&self.menu_env(), slot)
     }
 }

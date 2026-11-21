@@ -8,10 +8,10 @@ pub trait Hooks {
     /// including player inventory slots. The slot's own answers arrive first;
     /// the maximum is bounded to 1–99 and the item limit. Refusal also prevents
     /// quick-move top-ups. Runs on server and client prediction with the read
-    /// `Host`: it is a query, so it can neither write nor cancel. A click asks
-    /// while it plans and reuses an answer while the question and the staged
-    /// slots the part read still match. A changed grid can require another
-    /// ask in planning; validation and apply replay the recorded answers.
+    /// `Host`: it is a query, so it can neither write nor cancel. Each live
+    /// `may_place`, `may_pickup` and `getMaxStackSize` check during a click
+    /// asks the parts directly against the current menu slots (matching
+    /// vanilla `AbstractContainerMenu.doClick` and `Slot`).
     /// Answer quickly from the question and the read-only Host. On a LAN
     /// host's own click the LAN host is not reachable through the `Host`
     /// (it answers as if no LAN were open).

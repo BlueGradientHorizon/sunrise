@@ -38,7 +38,6 @@ impl Clone for Menu {
         Self {
             state: self.state.clone(),
             stamp: MutationStamp::fresh(),
-            planning: Default::default(),
         }
     }
 }

@@ -95,9 +95,9 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 opened with no block by `player_open_mod_menu`, a vehicle's). `slot` converts just the requested
 stack and returns it as an owned `ItemStack`. It returns `None` for an empty, unavailable, or
 unrepresentable stack, and never reads `MenuContainer::Player`. There is no matrix to enumerate
-or retain. During planning, the same question reuses its answer while the slots the rule read
-still match. For example, filling a grid slot the rule read as empty can cause a new ask.
-Validation and apply use the plan's recorded answers and do not call the rule again.
+or retain. Each live `mayPlace`, `mayPickup` and `getMaxStackSize` check during a click queries
+the parts directly against the current menu slots, matching vanilla `AbstractContainerMenu.doClick`
+and `Slot`.
 
 ## Slots that keep what they show
 
@@ -134,9 +134,8 @@ that ends on a single slot is a pickup click on that slot. A refused click leave
 were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
 gives up all of its stack or none of it. The slot's own rule comes first, and one ask answers `may_place` and
 `may_pickup` together. Vanilla menu types keep their slots' own `mayPickup`, and a shift-click a part answers
-with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
-take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
-the client's prediction ask the same number of times.
+with `menu_quick_move` is asked the pickup rule before that hook. Each live check during a click
+queries the rule directly against the current slots.
 
 ## Taking from a slot
 
