@@ -66,8 +66,8 @@ fn key(world: *const sunrise_client::world::World, pos: BlockPos, state: BlockSt
     }
 }
 
-/// Refuse the same query while it is active, and refuse a new one before callbacks at the
-/// fixed nesting bound. The API maps refusal to `LevelReadError::Unavailable`.
+/// Refuse the same query while it is active, and reserve one frame for its Part callback at
+/// the fixed nesting bound. The API maps refusal to `LevelReadError::Unavailable`.
 pub(in crate::game) fn enter_query(
     world: *const sunrise_client::world::World,
     pos: BlockPos,
@@ -75,7 +75,7 @@ pub(in crate::game) fn enter_query(
 ) -> Option<Guard> {
     let key = key(world, pos, state);
     ACTIVE.with_borrow_mut(|stack| {
-        if stack.depth == MAX_DEPTH
+        if stack.depth >= MAX_DEPTH - 1
             || stack.entries[..stack.depth]
                 .iter()
                 .flatten()
@@ -159,19 +159,27 @@ mod tests {
 
         let part = enter_part(world, pos, state, PartHook::CanSurvive).unwrap();
         assert!(enter_part(world, pos, state, PartHook::CanSurvive).is_none());
+        assert!(enter_part(world, pos, state, PartHook::CanSustainPlant).is_none());
         drop(part);
         // One survival evaluation may proceed from the state hook to the soil and plant hooks.
         assert!(enter_part(world, pos, state, PartHook::CanSustainPlant).is_some());
         drop(query);
 
-        let mut nested = Vec::with_capacity(MAX_DEPTH);
-        for depth in 0..MAX_DEPTH {
+        let mut nested = Vec::with_capacity(MAX_DEPTH - 1);
+        for depth in 0..MAX_DEPTH - 1 {
             nested.push(
                 enter_query(world, BlockPos::new(depth as i32, 64, 8), state)
                     .expect("the configured nesting depth fits the guard"),
             );
         }
+        // A query may use the penultimate frame, but another query cannot consume the frame
+        // reserved for its Part callback.
         assert!(enter_query(world, BlockPos::new(-1, 64, 8), state).is_none());
+        let last_pos = BlockPos::new((MAX_DEPTH - 2) as i32, 64, 8);
+        let callback = enter_part(world, last_pos, state, PartHook::CanSurvive)
+            .expect("a survival callback can use the final guard frame");
+        assert_eq!(ACTIVE.with_borrow(|stack| stack.depth), MAX_DEPTH);
+        drop(callback);
         while nested.pop().is_some() {}
     }
 }

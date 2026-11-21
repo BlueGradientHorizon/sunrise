@@ -1,7 +1,13 @@
 //! Read-only `BlockState.canSurvive` through a level handle.
+use super::api_values::TryIntoApi;
 use super::native_level_signals::ReadLevel;
-use super::{Game, mod_api_host::SidedLevel, native_hooks::LevelView};
+use super::{
+    Game,
+    mod_api_host::{FireOddsBase, FireOddsLevel, SidedLevel},
+    native_hooks::LevelView,
+};
 use mod_api::{BlockState, LevelHost, LevelReadError, LevelRef};
+use sunrise_client::world::World;
 use sunrise_core::{position::BlockPos, random::LegacyRandom};
 use sunrise_world::{
     level::{LevelAccess, Ticks, signal_access::SignalAccess},
@@ -58,7 +64,8 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
         LevelHost::block_entity_data(&self.read, entity)
     }
     fn block_state(&self, pos: [i32; 3]) -> Option<BlockState> {
-        LevelHost::block_state(&self.read, pos)
+        let [x, y, z] = pos;
+        self.read.world().block(x, y, z).try_into_api().ok()
     }
     fn friction(
         &self,
@@ -81,10 +88,10 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
         LevelHost::state_string(&self.read, state)
     }
     fn min_y(&self) -> i32 {
-        LevelHost::min_y(&self.read)
+        self.read.world().shape.min_y
     }
     fn height(&self) -> i32 {
-        LevelHost::height(&self.read)
+        self.read.world().shape.height
     }
     fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
         LevelHost::block_in_tag(&self.read, block, tag)
@@ -105,13 +112,17 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
         LevelHost::state_with_property(&self.read, state, key, value)
     }
     fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
-        LevelHost::brightness(&self.read, layer, pos)
+        super::native_level_refs::world_brightness(self.read.world(), layer, pos)
     }
     fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
-        LevelHost::raw_brightness(&self.read, pos, sky_darken)
+        self.brightness(mod_api::LightLayer::Block, pos).max(
+            self.brightness(mod_api::LightLayer::Sky, pos)
+                .wrapping_sub(sky_darken),
+        )
     }
     fn is_loaded(&self, pos: [i32; 3]) -> bool {
-        LevelHost::is_loaded(&self.read, pos)
+        let [x, y, z] = pos;
+        self.read.world().is_loaded_at(x, y, z)
     }
     fn is_raining_at(&self, pos: [i32; 3]) -> bool {
         LevelHost::is_raining_at(&self.read, pos)
@@ -147,6 +158,24 @@ impl LevelHost for SurvivalReadLevel<'_, '_> {
     }
 }
 
+impl FireOddsBase for SurvivalReadLevel<'_, '_> {
+    fn fire_world(&self) -> &World {
+        self.read.world()
+    }
+    fn fire_behaviours(&self) -> &sunrise_world::level::Behaviours {
+        self.read.game.res.behaviours()
+    }
+    fn fire_registry(&self) -> &sunrise_world::registry::BlockRegistry {
+        self.read.game.pack.assets.registry
+    }
+    fn fire_collision(&self) -> &sunrise_world::block_collision::BlockCollisionRegistry<'_> {
+        self.read.game.collision
+    }
+    fn fire_api_level(&self) -> Option<LevelRef> {
+        Some(self.read.level)
+    }
+}
+
 impl SurvivalReadLevel<'_, '_> {
     fn read_signals<R>(
         &self,
@@ -174,39 +203,40 @@ impl sunrise_world::level::BlockEntityNeighbors for SurvivalReadLevel<'_, '_> {}
 impl LevelAccess for SurvivalReadLevel<'_, '_> {
     fn within_world_border(&self, pos: BlockPos) -> bool {
         self.read
-            .game
-            .border
+            .border()
             .geometry()
             .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
     }
     fn block_state(&self, pos: BlockPos) -> BlockStateId {
-        self.read.game.world.block(pos.x, pos.y, pos.z)
+        self.read.world().block(pos.x, pos.y, pos.z)
     }
     fn set_raw(&mut self, _pos: BlockPos, _state: BlockStateId) -> Option<BlockStateId> {
         None
     }
     fn is_loaded(&self, pos: BlockPos) -> bool {
-        self.read.game.world.is_loaded_at(pos.x, pos.y, pos.z)
+        self.read.world().is_loaded_at(pos.x, pos.y, pos.z)
     }
     fn random(&mut self) -> &mut LegacyRandom {
         &mut self.random
     }
     fn game_time(&self) -> i64 {
-        self.read.game.world.game_time
+        self.read.world().game_time
     }
     fn min_y(&self) -> i32 {
-        self.read.game.world.shape.min_y
+        self.read.world().shape.min_y
     }
     fn max_y(&self) -> i32 {
-        self.read.game.world.shape.max_y()
+        self.read.world().shape.max_y()
     }
     fn sky_light(&self, pos: BlockPos) -> i32 {
-        i32::from(self.read.game.world.light(pos.x, pos.y, pos.z) >> 4)
+        i32::from(self.read.world().light(pos.x, pos.y, pos.z) >> 4)
+    }
+    fn block_light(&self, pos: BlockPos) -> i32 {
+        i32::from(self.read.world().light(pos.x, pos.y, pos.z) & 15)
     }
     fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.read
-            .game
-            .world
+            .world()
             .world_surface(x, z, |state| self.read.game.res.behaviours().is_air(state))
     }
     fn redstone_experiments(&self) -> bool {
@@ -218,7 +248,7 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
             .any(|feature| feature == "minecraft:redstone_experiments")
     }
     fn dimension(&self) -> sunrise_core::dimension::Dimension {
-        self.read.game.dim.level()
+        self.read.dimension()
     }
     fn is_client_side(&self) -> bool {
         self.client_side()
@@ -234,7 +264,7 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
         SignalAccess::published_collision_shape(&self.read, pos, state)
     }
     fn has_native_block_entity(&self, state: BlockStateId) -> bool {
-        self.read.game.world.block_entities.stateful_entity(state.0)
+        self.read.world().block_entities.stateful_entity(state.0)
     }
     fn adjust_signal_source(&self, state: BlockStateId, vanilla: bool) -> bool {
         SignalAccess::adjust_signal_source(&self.read, state, vanilla)
@@ -283,6 +313,19 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
     ) -> i32 {
         SignalAccess::block_entity_signal(&self.read, pos, state, direction)
     }
+    fn before_fire_odds(
+        &self,
+        state: BlockStateId,
+        pos: BlockPos,
+        face: sunrise_core::geometry::Direction,
+        odds: &mut Option<(i32, i32)>,
+    ) {
+        FireOddsLevel {
+            base: self,
+            prediction: None,
+        }
+        .native_fire_odds(self.read.dimension(), state, pos, face, odds);
+    }
     fn before_can_survive(
         &self,
         _ticks: &Ticks,
@@ -292,8 +335,8 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
         survives: &mut Option<bool>,
     ) -> bool {
         let mut inert = false;
-        LevelView::new(self, &self.read.game.world).native_can_survive(
-            self.read.game.dim.level(),
+        LevelView::new(self, self.read.world()).native_can_survive(
+            self.read.dimension(),
             pos,
             state,
             survives,
@@ -311,8 +354,8 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
         sustains: &mut Option<bool>,
     ) -> bool {
         let mut inert = false;
-        LevelView::new(self, &self.read.game.world).native_can_sustain_plant(
-            self.read.game.dim.level(),
+        LevelView::new(self, self.read.world()).native_can_sustain_plant(
+            self.read.dimension(),
             state,
             ground,
             ground_pos,
@@ -331,8 +374,8 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
         may: &mut Option<bool>,
     ) -> bool {
         let mut inert = false;
-        LevelView::new(self, &self.read.game.world).native_may_place_on(
-            self.read.game.dim.level(),
+        LevelView::new(self, self.read.world()).native_may_place_on(
+            self.read.dimension(),
             state,
             ground,
             ground_pos,
@@ -344,6 +387,16 @@ impl LevelAccess for SurvivalReadLevel<'_, '_> {
 }
 
 impl Game<'_> {
+    fn native_level_read_ticks(&self, level: LevelRef) -> Option<&Ticks> {
+        if level.dimension() == self.native_level_key() {
+            Some(&self.block_ticks)
+        } else if self.is_logical_server() {
+            self.levels.parked_block_ticks_of(level.dimension_id())
+        } else {
+            None
+        }
+    }
+
     pub(in crate::game) fn native_level_can_survive(
         &self,
         level: LevelRef,
@@ -357,17 +410,12 @@ impl Game<'_> {
                 LevelReadError::Stale
             }
         })?;
-        let expected_dimension = if self.is_logical_server() {
-            self.dim.key()
-        } else {
-            self.native_level_key()
-        };
-        if level.dimension() != expected_dimension {
-            return Err(LevelReadError::Unavailable);
-        }
         if self.pack.assets.registry.state(state).is_none() {
             return Err(LevelReadError::Unavailable);
         }
+        let ticks = self
+            .native_level_read_ticks(level)
+            .ok_or(LevelReadError::Unavailable)?;
         if !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !world.is_loaded_at(x, y, z)
@@ -380,12 +428,12 @@ impl Game<'_> {
         let read = ReadLevel { game: self, level };
         let mut query = SurvivalReadLevel {
             read,
-            signal_ticks: &self.block_ticks,
+            signal_ticks: ticks,
             random: LegacyRandom::new(0),
         };
         Ok(self
             .res
             .behaviours()
-            .can_survive_read_only(&mut query, &self.block_ticks, pos, state))
+            .can_survive_read_only(&mut query, ticks, pos, state))
     }
 }

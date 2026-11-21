@@ -12,10 +12,12 @@ pub trait LevelBlocksBackend {
     /// placed there. Vegetation checks the soil's `can_sustain_plant` Part before the plant's
     /// own `may_place_on` Part. This does not run placement, obstruction, permission, or
     /// `must_survive` checks. On a client, this is a prediction from its loaded local level.
-    /// The handle must name the level in play, and `pos` must be in bounds and loaded; unknown
-    /// states and unavailable hosts, phases, levels, or recursive queries return
-    /// `Err(LevelReadError::Unavailable)`. A dead handle returns `Err(LevelReadError::Stale)`.
-    /// It reads without loading, placing, scheduling ticks, or changing the level.
+    /// On a server, this reads any open level named by the handle, including one that is parked
+    /// while another dimension is in play. On a client, it predicts only from its loaded local
+    /// level. `pos` must be in bounds and loaded; unknown states, unavailable hosts or phases,
+    /// and recursive queries return `Err(LevelReadError::Unavailable)`. A dead handle returns
+    /// `Err(LevelReadError::Stale)`. It reads without loading, placing, scheduling ticks, or
+    /// changing the level.
     #[access(WorldOnly)]
     #[game_method(native_level_can_survive)]
     fn level_can_survive(

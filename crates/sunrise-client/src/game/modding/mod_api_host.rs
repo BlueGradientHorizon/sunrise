@@ -531,9 +531,39 @@ pub(in crate::game) trait PredictedLevel:
     fn block_entity_removed(&self, pos: BlockPos) -> bool;
 }
 
+/// The read surface used by fire-odds Parts. Survival queries use the same callback dispatch as
+/// gameplay while keeping their addressed world's immutable inputs.
+pub(in crate::game) trait FireOddsBase:
+    SidedLevel + sunrise_world::level::LevelAccess
+{
+    fn fire_world(&self) -> &sunrise_client::world::World;
+    fn fire_behaviours(&self) -> &sunrise_world::level::Behaviours;
+    fn fire_registry(&self) -> &sunrise_world::registry::BlockRegistry;
+    fn fire_collision(&self) -> &sunrise_world::block_collision::BlockCollisionRegistry<'_>;
+    fn fire_api_level(&self) -> Option<mod_api::LevelRef>;
+}
+
+impl FireOddsBase for super::GameLevel<'_> {
+    fn fire_world(&self) -> &sunrise_client::world::World {
+        self.world
+    }
+    fn fire_behaviours(&self) -> &sunrise_world::level::Behaviours {
+        self.behaviours
+    }
+    fn fire_registry(&self) -> &sunrise_world::registry::BlockRegistry {
+        self.registry
+    }
+    fn fire_collision(&self) -> &sunrise_world::block_collision::BlockCollisionRegistry<'_> {
+        self.collision
+    }
+    fn fire_api_level(&self) -> Option<mod_api::LevelRef> {
+        self.api_level
+    }
+}
+
 /// The level read by fire-odds listeners, including edits already made in a dry prediction.
 pub(in crate::game) struct FireOddsLevel<'a> {
-    pub(in crate::game) base: &'a super::GameLevel<'a>,
+    pub(in crate::game) base: &'a dyn FireOddsBase,
     pub(in crate::game) prediction: Option<&'a dyn PredictedLevel>,
 }
 
@@ -604,7 +634,9 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         use mod_api::__private::game::Fields;
         let fields = entity.fields();
         // The live reader still diagnoses handles from another level.
-        if self.base.api_level == Some(fields.level) && self.block_entity_removed(fields.position) {
+        if self.base.fire_api_level() == Some(fields.level)
+            && self.block_entity_removed(fields.position)
+        {
             return Err(mod_api::PartStateError::Stale);
         }
         mod_api::LevelHost::block_entity_part_snapshot(self.base, entity, namespace, name)
@@ -624,8 +656,8 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
             return None;
         }
         super::native_world_read::state_fluid(
-            self.base.behaviours,
-            self.base.registry,
+            self.base.fire_behaviours(),
+            self.base.fire_registry(),
             self.block(pos),
         )
     }
@@ -635,8 +667,8 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
         }
         let [x, y, z] = pos;
         let state = self.block(pos);
-        let binding = self.base.collision;
-        let world = &*self.base.world;
+        let binding = self.base.fire_collision();
+        let world = self.base.fire_world();
         if !self.block_entity_removed(pos)
             && (world.block(x, y, z) == state || world.block_entities.contains_key(&(x, y, z)))
         {
@@ -675,7 +707,7 @@ impl mod_api::LevelHost for FireOddsLevel<'_> {
             self.is_loaded([x, y, z])
                 && self
                     .base
-                    .behaviours
+                    .fire_behaviours()
                     .is_raining_at(level, BlockPos::new(x, y, z))
         } else {
             mod_api::LevelHost::is_raining_at(self.base, [x, y, z])
