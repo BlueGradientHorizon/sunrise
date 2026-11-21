@@ -35,6 +35,13 @@ Two other entry points use the same result type:
   writes. End the host borrow before calling `cx.reply` or `cx.finish_configuration_task`.
   The client and the network thread cannot open this scope.
 
+To lend a temporary scratch item slot inside a scoped transaction—either a single fixed-item
+slot or a two-slot copy for dispenser-style exchanges—use `host.scratch_stack` and
+`host.scratch_slots` on `HostTransaction`. Both return `Result<(T, …), ScratchError<E>>`,
+publish the resulting stack or slots only on commit, restore lent slots on nested abort, and
+keep closed loans out of enclosing journals; see
+[Scratch stacks and wrapped places](capabilities/item-places-and-components.md#scratch-stacks-and-wrapped-places).
+
 ## Commit and rollback
 
 - Writes apply immediately, so subsequent steps in the transaction see them.

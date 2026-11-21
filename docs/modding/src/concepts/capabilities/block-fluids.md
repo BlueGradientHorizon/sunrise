@@ -125,12 +125,15 @@ fn dispense_item(&self, host: &mut dyn ServerHost, event: &mut DispenseItemEvent
 }
 ```
 
-The dispensed container runs in a private two-slot copy (`ItemPlace::ScratchSlots`), so an
-empty container may become a full one of another item, as a bucket does. Its handler reaches
+The dispensed container runs in a lent two-slot copy (`HostTransaction::scratch_slots`,
+yielding an `ItemPlace::Scratch` for the callback scope), so an empty container may become a
+full one of another item, as a bucket does. Its handler reaches
 the copy one item at a time (`ItemPlace::OneByOne`), so it sees one container whatever the
 stack. It always tries
-`try_pickup_fluid` on the block in front first (its `FLUIDS` reached from the dispenser's side)
-and places with `try_place_fluid` (unvalidated, as a bucket) only where nothing was picked up.
+`try_pickup_fluid` on the block in front first (its `FLUIDS` reached from the dispenser's side);
+if pickup fails, its nested transaction aborts and restores the lent slots before
+`try_place_fluid` (unvalidated, as a bucket) runs as the fallback. The updated slots are
+published only when a transfer commits.
 A single container is replaced in its slot. From a larger stack the slot keeps the rest and the
 changed container goes into the dispenser's other slots, else out of its front with a second
 click (`host.dispense_with_remainder`). The fluid's sound and game event come before the
