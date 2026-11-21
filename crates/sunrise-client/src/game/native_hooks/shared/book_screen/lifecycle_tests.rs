@@ -89,15 +89,17 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
             game.screen = Screen::Playing;
             game.container = Some((i32::MIN, 0, 0));
             game.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key: (i32::MIN, 0, 0),
+                    window: 1,
+                    name: "bound:menu".into(),
+                    block: Some("bound:block".into()),
+                    mod_type: None,
+                    data: Vec::new(),
+                    extra: None,
+                },
                 slot_moves: Default::default(),
                 layout_revision: 4,
-                key: (i32::MIN, 0, 0),
-                window: 1,
-                menu: "bound:menu".into(),
-                block: Some("bound:block".into()),
-                mod_type: None,
-                data: Vec::new(),
-                extra: None,
                 screen: mod_api::RecipeBookLayout::registered_screen("bound:menu").unwrap(),
             });
             // Negotiation completed before the user opened the machine. As in
@@ -147,7 +149,7 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
             assert_eq!(
                 game.mod_screen
                     .as_ref()
-                    .and_then(|screen| screen.block.as_deref()),
+                    .and_then(|screen| screen.menu.block.as_deref()),
                 Some("bound:menu")
             );
             assert_eq!(game.native_hidden_slots("bound:menu", None, 3), vec![2]);
@@ -189,15 +191,17 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
             game.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key: (i32::MIN, 0, 0),
+                    window: 1,
+                    name: "geometry:menu".into(),
+                    block: Some("minecraft:stone".into()),
+                    mod_type: None,
+                    data: Vec::new(),
+                    extra: None,
+                },
                 slot_moves: Default::default(),
                 layout_revision: 0,
-                key: (i32::MIN, 0, 0),
-                window: 1,
-                menu: "geometry:menu".into(),
-                block: Some("minecraft:stone".into()),
-                mod_type: None,
-                data: Vec::new(),
-                extra: None,
                 screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
@@ -370,15 +374,17 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
             game.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key: (i32::MIN, 0, 0),
+                    window: 1,
+                    name: "minecraft:generic_9x1".into(),
+                    block: Some("minecraft:stone".into()),
+                    mod_type: None,
+                    data: Vec::new(),
+                    extra: None,
+                },
                 slot_moves: Default::default(),
                 layout_revision: 0,
-                key: (i32::MIN, 0, 0),
-                window: 1,
-                menu: "minecraft:generic_9x1".into(),
-                block: Some("minecraft:stone".into()),
-                mod_type: None,
-                data: Vec::new(),
-                extra: None,
                 screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
@@ -484,15 +490,17 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
             game.title = None;
             game.container = Some((i32::MIN, 0, 0));
             game.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key: (i32::MIN, 0, 0),
+                    window: 1,
+                    name: MENU.into(),
+                    block: Some(STONE.into()),
+                    mod_type: None,
+                    data: Vec::new(),
+                    extra: None,
+                },
                 slot_moves: Default::default(),
                 layout_revision: 0,
-                key: (i32::MIN, 0, 0),
-                window: 1,
-                menu: MENU.into(),
-                block: Some(STONE.into()),
-                mod_type: None,
-                data: Vec::new(),
-                extra: None,
                 screen: mod_api::MenuScreenLayout {
                     width: 176.0,
                     height: 166.0,
@@ -587,15 +595,17 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 game.screen = Screen::Playing;
                 game.container = Some((i32::MIN, 0, 0));
                 game.mod_screen = Some(OpenNativeScreen {
+                    menu: OpenNativeMenu {
+                        key: (i32::MIN, 0, 0),
+                        window: 1,
+                        name: "bound:menu".into(),
+                        block: Some("bound:block".into()),
+                        mod_type: None,
+                        data: Vec::new(),
+                        extra: None,
+                    },
                     slot_moves: Default::default(),
                     layout_revision: nonce,
-                    key: (i32::MIN, 0, 0),
-                    window: 1,
-                    menu: "bound:menu".into(),
-                    block: Some("bound:block".into()),
-                    mod_type: None,
-                    data: Vec::new(),
-                    extra: None,
                     screen: mod_api::RecipeBookLayout::registered_screen("bound:menu").unwrap(),
                 });
                 game.set_screen(Screen::Inventory);

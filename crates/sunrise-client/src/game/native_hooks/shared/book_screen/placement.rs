@@ -22,7 +22,7 @@ impl Game<'_> {
         book: &str,
     ) -> bool {
         self.shown_native_screen().is_some_and(|screen| {
-            screen.window == window
+            screen.menu.window == window
                 && screen.layout_revision == nonce
                 && screen
                     .screen
@@ -60,7 +60,7 @@ impl Game<'_> {
         let menu = self.native_screen_menu()?;
         mod_api::RecipeBookLayout::registered(menu)?;
         Some(sunrise_client::recipe_book::placement_sync::Window {
-            window: screen.window,
+            window: screen.menu.window,
             nonce: screen.layout_revision,
             menu: menu.to_owned().try_into().ok()?,
             book: screen

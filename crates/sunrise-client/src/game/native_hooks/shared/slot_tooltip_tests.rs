@@ -133,15 +133,17 @@ fn filled_slot_tooltip_replaces_lines_but_keeps_item_image_and_visibility() {
                 game.screen = Screen::Inventory;
                 game.container = Some((1, 2, 3));
                 game.mod_screen = Some(OpenNativeScreen {
+                    menu: OpenNativeMenu {
+                        key: (1, 2, 3),
+                        window: 1,
+                        name: "minecraft:generic_9x3".into(),
+                        block: Some("tips:chest".into()),
+                        mod_type: None,
+                        data: Vec::new(),
+                        extra: None,
+                    },
                     layout_revision: 0,
                     slot_moves: Default::default(),
-                    key: (1, 2, 3),
-                    window: 1,
-                    menu: "minecraft:generic_9x3".into(),
-                    block: Some("tips:chest".into()),
-                    mod_type: None,
-                    data: Vec::new(),
-                    extra: None,
                     screen: mod_api::MenuScreenLayout {
                         width: 176.0,
                         height: 166.0,

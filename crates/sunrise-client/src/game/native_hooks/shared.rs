@@ -651,20 +651,23 @@ fn shake_pose(shake: Shake) -> glam::Mat4 {
         * glam::Mat4::from_rotation_y(shake.yaw.to_radians())
 }
 
-/// The mod screen open on this client: its menu type and block, the key its
-/// slots are under, the window id of its menu, the menu's data slots as
-/// the server sent them, and what the server sent before the menu opened
-/// (`sunrise:menu_extra`), when it did.
+/// The layout and local slot state of the mod screen on this client.
 pub(super) struct OpenNativeScreen {
     pub(super) layout_revision: u64,
     slot_moves: SlotMoves,
+    screen: mod_api::MenuScreenLayout,
+    menu: OpenNativeMenu,
+}
+
+/// The menu the screen presents: where its slots are stored, the opener,
+/// the window's live data, and the bytes supplied when it opened.
+struct OpenNativeMenu {
     key: Pos,
     window: i32,
     /// The menu's type, which its screen hooks are keyed by.
-    menu: String,
+    name: String,
     /// The mod block whose menu it is; none for a menu opened without one.
     block: Option<String>,
-    screen: mod_api::MenuScreenLayout,
     mod_type: Option<&'static sunrise_client::containers::ModMenuType>,
     data: Vec<i32>,
     extra: Option<sunrise_protocol::menu_extra::Message>,
@@ -749,7 +752,8 @@ impl Game<'_> {
     ) -> Option<&'static sunrise_client::containers::ModMenuType> {
         self.mod_screen
             .as_ref()
-            .filter(|screen| screen.window == window && screen.menu == name)?
+            .filter(|screen| screen.menu.window == window && screen.menu.name == name)?
+            .menu
             .mod_type
     }
 }
@@ -768,30 +772,33 @@ impl OpenNativeScreen {
     /// The block the menu is of: where the server said, else the clicked
     /// block its slots are under (a server without `sunrise:menu_extra`).
     fn pos(&self) -> Option<[i32; 3]> {
-        match &self.extra {
+        match &self.menu.extra {
             Some(extra) => extra.pos,
-            None if self.key.0 != i32::MIN => Some([self.key.0, self.key.1, self.key.2]),
+            None if self.menu.key.0 != i32::MIN => {
+                Some([self.menu.key.0, self.menu.key.1, self.menu.key.2])
+            }
             None => None,
         }
     }
     /// Data slot `id` of window `window`'s menu: false for another window's
     /// (an old or replaced one), which this screen leaves alone.
     fn set_data(&mut self, window: i32, index: usize, value: i32) -> bool {
-        if window != self.window {
+        if window != self.menu.window {
             return false;
         }
-        let count = self.mod_type.map_or(256, |kind| kind.data_slots);
+        let count = self.menu.mod_type.map_or(256, |kind| kind.data_slots);
         if index < count {
-            if self.data.len() <= index {
-                self.data.resize(index + 1, 0);
+            if self.menu.data.len() <= index {
+                self.menu.data.resize(index + 1, 0);
             }
-            self.data[index] = value;
+            self.menu.data[index] = value;
         }
         true
     }
 
     fn player_slots(&self) -> usize {
-        self.mod_type
+        self.menu
+            .mod_type
             .map_or(36, sunrise_client::containers::ModMenuType::player_slots)
     }
 
@@ -2695,8 +2702,8 @@ impl Game<'_> {
     /// The open screen of menu type `menu`, when the mod calling (if one is)
     /// owns it: another mod's part on a shared vanilla type moves no slot of it.
     fn owned_native_screen(&self, menu: &str) -> Option<&OpenNativeScreen> {
-        let s = self.shown_native_screen().filter(|s| s.menu == menu)?;
-        let owner = || mod_api::__private::menu_screen_owner(&s.menu, s.block.as_deref());
+        let s = self.shown_native_screen().filter(|s| s.menu.name == menu)?;
+        let owner = || mod_api::__private::menu_screen_owner(&s.menu.name, s.menu.block.as_deref());
         mod_api::content::crash::current_native_mod()
             .is_none_or(|calling| owner() == Some(calling))
             .then_some(s)
@@ -2780,10 +2787,10 @@ impl Game<'_> {
             let gui_size = [batch.width as i32, batch.height as i32];
             let mut draw = crate::game::host::draw::GameDrawContext::new(self, batch);
             self.native_screen_draw(mod_api::__private::ScreenDrawCall {
-                menu: &s.menu,
-                block: s.block.as_deref(),
+                menu: &s.menu.name,
+                block: s.menu.block.as_deref(),
                 pos: s.pos(),
-                data: &s.data,
+                data: &s.menu.data,
                 origin: [ox, oy],
                 pointer: [self.cursor.0 as i32, self.cursor.1 as i32],
                 gui_size,
@@ -2877,9 +2884,9 @@ impl Game<'_> {
         let at = [self.cursor.0 - ox, self.cursor.1 - oy];
         let mut button = None;
         self.native_screen_click(
-            &screen.menu,
-            screen.block.as_deref(),
-            &screen.data,
+            &screen.menu.name,
+            screen.menu.block.as_deref(),
+            &screen.menu.data,
             at,
             right,
             &mut button,
@@ -2932,9 +2939,9 @@ impl Game<'_> {
             return;
         };
         self.native_screen_tooltip(mod_api::__private::ScreenTooltipCall {
-            menu: &screen.menu,
-            block: screen.block.as_deref(),
-            data: &screen.data,
+            menu: &screen.menu.name,
+            block: screen.menu.block.as_deref(),
+            data: &screen.menu.data,
             at,
             slot: menu_slot,
             origin: [ox, oy],

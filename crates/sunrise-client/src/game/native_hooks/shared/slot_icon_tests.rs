@@ -14,12 +14,17 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
             game.screen = Screen::Inventory;
             game.container = Some((1, 2, 3));
             game.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key: (1, 2, 3),
+                    window: 1,
+                    name: "test:menu".into(),
+                    block: Some("test:block".into()),
+                    mod_type: None,
+                    data: Vec::new(),
+                    extra: None,
+                },
                 layout_revision: 0,
                 slot_moves: Default::default(),
-                key: (1, 2, 3),
-                window: 1,
-                menu: "test:menu".into(),
-                block: Some("test:block".into()),
                 screen: mod_api::MenuScreenLayout {
                     slots: vec![Some(mod_api::ScreenSlot {
                         position: [8.0, 18.0],
@@ -27,9 +32,6 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
                     })],
                     ..Default::default()
                 },
-                mod_type: None,
-                data: Vec::new(),
-                extra: None,
             });
             let mut actual = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut actual, None, 300, &None, 8.0, 18.0);

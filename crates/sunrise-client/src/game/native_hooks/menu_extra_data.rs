@@ -36,6 +36,7 @@ impl Game<'_> {
         let screen = self.shown_native_screen()?;
         Some(
             screen
+                .menu
                 .extra
                 .as_ref()
                 .map_or(&[], |extra| extra.data.as_slice()),

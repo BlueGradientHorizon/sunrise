@@ -13,7 +13,7 @@ impl Game<'_> {
     pub(in crate::game) fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
         self.mod_screen
             .as_ref()
-            .filter(|s| self.screen == Screen::Inventory && self.container == Some(s.key))
+            .filter(|s| self.screen == Screen::Inventory && self.container == Some(s.menu.key))
     }
     /// Whether a mod's screen places the current container and player slots.
     pub(in crate::game) fn native_screen_shown(&self) -> bool {
@@ -24,7 +24,7 @@ impl Game<'_> {
         self.shown_native_screen().map(|s| s.screen.height)
     }
     pub(in crate::game) fn native_screen_menu(&self) -> Option<&str> {
-        Some(&self.shown_native_screen()?.menu)
+        Some(&self.shown_native_screen()?.menu.name)
     }
     pub(in crate::game) fn native_screen_toggle(&self) -> Option<mod_api::RecipeBookToggle> {
         self.shown_native_screen()?.screen.recipe_book_toggle
@@ -34,7 +34,7 @@ impl Game<'_> {
             .is_some_and(|screen| screen.screen.recipe_book_big_result)
     }
     pub(in crate::game) fn native_screen_block(&self) -> Option<&str> {
-        self.shown_native_screen()?.block.as_deref()
+        self.shown_native_screen()?.menu.block.as_deref()
     }
     /// The explicitly assigned book; declarations bind it to the actual menu.
     pub(in crate::game) fn native_screen_book(&self) -> Option<&mod_api::RecipeBookTypeKey> {

@@ -258,7 +258,13 @@ fn screen_extra_data_borrows_only_the_open_windows_bytes() {
                 let host: &dyn mod_api::ClientHost = &*game;
                 let bytes = host.screen_extra_data().unwrap();
                 assert_eq!(bytes, expected.as_slice());
-                let stored = game.shown_native_screen().unwrap().extra.as_ref().unwrap();
+                let stored = game
+                    .shown_native_screen()
+                    .unwrap()
+                    .menu
+                    .extra
+                    .as_ref()
+                    .unwrap();
                 assert!(std::ptr::eq(bytes, stored.data.as_slice()));
 
                 receive(game, 3, &[0x78]);
@@ -344,7 +350,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
                 game.world.set(pos.0, pos.1, pos.2, state).unwrap();
                 game.open_native_screen(pos, Some(pos), 1, "minecraft:generic_9x3", None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
-                assert_eq!(open.block.as_deref(), Some("test:crate"));
+                assert_eq!(open.menu.block.as_deref(), Some("test:crate"));
                 assert_eq!(open.screen.height, 166.0);
                 game.screen = Screen::Inventory;
                 game.container = Some(pos);
@@ -433,7 +439,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
                 let key = (i32::MIN, 0, 0);
                 game.open_native_screen(key, None, 1, PACK, None);
                 let open = game.mod_screen.as_ref().expect("the menu type's screen");
-                assert_eq!((open.screen.height, &open.block), (133.0, &None));
+                assert_eq!((open.screen.height, &open.menu.block), (133.0, &None));
                 game.screen = Screen::Inventory;
                 game.container = Some(key);
                 let mut batch = HudBatch::scratch([128, 128]);
@@ -572,7 +578,7 @@ fn two_mods_sharing_a_vanilla_menu_type_keep_their_screens_apart() {
                     game.screen = Screen::Inventory;
                     game.container = Some(pos);
                     let open = game.mod_screen.as_ref().expect("the machine's screen");
-                    let (menu, block) = (open.menu.clone(), open.block.clone().unwrap());
+                    let (menu, block) = (open.menu.name.clone(), open.menu.block.clone().unwrap());
                     let shown: Vec<_> = (0..5).filter(|&i| i != hidden).collect();
                     let ids: Vec<_> = shown.iter().map(|i| 300 + i).collect();
                     assert_eq!(game.native_screen_slots(), Some(ids));

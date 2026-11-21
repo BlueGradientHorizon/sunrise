@@ -96,20 +96,22 @@ impl Game<'_> {
                 }
             }
             self.mod_screen = Some(OpenNativeScreen {
+                menu: OpenNativeMenu {
+                    key,
+                    window,
+                    name: menu.to_owned(),
+                    block,
+                    mod_type,
+                    data: Vec::new(),
+                    extra,
+                },
                 slot_moves: Default::default(),
                 layout_revision: {
                     static NEXT: std::sync::atomic::AtomicU64 =
                         std::sync::atomic::AtomicU64::new(1);
                     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                 },
-                key,
-                window,
-                menu: menu.to_owned(),
-                block,
                 screen,
-                mod_type,
-                data: Vec::new(),
-                extra,
             });
             self.begin_mod_book_placement();
             self.ensure_mod_book_catalog();
