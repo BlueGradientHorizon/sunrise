@@ -36,18 +36,9 @@ def method(source, name):
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMiningTests(unittest.TestCase):
     def test_break_timing_and_packets(self):
-        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
-        # The breaking path lives in remote/use.rs since the remote split; the stop pass stays in
-        # mod.rs and is pasted straight after it.
-        used = next(ROOT.glob('crates/sunrise-client/src/game/*/remote/use.rs')).read_text()
-        breaking = used[used.index("    pub(in crate::game) fn remote_mining("):]
-        breaking = breaking[:min((breaking.index(c) for c in (
-            "\n    /// ", "\n    // ", "\n    #[", "\n    fn ", "\n    pub(super) fn ")
-            if c in breaking), default=len(breaking))]
-        breaking = breaking.rstrip() + "\n"
-        breaking = breaking.replace("pub(in crate::game) fn", "fn", 1)
-        stop_at = source.index("    pub(super) fn stop_remote_mining(")
-        stopping = method(source[stop_at:], "stop_remote_mining") + "\n"
+        remote = ROOT / "crates/sunrise-client/src/game/network/remote"
+        breaking = method((remote / "use.rs").read_text(encoding="utf-8"), "remote_mining")
+        stopping = method((remote / "mod.rs").read_text(encoding="utf-8"), "stop_remote_mining")
         source = breaking + "\n" + stopping
         fixture = r'''
 #![allow(dead_code)]
