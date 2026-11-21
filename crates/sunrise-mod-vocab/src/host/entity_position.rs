@@ -7,20 +7,12 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait EntityPositionBackend {
     /// Side: both.
-    /// The entity's position (`Entity.position`): its feet, the middle of
-    /// its box for a painting or an item frame.
+    /// Resolves the entity and calls `read` once without holding a residency guard.
+    /// Skip the callback if the entity is unavailable; a resolved partial view can still
+    /// decline individual reads.
     #[access(WorldOnly)]
-    fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]>;
-    /// Side: server.
-    /// The block the entity's position is in (`Entity.blockPosition`). API
-    /// 373.
-    #[access(WorldOnly)]
-    fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]>;
-    /// Side: both.
-    /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
-    /// for the kinds that don't turn. API 373.
-    #[access(WorldOnly)]
-    fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]>;
+    #[decline_unavailable]
+    fn with_entity_view(&self, entity: EntityRef, read: &mut dyn FnMut(&dyn EntityView));
     /// Side: both.
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
     /// On a client, the local player's own predicted flag (the one it sends); for another

@@ -197,7 +197,12 @@ use core::ops::ControlFlow::Continue;
 
 let mut recipients = Vec::new();
 let _ = level.visit_online_players(host, &mut |player| {
-    if player.entity().position(host).is_some_and(|pos| pos[1] > min_y) {
+    if player
+        .entity()
+        .with_view(host, |view| view.position())
+        .flatten()
+        .is_some_and(|pos| pos[1] > min_y)
+    {
         recipients.push(player);
     }
     Continue(())

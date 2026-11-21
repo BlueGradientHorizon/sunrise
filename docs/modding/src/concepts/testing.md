@@ -49,7 +49,7 @@ A fake's constructors do not install or resolve entity types. Declare its entiti
 `host.level.entity(id, kind)`, then call `host.resolve_entity_types().unwrap()` explicitly.
 This freezes the current load's table with requested mod keys, the player type and every kind in
 that fake level. After `host.join(1, 10)` and this explicit setup, read the entity type with
-`host.player(1).unwrap().entity().kind(&host).unwrap()` (with `PlayersHost` in scope).
+`host.player(1).unwrap().entity().with_view(&host, |view| view.kind()).flatten().unwrap()` (with `PlayersHost` in scope).
 Assert that `kind.id(&host).as_deref() == Some("minecraft:player")` without copying the name.
 Existing kinds may be instantiated after resolution; inserting a new undeclared kind panics at the
 fake setup boundary. Repeated resolution checks the frozen table rather than extending it. A new

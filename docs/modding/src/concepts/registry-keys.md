@@ -36,12 +36,12 @@ Add the stack's damage separately when reproducing vanilla's nonempty stack scat
 
 ## Entity-type reads
 
-`EntityRef::kind(host)` and the handles that delegate to it return
-`Option<EntityTypeKey>`, using the existing entity-type registry. The key is a
-copyable scalar; compare it with a retained key instead of
-allocating and comparing a type-name string on every read. A stale or missing
-entity still returns `None`. A native general row returns its declared type.
-There is no separate equipment-only type read.
+Resolve an `EntityRef` with `entity.with_view(host, |view| …)`, then use
+`view.kind()` to read its `Option<EntityTypeKey>`. The key is a copyable scalar;
+compare it with a retained key instead of allocating and comparing a type-name
+string on every read. A stale or missing entity does not call the closure. A
+native general row returns its declared type. Equipment checks lend their
+prepared type through the same view.
 
 After the registry is available, resolve the type keys your Part needs once and
 retain them. `host.entity_type_keys()` enumerates built-in and content types in
@@ -49,10 +49,9 @@ registry order, then native general types by declaring mod and type id.
 `key.id(host)` explicitly pins its canonical namespaced name as `Option<RegistryName>`.
 Persist the name, never the scalar slot.
 For example, retain the zombie key at setup, then compare
-`entity.kind(host) == Some(zombie_key)` in a predicate.
+`entity.with_view(host, |view| view.kind()).flatten() == Some(zombie_key)` in a predicate.
 
-The key derives `Wire` through its scalar slot: host decoding checks the registered
-slot.
+The key's `Wire` codec uses its scalar slot: host decoding checks the registered slot.
 
 `UnspawnedMobRef::kind` has a separate scoped `Identifier`/error contract,
 and block-entity type reads use `BlockEntityTypeKey`.

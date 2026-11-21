@@ -178,7 +178,7 @@ For example, filter the ray using a shared read from the same client host:
 
 ```rust,ignore
 let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |hit| {
-    hit.entity.kind(host) == Some(wanted_kind)
+    hit.entity.with_view(host, |view| view.kind()).flatten() == Some(wanted_kind)
 })?;
 ```
 

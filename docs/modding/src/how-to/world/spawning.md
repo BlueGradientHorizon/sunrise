@@ -117,7 +117,7 @@ use core::ops::ControlFlow::{Break, Continue};
 
 let mut first = None;
 let _ = level.visit_entities_in(host, min, max, &mut |entity| {
-    if entity.kind(host) == Some(wanted_kind) {
+    if entity.with_view(host, |view| view.kind()).flatten() == Some(wanted_kind) {
         first = Some(entity);
         Break(())
     } else {
