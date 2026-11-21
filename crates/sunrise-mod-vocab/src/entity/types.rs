@@ -1220,20 +1220,24 @@ impl ProfileProperty {
     }
 }
 
+// no wire: An in-process result of a native menu open, not a transported payload.
 /// Why [`PlayerRef::open_mod_menu`] opened nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
-    /// The player is stale, not connected (a fake player), or their client lacks Sunrise's
-    /// menu types (a vanilla client); also a host without a game.
+    /// The player is stale, dead, disconnecting, has no supported client, or their turn
+    /// is unavailable for the open veto. Also returned by a host without a game.
     PlayerUnavailable,
     /// The extra data is past the 32 KiB a menu may carry.
     TooLarge,
     /// The title could not cross to the game.
     Title(crate::text::TextFormError),
+    /// The initial data must contain exactly the menu type's `data_slots` values.
+    DataCountMismatch,
+    /// The title cannot be encoded as vanilla network NBT.
+    TitleNotEncodable,
 }
 
 impl From<crate::text::TextFormError> for OpenMenuError {
