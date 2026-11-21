@@ -66,6 +66,27 @@ mod tests {
                             let round = game.native_tick_round();
                             assert_eq!(round.listening(), listening);
                             game.native_tick_post_batch(round);
+                            let joins: Vec<_> =
+                                game.falling.iter().map(|block| block.join).collect();
+                            // Continuing falls keep every resident's identity and order;
+                            // only the selected owner's state advances.
+                            let untouched = game.falling[1].position;
+                            for _ in 0..3 {
+                                game.tick_one_falling(0, &[]).unwrap();
+                                assert_eq!(game.falling.len(), 6);
+                                assert_eq!(game.falling[1].position, untouched);
+                                assert_eq!(
+                                    game.falling
+                                        .iter()
+                                        .map(|block| block.join)
+                                        .collect::<Vec<_>>(),
+                                    joins
+                                );
+                                assert_eq!(
+                                    game.resident_entities.table.get_mut().end_tick(),
+                                    Ok(())
+                                );
+                            }
                             // Expired blocks permanently leave the resident list.
                             for _ in 0..6 {
                                 game.falling.update(0, |block| {
