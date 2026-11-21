@@ -813,9 +813,6 @@ impl View<'_> {
             None => 46,
         }
     }
-    pub fn is_empty(&self) -> bool {
-        false
-    }
     pub fn get(&self, i: usize) -> Option<ItemStack> {
         match &self.container {
             Some(c) if i < c.len() => c[i].clone(),

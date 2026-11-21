@@ -44,17 +44,21 @@ impl Game<'_> {
         // Unpredicted: nothing changed, the carried stack as it is.
         let mut prepared = None;
         let mut threw = false;
-        self.menu_session_with_game(|game, m, env, _| {
-            let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
-                // The server throws on it too: nothing is predicted.
-                return Some(false);
-            };
-            let packets = game.prepare_clicks(container, &predicted);
-            let commit = packets.is_ok();
-            prepared = Some(packets.map(|packets| (predicted, packets)));
-            threw = dropped;
-            Some(commit)
-        });
+        // A declared mod layout does not tell us which backing the server opened or what it
+        // admits. Use the existing unpredicted packets rather than asking Parts with guessed rules.
+        if sunrise_client::containers::mod_menu_type(&menu).is_none() {
+            self.menu_session_with_game(|game, m, env, _| {
+                let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
+                    // The server throws on it too: nothing is predicted.
+                    return Some(false);
+                };
+                let packets = game.prepare_clicks(container, &predicted);
+                let commit = packets.is_ok();
+                prepared = Some(packets.map(|packets| (predicted, packets)));
+                threw = dropped;
+                Some(commit)
+            });
+        }
         let result = prepared.unwrap_or_else(|| {
             let unpredicted: Vec<Predicted> = clicks
                 .iter()
@@ -100,7 +104,8 @@ impl Game<'_> {
     /// A Shift double click on a server (`AbstractContainerScreen.mouseReleased`):
     /// a predicted QUICK_MOVE for every slot the engine moves, each sent.
     pub(in crate::game) fn remote_quick_move_all(&mut self, slot: usize, moved: &ItemStack) {
-        let (container, _) = self.remote_menu();
+        let (container, menu_type) = self.remote_menu();
+        let can_predict = sunrise_client::containers::mod_menu_type(&menu_type).is_none();
         let mut sent: Vec<Predicted> = Vec::new();
         let mut prepared = None;
         self.menu_session_with_game(|game, m, env, to_menu| {
@@ -112,10 +117,10 @@ impl Game<'_> {
                 before = menu_items(m);
             };
             let modeled = m
-                .quick_move_all_each(env, clicked, moved, &mut each)
+                .quick_move_all_each(env, clicked, moved, can_predict, &mut each)
                 .is_ok();
             let packets = game.prepare_clicks(container, &sent);
-            let commit = modeled && packets.is_ok();
+            let commit = can_predict && modeled && packets.is_ok();
             prepared = Some(packets);
             Some(commit)
         });

@@ -55,14 +55,6 @@ enum ServerMenuRules {
     HandlerOwned,
 }
 
-fn is_native_chest_menu(registry_name: Option<&str>, size: usize) -> bool {
-    registry_name
-        .and_then(|name| name.strip_prefix("minecraft:generic_9x"))
-        .and_then(|rows| rows.parse::<usize>().ok())
-        .filter(|rows| (1..=6).contains(rows))
-        .is_some_and(|rows| size == rows * 9)
-}
-
 // no wire: the menu scope's backing borrows a world and its slot layout.
 struct OpenBacking<'read> {
     level: LevelRef,
@@ -585,7 +577,24 @@ impl<'read> ServerMenuRead<'read, '_> {
                 _ => None,
             };
         }
-        Some(match open.slots.backing(backing.world, slot)? {
+        if open.slots != Slots::Native
+            && open
+                .mod_type
+                .and_then(|kind| kind.crafting)
+                .is_some_and(|craft| craft.result == slot)
+        {
+            return Some(MenuSlotBacking::CraftResult);
+        }
+        let storage = match open.slots {
+            Slots::Block(_) | Slots::Double(..) => {
+                let (pos, index) = open
+                    .slots
+                    .held_block_slot(backing.world, self.guest, slot)?;
+                SlotBacking::Block(pos, index)
+            }
+            _ => open.slots.backing(backing.world, slot)?,
+        };
+        Some(match storage {
             SlotBacking::Block(pos, n) if pos.1 == VEHICLE_KEY_Y => MenuSlotBacking::Entity {
                 entity: EntityRef::new(backing.level.epoch(), pos.2 as u32),
                 slot: n,
@@ -646,7 +655,10 @@ impl<'read> ServerMenuRead<'read, '_> {
                 }
             }
             MenuSlotBacking::CraftGrid(n) => guest.craft_grid.get(n)?.clone(),
-            MenuSlotBacking::CraftResult => guest.craft_result.clone(),
+            MenuSlotBacking::CraftResult => match self.open {
+                Some(open) => open.slots.get(self.open_backing()?.world, guest, slot),
+                None => guest.craft_result.clone(),
+            },
             MenuSlotBacking::Ender(n) => {
                 let items = if self.acting {
                     &game.ender_items
@@ -714,11 +726,24 @@ impl<'read> ServerMenuRead<'read, '_> {
     }
 
     /// Resolve the live slot-rule inputs shared with the authoritative click paths, only for
-    /// a rule query with a backed slot. Handler-owned blockless slots without a declared menu
-    /// type or vanilla chest layout never invent chest rules.
+    /// a rule query with a backed slot. Native openings dispatch to a handler, regardless of
+    /// their screen layout; a place-backed click goes through its storage handlers instead.
     fn native_menu_rules(&self, slot: usize) -> Option<(MenuSlotBacking, &ServerMenuRules)> {
         let backing = self.slot_backing(slot)?;
         Some((backing, self.rules.get_or_init(|| self.build_menu_rules())))
+    }
+
+    /// Quick-move preflight asks the same modeled slot the view and click use. Keep its
+    /// answer for the click if the quick-move Part leaves the move to the engine.
+    pub(super) fn ask_pickup(&self, slot: usize) -> Option<(bool, sunrise_client::menu::Asked)> {
+        if self.slot_backing(slot).is_none() {
+            return Some((false, Default::default()));
+        }
+        let ServerMenuRules::Menu(mut menu) = self.build_menu_rules() else {
+            return None;
+        };
+        let equip = self.game.menu_can_equip();
+        Some(menu.ask_pickup(&self.menu_env(&equip), slot))
     }
 
     fn build_menu_rules(&self) -> ServerMenuRules {
@@ -740,16 +765,11 @@ impl<'read> ServerMenuRead<'read, '_> {
             Slots::Block(pos) => world.block_entities.get(&pos),
             _ => None,
         };
-        let block_pos = match open.slots {
-            Slots::Block(pos) | Slots::Double(pos, _) => Some([pos.0, pos.1, pos.2]),
-            _ => None,
-        };
-        let menu_kind = if open.slots == Slots::Native {
-            open.mod_type.map(Kind::Mod)
-        } else {
-            entity.and_then(|entity| machine_menu_kind(entity, open.mod_type))
-        };
-        if let Some(kind) = menu_kind {
+        let block_pos = open.pos.map(|(x, y, z)| [x, y, z]);
+        if open.slots == Slots::Native {
+            return ServerMenuRules::HandlerOwned;
+        }
+        if let Some(kind) = entity.and_then(|entity| machine_menu_kind(entity, open.mod_type)) {
             let mut menu = Menu::new(kind);
             menu.set_registry_id(registry_name);
             menu.set_block_pos(block_pos);
@@ -787,9 +807,6 @@ impl<'read> ServerMenuRead<'read, '_> {
             }
             menu.set_container_insert_rules(open.live_container_insert_rules(world, open.size));
             return ServerMenuRules::Menu(menu);
-        }
-        if open.slots == Slots::Native && !is_native_chest_menu(registry_name, open.size) {
-            return ServerMenuRules::HandlerOwned;
         }
         let items = if self.acting && open.slots == Slots::Ender {
             self.game.ender_items.clone()
@@ -1232,6 +1249,21 @@ mod tests {
             assert_eq!(game.inventory[2], Some(stored));
             assert_eq!(*game.slot_mut(300), Some(held));
             assert_eq!(game.slots(), [300]);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn declared_menu_click_with_unknown_backing_leaves_client_slots_for_server_sync() {
+        with_panel(1, |game, _| {
+            open_panel(game);
+            let held = ItemStack::new("minecraft:stone", 5);
+            let displayed = ItemStack::new("minecraft:dirt", 2);
+            game.inventory[2] = Some(held.clone());
+            *game.slot_mut(300) = Some(displayed.clone());
+            assert!(game.remote_menu_ops(&[(Some(300), 2, Input::Swap)]));
+            assert_eq!(game.inventory[2], Some(held));
+            assert_eq!(*game.slot_mut(300), Some(displayed));
         });
     }
 
@@ -2103,6 +2135,23 @@ mod tests {
                 Some(Some(Some(quick_move.try_into_api().unwrap())))
             );
 
+            // The real chest-shaped native route still delegates its clicks to the handler.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .open_native_menu(1, 1, title.clone(), vec![None; 9])
+                .unwrap();
+            let native_chest = game.player_container_menu(player).unwrap();
+            assert_eq!(
+                native_chest.with_view(game, |view| (
+                    view.slot_count(),
+                    view.slot_holds(0, &stone),
+                    view.slot_gives(0),
+                )),
+                Some((Some(45), None, None))
+            );
+
             // A 1-slot blockless handler-owned native menu without a ModMenuType never
             // fabricates vanilla Chest(0) rules.
             game.lan
@@ -2132,8 +2181,7 @@ mod tests {
                 Some((Some(37), Some(MenuSlotBacking::Native(0)), None, None))
             );
 
-            // A 1-slot blockless ModMenuType follows its declared ModMenuType rules (including
-            // take-only result slots) rather than falling back to Chest(0).
+            // A declared layout does not turn a handler-owned menu into a modeled click.
             let mod_type: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
                 id: "test:one_slot_result",
                 owner: "test",
@@ -2160,7 +2208,7 @@ mod tests {
                         view.slot_holds(1, &stone),
                     )
                 }),
-                Some((Some(37), Some(0), Some(true), Some(64)))
+                Some((Some(37), None, None, None))
             );
         });
     }

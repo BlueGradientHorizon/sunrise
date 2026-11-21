@@ -1,0 +1,10 @@
+ids = [
+    "hook:menu_slot_rules",
+    "type:MenuSlotContext",
+    "method:MenuView::slot_backing",
+    "method:MenuView::slot_holds",
+    "method:MenuView::slot_gives",
+    "type:MenuSlotBacking.CraftResult",
+]
+why = "Live menu views now follow vanilla Slot.mayPlace, Slot.mayPickup, Slot.getMaxStackSize(ItemStack) and AbstractContainerMenu.doClick/moveItemStackTo, including the actual linked container and NeoForge ResourceHandlerSlot.mayPlace/mayPickup/getMaxStackSize for handler-owned rules. Hub rule Parts can read the live guest in both a query and a click. menu_slot_rules v6 sees backing admission, including when checking pickup before quickMoveStack. MultiPlayerGameMode.handleContainerInput predicts only from the client menu it knows; Sunrise sends clicks unpredicted when the server's backing rules are not synchronized."
+migrate = "Keep the same MenuPart::menu_slot_rules signature and rebuild for v6. If you already filter a slot, keep event.may_place &= accepts(stack). Replace any use of event.may_place = true to bypass a backing rejection with a container declaration that admits the item, then apply the Part's filter. Read event.may_place as the live slot answer including its backing; do not expect a call for a quick-move top-up the backing already refuses, or a client call for an opening with unknown server backing. A Part may still answer event.may_pickup separately on a mod menu type. For MenuView::slot_holds and slot_gives, handle None on handler-owned native windows even when the screen looks like a vanilla chest or has declared slots; use your handler or transactional item places to decide actual writes. For MenuView::slot_backing, use the returned connected container position and index for linked slots (None for an unbound link); do not substitute the opening block. Treat CraftResult as a preview, including in a mod block's menu: take it with a click, not ItemPlace::MenuSlot."

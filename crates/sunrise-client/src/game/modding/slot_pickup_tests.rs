@@ -14,7 +14,10 @@ use std::{
 };
 use sunrise_client::{
     chunk::Chunk,
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType},
+    containers::{
+        BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModContainerInsertRule,
+        ModLinks, ModMenuType,
+    },
     items::ItemStack,
     lan::{Out, PlayerSender, menu::Slots},
     menu::{Input, Kind, Menu},
@@ -35,6 +38,8 @@ const SHOWN: usize = 1;
 const RESULT: usize = 2;
 /// The pot's slot that takes a stack but gives nothing up.
 const KEEPS: usize = 4;
+/// A slot which only gives its stack when its live backing also admits the offered stack.
+const ADMISSION: usize = 3;
 const POS: (i32, i32, i32) = (1, 64, 1);
 /// The pot's container slots: the menu's hotbar 0 is slot `SLOTS + 27`.
 const SLOTS: usize = 27;
@@ -63,6 +68,9 @@ impl MenuPart for Pot {
             event.may_place = false;
         }
         event.may_pickup &= event.slot != KEEPS;
+        if event.container == mod_api::MenuContainer::Main && event.slot == ADMISSION {
+            event.may_pickup &= event.may_place;
+        }
     }
 }
 /// The pot block's shift-click: heard, and left to the game.
@@ -456,6 +464,126 @@ fn a_refused_quick_move_moves_nothing_and_asks_before_menu_quick_move() {
         assert_eq!(server_asks, client_asks);
         assert_eq!(server_asks, [(SHOWN, "minecraft:stone".to_owned(), 5)]);
         assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn quick_move_preflight_asks_the_live_backing_rule() {
+    with_pot(|game, rx| {
+        let mut insert_rules = vec![ModContainerInsertRule::Any; SLOTS];
+        insert_rules[ADMISSION] = ModContainerInsertRule::OnlyWhenEmpty;
+        let state = game.world.block(POS.0, POS.1, POS.2).0;
+        game.world.block_entities.set_mod_containers(
+            [(
+                state,
+                Arc::new(ModContainer {
+                    slots: SLOTS,
+                    insert_rules,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        serve(game, &prediction(&[(ADMISSION, stone(5))], None));
+        let menu = game
+            .player_container_menu(game.player(12).unwrap())
+            .unwrap();
+        assert_eq!(
+            menu.with_view(game, |view| view.slot_gives(ADMISSION)),
+            Some(Some(false))
+        );
+        asked();
+        MOVED.with(|moved| moved.borrow_mut().clear());
+        click(
+            game,
+            rx,
+            (ADMISSION as i32, 0, Input::QuickMove),
+            Vec::new(),
+            None,
+        );
+        assert!(MOVED.with(|moved| moved.borrow().is_empty()));
+        assert_eq!(asked(), [(ADMISSION, "minecraft:stone".to_owned(), 5)]);
+        assert_eq!(
+            served(game)[ADMISSION],
+            Some(("minecraft:stone".to_owned(), 5))
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_linked_slot_click_and_transaction_edit_the_connected_container() {
+    use crate::game::api_values::TryIntoApi;
+    use mod_api::{HostTransaction, ItemPlace, ItemResource};
+
+    with_pot(|game, rx| {
+        let linked = (2, 64, 1);
+        let state = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:chest")
+            .unwrap();
+        game.world.set(linked.0, linked.1, linked.2, state).unwrap();
+        let dirt = ItemStack::new("minecraft:dirt", 3);
+        game.world
+            .block_entities
+            .insert(linked, BlockEntity::Chest(vec![Some(dirt.clone()); 27]));
+        let opened = Box::leak(Box::new(ModMenuType {
+            links: Some(ModLinks { from: 0, count: 1 }),
+            ..pot_type().clone()
+        }));
+        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            let menu = g.menu.as_mut().unwrap();
+            menu.mod_type = Some(opened);
+            menu.links = vec![linked];
+        });
+        let opening = game.world.block_entities.get_mut(&POS).unwrap();
+        *opening.slot_mut(0).unwrap() = stone(5);
+        let menu = game
+            .player_container_menu(game.player(12).unwrap())
+            .unwrap();
+        click(game, rx, (0, 0, Input::Pickup), Vec::new(), None);
+        assert_eq!(
+            game.lan.as_ref().unwrap().hub.guests[0].carried,
+            Some(dirt.clone())
+        );
+        assert_eq!(
+            game.world.block_entities.get(&linked).unwrap().slots()[0],
+            None
+        );
+        assert_eq!(
+            game.world.block_entities.get(&POS).unwrap().slots()[0],
+            stone(5)
+        );
+        let resource = ItemResource::of(&dirt.try_into_api().unwrap());
+        let place = ItemPlace::MenuSlot { menu, slot: 0 };
+        let host: &mut dyn mod_api::ServerHost = game;
+        let inserted = host
+            .transaction(|host, tx| Ok::<_, ()>(place.insert(host, tx, &resource, 2)))
+            .unwrap();
+        assert_eq!(inserted, 2);
+        let connected = game.world.block_entities.get(&linked).unwrap().slots();
+        assert_eq!(
+            shown(connected[0].as_ref()),
+            Some(("minecraft:dirt".to_owned(), 2))
+        );
+        assert_eq!(
+            game.world.block_entities.get(&POS).unwrap().slots()[0],
+            stone(5)
+        );
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |g| g.menu.as_mut().unwrap().links.clear());
+        assert_eq!(
+            menu.with_view(game, |view| view.slot_backing(0)),
+            Some(None)
+        );
     });
 }
 

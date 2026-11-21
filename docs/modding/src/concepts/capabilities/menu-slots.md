@@ -53,14 +53,13 @@ The server reads its owning load; the client reads local preload sets before its
 `UpdateRecipes`, then the authoritative server generation. A packet replaces the entire
 generation, including an empty one. Closing a screen or changing dimension retains it;
 disconnecting discards it. Reads allocate nothing and do not rescan recipes or registries.
-A client without this mod predicts vanilla here; the server corrects it.
-
-Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
+For a declared mod menu the client cannot infer the backing container's insertion rules from
+its screen layout. It sends clicks unpredicted and uses the slots and cursor the server sends back.
 
 ### Who and where: the slot's context
 
-A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` the game
-fills the same way on the server and on the client's prediction. `context.player` is the UUID of
+A rule that depends on more than the stack reads `event.context`, a `MenuSlotContext` built from
+what the planning side knows about the live opening. `context.player` is the UUID of
 the player whose menu it is, `context.pos` the block entity the menu belongs to
 (`ContainerLevelAccess`), and `context.slots` a read-only copy of the menu's own containers'
 slots as they stand while the click plans, without the player's inventory. The containers are
@@ -96,12 +95,16 @@ fn menu_slot_rules(&self, host: &dyn mod_api::Host, event: &mut mod_api::MenuSlo
 `player` is None where no player is known and `pos` None for a menu that is not a block's (one
 opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot cross to the API
 shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
-context is built once per click plan, and only for a menu type a part answers: vanilla menus and
-types with no listening part never pay for it, and the asks of one click share one copy.
+context is built only for a menu type a Part answers. A Hub click and a menu view can both read
+the acting guest through the Host. Native windows can have a chest or mod layout but implement their
+own clicks: `MenuView::slot_holds` and `slot_gives` return `None` there rather than guessing.
+A place-backed native click still uses its transactional item places. For a linked block slot,
+`slot_backing` and `ItemPlace::MenuSlot` address the connected container; an unbound link has no backing.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
-is asked with the stack the slot holds, on the server and in client prediction alike. A slot that only shows
+is asked with the stack the slot holds, on the server or in modeled client prediction. A slot that only shows
 something, such as a cooking pot's preview of its result, refuses both rules: nothing can be taken from it and
 nothing put in it.
 
@@ -131,11 +134,11 @@ offhand swap that takes the slot's item, a throw (a refusal drops nothing), and 
 spread, a creative clone, putting a stack into an empty slot and a click outside the window never ask it; a drag
 that ends on a single slot is a pickup click on that slot. A refused click leaves the slot and the cursor as they
 were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
-gives up all of its stack or none of it. The slot's own rule comes first, and one ask answers `may_place` and
-`may_pickup` together. Vanilla menu types keep their slots' own `mayPickup`, and a shift-click a part answers
-with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
-take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
-the client's prediction ask the same number of times.
+gives up all of its stack or none of it. In version 6 the slot's own `may_place` includes backing admission.
+A Part can close an admitted slot but cannot reopen one the backing refuses; a quick-move top-up that the
+backing already refuses does not ask the Part. The same ask answers `may_place` and `may_pickup`. Vanilla menu
+types keep their own `mayPickup`. A shift-click asks pickup before `menu_quick_move` and reuses the answer
+if the Part leaves the move to the engine and the slot, stack and base rules are unchanged.
 
 ## Taking from a slot
 

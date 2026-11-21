@@ -5,23 +5,24 @@ pub trait Hooks {
     /// Slot placement, pickup and stack limits for registered vanilla and mod
     /// menus; mounts use `sunrise:mount_inventory`, while player inventory and
     /// the creative picker have no registered type. `slot` is the backing index,
-    /// including player inventory slots. The slot's own answers arrive first;
-    /// the maximum is bounded to 1–99 and the item limit. Refusal also prevents
-    /// quick-move top-ups. Runs on server and client prediction with the read
-    /// `Host`: it is a query, so it can neither write nor cancel. A click asks
-    /// once for each slot and stack it consults while it plans, and never again
-    /// when it validates or applies. Answer from the stack and the host alone,
-    /// and fast. On a LAN host's own click the LAN host is not reachable
-    /// through the `Host` (it answers as if no LAN were open).
+    /// including player inventory slots. The incoming `may_place` includes the
+    /// backing container's declared admission; a Part cannot reopen a slot the
+    /// backing refuses. Backing admission also applies to quick-move top-ups:
+    /// those already refused by the backing are not asked. The maximum is
+    /// bounded by the slot and the offered stack's component-aware item limit.
+    /// This is a read-only query, including for a LAN guest on the server.
+    /// Click planning reuses an answer for the same slot, stack and base rules;
+    /// validation and application do not ask again. The client only runs the
+    /// query when it can predict the rules of the opening. A declared mod menu
+    /// with server-owned backing sends clicks unpredicted; the server owns the
+    /// slot rules and sends back the resulting slots and cursor.
     /// `container` is the container `slot` indexes ([`MenuContainer`]): a mod
     /// crafting grid's slots are `Grid`'s and its result `Result`'s slot 0.
     /// `context` says who and where the ask is about ([`MenuSlotContext`]):
     /// the player whose menu it is, the menu's block entity and a read-only
     /// copy of the menu's own containers' slots, keyed by the same container
-    /// (`context.slot(container, index)`), built once per click plan and
-    /// filled the same on the server and on the client's prediction. Parts that read `context.setting(..)` or `side()` have no
-    /// counterpart on the Host.
-    /// A client without this mod predicts vanilla here; the server corrects it.
+    /// (`context.slot(container, index)`), built once per click plan. On the
+    /// client, only data synchronized for the modeled menu is available.
     ///
     /// `may_pickup` is `Slot.mayPickup`, answered only for a registered mod
     /// menu type (its own slots and the player's inventory slots in it); a
@@ -45,8 +46,6 @@ pub trait Hooks {
     /// not asked; then the mods, in the order `may_place` is asked, one ask
     /// answering both. A shift-click a part answers with `menu_quick_move` is
     /// asked the pickup rule before that hook.
-    /// Parts that read `context.setting(..)` or `side()` have no counterpart
-    /// on the Host.
     #[hook(
         receiver = "read",
         dispatch = "api_carrier",
@@ -56,7 +55,7 @@ pub trait Hooks {
         key = "menu",
         host = "read",
         cancellable = false,
-        version = 5,
+        version = 6,
         neoforge = "none (vanilla Slot.mayPlace and mayPickup; NeoForge adds no event or extension for it)"
     )]
     fn menu_slot_rules(

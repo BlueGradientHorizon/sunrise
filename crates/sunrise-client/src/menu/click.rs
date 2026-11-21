@@ -682,16 +682,18 @@ impl Menu {
         moved: &ItemStack,
     ) -> Result<(), &'static str> {
         self.touch();
-        self.quick_move_all_each(env, clicked, moved, &mut |_, _| {})
+        self.quick_move_all_each(env, clicked, moved, true, &mut |_, _| {})
     }
 
-    /// `quick_move_all`, calling `each` with the menu and the slot after each
-    /// QUICK_MOVE (a server's client sends every one of them).
+    /// `quick_move_all`, calling `each` with the menu and the slot after each QUICK_MOVE.
+    /// When the client cannot predict the backing rules, emit matching slots without asking
+    /// the Parts or touching any stack: the server decides which moves are allowed.
     pub fn quick_move_all_each(
         &mut self,
         env: &Env,
         clicked: usize,
         moved: &ItemStack,
+        predict: bool,
         each: &mut dyn FnMut(&Self, usize),
     ) -> Result<(), &'static str> {
         self.touch();
@@ -700,14 +702,21 @@ impl Menu {
         }
         let container = self.state.slots[clicked].container;
         for t in 0..self.state.slots.len() {
+            if !self.has_item(t)
+                || self.state.slots[t].container != container
+                || !self.quick_replace(t, moved, env)
+            {
+                continue;
+            }
+            if !predict {
+                each(self, t);
+                continue;
+            }
             // The screen's `mayPickup` and the click it sends are one question about slot `t`:
             // the server, which hears only the click, asks it once too.
             let clicked = self.planned(Asked::default(), |menu| {
-                let sent = menu.has_item(t)
-                    && menu.state.slots[t].container == container
-                    && menu.quick_replace(t, moved, env)
-                    && menu.may_pickup(env, t);
-                sent.then(|| menu.click(env, t as i32, 0, Input::QuickMove))
+                menu.may_pickup(env, t)
+                    .then(|| menu.click(env, t as i32, 0, Input::QuickMove))
             });
             if let Some(clicked) = clicked.0 {
                 clicked?;

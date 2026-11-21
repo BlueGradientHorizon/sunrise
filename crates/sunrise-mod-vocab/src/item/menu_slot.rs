@@ -37,21 +37,23 @@ pub trait MenuView {
 
     /// The storage a slot shows (`Slot.container` and `getContainerSlot`): the player's
     /// [`ENTITY_ITEMS`](crate::ENTITY_ITEMS) index, a block entity or entity slot, the
-    /// ender chest, a crafting grid or a mod's menu. `None` for an unavailable or
-    /// out-of-range slot, or on the client.
+    /// ender chest, a crafting grid or a mod's menu. A linked slot resolves to the
+    /// connected container's own slot, not the opening block. `None` for an unbound
+    /// link, unavailable or out-of-range slot, or on the client.
     fn slot_backing(&self, slot: usize) -> Option<MenuSlotBacking>;
 
     /// How many of `stack` this server slot holds, using the click's `Slot.mayPlace`
     /// and `Slot.getMaxStackSize(ItemStack)` rules. The offered stack's component
     /// maximum applies, block-backed mod menus respect their container's declared insert
     /// rules, and armour slots ask the item's parts for this player (`IItemExtension.canEquip`).
-    /// `None` when the rules or stack are unavailable,
-    /// the slot is out of range, or this is a client view.
+    /// `None` when the rules or stack are unavailable, the slot is out of range, or
+    /// this is a client view. A native window's screen layout does not supply rules:
+    /// the native click handler or the transactional item-place handlers decide its clicks.
     fn slot_holds(&self, slot: usize, stack: &ItemStack) -> Option<u32>;
 
     /// Whether this server slot gives up what it holds (`Slot.mayPickup`); for example,
     /// bound armour stays on outside creative. `None` when the rules or slot are
-    /// unavailable, or on the client.
+    /// unavailable (including for native windows), or on the client.
     fn slot_gives(&self, slot: usize) -> Option<bool>;
 }
 
@@ -113,7 +115,7 @@ pub enum MenuSlotBacking {
     Ender(usize),
     /// Slot `.0` of the player's inventory crafting grid, 0..4.
     CraftGrid(usize),
-    /// The inventory crafting grid's result, which nothing writes: a craft is a click.
+    /// A crafting grid's result, which nothing writes: a craft is a click.
     CraftResult,
     /// Slot `.0` of a mod's chest menu (`open_menu`).
     Native(usize),

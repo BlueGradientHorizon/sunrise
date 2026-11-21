@@ -650,8 +650,13 @@ impl Game<'_> {
                             .filter_map(|k| after.get_mut(k).map(Option::take))
                             .collect();
                     }
-                    for (slot, stack) in m.items.iter_mut().zip(after) {
-                        *slot = stack;
+                    for (index, (slot, stack)) in m.items.iter_mut().zip(after).enumerate() {
+                        if !linked
+                            .as_ref()
+                            .is_some_and(|(links, _)| links.slots().contains(&index))
+                        {
+                            *slot = stack;
+                        }
                     }
                 }
                 // CrafterBlockEntity.setItem: filling a disabled slot enables it.

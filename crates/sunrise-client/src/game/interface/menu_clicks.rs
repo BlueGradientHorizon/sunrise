@@ -506,13 +506,18 @@ impl Game<'_> {
             maps: Some(&maps),
         };
         let menu_can_equip = self.menu_can_equip();
-        let env = Env {
+        let mut env = Env {
             enchantments: self.item_enchantments(),
             trade: Some(&trade_env),
             maps: level_maps.as_ref().map(|m| m as _),
             can_equip: Some(&menu_can_equip),
             ..self.menu_env()
         };
+        // Client layout queries (for example the drag preview) must not ask a mod to decide
+        // against guessed backing rules either. The server evaluates them on the real slots.
+        if self.remote.is_some() && matches!(kind, Kind::Mod(_)) {
+            env.slot_rules = None;
+        }
         menu.creative = creative;
         // A server's client predicts with the server's crafting result, never its own.
         menu.on_client = self.remote.is_some();
