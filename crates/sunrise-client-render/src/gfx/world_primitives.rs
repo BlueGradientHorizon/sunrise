@@ -89,6 +89,60 @@ impl OitBatch<'_> {
     }
 }
 
+/// Geometry produced by a single live pass stage (or deferred custom geometry), ready to upload
+/// and draw immediately into the active `wgpu::RenderPass`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StageData<'a> {
+    pub quads: &'a [Vertex],
+    pub quads_through: &'a [Vertex],
+    pub lines: &'a [[f32; 8]],
+    pub lines_through: &'a [[f32; 8]],
+    pub pipelines: super::mod_pipelines::Batch<'a>,
+}
+
+impl StageData<'_> {
+    pub fn is_empty(&self) -> bool {
+        self.quads.is_empty()
+            && self.quads_through.is_empty()
+            && self.lines.is_empty()
+            && self.lines_through.is_empty()
+            && self.pipelines.runs.is_empty()
+    }
+}
+
+/// Extra frame data produced by `submit_custom_geometry`, debug renderers, and
+/// `prepare_render_buffers` (including resolved retained `InstanceGroup`s and world name tags),
+/// consumed by `Renderer::draw_frame` before entity/instance/glyph uploads.
+#[derive(Default)]
+pub struct PreparedHookGeometry {
+    pub entities: Vec<Vertex>,
+    pub see_through: Vec<Vertex>,
+    pub prepared_draws: Vec<super::PreparedModelDraw>,
+    pub text_patches: Vec<crate::font::Patch>,
+}
+
+/// Renderer-driven lifecycle for mod world rendering hooks (`submit_custom_geometry`,
+/// `prepare_render_buffers`, and `render_level_stage`).
+pub trait FrameHooks {
+    fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
+    fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
+    fn on_prepare_render_buffers(
+        &mut self,
+        sections: &[mod_api::RenderableSection],
+        oit_on: bool,
+    ) -> PreparedHookGeometry;
+    fn on_render_stage(
+        &mut self,
+        stage: mod_api::RenderLevelStage,
+        sections: &[mod_api::RenderableSection],
+        oit_on: bool,
+    ) -> StageData<'_>;
+    fn custom_geometry(&self) -> StageData<'_>;
+    fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool);
+    /// Seconds of game time for mod pipeline `FrameUniform::time`.
+    fn time(&self) -> f32;
+}
+
 /// A frame's primitives, camera-relative, as the game tessellated them: quads of 4 vertices
 /// from the shared atlas (plain colours on its white texel, text on its glyphs, beams on the
 /// beacon beam sprite) and lines as `gizmos::camera_relative` gives them. `*_through` ones are
@@ -163,6 +217,11 @@ pub struct WorldPrimitives {
     oit_counts: [u32; 4],
     /// The batch's OIT `stage_ends`, clamped to `oit_counts`.
     oit_stage_ends: [[u32; 4]; OIT_STAGES - 1],
+    /// Per-frame non-overlapping append cursors for live pass-boundary uploads.
+    live_quads_used: u32,
+    live_lines_used: u32,
+    live_oit_quads_used: u32,
+    live_oit_lines_used: u32,
     /// Mods' own pipelines and their quads, drawn after each stage's primitives.
     pub(super) pipelines: super::mod_pipelines::ModPipelines,
 }
@@ -347,6 +406,10 @@ impl WorldPrimitives {
             stage_ends: [[0; 4]; STAGES - 1],
             oit_counts: [0; 4],
             oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
+            live_quads_used: 0,
+            live_lines_used: 0,
+            live_oit_quads_used: 0,
+            live_oit_lines_used: 0,
             pipelines: super::mod_pipelines::ModPipelines::new(device, color_format),
         }
     }
@@ -544,6 +607,282 @@ impl WorldPrimitives {
             "World primitive OIT lines",
             lines as u64 * 32,
         );
+    }
+
+    /// Prepare shared uniforms, bind group, and per-frame append cursors for live
+    /// pass-boundary stage draws (`FrameHooks`).
+    pub fn begin_live_frame(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        view_proj: Mat4,
+        viewport: [u32; 2],
+        time: f32,
+        atlas: &wgpu::TextureView,
+    ) {
+        self.live_quads_used = 0;
+        self.live_lines_used = 0;
+        self.live_oit_quads_used = 0;
+        self.live_oit_lines_used = 0;
+        let globals = Globals {
+            view_proj: view_proj.to_cols_array_2d(),
+            viewport: [viewport[0] as f32, viewport[1] as f32, 0.0, 0.0],
+        };
+        queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
+        if self.group.as_ref().is_none_or(|g| g.view != *atlas) {
+            self.group = Some(AtlasGroup {
+                view: atlas.clone(),
+                group: device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("World primitives"),
+                    layout: &self.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.globals.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(atlas),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&self.sampler),
+                        },
+                    ],
+                }),
+            });
+        }
+        self.pipelines
+            .begin_live_frame(queue, view_proj, viewport, time);
+    }
+
+    fn reserve_indices_queue(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: u32) {
+        self.reserve_indices(
+            device,
+            &mut |buffer, bytes| queue.write_buffer(buffer, 0, bytes),
+            quads,
+        );
+    }
+
+    /// Upload and immediately draw one live standard pass stage into `pass` at non-overlapping
+    /// buffer offsets. Returns `true` if anything was drawn (so the caller should restore pass
+    /// state).
+    pub fn upload_and_draw_stage(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass<'_>,
+        data: &StageData<'_>,
+    ) -> bool {
+        if data.is_empty() {
+            return false;
+        }
+        let q0 = (data.quads.len() / 4) as u32;
+        let q1 = (data.quads_through.len() / 4) as u32;
+        let total_q = q0 + q1;
+        let l0 = data.lines.len() as u32;
+        let l1 = data.lines_through.len() as u32;
+        let total_l = l0 + l1;
+        let quad_stride = 4 * std::mem::size_of::<Vertex>() as u64;
+        let mut base_quad = self.live_quads_used;
+        if total_q > 0 {
+            let needed = (self.live_quads_used as u64 + total_q as u64) * quad_stride;
+            if self.quads.size() < needed {
+                self.quads = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("World primitive quads"),
+                    size: needed.next_power_of_two(),
+                    usage: self.quads.usage(),
+                    mapped_at_creation: false,
+                });
+                self.live_quads_used = 0;
+            }
+            base_quad = self.live_quads_used;
+            self.reserve_indices_queue(device, queue, base_quad + total_q);
+            self.quad_vertices.clear();
+            self.quad_vertices
+                .extend_from_slice(&data.quads[..q0 as usize * 4]);
+            self.quad_vertices
+                .extend_from_slice(&data.quads_through[..q1 as usize * 4]);
+            queue.write_buffer(
+                &self.quads,
+                base_quad as u64 * quad_stride,
+                bytemuck::cast_slice(&self.quad_vertices),
+            );
+            self.live_quads_used = base_quad + total_q;
+        }
+        let mut base_line = self.live_lines_used;
+        if total_l > 0 {
+            let needed = (self.live_lines_used as u64 + total_l as u64) * 32;
+            if self.lines.size() < needed {
+                self.lines = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("World primitive lines"),
+                    size: needed.next_power_of_two(),
+                    usage: self.lines.usage(),
+                    mapped_at_creation: false,
+                });
+                self.live_lines_used = 0;
+            }
+            base_line = self.live_lines_used;
+            self.line_instances.clear();
+            self.line_instances.extend_from_slice(data.lines);
+            self.line_instances.extend_from_slice(data.lines_through);
+            queue.write_buffer(
+                &self.lines,
+                base_line as u64 * 32,
+                bytemuck::cast_slice(&self.line_instances),
+            );
+            self.live_lines_used = base_line + total_l;
+        }
+        if (total_q > 0 || total_l > 0)
+            && let Some(AtlasGroup { group, .. }) = &self.group
+        {
+            pass.set_bind_group(0, group, &[]);
+            for (through, (quad_range, line_range)) in [
+                (base_quad..base_quad + q0, base_line..base_line + l0),
+                (
+                    base_quad + q0..base_quad + total_q,
+                    base_line + l0..base_line + total_l,
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if !quad_range.is_empty() {
+                    pass.set_pipeline(&self.quad_pipelines[through]);
+                    pass.set_vertex_buffer(0, self.quads.slice(..));
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.draw_indexed(quad_range.start * 6..quad_range.end * 6, 0, 0..1);
+                }
+                if !line_range.is_empty() {
+                    pass.set_pipeline(&self.line_pipelines[through]);
+                    pass.set_vertex_buffer(0, self.lines.slice(..));
+                    pass.draw(0..4, line_range);
+                }
+            }
+        }
+        if !data.pipelines.runs.is_empty() {
+            let incoming_pipeline_quads: u32 = data.pipelines.runs.iter().map(|r| r.quads).sum();
+            let projected = self
+                .pipelines
+                .live_quads_used
+                .saturating_add(incoming_pipeline_quads);
+            self.reserve_indices_queue(device, queue, projected);
+            let indices = &self.indices;
+            self.pipelines.upload_and_draw_live(
+                device,
+                queue,
+                pass,
+                &mut |_| {},
+                indices,
+                &data.pipelines,
+            );
+        }
+        true
+    }
+
+    /// Upload and immediately draw one live OIT stage into the active OIT `pass` at
+    /// non-overlapping buffer offsets.
+    pub(super) fn upload_and_draw_oit_stage(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass<'_>,
+        stage: super::oit::Stage,
+        data: &StageData<'_>,
+    ) {
+        if data.is_empty() || self.oit_pipelines.is_none() {
+            return;
+        }
+        let q0 = (data.quads.len() / 4) as u32;
+        let q1 = (data.quads_through.len() / 4) as u32;
+        let total_q = q0 + q1;
+        let l0 = data.lines.len() as u32;
+        let l1 = data.lines_through.len() as u32;
+        let total_l = l0 + l1;
+        if total_q == 0 && total_l == 0 {
+            return;
+        }
+        let quad_stride = 4 * std::mem::size_of::<Vertex>() as u64;
+        let mut base_quad = self.live_oit_quads_used;
+        if total_q > 0 {
+            let needed = (self.live_oit_quads_used as u64 + total_q as u64) * quad_stride;
+            if self.oit_quads.size() < needed {
+                self.oit_quads = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("World primitive OIT quads"),
+                    size: needed.next_power_of_two(),
+                    usage: self.oit_quads.usage(),
+                    mapped_at_creation: false,
+                });
+                self.live_oit_quads_used = 0;
+            }
+            base_quad = self.live_oit_quads_used;
+            self.reserve_indices_queue(device, queue, base_quad + total_q);
+            self.oit_quad_vertices.clear();
+            self.oit_quad_vertices
+                .extend_from_slice(&data.quads[..q0 as usize * 4]);
+            self.oit_quad_vertices
+                .extend_from_slice(&data.quads_through[..q1 as usize * 4]);
+            queue.write_buffer(
+                &self.oit_quads,
+                base_quad as u64 * quad_stride,
+                bytemuck::cast_slice(&self.oit_quad_vertices),
+            );
+            self.live_oit_quads_used = base_quad + total_q;
+        }
+        let mut base_line = self.live_oit_lines_used;
+        if total_l > 0 {
+            let needed = (self.live_oit_lines_used as u64 + total_l as u64) * 32;
+            if self.oit_lines.size() < needed {
+                self.oit_lines = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("World primitive OIT lines"),
+                    size: needed.next_power_of_two(),
+                    usage: self.oit_lines.usage(),
+                    mapped_at_creation: false,
+                });
+                self.live_oit_lines_used = 0;
+            }
+            base_line = self.live_oit_lines_used;
+            self.oit_line_instances.clear();
+            self.oit_line_instances.extend_from_slice(data.lines);
+            self.oit_line_instances
+                .extend_from_slice(data.lines_through);
+            queue.write_buffer(
+                &self.oit_lines,
+                base_line as u64 * 32,
+                bytemuck::cast_slice(&self.oit_line_instances),
+            );
+            self.live_oit_lines_used = base_line + total_l;
+        }
+        let Some(oit_pipelines) = &self.oit_pipelines else {
+            return;
+        };
+        let Some(AtlasGroup { group, .. }) = &self.group else {
+            return;
+        };
+        let stage_pipelines = &oit_pipelines[stage as usize];
+        pass.set_bind_group(0, group, &[]);
+        for (through, (quad_range, line_range)) in [
+            (base_quad..base_quad + q0, base_line..base_line + l0),
+            (
+                base_quad + q0..base_quad + total_q,
+                base_line + l0..base_line + total_l,
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if !quad_range.is_empty() {
+                pass.set_pipeline(&stage_pipelines.quad_pipelines[through]);
+                pass.set_vertex_buffer(0, self.oit_quads.slice(..));
+                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(quad_range.start * 6..quad_range.end * 6, 0, 0..1);
+            }
+            if !line_range.is_empty() {
+                pass.set_pipeline(&stage_pipelines.line_pipelines[through]);
+                pass.set_vertex_buffer(0, self.oit_lines.slice(..));
+                pass.draw(0..4, line_range);
+            }
+        }
     }
 
     /// Uploads this frame's `batch`, drawn with `view_proj` (camera-relative world to clip,

@@ -89,6 +89,8 @@ pub struct ModPipelines {
     /// By slot; `None` for a pipeline the load refused.
     pipelines: Vec<Option<Compiled>>,
     runs: Vec<Run>,
+    /// Quads already appended to `vertices` during the current live frame.
+    pub(super) live_quads_used: u32,
 }
 
 impl ModPipelines {
@@ -188,6 +190,7 @@ impl ModPipelines {
             generation: 0,
             pipelines: Vec::new(),
             runs: Vec::new(),
+            live_quads_used: 0,
         }
     }
 
@@ -392,6 +395,104 @@ impl ModPipelines {
         Ok(())
     }
 
+    /// Reset per-frame live cursor and upload shared view/frame uniforms for live stage draws.
+    pub(super) fn begin_live_frame(
+        &mut self,
+        queue: &wgpu::Queue,
+        view_proj: Mat4,
+        viewport: [u32; 2],
+        time: f32,
+    ) {
+        self.live_quads_used = 0;
+        queue.write_buffer(
+            &self.view,
+            0,
+            bytemuck::cast_slice(&view_proj.to_cols_array()),
+        );
+        queue.write_buffer(
+            &self.frame,
+            0,
+            bytemuck::bytes_of(&FrameUniform {
+                viewport: [viewport[0] as f32, viewport[1] as f32],
+                time,
+                _pad: 0.0,
+            }),
+        );
+    }
+
+    /// Upload and draw one live stage's mod pipeline quads at a non-overlapping offset in
+    /// `self.vertices`, growing into a fresh buffer if needed (previous draws keep the old buffer).
+    pub(super) fn upload_and_draw_live(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        pass: &mut wgpu::RenderPass<'_>,
+        reserve_indices: &mut dyn FnMut(u32),
+        indices: &wgpu::Buffer,
+        batch: &Batch<'_>,
+    ) {
+        if batch.runs.is_empty()
+            || batch
+                .set
+                .is_none_or(|set| set.generation() != self.generation)
+        {
+            return;
+        }
+        self.runs.clear();
+        let mut next = 0u32;
+        for run in batch.runs {
+            let quads = next..next + run.quads;
+            next = quads.end;
+            if quads.end as usize * 4 > batch.vertices.len()
+                || !matches!(self.pipelines.get(run.slot as usize), Some(Some(_)))
+            {
+                continue;
+            }
+            self.runs.push(Run {
+                slot: run.slot as usize,
+                stage: run.stage as usize,
+                quads,
+            });
+        }
+        let Some(last) = self.runs.last() else {
+            return;
+        };
+        let incoming = last.quads.end;
+        let stride = 4 * std::mem::size_of::<PipelineVertex>() as u64;
+        let needed_bytes = (self.live_quads_used as u64 + incoming as u64) * stride;
+        if self.vertices.size() < needed_bytes {
+            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Mod pipeline quads"),
+                size: needed_bytes.next_power_of_two(),
+                usage: self.vertices.usage(),
+                mapped_at_creation: false,
+            });
+            self.live_quads_used = 0;
+        }
+        let base_quad = self.live_quads_used;
+        let total_quads = base_quad + incoming;
+        reserve_indices(total_quads);
+        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..incoming as usize * 4]);
+        queue.write_buffer(&self.vertices, base_quad as u64 * stride, bytes);
+        self.live_quads_used = total_quads;
+
+        pass.set_bind_group(0, &self.group, &[]);
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
+        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        for run in &self.runs {
+            let Some(Some((pipeline, texture))) = self.pipelines.get(run.slot) else {
+                continue;
+            };
+            pass.set_pipeline(pipeline);
+            if let Some(texture) = texture {
+                pass.set_bind_group(1, texture, &[]);
+            }
+            let start = (base_quad + run.quads.start) * 6;
+            let end = (base_quad + run.quads.end) * 6;
+            pass.draw_indexed(start..end, 0, 0..1);
+        }
+    }
+
     /// Uploads the frame's quads, drawn with `view_proj` into a frame `viewport` pixels big. The
     /// number of quads to draw: the caller's quad indices must reach that far. A set this
     /// renderer was not built with draws nothing.
@@ -509,6 +610,8 @@ impl super::Renderer {
             sprite,
         };
         self.world_primitives
+            .as_mut()
+            .expect("world primitives")
             .pipelines
             .build(&self.device, set, Some(textures))
     }

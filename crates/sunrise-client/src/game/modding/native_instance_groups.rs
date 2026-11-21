@@ -80,12 +80,24 @@ impl InstanceGroupStorage {
         handle: InstanceGroupRef,
         model_generation: u64,
     ) -> Result<&mut Group, GroupError> {
+        self.get_owned(
+            mod_api::content::crash::current_native_mod(),
+            handle,
+            model_generation,
+        )
+    }
+    fn get_owned(
+        &mut self,
+        owner: Option<&'static str>,
+        handle: InstanceGroupRef,
+        model_generation: u64,
+    ) -> Result<&mut Group, GroupError> {
         let fields = handle.fields();
         self.groups
             .get_mut(fields.slot as usize)
             .and_then(Option::as_mut)
             .filter(|g| {
-                g.owner == mod_api::content::crash::current_native_mod()
+                g.owner == owner
                     && g.generation == fields.generation
                     && g.model.fields().generation == model_generation
             })
@@ -212,18 +224,34 @@ impl Game<'_> {
         handle: InstanceGroupRef,
     ) -> Result<(), GroupError> {
         let mut storage = self.instance_groups.borrow_mut();
-        let group = storage.get(handle, self.standalone_geometry.generation())?;
+        let _ = storage.get(handle, self.standalone_geometry.generation())?;
         if draw.has_group(handle) {
             return Ok(());
         }
-        self.draw_cached_model_instances(
-            draw,
-            group.model,
-            &group.composed[..group.len],
-            Some(&group.records[..group.len]),
-        )?;
         draw.mark_group(handle);
+        draw.queue_group(mod_api::content::crash::current_native_mod(), handle);
         Ok(())
+    }
+    /// Stage all retained instance groups queued during `submit_custom_geometry`, reading their
+    /// live length, composed transforms, and prepared records after `prepare_render_buffers` has
+    /// finished updating them. Groups destroyed or retired in between are silently skipped.
+    pub(super) fn resolve_submitted_groups(
+        &self,
+        draw: &mut sunrise_client::world_geometry::WorldGeometry,
+    ) {
+        let model_generation = self.standalone_geometry.generation();
+        for (owner, handle) in draw.take_submitted_groups() {
+            let mut storage = self.instance_groups.borrow_mut();
+            let Ok(group) = storage.get_owned(owner, handle, model_generation) else {
+                continue;
+            };
+            let _ = self.draw_cached_model_instances(
+                draw,
+                group.model,
+                &group.composed[..group.len],
+                Some(&group.records[..group.len]),
+            );
+        }
     }
 }
 

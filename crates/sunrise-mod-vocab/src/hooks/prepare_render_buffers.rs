@@ -12,9 +12,10 @@ pub trait Hooks {
 and before any pass-bearing world render stages execute, and never on title or connect screens.
 
 Use it to prepare or update retained GPU buffers — such as `InstanceGroups` or dynamic textures —
-before the render passes read them. Its `WorldRenderView` lends the frame's `Camera`, world
-partial tick, game time, whether vanilla's improved transparency (OIT) is active this frame, and
-the visible `RenderableSection` slice."#]
+before the render passes read them. Changes made here to `InstanceGroup` records, active length,
+or group transform apply immediately to groups submitted for this frame. Its `WorldRenderView`
+lends the frame's `Camera`, world partial tick, game time, whether vanilla's improved transparency
+(OIT) is active this frame, and the primary camera's canonical visible `RenderableSection` slice."#]
     #[hook(
         receiver = "read",
         dispatch = "flat",

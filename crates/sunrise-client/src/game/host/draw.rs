@@ -344,7 +344,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
         glowing: bool,
         outline: Option<u32>,
     ) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text)?;
         Ok(self
             .game
             .native_draw_text(&mut *self.surface, &text, at, color, glowing, outline))
@@ -358,7 +358,7 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
             .native_draw_terrain_model(&mut *self.surface, model, options)
     }
     fn text_width(&self, text: &Text) -> Result<f32, mod_api::text::TextFormError> {
-        let text = text.try_into_engine(&())?;
+        let text = sunrise_client::api_text::to_engine_for_render(text)?;
         Ok(self.game.native_draw_text_width(&*self.surface, &text))
     }
     fn model_part(&mut self, part: &ModelPart, sprite: &str, tint: u32) -> bool {

@@ -77,12 +77,108 @@ impl ViewSet {
     }
 }
 
-/// Read-only summary of one visible world section exposed to frame callbacks.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct VisibleSection {
-    pub origin: [i32; 3],
-    pub bounds: [[f64; 3]; 2],
-    pub empty: bool,
+/// Collects canonical primary-camera visible sections (including compiled empty air sections
+/// tracked in `detail_columns` without a `SectionGpu` mesh) into reusable `out` and `scratch`
+/// storage, ordered front-to-back by distance then section key.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn collect_primary_renderable_sections_into<T>(
+    detail_columns: &crate::fast_hash::FxHashMap<(i32, i32), crate::section_mask::SectionMask>,
+    sections: &super::resident::Resident<T>,
+    is_empty: impl Fn(&T) -> bool,
+    reachable: impl Fn(super::SectionKey) -> bool,
+    lod_cutout: &crate::fast_hash::FxHashSet<(i32, i32)>,
+    lod_leaving: &[(super::SectionKey, std::time::Instant)],
+    lod_leaving_columns: &crate::fast_hash::FxHashSet<(i32, i32)>,
+    camera: DVec3,
+    radius: i32,
+    frustum: &Frustum,
+    cave_culling: bool,
+    scratch: &mut Vec<(u64, super::SectionKey, bool)>,
+    out: &mut Vec<mod_api::RenderableSection>,
+) {
+    out.clear();
+    scratch.clear();
+    let min_y = sections.min_y();
+    let from = super::resident::camera_column(camera);
+    let beyond = |x: i32, z: i32| {
+        (!lod_cutout.is_empty() && lod_cutout.contains(&(x, z)))
+            || (!lod_leaving_columns.is_empty() && lod_leaving_columns.contains(&(x, z)))
+    };
+    let mut emit_section = |cx: i32, sy: i32, cz: i32, near: bool, inside: bool| {
+        let key = (cx, sy, cz);
+        if near && cave_culling && !reachable(key) {
+            return;
+        }
+        let ox = f64::from(cx * 16) - camera.x;
+        let oy = f64::from(min_y + sy * 16) - camera.y;
+        let oz = f64::from(cz * 16) - camera.z;
+        let min = Vec3::new(ox as f32, oy as f32, oz as f32);
+        let resident = sections.find_with_bounds(key);
+        if !inside {
+            let bounds = resident.and_then(|(_, b)| b).filter(|_| frustum.tight());
+            let (bmin, bmax) = super::resident::section_box(min, bounds);
+            if !frustum.intersects(bmin, bmax) {
+                return;
+            }
+        }
+        let dx8 = ox + 8.0;
+        let dy8 = oy + 8.0;
+        let dz8 = oz + 8.0;
+        let distance = (dx8 * dx8 + dy8 * dy8 + dz8 * dz8).to_bits();
+        let empty = resident.is_none_or(|(gpu, _)| is_empty(gpu));
+        scratch.push((distance, key, empty));
+    };
+    for (&(cx, cz), &mask) in detail_columns {
+        if mask.is_empty() {
+            continue;
+        }
+        let near = crate::streaming::in_view_distance(from, radius, cx, cz);
+        if !near && !beyond(cx, cz) {
+            continue;
+        }
+        let mut it = mask.iter();
+        let Some(low) = it.next() else { continue };
+        let high = it.last().unwrap_or(low);
+        let ox = f64::from(cx * 16) - camera.x;
+        let oz = f64::from(cz * 16) - camera.z;
+        let min_x = ox as f32;
+        let min_z = oz as f32;
+        let low_oy = (f64::from(min_y + low as i32 * 16) - camera.y) as f32;
+        let high_oy = (f64::from(min_y + high as i32 * 16) - camera.y) as f32;
+        let cmin = Vec3::new(min_x, low_oy, min_z);
+        let cmax = Vec3::new(min_x + 16.0, high_oy + 16.0, min_z + 16.0);
+        let inside = frustum.contains(cmin, cmax);
+        if !inside && !frustum.intersects(cmin, cmax) {
+            continue;
+        }
+        for y in mask.iter() {
+            emit_section(cx, y as i32, cz, near, inside);
+        }
+    }
+    if !lod_leaving_columns.is_empty() {
+        for &(key, _) in lod_leaving {
+            let (cx, sy, cz) = key;
+            if detail_columns
+                .get(&(cx, cz))
+                .is_some_and(|m| m.contains(sy as usize))
+            {
+                continue;
+            }
+            let near = crate::streaming::in_view_distance(from, radius, cx, cz);
+            emit_section(cx, sy, cz, near, false);
+        }
+    }
+    scratch.sort_unstable_by_key(|&(distance, key, _)| (distance, key));
+    out.reserve(scratch.len());
+    for &(_, (cx, sy, cz), empty) in scratch.iter() {
+        let origin = [cx * 16, min_y + sy * 16, cz * 16];
+        let [ox, oy, oz] = origin.map(f64::from);
+        out.push(mod_api::RenderableSection::new(
+            origin,
+            [[ox, oy, oz], [ox + 16.0, oy + 16.0, oz + 16.0]],
+            empty,
+        ));
+    }
 }
 
 impl Renderer {
@@ -95,39 +191,31 @@ impl Renderer {
             && super::oit::supported(&self.device)
     }
 
-    /// Collects the resident sections visible from `camera` within `radius` chunks and `frustum`,
-    /// filtered by the current occlusion graph when `cave_culling` is enabled.
-    pub fn collect_visible_sections(
-        &self,
+    /// Populate `self.visible_renderable_sections` with the primary camera's canonical visible
+    /// sections (including compiled air sections), reusing backing storage across frames.
+    pub(super) fn collect_primary_renderable_sections(
+        &mut self,
         camera: DVec3,
         radius: i32,
-        frustum: &impl Cull,
+        frustum: &Frustum,
         cave_culling: bool,
-        out: &mut Vec<VisibleSection>,
     ) {
-        out.clear();
-        let mut scratch = Vec::new();
-        self.sections.visible(
+        let occlusion = &self.occlusion;
+        collect_primary_renderable_sections_into(
+            &self.detail_columns,
+            &self.sections,
+            |gpu| gpu.solid == 0 && gpu.translucent == 0,
+            |k| occlusion.contains(k),
+            &self.lod_cutout,
+            &self.lod_leaving,
+            &self.lod_leaving_scratch,
             camera,
             radius,
             frustum,
-            |k| !cave_culling || self.occlusion.contains(k),
-            |_, _| false,
-            &mut scratch,
+            cave_culling,
+            &mut self.visible_renderable_scratch,
+            &mut self.visible_renderable_sections,
         );
-        let min_y = self.sections.min_y();
-        out.reserve(scratch.len());
-        for visible in &scratch {
-            let (cx, sy, cz) = visible.key;
-            let origin = [cx * 16, min_y + sy * 16, cz * 16];
-            let [ox, oy, oz] = origin.map(f64::from);
-            let gpu = self.sections.get(visible.slot);
-            out.push(VisibleSection {
-                origin,
-                bounds: [[ox, oy, oz], [ox + 16.0, oy + 16.0, oz + 16.0]],
-                empty: gpu.solid == 0 && gpu.translucent == 0,
-            });
-        }
     }
 
     /// The views `render` draws `frame` from.
@@ -277,5 +365,84 @@ mod tests {
         assert_eq!(set.views(), &[view]);
         assert_eq!(*set.primary(), view);
         assert_eq!(*set.cull(), view);
+    }
+
+    #[test]
+    fn primary_renderable_sections_include_compiled_air_and_apply_canonical_culling() {
+        use crate::fast_hash::{FxHashMap, FxHashSet};
+        use crate::section_mask::SectionMask;
+
+        let mut detail_columns: FxHashMap<(i32, i32), SectionMask> = FxHashMap::default();
+        // Camera sits at (8, 8, 8) looking toward -Z (yaw 180, pitch 0).
+        // min_y = 0 so section index 0 covers y = [0, 16).
+        // (0, 0, -1): compiled air section in front of camera -> included with empty = true.
+        // (0, 0, -2): non-empty resident section in front -> included with empty = false.
+        // (0, 0, 2): behind the primary camera -> excluded by primary frustum.
+        // (0, 0, -3): in front, within detail radius, but unreachable under cave culling -> excluded.
+        // (0, 0, -6): past detail radius (radius = 3), not in lod_cutout -> excluded.
+        // (0, 0, -7): past detail radius, in lod_cutout -> included.
+        let mut mask = SectionMask::EMPTY;
+        mask.insert(0);
+        detail_columns.insert((0, -1), mask);
+        detail_columns.insert((0, -2), mask);
+        detail_columns.insert((0, 2), mask);
+        detail_columns.insert((0, -3), mask);
+        detail_columns.insert((0, -6), mask);
+        detail_columns.insert((0, -7), mask);
+
+        let mut sections = super::super::resident::Resident::<bool>::default();
+        sections.set_min_y(0);
+        // Only (0, 0, -2) and (0, 0, -7) have non-empty meshes (`false` means non-empty here).
+        sections.insert((0, 0, -2), false);
+        sections.insert((0, 0, 2), false);
+        sections.insert((0, 0, -3), false);
+        sections.insert((0, 0, -6), false);
+        sections.insert((0, 0, -7), false);
+
+        let mut lod_cutout: FxHashSet<(i32, i32)> = FxHashSet::default();
+        lod_cutout.insert((0, -7));
+        let lod_leaving: Vec<(super::super::SectionKey, std::time::Instant)> = Vec::new();
+        let lod_leaving_columns: FxHashSet<(i32, i32)> = FxHashSet::default();
+
+        let camera = DVec3::new(8.0, 8.0, 8.0);
+        let view = View::screen(180.0, 0.0, 70.0, 16.0 / 9.0, 512.0);
+        let frustum = super::super::Frustum::from_planes(super::super::frustum(
+            view.view_proj(Mat4::IDENTITY),
+        ));
+
+        let mut scratch = Vec::new();
+        let mut out = Vec::new();
+        collect_primary_renderable_sections_into(
+            &detail_columns,
+            &sections,
+            |&empty| empty,
+            |key| key != (0, 0, -3),
+            &lod_cutout,
+            &lod_leaving,
+            &lod_leaving_columns,
+            camera,
+            3,
+            &frustum,
+            true,
+            &mut scratch,
+            &mut out,
+        );
+
+        let origins_and_empty: Vec<([i32; 3], bool)> =
+            out.iter().map(|s| (s.origin, s.empty)).collect();
+        assert_eq!(
+            origins_and_empty,
+            vec![
+                ([0, 0, -16], true),
+                ([0, 0, -32], false),
+                ([0, 0, -112], false),
+            ],
+            "canonical primary walk keeps compiled air, excludes behind/cave-culled/out-of-range, and honours lod_cutout"
+        );
+        assert_eq!(
+            out[0].bounds,
+            [[0.0, 0.0, -16.0], [16.0, 16.0, 0.0]],
+            "compiled air section reports full 16x16x16 world bounds"
+        );
     }
 }

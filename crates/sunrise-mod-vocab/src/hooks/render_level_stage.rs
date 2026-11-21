@@ -34,9 +34,11 @@ pub trait Hooks {
 
 Each frame asks `Hooks::submit_custom_geometry` and registered debug renderers first (with
 `WorldDrawContext`, for `name_tag`, `draw_model_instances`, `draw_instance_group`, and custom
-world primitives drawn at the end of the world pass), then `AfterSky`, then
-`Hooks::prepare_render_buffers`, then each pass-bearing stage in `RenderLevelStage::frame_order`,
-and finally `AfterLevel`. Never fires on title or connect screens.
+world primitives drawn at the end of the world pass), then `AfterSky` (when the sky pass runs),
+then `Hooks::prepare_render_buffers` (before entity, prepared-instance, and glyph uploads so
+group updates apply to this frame), then each active pass-bearing stage in
+`RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
+the world pass finishes and before the hand. Never fires on title or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return
@@ -45,8 +47,9 @@ and finally `AfterLevel`. Never fires on title or connect screens.
 (`oit_stage`, `lines`, `quads`, without `pipeline_quads` because mod render pipelines target the
 main world colour format rather than OIT float targets).
 
-A shader-pack route that skips a standard stage draws that stage's geometry at the next stage it
-reaches instead, depth tested as usual, preserving stage order without dropping submissions."#]
+Stages that do not run on the active route (for example, `AfterSky` when sky is skipped or
+shader-pack routes that take over terrain, water, or weather passes) do not fire rather than
+being synthesized or relocated to another stage."#]
     #[hook(
         receiver = "read",
         dispatch = "flat",

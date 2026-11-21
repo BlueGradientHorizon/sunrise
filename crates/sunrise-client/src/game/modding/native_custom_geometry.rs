@@ -13,6 +13,128 @@ use sunrise_client::screen_effects::{CameraQuads, sampling};
 use sunrise_client::terrain_model;
 use sunrise_client::world_geometry::{self, ModelBatch, WorldGeometry};
 
+/// Drives mod world rendering hooks from `Renderer::draw_frame`'s real visibility, sky, prepare,
+/// pass-stage, and post-world boundaries.
+pub(super) struct GameWorldStageDriver<'a, 'g> {
+    game: &'a Game<'g>,
+    frame_camera: &'a mod_api::Camera,
+    alpha: f64,
+    draw: &'a mut WorldGeometry,
+}
+
+impl<'a, 'g> GameWorldStageDriver<'a, 'g> {
+    pub(super) fn new(
+        game: &'a Game<'g>,
+        frame_camera: &'a mod_api::Camera,
+        alpha: f64,
+        draw: &'a mut WorldGeometry,
+    ) -> Self {
+        Self {
+            game,
+            frame_camera,
+            alpha,
+            draw,
+        }
+    }
+
+    fn view<'v>(
+        &'v self,
+        sections: &'v [mod_api::RenderableSection],
+        oit_on: bool,
+    ) -> mod_api::WorldRenderView<'v> {
+        mod_api::WorldRenderView::new(
+            self.frame_camera,
+            self.alpha as f32,
+            self.game.world.game_time,
+            oit_on,
+            sections,
+        )
+    }
+}
+
+impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<'_, '_> {
+    fn on_custom_geometry(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
+        let view = self.view(sections, oit_on);
+        self.draw.begin_custom_geometry();
+        self.game.native_submit_custom_geometry(&view, self.draw);
+        for renderer in &self.game.debug_renderers {
+            let _owner = enter_native_mod(ModCall {
+                id: renderer.mod_id,
+                hook: "debug_renderer_callback",
+                part: None,
+            });
+            renderer.answer.draw(
+                self.game,
+                &view,
+                &mut GameWorldDrawContext::new(self.game, self.draw),
+            );
+        }
+    }
+
+    fn on_after_sky(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
+        let view = self.view(sections, oit_on);
+        let mut surface = self.draw.stage_surface(RenderLevelStage::AfterSky);
+        self.game
+            .native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
+    }
+
+    fn on_prepare_render_buffers(
+        &mut self,
+        sections: &[mod_api::RenderableSection],
+        oit_on: bool,
+    ) -> sunrise_client::gfx::world_primitives::PreparedHookGeometry {
+        let view = self.view(sections, oit_on);
+        self.game.native_prepare_render_buffers(&view);
+        self.game.resolve_submitted_groups(self.draw);
+        let mut out = sunrise_client::gfx::world_primitives::PreparedHookGeometry::default();
+        self.game.commit_model_instances(
+            self.draw,
+            DVec3::from(self.draw.camera()),
+            &mut out.entities,
+        );
+        self.draw.sort_labels();
+        let [world, see_through] = self.draw.labels();
+        out.entities.extend_from_slice(world);
+        out.see_through.extend_from_slice(see_through);
+        out.prepared_draws = std::mem::take(&mut *self.game.prepared_model_draws.borrow_mut());
+        out.text_patches = std::mem::take(&mut *self.game.text_patches.borrow_mut());
+        out
+    }
+
+    fn on_render_stage(
+        &mut self,
+        stage: RenderLevelStage,
+        sections: &[mod_api::RenderableSection],
+        oit_on: bool,
+    ) -> sunrise_client::gfx::world_primitives::StageData<'_> {
+        let view = self.view(sections, oit_on);
+        self.draw.begin_live_stage(stage);
+        {
+            let mut surface = self.draw.stage_surface(stage);
+            self.game
+                .native_render_level_stage(stage, &view, &mut surface);
+        }
+        self.draw
+            .live_stage_data(stage, &self.game.pack.render.mod_pipelines)
+    }
+
+    fn custom_geometry(&self) -> sunrise_client::gfx::world_primitives::StageData<'_> {
+        self.draw
+            .custom_stage_data(&self.game.pack.render.mod_pipelines)
+    }
+
+    fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
+        let view = self.view(sections, oit_on);
+        let mut surface = self.draw.stage_surface(RenderLevelStage::AfterLevel);
+        self.game
+            .native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
+    }
+
+    fn time(&self) -> f32 {
+        ((self.game.world.game_time.rem_euclid(72_000) as f64 + self.alpha) / 20.0) as f32
+    }
+}
+
 impl Game<'_> {
     /// A camera-space quad in solid `argb`, of the atlas's white texel.
     pub(super) fn native_camera_quad(
@@ -49,8 +171,15 @@ impl Game<'_> {
             .debug_entries
             .active_renderers(renderers, self.debug, reduced);
     }
+    /// Whether any mod subscribes to world rendering hooks or active debug renderers.
+    pub(super) fn has_world_render_hooks(&self) -> bool {
+        !self.debug_renderers.is_empty()
+            || mod_api::__private::listened(mod_api::HookId::SubmitCustomGeometry)
+            || mod_api::__private::listened(mod_api::HookId::PrepareRenderBuffers)
+            || mod_api::__private::listened(mod_api::HookId::RenderLevelStage)
+    }
     /// `DebugRenderer.emitGizmos`'s first half: a selection the list has not seen refreshes it.
-    fn follow_debug_selection(&mut self) {
+    pub(super) fn follow_debug_selection(&mut self) {
         let version = self.debug_entries.enabled_version();
         if self.debug_renderers_version != Some(version) {
             self.debug_renderers_version = Some(version);
@@ -113,8 +242,10 @@ impl Game<'_> {
             let mut surface = draw.stage_surface(RenderLevelStage::AfterSky);
             self.native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
         }
-        // 3. Prepare render buffers before pass-bearing stages run.
+        // 3. Prepare render buffers before pass-bearing stages run, then resolve queued groups
+        // using their prepared transforms, lengths, and records.
         self.native_prepare_render_buffers(&view);
+        self.resolve_submitted_groups(draw);
         // 4. Pass-bearing stages in exact frame order (classic or OIT).
         for &stage in RenderLevelStage::frame_order(oit_on) {
             if !stage.has_render_pass() {
@@ -257,10 +388,7 @@ impl Game<'_> {
             .standalone_geometry
             .instance_slot(fields.slot)
             .ok_or(InstanceError::Model(mod_api::ModelError::UnknownModel))?;
-        let uploaded = self
-            .renderer
-            .as_ref()
-            .and_then(|renderer| renderer.prepared_generation());
+        let uploaded = self.renderer_prepared_generation();
         #[cfg(test)]
         let uploaded = uploaded.or_else(sunrise_client::gfx::test_prepared_generation);
         let gpu = super::native_block_entity_draw::prepared_route(
@@ -772,10 +900,12 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             context(game, &mut draw).draw_instance_group(group).unwrap();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert_eq!(expected, render(game));
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert_eq!(expected, render(game));
             let bytes = || game.instance_groups.borrow().converted_bytes();
             let stride = std::mem::size_of::<sunrise_client::gfx::PreparedModelInstance>();
@@ -784,6 +914,7 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert_eq!(bytes(), before);
             assert_eq!(game.prepared_model_draws.borrow().len() * stride, stride);
             assert_eq!(expected, render(game));
@@ -802,6 +933,7 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert_eq!(rewritten, render(game));
             assert_eq!(game.prepared_model_draws.borrow().len() * stride, stride);
             let pose = [
@@ -830,6 +962,7 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert_eq!(transformed, render(game));
             assert_eq!(game.prepared_model_draws.borrow().len() * stride, stride);
             let mut outside = pose;
@@ -847,6 +980,7 @@ mod tests {
             draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             assert!(
                 game.prepared_model_draws.borrow().is_empty(),
                 "cull group-transformed bounds"
@@ -868,6 +1002,7 @@ mod tests {
             draw.reset([30_000_000.0; 3], Mat4::IDENTITY, [0.0; 2]);
             game.prepared_model_draws.borrow_mut().clear();
             context(game, &mut draw).draw_instance_group(group).unwrap();
+            game.resolve_submitted_groups(&mut draw);
             {
                 let staged = game.prepared_model_draws.borrow();
                 assert_eq!(staged.len(), 1);
@@ -995,6 +1130,7 @@ mod tests {
                 draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0; 2]);
                 context(game, &mut draw).draw_instance_group(group).unwrap();
                 context(game, &mut draw).draw_instance_group(group).unwrap();
+                game.resolve_submitted_groups(&mut draw);
                 // Retiring storage must not remove copies already accepted by this view.
                 group.destroy(game).unwrap();
                 assert_eq!(group.write(game, 0, &[copy]), Err(GroupError::Stale));
@@ -1025,6 +1161,7 @@ mod tests {
                 context(game, &mut draw)
                     .draw_instance_group(replacement)
                     .unwrap();
+                game.resolve_submitted_groups(&mut draw);
                 assert_eq!(draw.copy_count(), 0);
                 replacement.destroy(game).unwrap();
             }
@@ -1038,6 +1175,7 @@ mod tests {
             context(game, &mut large)
                 .draw_instance_group(extra_group)
                 .unwrap();
+            game.resolve_submitted_groups(&mut large);
             assert_eq!(
                 large.copy_count(),
                 16_385,
@@ -1729,6 +1867,7 @@ mod tests {
     static VIEW_CHECK_HITS: AtomicUsize = AtomicUsize::new(0);
     static PREPARE_MODEL: Mutex<Option<ModelRef>> = Mutex::new(None);
     static PREPARE_GROUP: Mutex<Option<mod_api::InstanceGroupRef>> = Mutex::new(None);
+    static PREPARE_STEP: AtomicUsize = AtomicUsize::new(0);
     static PREPARE_EVENTS: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 
     fn assert_expected_world_view(view: &mod_api::WorldRenderView<'_>) {
@@ -1822,15 +1961,32 @@ mod tests {
                     created
                 }
             };
-            let copy = ModelInstance::at([13.0, 71.0, -45.0], 0xFF80_C040);
-            group.write(host, 0, &[copy]).unwrap();
-            group
-                .set_group_transform(
-                    host,
-                    [1.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-                )
-                .unwrap();
-            group.set_len(host, 1).unwrap();
+            let step = PREPARE_STEP.fetch_add(1, Ordering::Relaxed);
+            let copy0 = ModelInstance::at([13.0, 71.0, -45.0], 0xFF80_C040);
+            let copy1 = ModelInstance::at([14.0, 71.0, -45.0], 0xFF40_80C0);
+            if step == 0 {
+                // Frame 1: group was submitted in `submit_custom_geometry` with len 0 and identity
+                // transform; updating records, group transform, and len here must take effect on
+                // Frame 1 itself (not one frame late).
+                group.write(host, 0, &[copy0]).unwrap();
+                group
+                    .set_group_transform(
+                        host,
+                        [1.0, 0.0, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                    )
+                    .unwrap();
+                group.set_len(host, 1).unwrap();
+            } else {
+                // Frame 2: grow len to 2 and shift group transform again; Frame 2 must see both.
+                group.write(host, 0, &[copy0, copy1]).unwrap();
+                group
+                    .set_group_transform(
+                        host,
+                        [1.0, 0.0, 0.0, 1.25, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                    )
+                    .unwrap();
+                group.set_len(host, 2).unwrap();
+            }
         }
         fn render_level_stage(
             &self,
@@ -1903,9 +2059,26 @@ mod tests {
                 ),
             ];
             let mut draw = WorldGeometry::default();
+            PREPARE_STEP.store(0, Ordering::Relaxed);
+            // Pre-create an empty group before Frame 1 so Frame 1 submits it in
+            // `submit_custom_geometry`, then mutates its records/transform/len in
+            // `prepare_render_buffers` and immediately sees the updated instances on Frame 1.
+            {
+                let _owner = mod_platform::content::crash::enter_native_mod(
+                    mod_api::content::crash::ModCall {
+                        id: "prepare_view",
+                        hook: "test",
+                        part: None,
+                    },
+                );
+                let created = game.create_group(model, 4).unwrap();
+                created.set_len(game, 0).unwrap();
+                *PREPARE_GROUP.lock().unwrap() = Some(created);
+            }
 
-            // Frame 1 (classic): verifies every WorldRenderView field across all hooks and creates
-            // + updates the retained InstanceGroup inside prepare_render_buffers before pass stages.
+            // Frame 1 (classic): verifies every WorldRenderView field across all hooks and confirms
+            // same-frame visibility of transform/len updates made in `prepare_render_buffers`.
+            game.prepared_model_draws.borrow_mut().clear();
             VIEW_EXPECT_OIT.store(false, Ordering::Relaxed);
             VIEW_CHECK_HITS.store(0, Ordering::Relaxed);
             VIEW_CHECK_ARMED.store(true, Ordering::Relaxed);
@@ -1928,13 +2101,19 @@ mod tests {
             );
             // 1 submit + 1 debug_renderer + 1 prepare + 8 classic render_level_stage callbacks.
             assert_eq!(VIEW_CHECK_HITS.load(Ordering::Relaxed), 11);
-            assert!(
-                PREPARE_GROUP.lock().unwrap().is_some(),
-                "prepare_render_buffers created and populated the retained group"
-            );
+            {
+                let staged = game.prepared_model_draws.borrow();
+                assert_eq!(
+                    staged.len(),
+                    1,
+                    "Frame 1 must render the instance written and enabled in prepare_render_buffers"
+                );
+                // (origin [13.0, 71.0, -45.0] - camera [12.5, 71.25, -44.75]) + group translate [0.5, 0.0, 0.0]
+                assert_eq!(staged[0].instance.model[3], [1.0, -0.25, -0.25, 1.0]);
+            }
 
-            // Frame 2 (OIT): submits the group prepared in prepare_render_buffers and verifies the
-            // staged instance carries the updated origin and group transform.
+            // Frame 2 (OIT): updates len to 2 and group transform to +1.25 X in
+            // `prepare_render_buffers` and verifies both instances stage on Frame 2 itself.
             game.prepared_model_draws.borrow_mut().clear();
             PREPARE_EVENTS.lock().unwrap().clear();
             VIEW_EXPECT_OIT.store(true, Ordering::Relaxed);
@@ -1960,9 +2139,15 @@ mod tests {
             assert_eq!(VIEW_CHECK_HITS.load(Ordering::Relaxed), 10);
             {
                 let staged = game.prepared_model_draws.borrow();
-                assert_eq!(staged.len(), 1);
-                // (origin [13.0, 71.0, -45.0] - camera [12.5, 71.25, -44.75]) + group translate [0.5, 0.0, 0.0]
-                assert_eq!(staged[0].instance.model[3], [1.0, -0.25, -0.25, 1.0]);
+                assert_eq!(
+                    staged.len(),
+                    2,
+                    "Frame 2 must render both updated instances from prepare_render_buffers"
+                );
+                // (origin [13.0, 71.0, -45.0] - camera [12.5, 71.25, -44.75]) + group translate [1.25, 0.0, 0.0]
+                assert_eq!(staged[0].instance.model[3], [1.75, -0.25, -0.25, 1.0]);
+                // (origin [14.0, 71.0, -45.0] - camera [12.5, 71.25, -44.75]) + group translate [1.25, 0.0, 0.0]
+                assert_eq!(staged[1].instance.model[3], [2.75, -0.25, -0.25, 1.0]);
             }
 
             if let Some(group) = PREPARE_GROUP.lock().unwrap().take() {

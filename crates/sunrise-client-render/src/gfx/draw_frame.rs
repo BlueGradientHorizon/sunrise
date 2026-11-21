@@ -23,6 +23,7 @@ impl Renderer {
         frame: &Frame,
         checks: Option<GpuChecks>,
         output: output::EffectiveOutput,
+        mut hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> Result<bool> {
         debug_assert_eq!(output.encoding, self.hdr.as_ref().map(|hdr| hdr.output));
         // Its steps as spans (SUNRISE_SPIKES): each lap names the step that just ended.
@@ -549,6 +550,32 @@ impl Renderer {
             !gpu_frame || self.occlusion.generation() == graph_given,
             "the walk reads the graph GPU culling was given"
         );
+        // Canonical primary-camera visible sections and pre-upload mod hooks (`submit_custom_geometry`,
+        // `AfterSky` iff sky will actually render, and `prepare_render_buffers` so updated retained
+        // `InstanceGroup`s stage into this same frame's entity/instance uploads).
+        let hook_oit = !frame.title && self.oit_active_for(self.improved_transparency);
+        let hook_pack_draws_sky = !frame.title
+            && self
+                .pack_post
+                .as_ref()
+                .and_then(|p| p.1.as_ref())
+                .is_some_and(|p| p.has_sky());
+        let mut hook_geometry = world_primitives::PreparedHookGeometry::default();
+        if !frame.title
+            && let Some(hooks) = hooks.as_deref_mut()
+        {
+            self.collect_primary_renderable_sections(camera, radius, &view, culling);
+            hooks.on_custom_geometry(&self.visible_renderable_sections, hook_oit);
+            if sky_open(frame) && (frame.skybox || frame.end_sky) && !hook_pack_draws_sky {
+                hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
+            }
+            hook_geometry =
+                hooks.on_prepare_render_buffers(&self.visible_renderable_sections, hook_oit);
+            if !hook_geometry.prepared_draws.is_empty() {
+                self.prepared_draws
+                    .extend_from_slice(&hook_geometry.prepared_draws);
+            }
+        }
         let now = std::time::Instant::now();
         let mut visible_lods = std::mem::take(&mut self.visible_lods);
         visible_lods.clear();
@@ -1235,17 +1262,35 @@ impl Renderer {
         );
         // Native mods' world primitives, drawn as the world is: its jittered projection, the
         // line widths in the frame's pixels as the gizmo lines'.
-        let world_primitives = !frame.title && {
-            let (uploads, encoder) = (&mut self.uploads, &mut encoder);
-            self.world_primitives.prepare(
-                &self.device,
-                &mut |buffer, bytes| uploads.buffer(encoder, buffer, 0, bytes),
-                &frame.world_primitives,
-                jittered,
-                [self.config.width, self.config.height],
-                &self.entity_atlas,
-            )
-        };
+        let live_hooks = !frame.title && hooks.is_some();
+        let world_primitives = !frame.title
+            && if let Some(hooks) = hooks.as_deref() {
+                self.world_primitives
+                    .as_mut()
+                    .expect("world primitives")
+                    .begin_live_frame(
+                        &self.device,
+                        &self.queue,
+                        jittered,
+                        [self.config.width, self.config.height],
+                        hooks.time(),
+                        &self.entity_atlas,
+                    );
+                true
+            } else {
+                let (uploads, encoder) = (&mut self.uploads, &mut encoder);
+                self.world_primitives
+                    .as_mut()
+                    .expect("world primitives")
+                    .prepare(
+                        &self.device,
+                        &mut |buffer, bytes| uploads.buffer(encoder, buffer, 0, bytes),
+                        &frame.world_primitives,
+                        jittered,
+                        [self.config.width, self.config.height],
+                        &self.entity_atlas,
+                    )
+            };
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
         // Vanilla's four blocks as the pack's world text and GPU particles read them (the block
         // outline's layout), made once a frame and only when one of them asks.
@@ -1348,7 +1393,26 @@ impl Renderer {
                 .is_some_and(|post| post.skins_entities());
         // While a shader pack draws entities, the runs of `entity_spans` its programs draw are
         // left out of Sunrise's own entity draw.
-        let mut entities = frame.entities;
+        let merged_entities: &[Vertex] = if hook_geometry.entities.is_empty() {
+            frame.entities
+        } else {
+            self.hook_entities_scratch.clear();
+            self.hook_entities_scratch.extend_from_slice(frame.entities);
+            self.hook_entities_scratch
+                .extend_from_slice(&hook_geometry.entities);
+            &self.hook_entities_scratch
+        };
+        let merged_see_through: &[Vertex] = if hook_geometry.see_through.is_empty() {
+            frame.see_through
+        } else {
+            self.hook_see_through_scratch.clear();
+            self.hook_see_through_scratch
+                .extend_from_slice(frame.see_through);
+            self.hook_see_through_scratch
+                .extend_from_slice(&hook_geometry.see_through);
+            &self.hook_see_through_scratch
+        };
+        let mut entities = merged_entities;
         let mut pack_entities = false;
         if !frame.title
             && let Some((_, Some(post))) = &mut self.pack_post
@@ -1358,7 +1422,7 @@ impl Renderer {
             post.prepare_entities(
                 &self.device,
                 &self.queue,
-                frame.entities,
+                merged_entities,
                 frame.entity_spans,
                 frame.crumbling_sprite,
                 frame.end_portal_sprites[1],
@@ -1393,7 +1457,7 @@ impl Renderer {
             entities,
             frame.additive,
             frame.hand,
-            frame.see_through,
+            merged_see_through,
             oit_on,
         );
         self.entity_batch.append_shadow_only(frame.shadow_only);
@@ -1537,7 +1601,7 @@ impl Renderer {
         let all_entities = &self.entity_batch.combined;
         let hand_quads = (frame.hand.len() / 4) as u32;
         let additive_quads = (frame.additive.len() / 4) as u32 - self.entity_batch.moved_additive;
-        let see_through_quads = (frame.see_through.len() / 4) as u32;
+        let see_through_quads = (merged_see_through.len() / 4) as u32;
         let shadow_only_quads = (frame.shadow_only.len() / 4) as u32;
         // Glowing entities' silhouettes posed on the GPU go last, past every
         // material (the outline pass draws them from there).
@@ -1872,6 +1936,13 @@ impl Renderer {
             frame.hud,
             [self.config.width, self.config.height],
         );
+        if !hook_geometry.text_patches.is_empty() {
+            self.hud.upload_glyph_patches(
+                &mut self.uploads,
+                &mut encoder,
+                &hook_geometry.text_patches,
+            );
+        }
         // The translucent terrain pass reads its draws from phase 2's buffer, where the tests of
         // the sections left to phase 2 give them their instance. Where it draws from
         // `self.indirect` (flat draws, improved transparency, a pack's material), or no test
@@ -2125,6 +2196,8 @@ impl Renderer {
                         format,
                     );
                     self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
                         .enable_oit(device, oit.stage_layouts());
                     self.oit.insert(oit)
                 }
@@ -2230,6 +2303,7 @@ impl Renderer {
             && self.hdr.is_none()
             // Frame generation draws the hand over the real and the made frame after the world.
             && fg_frames.is_none()
+            && !live_hooks
             && !native_render::world_drawn_hooked();
         if native_sky_pass
             && let Some(native) = &mut self.native
@@ -2732,14 +2806,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterOpaqueBlocks: after solid and cutout terrain, before
             // entities.
             if world_primitives && !pack_draws_terrain {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_OPAQUE_BLOCKS,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterOpaqueBlocks,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_OPAQUE_BLOCKS,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             if static_entity_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "static block entities");
@@ -2798,14 +2890,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterOpaqueFeatures: after opaque entities and block
             // entities, before translucent features.
             if world_primitives && !pack_draws_terrain {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_OPAQUE_FEATURES,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterOpaqueFeatures,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_OPAQUE_FEATURES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             if text_quads > 0 && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "entity text");
@@ -3045,14 +3155,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterTranslucentFeatures: after translucent features, right
             // before translucent terrain (classic path).
             if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_TRANSLUCENT_FEATURES,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentFeatures,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_FEATURES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             match self.flat.as_ref().filter(|_| flat_frame) {
                 // The pack draws translucent terrain after its deferred programs.
@@ -3091,7 +3219,8 @@ impl Renderer {
                         };
                     // "Features, World Border, Weather": what follows the opaque
                     // world in the classic pass, one stage at a time.
-                    let features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
+                    let mut wp = self.world_primitives.take().expect("world primitives");
+                    let mut features = |pass: &mut wgpu::RenderPass<'_>, stage: oit::Stage| {
                         let f = oit.features();
                         let s = stage as usize;
                         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -3175,13 +3304,33 @@ impl Renderer {
                             }
                         }
                         if world_primitives {
-                            self.world_primitives.draw_oit(pass, stage);
+                            if let Some(hooks) = hooks.as_deref_mut() {
+                                let api_stage = match stage {
+                                    oit::Stage::DepthBounds => mod_api::OitStage::DepthBounds,
+                                    oit::Stage::Transmittance => mod_api::OitStage::Transmittance,
+                                    oit::Stage::Accumulate => mod_api::OitStage::Accumulate,
+                                };
+                                let data = hooks.on_render_stage(
+                                    mod_api::RenderLevelStage::OitTranslucent(api_stage),
+                                    &self.visible_renderable_sections,
+                                    oit_on,
+                                );
+                                wp.upload_and_draw_oit_stage(
+                                    &self.device,
+                                    &self.queue,
+                                    pass,
+                                    stage,
+                                    &data,
+                                );
+                            } else {
+                                wp.draw_oit(pass, stage);
+                            }
                         }
                     };
-                    let extras = oit::Extras {
+                    let mut extras = oit::Extras {
                         water_mask: (water_mask_quads > 0).then_some(&mask as _),
                         clouds: (cloud_quads > 0).then_some(&clouds as _),
-                        features: Some(&features),
+                        features: Some(&mut features),
                     };
                     // The draw closure below borrows all of `self`, so the timer is taken out.
                     let mut own_timing = self.own_timing.take();
@@ -3215,9 +3364,12 @@ impl Renderer {
                                 translucent_draws,
                             );
                         },
-                        &extras,
+                        &mut extras,
                         own_timing.as_mut(),
                     );
+                    drop(extras);
+                    drop(features);
+                    self.world_primitives = Some(wp);
                     self.own_timing = own_timing;
                     pass = world_pass_after_culling(
                         &mut encoder,
@@ -3312,14 +3464,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterTranslucentBlocks: after translucent terrain (classic
             // path).
             if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_TRANSLUCENT_BLOCKS,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentBlocks,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_BLOCKS,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // LevelRenderer.executeTranslucentAfterTerrain: vanilla's
             // translucent particle layer draws after translucent terrain —
@@ -3351,14 +3521,32 @@ impl Renderer {
             // RenderLevelStageEvent.AfterTranslucentParticles: after translucent particles
             // (classic path).
             if world_primitives && !pack_draws_water && !pack_draws_terrain && !oit_on {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_TRANSLUCENT_PARTICLES,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterTranslucentParticles,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_TRANSLUCENT_PARTICLES,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // Native world text is an ordinary depth-tested overlay, after
             // particles (also after the OIT composite) and before the hand.
@@ -3434,14 +3622,32 @@ impl Renderer {
             }
             // RenderLevelStageEvent.AfterWeather: after the rain and snow this pass drew.
             if world_primitives && !pack_draws_weather && !oit_on {
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_AFTER_WEATHER,
-                );
-                pass.set_bind_group(0, &self.group, &[]);
-                pack_frame(&mut pass);
-                pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let drew = if let Some(hooks) = hooks.as_deref_mut() {
+                    let data = hooks.on_render_stage(
+                        mod_api::RenderLevelStage::AfterWeather,
+                        &self.visible_renderable_sections,
+                        oit_on,
+                    );
+                    self.world_primitives
+                        .as_mut()
+                        .expect("world primitives")
+                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                } else {
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_AFTER_WEATHER,
+                        );
+                    true
+                };
+                if drew {
+                    pass.set_bind_group(0, &self.group, &[]);
+                    pack_frame(&mut pass);
+                    pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+                }
             }
             // LevelRenderer: the world border after translucent terrain and weather.
             if let Some(b) = frame.border.as_ref().filter(|_| !frame.title && !oit_on) {
@@ -3477,16 +3683,30 @@ impl Renderer {
                 pass.set_bind_group(0, &self.group, &[]);
                 pack_frame(&mut pass);
             }
-            // Native mods' primitives: after the entities and the rest of the world, into its
-            // targets (its resolution, reversed depth and TAA), before the hand, with any stage
-            // not drawn yet.
+            // Native mods' deferred custom geometry (`submit_custom_geometry` and debug renderers):
+            // drawn at the end of the world pass before the hand. Live stage hooks never relocate
+            // skipped stages here.
             if world_primitives {
-                pass.stage(self.own_timing.as_mut(), "mod primitives");
-                self.world_primitives.draw_through(
-                    &mut pass,
-                    &mut primitive_stage,
-                    world_primitives::STAGE_CUSTOM_GEOMETRY,
-                );
+                if let Some(hooks) = hooks.as_deref() {
+                    let data = hooks.custom_geometry();
+                    if !data.is_empty() {
+                        pass.stage(self.own_timing.as_mut(), "mod primitives");
+                        self.world_primitives
+                            .as_mut()
+                            .expect("world primitives")
+                            .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data);
+                    }
+                } else {
+                    pass.stage(self.own_timing.as_mut(), "mod primitives");
+                    self.world_primitives
+                        .as_ref()
+                        .expect("world primitives")
+                        .draw_through(
+                            &mut pass,
+                            &mut primitive_stage,
+                            world_primitives::STAGE_CUSTOM_GEOMETRY,
+                        );
+                }
             }
             if hand_in_world {
                 pass.stage(self.own_timing.as_mut(), "hand");
@@ -3495,6 +3715,11 @@ impl Renderer {
                 pass.draw(0..3, 0..1);
                 self.draw_hand(&mut pass, hand_quads, world_quads + additive_quads);
             }
+        }
+        // RenderLevelStageEvent.AfterLevel: after the world pass finishes and before the
+        // first-person hand and overlays draw.
+        if live_hooks && let Some(hooks) = hooks.as_deref_mut() {
+            hooks.on_after_level(&self.visible_renderable_sections, oit_on);
         }
         let lifts_world = output::lifts_world(
             frame.title,

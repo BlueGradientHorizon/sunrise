@@ -4,6 +4,7 @@ use crate::gfx::world_primitives::{
     Batch, DEFAULT_CAPACITY as CAPACITY, OIT_STAGES, OitBatch, STAGE_AFTER_OPAQUE_BLOCKS,
     STAGE_AFTER_OPAQUE_FEATURES, STAGE_AFTER_TRANSLUCENT_BLOCKS, STAGE_AFTER_TRANSLUCENT_FEATURES,
     STAGE_AFTER_TRANSLUCENT_PARTICLES, STAGE_AFTER_WEATHER, STAGE_CUSTOM_GEOMETRY, STAGES,
+    StageData,
 };
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
@@ -125,6 +126,7 @@ pub struct WorldGeometry {
     time: f32,
     copies: Vec<ModelCopy>,
     groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
+    submitted_groups: Vec<(Option<&'static str>, mod_api::InstanceGroupRef)>,
     model_cut: u32,
     /// The standard pass stage (`0..=6`) lines and quads go to now.
     stage: usize,
@@ -160,6 +162,7 @@ impl Default for WorldGeometry {
             time: 0.0,
             copies: Vec::with_capacity(INSTANCE_CAPACITY as usize),
             groups: std::collections::HashSet::with_capacity(INSTANCE_CAPACITY as usize),
+            submitted_groups: Vec::new(),
             model_cut: 0,
             stage: 0,
             stage_ends: [[0; 4]; STAGES - 1],
@@ -190,6 +193,7 @@ impl WorldGeometry {
         self.clear_copies();
         self.model_cut = 0;
         self.groups.clear();
+        self.submitted_groups.clear();
         self.stage = 0;
         self.stage_ends = [[0; 4]; STAGES - 1];
         self.oit_stage = 0;
@@ -255,6 +259,73 @@ impl WorldGeometry {
             _ => {}
         }
     }
+    /// Prepare fresh per-stage scratch buffers for a single live pass-bearing stage dispatched
+    /// directly from `Renderer::draw_frame`.
+    pub fn begin_live_stage(&mut self, stage: RenderLevelStage) {
+        match stage.oit_stage() {
+            Some(_) => {
+                self.active = ActiveTarget::Oit;
+                self.oit_quads.clear();
+                self.oit_quads_through.clear();
+                self.oit_lines.clear();
+                self.oit_lines_through.clear();
+            }
+            None => {
+                self.active = ActiveTarget::Primary;
+                self.lines.iter_mut().for_each(Vec::clear);
+                self.quads.iter_mut().for_each(Vec::clear);
+                self.pipeline_quads.clear();
+                self.pipeline_runs.clear();
+            }
+        }
+    }
+    /// Geometry emitted by the current live stage, ready to upload and draw immediately.
+    pub fn live_stage_data<'a>(
+        &'a self,
+        stage: RenderLevelStage,
+        pipelines: &'a crate::mod_pipelines::Pipelines,
+    ) -> StageData<'a> {
+        match stage.oit_stage() {
+            Some(_) => StageData {
+                quads: &self.oit_quads,
+                quads_through: &self.oit_quads_through,
+                lines: &self.oit_lines,
+                lines_through: &self.oit_lines_through,
+                pipelines: mod_pipelines::Batch::default(),
+            },
+            None => StageData {
+                quads: &self.quads[0],
+                quads_through: &self.quads[1],
+                lines: &self.lines[0],
+                lines_through: &self.lines[1],
+                pipelines: mod_pipelines::Batch {
+                    set: Some(pipelines),
+                    vertices: &self.pipeline_quads,
+                    runs: &self.pipeline_runs,
+                    time: self.time,
+                },
+            },
+        }
+    }
+    /// Deferred custom geometry emitted during `submit_custom_geometry` and debug renderers,
+    /// drawn at the end of the world pass before the first-person hand.
+    pub fn custom_stage_data<'a>(
+        &'a self,
+        pipelines: &'a crate::mod_pipelines::Pipelines,
+    ) -> StageData<'a> {
+        StageData {
+            quads: &self.custom.quads,
+            quads_through: &self.custom.quads_through,
+            lines: &self.custom.lines,
+            lines_through: &self.custom.lines_through,
+            pipelines: mod_pipelines::Batch {
+                set: Some(pipelines),
+                vertices: &self.custom.pipeline_vertices,
+                runs: &self.custom.pipeline_runs,
+                time: self.time,
+            },
+        }
+    }
     /// Close standard pass stages through `STAGE_AFTER_WEATHER` and append deferred custom
     /// geometry onto the tail as `STAGE_CUSTOM_GEOMETRY`, keeping `stage_ends` monotonic across
     /// all 6 boundaries.
@@ -298,9 +369,9 @@ impl WorldGeometry {
     pub fn camera(&self) -> [f64; 3] {
         self.camera
     }
-    /// Cull each copy against the frustum first, then skip individual visible copies whose
-    /// coordinates/transform are non-finite or whose light channels exceed 15 without rolling
-    /// back earlier valid copies. `stage` returns true for copies it consumes directly.
+    /// Validate every copy (including camera-relative shift and transformed-bounds finiteness)
+    /// and cull against the frustum, skipping invalid copies without rolling back earlier valid
+    /// copies. `stage` returns true for copies it consumes directly.
     pub fn submit_model(
         &mut self,
         batch: ModelBatch,
@@ -308,9 +379,11 @@ impl WorldGeometry {
         cull: Option<&impl crate::gfx::Cull>,
         mut stage: impl FnMut(&ModelCopy) -> bool,
     ) {
-        self.submit_model_inner(batch, instances, cull, true, |_, copy| stage(copy));
+        self.submit_model_inner(batch, instances, cull, |_, copy| stage(copy));
     }
-    /// Submit copies already validated when written into persistent storage.
+    /// Submit copies from persistent group storage through the same per-copy finiteness and
+    /// camera-relative validation as transient batches (catching composed-transform or
+    /// camera-relative overflow).
     pub fn submit_validated_model(
         &mut self,
         batch: ModelBatch,
@@ -318,17 +391,19 @@ impl WorldGeometry {
         cull: Option<&impl crate::gfx::Cull>,
         stage: impl FnMut(usize, &ModelCopy) -> bool,
     ) {
-        self.submit_model_inner(batch, instances, cull, false, stage);
+        self.submit_model_inner(batch, instances, cull, stage);
     }
     fn submit_model_inner(
         &mut self,
         batch: ModelBatch,
         instances: &[ModelInstance],
         cull: Option<&impl crate::gfx::Cull>,
-        check_valid: bool,
         mut stage: impl FnMut(usize, &ModelCopy) -> bool,
     ) {
         for (index, instance) in instances.iter().enumerate() {
+            if !instance_valid(instance) {
+                continue;
+            }
             if !copy_visible(
                 batch.bounds,
                 instance.transform,
@@ -336,9 +411,6 @@ impl WorldGeometry {
                 self.camera,
                 cull,
             ) {
-                continue;
-            }
-            if check_valid && !instance_valid(instance) {
                 continue;
             }
             let copy = ModelCopy {
@@ -362,6 +434,14 @@ impl WorldGeometry {
     }
     pub fn mark_group(&mut self, group: mod_api::InstanceGroupRef) {
         self.groups.insert(group);
+    }
+    pub fn queue_group(&mut self, owner: Option<&'static str>, group: mod_api::InstanceGroupRef) {
+        self.submitted_groups.push((owner, group));
+    }
+    pub fn take_submitted_groups(
+        &mut self,
+    ) -> Vec<(Option<&'static str>, mod_api::InstanceGroupRef)> {
+        std::mem::take(&mut self.submitted_groups)
     }
     pub fn copy_count(&self) -> usize {
         self.copies.len()
@@ -654,15 +734,19 @@ fn copy_visible(
     camera: [f64; 3],
     cull: Option<&impl crate::gfx::Cull>,
 ) -> bool {
-    let Some(cull) = cull else {
-        return true;
-    };
-    if !bounds.iter().flatten().all(|v| v.is_finite()) {
-        return true;
-    }
     let local = row_major_3x4(transform);
     let delta = DVec3::from(origin) - DVec3::from(camera);
     let shift = Vec3::new(delta.x as f32, delta.y as f32, delta.z as f32);
+    if !shift.is_finite() {
+        return false;
+    }
+    let translation = local.w_axis.truncate();
+    if !(translation + shift).is_finite() {
+        return false;
+    }
+    if !bounds.iter().flatten().all(|v| v.is_finite()) {
+        return true;
+    }
     // Affine extrema are selected independently for each output axis. Keep the
     // multiply/add order of transform_point3, without transforming eight corners.
     let x0 = local.x_axis.truncate() * bounds[0][0];
@@ -671,7 +755,6 @@ fn copy_visible(
     let y1 = local.y_axis.truncate() * bounds[1][1];
     let z0 = local.z_axis.truncate() * bounds[0][2];
     let z1 = local.z_axis.truncate() * bounds[1][2];
-    let translation = local.w_axis.truncate();
     let mut min = translation + (z0.min(z1) + (y0.min(y1) + x0.min(x1))) + shift;
     let mut max = translation + (z0.max(z1) + (y0.max(y1) + x0.max(x1))) + shift;
     if !min.is_finite() || !max.is_finite() {
@@ -690,7 +773,10 @@ fn copy_visible(
             max = max.max(world);
         }
     }
-    !min.is_finite() || !max.is_finite() || cull.intersects(min, max)
+    if !min.is_finite() || !max.is_finite() {
+        return false;
+    }
+    cull.is_none_or(|cull| cull.intersects(min, max))
 }
 
 fn instance_valid(instance: &ModelInstance) -> bool {
@@ -1208,17 +1294,99 @@ mod tests {
                 expected[0] = expected[0].min(point);
                 expected[1] = expected[1].max(point);
             }
-            assert!(copy_visible(
-                bounds,
-                transform,
-                origin,
-                camera,
-                Some(&capture)
-            ));
-            if expected.iter().all(|point| point.is_finite()) {
+            let expected_finite = expected.iter().all(|point| point.is_finite())
+                && (matrix.w_axis.truncate() + shift).is_finite();
+            assert_eq!(
+                copy_visible(bounds, transform, origin, camera, Some(&capture)),
+                expected_finite
+            );
+            if expected_finite {
                 assert_eq!(capture.0.get(), expected);
             }
         }
+    }
+
+    #[test]
+    fn extreme_origin_and_overflowing_composed_transform_are_rejected_in_both_paths() {
+        let mut draw = WorldGeometry::default();
+        draw.reset([0.0; 3], Mat4::IDENTITY, [0.0; 2]);
+        let batch = ModelBatch {
+            slot: 1,
+            generation: 1,
+            bounds: [[0.0; 3], [1.0; 3]],
+        };
+        let valid = ModelInstance::at([1.0, 2.0, 3.0], 0xFFFF_FFFF);
+        let extreme_origin = ModelInstance::at([f64::MAX, 0.0, 0.0], 0xFFFF_FFFF);
+        let mut overflowing_bounds = valid;
+        overflowing_bounds.transform = [
+            f32::MAX,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            f32::MAX,
+        ];
+        overflowing_bounds.origin = [0.0, 0.0, 1e38];
+        let mut non_finite_composed = valid;
+        non_finite_composed.transform[0] = f32::INFINITY;
+
+        // Transient path rejects extreme origins and overflowing bounds with or without a frustum.
+        draw.submit_model(
+            batch,
+            &[extreme_origin, overflowing_bounds, valid],
+            Some(&NearX),
+            |_| false,
+        );
+        assert_eq!(draw.copy_count(), 1);
+        assert_eq!(draw.copy(0).origin, valid.origin);
+
+        draw.clear_copies();
+        draw.submit_model(
+            batch,
+            &[extreme_origin, overflowing_bounds, valid],
+            None::<&NearX>,
+            |_| false,
+        );
+        assert_eq!(draw.copy_count(), 1);
+        assert_eq!(draw.copy(0).origin, valid.origin);
+
+        // Retained path (`submit_validated_model`) rejects non-finite composed transforms and
+        // extreme camera-relative origins just like the transient path.
+        draw.clear_copies();
+        draw.submit_validated_model(
+            batch,
+            &[
+                extreme_origin,
+                overflowing_bounds,
+                non_finite_composed,
+                valid,
+            ],
+            Some(&NearX),
+            |_, _| false,
+        );
+        assert_eq!(draw.copy_count(), 1);
+        assert_eq!(draw.copy(0).origin, valid.origin);
+
+        draw.clear_copies();
+        draw.submit_validated_model(
+            batch,
+            &[
+                extreme_origin,
+                overflowing_bounds,
+                non_finite_composed,
+                valid,
+            ],
+            None::<&NearX>,
+            |_, _| false,
+        );
+        assert_eq!(draw.copy_count(), 1);
+        assert_eq!(draw.copy(0).origin, valid.origin);
     }
 
     #[test]

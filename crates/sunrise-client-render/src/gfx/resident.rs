@@ -116,6 +116,10 @@ impl<T> Resident<T> {
     pub fn find(&self, key: SectionKey) -> Option<&T> {
         self.slots.get(&key).map(|&slot| self.get(slot))
     }
+    pub fn find_with_bounds(&self, key: SectionKey) -> Option<(&T, Option<[Vec3; 2]>)> {
+        let slot = *self.slots.get(&key)?;
+        Some((self.get(slot), self.bounds[slot as usize]))
+    }
     pub fn find_mut(&mut self, key: SectionKey) -> Option<&mut T> {
         let slot = *self.slots.get(&key)?;
         Some(self.get_mut(slot))
@@ -344,7 +348,7 @@ pub(super) fn camera_column(camera: DVec3) -> (i32, i32) {
 
 /// The world AABB (min, max) of a section from its origin and optional tight bounds.
 #[inline]
-fn section_box(min: Vec3, bounds: Option<[Vec3; 2]>) -> (Vec3, Vec3) {
+pub(super) fn section_box(min: Vec3, bounds: Option<[Vec3; 2]>) -> (Vec3, Vec3) {
     match bounds {
         Some([bmin, bmax]) => (min + bmin, min + bmax),
         None => (min, min + Vec3::splat(16.0)),

@@ -483,7 +483,8 @@ pub trait BlockEntityDrawContext {
     /// width. Obfuscated glyphs change only when the block is drawn again: kept text stands
     /// still. Clamp text read from NBT, and widen `block_entity_render_bounding_box`
     /// for a long line. API @API:draw_text@.
-    /// Refuses text deeper than 512 component nodes before applying any changes.
+    /// In-memory component trees of any depth are accepted, matching vanilla `Font.drawInBatch`;
+    /// opaque NBT payloads still enforce `NbtAccounter.MAX_STACK_DEPTH` (512).
     fn text(
         &mut self,
         text: &Text,
@@ -496,7 +497,8 @@ pub trait BlockEntityDrawContext {
     }
     /// The width of `text` in font pixels, as `text` draws it, styles included
     /// (`Font.width`), to lay a line out before drawing it.
-    /// Refuses text deeper than 512 component nodes.
+    /// In-memory component trees of any depth are accepted, matching vanilla `Font.width`;
+    /// opaque NBT payloads still enforce `NbtAccounter.MAX_STACK_DEPTH` (512).
     fn text_width(&self, text: &Text) -> Result<f32, TextFormError> {
         unimplemented!("BlockEntityDrawContext::draw_text_width")
     }
@@ -559,7 +561,9 @@ pub trait CameraDrawContext {
 /// Per-view world geometry, cleared even without listeners; backing storage grows dynamically.
 pub trait WorldDrawContext {
     /// Draw a retained group once per view, with per-view culling and the batch route rules.
-    /// Repeated submissions in one view are ignored. Storage grows dynamically across views.
+    /// Repeated submissions in one view are ignored. Updates made to the group's records, active
+    /// length, or group transform during `Hooks::prepare_render_buffers` take effect on this same
+    /// frame before instance uploads. Storage grows dynamically across views.
     /// Shader packs and overlays use the same CPU path as transient model batches.
     /// Retired or foreign groups return [`GroupError::Stale`], even if drawn earlier this view.
     fn draw_instance_group(&mut self, group: InstanceGroupRef) -> Result<(), GroupError> {

@@ -78,14 +78,15 @@ and NeoForge 26.3 (`SubmitCustomGeometryEvent`, `RenderLevelStageEvent`, `IRende
   `game_time`, `improved_transparency`, and visible `&'a [RenderableSection]`) instead of copying a
   3-field summary.
 - Add `Hooks::prepare_render_buffers` (`PrepareRenderBuffersEvent`) firing after `AfterSky` and
-  before pass-bearing stages so mods can update retained GPU buffers (`InstanceGroups`, dynamic
-  textures) before passes read them.
+  before entity/instance uploads and pass-bearing stages so mods can update retained GPU buffers
+  (`InstanceGroups`, dynamic textures) and see those changes on the same frame.
 - Expand `RenderLevelStage` to all 9 NeoForge 26.3 stages (`AfterSky`, `AfterOpaqueBlocks`,
   `AfterOpaqueFeatures`, `AfterTranslucentFeatures`, `AfterTranslucentBlocks`,
   `AfterTranslucentParticles`, `AfterWeather`, `OitTranslucent(OitStage)`, `AfterLevel`) with
   `RenderLevelStage::frame_order` (`CLASSIC_ORDER` / `OIT_ORDER`) and stage-scoped pass capability
   via `RenderLevelStageContext` and `StagePass` (`None` on `AfterSky`/`AfterLevel`, `World` ->
-  `WorldPassDrawContext` on standard passes, `Oit` -> `WorldOitPassDrawContext` on OIT sub-passes).
+  `WorldPassDrawContext` on standard passes, `Oit` -> `WorldOitPassDrawContext` on OIT sub-passes),
+  dispatched live at each actual render-pass boundary (skipping stages whose pass does not run).
   Route `submit_custom_geometry` and debug renderers into the deferred `STAGE_CUSTOM_GEOMETRY` tail.
 - Audit [89]: remove fixed per-view caps (4,096 lines/quads, 16,384 instances/groups, 65,536
   per-mod group copies), `WorldDrawUsage`, `WorldDrawContext::usage`, `CapacityExceeded` across

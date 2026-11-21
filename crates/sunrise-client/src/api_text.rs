@@ -1900,6 +1900,55 @@ mod iterative_tests {
             .join()
             .unwrap();
     }
+
+    #[test]
+    fn render_encoding_drops_deep_hover_trees_on_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                // Deep show_text chain: must render visual spans and drop without stack overflow.
+                let mut hover_text = mod_api::text::Text::literal("tip");
+                for _ in 0..600 {
+                    let mut outer = mod_api::text::Text::literal("hover");
+                    outer.style.hover = Some(mod_api::text::TextHover::Text(Box::new(hover_text)));
+                    hover_text = outer;
+                }
+                let rendered_hover = super::to_engine_for_render(&hover_text).unwrap();
+                assert_eq!(rendered_hover.plain(), "hover");
+                assert!(
+                    rendered_hover.spans.iter().all(|s| s.style.hover.is_none()),
+                    "visual-only render must not retain recursive hover trees"
+                );
+                drop(rendered_hover);
+                drop(hover_text);
+
+                // Deep show_entity name tree: must not clone recursive JSON into Style::hover_entity.
+                let mut deep_name = mod_api::text::Text::literal("named");
+                for _ in 0..600 {
+                    deep_name = mod_api::text::Text::literal("").append(deep_name);
+                }
+                let mut entity_hover = mod_api::text::Text::literal("entity");
+                entity_hover.style.hover = Some(mod_api::text::TextHover::Entity {
+                    kind: "minecraft:pig".into(),
+                    id: [1, 2],
+                    name: Some(Box::new(deep_name)),
+                });
+                let rendered_entity = super::to_engine_for_render(&entity_hover).unwrap();
+                assert_eq!(rendered_entity.plain(), "entity");
+                assert!(
+                    rendered_entity
+                        .spans
+                        .iter()
+                        .all(|s| s.style.hover_entity.is_none()),
+                    "visual-only render must not retain recursive hover_entity JSON"
+                );
+                drop(rendered_entity);
+                drop(entity_hover);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
