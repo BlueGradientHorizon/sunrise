@@ -118,7 +118,7 @@ use frustum::{block_entities_within_reach, frustum, shadow_casters, taa_frustum}
 pub use section_fade::{CHUNK_VISIBILITY_THRESHOLD, chunk_visibility, fade_millis};
 use section_fade::{FadeInputs, compiled_and_visible, section_instance, section_visibility};
 pub use sunrise_render_core::SectionKey;
-pub use view::{View, ViewSet};
+pub use view::{View, ViewSet, cull_fov, cull_frustum};
 
 /// Whether Translucent Batching is offered (`graphics::offer_translucent_batching`): where
 /// indirect multi-draws (`multi_draw`) take its batches, but not OpenGL's, which loop over

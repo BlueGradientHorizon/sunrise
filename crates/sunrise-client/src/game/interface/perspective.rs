@@ -323,29 +323,19 @@ impl Game<'_> {
                 self.studio.freecam.pitch,
             ));
         }
-        // Minecraft.cameraEntity: a server's spectator camera on a mob or
-        // another player.
-        let (entity, descending, entity_kind) = match self.spectated_camera_snapshot() {
-            Some(e) => (
-                e,
-                false,
-                sunrise_world::collision_context::EntityContextKind::Living,
-            ),
-            None => {
-                let mut entity = self.player_camera_entity()?;
-                if let Some(position) = self.remote_minecart_rider_position(partial) {
-                    // Already evaluated at partial: do not linearly interpolate
-                    // between tick endpoints across a corner a second time.
-                    entity.position = position;
-                    entity.previous = position;
-                }
-                (
-                    entity,
-                    self.player.as_ref()?.shift_key_down,
-                    sunrise_world::collision_context::EntityContextKind::Player,
-                )
-            }
-        };
+        let subject = self.camera_subject()?;
+        let mut entity = subject.camera;
+        if subject.is_local_player
+            && let Some(position) = self.remote_minecart_rider_position(partial)
+        {
+            // Already evaluated at partial: do not linearly interpolate
+            // between tick endpoints across a corner a second time.
+            entity.position = position;
+            entity.previous = position;
+        }
+        let descending =
+            subject.is_local_player && self.player.as_ref().is_some_and(|p| p.shift_key_down);
+        let entity_kind = subject.collision_kind;
         let mut view = self.view;
         let kind = self.camera_type;
 
@@ -553,7 +543,7 @@ impl Game<'_> {
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
         let bed = self.sleeping.map_or(0, |head| self.bed_facing(head));
-        let spectator = self.spectator();
+        let spectator = self.own_player_is_spectator();
         let ridden = self.ridden_body();
         let Some(m) = self.player_model.as_mut() else {
             return;
@@ -759,7 +749,7 @@ impl Game<'_> {
                 && shadow_pass_takes_own_model(
                     self.occlusion.shadow_casters.1,
                     self.pack_ids.is_some(),
-                    self.spectator(),
+                    self.own_player_is_spectator(),
                 )))
             && self
                 .player
@@ -862,7 +852,7 @@ impl Game<'_> {
         // visibility (set by player_model_visibility) hides body parts, and
         // translucent_body marks the body OIT for the ghostly look. Only first
         // person and dead players skip it.
-        if body || self.spectator() {
+        if body || self.own_player_is_spectator() {
             sunrise_client::mobs::render::render_with_frame(
                 m,
                 alpha as f32,
@@ -996,7 +986,7 @@ impl Game<'_> {
         let mut verts = Vec::new();
         // A spectator preview still draws its own model: the poses'
         // visibility hides body parts, leaving the head and its layers.
-        let body = self.own_body_visible() || self.spectator();
+        let body = self.own_body_visible() || self.own_player_is_spectator();
         let (data, armour) = (
             self as &dyn sunrise_client::mobs::render::RenderDataSource,
             self.player_armor_layers(),

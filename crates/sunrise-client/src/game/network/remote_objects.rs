@@ -81,7 +81,7 @@ impl Game<'_> {
             // The width, height and response follow in SetEntityData.
             self.interactions.insert(
                 id as i32,
-                super::interactions::RemoteInteraction::new(position),
+                super::interactions::RemoteInteraction::new_with_rotation(position, yaw, pitch),
             );
         } else if let Some(cart) = super::minecarts::CartKind::from_id(kind) {
             let mut c = super::minecarts::Minecart::new(id, cart, at);

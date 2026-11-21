@@ -275,6 +275,7 @@ impl Game<'_> {
             entity_id: 0,
             local_entity_silent: false,
             camera: None,
+            detached_camera: None,
             use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
@@ -534,6 +535,7 @@ impl Game<'_> {
             local_entity_silent: false,
             entity_id: 0,
             camera: None,
+            detached_camera: None,
             use_item: None,
             dimension: DimensionType::vanilla("minecraft:overworld"),
             level: "minecraft:overworld".into(),
@@ -908,6 +910,7 @@ impl Game<'_> {
             .as_ref()
             .map(|d| (d.dimension.clone(), d.pos));
         if !same {
+            self.view = Default::default();
             self.clock.reset_client_level_tick_state();
             let mut streaming = Streaming::new(
                 Arc::new(NoTerrain),

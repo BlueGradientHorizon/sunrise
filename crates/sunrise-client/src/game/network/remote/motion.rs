@@ -42,7 +42,25 @@ impl Game<'_> {
             .unwrap_or([0.0; 3]);
         if let Some(r) = self.remote.as_mut() {
             if let Some(t) = r.entities.get_mut(&id) {
-                t.position = position;
+                let d = [0, 1, 2].map(|i| position[i] - t.position[i]);
+                let far = matches!(packet, MovePacket::Teleport | MovePacket::PositionSync)
+                    && d[0] * d[0] + d[1] * d[1] + d[2] * d[2] > 4096.0;
+                if path.is_some() {
+                    t.position = position;
+                }
+                if let Some((yaw, pitch)) = rotation {
+                    if yaw.is_finite() {
+                        t.yaw = if far { yaw } else { yaw % 360.0 };
+                    }
+                    if pitch.is_finite() {
+                        t.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+                    }
+                }
+                if far {
+                    t.previous = t.position;
+                    t.previous_yaw = t.yaw;
+                    t.previous_pitch = t.pitch;
+                }
             }
             if driven {
                 // handleMoveEntity, handleEntityPositionSync: the mount or boat
@@ -118,8 +136,20 @@ impl Game<'_> {
             // Interaction extends Entity and keeps its NO_OP interpolation
             // handler: the server's position replaces its own at once.
             if let Some(i) = self.interactions.get_mut(&id) {
-                if path.is_some() {
-                    i.position = Vec3::new(position[0], position[1], position[2]);
+                let target_pos = Vec3::new(position[0], position[1], position[2]);
+                let d = target_pos.subtract(i.position);
+                let far = matches!(packet, MovePacket::Teleport | MovePacket::PositionSync)
+                    && d.x * d.x + d.y * d.y + d.z * d.z > 4096.0;
+                if far {
+                    let (yaw, pitch) = rotation.unwrap_or((i.yaw, i.pitch));
+                    i.snap_to(target_pos, yaw, pitch);
+                } else {
+                    if path.is_some() {
+                        i.position = target_pos;
+                    }
+                    if let Some((yaw, pitch)) = rotation {
+                        i.set_rot(yaw, pitch);
+                    }
                 }
                 return;
             }

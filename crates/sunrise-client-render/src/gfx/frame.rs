@@ -114,6 +114,8 @@ pub struct Frame<'a> {
     pub yaw: f32,
     pub pitch: f32,
     pub fov_degrees: f32,
+    /// `Camera.createProjectionMatrixForCulling`: `max(fov_degrees, option_fov)`.
+    pub cull_fov_degrees: f32,
     /// The camera entity's eye and view rotation (yaw, pitch): the camera's own except in a
     /// third-person view.
     pub eye: DVec3,

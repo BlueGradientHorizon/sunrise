@@ -4776,11 +4776,10 @@ impl Game<'_> {
         Some(b)
     }
     fn outline_context_kind(&self) -> sunrise_world::collision_context::EntityContextKind {
-        if self.spectated_camera_snapshot().is_some() {
-            sunrise_world::collision_context::EntityContextKind::Living
-        } else {
-            sunrise_world::collision_context::EntityContextKind::Player
-        }
+        self.camera_subject().map_or(
+            sunrise_world::collision_context::EntityContextKind::Player,
+            |c| c.collision_kind,
+        )
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
     fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
@@ -7364,7 +7363,7 @@ impl Game<'_> {
             }
             self.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |g, batch| {
                 if spectator {
-                    g.draw_spectator_hotbar(batch);
+                    g.draw_spectator_hotbar(batch, g.own_player_is_spectator());
                 } else {
                     if let Some((inputs, source)) =
                         g.camera_hotbar(camera, (indicator == 2).then_some(strength))
@@ -7836,11 +7835,7 @@ impl Game<'_> {
         // One scan for both passes that draw them (block entities below and the
         // overlay near the end of this function).
         let cracks = self.cracks(camera);
-        let fire_yaw = if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-            self.yaw + 180.0
-        } else {
-            self.yaw
-        };
+        let fire_yaw = self.posed_rotation.map_or(self.view.y_rot, |(y, _)| y);
         // Packs may move vertices or draw from another camera. The guarded
         // billboard frustum covers TAA's jitter without changing model culling.
         let fire_view = billboard_frustum
@@ -10740,9 +10735,8 @@ impl Game<'_> {
         pr.lap("pr_setup");
         let alpha = self.frame_world_partial_tick();
         self.refresh_client_pick(alpha as f32);
-        // Camera.getCameraEntityPartialTicks: the view, the hand and the
-        // player's own model stay smooth while the level is frozen.
-        let camera_alpha = self.clock.camera_fraction();
+        // Camera.getCameraEntityPartialTicks: only players and their mounts stay unfrozen.
+        let camera_alpha = self.camera_partial_tick();
         self.apply_requested_camera_type();
         let vanilla = self.camera_view(camera_alpha as f32);
         let view = vanilla.map(|view| {
@@ -10995,14 +10989,7 @@ impl Game<'_> {
         // CAN_PLACE_ON item matching the block, and spectators with a menu block; Sunrise
         // does not open menus for spectators, so those never show it. An open
         // screen does not hide it: vanilla checks the HUD and the game mode, not the screen.
-        let adventure = self.mode == sunrise_client::command::args::GameMode::Adventure;
-        let can_build = self.may_build() || adventure;
-        let outline = if block_outline_drawn(
-            self.ui.hide_gui,
-            self.entity_targeted(),
-            can_build,
-            self.shows_panorama(),
-        ) {
+        let outline = if self.should_render_block_outline() {
             self.pick()
                 .filter(|h| {
                     self.may_build()
@@ -11051,6 +11038,11 @@ impl Game<'_> {
             85.0
         } else {
             self.fov_degrees(camera_alpha as f32, camera.to_array())
+        };
+        let cull_fov_degrees = if title {
+            85.0
+        } else {
+            sunrise_client::gfx::cull_fov(fov_degrees, (self.settings.fov as i32) as f32)
         };
         let camera_effects = fov::camera_effects_enabled(title, self.studio.flying());
         let bob = if !camera_effects {
@@ -11155,11 +11147,21 @@ impl Game<'_> {
         let core_globals = self.reads_poly_globals().then(poly_globals);
         self.give_poly_globals(core_globals.as_ref());
         self.expression_frame = frame;
-        self.view_frustum =
-            self.world_view_frustum(camera, [fov_degrees, yaw, pitch], bob * spin, depth_far);
+        self.view_frustum = self.world_view_frustum(
+            camera,
+            [cull_fov_degrees, yaw, pitch],
+            glam::Mat4::IDENTITY,
+            depth_far,
+        );
         let billboard_frustum = if self.settings.sunrise.taa {
             self.renderer.as_ref().map(|r| {
-                r.camera_frustum_with_jitter(fov_degrees, yaw, pitch, bob * spin, depth_far)
+                r.camera_frustum_with_jitter(
+                    cull_fov_degrees,
+                    yaw,
+                    pitch,
+                    glam::Mat4::IDENTITY,
+                    depth_far,
+                )
             })
         } else {
             self.view_frustum
@@ -11210,12 +11212,10 @@ impl Game<'_> {
             self.dragon_fireball_geometry(camera, alpha, &mut entities);
         }
         pr.lap("pr_dragon_fireballs_bolts");
+        let sky_effect_blocked = self.camera_subject().is_some_and(|c| c.blocks_sky);
         let (celestial, celestial_bodies, stars) = if title {
             (Vec::new(), Vec::new(), None)
-        } else if self.overworld_skybox()
-            && self.potions.effects.get("darkness").is_none()
-            && self.potions.effects.get("blindness").is_none()
-        {
+        } else if self.overworld_skybox() && !sky_effect_blocked {
             // Camera.doesMobEffectBlockSky: no sun, moon or stars.
             self.celestial_geometry(&sky, rain)
         } else if self.end_skybox() && self.settings.sunrise.sky {
@@ -11332,6 +11332,7 @@ impl Game<'_> {
             yaw,
             pitch,
             fov_degrees,
+            cull_fov_degrees,
             eye: eye.filter(|_| !title).map_or(camera, |e| e.0),
             eye_rotation: eye.filter(|_| !title).map_or([yaw, pitch], |e| e.1),
             first_person: eye.is_none() || title || !self.view.detached,
@@ -11358,8 +11359,7 @@ impl Game<'_> {
             title,
             sky_blocked: sunrise_client::fog::sky_pass_skipped(
                 self.camera_fog_type([camera.x, camera.y, camera.z]),
-                self.potions.effects.get("blindness").is_some()
-                    || self.potions.effects.get("darkness").is_some(),
+                sky_effect_blocked,
                 self.boss_overlay.should_create_world_fog(),
             ),
             skybox: self.overworld_skybox() && self.settings.sunrise.sky,
@@ -14264,7 +14264,9 @@ pub(crate) use closest_space::closest_space_nudge;
 use inventory_input::drop_whole_stack;
 use subtitles::{Subtitles, in_game_ui, subtitles};
 
-use hud_render::{block_outline_drawn, debug_crosshair_drawn, is_game_master_block};
+#[cfg(test)]
+use hud_render::block_outline_drawn;
+use hud_render::{debug_crosshair_drawn, is_game_master_block};
 #[cfg(test)]
 mod test_neighbourhood {
     //! Shared fixture step for tests that tick entities on prepared data.

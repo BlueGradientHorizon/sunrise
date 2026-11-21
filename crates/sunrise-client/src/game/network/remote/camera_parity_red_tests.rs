@@ -626,6 +626,18 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
         game.avatar.bob_o = 0.04;
         game.settings.view_bobbing = true;
         game.set_mode_id(3);
+        let profile = game.remote.as_ref().unwrap().profile;
+        game.handle_packet(C::PlayerInfoUpdate(play::PlayerInfoUpdate {
+            actions: 0x01 | 0x04 | 0x08,
+            entries: vec![play::PlayerInfo {
+                uuid: profile,
+                name: Some("CameraParityTest".into()),
+                game_mode: Some(3),
+                listed: Some(true),
+                ..play::PlayerInfo::default()
+            }],
+        }))
+        .unwrap();
         game.potions
             .effects
             .add(EffectInstance::new("blindness", 100, 0));
@@ -823,6 +835,33 @@ fn camera_consumers_bob_fog_dark_disc_and_vignette_26_3() {
 #[test]
 #[ignore = "daily"]
 fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
+    let witness = parity_witness();
+    let consumers = &witness["camera_consumers"];
+    let stream = &consumers["streaming_and_particles"];
+    let debug = &consumers["debug"];
+    let cross = &consumers["spectator_crosshair"];
+    let want_chunk = (
+        stream["camera_chunk"][0].as_i64().unwrap() as i32,
+        stream["camera_chunk"][1].as_i64().unwrap() as i32,
+    );
+    let want_block_y = stream["entity_block_y"].as_i64().unwrap() as i32;
+    let want_cam_pos_bits = vec3_bits_expected(&stream["camera_pos_bits"]);
+    let want_xyz_line = debug["position_lines"][0].as_str().unwrap();
+    let want_biome_line = debug["biome_line"].as_str().unwrap();
+    let want_light_line = debug["light_line"].as_str().unwrap();
+    let want_min_x = hex_f64(&debug["chunk_borders"]["min_x_bits"]);
+    let want_max_x = hex_f64(&debug["chunk_borders"]["max_x_bits"]);
+    let want_min_z = hex_f64(&debug["chunk_borders"]["min_z_bits"]);
+    let want_max_z = hex_f64(&debug["chunk_borders"]["max_z_bits"]);
+    let want_player_box = debug["entity_hitboxes"]["player_box_emitted_in_first_person"]
+        .as_bool()
+        .unwrap();
+    let want_cam_box = debug["entity_hitboxes"]["camera_interaction_box_emitted_in_first_person"]
+        .as_bool()
+        .unwrap();
+    let want_cart_crosshair = cross["cart_only_crosshair"].as_bool().unwrap();
+    let want_occluded_crosshair = cross["with_interaction_crosshair"].as_bool().unwrap();
+
     with_client_game(|game| {
         setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
         let plains = *world_biomes!(game).index.get("minecraft:plains").unwrap();
@@ -849,26 +888,20 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
         // 1. Streaming center follows camera entity.
         game.update_world();
         assert_eq!(
-            game.streaming.center,
-            (6, 6),
+            game.streaming.center, want_chunk,
             "streaming.center must follow camera"
         );
         assert_eq!(
-            game.streaming.center_y, 300,
+            game.streaming.center_y, want_block_y,
             "streaming.center_y must follow camera"
         );
 
-        // 2. Particle camera follows camera entity.
+        // 2. Particle camera follows camera entity eye (exact 26.3 camera.position() bits).
         game.tick_particles();
         assert_eq!(
-            game.particles.camera[0].to_bits(),
-            96.5f64.to_bits(),
-            "particles.camera.x must follow camera"
-        );
-        assert!(
-            game.particles.camera[1] > 300.0,
-            "particles.camera.y must follow camera eye, got {}",
-            game.particles.camera[1]
+            game.particles.camera.map(f64::to_bits),
+            want_cam_pos_bits,
+            "particles.camera must match 26.3 camera.position() bits"
         );
 
         // 3. F3 debug entries report camera entity position, biome, and light.
@@ -884,31 +917,36 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
         let all_lines: Vec<String> = left.into_iter().chain(right).collect();
         let joined = all_lines.join("\n");
         assert!(
-            joined.contains("96.500 / 300.00000 / 96.500"),
-            "F3 position must show camera entity, got:\n{joined}"
+            joined.contains(want_xyz_line),
+            "F3 position must match 26.3 witness '{want_xyz_line}', got:\n{joined}"
         );
         assert!(
-            joined.contains("Biome: minecraft:desert"),
-            "F3 biome must sample camera entity, got:\n{joined}"
+            joined.contains(want_biome_line),
+            "F3 biome must match 26.3 witness '{want_biome_line}', got:\n{joined}"
         );
         assert!(
-            joined.contains("Client Light: 0"),
-            "F3 light must sample camera entity, got:\n{joined}"
+            joined.contains(want_light_line),
+            "F3 light must match 26.3 witness '{want_light_line}', got:\n{joined}"
         );
 
-        // 4. F3 gizmos: chunk_borders on camera chunk; hitboxes hide camera and show player in 1st person.
+        // 4. F3 gizmos: chunk_borders bounds match 26.3 ChunkBorderRenderer; hitboxes follow EntityHitboxDebugRenderer.
         game.debug_entries
             .set_status("chunk_borders", Status::AlwaysOn);
         game.debug_entries
             .set_status("entity_hitboxes", Status::Never);
         let border_gizmos = game.debug_gizmos(1.0, [96.5, 301.62, 96.5]);
-        assert!(
-            border_gizmos
-                .lines
-                .iter()
-                .any(|l| l.start[0] >= 96.0 && l.start[0] <= 112.0 && l.start[2] >= 96.0),
-            "chunk_borders must surround camera chunk (6, 6)"
-        );
+        let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut min_z, mut max_z) = (f64::INFINITY, f64::NEG_INFINITY);
+        for l in &border_gizmos.lines {
+            min_x = min_x.min(l.start[0]).min(l.end[0]);
+            max_x = max_x.max(l.start[0]).max(l.end[0]);
+            min_z = min_z.min(l.start[2]).min(l.end[2]);
+            max_z = max_z.max(l.start[2]).max(l.end[2]);
+        }
+        assert_eq!(min_x.to_bits(), want_min_x, "chunk_borders min_x");
+        assert_eq!(max_x.to_bits(), want_max_x, "chunk_borders max_x");
+        assert_eq!(min_z.to_bits(), want_min_z, "chunk_borders min_z");
+        assert_eq!(max_z.to_bits(), want_max_z, "chunk_borders max_z");
 
         game.debug_entries
             .set_status("chunk_borders", Status::Never);
@@ -918,16 +956,16 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
         let has_player_box = hitbox_gizmos.lines.iter().any(|l| {
             l.start[0] >= 0.0 && l.start[0] <= 1.0 && l.start[1] >= 64.0 && l.start[1] <= 66.0
         });
-        assert!(
-            has_player_box,
-            "local player hitbox must render in FirstPerson when spectating another entity"
+        assert_eq!(
+            has_player_box, want_player_box,
+            "local player hitbox in FirstPerson while spectating another entity"
         );
         let has_camera_interaction_box = hitbox_gizmos.lines.iter().any(|l| {
             l.start[0] >= 96.4 && l.start[0] <= 96.6 && l.start[1] >= 300.0 && l.start[1] <= 302.0
         });
-        assert!(
-            !has_camera_interaction_box,
-            "camera entity hitbox must be hidden in FirstPerson"
+        assert_eq!(
+            has_camera_interaction_box, want_cam_box,
+            "camera entity hitbox in FirstPerson"
         );
 
         // 5. Spectator crosshair: a nearer Interaction blocks a chest minecart behind it.
@@ -943,9 +981,10 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
             0.0,
             0.0,
         );
-        assert!(
+        assert_eq!(
             game.spectator_crosshair(),
-            "unobstructed chest minecart shows spectator crosshair"
+            want_cart_crosshair,
+            "unobstructed chest minecart spectator crosshair"
         );
         add_entity(
             game,
@@ -955,10 +994,104 @@ fn camera_consumers_streaming_particles_debug_and_spectator_crosshair_26_3() {
             0.0,
             0.0,
         );
-        assert!(
-            !game.spectator_crosshair(),
+        assert_eq!(
+            game.spectator_crosshair(),
+            want_occluded_crosshair,
             "nearer Interaction is not a MenuProvider and must occlude chest minecart"
         );
+    });
+}
+
+/// Item 6: frozen-level camera partial tick matches 26.3 `Camera.getCameraEntityPartialTicks`.
+#[test]
+#[ignore = "daily"]
+fn frozen_camera_partial_tick_matches_26_3_witness() {
+    let witness = parity_witness();
+    let frozen = &witness["camera_consumers"]["frozen_partial"];
+    with_client_game(|game| {
+        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        add_entity(
+            game,
+            2,
+            "minecraft:interaction",
+            [0.5, 300.0, 0.5],
+            0.0,
+            0.0,
+        );
+        add_entity(game, 3, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
+        add_entity(game, 4, "minecraft:minecart", [5.0, 64.0, 5.0], 0.0, 0.0);
+        game.handle_packet(C::SetPassengers(play::SetPassengers {
+            vehicle: 4,
+            passengers: vec![1],
+        }))
+        .unwrap();
+
+        game.clock.reset();
+        game.clock.set_frozen(true);
+        game.clock.end_frame(false);
+        // 3ms / 8ms = 0.375 exactly (0x3ec00000), matching real_partial_bits in witness.
+        let ran = game.clock.advance(std::time::Duration::from_millis(3), 8.0);
+        assert_eq!(ran, 0);
+        assert_eq!(
+            (game.clock.camera_fraction() as f32).to_bits(),
+            hex_f32(&frozen["real_partial_bits"]),
+            "setup residual must match real_partial_bits"
+        );
+
+        for (label, cam_id, key) in [
+            ("local_player", 1, "local_player_partial_bits"),
+            ("interaction", 2, "interaction_partial_bits"),
+            ("creeper", 3, "creeper_partial_bits"),
+            (
+                "minecart_with_player",
+                4,
+                "minecart_with_player_partial_bits",
+            ),
+        ] {
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: cam_id }))
+                .unwrap();
+            assert_eq!(
+                (game.camera_partial_tick() as f32).to_bits(),
+                hex_f32(&frozen[key]),
+                "frozen camera partial tick for {label}"
+            );
+        }
+    });
+}
+
+/// Item 6: block outline requires a player camera entity (`GameRenderer.shouldRenderBlockOutline`).
+#[test]
+#[ignore = "daily"]
+fn block_outline_requires_player_camera_26_3() {
+    let witness = parity_witness();
+    let outline = &witness["camera_consumers"]["block_outline"];
+    with_client_game(|game| {
+        setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);
+        game.handle_packet(C::GameEvent(play::GameEvent {
+            event: 3,
+            param: 1.0,
+        }))
+        .unwrap();
+        game.ui.hide_gui = false;
+        add_entity(
+            game,
+            2,
+            "minecraft:interaction",
+            [0.5, 300.0, 0.5],
+            0.0,
+            0.0,
+        );
+        add_entity(game, 3, "minecraft:creeper", [5.0, 64.0, 5.0], 0.0, 0.0);
+
+        for (label, cam_id) in [("local_player", 1), ("interaction", 2), ("creeper", 3)] {
+            game.handle_packet(C::SetCamera(play::SetCamera { camera_id: cam_id }))
+                .unwrap();
+            assert_eq!(
+                game.should_render_block_outline(),
+                outline[label].as_bool().unwrap(),
+                "should_render_block_outline for {label}"
+            );
+        }
     });
 }
 
@@ -980,21 +1113,23 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
     );
 
     with_client_game(|game| {
-        setup_remote_overworld(game, 1, [0.99, 64.0, 0.5], true);
+        // Bottom stone_slab at [1,65,0] uses NEAR_PLANE_INTERSECTS_OUTLINE: 70-deg hits, 7-deg misses.
+        setup_remote_overworld(game, 1, [0.99, 63.6, 0.5], true);
         game.world
             .chunks
             .insert((0, 0), Arc::new(make_chunk(0, 0, 0, 0xF0)));
-        let stone = game
+        let slab = game
             .pack
             .assets
             .registry
-            .default_state("minecraft:stone")
+            .default_state("minecraft:stone_slab")
             .unwrap();
-        game.world.set(1, 65, 0, stone).unwrap();
+        game.world.set(1, 65, 0, slab).unwrap();
 
         game.yaw = 0.0;
         game.pitch = 0.0;
         game.settings.fov = 70.0;
+        game.ui.hide_gui = true;
         let hand_proj = sunrise_client::camera::hand_projection(70.0, 1280.0, 800.0, 512.0);
         for _ in 0..20 {
             game.tick_fov();
@@ -1004,7 +1139,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
             baseline_quads
                 .iter()
                 .any(|q| q.blend == Blend::Alpha && !q.world_tint),
-            "baseline 70-deg view must detect stone at x=1.0"
+            "baseline 70-deg near plane must intersect stone_slab at x=1.0"
         );
 
         game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
@@ -1013,7 +1148,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
         for _ in 0..20 {
             game.tick_fov();
         }
-        let eye = [0.99, 65.62, 0.5];
+        let eye = [0.99, 65.22, 0.5];
         assert!(
             game.fov_degrees(1.0, eye) < 15.0,
             "spyglass must narrow render FOV well below option FOV 70"
@@ -1024,7 +1159,7 @@ fn culling_near_plane_uses_max_of_fov_and_option_fov_26_3() {
             quads
                 .iter()
                 .any(|q| q.blend == Blend::Alpha && !q.world_tint),
-            "cull near plane must use max(fov, option_fov)=70 so stone at x=1.0 is view-blocking"
+            "cull near plane must use max(fov, option_fov)=70 so stone_slab at x=1.0 is view-blocking"
         );
     });
 }

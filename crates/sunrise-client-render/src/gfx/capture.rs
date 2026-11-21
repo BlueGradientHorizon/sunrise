@@ -531,6 +531,7 @@ impl Scene {
             yaw: f.yaw,
             pitch: f.pitch,
             fov_degrees: f.fov_degrees,
+            cull_fov_degrees: f.fov_degrees,
             eye: DVec3::from_array(f.eye),
             eye_rotation: f.eye_rotation,
             first_person: f.first_person,

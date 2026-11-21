@@ -931,6 +931,7 @@ impl Game<'_> {
             self.painting_hit().map(|h| h.1),
             self.frame_hit().map(|h| h.1),
             self.dragon_hit().map(|h| h.1),
+            self.interaction_hit().map(|h| h.1),
         ];
         let nearest = cart
             .into_iter()

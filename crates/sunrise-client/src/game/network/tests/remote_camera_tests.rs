@@ -76,6 +76,7 @@ fn a_server_camera_takes_any_entity_the_level_holds() {
         tnts: std::slice::from_ref(&tnt),
         vehicles: &std::collections::HashMap::new(),
         player: None,
+        living: Box::new(|_| (1.0, 4.0)),
     };
 
     let view = entities.view(9).expect("a boat is a camera");
@@ -115,6 +116,7 @@ fn a_frame_camera_turns_with_its_facing() {
             tnts: &[],
             vehicles: &std::collections::HashMap::new(),
             player: None,
+            living: Box::new(|_| (1.0, 4.0)),
         };
         let view = entities.view(1).unwrap();
         (view.y_rot, view.x_rot)
@@ -166,7 +168,7 @@ fn a_spectated_sleeping_villager_shows_the_bed_view() {
         mob.previous_head_yaw = f(&s["yro"]);
         // Villager.sleeping: the bed's facing code (1 north, 2 south, 3 west, 4 east) from Direction.get2DDataValue.
         mob.extra.ints[1] = [2, 3, 1, 4][case["bed"][3].as_u64().unwrap() as usize];
-        let entity = mob_camera_entity(&mob);
+        let entity = mob_camera_entity(&mob, (1.0, 4.0));
         let mut camera = Camera::default();
         camera.tick(Some(entity.eye_height), 1.0);
         camera.align_with_entity(&entity, f(&ops[2][1]), CameraType::FirstPerson, |_, _| None);

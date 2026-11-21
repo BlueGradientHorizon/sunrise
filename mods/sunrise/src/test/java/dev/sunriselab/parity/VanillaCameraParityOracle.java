@@ -13,6 +13,11 @@ import net.minecraft.client.*;
 import net.minecraft.client.entity.ClientAvatarState;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.Hud;
+import net.minecraft.client.gui.components.debug.DebugEntryBiome;
+import net.minecraft.client.gui.components.debug.DebugEntryLight;
+import net.minecraft.client.gui.components.debug.DebugEntryPosition;
+import net.minecraft.client.gui.components.debug.DebugScreenDisplayer;
+import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -20,6 +25,9 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.debug.ChunkBorderRenderer;
+import net.minecraft.client.renderer.debug.EntityHitboxDebugRenderer;
+import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.client.renderer.fog.FogData;
 import net.minecraft.client.renderer.fog.environment.*;
 import net.minecraft.client.renderer.state.GameRenderState;
@@ -27,6 +35,12 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.*;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.gizmos.CuboidGizmo;
+import net.minecraft.gizmos.Gizmo;
+import net.minecraft.gizmos.GizmoCollector;
+import net.minecraft.gizmos.GizmoProperties;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.gizmos.LineGizmo;
 import net.minecraft.network.PacketProcessor;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.network.syncher.EntityDataAccessor;
@@ -42,17 +56,24 @@ import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.entity.vehicle.minecart.Minecart;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -179,6 +200,43 @@ public final class VanillaCameraParityOracle {
         }
     }
 
+    static final class StubLightEngine extends LevelLightEngine {
+        StubClientLevel owner;
+
+        StubLightEngine() {
+            super(null, false, false);
+        }
+
+        @Override
+        public int getRawBrightness(BlockPos pos, int darken) {
+            return owner.brightnessMap.getOrDefault(pos, owner.defaultBrightness);
+        }
+    }
+
+    static final class StubChunkCache extends ClientChunkCache {
+        LevelLightEngine light;
+
+        StubChunkCache() {
+            super(null, 0);
+        }
+
+        @Override
+        public LevelLightEngine getLightEngine() {
+            return light;
+        }
+    }
+
+    static final class StubLevelExtractor extends LevelExtractor {
+        StubLevelExtractor() {
+            super(null, null, null);
+        }
+
+        @Override
+        public boolean isEntityVisible(Entity e, Frustum f, double x, double y, double z, float pt, long fade) {
+            return true;
+        }
+    }
+
     static final class StubClientLevel extends ClientLevel {
         Map<Integer, Entity> entities = new HashMap<>();
         TickRateManager tickRateManager = new TickRateManager();
@@ -187,6 +245,9 @@ public final class VanillaCameraParityOracle {
         int defaultBrightness = 15;
         DimensionType dimType;
         boolean flat = false;
+        StubChunkCache chunkCache;
+        Map<Long, Holder<Biome>> chunkBiomes = new HashMap<>();
+        Holder<Biome> defaultBiome;
 
         StubClientLevel() {
             super(null, null, null, null, 0, 0, null, false, 0L, 0);
@@ -199,10 +260,29 @@ public final class VanillaCameraParityOracle {
         @Override public TickRateManager tickRateManager() { return tickRateManager; }
         @Override public WorldBorder getWorldBorder() { return worldBorder; }
         @Override public Entity getEntity(int id) { return entities.get(id); }
+        @Override public Iterable<Entity> entitiesForRendering() { return entities.values(); }
         @Override public boolean isTickingEntity(Entity e) { return entities.containsKey(e.getId()); }
         @Override public BlockState getBlockState(BlockPos p) { return Blocks.AIR.defaultBlockState(); }
         @Override public FluidState getFluidState(BlockPos p) { return Fluids.EMPTY.defaultFluidState(); }
         @Override public int getMaxLocalRawBrightness(BlockPos pos) { return brightnessMap.getOrDefault(pos, defaultBrightness); }
+        @Override public int getBrightness(LightLayer layer, BlockPos pos) {
+            return layer == LightLayer.SKY ? brightnessMap.getOrDefault(pos, defaultBrightness) : 0;
+        }
+        @Override public ClientChunkCache getChunkSource() { return chunkCache; }
+        @Override public Holder<Biome> getBiome(BlockPos pos) {
+            long key = ((long) (pos.getX() >> 4) << 32) ^ ((pos.getZ() >> 4) & 0xffffffffL);
+            return chunkBiomes.getOrDefault(key, defaultBiome);
+        }
+        @Override
+        public List<Entity> getEntities(Entity except, AABB box, java.util.function.Predicate<? super Entity> pred) {
+            List<Entity> hits = new ArrayList<>();
+            for (Entity e : entities.values()) {
+                if (e != except && e.getBoundingBox().intersects(box) && pred.test(e)) {
+                    hits.add(e);
+                }
+            }
+            return hits;
+        }
 
         @Override
         public void removeEntity(int id, Entity.RemovalReason reason) {
@@ -236,6 +316,7 @@ public final class VanillaCameraParityOracle {
         @Override public boolean isSleeping() { return false; }
         @Override public boolean isDeadOrDying() { return false; }
         @Override public boolean isDescending() { return false; }
+        @Override public boolean isInvisible() { return false; }
         @Override public net.minecraft.world.item.ItemStack getMainHandItem() { return net.minecraft.world.item.ItemStack.EMPTY; }
     }
 
@@ -273,9 +354,17 @@ public final class VanillaCameraParityOracle {
         lvl.brightnessMap = new HashMap<>();
         lvl.defaultBrightness = 15;
         lvl.dimType = overworldDimType;
+        lvl.chunkBiomes = new HashMap<>();
+        lvl.defaultBiome = ParityData.access.lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS);
+        var light = make(StubLightEngine.class);
+        light.owner = lvl;
+        var cache = make(StubChunkCache.class);
+        cache.light = light;
+        lvl.chunkCache = cache;
         var levelData = new ClientLevel.ClientLevelData(net.minecraft.world.Difficulty.NORMAL, false, false);
         field(ClientLevel.class, "clientLevelData").set(lvl, levelData);
         field(Level.class, "levelData").set(lvl, levelData);
+        field(Level.class, "dimension").set(lvl, Level.OVERWORLD);
         field(Level.class, "dimensionTypeRegistration").set(lvl, Holder.direct(overworldDimType));
         field(Level.class, "registryAccess").set(lvl, ParityData.access);
         field(Level.class, "isClientSide").setBoolean(lvl, true);
@@ -299,9 +388,12 @@ public final class VanillaCameraParityOracle {
         field(Entity.class, "level").set(p, lvl);
         field(LocalPlayer.class, "minecraft").set(p, minecraft);
         field(Entity.class, "position").set(p, new Vec3(x, y, z));
+        field(Entity.class, "blockPosition").set(p, BlockPos.containing(x, y, z));
         p.xo = x; p.yo = y; p.zo = z;
+        var dims = EntityDimensions.scalable(0.6F, 1.8F).withEyeHeight(1.62F);
         field(Entity.class, "eyeHeight").setFloat(p, 1.62F);
-        field(Entity.class, "dimensions").set(p, EntityDimensions.scalable(0.6F, 1.8F).withEyeHeight(1.62F));
+        field(Entity.class, "dimensions").set(p, dims);
+        p.setBoundingBox(dims.makeBoundingBox(x, y, z));
         field(Entity.class, "passengers").set(p, com.google.common.collect.ImmutableList.of());
         field(LivingEntity.class, "activeEffects").set(p, new HashMap<Holder<net.minecraft.world.effect.MobEffect>, MobEffectInstance>());
         var ab = new Abilities();
@@ -906,6 +998,166 @@ public final class VanillaCameraParityOracle {
             vigObj.addProperty("player_border_dist_bits", db(lvl.worldBorder.getDistanceToBorder(player)));
             vigObj.addProperty("interaction_border_dist_bits", db(lvl.worldBorder.getDistanceToBorder(interaction)));
             out.add("vignette", vigObj);
+        }
+
+        // --- 7. Streaming/particles, F3 debug entries, F3 gizmos (chunk borders + hitboxes), and spectator crosshair ---
+        {
+            var align = method(Camera.class, "alignWithEntity", float.class);
+            var canCrosshair = method(Hud.class, "canRenderCrosshairForSpectator", HitResult.class);
+            var lvl = newLevel();
+            var biomeLookup = ParityData.access.lookupOrThrow(Registries.BIOME);
+            lvl.chunkBiomes.put(((0L) << 32) ^ (0L & 0xffffffffL), biomeLookup.getOrThrow(Biomes.PLAINS));
+            lvl.chunkBiomes.put(((6L) << 32) ^ (6L & 0xffffffffL), biomeLookup.getOrThrow(Biomes.DESERT));
+            lvl.defaultBrightness = 15;
+            lvl.brightnessMap.put(new BlockPos(96, 300, 96), 0);
+            lvl.brightnessMap.put(new BlockPos(96, 301, 96), 0);
+
+            var player = newPlayer(lvl, 1, 0.5, 64.0, 0.5);
+            player.spectatorFlag = true;
+            var interaction = (Interaction) spawnViaPacket(lvl, "minecraft:interaction", 31, 96.5, 300.0, 96.5, 0.0F, 0.0F, 0.0F);
+            interaction.getEntityData().assignValues(List.of(
+                SynchedEntityData.DataValue.create(interactionWidthAccessor(), 0.1F),
+                SynchedEntityData.DataValue.create(interactionHeightAccessor(), 1.9059F)
+            ));
+
+            minecraft.player = player;
+            minecraft.level = lvl;
+            options.setCameraType(CameraType.FIRST_PERSON);
+            var cam = newCamera(lvl);
+            var renderer = make(GameRenderer.class);
+            field(GameRenderer.class, "mainCamera").set(renderer, cam);
+            field(GameRenderer.class, "minecraft").set(renderer, minecraft);
+            field(Minecraft.class, "gameRenderer").set(minecraft, renderer);
+            field(Minecraft.class, "deltaTracker").set(minecraft, new DeltaTracker.Timer(20.0F, 0L, f -> f));
+            field(Minecraft.class, "levelExtractor").set(minecraft, make(StubLevelExtractor.class));
+
+            cam.setEntity(interaction);
+            for (int t = 0; t < 40; t++) cam.tick();
+            align.invoke(cam, 1.0F);
+
+            var streamObj = new JsonObject();
+            SectionPos camSection = SectionPos.of(cam.blockPosition());
+            SectionPos entitySection = SectionPos.of(interaction.blockPosition());
+            var camChunk = new JsonArray();
+            camChunk.add(camSection.x());
+            camChunk.add(camSection.z());
+            var entBlock = new JsonArray();
+            entBlock.add(interaction.blockPosition().getX());
+            entBlock.add(interaction.blockPosition().getY());
+            entBlock.add(interaction.blockPosition().getZ());
+            streamObj.add("camera_chunk", camChunk);
+            streamObj.addProperty("entity_block_y", interaction.blockPosition().getY());
+            streamObj.add("entity_block_pos", entBlock);
+            streamObj.add("camera_pos_bits", vec3Bits(cam.position()));
+            out.add("streaming_and_particles", streamObj);
+
+            // Real DebugEntryPosition, DebugEntryBiome, DebugEntryLight
+            List<String> posLines = new ArrayList<>();
+            List<String> biomeLines = new ArrayList<>();
+            List<String> lightLines = new ArrayList<>();
+            DebugScreenDisplayer collectPos = new DebugScreenDisplayer() {
+                @Override public void addPriorityLine(String s) { posLines.add(s); }
+                @Override public void addLine(String s) { posLines.add(s); }
+                @Override public void addToGroup(Identifier g, Collection<String> lines) { posLines.addAll(lines); }
+                @Override public void addToGroup(Identifier g, String s) { posLines.add(s); }
+            };
+            DebugScreenDisplayer collectBiome = new DebugScreenDisplayer() {
+                @Override public void addPriorityLine(String s) { biomeLines.add(s); }
+                @Override public void addLine(String s) { biomeLines.add(s); }
+                @Override public void addToGroup(Identifier g, Collection<String> lines) { biomeLines.addAll(lines); }
+                @Override public void addToGroup(Identifier g, String s) { biomeLines.add(s); }
+            };
+            DebugScreenDisplayer collectLight = new DebugScreenDisplayer() {
+                @Override public void addPriorityLine(String s) { lightLines.add(s); }
+                @Override public void addLine(String s) { lightLines.add(s); }
+                @Override public void addToGroup(Identifier g, Collection<String> lines) { lightLines.addAll(lines); }
+                @Override public void addToGroup(Identifier g, String s) { lightLines.add(s); }
+            };
+            new DebugEntryPosition().display(collectPos, lvl, null, null);
+            new DebugEntryBiome().display(collectBiome, lvl, null, null);
+            new DebugEntryLight().display(collectLight, lvl, null, null);
+
+            var debugObj = new JsonObject();
+            var posArr = new JsonArray();
+            posLines.forEach(posArr::add);
+            debugObj.add("position_lines", posArr);
+            debugObj.addProperty("biome_line", biomeLines.isEmpty() ? "" : biomeLines.get(0));
+            debugObj.addProperty("light_line", lightLines.isEmpty() ? "" : lightLines.get(0));
+
+            // Real ChunkBorderRenderer
+            List<LineGizmo> borderLines = new ArrayList<>();
+            try (var ignored = Gizmos.withCollector(g -> {
+                if (g instanceof LineGizmo lg) borderLines.add(lg);
+                return GizmoCollector.IGNORED;
+            })) {
+                new ChunkBorderRenderer(minecraft).emitGizmos(cam.position().x, cam.position().y, cam.position().z, null, null, 1.0F);
+            }
+            double minBx = Double.POSITIVE_INFINITY, maxBx = Double.NEGATIVE_INFINITY;
+            double minBz = Double.POSITIVE_INFINITY, maxBz = Double.NEGATIVE_INFINITY;
+            for (var lg : borderLines) {
+                minBx = Math.min(minBx, Math.min(lg.start().x, lg.end().x));
+                maxBx = Math.max(maxBx, Math.max(lg.start().x, lg.end().x));
+                minBz = Math.min(minBz, Math.min(lg.start().z, lg.end().z));
+                maxBz = Math.max(maxBz, Math.max(lg.start().z, lg.end().z));
+            }
+            var borderObj = new JsonObject();
+            borderObj.addProperty("line_count", borderLines.size());
+            borderObj.addProperty("min_x_bits", db(minBx));
+            borderObj.addProperty("max_x_bits", db(maxBx));
+            borderObj.addProperty("min_z_bits", db(minBz));
+            borderObj.addProperty("max_z_bits", db(maxBz));
+            debugObj.add("chunk_borders", borderObj);
+
+            // Real EntityHitboxDebugRenderer in FIRST_PERSON while spectating interaction
+            List<AABB> hitboxBoxes = new ArrayList<>();
+            try (var ignored = Gizmos.withCollector(g -> {
+                if (g instanceof CuboidGizmo cg) hitboxBoxes.add(cg.aabb());
+                return GizmoCollector.IGNORED;
+            })) {
+                new EntityHitboxDebugRenderer(minecraft).emitGizmos(cam.position().x, cam.position().y, cam.position().z, null, null, 1.0F);
+            }
+            boolean hasPlayerBox = hitboxBoxes.stream().anyMatch(b -> b.minX >= 0.0 && b.maxX <= 1.0 && b.minY >= 63.9 && b.maxY <= 66.1);
+            boolean hasInteractionBox = hitboxBoxes.stream().anyMatch(b -> b.minX >= 96.0 && b.maxX <= 97.0 && b.minY >= 299.9 && b.maxY <= 302.1);
+            var hbObj = new JsonObject();
+            hbObj.addProperty("player_box_emitted_in_first_person", hasPlayerBox);
+            hbObj.addProperty("camera_interaction_box_emitted_in_first_person", hasInteractionBox);
+            debugObj.add("entity_hitboxes", hbObj);
+            out.add("debug", debugObj);
+
+            // Real ProjectileUtil.getEntityHitResult + Hud.canRenderCrosshairForSpectator
+            var crossLvl = newLevel();
+            var crossPlayer = newPlayer(crossLvl, 1, 0.5, 64.0, 0.5);
+            crossPlayer.spectatorFlag = true;
+            crossPlayer.setYRot(0.0F);
+            crossPlayer.setXRot(0.0F);
+            minecraft.player = crossPlayer;
+            minecraft.level = crossLvl;
+            var hud = make(Hud.class);
+            field(Hud.class, "minecraft").set(hud, minecraft);
+
+            Entity cart = spawnViaPacket(crossLvl, "minecraft:chest_minecart", 40, 0.5, 65.2, 3.5, 0.0F, 0.0F, 0.0F);
+            Vec3 eye = crossPlayer.getEyePosition(1.0F);
+            Vec3 look = crossPlayer.getViewVector(1.0F);
+            double reach = 4.5;
+            Vec3 end = eye.add(look.scale(reach));
+            AABB search = crossPlayer.getBoundingBox().expandTowards(look.scale(reach)).inflate(1.0, 1.0, 1.0);
+            EntityHitResult hitCartOnly = ProjectileUtil.getEntityHitResult(
+                crossPlayer, eye, end, search, e -> !e.isSpectator() && e.isPickable(), reach * reach
+            );
+            boolean crosshairCartOnly = (boolean) canCrosshair.invoke(hud, hitCartOnly);
+
+            Interaction occluder = (Interaction) spawnViaPacket(crossLvl, "minecraft:interaction", 41, 0.5, 65.0, 2.0, 0.0F, 0.0F, 0.0F);
+            EntityHitResult hitWithOccluder = ProjectileUtil.getEntityHitResult(
+                crossPlayer, eye, end, search, e -> !e.isSpectator() && e.isPickable(), reach * reach
+            );
+            boolean crosshairWithOccluder = (boolean) canCrosshair.invoke(hud, hitWithOccluder);
+
+            var crossObj = new JsonObject();
+            crossObj.addProperty("cart_only_hit_id", hitCartOnly != null ? hitCartOnly.getEntity().getId() : -1);
+            crossObj.addProperty("cart_only_crosshair", crosshairCartOnly);
+            crossObj.addProperty("with_interaction_hit_id", hitWithOccluder != null ? hitWithOccluder.getEntity().getId() : -1);
+            crossObj.addProperty("with_interaction_crosshair", crosshairWithOccluder);
+            out.add("spectator_crosshair", crossObj);
         }
 
         return out;

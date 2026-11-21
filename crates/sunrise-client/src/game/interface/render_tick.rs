@@ -204,7 +204,13 @@ impl Game<'_> {
         biome: u16,
         water_fog_color: [f32; 3],
     ) -> FogData {
-        let forward = self.forward();
+        let cam = self.camera_subject();
+        let is_local = cam.as_ref().is_none_or(|c| c.is_local_player);
+        let forward = if self.view.forwards == [0.0; 3] {
+            self.forward().map(|c| c as f32)
+        } else {
+            self.view.forwards
+        };
         let at = [camera.x, camera.y, camera.z];
         let fog_type = self.camera_fog_type(at);
         let (rain, thunder) = self.view_weather(self.clock.fraction() as f32);
@@ -225,25 +231,35 @@ impl Game<'_> {
             camera_y: camera.y,
             min_y: self.level_min_y(),
             flat: self.level_flat(),
-            forward: forward.map(|c| c as f32),
+            forward,
             rain,
             thunder,
             skybox: self.overworld_skybox(),
-            blindness: self
-                .potions
-                .effects
-                .get("blindness")
-                .map(|effect| (effect.duration, effect.duration == -1)),
-            darkness: self.darkness_fog(),
+            blindness: is_local
+                .then(|| {
+                    self.potions
+                        .effects
+                        .get("blindness")
+                        .map(|effect| (effect.duration, effect.duration == -1))
+                })
+                .flatten(),
+            darkness: if is_local { self.darkness_fog() } else { None },
             darken_world: self
                 .boss_overlay
                 .darken_amount(self.clock.fraction() as f32),
             boss_world_fog: self.boss_overlay.should_create_world_fog(),
-            spectator: self.spectator(),
-            fire_resistance: self.potions.effects.get("fire_resistance").is_some()
-                || self.pvp_clear_fluids().0,
-            full_water_vision: self.pvp_clear_fluids().1,
-            night_vision: self.fog_night_vision(),
+            spectator: cam
+                .as_ref()
+                .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
+            fire_resistance: is_local
+                && (self.potions.effects.get("fire_resistance").is_some()
+                    || self.pvp_clear_fluids().0),
+            full_water_vision: !is_local || self.pvp_clear_fluids().1,
+            night_vision: if is_local {
+                self.fog_night_vision()
+            } else {
+                0.0
+            },
             environment: self.pack.polytone_colors.env,
             fluid_fog: self.pack.polytone_colors.fluid_fog,
         };
@@ -335,18 +351,18 @@ impl Game<'_> {
             None => self.world.shape.min_y,
         }
     }
-    /// `SkyRenderer.shouldRenderDarkDisc`: eye below the horizon and not under
-    /// water. `ClientLevelData.getHorizonHeight`: the bottom of a flat world,
-    /// otherwise y 63.
-    pub(super) fn dark_disc(&self, camera: glam::DVec3) -> bool {
+    /// `SkyRenderer.shouldRenderDarkDisc`: uses `minecraft.player` eye and water state, not camera.
+    pub(super) fn dark_disc(&self, _camera: glam::DVec3) -> bool {
+        let Some(p) = self.player.as_ref() else {
+            return false;
+        };
         let sunrise = if self.level_flat() {
             f64::from(self.level_min_y())
         } else {
             f64::from(self.pack.polytone_colors.env.horizon_height)
         };
-        self.overworld_skybox()
-            && camera.y < sunrise
-            && self.camera_fog_type([camera.x, camera.y, camera.z]) != FogType::Water
+        let eye_y = p.position.y + f64::from(p.dimensions.eye_height);
+        self.overworld_skybox() && eye_y < sunrise && !p.is_under_water()
     }
     /// `ScreenEffectRenderer` + `Hud` camera overlays for this frame.
     /// `scale` is the player's `LivingEntity.getScale`.
@@ -378,10 +394,13 @@ impl Game<'_> {
         // Hud.extractCameraOverlays; the spyglass scope (and its easing) is
         // drawn on the HUD by draw_spyglass.
         let fx = &self.screen_fx;
+        let border_pos =
+            self.camera_entity_position()
+                .unwrap_or([p.position.x, p.position.y, p.position.z]);
         let overlays = hud_overlays::CameraOverlays {
             vignette: self.vignette_shown().then_some((
                 fx.vignette_brightness,
-                self.border.warning_strength(p.position.x, p.position.z),
+                self.border.warning_strength(border_pos[0], border_pos[2]),
             )),
             first_person: self.camera_type.is_first_person(),
             scoping: self.scoping(),
@@ -416,8 +435,11 @@ impl Game<'_> {
             screen_effect_scale: self.screen_effect_scale(),
         };
         let mut scope = self.scope_scale;
-        let gui_overlays =
-            hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope);
+        let gui_overlays = if self.ui.hide_gui {
+            Vec::new()
+        } else {
+            hud_overlays::camera_overlays(size[0] as i32, size[1] as i32, &overlays, &mut scope)
+        };
         self.screen_fx.build(&ScreenInputs {
             sprites: &self.gui.atlas.sprites,
             flags: &self.gui.atlas.flags,
@@ -487,19 +509,23 @@ impl Game<'_> {
         // `LevelExtractor.getViewBlockingState`: 8 points around the eye, each
         // tested with `BlockState.isViewBlocking` against the near plane.
         // ScreenEffectRenderer: none of it for a spectator (noPhysics).
-        let spectator = self.spectator();
+        let spectator = self.own_player_is_spectator();
         let modded = mod_api::__private::listened(mod_api::HookId::ExtractBlockScreenEffect);
         let player_partial_tick = self.clock.camera_fraction() as f32;
         let mut block = None;
         let mut custom = [None, None, None];
         if !spectator {
-            // Frustum.getNearPlaneBounds, moved to the eye.
+            // Frustum.getNearPlaneBounds from culling projection (max(fov, option_fov), camera rot).
+            let cull_fov = self
+                .fov_degrees(partial, eye)
+                .max((self.settings.fov as i32) as f32);
+            let (near_yaw, near_pitch) = self.posed_rotation.unwrap_or((self.yaw, self.pitch));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
-                self.fov_degrees(partial, eye),
+                cull_fov,
                 size[0] as f32,
                 size[1] as f32,
-                self.yaw,
-                self.pitch,
+                near_yaw,
+                near_pitch,
                 sunrise_client::camera::depth_far(
                     self.terrain_distance(),
                     self.settings.cloud_range,
@@ -680,7 +706,7 @@ impl Game<'_> {
     /// Under `SUNRISE_STILL` a frozen client's rain fog sits at its level, as the rain does: it
     /// eases only in `tick_particles`, which waits for the world.
     pub(super) fn settle_rain_fog(&mut self) {
-        if let Some(e) = self.eye_position() {
+        if let Some(e) = self.camera_eye_position() {
             let (rain, sky_light, rains) = self.rain_fog_inputs(e);
             settle_rain_fog(&mut self.fog, rain, sky_light, rains);
         }
@@ -697,10 +723,9 @@ impl Game<'_> {
         Some((TrackingTarget::Entity(id), mob_tracking_body(mob)))
     }
 
-    /// `Hud.updateVignetteBrightness`, from the local player's eye: `Gui.tick` runs it on every tick
-    /// the game isn't paused, frozen level or not.
+    /// `Hud.updateVignetteBrightness` from the camera entity's eye, running even while frozen.
     pub(in crate::game) fn tick_vignette(&mut self) {
-        if let Some(e) = self.eye_position() {
+        if let Some(e) = self.camera_eye_position() {
             let brightness = self.eye_brightness(e);
             self.screen_fx.tick_vignette(brightness);
         }
@@ -712,10 +737,13 @@ impl Game<'_> {
         self.update_animation_inputs();
         let mut laps = sunrise_client::spans::laps();
         let eye = self.eye_position();
+        let cam_eye = self.camera_eye_position().or(eye);
         if let Some(e) = eye {
             // A client of a server eases the vignette in `tick_hud`, frozen level or not.
-            if self.remote.is_none() {
-                let brightness = self.eye_brightness(e);
+            if self.remote.is_none()
+                && let Some(ve) = cam_eye
+            {
+                let brightness = self.eye_brightness(ve);
                 self.screen_fx.tick_vignette(brightness);
             }
             let inside_portal = self.client_portal_effect();
@@ -727,16 +755,18 @@ impl Game<'_> {
             }
             let nausea = self.potions.effects.get("nausea").map(nausea_has_effect);
             self.screen_fx.tick_spinning(nausea);
-            // LocalPlayer water vision and AtmosphericFogEnvironment rain fog.
+            // LocalPlayer water vision stays on local player eye; rain fog follows camera.
             let in_water = self.camera_fog_type(e) == FogType::Water;
-            self.fog.tick(in_water, self.spectator());
-            let (rain, sky_light, rains) = self.rain_fog_inputs(e);
-            update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
+            self.fog.tick(in_water, self.own_player_is_spectator());
+            if let Some(ce) = cam_eye {
+                let (rain, sky_light, rains) = self.rain_fog_inputs(ce);
+                update_rain_fog(&mut self.fog, rain, sky_light, rains, 1.0);
+            }
         }
         laps.lap("tp_fx");
         self.particles.particle_level = self.settings.particles;
-        if let Some(e) = eye {
-            self.particles.camera = e;
+        if let Some(ce) = cam_eye {
+            self.particles.camera = ce;
         }
         let (rain, _) = self.weather_levels(1.0);
         let marker = marker_particle_target(self.mode, self.stack_in(self.selected));
@@ -826,9 +856,12 @@ impl Game<'_> {
                 }
                 laps.lap("tp_animate");
                 // The Sunrise Weather option off means no rain visuals or sounds at all.
-                if rain > 0.0 && self.settings.sunrise.weather {
-                    // ClientLevel.tickWeatherEffects: rain splashes within the weather
-                    // radius, and the rain sound.
+                if rain > 0.0
+                    && self.settings.sunrise.weather
+                    && let Some(ce) = cam_eye
+                {
+                    let weather_block = ce.map(|v| v.floor() as i32);
+                    // ClientLevel.tickWeatherEffects: rain splashes around the camera, and the rain sound.
                     let mut random =
                         LegacyRandom::new(self.world.game_time.wrapping_mul(312_987_231));
                     let radius = self.settings.weather_radius;
@@ -837,9 +870,11 @@ impl Game<'_> {
                         / if self.settings.particles == 1 { 2 } else { 1 };
                     let mut rain_position = None;
                     for _ in 0..count {
-                        let x = block[0] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let z = block[2] + random.next_int_bound(diameter).unwrap_or(0) - radius;
-                        let Some(top) = splash_height(world, properties, x, block[1], z) else {
+                        let x =
+                            weather_block[0] + random.next_int_bound(diameter).unwrap_or(0) - radius;
+                        let z =
+                            weather_block[2] + random.next_int_bound(diameter).unwrap_or(0) - radius;
+                        let Some(top) = splash_height(world, properties, x, weather_block[1], z) else {
                             continue;
                         };
                         if !rains_at(world, biomes, x, top, z) {
@@ -891,13 +926,18 @@ impl Game<'_> {
                         self.rain_sound_time += 1;
                         if random.next_int_bound(3).unwrap_or(0) < waited {
                             self.rain_sound_time = 0;
-                            let roof =
-                                motion_blocking_height(world, properties, block[0], block[2]);
-                            let (name, volume, pitch) = if at[1] > block[1] + 1 && roof > block[1] {
-                                ("minecraft:weather.rain.above", 0.1, 0.5)
-                            } else {
-                                ("minecraft:weather.rain", 0.2, 1.0)
-                            };
+                            let roof = motion_blocking_height(
+                                world,
+                                properties,
+                                weather_block[0],
+                                weather_block[2],
+                            );
+                            let (name, volume, pitch) =
+                                if at[1] > weather_block[1] + 1 && roof > weather_block[1] {
+                                    ("minecraft:weather.rain.above", 0.1, 0.5)
+                                } else {
+                                    ("minecraft:weather.rain", 0.2, 1.0)
+                                };
                             let p = at.map(|c| f64::from(c) + 0.5);
                             // playLocalSound: guests make their own rain, so a host
                             // must not capture it for them.

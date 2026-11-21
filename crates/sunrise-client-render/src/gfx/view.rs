@@ -62,6 +62,15 @@ impl ViewSet {
         }
     }
 
+    /// A frame drawn from `view` and culled with `cull`.
+    pub fn single_with_cull(view: View, cull: View) -> Self {
+        Self {
+            views: [view; MAX_VIEWS],
+            len: 1,
+            cull,
+        }
+    }
+
     /// The view the HUD, hand and screen-space effects follow.
     pub fn primary(&self) -> &View {
         &self.views[0]
@@ -77,15 +86,41 @@ impl ViewSet {
     }
 }
 
+/// `Camera.createProjectionMatrixForCulling`: culling FOV is `max(fov, option_fov)`.
+pub fn cull_fov(fov_degrees: f32, option_fov: f32) -> f32 {
+    fov_degrees.max(option_fov)
+}
+
+/// `Camera.prepareCullFrustum`: culling frustum at `max(fov, option_fov)` with no bob or spin.
+pub fn cull_frustum(
+    fov_degrees: f32,
+    option_fov: f32,
+    yaw: f32,
+    pitch: f32,
+    aspect: f32,
+    depth_far: f32,
+) -> Frustum {
+    let view = View::screen(
+        yaw,
+        pitch,
+        cull_fov(fov_degrees, option_fov),
+        aspect,
+        depth_far,
+    );
+    Frustum::from_planes(frustum(view.view_proj(Mat4::IDENTITY)))
+}
+
 impl Renderer {
     /// The views `render` draws `frame` from.
     pub fn views(&self, frame: &Frame) -> ViewSet {
-        ViewSet::single(self.screen_view(
-            frame.fov_degrees,
+        let view = self.screen_view(frame.fov_degrees, frame.yaw, frame.pitch, frame.depth_far);
+        let cull = self.screen_view(
+            cull_fov(frame.fov_degrees, frame.cull_fov_degrees),
             frame.yaw,
             frame.pitch,
             frame.depth_far,
-        ))
+        );
+        ViewSet::single_with_cull(view, cull)
     }
     /// The frusta `render` will cull with from `camera`, for culling geometry built before the
     /// frame (entities, block entities) the same way: the camera's and this frame's world
@@ -96,11 +131,12 @@ impl Renderer {
         fov_degrees: f32,
         yaw: f32,
         pitch: f32,
-        bob: Mat4,
+        _bob: Mat4,
         depth_far: f32,
     ) -> JoinedFrusta {
         let views = ViewSet::single(self.screen_view(fov_degrees, yaw, pitch, depth_far));
-        let planes = frustum(views.cull().view_proj(bob));
+        // Vanilla Camera.prepareCullFrustum omits view bob and nausea spin.
+        let planes = frustum(views.cull().view_proj(Mat4::IDENTITY));
         self.ask_world_views(camera, depth_far, Frustum::from_planes(planes))
     }
     /// A conservative view for geometry built before TAA chooses this frame's
@@ -112,14 +148,14 @@ impl Renderer {
         fov_degrees: f32,
         yaw: f32,
         pitch: f32,
-        bob: Mat4,
+        _bob: Mat4,
         depth_far: f32,
     ) -> JoinedFrusta {
         let views = ViewSet::single(self.screen_view(fov_degrees, yaw, pitch, depth_far));
         let size = self
             .world_post
             .taa_render_size([self.config.width, self.config.height]);
-        self.asked_world_views(taa_frustum(views.cull().view_proj(bob), size))
+        self.asked_world_views(taa_frustum(views.cull().view_proj(Mat4::IDENTITY), size))
     }
     fn screen_view(&self, fov_degrees: f32, yaw: f32, pitch: f32, far: f32) -> View {
         let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
@@ -225,5 +261,129 @@ mod tests {
         assert_eq!(set.views(), &[view]);
         assert_eq!(*set.primary(), view);
         assert_eq!(*set.cull(), view);
+    }
+
+    #[test]
+    fn cull_frustum_matches_26_3_witness_with_zoom_widen_and_bob() {
+        let witness: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tools/witness/26.3/camera_parity/witness.json"
+        )))
+        .unwrap();
+        let f32_hex = |v: &serde_json::Value| {
+            f32::from_bits(u32::from_str_radix(v.as_str().unwrap(), 16).unwrap())
+        };
+        let f64_hex = |v: &serde_json::Value| {
+            f64::from_bits(u64::from_str_radix(v.as_str().unwrap(), 16).unwrap())
+        };
+        let cases = witness["cull_frustum"]["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 3);
+        let bob = Mat4::from_translation(Vec3::new(0.5, -0.5, 0.0)) * Mat4::from_rotation_z(0.35);
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let fov = f32_hex(&case["fov_bits"]);
+            let opt_fov = case["option_fov"].as_i64().unwrap() as f32;
+            let yaw = f32_hex(&case["yaw_bits"]);
+            let pitch = f32_hex(&case["pitch_bits"]);
+            let depth_far = f32_hex(&case["depth_far_bits"]);
+            let width = case["width"].as_f64().unwrap() as f32;
+            let height = case["height"].as_f64().unwrap() as f32;
+            let aspect = width / height;
+
+            let render_view = View::screen(yaw, pitch, fov, aspect, depth_far);
+            let cull_view = View::screen(yaw, pitch, cull_fov(fov, opt_fov), aspect, depth_far);
+            let set = ViewSet::single_with_cull(render_view, cull_view);
+            assert_eq!(*set.primary(), render_view);
+            assert_eq!(*set.cull(), cull_view);
+
+            let want_view_rot: Vec<f32> = case["view_rot_bits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(f32_hex)
+                .collect();
+            for (i, (&got, &want)) in cull_view
+                .view
+                .to_cols_array()
+                .iter()
+                .zip(&want_view_rot)
+                .enumerate()
+            {
+                assert!(
+                    (got - want).abs() <= 1e-6,
+                    "{name} view_rot[{i}]: got {got} want {want}"
+                );
+            }
+            let got_cull_proj = crate::camera::perspective(
+                cull_fov(fov, opt_fov),
+                width,
+                height,
+                0.05,
+                depth_far,
+                true,
+            );
+            let want_cull_proj: Vec<f32> = case["cull_proj_bits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(f32_hex)
+                .collect();
+            for (i, (&got, &want)) in got_cull_proj.iter().zip(&want_cull_proj).enumerate() {
+                assert!(
+                    (got - want).abs() <= 1e-6,
+                    "{name} cull_proj[{i}]: got {got} want {want}"
+                );
+            }
+
+            let got_frustum = cull_frustum(fov, opt_fov, yaw, pitch, aspect, depth_far);
+            let view_frustum = Frustum::from_planes(frustum(set.cull().view_proj(Mat4::IDENTITY)));
+            let raw_fov_frustum =
+                Frustum::from_planes(frustum(render_view.view_proj(Mat4::IDENTITY)));
+            let bobbed_frustum = Frustum::from_planes(frustum(cull_view.view_proj(bob)));
+
+            let boxes = case["boxes"].as_array().unwrap();
+            let mut raw_diffs = 0usize;
+            let mut bob_diffs = 0usize;
+            for (idx, b) in boxes.iter().enumerate() {
+                let ab = b["aabb_bits"].as_array().unwrap();
+                let min = Vec3::new(
+                    f64_hex(&ab[0]) as f32,
+                    f64_hex(&ab[1]) as f32,
+                    f64_hex(&ab[2]) as f32,
+                );
+                let max = Vec3::new(
+                    f64_hex(&ab[3]) as f32,
+                    f64_hex(&ab[4]) as f32,
+                    f64_hex(&ab[5]) as f32,
+                );
+                let want = b["visible"].as_bool().unwrap();
+                assert_eq!(
+                    got_frustum.intersects(min, max),
+                    want,
+                    "{name} box {idx} via cull_frustum"
+                );
+                assert_eq!(
+                    view_frustum.intersects(min, max),
+                    want,
+                    "{name} box {idx} via ViewSet::cull"
+                );
+                if raw_fov_frustum.intersects(min, max) != want {
+                    raw_diffs += 1;
+                }
+                if bobbed_frustum.intersects(min, max) != want {
+                    bob_diffs += 1;
+                }
+            }
+            if fov < opt_fov {
+                assert!(
+                    raw_diffs > 0,
+                    "{name}: narrowed render FOV must differ from cull FOV"
+                );
+                assert!(
+                    bob_diffs > 0,
+                    "{name}: bobbed culling must differ from unbobbed 26.3 witness"
+                );
+            }
+        }
     }
 }

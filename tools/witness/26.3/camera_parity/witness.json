@@ -1133,6 +1133,51 @@
       "interaction_vignette_after_1_tick_bits": "3c23d70a",
       "player_border_dist_bits": "4058e00000000000",
       "interaction_border_dist_bits": "4012000000000000"
+    },
+    "streaming_and_particles": {
+      "camera_chunk": [
+        6,
+        6
+      ],
+      "entity_block_y": 300,
+      "entity_block_pos": [
+        96,
+        300,
+        96
+      ],
+      "camera_pos_bits": [
+        "4058200000000000",
+        "4072d9eb94c00000",
+        "4058200000000000"
+      ]
+    },
+    "debug": {
+      "position_lines": [
+        "XYZ: 96.500 / 300.00000 / 96.500",
+        "Block: 96 300 96",
+        "Chunk: 6 18 6 [6 6 in r.0.0.mca]",
+        "Facing: south (Towards positive Z) (0.0 / 0.0)",
+        "minecraft:overworld FC: 0"
+      ],
+      "biome_line": "Biome: minecraft:desert",
+      "light_line": "Client Light: 0 (0 sky, 0 block)",
+      "chunk_borders": {
+        "line_count": 920,
+        "min_x_bits": "4054000000000000",
+        "max_x_bits": "4060000000000000",
+        "min_z_bits": "4054000000000000",
+        "max_z_bits": "4060000000000000"
+      },
+      "entity_hitboxes": {
+        "player_box_emitted_in_first_person": true,
+        "camera_interaction_box_emitted_in_first_person": false
+      }
+    },
+    "spectator_crosshair": {
+      "cart_only_hit_id": 40,
+      "cart_only_crosshair": true,
+      "with_interaction_hit_id": 41,
+      "with_interaction_crosshair": false
     }
   },
   "cull_frustum": {

@@ -85,16 +85,27 @@ fn client_camera_entity_returns_to_player_after_removal() {
         );
         game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![31] }))
             .unwrap();
-        assert_eq!(camera(game), Some(local));
+        // Vanilla 26.3 retains the removed camera entity and post effect until SetCamera replaces it.
+        assert_eq!(camera(game), Some(attached));
+        assert_eq!(
+            attached.position(game),
+            None,
+            "removed camera entity is no longer in the level"
+        );
         assert!(
-            game.controls_camera(),
-            "movement input and position packets are enabled"
+            !game.controls_camera(),
+            "movement stays paused while camera remains detached"
         );
         assert!(!game.hides_as_camera(31));
-        assert!(game.spectated_post_effect.is_none());
+        assert!(game.spectated_post_effect.is_some());
         game.handle_packet(C::SetCamera(play::SetCamera { camera_id: 7 }))
             .unwrap();
         assert_eq!(camera(game), Some(local));
+        assert!(
+            game.controls_camera(),
+            "movement input and position packets are enabled after SetCamera restores player"
+        );
+        assert!(game.spectated_post_effect.is_none());
 
         game.title = Some(game.new_title(game.save.root.clone()));
         assert!(

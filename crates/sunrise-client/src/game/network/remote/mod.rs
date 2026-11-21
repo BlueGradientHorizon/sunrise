@@ -205,8 +205,13 @@ impl ChunkGenerator for NoTerrain {
 
 /// A server entity the client tracks (position as last sent).
 pub(super) struct Tracked {
-    kind: String,
-    position: [f64; 3],
+    pub(in crate::game) kind: String,
+    pub(in crate::game) position: [f64; 3],
+    pub(in crate::game) previous: [f64; 3],
+    pub(in crate::game) yaw: f32,
+    pub(in crate::game) pitch: f32,
+    pub(in crate::game) previous_yaw: f32,
+    pub(in crate::game) previous_pitch: f32,
     /// `Entity.getPositionCodec`'s base: the position the server last
     /// reported (AddEntity, MoveEntity, EntityPositionSync), which a move
     /// packet's delta counts from. A TeleportEntity moves the entity but not
@@ -333,6 +338,8 @@ pub(super) struct Remote {
     /// `Minecraft.cameraEntity` when the server put the view on another
     /// entity (ClientboundSetCameraPacket); None while it is the player.
     pub(super) camera: Option<i32>,
+    /// Detached camera snapshot retained after `RemoveEntities` until `SetCamera` replaces it.
+    pub(super) detached_camera: Option<Box<crate::game::remote_camera::ResolvedCameraEntity>>,
     /// The item the player's use began with (`LivingEntity.useItem`).
     pub(super) use_item: Option<Arc<str>>,
     pub(super) dimension: DimensionType,

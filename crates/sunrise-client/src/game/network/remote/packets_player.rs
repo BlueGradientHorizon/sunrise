@@ -47,6 +47,7 @@ impl Game<'_> {
             r.local_entity_silent = false;
             // handleLogin: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
             r.logged_in = true;
             r.view_distance = p.chunk_radius;
             r.simulation_distance = p.simulation_distance;
@@ -181,7 +182,9 @@ impl Game<'_> {
             r.health = (20.0, 20, 5.0);
             // handleRespawn: the new LocalPlayer is the camera.
             r.camera = None;
+            r.detached_camera = None;
         }
+        self.view = Default::default();
         self.capture(true);
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(

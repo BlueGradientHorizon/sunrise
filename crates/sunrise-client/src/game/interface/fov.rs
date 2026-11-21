@@ -15,7 +15,7 @@ pub(super) fn studio_draws_hand(studio_freecam: bool, ordinary_hand_visible: boo
 }
 use sunrise_client::{
     camera::{
-        BobState, CameraFluid, FovPlayer, HurtBob, UseItem, bob_matrix, field_of_view_modifier,
+        BobState, CameraFluid, FovPlayer, UseItem, bob_matrix, field_of_view_modifier,
         spinning_effect_matrix,
     },
     fog::{FogType, fog_type},
@@ -96,12 +96,10 @@ impl Game<'_> {
             valid_fov_modifier(modifier, base)
         });
         let target = self.zoomed_fov_target(target);
-        // A server's spectator camera on a mob or an armor stand: its eye
-        // height. Its modifier stays 1 (another player's own modifier is not
-        // modelled here); the zoom extra still narrows it.
-        if let Some(e) = self.spectated_camera_snapshot() {
+        // Non-local camera entity: own eye height and modifier 1 (zoom still narrows it).
+        if let Some(cam) = self.camera_subject().filter(|c| !c.is_local_player) {
             self.view
-                .tick(Some(e.eye_height), self.zoomed_fov_target(1.0));
+                .tick(Some(cam.camera.eye_height), self.zoomed_fov_target(1.0));
             return;
         }
         let eye = self.player.as_ref().map(|p| {
@@ -124,10 +122,9 @@ impl Game<'_> {
     }
     /// `modifyFovBasedOnDeathOrFluid`'s death time: the camera entity's, so a spectated entity's.
     fn camera_death_time(&self) -> Option<i32> {
-        match self.spectated_camera_snapshot() {
-            Some(e) => e.living.and_then(|l| l.dead),
-            None => self.death_time(),
-        }
+        self.camera_subject()
+            .and_then(|c| c.camera.living)
+            .and_then(|l| l.dead)
     }
     /// `Camera.getFluidInCamera` for the camera at `camera`, where the parts of each block it
     /// reads may answer the state the camera sees there (`state_at_viewpoint`), and the mods may
@@ -211,8 +208,9 @@ impl Game<'_> {
         if !self.settings.extras.lod_zoom_detail {
             return None;
         }
+        let yaw = self.camera_subject().map_or(self.yaw, |c| c.camera.y_rot);
         sunrise_client::lod::ZoomAim::new(
-            self.yaw,
+            yaw,
             self.fov_degrees(1.0, camera),
             self.zoom_magnification(camera),
         )
@@ -229,21 +227,17 @@ impl Game<'_> {
     /// The pose `GameRenderer.renderLevel` multiplies into the projection:
     /// `bobHurt`, then `bobView` with the View Bobbing option.
     pub(super) fn bob_matrix(&self, partial: f32) -> glam::Mat4 {
-        let Some(p) = self.player.as_ref() else {
+        let Some(cam) = self.camera_subject() else {
             return glam::Mat4::IDENTITY;
         };
-        let hurt = &p.health.hurt;
         let state = BobState {
-            living: Some(HurtBob {
-                hurt_time: p.health.hurt_animation_time as f32 - partial,
-                hurt_duration: hurt.hurt_duration,
-                hurt_dir: p.health.hurt_dir,
-                death_time: self.death_time().map(|t| t as f32 + partial),
+            living: cam.hurt.map(|h| h.bob(partial)),
+            player: cam.avatar_bob.map(|avatar| {
+                (
+                    avatar.backwards_interpolated_walk_distance(partial),
+                    avatar.interpolated_bob(partial),
+                )
             }),
-            player: Some((
-                self.avatar.backwards_interpolated_walk_distance(partial),
-                self.avatar.interpolated_bob(partial),
-            )),
         };
         let tilt = self.settings.file.double("damageTiltStrength");
         glam::Mat4::from_cols_array(&bob_matrix(&state, tilt, self.settings.view_bobbing).m)

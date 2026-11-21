@@ -347,7 +347,7 @@ impl Game<'_> {
             position: feet,
             eye_y,
             underwater,
-            spectator: self.spectator(),
+            spectator: self.own_player_is_spectator(),
             light: &light,
             bubble_column,
         };

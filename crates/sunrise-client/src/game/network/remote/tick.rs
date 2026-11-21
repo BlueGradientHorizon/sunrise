@@ -91,13 +91,7 @@ impl Game<'_> {
         if !running {
             return;
         }
-        let camera = self.player.as_ref().map(|p| {
-            [
-                p.position.x,
-                p.position.y + f64::from(p.dimensions.eye_height),
-                p.position.z,
-            ]
-        });
+        let camera = self.camera_eye_position();
         let mut looks = std::mem::take(&mut self.guardian_look_scratch);
         looks.clear();
         looks.extend(
@@ -129,6 +123,16 @@ impl Game<'_> {
         use crate::game::native_ticks::{PLAYER, TickKind};
 
         if running {
+            if let Some(r) = self.remote.as_mut() {
+                for t in r.entities.values_mut() {
+                    t.previous = t.position;
+                    t.previous_yaw = t.yaw;
+                    t.previous_pitch = t.pitch;
+                }
+            }
+            for i in self.interactions.values_mut() {
+                i.snapshot_previous();
+            }
             self.tick_text_displays();
             self.tick_remote_ominous_item_spawners();
         }
@@ -1221,11 +1225,16 @@ impl Game<'_> {
         {
             return;
         }
-        let camera_y = (player.position.y + f64::from(self.eye)).floor() as i32;
+        let cam_eye = self.camera_eye_position().unwrap_or([
+            player.position.x,
+            player.position.y + f64::from(self.eye),
+            player.position.z,
+        ]);
+        let camera_y = cam_eye[1].floor() as i32;
         let camera = [
-            player.position.x.floor() as i32,
+            cam_eye[0].floor() as i32,
             camera_y,
-            player.position.z.floor() as i32,
+            cam_eye[2].floor() as i32,
         ];
         // `Util.toMillis(chunkSectionFadeInTime)`.
         let fade_ms = sunrise_client::gfx::fade_millis(self.settings.chunk_fade as f32);

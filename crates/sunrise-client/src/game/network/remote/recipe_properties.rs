@@ -12,11 +12,14 @@ impl Game<'_> {
             return;
         };
         remote.logged_out = true;
+        remote.camera = None;
+        remote.detached_camera = None;
         let player = self
             .player
             .as_ref()
             .map(|_| (remote.entity_id, remote.profile));
         self.reset_client_item_use();
+        self.view = Default::default();
         self.native_client_player_logging_out(player.map(|p| p.0), player.map(|p| p.1));
         if self.mod_screen.is_some() {
             self.remote_close_local();

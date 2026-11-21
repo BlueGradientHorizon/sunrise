@@ -11,8 +11,14 @@ use sunrise_protocol::entity_data::Value;
 /// and `DATA_RESPONSE` (10), from its `defineSynchedData`.
 pub(super) struct RemoteInteraction {
     pub position: Vec3,
+    pub previous: Vec3,
+    pub yaw: f32,
+    pub pitch: f32,
+    pub previous_yaw: f32,
+    pub previous_pitch: f32,
     pub width: f32,
     pub height: f32,
+    pub dimensions_refreshed: bool,
     pub response: bool,
     /// `Entity.getVehicle`: ModelEngine's hitboxes ride the pivot that
     /// carries them.
@@ -21,13 +27,68 @@ pub(super) struct RemoteInteraction {
 
 impl RemoteInteraction {
     pub fn new(position: [f64; 3]) -> Self {
+        Self::new_with_rotation(position, 0.0, 0.0)
+    }
+    pub fn new_with_rotation(position: [f64; 3], yaw: f32, pitch: f32) -> Self {
+        let pos = Vec3::new(position[0], position[1], position[2]);
+        let yaw = if yaw.is_finite() { yaw } else { 0.0 };
+        let pitch = if pitch.is_finite() {
+            (pitch % 360.0).clamp(-90.0, 90.0)
+        } else {
+            0.0
+        };
         Self {
-            position: Vec3::new(position[0], position[1], position[2]),
+            position: pos,
+            previous: pos,
+            yaw,
+            pitch,
+            previous_yaw: yaw,
+            previous_pitch: pitch,
             width: 1.0,
             height: 1.0,
+            dimensions_refreshed: false,
             response: false,
             vehicle: None,
         }
+    }
+    /// Unsynced spawns keep EntityType's 0x0 eye height until DATA_POSE/WIDTH/HEIGHT triggers refreshDimensions.
+    pub fn eye_height(&self) -> f32 {
+        if self.dimensions_refreshed {
+            self.height * 0.85
+        } else {
+            0.0
+        }
+    }
+    /// Unsynced spawns keep EntityType's 0x0 dimensions until refreshDimensions runs.
+    pub fn seat_height(&self) -> f64 {
+        if self.dimensions_refreshed {
+            f64::from(self.height)
+        } else {
+            0.0
+        }
+    }
+    pub fn snapshot_previous(&mut self) {
+        self.previous = self.position;
+        self.previous_yaw = self.yaw;
+        self.previous_pitch = self.pitch;
+    }
+    pub fn set_rot(&mut self, yaw: f32, pitch: f32) {
+        if yaw.is_finite() {
+            self.yaw = yaw % 360.0;
+        }
+        if pitch.is_finite() {
+            self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+        }
+    }
+    pub fn snap_to(&mut self, position: Vec3, yaw: f32, pitch: f32) {
+        self.position = position;
+        if yaw.is_finite() {
+            self.yaw = yaw;
+        }
+        if pitch.is_finite() {
+            self.pitch = (pitch % 360.0).clamp(-90.0, 90.0);
+        }
+        self.snapshot_previous();
     }
     /// `Entity.positionRider`'s move: a passenger is placed on its vehicle's
     /// seat, not moved on its own.
@@ -42,18 +103,21 @@ impl RemoteInteraction {
         let p = self.position;
         Aabb::new(
             Vec3::new(p.x - half, p.y, p.z - half),
-            Vec3::new(
-                p.x + half,
-                p.y + f64::from(self.height.max(0.0)),
-                p.z + half,
-            ),
+            Vec3::new(p.x + half, p.y + f64::from(self.height), p.z + half),
         )
     }
     pub fn metadata(&mut self, values: &[(u8, i32, Value)]) {
         for (index, _, value) in values {
             match (index, value) {
-                (8, Value::Float(width)) => self.width = *width,
-                (9, Value::Float(height)) => self.height = *height,
+                (6, _) => self.dimensions_refreshed = true,
+                (8, Value::Float(width)) => {
+                    self.width = *width;
+                    self.dimensions_refreshed = true;
+                }
+                (9, Value::Float(height)) => {
+                    self.height = *height;
+                    self.dimensions_refreshed = true;
+                }
                 (10, Value::Bool(response)) => self.response = *response,
                 _ => {}
             }
@@ -74,8 +138,10 @@ impl Game<'_> {
         }
         let (eye, dir) = self.aim()?;
         let reach = self.entity_reach;
+        let camera = self.pick_camera_id();
         self.interactions
             .iter()
+            .filter(|&(&id, _)| camera != Some(id as u32))
             .filter_map(|(&id, i)| ray_box(eye, dir, reach, i.bounds()).map(|d| (id, d)))
             .min_by(|a, b| a.1.total_cmp(&b.1))
     }
