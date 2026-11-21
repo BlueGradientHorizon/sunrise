@@ -17,18 +17,24 @@ impl Game<'_> {
         let (id, join, position, velocity) = (r.id, r.join, r.position, r.velocity);
         let owner = self.rocket_owner(&r);
         let target = self.native_impact_target(hit);
-        self.rockets.put_back(index, r);
+        // The resident owner keeps its slot during the tick: publish the advanced
+        // state for the listeners, then read it back as the next tick clone.
+        if !self.rockets.store_back(index, r) {
+            return None;
+        }
         let canceled =
             self.native_separate_projectile_impact(id, "minecraft:firework_rocket", owner, hit);
-        let r = self.rockets.extract(join)?;
+        let at = self.rockets.locate(join)?;
         if self
             .persist
             .removals
             .contains(&super::super::commands::Target::Rocket(id))
         {
+            drop(self.rockets.extract(join)?);
             self.rockets.retire_extracted(id, join);
             return None;
         }
+        let r = self.rockets[at].clone();
         let changed = r.position != position
             || r.velocity != velocity
             || target != self.native_impact_target(hit);

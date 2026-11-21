@@ -26,6 +26,7 @@ pub(super) const FIREWORK_EXPLODE_EVENT: i8 = 17;
 #[path = "fireworks/impact.rs"]
 mod impact;
 
+#[derive(Clone)]
 pub(super) struct Rocket {
     /// Entity-owned registration metadata; content clones are detached.
     pub(super) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
@@ -719,8 +720,39 @@ impl Game<'_> {
                 i += 1;
                 continue;
             }
-            let join = self.rockets[i].join;
-            let mut r = self.rockets.extract(join).unwrap();
+            // Like falling blocks and boats, tick an unbound clone while the resident
+            // owner keeps its slot: extracting and reinserting every rocket shifts the
+            // list tail twice per entity, which is O(n^2) for a crowd of rockets.
+            let id = self.rockets[i].id;
+            let rocket = self.rockets[i].clone();
+            let kept = self.with_entity_held_out(id, |game| {
+                game.tick_rocket(i, rocket, &targets, hears_impacts)
+            });
+            // A hook may have added or removed rockets: resume right after this one
+            // where it stands, or at `i` when it is gone.
+            i = if !kept {
+                i
+            } else if self.rockets.get(i).is_some_and(|rocket| rocket.id == id) {
+                i + 1
+            } else {
+                self.rockets
+                    .iter()
+                    .position(|rocket| rocket.id == id)
+                    .map_or(i, |index| index + 1)
+            };
+        }
+    }
+    /// One tick of `r`, a clone of the resident rocket at `index`. Returns whether the
+    /// rocket stays in the list; one that explodes or was removed has left it.
+    fn tick_rocket(
+        &mut self,
+        index: usize,
+        mut r: Rocket,
+        targets: &[(Who, Aabb)],
+        hears_impacts: bool,
+    ) -> bool {
+        let i = index;
+        {
             r.previous = r.position;
             // Entity.baseTick's setOldRot: where updateRotation eases from.
             let old_rotation = r.rotation;
@@ -816,7 +848,7 @@ impl Game<'_> {
                 r.velocity = r.velocity.scale(-0.5);
             } else {
                 let Some((rocket, canceled)) = self.rocket_impact(i, r, hit, hears_impacts) else {
-                    continue;
+                    return false;
                 };
                 r = rocket;
                 match hit {
@@ -840,19 +872,32 @@ impl Game<'_> {
             r.life += 1;
             self.rocket_spark(&r);
             if r.life > r.lifetime {
-                self.explode_rocket(&r);
-                self.rockets.retire_extracted(r.id, r.join);
-                continue;
+                // Only terminal owners leave storage; carry the resident's lifetime
+                // into the final state before it goes off.
+                let (id, join) = (r.id, r.join);
+                let Some(mut owner) = self.rockets.extract(join) else {
+                    return false;
+                };
+                sunrise_client::join_seq::store_back(&mut owner, r);
+                self.explode_rocket(&owner);
+                self.rockets.retire_extracted(id, join);
+                return false;
             }
             let (id, from, to) = (r.id, r.previous, r.position);
-            self.rockets.put_back(i, r);
+            if !self.store_rocket_back(i, r) {
+                return false;
+            }
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-            i = self
-                .rockets
-                .iter()
-                .position(|rocket| rocket.id == id)
-                .map_or(i, |index| index + 1);
+            true
         }
+    }
+    /// Refuse a removed target before carrying its owning slot into a tick clone.
+    pub(super) fn store_rocket_back(&mut self, index: usize, rocket: Rocket) -> bool {
+        !self
+            .persist
+            .removals
+            .contains(&super::commands::Target::Rocket(rocket.id))
+            && self.rockets.store_back(index, rocket)
     }
     /// `FireworkRocketEntity.explode` and `dealExplosionDamage`.
     fn explode_rocket(&mut self, r: &Rocket) {

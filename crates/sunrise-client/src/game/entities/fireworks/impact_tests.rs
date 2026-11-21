@@ -117,3 +117,47 @@ fn rockets_skip_misses_deflections_and_a_closed_gate_but_keep_lifetime_expiry() 
         });
     }
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_crowd_of_rockets_ticks_in_place_keeping_order_and_identity() {
+    with_probe(Action::Allow, true, |game, _| {
+        for id in 0..6 {
+            let mut r = Rocket::remote(
+                100 + id,
+                Vec3::new(0.5 + f64::from(id) * 4.0, 90.5, 0.5),
+                Vec3::new(0.0, 0.2, 0.0),
+            );
+            r.angled = true;
+            r.left_owner = true;
+            r.lifetime = 100;
+            game.rockets.push(r);
+        }
+        let joins: Vec<_> = game.rockets.iter().map(|r| (r.id, r.join)).collect();
+        for tick in 1..=3 {
+            game.tick_rockets();
+            // Continuing flights keep every resident's identity and order.
+            assert_eq!(
+                game.rockets
+                    .iter()
+                    .map(|r| (r.id, r.join))
+                    .collect::<Vec<_>>(),
+                joins
+            );
+            assert!(game.rockets.iter().all(|r| r.life == tick));
+            assert_eq!(
+                game.resident_entities.table.get_mut().end_tick(),
+                Ok(())
+            );
+        }
+        // Expired rockets permanently leave the list, the others stay put.
+        game.rockets[2].lifetime = 0;
+        game.tick_rockets();
+        assert_eq!(game.rockets.len(), 5);
+        assert!(game.rockets.iter().all(|r| r.id != 102));
+        assert_eq!(
+            game.rockets.iter().map(|r| r.id).collect::<Vec<_>>(),
+            [100, 101, 103, 104, 105]
+        );
+    });
+}
