@@ -384,6 +384,21 @@ fn a_line_widened_by_less_than_half_a_pixel_keeps_the_packs_width() {
     assert_none_wrong(wrong);
 }
 
+/// A line program whose two corners of an end land 1/4096 pixels apart, a quarter of the
+/// 1/1024 px floor (the rounding a driver may leave between runs of a pack that only places its
+/// line), is widened by the game: 3 pixels to each side, give or take the pack's 1/8192, which
+/// no pixel centre is near.
+#[test]
+fn a_line_spread_below_the_rounding_floor_is_widened_by_the_game() {
+    let wrong = wrong_pixels(
+        &widening(1.0 / 4096.0),
+        &[(0xFFFF_FFFF, 6.0)],
+        0.0,
+        &[(3.0, WHITE)],
+    );
+    assert_none_wrong(wrong);
+}
+
 /// A line program that widens its line to 4 pixels, then turns the frame a quarter turn (each
 /// edge drawn across its own direction before): its band is exactly the pack's, 2 to each side
 /// of the edge where the pack drew it. The game measures the pack's width across the edge as

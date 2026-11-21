@@ -15,7 +15,7 @@
 /// by running the pack's vertex stage for each corner of the strip: a pack that only places the
 /// line (a transform, a turn, a jitter, the world drawn into part of its buffers) puts both
 /// corners of an end at the same place, one that widens it puts them apart across the line, by
-/// any amount. Then the stroke keeps the pack's width, and a stroke with one drawn over it (the
+/// any visible amount (more than 1/1024 px, a floor for rounding only). Then the stroke keeps the pack's width, and a stroke with one drawn over it (the
 /// high contrast outline's black one) is widened across the drawn edge by how much wider than
 /// that one the game draws it, so it still shows around it. Each run starts with the pack's
 /// globals as the first did. A line program that writes images or buffers isn't run again (its
@@ -52,14 +52,17 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     // own; `hz_l_s`, each in pixels. The edge on screen, `hz_l_d`, runs from the middle of the
     // start's two corners to the end's, as the pack drew it (turned, moved, shortened), and
     // `hz_l_n` is its unit perpendicular. `hz_l_a0` and `hz_l_a1` are how far apart across it
-    // the pack put the even and the odd corner of the start and of the end: not 0 at either,
-    // and the pack widened the line. The stroke then keeps the pack's width and sides, and the
+    // the pack put the even and the odd corner of the start and of the end: more than 1/1024
+    // px at either, and the pack widened the line. The stroke then keeps the pack's width and sides, and the
     // game adds only what this stroke has over the one drawn on it, to the side of this
     // vertex's corner from its partner (none where the pack put an end's two corners at one
     // place: that end stays a point). Otherwise the game widens it to the side of its corner.
-    // Exactly 0: a pack that only places its line runs the same code for each corner, on the
-    // same inputs but a vertex index it doesn't read, so the two corners of an end are one
-    // point. A stage that isn't run again (`hz_vertex_reruns`) gets the game's own transform
+    // A pack that only places its line runs the same code for each corner, on the same inputs
+    // but a vertex index it doesn't read, so the two corners of an end are one point; the
+    // 1/1024 px floor is only for a driver that compiles the four runs apart and rounds them
+    // differently (contracting multiplies and adds into FMAs in one copy and not another),
+    // which can leave them a millionth of a pixel apart. It is about 500 times below half a
+    // pixel and far below any width that shows. A stage that isn't run again (`hz_vertex_reruns`) gets the game's own transform
     // for its corners, and the game's widening.
     // A rendered edge of no length (or not finite) has no direction to widen across; it covers
     // nothing, and `hz_l_d` is any unit vector there.
@@ -93,8 +96,9 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
          vec2 hz_l_n = vec2(-hz_l_d.y, hz_l_d.x);\n        \
          float hz_l_a0 = dot(hz_l_s[0] - hz_l_s[1], hz_l_n);\n        \
          float hz_l_a1 = dot(hz_l_s[2] - hz_l_s[3], hz_l_n);\n        \
-         bool hz_l_own = abs(hz_l_a0) > 0.0 || abs(hz_l_a1) > 0.0;\n        \
-         float hz_l_even = hz_l_own ? sign(hz_l_k < 2 ? hz_l_a0 : hz_l_a1) : 1.0;\n        \
+         bool hz_l_own = abs(hz_l_a0) > 0.0009765625 || abs(hz_l_a1) > 0.0009765625;\n        \
+         float hz_l_e = hz_l_k < 2 ? hz_l_a0 : hz_l_a1;\n        \
+         float hz_l_even = !hz_l_own ? 1.0 : abs(hz_l_e) > 0.0009765625 ? sign(hz_l_e) : 0.0;\n        \
          float hz_l_side = (hz_l_k & 1) == 0 ? hz_l_even : -hz_l_even;\n        \
          float hz_l_w = hz_l_own ? hz_l_width - hz_l_over : hz_l_width;\n        \
          gl_Position.xy += hz_l_n * (hz_l_side * hz_l_w) / hz_target.xy * gl_Position.w;\n    }\n"
