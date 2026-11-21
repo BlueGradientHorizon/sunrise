@@ -213,6 +213,14 @@ impl Game<'_> {
         if m.species() == Species::WanderingTrader && item == "minecraft:name_tag" {
             return stack.is_some_and(|s| s.custom_name().is_some());
         }
+        // MushroomCow.mobInteract: a stew source answers SUCCESS before ordinary food.
+        if m.species() == Species::Mooshroom
+            && m.extra.variant == 1
+            && !m.is_baby()
+            && self.items().suspicious_stew_effects(item).is_some()
+        {
+            return true;
+        }
         mob_swings(m, item)
     }
     /// `AbstractHorse.handleEating` (`Llama`'s and `Camel`'s too) on this
