@@ -6,9 +6,11 @@ use client::{
         Frame, Renderer, ScreenshotRequest,
         entity_skin::{SkinFrame, SkinJob, SkinPart, SkinVertex},
         pack_draw::EntitySpan,
+        world_primitives::{FrameHooks, PreparedHookGeometry, StageData},
     },
     graphics::GraphicsApi,
     hud::HudBatch,
+    render_geometry::Vertex,
     render_slots as native_render,
 };
 use std::{
@@ -109,6 +111,59 @@ fn read(path: &Path) -> Vec<u8> {
     assert_eq!(info.color_type, png::ColorType::Rgba);
     bytes.truncate(info.buffer_size());
     bytes
+}
+
+#[derive(Default)]
+struct WorldStageProbe {
+    copies: Vec<Vertex>,
+    stages: Vec<mod_api::RenderLevelStage>,
+    prepared_after_sky: Option<bool>,
+}
+
+impl FrameHooks for WorldStageProbe {
+    fn on_custom_geometry(&mut self, _: &[mod_api::RenderableSection], _: bool) {}
+    fn on_after_sky(&mut self, _: &[mod_api::RenderableSection], _: bool) {
+        self.stages.push(mod_api::RenderLevelStage::AfterSky);
+    }
+    fn on_prepare_render_buffers(
+        &mut self,
+        _: &[mod_api::RenderableSection],
+        _: bool,
+    ) -> PreparedHookGeometry {
+        self.prepared_after_sky =
+            Some(self.stages.last() == Some(&mod_api::RenderLevelStage::AfterSky));
+        let mut out = PreparedHookGeometry {
+            entities: std::mem::take(&mut self.copies),
+            ..Default::default()
+        };
+        if !out.entities.is_empty() {
+            out.entity_spans.push(EntitySpan {
+                start: 0,
+                stage: sunrise_shaders::render_stage("BLOCK_ENTITIES"),
+                id: 123,
+                ..Default::default()
+            });
+        }
+        out
+    }
+    fn on_render_stage(
+        &mut self,
+        stage: mod_api::RenderLevelStage,
+        _: &[mod_api::RenderableSection],
+        _: bool,
+    ) -> StageData<'_> {
+        self.stages.push(stage);
+        StageData::default()
+    }
+    fn custom_geometry(&self) -> StageData<'_> {
+        StageData::default()
+    }
+    fn on_after_level(&mut self, _: &[mod_api::RenderableSection], _: bool) {
+        self.stages.push(mod_api::RenderLevelStage::AfterLevel);
+    }
+    fn time(&self) -> f32 {
+        0.0
+    }
 }
 
 fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -289,6 +344,55 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     assert_eq!(OBSERVED.load(Ordering::Relaxed), 1);
     NEEDS_SPANS.store(false, Ordering::Relaxed);
     assert!(renderer.skins_entities());
+    // The second stream must retain its block-entity material after the frame's existing
+    // ordinary-entity spans. The pack's fragment shader emits the block ID in blue.
+    let mut hooks = WorldStageProbe {
+        copies: cpu[4..8]
+            .iter()
+            .map(|vertex| Vertex {
+                pos: [vertex.pos[0], vertex.pos[1], vertex.pos[2] - 0.25],
+                ..*vertex
+            })
+            .collect(),
+        ..Default::default()
+    };
+    frame.skybox = false;
+    frame.end_sky = false;
+    renderer.screenshot = Some(ScreenshotRequest {
+        path: out.join("world-stage-pack.png"),
+        size: None,
+        scaled: false,
+        background: false,
+    });
+    renderer.render(&frame, Some(&mut hooks))?;
+    renderer
+        .screenshot_result
+        .take()
+        .expect("world stage readback")?
+        .save()?;
+    assert!(
+        read(&out.join("world-stage-pack.png"))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[2] == 123)
+    );
+    use mod_api::RenderLevelStage as Stage;
+    assert!(!hooks.stages.contains(&Stage::AfterSky), "no sky work ran");
+    assert!(
+        !hooks.stages.contains(&Stage::AfterOpaqueBlocks),
+        "the pack owns terrain"
+    );
+    assert!(hooks.stages.contains(&Stage::AfterOpaqueFeatures));
+    assert!(hooks.stages.contains(&Stage::AfterTranslucentParticles));
+    assert_eq!(hooks.stages.last(), Some(&Stage::AfterLevel));
+    assert_eq!(hooks.prepared_after_sky, Some(false));
+    frame.skybox = true;
+    let mut sky_hooks = WorldStageProbe::default();
+    renderer.render(&frame, Some(&mut sky_hooks))?;
+    assert_eq!(sky_hooks.stages.first(), Some(&Stage::AfterSky));
+    assert_eq!(sky_hooks.prepared_after_sky, Some(true));
+
     pack(&mut renderer, &out.join("failed-pack"), false);
     assert!(
         !renderer.skins_entities(),

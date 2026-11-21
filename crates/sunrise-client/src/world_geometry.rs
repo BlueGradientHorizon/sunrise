@@ -1197,6 +1197,17 @@ mod tests {
         let mut culled_bad_light = far;
         culled_bad_light.light.block = 16;
         // Valid copies survive alongside culled and invalid visible copies; no rollback.
+        struct CountedCull(std::cell::Cell<u32>);
+        impl crate::gfx::Cull for CountedCull {
+            fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+                self.0.set(self.0.get() + 1);
+                crate::gfx::Cull::intersects(&NearX, min, max)
+            }
+            fn contains(&self, min: Vec3, max: Vec3) -> bool {
+                crate::gfx::Cull::contains(&NearX, min, max)
+            }
+        }
+        let cull = CountedCull(std::cell::Cell::new(0));
         draw.submit_model(
             batch,
             &[
@@ -1207,9 +1218,10 @@ mod tests {
                 bad_transform,
                 culled_bad_light,
             ],
-            Some(&NearX),
+            Some(&cull),
             |_| false,
         );
+        assert_eq!(cull.0.get(), 4, "only invalid bounds may skip culling");
         assert_eq!(draw.copy_count(), 1);
         assert_eq!(draw.copy(0).light, 0xF0F0);
         assert_eq!(draw.copy(0).overlay, 0);

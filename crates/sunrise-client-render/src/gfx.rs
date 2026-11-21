@@ -1376,7 +1376,7 @@ impl Renderer {
             );
         }
     }
-    /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render_with_hooks`.
+    /// Device `max_buffer_size`, for instance-room checks while `Renderer` is borrowed by `render`.
     pub fn max_buffer_size(&self) -> u64 {
         self.device.limits().max_buffer_size
     }

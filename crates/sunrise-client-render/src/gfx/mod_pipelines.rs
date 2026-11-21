@@ -6,7 +6,7 @@
 //! never while quads are being submitted, so a required pipeline the GPU refuses fails that
 //! load's renderer and the reload with it.
 
-use super::world_primitives::Upload;
+use super::world_primitives::{Upload, VertexPages};
 use crate::mod_pipelines::{Built, BuiltTexture, Pipelines};
 use glam::Mat4;
 use mod_api::{PipelineBlend, WorldDepth};
@@ -83,14 +83,15 @@ pub struct ModPipelines {
     group: wgpu::BindGroup,
     view: wgpu::Buffer,
     frame: wgpu::Buffer,
-    vertices: wgpu::Buffer,
+    vertices: VertexPages,
     /// The load `pipelines` was built from; 0 before any.
     generation: u64,
     /// By slot; `None` for a pipeline the load refused.
     pipelines: Vec<Option<Compiled>>,
     runs: Vec<Run>,
     /// Quads already appended to `vertices` during the current live frame.
-    pub(super) live_quads_used: u32,
+    live_pages: usize,
+    first_page: usize,
 }
 
 impl ModPipelines {
@@ -186,11 +187,12 @@ impl ModPipelines {
             group,
             view,
             frame,
-            vertices: buffer("Mod pipeline quads", 0, wgpu::BufferUsages::VERTEX),
+            vertices: VertexPages::default(),
             generation: 0,
             pipelines: Vec::new(),
             runs: Vec::new(),
-            live_quads_used: 0,
+            live_pages: 0,
+            first_page: 0,
         }
     }
 
@@ -403,7 +405,7 @@ impl ModPipelines {
         viewport: [u32; 2],
         time: f32,
     ) {
-        self.live_quads_used = 0;
+        self.live_pages = 0;
         queue.write_buffer(
             &self.view,
             0,
@@ -420,96 +422,19 @@ impl ModPipelines {
         );
     }
 
-    /// Upload and draw one live stage's mod pipeline quads at a non-overlapping offset in
-    /// `self.vertices`, growing into a fresh buffer if needed (previous draws keep the old buffer).
-    pub(super) fn upload_and_draw_live(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        pass: &mut wgpu::RenderPass<'_>,
-        reserve_indices: &mut dyn FnMut(u32),
-        indices: &wgpu::Buffer,
-        batch: &Batch<'_>,
-    ) {
-        if batch.runs.is_empty()
-            || batch
-                .set
-                .is_none_or(|set| set.generation() != self.generation)
-        {
-            return;
-        }
-        self.runs.clear();
-        let mut next = 0u32;
-        for run in batch.runs {
-            let quads = next..next + run.quads;
-            next = quads.end;
-            if quads.end as usize * 4 > batch.vertices.len()
-                || !matches!(self.pipelines.get(run.slot as usize), Some(Some(_)))
-            {
-                continue;
-            }
-            self.runs.push(Run {
-                slot: run.slot as usize,
-                stage: run.stage as usize,
-                quads,
-            });
-        }
-        let Some(last) = self.runs.last() else {
-            return;
-        };
-        let incoming = last.quads.end;
-        let stride = 4 * std::mem::size_of::<PipelineVertex>() as u64;
-        let needed_bytes = (self.live_quads_used as u64 + incoming as u64) * stride;
-        if self.vertices.size() < needed_bytes {
-            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Mod pipeline quads"),
-                size: needed_bytes.next_power_of_two(),
-                usage: self.vertices.usage(),
-                mapped_at_creation: false,
-            });
-            self.live_quads_used = 0;
-        }
-        let base_quad = self.live_quads_used;
-        let total_quads = base_quad + incoming;
-        reserve_indices(total_quads);
-        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..incoming as usize * 4]);
-        queue.write_buffer(&self.vertices, base_quad as u64 * stride, bytes);
-        self.live_quads_used = total_quads;
-
-        pass.set_bind_group(0, &self.group, &[]);
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
-        for run in &self.runs {
-            let Some(Some((pipeline, texture))) = self.pipelines.get(run.slot) else {
-                continue;
-            };
-            pass.set_pipeline(pipeline);
-            if let Some(texture) = texture {
-                pass.set_bind_group(1, texture, &[]);
-            }
-            let start = (base_quad + run.quads.start) * 6;
-            let end = (base_quad + run.quads.end) * 6;
-            pass.draw_indexed(start..end, 0, 0..1);
-        }
-    }
-
-    /// Uploads the frame's quads, drawn with `view_proj` into a frame `viewport` pixels big. The
-    /// number of quads to draw: the caller's quad indices must reach that far. A set this
-    /// renderer was not built with draws nothing.
-    pub fn prepare(
+    fn prepare_geometry(
         &mut self,
         device: &wgpu::Device,
         upload: Upload<'_>,
         batch: &Batch<'_>,
-        view_proj: Mat4,
-        viewport: [u32; 2],
-    ) -> u32 {
+        first_page: usize,
+    ) -> (usize, u32) {
         self.runs.clear();
         if batch
             .set
             .is_none_or(|set| set.generation() != self.generation)
         {
-            return 0;
+            return (first_page, 0);
         }
         let mut next = 0;
         for run in batch.runs {
@@ -529,19 +454,45 @@ impl ModPipelines {
             });
         }
         let Some(last) = self.runs.last() else {
-            return 0;
+            return (first_page, 0);
         };
         let quads = last.quads.end;
-        let bytes: &[u8] = bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]);
-        if self.vertices.size() < bytes.len() as u64 {
-            self.vertices = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Mod pipeline quads"),
-                size: (bytes.len() as u64).next_power_of_two(),
-                usage: self.vertices.usage(),
-                mapped_at_creation: false,
-            });
+        let next = self.vertices.upload(
+            device,
+            upload,
+            "Mod pipeline quads",
+            bytemuck::cast_slice(&batch.vertices[..quads as usize * 4]),
+            4 * std::mem::size_of::<PipelineVertex>() as u64,
+            first_page,
+        );
+        self.first_page = first_page;
+        (next, self.vertices.index_quads(quads))
+    }
+
+    pub(super) fn prepare_live(
+        &mut self,
+        device: &wgpu::Device,
+        upload: Upload<'_>,
+        batch: &Batch<'_>,
+    ) -> u32 {
+        let (next, indices) = self.prepare_geometry(device, upload, batch, self.live_pages);
+        self.live_pages = next;
+        indices
+    }
+
+    /// Upload the frame's quads and return the number of indices needed for its largest page.
+    pub fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        upload: Upload<'_>,
+        batch: &Batch<'_>,
+        view_proj: Mat4,
+        viewport: [u32; 2],
+    ) -> u32 {
+        let (_, quads) = self.prepare_geometry(device, upload, batch, 0);
+        if quads == 0 {
+            return 0;
         }
-        upload(&self.vertices, bytes);
         upload(&self.view, bytemuck::cast_slice(&view_proj.to_cols_array()));
         upload(
             &self.frame,
@@ -575,7 +526,6 @@ impl ModPipelines {
             if !bound {
                 bound = true;
                 pass.set_bind_group(0, &self.group, &[]);
-                pass.set_vertex_buffer(0, self.vertices.slice(..));
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
             }
             pass.set_pipeline(pipeline);
@@ -583,7 +533,10 @@ impl ModPipelines {
             if let Some(texture) = texture {
                 pass.set_bind_group(1, texture, &[]);
             }
-            pass.draw_indexed(run.quads.start * 6..run.quads.end * 6, 0, 0..1);
+            for (buffer, range) in self.vertices.ranges(self.first_page, run.quads.clone()) {
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw_indexed(range.start * 6..range.end * 6, 0, 0..1);
+            }
         }
     }
 }

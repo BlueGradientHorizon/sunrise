@@ -2,7 +2,7 @@
 use super::{TryIntoApi, TryIntoEngine};
 
 macro_rules! gui_draw_value {
-    ($draw:expr, $from:ident, $to:ident, $convert:ident($($args:expr),*)) => {
+    ($draw:expr, $from:ident, $to:ident, $convert:expr) => {
         match $draw {
             $from::Sprite {
                 sprite,
@@ -96,7 +96,7 @@ macro_rules! gui_draw_value {
                 color,
                 shadow,
             } => $to::Text {
-                text: text.$convert($($args),*)?,
+                text: ($convert)(text)?,
                 x: *x,
                 y: *y,
                 color: *color,
@@ -129,7 +129,7 @@ impl TryIntoApi for sunrise_client::hud_layout::GuiDraw {
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         use mod_api::client::hud_layout::GuiDraw as Api;
         use sunrise_client::hud_layout::GuiDraw as Engine;
-        Ok(gui_draw_value!(self, Engine, Api, try_into_api()))
+        Ok(gui_draw_value!(self, Engine, Api, TryIntoApi::try_into_api))
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for mod_api::client::hud_layout::GuiDraw {
@@ -138,6 +138,8 @@ impl<C: ?Sized> TryIntoEngine<C> for mod_api::client::hud_layout::GuiDraw {
     fn try_into_engine(&self, _: &C) -> Result<Self::Engine, Self::Error> {
         use mod_api::client::hud_layout::GuiDraw as Api;
         use sunrise_client::hud_layout::GuiDraw as Engine;
-        Ok(gui_draw_value!(self, Api, Engine, try_into_engine(&())))
+        Ok(gui_draw_value!(self, Api, Engine, |text| {
+            Ok::<_, Self::Error>(sunrise_client::api_text::to_engine_for_render(text))
+        }))
     }
 }
