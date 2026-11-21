@@ -5286,8 +5286,8 @@ def projectile_saved_uuid():
 
 
 def entity_ticking_gate():
-    """#12769: thrown potions, experience orbs, rockets and area effect clouds
-    freeze in a loaded chunk that no longer ticks entities, as it unloads."""
+    """#12769, #2361: thrown potions, experience orbs, rockets, area effect clouds,
+    evoker fangs and ominous item spawners freeze once their chunk leaves entity-ticking range."""
     x0, y0, z0 = 3392, 300, 3392
     chunk = [[x0 >> 4, z0 >> 4]]
     subjects = [
@@ -5298,14 +5298,26 @@ def entity_ticking_gate():
         ('area_effect_cloud', 'Duration:100000,Radius:0.5f', 'Age'),
         ('area_effect_cloud', 'Duration:100000,Radius:0.5f,potion_contents:{potion:"minecraft:regeneration"}', 'Age'),
     ]
+    fangs_uuid = '000031e1-0000-0000-0000-000700000001'
+    spawner_uuid = '000031e1-0000-0000-0000-000800000001'
+    box = f'x={x0},y={y0 - 8},z={z0},dx=16,dy=24,dz=16'
     ops = [cmd(f'/forceload add {x0} {z0}', False), {'op': 'wait_chunks', 'chunks': chunk}]
     for n, (kind, body, _) in enumerate(subjects, 1):
         ops += setup(f'/summon {kind} {x0 + 1}.5 {y0 + 2} {z0 + n * 2}.5 '
                      f'{{UUID:[I;12769,0,{n},1],NoGravity:1b,{body}}}')
+    ops += setup(
+        f'/summon minecraft:evoker_fangs {x0 + 5}.5 {y0 + 2} {z0 + 2}.5 '
+        '{UUID:[I;12769,0,7,1],Warmup:10,Silent:1b}',
+        f'/summon minecraft:ominous_item_spawner {x0 + 5}.5 {y0 + 2} {z0 + 6}.5 '
+        '{UUID:[I;12769,0,8,1],spawn_item_after_ticks:3L,item:{id:"minecraft:stone",count:1}}',
+    )
 
     def reads():
         for n, (_, _, key) in enumerate(subjects, 1):
             ops.append(cmd(f'/data get entity 000031e1-0000-0000-0000-{n:04x}00000001 {key}'))
+        ops.append(cmd(f'/data get entity {fangs_uuid} Warmup'))
+        ops.append(cmd(f'/execute if entity {spawner_uuid}'))
+        ops.append(cmd(f'/execute if entity @e[type=minecraft:item,{box}]'))
 
     ops.append({'op': 'tick', 'n': 2})
     reads()
@@ -5316,8 +5328,108 @@ def entity_ticking_gate():
     reads()
     ops.append({'op': 'tick', 'n': 3})
     reads()
-    return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=24,dz=16]',
-                       f'/forceload remove {x0} {z0}')
+    return ops + setup(f'/kill @e[type=!player,{box}]', f'/forceload remove {x0} {z0}')
+
+
+def fangs_ominous_spawner_ticking_witness_cases():
+    """26.3 witness cases for #2361 (evoker_fangs and ominous_item_spawner ticking-chunk gate)."""
+    return [
+        {'name': 'near_player_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [8.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'near_player_fangs_3_ticks', 'kind': 'evoker_fangs', 'pos': [8.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 3},
+        {'name': 'near_player_fangs_zero_warmup_1_tick', 'kind': 'evoker_fangs', 'pos': [8.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 0, 'ticks': 1},
+        {'name': 'near_player_fangs_expires', 'kind': 'evoker_fangs', 'pos': [8.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 0, 'ticks': 23},
+        {'name': 'sim_edge_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [40.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'outside_sim_ring_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [56.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'outside_sim_ring_fangs_5_ticks', 'kind': 'evoker_fangs', 'pos': [56.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 5},
+        {'name': 'neg_sim_edge_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [-31.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'neg_outside_sim_ring_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [-32.5, 200.0, 8.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'far_unforced_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [3397.5, 302.0, 3394.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'far_unforced_fangs_60_ticks', 'kind': 'evoker_fangs', 'pos': [3397.5, 302.0, 3394.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 60},
+        {'name': 'very_far_unforced_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [100000.5, 200.0, 0.5],
+         'forced_chunks': [], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'far_forced_fangs_1_tick', 'kind': 'evoker_fangs', 'pos': [3397.5, 302.0, 3394.5],
+         'forced_chunks': [[212, 212]], 'initial_warmup': 5, 'ticks': 1},
+        {'name': 'near_player_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [10.5, 200.0, 8.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'near_player_spawner_before_delay', 'kind': 'ominous_item_spawner', 'pos': [10.5, 200.0, 8.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 3, 'ticks': 2},
+        {'name': 'near_player_spawner_at_delay', 'kind': 'ominous_item_spawner', 'pos': [10.5, 200.0, 8.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 3, 'ticks': 3},
+        {'name': 'sim_edge_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [40.5, 200.0, 10.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'outside_sim_ring_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [56.5, 200.0, 10.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'outside_sim_ring_spawner_5_ticks', 'kind': 'ominous_item_spawner', 'pos': [56.5, 200.0, 10.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 5},
+        {'name': 'neg_sim_edge_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [-31.5, 200.0, 10.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'neg_outside_sim_ring_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [-32.5, 200.0, 10.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'far_unforced_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [3397.5, 302.0, 3398.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'far_unforced_spawner_60_ticks', 'kind': 'ominous_item_spawner', 'pos': [3397.5, 302.0, 3398.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 60},
+        {'name': 'very_far_unforced_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [100000.5, 200.0, 0.5],
+         'forced_chunks': [], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+        {'name': 'far_forced_spawner_1_tick', 'kind': 'ominous_item_spawner', 'pos': [3397.5, 302.0, 3398.5],
+         'forced_chunks': [[212, 212]], 'item': 'minecraft:stone', 'spawn_item_after_ticks': 1, 'ticks': 1},
+    ]
+
+
+def fangs_ominous_spawner_ticking_witness_script(cases):
+    """Build VanillaCommandExecOracle operations for recording the 26.3 ticking-gate witness."""
+    ops = [{'op': 'server_distances'}]
+    for index, case in enumerate(cases, 1):
+        x, y, z = case['pos']
+        cx, cz = int(x // 16), int(z // 16)
+        chunk_x0, chunk_z0 = cx * 16, cz * 16
+        uid = f'00000939-0000-0000-0000-{index:04x}00000001'
+        box = f'x={chunk_x0},y={int(y) - 16},z={chunk_z0},dx=16,dy=32,dz=16'
+        keep_forced = [cx, cz] in case['forced_chunks']
+        ops += [cmd('/tick freeze', False),
+                cmd(f'/forceload add {chunk_x0} {chunk_z0}', False),
+                {'op': 'wait_chunks', 'chunks': [[cx, cz]]},
+                cmd(f'/kill @e[type=!player,{box}]', False)]
+        if case['kind'] == 'evoker_fangs':
+            ops.append(cmd(
+                f'/summon minecraft:evoker_fangs {x} {y} {z} '
+                f'{{UUID:[I;2361,0,{index},1],Warmup:{case["initial_warmup"]},Silent:1b}}',
+                False))
+        else:
+            ops.append(cmd(
+                f'/summon minecraft:ominous_item_spawner {x} {y} {z} '
+                f'{{UUID:[I;2361,0,{index},1],spawn_item_after_ticks:{case["spawn_item_after_ticks"]}L,'
+                f'item:{{id:"{case["item"]}",count:1}}}}',
+                False))
+        if not keep_forced:
+            ops.append(cmd(f'/forceload remove {chunk_x0} {chunk_z0}', False))
+        ops += [cmd('/tick unfreeze', False),
+                {'op': 'tick', 'n': case['ticks']},
+                cmd('/tick freeze', False)]
+        if not keep_forced:
+            ops += [cmd(f'/forceload add {chunk_x0} {chunk_z0}', False),
+                    {'op': 'wait_chunks', 'chunks': [[cx, cz]]}]
+        ops.append(cmd(f'/execute if entity {uid}'))
+        if case['kind'] == 'evoker_fangs':
+            ops.append(cmd(f'/data get entity {uid} Warmup'))
+        else:
+            ops.append(cmd(f'/execute if entity @e[type=minecraft:item,{box}]'))
+        ops += [cmd(f'/kill @e[type=!player,{box}]', False),
+                cmd(f'/forceload remove {chunk_x0} {chunk_z0}', False),
+                cmd('/tick unfreeze', False),
+                {'op': 'tick', 'n': 1}]
+    return ops
 
 
 def summoned_eye_of_ender():

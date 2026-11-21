@@ -195,6 +195,10 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-fangs-ticking-witness', nargs='?',
+                        const=lab.ROOT / 'tools/witness/26.3/fangs_ominous_spawner_ticking_gate.json',
+                        type=Path,
+                        help='record the 26.3 vanilla ticking-gate witness JSON for fangs and ominous item spawners (Java only)')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -511,6 +515,11 @@ def main():
         # Generated scripts (tools/parity_fuzz.py): the common setup, then the file's [name, ops] groups only.
         groups = [('setup', corpus_module.group_setup()),
                   *[(name, ops) for name, ops in json.loads(args.groups_file.read_text(encoding='utf-8'))]]
+    if args.record_fangs_ticking_witness:
+        witness_cases = corpus_module.fangs_ominous_spawner_ticking_witness_cases()
+        groups = [('setup', corpus_module.group_setup()),
+                  ('fangs and ominous spawner ticking witness',
+                   corpus_module.fangs_ominous_spawner_ticking_witness_script(witness_cases))]
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -560,8 +569,18 @@ def main():
         java_options.append('-Dsunrise.functionAdmissionFixture=true')
     if synced:
         java_options.append(seed_agent.java_option(build, lock['minecraft']['java_major']))
-    run(['java', '-Xmx3G', '-Duser.timezone=UTC', *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture else []), *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
+    run(['java', '-Xmx3G', '-Duser.timezone=UTC', *(['-Dsunrise.loadedFixture=true'] if args.loaded_fixture or args.record_fangs_ticking_witness else []), *java_options, '-cp', os.pathsep.join([str(classes), str(jars['server']), dependency_path]),
          'dev.sunriselab.parity.VanillaCommandExecOracle', vanilla_dir / 'universe', script_path, build / 'vanilla.jsonl', SEED], 'java', cwd=vanilla_dir)
+
+    if args.record_fangs_ticking_witness:
+        write_fangs_ticking_witness(
+            args.record_fangs_ticking_witness,
+            lock['minecraft']['version'],
+            witness_cases,
+            [json.loads(line) for line in (build / 'vanilla.jsonl').read_text(encoding='utf-8').splitlines()],
+        )
+        print(f'Recorded 26.3 fangs/spawner ticking witness: {args.record_fangs_ticking_witness}')
+        return
 
     if any(op['op'] == 'raid_state' for op in script):
         from raid_village_corpus import validate_java_inputs
@@ -898,6 +917,50 @@ def compare(v, r, comparison=None):
             return None
         return 'results'
     return None
+
+
+def write_fangs_ticking_witness(path, game_version, cases, records):
+    """Write the real-run vanilla ticking-gate witness JSON from VanillaCommandExecOracle output."""
+    if len(records) != 1 + 2 * len(cases):
+        sys.exit(f'unexpected record count for ticking witness: got {len(records)}, expected {1 + 2 * len(cases)}')
+    distances = records[0].get('results', [])
+    if len(distances) != 2 or not all(r[0] is True for r in distances):
+        sys.exit(f'unexpected server_distances record: {records[0]}')
+    view_distance, simulation_distance = distances[0][1], distances[1][1]
+    out_cases = []
+    for index, case in enumerate(cases):
+        present_rec = records[1 + 2 * index]
+        detail_rec = records[2 + 2 * index]
+        present = bool(present_rec['results'] and present_rec['results'][0][0] and present_rec['results'][0][1] > 0)
+        entry = dict(case)
+        entry['expected_present'] = present
+        if case['kind'] == 'evoker_fangs':
+            if present:
+                text = ''.join(span[0] for msg in detail_rec['messages'] for span in msg)
+                match = re.search(r'has the following entity data: (-?\d+)$', text)
+                if not match:
+                    sys.exit(f'could not parse Warmup from vanilla output: {detail_rec}')
+                warmup = int(match.group(1))
+                if detail_rec['results'] != [[True, warmup]]:
+                    sys.exit(f'Warmup callback disagreed with message: {detail_rec}')
+                entry['expected_warmup'] = warmup
+            else:
+                entry['expected_warmup'] = None
+        else:
+            count = detail_rec['results'][0][1] if detail_rec['results'] and detail_rec['results'][0][0] else 0
+            entry['expected_spawned_items'] = count
+        out_cases.append(entry)
+    payload = {
+        'game_version': game_version,
+        'oracle': 'VanillaCommandExecOracle',
+        'command': 'python3 tools/test_command_exec_parity.py --record-fangs-ticking-witness',
+        'player_pos': [8.5, 230.0, 8.5],
+        'view_distance': view_distance,
+        'simulation_distance': simulation_distance,
+        'cases': out_cases,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
 
 
 def render(record):

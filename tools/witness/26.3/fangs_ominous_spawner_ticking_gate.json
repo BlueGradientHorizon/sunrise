@@ -1,0 +1,386 @@
+{
+  "game_version": "26.3",
+  "oracle": "VanillaCommandExecOracle",
+  "command": "python3 tools/test_command_exec_parity.py --record-fangs-ticking-witness",
+  "player_pos": [
+    8.5,
+    230.0,
+    8.5
+  ],
+  "view_distance": 2,
+  "simulation_distance": 2,
+  "cases": [
+    {
+      "name": "near_player_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        8.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 4
+    },
+    {
+      "name": "near_player_fangs_3_ticks",
+      "kind": "evoker_fangs",
+      "pos": [
+        8.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 3,
+      "expected_present": true,
+      "expected_warmup": 2
+    },
+    {
+      "name": "near_player_fangs_zero_warmup_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        8.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 0,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": -1
+    },
+    {
+      "name": "near_player_fangs_expires",
+      "kind": "evoker_fangs",
+      "pos": [
+        8.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 0,
+      "ticks": 23,
+      "expected_present": false,
+      "expected_warmup": null
+    },
+    {
+      "name": "sim_edge_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        40.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 4
+    },
+    {
+      "name": "outside_sim_ring_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        56.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "outside_sim_ring_fangs_5_ticks",
+      "kind": "evoker_fangs",
+      "pos": [
+        56.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 5,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "neg_sim_edge_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        -31.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 4
+    },
+    {
+      "name": "neg_outside_sim_ring_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        -32.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "far_unforced_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        3397.5,
+        302.0,
+        3394.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "far_unforced_fangs_60_ticks",
+      "kind": "evoker_fangs",
+      "pos": [
+        3397.5,
+        302.0,
+        3394.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 60,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "very_far_unforced_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        100000.5,
+        200.0,
+        0.5
+      ],
+      "forced_chunks": [],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 5
+    },
+    {
+      "name": "far_forced_fangs_1_tick",
+      "kind": "evoker_fangs",
+      "pos": [
+        3397.5,
+        302.0,
+        3394.5
+      ],
+      "forced_chunks": [
+        [
+          212,
+          212
+        ]
+      ],
+      "initial_warmup": 5,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_warmup": 4
+    },
+    {
+      "name": "near_player_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        10.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": false,
+      "expected_spawned_items": 1
+    },
+    {
+      "name": "near_player_spawner_before_delay",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        10.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 3,
+      "ticks": 2,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "near_player_spawner_at_delay",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        10.5,
+        200.0,
+        8.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 3,
+      "ticks": 3,
+      "expected_present": false,
+      "expected_spawned_items": 1
+    },
+    {
+      "name": "sim_edge_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        40.5,
+        200.0,
+        10.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": false,
+      "expected_spawned_items": 1
+    },
+    {
+      "name": "outside_sim_ring_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        56.5,
+        200.0,
+        10.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "outside_sim_ring_spawner_5_ticks",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        56.5,
+        200.0,
+        10.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 5,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "neg_sim_edge_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        -31.5,
+        200.0,
+        10.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": false,
+      "expected_spawned_items": 1
+    },
+    {
+      "name": "neg_outside_sim_ring_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        -32.5,
+        200.0,
+        10.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "far_unforced_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        3397.5,
+        302.0,
+        3398.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "far_unforced_spawner_60_ticks",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        3397.5,
+        302.0,
+        3398.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 60,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "very_far_unforced_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        100000.5,
+        200.0,
+        0.5
+      ],
+      "forced_chunks": [],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": true,
+      "expected_spawned_items": 0
+    },
+    {
+      "name": "far_forced_spawner_1_tick",
+      "kind": "ominous_item_spawner",
+      "pos": [
+        3397.5,
+        302.0,
+        3398.5
+      ],
+      "forced_chunks": [
+        [
+          212,
+          212
+        ]
+      ],
+      "item": "minecraft:stone",
+      "spawn_item_after_ticks": 1,
+      "ticks": 1,
+      "expected_present": false,
+      "expected_spawned_items": 1
+    }
+  ]
+}
