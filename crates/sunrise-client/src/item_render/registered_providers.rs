@@ -885,7 +885,7 @@ mod tests {
             // A nested null fails JSON->NBT validation without latching.
             assert!(
                 decode_definition_without_specials(
-                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","extra":null}]}}"#,
+                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":32768,"extra":null}]}}"#,
                     &providers,
                 )
                 .is_err()
@@ -894,7 +894,7 @@ mod tests {
             // A valid definition still decodes cleanly afterward.
             assert!(
                 decode_definition_without_specials(
-                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":123}]}}"#,
+                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":32768}]}}"#,
                     &providers,
                 )
                 .is_ok()
@@ -926,7 +926,7 @@ mod tests {
             assert!(take_callback_panic_notices().is_empty());
             assert!(
                 decode_definition_without_specials(
-                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":456}]}}"#,
+                    r#"{"model":{"type":"minecraft:model","model":"minecraft:item/stick","tints":[{"type":"provtest:strict","color":65536}]}}"#,
                     &providers,
                 )
                 .is_ok()

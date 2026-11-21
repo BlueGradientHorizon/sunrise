@@ -2386,16 +2386,13 @@ Would you like to enable the Narrator or visit the Accessibility Settings?",
             && preset_editors::has_editor(options.preset_id())
         {
             if let Some(sunrise_core::nbt::Tag::Compound(dimensions)) = options.editor_dimensions()
+                && let Ok(Some(session)) =
+                    preset_editors::open_session(options.preset_id(), dimensions, seed)
             {
-                match preset_editors::open_session(options.preset_id(), dimensions, seed) {
-                    Ok(Some(session)) => {
-                        self.set_mode(Mode::CreatePreset {
-                            parent: Box::new(self.mode.clone()),
-                            session,
-                        });
-                    }
-                    Ok(None) | Err(_) => {}
-                }
+                self.set_mode(Mode::CreatePreset {
+                    parent: Box::new(self.mode.clone()),
+                    session,
+                });
             }
             return Action::None;
         }

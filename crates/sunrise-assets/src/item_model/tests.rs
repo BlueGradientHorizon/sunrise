@@ -523,7 +523,7 @@ fn registered_node_draws_the_models_the_mod_answers_per_stack() {
             _ => Vec::new(),
         };
         Ok(Some(DecodedItemModel {
-            transformation: None,
+            transformation: optional_transformation(fields).map_err(|err| err.to_string())?,
             model: RegisteredItemModel(Arc::new(glow)),
             models,
         }))
