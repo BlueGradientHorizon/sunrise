@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 const FILES: &[(&str, &str)] = &[
     (
         "Cargo.toml",
-        "[workspace]\nmembers = [\"engine-fixture\", \"crates/sunrise-mod-vocab\", \"crates/sunrise-mod-api\", \"crates/sunrise-mod-api-macros\"]\n",
+        "[workspace]\nmembers = [\"engine-fixture\", \"crates/sunrise-mod-vocab\", \"crates/sunrise-mod-api\", \"crates/sunrise-mod-api-macros\", \"crates/sunrise-mod-runtime\"]\n",
     ),
     (
         "engine-fixture/Cargo.toml",
@@ -18,7 +18,7 @@ const FILES: &[(&str, &str)] = &[
     ),
     (
         "crates/sunrise-mod-vocab/Cargo.toml",
-        "[package]\nname = \"sunrise-mod-vocab\"\n[lib]\nname = \"mod_vocab\"\n[dependencies]\nengine = { package = \"engine-package\", path = \"../../engine-fixture\" }\n",
+        "[package]\nname = \"sunrise-mod-vocab\"\n[lib]\nname = \"mod_vocab\"\n[dependencies]\nengine = { package = \"engine-package\", path = \"../../engine-fixture\" }\nsunrise-mod-runtime = { path = \"../sunrise-mod-runtime\" }\n",
     ),
     (
         "crates/sunrise-mod-api/Cargo.toml",
@@ -27,6 +27,14 @@ const FILES: &[(&str, &str)] = &[
     (
         "crates/sunrise-mod-api-macros/Cargo.toml",
         "[package]\nname = \"sunrise-mod-api-macros\"\n[lib]\nproc-macro = true\n",
+    ),
+    (
+        "crates/sunrise-mod-runtime/Cargo.toml",
+        "[package]\nname = \"sunrise-mod-runtime\"\n",
+    ),
+    (
+        "crates/sunrise-mod-runtime/src/lib.rs",
+        "pub mod storage { pub struct Query; }",
     ),
     (
         "crates/sunrise-mod-api/src/lib.rs",
@@ -1215,7 +1223,7 @@ fn a_facade_self_alias_does_not_hide_its_dependency_glob() {
         .iter()
         .find(|f| f.id == "fn:own")
         .unwrap();
-    assert_eq!(own.refs, ["type:FacadeType"]);
+    assert_eq!(own.contract.refs, ["type:FacadeType"]);
 }
 
 #[test]
@@ -1321,8 +1329,30 @@ fn a_generic_projection_does_not_resolve_to_a_same_named_workspace_module() {
         .iter()
         .find(|f| f.id == "fn:project")
         .unwrap();
-    assert!(project.signature.contains("-> T::Out"), "{project:?}");
-    assert_eq!(project.refs, ["trait:LocalTrait"]);
+    assert!(
+        project.contract.signature.contains("-> T::Out"),
+        "{project:?}"
+    );
+    assert_eq!(project.contract.refs, ["trait:LocalTrait"]);
+}
+
+#[test]
+fn an_indexed_dependency_type_preserves_its_published_spelling() {
+    let export = export_fixture(
+        &[(
+            LIB,
+            "/// A colour.",
+            "use sunrise_mod_runtime::storage as store;
+             pub type ViaAlias = store::Query;
+             pub type Direct = sunrise_mod_runtime::storage::Query;
+             /// A colour.",
+        )],
+        HOOKS,
+    );
+    for (id, target) in [("type:ViaAlias", "store::Query"), ("type:Direct", "Query")] {
+        let query = export.surface.types.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(query.contract.target.as_deref(), Some(target));
+    }
 }
 
 #[test]

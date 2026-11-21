@@ -338,7 +338,16 @@ impl Paths<'_, '_> {
                             .map(|segment| segment.arguments.clone())
                             .unwrap_or(syn::PathArguments::None);
                         self.inspect_private_alias(id, &arguments);
-                        vec![segments.last().cloned().unwrap_or_default()]
+                        // Keep imported module qualifiers in the published spelling. A direct
+                        // path from an indexed crate root still normalises to its last segment.
+                        let owner = &self.index.modules[id.module].krate;
+                        if *owner != self.index.modules[self.module].krate
+                            && segments.first() != Some(owner)
+                        {
+                            segments.clone()
+                        } else {
+                            vec![segments.last().cloned().unwrap_or_default()]
+                        }
                     }
                 }
             }
