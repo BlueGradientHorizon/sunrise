@@ -1,9 +1,6 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
-use mod_api::{
-    __private::{ModPhase, PhaseOwner},
-    AttachmentRowError, AttachmentType, AttachmentWriteToken,
-};
+use mod_api::{AttachmentRowError, AttachmentType, AttachmentWriteToken};
 use sunrise_mod_runtime::attachments::Attachments;
 
 static VALUE: AttachmentType<u32> = AttachmentType {
@@ -58,13 +55,6 @@ fn current_dimension_capture_and_foreign_residency_validation() {
             .unwrap();
         assert_eq!(value, 8);
         let host: &dyn mod_api::ServerHost = game;
-        {
-            let _setup = PhaseOwner::scope(ModPhase::Setup);
-            assert_eq!(
-                host.attachment_validate_write(valid_b.clone()),
-                Err(AttachmentRowError::Unavailable)
-            );
-        }
         assert_eq!(host.attachment_validate_write(valid_b.clone()), Ok(()));
         game.dim = Dim::Nether;
         let host: &dyn mod_api::ServerHost = game;

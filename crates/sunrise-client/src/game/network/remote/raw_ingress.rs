@@ -471,11 +471,7 @@ impl Game<'_> {
                 }
             }
             Event::ObservePacket(packet) => self.observe_client_packet(&packet),
-            Event::AttachmentSync(staged) => {
-                let (message, payload) = staged.into_message();
-                self.observe_client_packet(&C::CustomPayload(payload));
-                self.remote_attachment_sync(message);
-            }
+            Event::AttachmentSync(staged) => self.apply_staged_attachment_sync(*staged),
             Event::Packet(packet) => match *packet {
                 C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)
@@ -484,6 +480,15 @@ impl Game<'_> {
             },
         }
         Ok(())
+    }
+
+    pub(in crate::game) fn apply_staged_attachment_sync(
+        &mut self,
+        staged: sunrise_protocol::attachment_sync::StagedMessage,
+    ) {
+        let (message, payload) = staged.into_message();
+        self.observe_client_packet(&C::CustomPayload(payload));
+        self.remote_attachment_sync(message);
     }
 
     fn finish_remote_disconnect(&mut self, event: Event) -> Result<()> {

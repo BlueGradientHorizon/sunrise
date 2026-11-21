@@ -62,7 +62,7 @@ pub fn instantiate(
     let block = Identifier::parse(block).map_err(|e| format!("block {block}: {e}"))?;
     let config = sunrise_core::json_nbt::json_to_tag(config)
         .map_err(|e| format!("definition type {kind}: its JSON doesn't convert to NBT: {e}"))?;
-    let _phase = mod_api::__private::RegistrationGuard::open();
+
     let mut picks = Vec::new();
     native_instantiate_block_state_definition(
         &RegistrationContext::new(),

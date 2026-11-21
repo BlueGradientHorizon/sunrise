@@ -129,7 +129,7 @@ fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     registrar
         .menu_slot_exclusions(MENU, Some("beta:machine"), &[2])
         .unwrap();
-    rollback(&mut registrar, false);
+    rollback(&mut registrar);
     install_registrar(registrar, &schema).unwrap();
     assert_eq!(menu_slot_exclusions(MENU, None), &[1, 3]);
     assert!(menu_slot_exclusions(MENU, Some(BLOCK)).is_empty());

@@ -728,10 +728,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_scheduled_phase_refusal_rolls_back_without_disabling_later_tasks() {
         use crate::game::native_entity_refs::tests::run_fresh_cases;
-        use mod_api::{
-            __private::{ModPhase, PhaseOwner, enter},
-            ObjectiveRenderType, Text,
-        };
+        use mod_api::{__private::enter, ObjectiveRenderType, Text};
         use std::{
             cell::Cell,
             panic::{AssertUnwindSafe, catch_unwind},
@@ -793,7 +790,7 @@ mod tests {
                                 )
                                 .unwrap();
                                 refused.set(refused.get() + 1);
-                                let _setup = PhaseOwner::scope(ModPhase::Setup);
+
                                 if swallows_refusal {
                                     let _ = catch_unwind(AssertUnwindSafe(|| host.objective(name)));
                                 } else {

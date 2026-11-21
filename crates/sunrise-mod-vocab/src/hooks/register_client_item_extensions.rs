@@ -14,7 +14,6 @@ pub trait Hooks {
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 2,
         contract = "listen",
         staged_surface = "extensions",
         version = 3,

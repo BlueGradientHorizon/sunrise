@@ -1396,12 +1396,6 @@ impl From<crate::text::TextFormError> for OpenMenuError {
     }
 }
 
-impl crate::AccessRefusal for OpenMenuError {
-    fn unavailable() -> Self {
-        Self::PlayerUnavailable
-    }
-}
-
 impl NoBackend for OpenMenuError {
     fn no_backend() -> Self {
         Self::PlayerUnavailable

@@ -57,7 +57,8 @@ impl MainQueue {
                     None => events.prepare(event),
                 }
                 .map(PreparedMain::Client)
-                .map_err(|error| refusal(error.reason)),
+                .map_err(|error| refusal(error.reason))
+            }
             Self::ClientBundle(work) => {
                 // Incoming (including enqueued work) already holds its payload
                 // lease. This root stays inside the one charged bundle turn.

@@ -58,7 +58,7 @@ fn a_bare_block_name_binds_the_type_to_the_mods_own_block() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("press_mod", Box::new(Press))].into();
     let (blocks, types) = mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        let _registration = mod_api::__private::RegistrationGuard::open();
+        let _registration = mod_platform::__private::RegistrationGuard::open();
         let context = mod_api::RegistrationContext::new();
         let mut blocks = Vec::new();
         Game::native_blocks(&context, &mut |listen| {

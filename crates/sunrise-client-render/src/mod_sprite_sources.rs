@@ -74,7 +74,7 @@ impl ModSources for Registered {
         resources: &Arc<dyn ResourceReader>,
     ) -> Vec<SpriteSourceOutput> {
         use mod_api::__private::game::RegistrationContextNew;
-        let _phase = mod_api::__private::RegistrationGuard::open();
+
         let mut output = Vec::new();
         native_sprite_source(
             &RegistrationContext::new(),

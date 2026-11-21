@@ -352,17 +352,23 @@ mod tests {
             copy_on_death: false,
         };
         mod_platform::__private::initialize().unwrap();
-        let _phase =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             let slot = general_type_catalog().slot("mymod:missile").unwrap();
             let mut generals = RemoteGenerals::default();
             for id in [5, 8] {
-                generals
-                    .rows
-                    .insert(id, RemoteGeneral::new(slot, 1, [0.0; 3], [0.0; 2]));
+                generals.rows.insert(
+                    id,
+                    RemoteGeneral::new(
+                        slot,
+                        1,
+                        [0.0; 3],
+                        [0.0; 2],
+                        mod_api::EntityRenderAttachments::default(),
+                    ),
+                );
             }
             let mut replica = Attachments::default();
             let sync = |holder: &mut Attachments, name: &str, value: Option<Compound>| {
@@ -511,7 +517,7 @@ mod tests {
         }
 
         mod_platform::__private::initialize().unwrap();
-        let _registration = mod_api::__private::RegistrationGuard::open();
+        let _registration = mod_platform::__private::RegistrationGuard::open();
         let calls = Events::default();
         let mods = vec![
             mod_api::ModEntry::new("mymod", Box::new(Declare)),
@@ -661,7 +667,7 @@ mod tests {
             return;
         }
         mod_platform::__private::initialize().unwrap();
-        let _phase = mod_api::__private::RegistrationGuard::open();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
@@ -829,7 +835,7 @@ mod tests {
     #[ignore = "daily"]
     fn the_window_keeps_moves_and_drops_the_rows_it_is_shown() {
         mod_platform::__private::initialize().unwrap();
-        let _phase = mod_api::__private::RegistrationGuard::open();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
@@ -941,13 +947,12 @@ mod tests {
             packets::{Empty, configuration::CustomPayload},
         };
         mod_platform::__private::initialize().unwrap();
-        let _phase = mod_api::__private::RegistrationGuard::open();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
             crate::game::native_entity_refs::tests::with_client_game(|game| {
-                let (_reader, mut writer) =
-                    super::super::tests::connect_play_test(game, |_, _| {});
+                let (_reader, mut writer) = super::super::tests::connect_play_test(game, |_, _| {});
                 super::super::tests::spawn_menu_test(game);
                 let sync = C::CustomPayload(CustomPayload {
                     channel: attachment_sync::CHANNEL.into(),
@@ -976,7 +981,7 @@ mod tests {
     #[ignore = "daily"]
     fn general_spawn_captures_existing_entity_attachments_or_empty() {
         mod_platform::__private::initialize().unwrap();
-        let _phase = mod_api::__private::RegistrationGuard::open();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
         let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
         mod_platform::testing::with_mods(declare().into(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();

@@ -518,7 +518,7 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     #[cfg(test)]
     {
         // Test fixtures bypass startup; collect with registration open as startup does.
-        let _registration = mod_api::__private::RegistrationGuard::open();
+        let _registration = mod_platform::__private::RegistrationGuard::open();
         std::borrow::Cow::Owned(collect())
     }
 }

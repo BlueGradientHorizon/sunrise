@@ -36,7 +36,7 @@ fn tooltip_position(
     (x.round(), y.round())
 }
 
-use super::api_values::{TryIntoApi, TryIntoEngine};
+use super::api_values::TryIntoApi;
 use super::{Game, Screen};
 use mod_api::{TooltipElement, TooltipImage};
 use std::cell::Cell;

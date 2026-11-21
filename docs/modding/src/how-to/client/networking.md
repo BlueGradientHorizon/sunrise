@@ -65,33 +65,49 @@ server tick while pending, in registration order and without holding the connect
 | Complete the task | `context.finish()` |
 | Abort admission with a reason | `context.fail(reason)` |
 
-For delayed completion, capture `context.instance()` in server-local state when
-you send the **original challenge**. Match the reply to that challenge and pass
-its saved instance to `cx.finish_configuration_task(instance)` in a server
-main-thread configuration payload handler. Never look up whichever task happens
-to be running when the reply arrives, and never send the instance over the wire.
-Use `cx.reply(&channel, bytes)` for a final reply on the same connection. For a
-network-thread handler, use `enqueue_work` and complete from the main-thread work.
+For delayed completion, call `cx.finish_configuration_task(&task_type)` in a
+server configuration payload handler — on either the main thread or the network
+thread — passing the `Identifier` returned by `ConfigurationTask::task_type`
+(matching NeoForge's `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)`
+and vanilla's `ServerConfigurationPacketListenerImpl.finishCurrentTask`).
+Completion always targets the receiving connection of that payload handler.
+Use `cx.reply(&channel, bytes)` for a final reply on the same connection; any
+staged replies publish before task completion advances the queue or sends
+`FinishConfiguration`.
 
-A different live connection's instance returns `WrongConnection`; an instance
-that is no longer the running one on this configuration returns `StaleTask`.
-The wrong side, phase, executor or a missing transaction returns `WrongContext`;
-an ended connection or configuration epoch returns `Disconnected`. A refusal
-advances neither task. Tasks, contexts, instance and connection capabilities,
-and task errors have no `Wire` encoding.
+If the currently running task on this connection has a different type,
+`finish_configuration_task` returns `WrongType`; if no task is currently running
+(or this handler already requested completion), it returns `NotRunning`.
+Calling on the client or outside the configuration phase returns `WrongContext`;
+an ended connection or configuration epoch (or a pending disconnect) returns
+`Disconnected`. A refusal never advances a task. Tasks, contexts, connection
+capabilities, and task errors have no `Wire` encoding.
 
-Completion publishes only after the outermost transaction commits and publishes
-its deferred sends (including replies). A child commit hands the request to its
-parent; an abort discards it. Repeated callback requests coalesce, and `fail`
-wins over `finish`. An explicit payload-handler disconnect discards the request
-even if the rest of the handler succeeds.
+On the **main thread**, `finish_configuration_task` completes the matching
+running task directly in the configuration session with no transaction-layer
+staging and independently of nested child transactions; the server advances to
+the next task or `FinishConfiguration` on the next tick, after the handler's
+committed replies are queued. On the **network thread**, `finish_configuration_task`
+validates and binds the currently running task turn and publishes completion
+inside the same active-epoch gate after staged replies succeed; handler failure,
+an explicit `disconnect`, or epoch invalidation discards that staged completion.
+In task callbacks (`start`/`tick`), repeated `context.finish()` calls coalesce
+and `fail` wins over `finish`, publishing once the callback succeeds and its
+deferred sends commit.
 
-A refused task payload send, explicit `fail`, or callback panic aborts the task
-callback and closes that client with the configuration-error reason. Start and tick
-run as the registering mod. Disabled callbacks are skipped. A panic disables the
-mod's task implementation for this session; ordinary errors do not. Check the channel
-before sending to an optional or vanilla peer, then request completion or explain why it
-cannot join.
+A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
+without failing the task session, so the task can handle it, call
+`context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
+task callback's journaled writes and closes that client with the configuration-error reason.
+A panic names the mod and task type in the log and shows an error toast if there is a local client.
+That mod's task type is skipped for the rest of the server session, including for later peers.
+Other task types still run. A returned refusal is reported but does not disable the task.
+A send uses the live configuration connection, not the current task state: even after another handler completes the
+task, sends can still queue while the connection is configuring. After the peer enters
+Play, a saved `ConfigurationConnection` returns `Disconnected`, even for a channel
+negotiated for Play. Check the channel
+before sending to an optional or vanilla peer, then request completion or explain
+why it cannot join.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

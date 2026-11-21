@@ -379,7 +379,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         native_entity_refs::tests::fixture_root, start_game,
     };
     use mod_api::{
-        __private::game::RegistrationContextNew, AddClientReloadListenersEvent,
+        __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
         ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
         ModelBakingCompletedEvent, RegistrationContext, StandaloneModelsEvent,
         VanillaClientListeners,
@@ -443,7 +443,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
     impl Hooks for Probe {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             let anchor = VanillaClientListeners::model_manager();

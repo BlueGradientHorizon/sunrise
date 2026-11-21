@@ -2728,7 +2728,6 @@ mod tests {
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             assert_eq!(*loads.lock().unwrap(), BUILT_INS);

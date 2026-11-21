@@ -3,9 +3,8 @@ use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
         ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
-        configuration_task_parts, configuration_task_ref,
     },
-    ConfigurationConnection, ConfigurationTaskError, ConfigurationTaskRef, PayloadBytes, PayloadId,
+    ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
 use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
@@ -34,17 +33,11 @@ impl Game<'_> {
                 return false;
             }
         };
-        let commit = !session.closed()
-            && !matches!(session.result(), Some(Err(_)))
-            && ordinal.is_none_or(|ordinal| {
-                session
-                    .prepare_finish(ordinal, None)
-                    .is_ok_and(|completion| {
-                        // A task can leave a child open; its rollback must not drop this request.
-                        self.journal_configuration_completion(Some(&seal), completion)
-                    })
-            });
+        let commit = !session.closed() && !matches!(session.result(), Some(Err(_)));
         self.transaction_close(&seal, commit);
+        if commit && let Some(ordinal) = ordinal {
+            session.finish_current(ordinal);
+        }
         commit
     }
     pub(super) fn take_lan_for_packet_tick(&mut self) -> Option<LanHost> {
@@ -142,10 +135,7 @@ impl Game<'_> {
                             return Ok(Some(turn.ordinal));
                         }
                         let mut outcome = ConfigurationTaskOutcome::Pending;
-                        let mut context = configuration_task_context(
-                            configuration_task_ref(connection, turn.ordinal),
-                            &mut outcome,
-                        );
+                        let mut context = configuration_task_context(connection, &mut outcome);
                         task.call(call, |task| {
                             if turn.start {
                                 task.start(game, &mut context);
@@ -199,21 +189,16 @@ impl Game<'_> {
     }
     pub(in crate::game) fn configuration_send_payload(
         &mut self,
-        instance: ConfigurationTaskRef,
+        connection: ConfigurationConnection,
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError> {
-        let (connection, ordinal) = configuration_task_parts(instance);
-        let session = self
+        let (endpoint, epoch) = self
             .configuration_session(connection)
-            .cloned()
-            .ok_or(ConfigurationTaskError::Disconnected)?;
-        session.require_running(ordinal)?;
-        self.queue_current_payload(session.endpoint(), channel, bytes)
+            .ok_or(ConfigurationTaskError::Disconnected)?
+            .payload_target()?;
+        self.queue_payload(endpoint, epoch, channel, bytes)
             .map(|_| ())
-            .map_err(|error| {
-                session.fail(format!("Configuration payload refused: {error:?}"));
-                ConfigurationTaskError::Payload(error)
-            })
+            .map_err(ConfigurationTaskError::Payload)
     }
 }

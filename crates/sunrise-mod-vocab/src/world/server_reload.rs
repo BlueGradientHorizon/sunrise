@@ -356,7 +356,7 @@ impl RetainedListeners {
     pub(crate) fn install(
         &mut self,
         retained: Vec<RetainedEntry>,
-        skipped: &std::collections::HashSet<Identifier>,
+        skipped: &std::collections::BTreeSet<Identifier>,
     ) {
         // Refused callbacks never replace a previously admitted retained object.
         self.entries.retain(|id, _| skipped.contains(id));

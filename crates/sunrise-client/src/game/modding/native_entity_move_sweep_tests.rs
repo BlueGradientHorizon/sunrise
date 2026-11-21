@@ -165,7 +165,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
     mod_platform::__private::initialize().unwrap();
     // The registration phase owns the general type the General case loads;
     // the ticks run in World, as the server's own do.
-    let _registration = mod_api::__private::RegistrationGuard::open();
+    let _registration = mod_platform::__private::RegistrationGuard::open();
     let log = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![
         mod_api::ModEntry::new("counter", Box::new(Counter(log.clone()))),

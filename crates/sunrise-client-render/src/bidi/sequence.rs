@@ -26,7 +26,7 @@ pub fn visual_characters(
     let mut offsets = Vec::with_capacity(logical.len());
     let mut absolute = 0;
     let mut local = 0;
-    let mut previous = None;
+    let mut previous: Option<(&Style, u8)> = None;
     for (length, level) in logical {
         let style = styles[absolute];
         if previous.is_some_and(|(old_style, old_level)| {

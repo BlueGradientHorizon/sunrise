@@ -117,37 +117,37 @@ mod entry {
             entry: &str,
             map: &str,
         ) -> Result<Option<&crate::Tag>, DataMapError> {
-            Backend::data_map_value(*self, registry, entry, map)
+            crate::prelude::DataMapsBackend::data_map_value(*self, registry, entry, map)
         }
         fn game_event_key_id(
             &self,
             key: crate::GameEventKey,
         ) -> Result<RegistryName, crate::GameEventKeyError> {
-            Backend::game_event_key_id(*self, key)
+            crate::prelude::KeysBackend::game_event_key_id(*self, key)
         }
         fn item_key_id(&self, key: ItemKey) -> Option<&str> {
-            Backend::item_key_id(*self, key)
+            crate::prelude::KeysBackend::item_key_id(*self, key)
         }
         fn block_key_id(&self, key: BlockKey) -> Option<&str> {
-            Backend::block_key_id(*self, key)
+            crate::prelude::KeysBackend::block_key_id(*self, key)
         }
         fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
-            Backend::fluid_key_id(*self, key)
+            crate::prelude::KeysBackend::fluid_key_id(*self, key)
         }
         fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
-            Backend::effect_key_id(*self, key)
+            crate::prelude::KeysBackend::effect_key_id(*self, key)
         }
         fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
-            Backend::entity_type_key_id(*self, key)
+            crate::prelude::KeysBackend::entity_type_key_id(*self, key)
         }
         fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
-            Backend::enchantment_key_id(*self, key)
+            crate::prelude::KeysBackend::enchantment_key_id(*self, key)
         }
         fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
-            Backend::block_entity_type_key_id(*self, key)
+            crate::prelude::KeysBackend::block_entity_type_key_id(*self, key)
         }
         fn biome_key_id(&self, key: BiomeKey) -> Result<&str, crate::BiomeKeyError> {
-            Backend::biome_key_id(*self, key)
+            crate::prelude::KeysBackend::biome_key_id(*self, key)
         }
     }
 

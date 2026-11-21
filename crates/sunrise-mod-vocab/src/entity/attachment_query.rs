@@ -12,12 +12,6 @@ use sunrise_mod_runtime::attachments::{self as runtime, index};
 #[non_exhaustive]
 pub struct AttachmentReadScope<'host>(pub(crate) Option<&'host runtime::AttachmentQueryScopes>);
 
-impl crate::AccessRefusal for AttachmentRowError {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 /// A SNAPSHOT of membership and value bindings in the host's current dimension.
 /// Later changes require a fresh query. This is a residency view: removed but
 /// unswept entities may appear, and stale writes fail. Acquisition neither clones values nor

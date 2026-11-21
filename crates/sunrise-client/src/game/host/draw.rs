@@ -1079,7 +1079,7 @@ mod tests {
         for _ in 0..600 {
             let mut map = std::collections::BTreeMap::new();
             map.insert("n".into(), opaque_dialog);
-            opaque_dialog = Tag::Compound(map);
+            opaque_dialog = Tag::Compound(map.into_iter().collect());
         }
         let mut style = mod_api::text::TextStyle::default();
         style.bold = Some(true);

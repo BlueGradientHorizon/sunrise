@@ -4,9 +4,10 @@
 use super::native_entity_refs::tests::with_client_game;
 use super::packs::ReloadKind;
 use mod_api::{
-    __private::game::RegistrationContextNew, ClientHost, ClientResourcesReloadedEvent,
-    ClientSetupEvent, Hooks, Identifier, ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef,
-    RegistrationContext, StandaloneModelsEvent, TextureAtlasStitchedEvent,
+    __private::game::RegistrationContextNew, ClientHost, ClientReloadHost,
+    ClientResourcesReloadedEvent, ClientSetupContext, ClientSetupEvent, Hooks, Identifier,
+    ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef, RegistrationContext,
+    StandaloneModelsEvent, TextureAtlasStitchedEvent,
 };
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};

@@ -890,7 +890,6 @@ impl Game<'_> {
         // transactions reentered by that commit's listeners.
         let retire = !self.has_level_transaction()
             && !entities::is_committing(&self.transactions.committing, self.dim);
-        let root = self.transactions.is_empty() && outer.is_none();
         let guard = ClosingPhase { game: self, outer };
         #[cfg(test)]
         guard
@@ -1643,7 +1642,7 @@ impl Game<'_> {
     ) -> bool {
         let Some(level) = entities::open_in(&mut self.transactions, self.dim) else {
             return self.level_set_with_flags(pos, state, flags).is_ok();
-        }
+        };
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.block(pos[0], pos[1], pos[2]);
         let clears_group = !self.res.behaviours().keeps_block_entity(old, state);

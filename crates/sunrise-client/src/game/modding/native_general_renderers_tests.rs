@@ -275,7 +275,7 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
     };
     mod_platform::__private::initialize().unwrap();
     // A general type is declared only while the registration phase is current.
-    let registration = mod_api::__private::RegistrationGuard::open();
+    let registration = mod_platform::__private::RegistrationGuard::open();
     mod_platform::testing::with_mods(mods().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
         super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
@@ -631,7 +631,7 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
             Box::new(NativeProbe),
         )]
         .into();
-        let registration = mod_api::__private::RegistrationGuard::open();
+        let registration = mod_platform::__private::RegistrationGuard::open();
         mod_platform::testing::with_mods(mods, || {
             super::native_entity_refs::tests::with_client_game(|game| {
                 super::mods::register_entity_renderers(

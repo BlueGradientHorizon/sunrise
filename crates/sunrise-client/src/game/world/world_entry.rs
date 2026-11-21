@@ -368,7 +368,7 @@ impl Game<'_> {
                     let errors = [
                         packed.err(),
                         conditions.err(),
-                        install_items_result.err().map(ToString::to_string),
+                        install_items_result.err().map(|error| error.to_string()),
                         loot.as_ref().err().map(ToString::to_string),
                         datapack_candidate.as_ref().err().map(ToString::to_string),
                         sources.as_ref().err().map(ToString::to_string),

@@ -3726,8 +3726,6 @@ mod tests {
             .into(),
             || {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    let _phase =
-                        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
                     game.options.dedicated = Some(Vec::new());
                     game.world
                         .chunks

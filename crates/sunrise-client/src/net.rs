@@ -32,7 +32,6 @@ use std::{
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU32, Ordering},
-        mpsc::{Receiver, SyncSender, sync_channel},
     },
     thread::JoinHandle,
     time::{Duration, Instant},

@@ -53,7 +53,7 @@ fn with_types(test: impl FnOnce(&mut Game<'_>)) {
 
 fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::RegistrationGuard::open();
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
     mods.extend(observer);
     mod_platform::testing::with_mods(mods.into(), || with_game(test));
@@ -896,7 +896,7 @@ fn a_guest_riding_a_teleported_general_vehicle_is_carried_with_its_turn() {
 /// `with_types` for a fixture that also hosts guests 12 and 13.
 fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::RegistrationGuard::open();
+    let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_guest_turn_tests::with_guests(test)

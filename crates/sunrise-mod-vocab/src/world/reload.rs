@@ -7,7 +7,7 @@ use crate::{
     world::reload_order::{ReloadOrder, ReloadOrderError},
 };
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     sync::Arc,
 };
 
@@ -352,8 +352,8 @@ pub fn apply_listeners<V, E>(
     hook: HookId,
     phase: &'static str,
     mut vanilla: impl FnMut(V) -> Result<(), E>,
-) -> Result<HashSet<Identifier>, E> {
-    let mut skipped = HashSet::new();
+) -> Result<BTreeSet<Identifier>, E> {
+    let mut skipped = BTreeSet::new();
     for step in prepared {
         if let Some(id) = step.apply(hook, phase, &mut vanilla)? {
             skipped.insert(id);

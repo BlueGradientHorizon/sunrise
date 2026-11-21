@@ -1102,6 +1102,10 @@ pub(super) fn emit<'a>(
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
         {
+            // A rebuilt event's owned scalars cannot escape an aborted listener.
+            if hook.event_per_listener && !by_reference {
+                continue;
+            }
             if answered_collect_batch && Some(field.as_str()) == out {
                 continue;
             }
@@ -2527,6 +2531,11 @@ fn answered_batch(ty: &Type) -> Option<&Type> {
 
 /// `T` of the engine callback that validates and stages an `Answered<T>`.
 fn declaration_sink(ty: &Type) -> Option<&Type> {
+    answered_sink(ty).map(|(answer, _)| answer)
+}
+
+/// The payload and return type of an engine-only `dyn FnMut(Answered<T>)` sink.
+fn answered_sink(ty: &Type) -> Option<(&Type, &syn::ReturnType)> {
     let Type::TraitObject(object) = ty else {
         return None;
     };
@@ -2537,7 +2546,10 @@ fn declaration_sink(ty: &Type) -> Option<&Type> {
     let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
         return None;
     };
-    generic_of(args.inputs.first()?, "Answered")
+    if args.inputs.len() != 1 {
+        return None;
+    }
+    Some((generic_of(args.inputs.first()?, "Answered")?, &args.output))
 }
 
 /// `T` of a `name<T>` type.

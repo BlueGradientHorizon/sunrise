@@ -1,5 +1,5 @@
 use mod_api::{
-    __private::{HookPanicReport, ModPhase, PhaseOwner, take_hook_panics},
+    __private::{HookPanicReport, take_hook_panics},
     Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadHandleError, PayloadId,
     Registrar, Text,
 };
@@ -66,7 +66,6 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
     mod_platform::testing::with_mods(mods, || {
         crate::game::api_values::install_parts(mod_api::__private::mods()).unwrap();
         with_game(|game| {
-            let _world = PhaseOwner::scope(ModPhase::World);
             let transport = Transport::capture(Side::Server).unwrap();
             transport
                 .accept(transport.local.manifest.entries())

@@ -1,4 +1,5 @@
 use super::*;
+use crate::game::Dim;
 use crate::game::native_entity_refs::tests::{
     bind_local_player, run_fresh_cases, with_game, with_game_at,
 };
@@ -7,7 +8,6 @@ use mod_api::{
     BlockEntityTickEvent, BlockPart, BlockRun, BlockUpdateFlags, Direction, EntityJoinLevelEvent,
     Flow, Hooks, HostTransaction, ItemResource, ItemSpawnEvent, LevelHost, ModEntry,
     NeighborNotifyEvent, Registrar, STORAGE,
-
 };
 use std::sync::{
     Arc, Mutex,

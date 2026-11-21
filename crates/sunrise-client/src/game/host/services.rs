@@ -1,5 +1,5 @@
 //! The game's implementations of the mod API's service traits.
-use super::{Game, api_values::TryIntoEngine};
+use crate::game::{Game, api_values::TryIntoEngine};
 use mod_api::*;
 use std::sync::Arc;
 

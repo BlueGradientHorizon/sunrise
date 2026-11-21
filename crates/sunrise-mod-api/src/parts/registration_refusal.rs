@@ -12,7 +12,7 @@ impl DiagnosticsRegistrar for PartRegistrar {
 }
 
 impl PartRegistrar {
-    pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self, bool) + use<> {
+    pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self) + use<> {
         let parts = self.parts.clone();
         let part_states = self.part_states.clone();
         let attachment_types = self.attachment_types.clone();

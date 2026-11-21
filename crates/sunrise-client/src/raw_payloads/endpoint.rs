@@ -298,14 +298,6 @@ impl Endpoint {
         }
     }
 }
-pub(crate) fn disconnect_text(reason: &Text) -> crate::text::Text {
-    crate::api_text::to_engine(reason).unwrap_or_else(|error| {
-        crate::text::Text::tr(
-            "disconnect.genericReason",
-            &[&format!("invalid payload disconnect reason: {error:?}")],
-        )
-    })
-}
 fn preflight(
     framing: Framing,
     capacity: usize,

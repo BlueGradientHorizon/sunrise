@@ -1141,7 +1141,9 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             _: &mut dyn ServerHost,
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
-            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
+            event
+                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .unwrap();
             panic!("panic after staging configuration task");
         }
     }
@@ -1153,7 +1155,9 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             _: &mut dyn ServerHost,
             event: &mut RegisterConfigurationTasksEvent<'_>,
         ) {
-            event.register(StubTask(Identifier::parse("test:shared_task").unwrap()));
+            event
+                .register(StubTask(Identifier::parse("test:shared_task").unwrap()))
+                .unwrap();
         }
     }
 
@@ -1175,9 +1179,9 @@ fn register_configuration_tasks_rolls_back_staged_tasks_on_panic() {
             );
             let tasks = registration.into_tasks();
             assert_eq!(tasks.len(), 1);
-            assert_eq!(tasks[0].owner, Some("healthy"));
+            assert_eq!(tasks[0].owner.id(), "healthy");
             assert_eq!(
-                tasks[0].task.task_type(),
+                tasks[0].task_type(),
                 &Identifier::parse("test:shared_task").unwrap()
             );
             assert_eq!(

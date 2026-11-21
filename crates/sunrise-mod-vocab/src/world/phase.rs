@@ -388,9 +388,7 @@ pub trait ClientReloadListenerContext {
         None
     }
     /// Math backend profile active in this process.
-    fn math_profile(&self) -> crate::MathProfile {
-        crate::MathProfile::Portable
-    }
+    fn math_profile(&self) -> crate::MathProfile;
     /// Plain string form of `text` using the currently active client language (or fallback
     /// keys during initial startup before language assets are published).
     fn text_string(&self, _text: &crate::Text) -> String {

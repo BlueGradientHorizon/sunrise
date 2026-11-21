@@ -117,11 +117,6 @@ impl Game<'_> {
             Err(error @ (CallbackFailure::Panicked | CallbackFailure::Poisoned)) => Some(error),
             result => context.failure.take().or_else(|| result.err()),
         };
-        if reason.is_some() {
-            // An explicit disconnect still commits ordinary work on success, but cannot
-            // advance configuration in the gap before the physical connection closes.
-            context.game.discard_configuration_completions(&seal);
-        }
         context.game.transaction_close(&seal, failure.is_none());
         if matches!(
             failure,

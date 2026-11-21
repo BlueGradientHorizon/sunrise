@@ -15,7 +15,6 @@ const MAX_SPRITES: usize = 4096;
 pub(in crate::game) fn collect_texture_atlases() -> Vec<TextureAtlasRegistration> {
     let mut atlases = Vec::new();
     if mod_api::__private::listened(mod_api::HookId::RegisterTextureAtlases) {
-        let _phase = mod_api::__private::RegistrationGuard::open();
         Game::native_register_texture_atlases(&mod_api::RegistrationContext::new(), &mut atlases);
     }
     atlases

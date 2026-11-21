@@ -1045,7 +1045,7 @@ impl<'a> Payloads<'a> {
             _ => self
                 .tags
                 .get(&(tag as *const _ as usize))
-                .map(json_nbt::JsonTag::to_json),
+                .map(|tag| tag.to_json()),
         }
     }
     fn object(&self, tag: &Tag) -> Map<String, Value> {

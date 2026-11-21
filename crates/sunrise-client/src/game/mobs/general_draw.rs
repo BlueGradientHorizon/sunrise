@@ -148,7 +148,13 @@ mod tests {
     /// family's fields.
     #[test]
     fn a_rows_state_is_interpolated_to_the_frame() {
-        let mut row = super::RemoteGeneral::new(0, 1, [0.0; 3], [90.0, 20.0]);
+        let mut row = super::RemoteGeneral::new(
+            0,
+            1,
+            [0.0; 3],
+            [90.0, 20.0],
+            mod_api::EntityRenderAttachments::default(),
+        );
         row.previous_rotation = [0.0, -20.0];
         row.age = 40;
         let state = render_state(9, &row, 0.25);

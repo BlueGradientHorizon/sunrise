@@ -715,14 +715,14 @@ pub mod game {
         fn install(
             &mut self,
             retained: Vec<crate::world::server_reload::RetainedEntry>,
-            skipped: &std::collections::HashSet<Identifier>,
+            skipped: &std::collections::BTreeSet<Identifier>,
         );
     }
     impl ServerReloadResourcesInstall for crate::world::server_reload::RetainedListeners {
         fn install(
             &mut self,
             retained: Vec<crate::world::server_reload::RetainedEntry>,
-            skipped: &std::collections::HashSet<Identifier>,
+            skipped: &std::collections::BTreeSet<Identifier>,
         ) {
             crate::world::server_reload::RetainedListeners::install(self, retained, skipped)
         }

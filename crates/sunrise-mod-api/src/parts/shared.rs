@@ -250,7 +250,8 @@ pub(crate) fn register_all(
     // (a general entity type) is refused once it closes.
     let _registration = crate::__private::RegistrationGuard::open();
     let _scope = RestoreKeys(REGISTERING_KEYS.replace(Some(registrar.registry_keys.clone())));
-    let context = RegistrationContext::new();
+    let context =
+        <RegistrationContext as mod_vocab::__private::game::RegistrationContextNew>::new();
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;

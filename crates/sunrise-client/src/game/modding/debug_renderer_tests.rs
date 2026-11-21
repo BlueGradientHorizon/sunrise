@@ -6,10 +6,9 @@ use super::{
 };
 use glam::Mat4;
 use mod_api::{
-    __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
-    DebugEntry, DebugGroup, DebugRenderer, Hooks, ModEntry, RegisterDebugEntriesEvent,
-    RegisterDebugRenderersEvent, RegistrationContext, WorldDepth, WorldLine,
-    content::crash::current_native_mod,
+    __private::game::RegistrationContextNew, DebugEntry, DebugGroup, DebugRenderer, Hooks,
+    ModEntry, RegisterDebugEntriesEvent, RegisterDebugRenderersEvent, RegistrationContext,
+    WorldDepth, WorldLine, content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex, Weak};
 use sunrise_client::{
@@ -101,7 +100,6 @@ fn with_debug_renderers(test: impl FnOnce(&mut Game<'_>, &Mutex<Fixture>)) {
         with_client_game(|game| {
             let mut entries = Vec::new();
             {
-                let _phase = PhaseOwner::scope(ModPhase::Registration);
                 Game::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
             }
             game.registered_debug_entries = debug_entries::collect_registrations(entries);

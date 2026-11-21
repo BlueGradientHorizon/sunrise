@@ -62,7 +62,7 @@ pub(crate) fn client_hook_name(subscribed: &[Option<HookId>]) -> Option<&'static
 pub type Mods = Arc<[ModEntry]>;
 
 type NamedPoison =
-    std::collections::HashMap<(usize, &'static str), std::collections::HashSet<Identifier>>;
+    std::collections::HashMap<(usize, &'static str), std::collections::BTreeSet<Identifier>>;
 
 pub(crate) struct Installed {
     pub(crate) mods: Mods,
@@ -385,11 +385,6 @@ pub fn session_callback_enabled(
                 .get(&(hook as usize, owner))
                 .is_some_and(|poisoned| poisoned.contains(id))
     })
-}
-
-pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {
-    crate::dispatch_scope::backend()
-        .is_none_or(|backend| (backend.diagnostics.first_output_refusal)(hook, id))
 }
 
 /// Invoke an enabled named callback through the same failure boundary as a hook subscriber.
@@ -721,16 +716,6 @@ pub(crate) fn entered_with_id_matching<'a>(
     allow: impl FnMut(&str) -> bool + 'a,
 ) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> + 'a {
     entered_subscribers_matching(hook_id, hook, allow).map(|entry| (entry.id, &*entry.hooks))
-}
-
-/// A hook's enabled subscribers in dispatch order (descending priority, then dependency order),
-/// each marked as running `hook` until the next one is (or the loop ends), so a panic in it
-/// names the mod.
-pub(crate) fn entered_subscribers(
-    hook_id: generated::HookId,
-    hook: &'static str,
-) -> impl Iterator<Item = &'static ModEntry> {
-    entered_subscribers_matching(hook_id, hook, |_| true)
 }
 
 /// How many listeners of `hook` are poisoned for the session.

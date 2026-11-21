@@ -44,7 +44,7 @@ fn refused_registration_does_not_leave_a_serializer_or_reserve_its_id() {
     let rollback = registrar.registration_checkpoint();
     (&mut registrar as &mut dyn crate::Registrar)
         .register_global_loot_modifier_serializer("refused", Codec);
-    rollback(&mut registrar, false);
+    rollback(&mut registrar);
     assert_eq!(registrar.loot_modifier_serializers.len(), 1);
     assert_eq!(&*registrar.loot_modifier_serializers[0].id, "test:kept");
     (&mut registrar as &mut dyn crate::Registrar)

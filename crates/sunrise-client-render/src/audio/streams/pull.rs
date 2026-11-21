@@ -1,6 +1,6 @@
 //! One lazy PCM producer for all native pull streams on a shared output.
 use super::{Control, Ring};
-use crate::crash::{CallError, contain_call};
+use crate::crash::contain;
 use mod_api::{
     __private::{mod_index, mod_index_on},
     AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_TOTAL, AudioRead, AudioRefusal,
@@ -179,18 +179,17 @@ impl PullOwner {
         self.call("AudioStream drop", || drop(source)).is_ok()
     }
 
-    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, CallError> {
+    fn call<T>(&self, hook: &'static str, call: impl FnOnce() -> T) -> Result<T, String> {
         let id = self.id;
         let _guard = enter_native_mod(ModCall {
             id,
             hook,
             part: None,
         });
-        let result = contain_call(call);
+        let result = contain(call);
         match &result {
             Ok(_) => {}
-            Err(CallError::Refused(refusal)) => log::warn!("{hook} refused: {refusal}"),
-            Err(CallError::Panicked(_)) => {
+            Err(_) => {
                 log::error!(
                     "mod {id}: {hook} panicked; audio stream reads are disabled for this session"
                 );
@@ -242,10 +241,10 @@ impl PullJob {
                 );
                 false
             }
-            Err(CallError::Panicked(_)) => false,
+            Err(_) => false,
             // A rejected source can poison the owner on the opening thread during this read.
             _ if !self.owner.enabled() => false,
-            Ok(AudioRead::Frames(0)) | Err(CallError::Refused(_)) => true,
+            Ok(AudioRead::Frames(0)) => true,
             Ok(AudioRead::Frames(frames)) => {
                 self.ring.publish_frames(tail, &pcm[..frames * channels]);
                 true

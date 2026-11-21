@@ -707,7 +707,8 @@ pub(super) fn load_resources_for_mods(
     let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
     let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
     let (core, loaded_gui, resolved, client_applies) = loop {
-        let listeners = (!headless).then(client_reload::register_startup_client_reload_listeners);
+        let listeners = (!headless)
+            .then(|| client_reload::register_startup_client_reload_listeners(Some(settings)));
         let (ui, core) = std::thread::scope(|scope| {
             let core = |_unit: &()| {
                 // A failed pack starts core again from the game's own
@@ -730,12 +731,7 @@ pub(super) fn load_resources_for_mods(
                     .map_err(CoreLoadError::Pack)
                 };
                 if let Some(listeners) = listeners {
-                    client_reload::stage_client_reload(
-                        resolved.source(),
-                        listeners,
-                        mod_api::__private::ModPhase::Setup,
-                        build,
-                    )
+                    client_reload::stage_client_reload(resolved.source(), listeners, build)
                 } else {
                     build().map(|core| (core, Vec::new()))
                 }

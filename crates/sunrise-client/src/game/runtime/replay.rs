@@ -354,10 +354,8 @@ impl Game<'_> {
                 Ok(sunrise_protocol::packets::play::Clientbound::CustomPayload(payload))
                     if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
                 {
-                    match sunrise_client::net::Event::decode_attachment_sync(payload) {
-                        Ok(event) => {
-                            let _ = self.dispatch_remote_event(event);
-                        }
+                    match sunrise_protocol::attachment_sync::decode_staged(payload) {
+                        Ok(staged) => self.apply_staged_attachment_sync(staged),
                         Err(error) => log::debug!("Studio replay skipped attachment sync: {error}"),
                     }
                 }

@@ -414,7 +414,7 @@ impl Reports {
                 error,
             },
             &self.0,
-            fs4::available_space,
+            |path| fs4::available_space(path),
         );
     }
 

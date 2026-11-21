@@ -4627,11 +4627,10 @@ impl Game<'_> {
             _ => return Ok(None),
         };
         let items = self.items();
-        let Some(ingredient) = sunrise_client::crafting::Ingredient::parse(&json, items) else {
+        let Some(mut ingredient) = sunrise_client::crafting::Ingredient::parse(&json, items) else {
             return Ok(None);
         };
-        let known: Vec<String> = ingredient
-            .order
+        let known: Vec<String> = std::mem::take(&mut ingredient.order)
             .into_iter()
             .filter(|item| items.get(item).is_some())
             .collect();
