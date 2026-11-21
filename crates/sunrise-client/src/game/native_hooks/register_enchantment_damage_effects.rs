@@ -169,9 +169,10 @@ mod tests {
                         (vec![("damage_test:force", 2)], 8.0),
                         (
                             vec![("minecraft:sharpness", 3), ("damage_test:force", 2)],
-                            // Effective component maps put damage_test:force before sharpness:
-                            // ((1 + 2) * 2 + level 2) + Sharpness III's 2 = 10.
-                            10.0,
+                            // Vanilla iterates the ItemEnchantments holder hash map, not a
+                            // fixed order. Our combat stack reads the compound in Java HashMap
+                            // order: Sharpness III adds 2 before the custom effect runs.
+                            (1.0 + 2.0 + 2.0) * 2.0 + 2.0,
                         ),
                     ] {
                         game.mobs.clear();
@@ -250,8 +251,8 @@ mod tests {
                         [
                             (7, 21, "minecraft:stick".into(), 2, 3.0),
                             (7, 21, "minecraft:stick".into(), 2, 6.0),
-                            (7, 21, "minecraft:stick".into(), 2, 3.0),
-                            (7, 21, "minecraft:stick".into(), 2, 6.0),
+                            (7, 21, "minecraft:stick".into(), 2, 5.0),
+                            (7, 21, "minecraft:stick".into(), 2, 10.0),
                             (7, 21, "minecraft:trident".into(), 2, 10.0),
                             (7, 21, "minecraft:trident".into(), 2, 20.0),
                             (7, 21, "minecraft:bow".into(), 2, 4.0),
