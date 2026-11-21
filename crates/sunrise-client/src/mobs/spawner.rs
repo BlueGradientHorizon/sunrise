@@ -19,7 +19,6 @@ use serde_json::value::RawValue;
 use std::{collections::HashMap, fs, path::Path};
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_core::{geometry::Aabb, geometry::Vec3, random::RandomSource};
-use sunrise_protocol::registry::Builtin;
 
 /// `SpawnData`'s codec and rules, over the data in `chunk::block_entity`.
 pub trait SpawnDataExt: Sized {
@@ -263,9 +262,12 @@ impl SpawnerTypeFacts {
         }
     }
 
-    /// Join the prepared entity registry to its spawner facts. Every registered
-    /// type must have a complete row, whether or not it can be created as a mob.
-    pub fn load_all(root: &Path) -> crate::Result<HashMap<String, Self>> {
+    /// Read spawn facts for the entity keys supplied by registry resolution.
+    /// Every registered type must have a complete row, whether or not it is a mob.
+    pub fn load_registered<'a>(
+        root: &Path,
+        ids: impl IntoIterator<Item = &'a str>,
+    ) -> crate::Result<HashMap<String, Self>> {
         #[derive(serde::Deserialize)]
         struct ExportedType {
             category: String,
@@ -275,18 +277,12 @@ impl SpawnerTypeFacts {
             template: Option<String>,
         }
 
-        let report = Builtin::find(root).ok_or("registries.json not found")?;
-        let registry = Builtin::load(&report)?;
-        let ids = &registry
-            .get("minecraft:entity_type")
-            .ok_or("missing entity type registry")?
-            .names;
         let path = root.join("entity-types.json");
         let bytes = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
         let rows: HashMap<String, &RawValue> = serde_json::from_slice(&bytes)
             .map_err(|error| format!("{}: {error}", path.display()))?;
-        let mut facts = HashMap::with_capacity(ids.len());
-        for id in ids.iter().filter(|id| !id.is_empty()) {
+        let mut facts = HashMap::new();
+        for id in ids {
             let entry = || format!("{}: spawner facts for {id}", path.display());
             let row = rows
                 .get(id)
@@ -308,7 +304,7 @@ impl SpawnerTypeFacts {
                 return Err(format!("{}: non-finite spawn dimensions", entry()).into());
             }
             facts.insert(
-                id.clone(),
+                id.to_owned(),
                 Self {
                     species,
                     allowed_in_peaceful: row
@@ -852,11 +848,6 @@ mod tests {
     #[test]
     fn incomplete_spawner_facts_for_a_registered_non_mob_refuse_at_load() {
         let root = tempfile::tempdir().unwrap();
-        fs::write(
-            root.path().join("registries.json"),
-            br#"{"minecraft:entity_type":{"entries":{"minecraft:arrow":{"protocol_id":0}}}}"#,
-        )
-        .unwrap();
         let path = root.path().join("entity-types.json");
         for (rows, reason) in [
             (r#"{}"#, "missing entity type row"),
@@ -870,7 +861,8 @@ mod tests {
             ),
         ] {
             fs::write(&path, rows).unwrap();
-            let Err(error) = SpawnerTypeFacts::load_all(root.path()) else {
+            let Err(error) = SpawnerTypeFacts::load_registered(root.path(), ["minecraft:arrow"])
+            else {
                 panic!("loaded incomplete facts for a registered arrow: {rows}");
             };
             let error = error.to_string();

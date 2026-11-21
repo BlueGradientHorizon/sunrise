@@ -64,8 +64,9 @@ pub trait SpawnPlacementsRegistrar {
     /// An unavailable key returns [`SpawnPlacementError::InvalidEntityType`] and records
     /// a registration refusal. Unloaded types, invalid combinations of metadata, and
     /// missing vanilla spawn placement data refuse resource loading, naming the mod and type.
-    /// Missing or malformed prepared type facts (category or dimensions) also refuse resource
-    /// loading and name the affected entity type. Both spawners use those same resolved facts.
+    /// The accepted gameplay resources supply both the registry keys and their spawn facts.
+    /// Missing or malformed facts (category or dimensions) refuse resource loading and name
+    /// the affected entity type. Both spawners use those same resolved types.
     fn register_spawn_placement(
         &mut self,
         kind: EntityTypeKey,

@@ -79,10 +79,11 @@ skip the placement check; trial spawners check their custom rules afterward.
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
 invalid placement/heightmap options refuse resource loading with the mod and type named. Sunrise
-also checks that registered types in the prepared resources have a category and dimensions. If
-those facts are missing or malformed, loading fails and names the affected type instead of treating
-it as unknown when a spawner ticks. If mods register predicates, the prepared resources must
-include vanilla's spawn placement data.
+resolves entity keys from the accepted gameplay resources, not a provisional pack load.
+Each prepared type must have a category and dimensions in that same generation. Missing or
+malformed facts fail loading and name the affected type instead of treating it as unknown when
+a spawner ticks. If mods register predicates, the prepared resources must include vanilla's
+spawn placement data.
 
 ## Saved display and utility entities
 

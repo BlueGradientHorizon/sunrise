@@ -698,9 +698,9 @@ pub(super) fn load_resources_for_mods(
             &texture_atlases,
         );
     };
-    // Every loaded game publishes scalar registry keys, including callers that
-    // load a prepared root directly instead of building a mod content overlay.
-    crate::game::mods::register_iterated_registries(resolved.prepared())?;
+    // Publish only the accepted generation, not the staged content root that
+    // this load may have discarded during resource-pack rollback.
+    let spawner_types = mods::register_iterated_registries(resolved.prepared())?;
     log::info!("load core tables: {:.2}s", started.elapsed().as_secs_f32());
     let CoreTables {
         item_data,
@@ -826,6 +826,7 @@ pub(super) fn load_resources_for_mods(
                     &resource_root,
                     &conditions,
                     &resources,
+                    spawner_types,
                     &assets,
                     &behaviour_json,
                     &gameplay_projection,
@@ -858,6 +859,7 @@ pub(super) fn load_resources_for_mods(
             &resolved,
             &conditions,
             &resources,
+            spawner_types,
             &assets,
             &behaviour_json,
             &gameplay_projection,

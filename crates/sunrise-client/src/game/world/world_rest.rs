@@ -5,6 +5,7 @@ pub(super) fn load_world_rest(
     resource_root: &sunrise_assets::resource_source::ResourceRoot,
     conditions: &sunrise_world::conditions::LoadConditions,
     resources: &Resources,
+    spawner_types: HashMap<String, SpawnerTypeFacts>,
     assets: &Assets,
     behaviour_json: &serde_json::Value,
     gameplay_projection: &[sunrise_client::blocks::GameplayProjection],
@@ -86,12 +87,6 @@ pub(super) fn load_world_rest(
     let load_animate = || resource_tables::load_animate_tables(root, registry, draws, biomes);
     let load_mobs = || -> Result<_> {
         let _step = startup::step("rest.mobs");
-        let mut spawner_types = SpawnerTypeFacts::load_all(root)?;
-        for kind in mod_api::__private::general_entity_type_declarations() {
-            spawner_types
-                .entry(kind.id.clone())
-                .or_insert_with(|| SpawnerTypeFacts::general_entity(kind.width, kind.height));
-        }
         let catalog = &resources.motion().attributes;
         let mut types = if draws {
             match entity_models {
@@ -158,7 +153,7 @@ pub(super) fn load_world_rest(
             sunrise_client::mobs::cem::CemModels::default()
         }));
         sunrise_client::mobs::trial_spawner::load_registry(root);
-        Ok((mob_types, mob_data, spawner_types))
+        Ok((mob_types, mob_data))
     };
     let load_transformers = || -> Result<_> {
         let _step = startup::step("rest.transformers_models");
@@ -285,7 +280,7 @@ pub(super) fn load_world_rest(
     // World staging checks conditions after the selected packs have supplied their winners.
     let (items, recipes, stations) = items?;
     let (animate, fog) = animate?;
-    let (mob_types, mut mob_data, spawner_types) = mobs?;
+    let (mob_types, mut mob_data) = mobs?;
     let (transformers, (player_type, player_arm, player_arm_slim, spin_attack)) = transformers?;
     if draws {
         mob_data.frame_models = startup::time("rest.frame_models", || {

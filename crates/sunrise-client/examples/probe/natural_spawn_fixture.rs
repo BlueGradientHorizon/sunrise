@@ -550,7 +550,15 @@ pub fn main() -> sunrise_client::Result<()> {
     ))?;
     let structures = StructureSpawns::load(root);
     let collision = collisions::load(root, registry)?;
-    let entity_types = SpawnerTypeFacts::load_all(root)?;
+    let builtin = sunrise_protocol::registry::Builtin::load(&root.join("registries.json"))?;
+    let ids = &builtin
+        .get("minecraft:entity_type")
+        .ok_or("missing entity type registry")?
+        .names;
+    let entity_types = SpawnerTypeFacts::load_registered(
+        root,
+        ids.iter().map(String::as_str).filter(|id| !id.is_empty()),
+    )?;
     let shared = Shared {
         facts: &facts,
         data: &data,
