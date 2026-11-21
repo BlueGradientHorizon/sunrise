@@ -2754,16 +2754,17 @@ fn declared_stew_effects_generate_food_and_search_variants_and_work_in_recipes()
             "minecraft:mob_effect": {"entries": {"minecraft:luck":{"protocol_id":0}, "minecraft:speed":{"protocol_id":1}}}
         }),
     );
+    // The template's Block.getItem is minecraft:test, but that item places a poppy.
     let bindings: serde_json::Map<_, _> = [
-        "minecraft:test",
-        "minecraft:poppy",
-        "minecraft:open_eyeblossom",
+        ("minecraft:test", "minecraft:poppy"),
+        ("minecraft:poppy", "minecraft:poppy"),
+        ("minecraft:open_eyeblossom", "minecraft:open_eyeblossom"),
     ]
     .into_iter()
-    .map(|id| {
+    .map(|(id, block)| {
         (
             id.to_owned(),
-            json!({"class":["BlockItem"], "fields":{"block":id}}),
+            json!({"class":["BlockItem"], "fields":{"block":block}}),
         )
     })
     .collect();
