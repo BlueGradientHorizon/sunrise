@@ -347,6 +347,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
             }
             for e in &loaded.entries {
                 for v in &e.versions {
+                    e.source_file_name(v)
+                        .map_err(|error| format!("{} {}: {error}", e.id, v.version))?;
                     println!("{} {} {} {}", v.sha256, e.id, v.version, v.file);
                 }
             }

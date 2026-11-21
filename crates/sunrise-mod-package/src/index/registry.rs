@@ -200,6 +200,40 @@ impl Entry {
         Cow::Borrowed(&self.source)
     }
 
+    /// The file's name in the registry mirror. An explicit stable source must come from a
+    /// canonical package asset on this entry's own GitHub release.
+    pub fn source_file_name<'a>(&self, version: &'a EntryVersion) -> Result<&'a str, String> {
+        if version.sunrise.is_none() {
+            return Ok(&version.file);
+        }
+        if !plain_version(&version.version) || semver::Version::parse(&version.version).is_err() {
+            return Err(
+                "a stable source must use the full SemVer version from its manifest".into(),
+            );
+        }
+        let name = format!("{}-{}.smod", self.id, version.version);
+        let invalid = || {
+            format!("file for a stable source must be a GitHub release asset URL ending in /{name}")
+        };
+        let (repo, tag, asset) = github_release_asset(&version.file).ok_or_else(invalid)?;
+        if asset != name
+            || !super::plain_name(asset)
+            || !super::plain_name(tag)
+            || !valid_repo(repo)
+        {
+            return Err(invalid());
+        }
+        let source_repo = github_repo(&self.source_url()).ok_or(
+            "a stable source needs the project's GitHub repository in `source`, or in `repo` when `source` is omitted",
+        )?;
+        if !source_repo.eq_ignore_ascii_case(repo) {
+            return Err(format!(
+                "file must be hosted in the project's repository {source_repo}"
+            ));
+        }
+        Ok(asset)
+    }
+
     /// The entry with the repository's page filling what it leaves out.
     pub fn resolved(&self, page: &Page) -> Entry {
         let mut e = self.clone();
@@ -318,7 +352,7 @@ pub struct EntryVersion {
     /// The stable Sunrise release tag it was made for, when declared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sunrise: Option<String>,
-    /// The name players download, with the kind's extension.
+    /// A bare asset name, or the author's GitHub release URL when `sunrise` is set.
     pub file: String,
     /// Lowercase hex: pins the reviewed file.
     pub sha256: String,
@@ -441,7 +475,7 @@ impl Checkout {
                 );
             }
             for v in &entry.versions {
-                if let Err(error) = v.release(releases) {
+                if let Err(error) = v.release(releases).and_then(|_| entry.source_file_name(v)) {
                     errors.push(format!("{} {}: {error}", entry.id, v.version));
                 }
             }
@@ -855,12 +889,13 @@ pub fn checked_version(
     revoked: &[Revoked],
 ) -> Result<Version, String> {
     let release = v.release(src.releases)?;
-    let url = format!("{}{}/{}", src.release, tag(&entry.id, &v.version), v.file);
+    let name = entry.source_file_name(v)?;
+    let url = format!("{}{}/{name}", src.release, tag(&entry.id, &v.version));
     version_at(
         entry,
         v,
         &src.files.join(&v.sha256),
-        url,
+        (name, url),
         release,
         Some(src),
         revoked,
@@ -872,7 +907,7 @@ fn version_at(
     entry: &Entry,
     v: &EntryVersion,
     path: &Path,
-    url: String,
+    (name, url): (&str, String),
     release: Option<&SunriseRelease>,
     sources: Option<&Sources<'_>>,
     revoked: &[Revoked],
@@ -966,7 +1001,7 @@ fn version_at(
         requires: facts.requires,
         file: File {
             url,
-            name: v.file.clone(),
+            name: name.to_owned(),
             size,
             sha256: v.sha256.clone(),
             signature: v.signature.clone(),
@@ -1046,7 +1081,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         "https://github.com/{repo}/releases/download/{}/{}",
         r.tag, r.asset
     );
-    version_at(entry, &v, path, url, None, None, &[])
+    version_at(entry, &v, path, (r.asset, url), None, None, &[])
 }
 
 /// A project's page file as it would fill `entry` (which names the repository): refused when it

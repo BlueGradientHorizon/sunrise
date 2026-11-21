@@ -69,6 +69,20 @@ impl Registry {
         hash
     }
 
+    fn pin_source(&self, id: &str, tag: &str) {
+        self.edit(id, |t| {
+            let repo = format!("https://github.com/author/{id}");
+            format!(
+                "{}sunrise='{tag}'\n",
+                t.replace(&format!("https://example.test/{id}"), &repo)
+                    .replace(
+                        &format!("file='{id}-1.0.0.smod'"),
+                        &format!("file='{repo}/releases/download/v1.0.0/{id}-1.0.0.smod'")
+                    )
+            )
+        });
+    }
+
     fn screenshot(&self, id: &str, bytes: &[u8]) {
         let dir = self.0.path().join(format!("head/screenshots/{id}"));
         std::fs::create_dir_all(&dir).unwrap();
@@ -160,7 +174,7 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
             ("src/example.rs", ""),
         ],
     );
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     let path = r.0.path().join("releases.json");
     let flag = ["--releases", path.to_str().unwrap()];
     let write_release = |tag: &str, commit: &str| {
@@ -233,7 +247,7 @@ fn review_without_packages_checks_stable_release_declarations() {
         ])
     };
     assert_eq!(review(), Ok(())); // Legacy row without a release declaration.
-    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    r.pin_source("coords", RELEASE_TAG);
     assert!(review().is_err());
 }
 

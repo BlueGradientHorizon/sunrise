@@ -323,6 +323,14 @@ a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field
 list. When package files are checked, a native package's `[native] sunrise` pin must match the named commit. The
 workflow supplies the file; the tool does not discover releases itself.
 
+A `[[versions]]` row with `sunrise` must set `file` to the author's release asset, for example
+`https://github.com/you/example/releases/download/v0.1.0/example-0.1.0.smod`. Use the project's own
+GitHub repository (`source`, or `repo` if `source` is omitted), one plain tag segment, and the exact
+`<id>-<version>.smod` asset name using the full SemVer from the package. A bare filename is refused
+on a stable row. The URL is immutable after publication, just like the source pin and digest.
+The registry checks the bytes from `--files/<sha256>`; the generated index still points to the package
+on the registry's `<id>-<version>` mirror. Rows without `sunrise` still use a bare filename.
+
 ### Stable native builds
 
 A reviewed standalone native mod can add an author-signed binary build to its `[[versions]]` row:
@@ -336,8 +344,8 @@ signature = """<descriptor .minisig text>"""
 ```
 
 The source version must be signed and pin a stable release of the same line. Its registry version label
-must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). An already published shorthand label
-stays source-only: publish a new mod version to add builds rather than renaming the old row. The package
+must be the full SemVer from the signed manifest (`1.0.0`, not `1.0`). Older rows without `sunrise` keep their
+existing filenames and labels; publish a new stable mod version to add builds rather than renaming the old row. The package
 must contain `Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
 dependencies do not produce an independent release library. Builds are optional. Each stable release
 gets at most one row, and published rows are append-only. `registry review` reports an owner's append as
@@ -358,7 +366,7 @@ bytes to the declared project, mod version and SDK host. Validation checks every
 without running or rebuilding any library. A binary for a package with a known `breaks` verdict is
 refused; a verified exact binary can supply a build whose fit verdict is `exact`.
 
-`registry list <checkout>` retains the source package staging list. For build assets, use
+`registry list <checkout>` prints `sha256 id version file`, with `file` as written in the row. For build assets, use
 `registry list <checkout> --build-assets` to list descriptors, then repeat with `--files <dir>` to list
 archives from verified descriptors. Both print JSON rows with `id`, `version`, `sunrise`, `url`, `name`,
 `sha256`, and `size` (null for a descriptor). The workflow supplies the listed files under their digests,
@@ -395,11 +403,12 @@ or execute the repository. `repo` and `path` always come from the entry.
 ### The files folder
 
 The registry's CI keeps every listed file in a folder named by hash, `files/<sha256>` (no extension), which
-`registry check` and `registry build` read with `--files`. A maintainer stages a submitted file as the asset
-`<sha256>.<extension>` of the registry's `staging` release, and the workflow fetches it from there; once merged it is
-published as the release `<id>-<version>`, asset `<file>`. `cargo sunrise-mod publish` uses the same layout for the
-new file, but its output is not a complete checkout. `registry check` needs the full checkout and all listed files
-to plan installations.
+`registry check` and `registry build` read with `--files`. For a stable source row, the workflow fetches
+from the URL in `file`. For a row with only a filename, a maintainer puts `<sha256>.<extension>` in the
+registry's `staging` release for the workflow to fetch. Either way, the merged package is published under
+`<id>-<version>` with its asset name. `cargo sunrise-mod publish` uses the same hash-named layout locally
+for the new file, but its output is not a complete checkout. `registry check` needs the full checkout and
+all listed files to plan installations.
 
 Check a package on its own with:
 

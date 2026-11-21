@@ -46,6 +46,10 @@ impl Release {
                     "[[versions]]",
                     &format!("key='{}'\n\n[[versions]]", key.trim()),
                 )
+                .replace(
+                    &format!("file='{ID}-{VERSION}.smod'"),
+                    &format!("file='{URL}/{ID}-{VERSION}.smod'"),
+                )
                 .replace(&placeholder, &hash)
                 + &format!("sunrise='{RELEASE_TAG}'\nsignature='''{signature}'''\n")
         });
@@ -169,21 +173,14 @@ fn signed_build_appends_to_the_source_and_supplies_exact_fit_on_its_own_sdk() {
 }
 
 #[test]
-fn a_short_version_label_cannot_list_native_builds() {
+fn a_stable_source_needs_a_full_version_label() {
     let release = Release::new("source.smod");
-    release.0.edit(ID, |text| {
-        text.replace("version='1.0.0'", "version='1.0'")
-            .replace("release_probe-1.0.0.smod", "release_probe-1.0.smod")
-    });
-    release.0.make_base();
-    assert_eq!(
-        release.build().project(ID).unwrap().versions[0].version,
-        "1.0"
-    );
-    release.use_descriptor("valid");
+    release
+        .0
+        .edit(ID, |text| text.replace("version='1.0.0'", "version='1.0'"));
     let error = release.check().unwrap_err();
     assert!(
-        error.contains("builds require a canonical version label"),
+        error.contains("stable source must use the full SemVer"),
         "{error}"
     );
 }
