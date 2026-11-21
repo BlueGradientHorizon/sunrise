@@ -554,8 +554,8 @@ impl Game<'_> {
                                 &mut trample,
                             )
                         }
-                        Some(Pause::AfterAirDamage(damage)) => {
-                            sunrise_client::mobs::riders::resume_after_air_damage(
+                        Some(Pause::AfterDamage(damage)) => {
+                            sunrise_client::mobs::riders::resume_after_damage(
                                 &mut mobs,
                                 i,
                                 &w,
@@ -825,7 +825,7 @@ impl Game<'_> {
             let trampling = matches!(pause, Some(Pause::Trample));
             let live_sections = section_table
                 .as_ref()
-                .filter(|_| trampling || matches!(pause, Some(Pause::AfterAirDamage(_))));
+                .filter(|_| trampling || matches!(pause, Some(Pause::AfterDamage(_))));
             if let Some(sections) = live_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
@@ -849,7 +849,7 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
-                        Pause::AfterAirDamage(_) => {
+                        Pause::AfterDamage(_) => {
                             let victim = snapshot[cursor].id;
                             if let Some(i) = self.mob_index.find(&self.mobs, victim) {
                                 self.finish_mob_damage_at(i);

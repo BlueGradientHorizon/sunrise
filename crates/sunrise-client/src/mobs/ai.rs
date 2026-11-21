@@ -440,31 +440,6 @@ pub(super) use step::inherited_step_sound;
 
 use crate::powder_snow::particle_velocity as powder_snow_particle_velocity;
 
-/// The inside-block effects of fire and lava (`InsideBlockEffectType`
-/// FIRE_IGNITE and LAVA_IGNITE): ignite, then hurt.
-fn block_contact_damage(
-    m: &mut Mob,
-    _w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    fire: f32,
-    lava: bool,
-) {
-    if fire > 0.0 && !m.fire_immune() {
-        let multiplier = m.burning_time();
-        m.fire_ticks = crate::motion::environment::ignite_contact(
-            m.fire_ticks,
-            false,
-            &mut m.random,
-            multiplier,
-        );
-        m.damage(level, fire, Damage::of(DamageKind::InFire));
-    }
-    if lava && !m.fire_immune() {
-        m.ignite_for_ticks(300);
-        m.damage(level, 4.0, Damage::of(DamageKind::Lava));
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Ai {
     /// `Mob.homePosition` and `homeRadius`: where a restricted mob stays
@@ -1106,16 +1081,36 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
-    /// A lethal air-supply hit needs its owning level before baseTick goes on.
-    AfterAirDamage(AirDamageResume),
+    /// A hit needs its owning level before the tick goes on.
+    AfterDamage(DamageResume),
     /// The caller's trample slot holds the continuation.
     Trample,
 }
 
 #[derive(Debug)]
-pub struct AirDamageResume {
-    contact: Contact,
-    known_speed: Vec3,
+pub struct DamageResume {
+    join: crate::join_seq::JoinSeq,
+    tail: DamageTail,
+}
+
+#[derive(Debug)]
+enum DamageTail {
+    Base {
+        contact: Contact,
+        next: BaseStage,
+        known_speed: Vec3,
+    },
+}
+
+#[derive(Debug)]
+enum BaseStage {
+    AfterBurn,
+    AfterVoid,
+    Air,
+    Effects,
+    EffectCountdown(EffectCursor),
+    ContactLava { lava: bool, was_on_fire: bool },
+    Finish { was_on_fire: bool },
 }
 
 #[derive(Debug)]
@@ -1209,8 +1204,8 @@ pub fn tick(
                 let breath = Some(air.step.vanilla);
                 resume_after_breathing(m, w, level, events, air, known_speed, breath, None)
             }
-            TickProgress::Paused(Pause::AfterAirDamage(resume)) => {
-                resume_after_air_damage(m, w, level, events, resume, None)
+            TickProgress::Paused(Pause::AfterDamage(resume)) => {
+                resume_after_damage(m, w, level, events, resume, None)
             }
             TickProgress::Paused(Pause::Trample) => {
                 unreachable!("hostless travel cannot pause")
@@ -1280,15 +1275,32 @@ fn tick_until_pause(
     if m.species() == Species::Strider {
         super::strider::pre_tick(m, w, events);
     }
-    match base_tick(m, w, level, events) {
+    let progress = base_tick(m, w, level, events);
+    finish_base_progress(m, w, level, events, progress, known_speed, trample)
+}
+
+fn finish_base_progress(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    progress: BaseTick,
+    known_speed: Vec3,
+    trample: Option<&mut Option<MobTrample>>,
+) -> TickProgress {
+    match progress {
         BaseTick::Done(was_on_fire) => {
             after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
         }
         BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
-        BaseTick::AfterAirDamage(contact) => {
-            TickProgress::Paused(Pause::AfterAirDamage(AirDamageResume {
-                contact,
-                known_speed,
+        BaseTick::AfterDamage { contact, next } => {
+            TickProgress::Paused(Pause::AfterDamage(DamageResume {
+                join: m.join,
+                tail: DamageTail::Base {
+                    contact,
+                    next,
+                    known_speed,
+                },
             }))
         }
     }
@@ -1313,39 +1325,42 @@ pub fn resume_after_breathing(
     if let Some(breath) = breath {
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
-    let resume = AirDamageResume {
-        contact: air.contact,
-        known_speed,
-    };
-    if m.pending_damage_post.is_some() && trample.is_some() {
-        TickProgress::Paused(Pause::AfterAirDamage(resume))
+    let progress = if m.pending_damage_post.is_some() && trample.is_some() {
+        BaseTick::AfterDamage {
+            contact: air.contact,
+            next: BaseStage::Effects,
+        }
     } else {
-        resume_after_air_damage(m, w, level, events, resume, trample)
-    }
+        continue_base_tick(m, w, level, events, air.contact, BaseStage::Effects)
+    };
+    finish_base_progress(m, w, level, events, progress, known_speed, trample)
 }
 
-/// Continue baseTick after the owning game settled a lethal air-supply hit.
-pub(super) fn resume_after_air_damage(
+/// Continue the exact tick site after the owning game settled the hit.
+pub(super) fn resume_after_damage(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    resume: AirDamageResume,
+    resume: DamageResume,
     trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
     }
-    let was_on_fire = base_tick_after_air(m, w, level, events, resume.contact);
-    after_base_tick(
-        m,
-        w,
-        level,
-        events,
-        was_on_fire,
-        resume.known_speed,
-        trample,
-    )
+    if m.join != resume.join {
+        return TickProgress::Complete(true);
+    }
+    match resume.tail {
+        DamageTail::Base {
+            contact,
+            next,
+            known_speed,
+        } => {
+            let progress = continue_base_tick(m, w, level, events, contact, next);
+            finish_base_progress(m, w, level, events, progress, known_speed, trample)
+        }
+    }
 }
 
 /// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
@@ -2250,7 +2265,7 @@ fn keeps_its_air(m: &Mob) -> bool {
 enum BaseTick {
     Done(bool),
     Air(AirPause),
-    AfterAirDamage(Contact),
+    AfterDamage { contact: Contact, next: BaseStage },
 }
 
 #[cfg(test)]
@@ -2259,7 +2274,7 @@ impl BaseTick {
     fn was_on_fire(self) -> bool {
         match self {
             Self::Done(was_on_fire) => was_on_fire,
-            Self::Air(_) | Self::AfterAirDamage(_) => {
+            Self::Air(_) | Self::AfterDamage { .. } => {
                 panic!("the base tick stopped at its air update")
             }
         }
@@ -2305,217 +2320,283 @@ fn base_tick(
     }
     let fire = crate::motion::environment::fire_contact(w.world, w.registry, m.bounds());
     let lava = m.fluids.in_lava || touches_lava_cauldron(m, w);
-    let contact_at = m.position;
+    let contact = Contact {
+        fire,
+        lava,
+        at: m.position,
+    };
     if fire > 0.0 {
         m.ticks_frozen = 0;
     }
     // Entity.baseTick counts burn damage and the timer before a wet mob is put out.
-    if m.fire_ticks > 0 {
-        if m.fire_immune() {
-            m.fire_ticks = 0;
-        } else {
-            if m.fire_ticks % 20 == 0 && !m.fluids.in_lava {
-                m.damage(level, 1.0, Damage::of(DamageKind::OnFire));
-                // Entity.baseTick's hurt teleports before later contact is
-                // checked, so the old spot's fire cannot ignite the landing.
-                hurt_teleports(m, w, events);
-            }
-            m.fire_ticks -= 1;
-        }
+    if m.fire_ticks > 0 && m.fire_immune() {
+        m.fire_ticks = 0;
     }
-    // Entity.checkBelowWorld: LivingEntity.onBelowWorld hurts 4 a tick.
-    if m.position.y < f64::from(w.world.bottom_y() - 64) {
-        m.damage(level, 4.0, Damage::of(DamageKind::OutOfWorld));
+    let burning = m.fire_ticks > 0;
+    if burning && m.fire_ticks % 20 == 0 && !m.fluids.in_lava {
+        m.damage(level, 1.0, Damage::of(DamageKind::OnFire));
         hurt_teleports(m, w, events);
-    }
-    m.first_tick = false;
-    if m.alive() {
-        // LivingEntity.baseTick: a suffocating shape intersects the eye. Entity.isInWall
-        // is false under noPhysics, which Vex.tick holds while it ticks.
-        let mut scene = crate::collisions::SceneCollisions {
-            world: w.world,
-            binding: w.collision,
-            subject: None,
-        };
-        // A collider box at the eyes is a wall as well: the crush a moving collider gives.
-        let in_collider = m.species() != Species::Vex
-            && sunrise_client_render::moving_colliders::overlaps(
-                sunrise_world::entity_obstruction::EntityIdentity(u64::from(m.id)),
-                eye_bounds(m.width(), [m.position.x, m.eye_y(), m.position.z]),
-            );
-        if in_collider
-            || m.species() != Species::Vex
-                && in_wall(
-                    m.width(),
-                    [m.position.x, m.eye_y(), m.position.z],
-                    |x, y, z, eye_bounds| {
-                        let p = [x, y, z];
-                        let state = w.world.block(x, y, z);
-                        if !w
-                            .suffocation
-                            .is_suffocating(&mut scene, state, p)
-                            .unwrap_or(false)
-                        {
-                            return false;
-                        }
-                        w.collision
-                            .collision_shape(&mut scene, state, p)
-                            .ok()
-                            .is_some_and(|shape| {
-                                let Ok(eye_shape) = VoxelShape::from_box(*eye_bounds) else {
-                                    return false;
-                                };
-                                shape
-                                    .moved(Vec3::new(f64::from(x), f64::from(y), f64::from(z)))
-                                    .join_is_not_empty(&eye_shape, ShapeOp::AND)
-                                    .unwrap_or(false)
-                            })
-                    },
-                )
-        {
-            m.damage(level, 1.0, Damage::of(DamageKind::InWall));
-            hurt_teleports(m, w, events);
-        }
-        // Air supply and drowning (WaterAnimal.handleAirSupply for aquatic mobs).
-        // Nautilus.baseTick: NoAI skips only the custom handler; the
-        // superclass Breath/drown path must still process its air.
-        let step = if m.species() == Species::Axolotl {
-            axolotl_air_step(m, w).map(|step| (step, AirDamage::DryOut))
-        } else if m.species() == Species::Nautilus {
-            nautilus_air_step(m).map(|step| (step, AirDamage::DryOut))
-        } else if m.kind.flags.needs_water {
-            Some((
-                AirStep::own(m.air, 300, m.fluids.in_water),
-                AirDamage::Drown,
-            ))
-        } else {
-            // LivingEntity.baseTick / MobEffectUtil: bubble columns and breathing
-            // effects protect submerged mobs. Nautilus alone holds air rather
-            // than refilling it; Water Breathing or Conduit Power still refill.
-            let submerged = m.fluids.eye_in_water
-                && w.block_name(
-                    m.position.x.floor() as i32,
-                    m.eye_y().floor() as i32,
-                    m.position.z.floor() as i32,
-                ) != "minecraft:bubble_column";
-            let water_breathing = m.has_effect("minecraft:water_breathing")
-                || m.has_effect("minecraft:conduit_power");
-            let nautilus = m.has_effect("minecraft:breath_of_the_nautilus");
-            let drowns = submerged && !can_breathe_under_water(m) && !water_breathing && !nautilus;
-            let held = submerged && nautilus && !water_breathing;
-            let max = m.max_air_supply();
-            let vanilla = Breath {
-                can_breathe: !drowns,
-                consume: if keeps_its_air(m) { 0 } else { 1 },
-                // `increaseAirSupply`: four a tick, except the dolphin's own, which
-                // hands back the whole 4800 maximum however little air it has.
-                refill: if drowns || held {
-                    0
-                } else if m.species() == Species::Dolphin {
-                    max.saturating_sub(m.air)
-                } else {
-                    4
-                },
+        if m.pending_damage_post.is_some() {
+            return BaseTick::AfterDamage {
+                contact,
+                next: BaseStage::AfterBurn,
             };
-            Some((AirStep::generic(m.air, max, vanilla), AirDamage::Generic))
-        };
-        if let Some((step, damage)) = step {
-            // The owner asks `living_breathe` with its host between deciding and applying.
-            if crate::breathing::heard() {
-                return BaseTick::Air(AirPause {
-                    mob: m.id,
-                    step,
-                    join: m.join,
-                    damage,
-                    contact: Contact {
-                        fire,
-                        lava,
-                        at: contact_at,
-                    },
-                });
-            }
-            finish_air(m, w, level, events, step, damage, step.vanilla);
-            if m.pending_damage_post.is_some() {
-                return BaseTick::AfterAirDamage(Contact {
-                    fire,
-                    lava,
-                    at: contact_at,
-                });
-            }
         }
     }
-    BaseTick::Done(base_tick_after_air(
-        m,
-        w,
-        level,
-        events,
-        Contact {
-            fire,
-            lava,
-            at: contact_at,
-        },
-    ))
+    continue_base_tick(m, w, level, events, contact, BaseStage::AfterBurn)
 }
 
-/// What `Entity.baseTick` does after the air update, and whether the mob was on fire.
-fn base_tick_after_air(
+fn continue_base_tick(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     contact: Contact,
-) -> bool {
-    let Contact {
-        fire,
-        lava,
-        at: contact_at,
-    } = contact;
-    if m.species() == Species::Illusioner {
-        super::illusioner::tick(m, events);
+    mut next: BaseStage,
+) -> BaseTick {
+    loop {
+        next = match next {
+            BaseStage::AfterBurn => {
+                if m.fire_ticks > 0 {
+                    m.fire_ticks -= 1;
+                }
+                // Entity.checkBelowWorld: LivingEntity.onBelowWorld hurts 4 a tick.
+                if m.position.y < f64::from(w.world.bottom_y() - 64) {
+                    m.damage(level, 4.0, Damage::of(DamageKind::OutOfWorld));
+                    hurt_teleports(m, w, events);
+                    if m.pending_damage_post.is_some() {
+                        return BaseTick::AfterDamage {
+                            contact,
+                            next: BaseStage::AfterVoid,
+                        };
+                    }
+                }
+                BaseStage::AfterVoid
+            }
+            BaseStage::AfterVoid => {
+                m.first_tick = false;
+                if !m.alive() {
+                    next = BaseStage::Effects;
+                    continue;
+                }
+                // LivingEntity.baseTick: a suffocating shape intersects the eye. Entity.isInWall
+                // is false under noPhysics, which Vex.tick holds while it ticks.
+                let mut scene = crate::collisions::SceneCollisions {
+                    world: w.world,
+                    binding: w.collision,
+                    subject: None,
+                };
+                // A collider box at the eyes is a wall as well: the crush a moving collider gives.
+                let in_collider = m.species() != Species::Vex
+                    && sunrise_client_render::moving_colliders::overlaps(
+                        sunrise_world::entity_obstruction::EntityIdentity(u64::from(m.id)),
+                        eye_bounds(m.width(), [m.position.x, m.eye_y(), m.position.z]),
+                    );
+                if in_collider
+                    || m.species() != Species::Vex
+                        && in_wall(
+                            m.width(),
+                            [m.position.x, m.eye_y(), m.position.z],
+                            |x, y, z, eye_bounds| {
+                                let p = [x, y, z];
+                                let state = w.world.block(x, y, z);
+                                if !w
+                                    .suffocation
+                                    .is_suffocating(&mut scene, state, p)
+                                    .unwrap_or(false)
+                                {
+                                    return false;
+                                }
+                                w.collision
+                                    .collision_shape(&mut scene, state, p)
+                                    .ok()
+                                    .is_some_and(|shape| {
+                                        let Ok(eye_shape) = VoxelShape::from_box(*eye_bounds)
+                                        else {
+                                            return false;
+                                        };
+                                        shape
+                                            .moved(Vec3::new(
+                                                f64::from(x),
+                                                f64::from(y),
+                                                f64::from(z),
+                                            ))
+                                            .join_is_not_empty(&eye_shape, ShapeOp::AND)
+                                            .unwrap_or(false)
+                                    })
+                            },
+                        )
+                {
+                    m.damage(level, 1.0, Damage::of(DamageKind::InWall));
+                    hurt_teleports(m, w, events);
+                    if m.pending_damage_post.is_some() {
+                        return BaseTick::AfterDamage {
+                            contact,
+                            next: BaseStage::Air,
+                        };
+                    }
+                }
+                BaseStage::Air
+            }
+            BaseStage::Air => {
+                // Air supply and drowning (WaterAnimal.handleAirSupply for aquatic mobs).
+                // Nautilus.baseTick: NoAI skips only the custom handler; the
+                // superclass Breath/drown path must still process its air.
+                let step = if m.species() == Species::Axolotl {
+                    axolotl_air_step(m, w).map(|step| (step, AirDamage::DryOut))
+                } else if m.species() == Species::Nautilus {
+                    nautilus_air_step(m).map(|step| (step, AirDamage::DryOut))
+                } else if m.kind.flags.needs_water {
+                    Some((
+                        AirStep::own(m.air, 300, m.fluids.in_water),
+                        AirDamage::Drown,
+                    ))
+                } else {
+                    // LivingEntity.baseTick / MobEffectUtil: bubble columns and breathing
+                    // effects protect submerged mobs. Nautilus alone holds air rather
+                    // than refilling it; Water Breathing or Conduit Power still refill.
+                    let submerged = m.fluids.eye_in_water
+                        && w.block_name(
+                            m.position.x.floor() as i32,
+                            m.eye_y().floor() as i32,
+                            m.position.z.floor() as i32,
+                        ) != "minecraft:bubble_column";
+                    let water_breathing = m.has_effect("minecraft:water_breathing")
+                        || m.has_effect("minecraft:conduit_power");
+                    let nautilus = m.has_effect("minecraft:breath_of_the_nautilus");
+                    let drowns =
+                        submerged && !can_breathe_under_water(m) && !water_breathing && !nautilus;
+                    let held = submerged && nautilus && !water_breathing;
+                    let max = m.max_air_supply();
+                    let vanilla = Breath {
+                        can_breathe: !drowns,
+                        consume: if keeps_its_air(m) { 0 } else { 1 },
+                        // `increaseAirSupply`: four a tick, except the dolphin's own, which
+                        // hands back the whole 4800 maximum however little air it has.
+                        refill: if drowns || held {
+                            0
+                        } else if m.species() == Species::Dolphin {
+                            max.saturating_sub(m.air)
+                        } else {
+                            4
+                        },
+                    };
+                    Some((AirStep::generic(m.air, max, vanilla), AirDamage::Generic))
+                };
+                if let Some((step, damage)) = step {
+                    // The owner asks `living_breathe` with its host between deciding and applying.
+                    if crate::breathing::heard() {
+                        return BaseTick::Air(AirPause {
+                            mob: m.id,
+                            step,
+                            join: m.join,
+                            damage,
+                            contact,
+                        });
+                    }
+                    finish_air(m, w, level, events, step, damage, step.vanilla);
+                    if m.pending_damage_post.is_some() {
+                        return BaseTick::AfterDamage {
+                            contact,
+                            next: BaseStage::Effects,
+                        };
+                    }
+                }
+                BaseStage::Effects
+            }
+            BaseStage::Effects | BaseStage::EffectCountdown(_) => {
+                let cursor = match next {
+                    BaseStage::EffectCountdown(cursor) => cursor,
+                    _ => {
+                        if m.species() == Species::Illusioner {
+                            super::illusioner::tick(m, events);
+                        }
+                        if matches!(m.species(), Species::Evoker | Species::Illusioner) {
+                            super::illager::cast_particles(m, events);
+                        }
+                        super::hurt_by::base_tick(m, w);
+                        EffectCursor::start(m)
+                    }
+                };
+                // LivingEntity.baseTick runs tickEffects after the timers count down.
+                if let Some(cursor) = tick_effects_hurting(
+                    m,
+                    w.loop_context,
+                    level,
+                    w.mod_effects,
+                    cursor,
+                    &mut |m| {
+                        hurt_teleports(m, w, events);
+                        m.pending_damage_post.is_some()
+                    },
+                ) {
+                    return BaseTick::AfterDamage {
+                        contact,
+                        next: BaseStage::EffectCountdown(cursor),
+                    };
+                }
+                // The fire and lava contacts can each hurt. Re-read contact if the previous
+                // hurt teleported the mob before this part of the tick.
+                let was_on_fire = m.fire_ticks > 0;
+                let (fire, lava) = if m.position == contact.at {
+                    (contact.fire, contact.lava)
+                } else {
+                    (
+                        crate::motion::environment::fire_contact(w.world, w.registry, m.bounds()),
+                        touches_lava(m, w) || touches_lava_cauldron(m, w),
+                    )
+                };
+                let next = BaseStage::ContactLava { lava, was_on_fire };
+                if fire > 0.0 && !m.fire_immune() {
+                    let multiplier = m.burning_time();
+                    m.fire_ticks = crate::motion::environment::ignite_contact(
+                        m.fire_ticks,
+                        false,
+                        &mut m.random,
+                        multiplier,
+                    );
+                    m.damage(level, fire, Damage::of(DamageKind::InFire));
+                    hurt_teleports(m, w, events);
+                    if m.pending_damage_post.is_some() {
+                        return BaseTick::AfterDamage { contact, next };
+                    }
+                }
+                next
+            }
+            BaseStage::ContactLava { lava, was_on_fire } => {
+                let next = BaseStage::Finish { was_on_fire };
+                if lava && !m.fire_immune() {
+                    m.ignite_for_ticks(300);
+                    m.damage(level, 4.0, Damage::of(DamageKind::Lava));
+                    hurt_teleports(m, w, events);
+                    if m.pending_damage_post.is_some() {
+                        return BaseTick::AfterDamage { contact, next };
+                    }
+                }
+                next
+            }
+            BaseStage::Finish { was_on_fire } => {
+                if !m.alive() {
+                    m.death_time += 1;
+                }
+                // Hurt sounds of the damage above come before the ambient sound.
+                events.append(&mut m.outbox);
+                // Mob.baseTick: ambient sounds.
+                if m.alive() {
+                    let roll = m.random.next_int_bound(1000).unwrap_or(999);
+                    let t = m.ambient_timer;
+                    m.ambient_timer += 1;
+                    if roll < t {
+                        m.ambient_timer = -m.ambient_interval();
+                        super::entity_sounds::ambient(m, w, events);
+                    }
+                }
+                // Entity.baseTick ends with Leashable.tickLeash.
+                super::leash::tick(m, w, events);
+                return BaseTick::Done(was_on_fire);
+            }
+        };
     }
-    if matches!(m.species(), Species::Evoker | Species::Illusioner) {
-        super::illager::cast_particles(m, events);
-    }
-    super::hurt_by::base_tick(m, w);
-    // LivingEntity.baseTick runs tickEffects after the timers count down.
-    tick_effects_hurting(m, w.loop_context, level, w.mod_effects, &mut |m| {
-        hurt_teleports(m, w, events)
-    });
-    // Entity.applyEffectsFromBlocks runs in LivingEntity.aiStep, after
-    // baseTick has counted the fire and the hurt timers down: a fire block or
-    // lava ignites to the full 160 / 300 ticks and its hit lands after the
-    // invulnerable time of that tick has already dropped.
-    let was_on_fire = m.fire_ticks > 0;
-    let (fire, lava) = if m.position == contact_at {
-        (fire, lava)
-    } else {
-        (
-            crate::motion::environment::fire_contact(w.world, w.registry, m.bounds()),
-            touches_lava(m, w) || touches_lava_cauldron(m, w),
-        )
-    };
-    block_contact_damage(m, w, level, fire, lava);
-    // Enderman.hurtServer and Shulker.hurtServer teleport inside the hurt
-    // (fire, lava).
-    hurt_teleports(m, w, events);
-    if !m.alive() {
-        m.death_time += 1;
-    }
-    // Hurt sounds of the damage above come before the ambient sound.
-    events.append(&mut m.outbox);
-    // Mob.baseTick: ambient sounds.
-    if m.alive() {
-        let roll = m.random.next_int_bound(1000).unwrap_or(999);
-        let t = m.ambient_timer;
-        m.ambient_timer += 1;
-        if roll < t {
-            m.ambient_timer = -m.ambient_interval();
-            super::entity_sounds::ambient(m, w, events);
-        }
-    }
-    // Entity.baseTick ends with Leashable.tickLeash.
-    super::leash::tick(m, w, events);
-    was_on_fire
 }
 /// `LivingEntity.aiStep`'s freezing, after movement and the block walk and
 /// before cramming and the water's hurt, on `isInPowderSnow` as the tick's
@@ -4234,25 +4315,53 @@ pub(crate) fn tick_effects(
     level: &mut DamageLevel<'_>,
     mods: Option<&dyn super::ModEffectTicks>,
 ) {
-    tick_effects_hurting(m, context, level, mods, &mut |_| {});
+    let cursor = EffectCursor::start(m);
+    let _ = tick_effects_hurting(m, context, level, mods, cursor, &mut |_| false);
 }
 /// `LivingEntity.tickEffects`: each active effect's `MobEffectInstance.tickServer`.
 /// `after_effect` runs after each effect's tick, before its countdown, so a
 /// hurt the tick dealt finishes there: `Enderman.hurtServer` teleports inside
 /// the hurt, before the next effect's hurt draws (#1608).
-pub(crate) fn tick_effects_hurting(
+#[derive(Debug)]
+struct EffectCursor {
+    first: usize,
+    index: usize,
+    old_max_absorption: f32,
+    countdown: Option<EffectCountdown>,
+}
+
+impl EffectCursor {
+    fn start(m: &Mob) -> Self {
+        Self {
+            first: m.extra.effects.len(),
+            index: 0,
+            old_max_absorption: super::armor::max_absorption(m),
+            countdown: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct EffectCountdown {
+    effect: &'static str,
+    infinite: bool,
+    expired: bool,
+}
+
+fn tick_effects_hurting(
     m: &mut Mob,
     context: &LoopContext,
     level: &mut DamageLevel<'_>,
     mods: Option<&dyn super::ModEffectTicks>,
-    after_effect: &mut dyn FnMut(&mut Mob),
-) {
+    mut cursor: EffectCursor,
+    after_effect: &mut dyn FnMut(&mut Mob) -> bool,
+) -> Option<EffectCursor> {
     // LivingEntity.tickEffects ticks each active effect with the mob's list
     // still in place: the damage a Poison or Wither tick deals reads the
     // list it finds (Resistance softens the hit, Infested spawns silverfish,
     // a totem adds its effects to it). An effect a tick appends ticks from
     // the next tick on.
-    let mut first = m.extra.effects.len();
+    let mut first = cursor.first;
     // Finish expiry before the next callback reads the holder. A cancelled expiry
     // keeps even a zero-duration instance; hidden promotion happens before this.
     let expire = |m: &mut Mob, i: usize| {
@@ -4273,77 +4382,97 @@ pub(crate) fn tick_effects_hurting(
         m.retain_effects(|effect| effect.id != id);
         true
     };
-    let old_max_absorption = super::armor::max_absorption(m);
-    let mut i = 0;
-    while i < m.extra.effects.len() && i < first {
-        let (effect, amp) = (m.extra.effects[i].id, m.extra.effects[i].amplifier);
-        // MobEffectInstance.tickServer: an infinite (-1) effect times its
-        // ticks by the mob's tickCount and never counts down.
-        let infinite = m.extra.effects[i].duration == -1;
-        // MobEffectInstance.tickServer: without remaining duration the instance
-        // ticks nothing; resolve its expiry before the next instance.
-        if !infinite && m.extra.effects[i].duration <= 0 {
-            if expire(m, i) {
-                first -= 1;
-            } else {
-                i += 1;
-            }
-            continue;
-        }
-        let count = if infinite {
-            m.age as i32
+    let mut i = cursor.index;
+    while cursor.countdown.is_some() || (i < m.extra.effects.len() && i < first) {
+        let EffectCountdown {
+            effect,
+            infinite,
+            expired,
+        } = if let Some(countdown) = cursor.countdown.take() {
+            countdown
         } else {
-            m.extra.effects[i].duration
-        };
-        let interval = |base: i32| base.wrapping_shr(amp as u32).max(1);
-        // A refused mod effect expires before the next effect ticks.
-        let mut expired = false;
-        match effect {
-            "minecraft:poison"
-                if count % interval(25) == 0 && !m.kind.flags.undead && m.health > 1.0 =>
-            {
-                m.damage(level, 1.0, Damage::of(DamageKind::Magic));
+            let (effect, amp) = (m.extra.effects[i].id, m.extra.effects[i].amplifier);
+            // MobEffectInstance.tickServer: an infinite (-1) effect times its
+            // ticks by the mob's tickCount and never counts down.
+            let infinite = m.extra.effects[i].duration == -1;
+            // MobEffectInstance.tickServer: without remaining duration the instance
+            // ticks nothing; resolve its expiry before the next instance.
+            if !infinite && m.extra.effects[i].duration <= 0 {
+                if expire(m, i) {
+                    first -= 1;
+                } else {
+                    i += 1;
+                }
+                continue;
             }
-            "minecraft:wither" if count % interval(40) == 0 => {
-                // WitherMobEffect.applyEffectTick: damageSources().wither().
-                m.damage(level, 1.0, Damage::of(DamageKind::Wither));
-            }
-            // InstantenousMobEffect: applied on every tick it has time left
-            // (`/effect give` keeps the effect listed for its few ticks; the hit
-            // frames let a harming one through once).
-            "minecraft:instant_damage" | "minecraft:instant_health" if count >= 1 => {
-                m.apply_heal_or_harm(
-                    context,
-                    level,
-                    effect == "minecraft:instant_damage",
-                    m.kind.flags.undead,
-                    amp,
-                    1.0,
-                );
-            }
-            "minecraft:regeneration"
-                if count % interval(50) == 0 && !m.kind.flags.undead && m.alive() =>
-            {
-                m.heal(context, 1.0);
-            }
-            // AbsorptionMobEffect.applyEffectTick (asked on every tick): false
-            // once the absorption is used up, so tickServer drops the effect
-            // before it counts down.
-            "minecraft:absorption" if m.absorption <= 0.0 => {
-                expired = true;
-            }
-            id if sunrise_client_core::potions::is_mod_effect(id) => {
-                if let Some(mods) = mods
-                    && let Some(index) = m.extra.effects[i].registry_index
-                    && !mods.tick_mod_effect(level, index, m, count, amp)
+            let count = if infinite {
+                m.age as i32
+            } else {
+                m.extra.effects[i].duration
+            };
+            let interval = |base: i32| base.wrapping_shr(amp as u32).max(1);
+            // A refused mod effect expires before the next effect ticks.
+            let mut expired = false;
+            match effect {
+                "minecraft:poison"
+                    if count % interval(25) == 0 && !m.kind.flags.undead && m.health > 1.0 =>
                 {
-                    // Removed before it counts down.
+                    m.damage(level, 1.0, Damage::of(DamageKind::Magic));
+                }
+                "minecraft:wither" if count % interval(40) == 0 => {
+                    // WitherMobEffect.applyEffectTick: damageSources().wither().
+                    m.damage(level, 1.0, Damage::of(DamageKind::Wither));
+                }
+                // InstantenousMobEffect: applied on every tick it has time left
+                // (`/effect give` keeps the effect listed for its few ticks; the hit
+                // frames let a harming one through once).
+                "minecraft:instant_damage" | "minecraft:instant_health" if count >= 1 => {
+                    m.apply_heal_or_harm(
+                        context,
+                        level,
+                        effect == "minecraft:instant_damage",
+                        m.kind.flags.undead,
+                        amp,
+                        1.0,
+                    );
+                }
+                "minecraft:regeneration"
+                    if count % interval(50) == 0 && !m.kind.flags.undead && m.alive() =>
+                {
+                    m.heal(context, 1.0);
+                }
+                // AbsorptionMobEffect.applyEffectTick (asked on every tick): false
+                // once the absorption is used up, so tickServer drops the effect
+                // before it counts down.
+                "minecraft:absorption" if m.absorption <= 0.0 => {
                     expired = true;
                 }
+                id if sunrise_client_core::potions::is_mod_effect(id) => {
+                    if let Some(mods) = mods
+                        && let Some(index) = m.extra.effects[i].registry_index
+                        && !mods.tick_mod_effect(level, index, m, count, amp)
+                    {
+                        // Removed before it counts down.
+                        expired = true;
+                    }
+                }
+                _ => {}
             }
-            _ => {}
-        }
-        after_effect(m);
+            let countdown = EffectCountdown {
+                effect,
+                infinite,
+                expired,
+            };
+            if after_effect(m) {
+                return Some(EffectCursor {
+                    first,
+                    index: i,
+                    old_max_absorption: cursor.old_max_absorption,
+                    countdown: Some(countdown),
+                });
+            }
+            countdown
+        };
         if m.extra.effects.get(i).is_some_and(|e| e.id == effect) {
             if !expired {
                 if let Some(hidden) = m.extra.effect_chains.iter_mut().find(|e| e.id == effect) {
@@ -4405,9 +4534,10 @@ pub(crate) fn tick_effects_hurting(
     }
 
     let max_absorption = super::armor::max_absorption(m);
-    if max_absorption != old_max_absorption {
+    if max_absorption != cursor.old_max_absorption {
         m.absorption = m.absorption.min(max_absorption);
     }
+    None
 }
 
 /// `Entity.getMovementEmission` is not NONE: only a shulker moves without

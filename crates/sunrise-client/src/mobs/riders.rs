@@ -659,19 +659,18 @@ pub fn resume_after_breathing(
     })
 }
 
-/// Resume the tick with its current navigation owner after a lethal air-supply hit.
-pub fn resume_after_air_damage(
+/// Resume the tick with its current navigation owner after settling a hit.
+pub fn resume_after_damage(
     mobs: &mut JoinList<Mob>,
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    resume: super::ai::AirDamageResume,
+    resume: super::ai::DamageResume,
     events: &mut Vec<super::MobEvent>,
     trample: &mut Option<super::ai::MobTrample>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress =
-            super::ai::resume_after_air_damage(m, w, level, events, resume, Some(trample));
+        let progress = super::ai::resume_after_damage(m, w, level, events, resume, Some(trample));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
