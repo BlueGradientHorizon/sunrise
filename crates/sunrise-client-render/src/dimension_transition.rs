@@ -1,7 +1,8 @@
 //! Load-time dimension-key resolution and selection of client loading presentations.
 use mod_api::{
-    __private::game::CallbackOwner, Answered, DimensionKey, DimensionTransition,
-    DimensionTransitionPresentation, DimensionTransitionScreen, Identifier,
+    __private::game::CallbackOwner, Answered, ClientHost, DimensionKey, DimensionTransition,
+    DimensionTransitionPresentation, DimensionTransitionReason, DimensionTransitionScreen,
+    DrawContext, Identifier,
 };
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -11,8 +12,53 @@ use std::{
 
 /// A mod's presentation instance for the lifetime of one loading screen.
 pub struct ActiveTransitionScreen {
-    pub owner: CallbackOwner,
-    pub presentation: Box<dyn DimensionTransitionPresentation>,
+    owner: CallbackOwner,
+    presentation: Option<Box<dyn DimensionTransitionPresentation>>,
+}
+
+impl ActiveTransitionScreen {
+    pub fn new(
+        owner: CallbackOwner,
+        presentation: Box<dyn DimensionTransitionPresentation>,
+    ) -> Self {
+        Self {
+            owner,
+            presentation: Some(presentation),
+        }
+    }
+
+    pub fn draw(
+        &self,
+        host: &dyn ClientHost,
+        reason: DimensionTransitionReason,
+        progress: Option<f32>,
+        draw: &mut dyn DrawContext,
+    ) -> bool {
+        self.owner.is_enabled()
+            && self
+                .owner
+                .call(
+                    "dimension transition screen",
+                    "dimension_transition_screen_draw",
+                    || {
+                        self.presentation
+                            .as_ref()
+                            .expect("active presentation")
+                            .draw(host, reason, progress, draw);
+                    },
+                )
+                .is_ok()
+    }
+}
+
+impl Drop for ActiveTransitionScreen {
+    fn drop(&mut self) {
+        self.owner.dispose(
+            "dimension transition screen",
+            "dimension_transition_screen_drop",
+            self.presentation.take(),
+        );
+    }
 }
 
 impl fmt::Debug for ActiveTransitionScreen {
@@ -109,7 +155,7 @@ pub fn select(to: DimensionKey, from: DimensionKey) -> Option<&'static Registere
 mod tests {
     use super::*;
     use crate::level_loading::{LevelLoadTracker, PlayerCheck, Reason, ServerLoadView, Stage};
-    use mod_api::{ClientHost, DrawContext, Host};
+    use mod_api::Host;
     use std::sync::Arc;
 
     struct Client;
@@ -259,10 +305,10 @@ mod tests {
         let mut tracker = LevelLoadTracker::new(500);
         tracker.start_client_load(0, Reason::Other);
         let registration = screens.select(key("test:b"), key("test:a")).unwrap();
-        tracker.set_transition_screen(ActiveTransitionScreen {
-            owner: registration.draw_owner.clone(),
-            presentation: registration.factory.create(&Client, tracker.reason.into()),
-        });
+        tracker.set_transition_screen(ActiveTransitionScreen::new(
+            registration.draw_owner.clone(),
+            registration.factory.create(&Client, tracker.reason.into()),
+        ));
         let progress = ServerLoadView::default();
         progress.start(Stage::LoadInitialChunks, 0);
         progress.finish(Stage::LoadInitialChunks);
@@ -270,12 +316,12 @@ mod tests {
         progress.update(Stage::LoadPlayerChunks, 20, 49);
         assert_eq!(progress.server_progress(), 30.0 / 59.0);
         let mut canvas = Canvas::default();
-        tracker.transition_screen().unwrap().presentation.draw(
+        assert!(tracker.transition_screen().unwrap().draw(
             &Client,
             tracker.reason.into(),
             Some(progress.server_progress()),
             &mut canvas,
-        );
+        ));
         assert_eq!(canvas.0, Some(0xFF102030));
         tracker.tick_client_load(100, player);
         assert!(!tracker.is_level_ready(100));
@@ -301,18 +347,110 @@ mod tests {
     }
 
     #[test]
+    fn retiring_a_panicking_presentation_cannot_abort_load_completion_or_disconnect() {
+        struct BrokenDrop;
+        impl DimensionTransitionPresentation for BrokenDrop {
+            fn draw(
+                &self,
+                _: &dyn ClientHost,
+                _: DimensionTransitionReason,
+                _: Option<f32>,
+                _: &mut dyn DrawContext,
+            ) {
+            }
+        }
+        impl Drop for BrokenDrop {
+            fn drop(&mut self) {
+                assert_eq!(
+                    mod_api::content::crash::current_native_mod(),
+                    Some("broken_presentation")
+                );
+                panic!("presentation destructor failed");
+            }
+        }
+
+        let screens = TransitionScreens::new([(
+            "broken_presentation",
+            DimensionTransitionScreen::new(
+                "test:broken".into(),
+                DimensionTransition::Incoming("test:b".into()),
+                |_, _| Box::new(BrokenDrop),
+            ),
+        )]);
+        let registration = screens.select(key("test:b"), key("test:a")).unwrap();
+        for disconnect in [false, true] {
+            let mut tracker = LevelLoadTracker::new(0);
+            tracker.start_client_load(0, Reason::Other);
+            let presentation = registration
+                .factory_owner
+                .call(
+                    "dimension transition screen",
+                    "dimension_transition_screen_factory",
+                    || registration.factory.create(&Client, tracker.reason.into()),
+                )
+                .unwrap();
+            tracker.set_transition_screen(ActiveTransitionScreen::new(
+                registration.draw_owner.clone(),
+                presentation,
+            ));
+            assert_eq!(
+                tracker.transition_screen().unwrap().draw(
+                    &Client,
+                    tracker.reason.into(),
+                    None,
+                    &mut Canvas::default(),
+                ),
+                !disconnect
+            );
+            if disconnect {
+                // A later load still runs the factory, but drawing is already disabled.
+                // Dropping the tracker, as disconnect does, still retires the instance.
+                drop(tracker);
+            } else {
+                tracker.loading_packets_received();
+                tracker.player_section_ready();
+                tracker.tick_client_load(
+                    1,
+                    PlayerCheck {
+                        outside_build_height: false,
+                        spectator: false,
+                        alive: true,
+                    },
+                );
+                assert!(tracker.is_level_ready(1));
+                tracker.finish();
+                assert!(!tracker.is_active());
+                assert!(tracker.transition_screen().is_none());
+            }
+            let notices = mod_api::__private::game::take_callback_panic_notices();
+            let relevant: Vec<_> = notices
+                .iter()
+                .filter(|notice| notice.mod_id == "broken_presentation")
+                .map(|notice| (notice.operation, notice.message.as_str()))
+                .collect();
+            assert_eq!(
+                relevant,
+                [(
+                    "dimension_transition_screen_drop",
+                    "presentation destructor failed"
+                )]
+            );
+        }
+    }
+
+    #[test]
     fn restart_keeps_the_presentation_until_abort_or_timeout_finish() {
         for time_out in [false, true] {
             let mut tracker = LevelLoadTracker::new(0);
             tracker.start_client_load(0, Reason::NetherPortal);
             let token = Arc::new(());
             let lifetime = Arc::downgrade(&token);
-            tracker.set_transition_screen(ActiveTransitionScreen {
-                owner: CallbackOwner::for_mod("registrant"),
-                presentation: Box::new(move |_: &dyn ClientHost, _, _, _: &mut dyn DrawContext| {
+            tracker.set_transition_screen(ActiveTransitionScreen::new(
+                CallbackOwner::for_mod("registrant"),
+                Box::new(move |_: &dyn ClientHost, _, _, _: &mut dyn DrawContext| {
                     assert_eq!(Arc::strong_count(&token), 1);
                 }),
-            });
+            ));
             tracker.start_client_load(100, Reason::EndPortal);
             assert_eq!(tracker.reason, Reason::EndPortal);
             assert!(lifetime.upgrade().is_some());

@@ -193,9 +193,13 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
     use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
         __private::{ModPhase, game::RegistrationContextNew},
-        ClientHost, DimensionTransition, DimensionTransitionScreen, DrawContext,
+        CameraType, ClientHost, DimensionTransition, DimensionTransitionScreen, DrawContext,
+        SoundPlay, SoundRef, SoundState,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    };
     use sunrise_client::{
         hud::HudBatch,
         level_loading::{self, Reason},
@@ -205,6 +209,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
     const NETHER: &str = "minecraft:the_nether";
     static CREATES: AtomicUsize = AtomicUsize::new(0);
     static DRAWS: AtomicUsize = AtomicUsize::new(0);
+    static FIRST_SOUND: OnceLock<SoundRef> = OnceLock::new();
 
     struct Arrival;
     #[mod_api::__subscriptions]
@@ -222,14 +227,28 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                     Box::new(|host: &dyn ClientHost, _, _, draw: &mut dyn DrawContext| {
                         draw.fill([0.0, 0.0, 80.0, 10.0], 0xFFFF_0000);
                         host.apply_screen_blur();
-                        match DRAWS.fetch_add(1, Ordering::Relaxed) {
-                            // The successful frame must keep its request.
-                            0 => (),
-                            1 | 2 => {
-                                mod_api::__private::refuse("test draw refusal", ModPhase::Setup);
-                            }
-                            _ => panic!("test draw panic"),
+                        assert!(host.clear_particles());
+                        host.set_camera_type(CameraType::ThirdPersonFront);
+                        let frame = DRAWS.fetch_add(1, Ordering::Relaxed);
+                        if frame == 0 {
+                            let sound = host
+                                .play_local_sound(&SoundPlay::ui("minecraft:ui.button.click"), 0)
+                                .unwrap();
+                            assert!(FIRST_SOUND.set(sound).is_ok());
+                            return;
                         }
+                        assert!(FIRST_SOUND.get().unwrap().stop(host));
+                        assert!(
+                            host.play_local_sound(
+                                &SoundPlay::ui("minecraft:entity.player.levelup"),
+                                0
+                            )
+                            .is_some()
+                        );
+                        if frame < 3 {
+                            mod_api::__private::refuse("test draw refusal", ModPhase::Setup);
+                        }
+                        panic!("test draw panic");
                     })
                 },
             ));
@@ -293,11 +312,21 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                 let mut frame = HudBatch::scratch([320, 240]);
                                 assert!(game.remote_overlay(&mut frame));
                                 assert_eq!(game.menu_blur(), Some(5.0));
+                                assert!(game.mod_clear_particles.get());
+                                assert_eq!(
+                                    game.requested_camera_type.get(),
+                                    Some(sunrise_client::camera::CameraType::ThirdPersonFront)
+                                );
                             }
-                            // Start fresh frames, including one already requesting blur from
-                            // another painter. Only the failing presentation's request is lost.
-                            for incoming_blur in [false, true, false] {
-                                game.screen_blur_requested.set(incoming_blur);
+                            let sound = FIRST_SOUND.get().unwrap();
+                            // Keep requests already pending on entry, including the sound from
+                            // the successful draw. Discard the failed draw's requests only.
+                            for incoming in [false, true, false] {
+                                let camera = incoming
+                                    .then_some(sunrise_client::camera::CameraType::ThirdPersonBack);
+                                game.screen_blur_requested.set(incoming);
+                                game.mod_clear_particles.set(incoming);
+                                game.requested_camera_type.set(camera);
                                 let mut frame = HudBatch::scratch([320, 240]);
                                 assert!(game.remote_overlay(&mut frame));
                                 assert_eq!(
@@ -305,7 +334,34 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                     bytemuck::cast_slice::<_, u8>(&vanilla.vertices)
                                 );
                                 assert_eq!(frame.blends, vanilla.blends);
-                                assert_eq!(game.menu_blur(), incoming_blur.then_some(5.0));
+                                assert_eq!(game.menu_blur(), incoming.then_some(5.0));
+                                assert_eq!(game.mod_clear_particles.get(), incoming);
+                                assert_eq!(game.requested_camera_type.get(), camera);
+                                let pending = game.mod_sounds.queued.borrow();
+                                if trip == 1 {
+                                    assert_eq!(pending.len(), 1);
+                                    assert_eq!(
+                                        pending[0].1.identifier,
+                                        "minecraft:ui.button.click"
+                                    );
+                                    assert_eq!(sound.state(game), Some(SoundState::Waiting));
+                                } else {
+                                    assert!(pending.is_empty());
+                                }
+                            }
+                            if trip == 1 {
+                                game.audio.heard.clear();
+                                game.tick_sound_engine();
+                                assert_eq!(
+                                    game.audio.heard.get("minecraft:ui.button.click"),
+                                    Some(&1)
+                                );
+                                assert!(
+                                    !game
+                                        .audio
+                                        .heard
+                                        .contains_key("minecraft:entity.player.levelup")
+                                );
                             }
                             assert_eq!(DRAWS.load(Ordering::Relaxed), 4);
                             game.remote.as_mut().unwrap().level_load.finish();

@@ -184,7 +184,7 @@ impl CallbackOwner {
     }
 
     /// Dispose of an owned mod value under its panic policy, even if ordinary calls are disabled.
-    pub(crate) fn dispose<T>(&self, kind: &'static str, operation: &'static str, value: T) {
+    pub fn dispose<T>(&self, kind: &'static str, operation: &'static str, value: T) {
         let _ = call_opt(
             self.id,
             self.index,

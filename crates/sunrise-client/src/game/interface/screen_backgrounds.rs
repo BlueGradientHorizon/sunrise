@@ -42,43 +42,24 @@ impl Game<'_> {
         let Some(screen) = tracker.transition_screen() else {
             return false;
         };
-        if !screen.owner.is_enabled() {
-            return false;
-        }
-        let vertices = batch.vertices.len();
-        let blends = batch.blends.len();
-        let blend_end = batch.blends.last().map(|(range, _)| range.end);
-        let pictures = batch.pictures.len();
-        let profiles = batch.inline_profiles.len();
+        let paint = batch.paint_checkpoint();
+        let sounds = self.mod_sounds.pending_checkpoint();
         let blur_requested = self.screen_blur_requested.get();
-        if screen
-            .owner
-            .call(
-                "dimension transition screen",
-                "dimension_transition_screen_draw",
-                || {
-                    screen.presentation.draw(
-                        self,
-                        tracker.reason.into(),
-                        progress,
-                        &mut GameDrawContext::new(self, batch),
-                    );
-                },
-            )
-            .is_ok()
-        {
+        let clear_particles = self.mod_clear_particles.get();
+        let camera_type = self.requested_camera_type.get();
+        if screen.draw(
+            self,
+            tracker.reason.into(),
+            progress,
+            &mut GameDrawContext::new(self, batch),
+        ) {
             return true;
         }
-        // Discard visible output, including an extension of the previous blend run.
-        // Keep atlas uploads: their cache entries can be reused by the vanilla screen.
-        batch.vertices.truncate(vertices);
-        batch.blends.truncate(blends);
-        if let Some(((range, _), end)) = batch.blends.last_mut().zip(blend_end) {
-            range.end = end;
-        }
-        batch.pictures.truncate(pictures);
-        batch.inline_profiles.truncate(profiles);
+        paint.discard(batch);
+        self.mod_sounds.discard_pending_since(sounds);
         self.screen_blur_requested.set(blur_requested);
+        self.mod_clear_particles.set(clear_particles);
+        self.requested_camera_type.set(camera_type);
         false
     }
     /// `LevelLoadingScreen.extractBackground`.

@@ -903,16 +903,16 @@ impl Game<'_> {
             && let Ok(presentation) = registration.factory_owner.call(
                 "dimension transition screen",
                 "dimension_transition_screen_factory",
-                || registration.factory.create(self, reason.into()),
+                || {
+                    sunrise_client_render::dimension_transition::ActiveTransitionScreen::new(
+                        registration.draw_owner.clone(),
+                        registration.factory.create(self, reason.into()),
+                    )
+                },
             )
             && let Some(r) = self.remote.as_mut()
         {
-            r.level_load.set_transition_screen(
-                sunrise_client_render::dimension_transition::ActiveTransitionScreen {
-                    owner: registration.draw_owner.clone(),
-                    presentation,
-                },
-            );
+            r.level_load.set_transition_screen(presentation);
         }
     }
 }

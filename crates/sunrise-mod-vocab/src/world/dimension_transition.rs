@@ -23,8 +23,8 @@ impl DimensionTransitionScreen {
     /// client calls the factory once as the registering mod and owns the returned presentation
     /// until the loading screen closes, even if the tracker restarts for another level.
     /// Capture per-load state in the returned presentation, not in the registration itself.
-    /// A disabled or refused factory leaves the vanilla screen. A failed draw does not disable
-    /// the factory or prevent it from creating the presentation for a later matching load.
+    /// A disabled or refused factory leaves the vanilla screen. A failed draw or panicking
+    /// presentation destructor does not disable the factory for a later matching load.
     pub fn new(
         screen: String,
         transition: DimensionTransition,
@@ -65,14 +65,17 @@ impl DimensionTransitionScreen {
 
 // no wire: each presentation is a process-local callback or object retained by one load.
 /// The complete presentation of one loading screen, either an object or a draw closure.
-/// It controls what is painted, not when the client finishes loading.
+/// It controls what is painted, not when the client finishes loading. Its destructor runs
+/// as the registering mod when the screen closes, including on disconnect. A destructor
+/// panic is reported against that mod and disables the registration's draw callback,
+/// without interrupting the close.
 pub trait DimensionTransitionPresentation: Send + Sync + 'static {
     /// Draw under the registering mod's identity using this frame's reason and optional
     /// smoothed integrated-server progress. The tracker, not the presentation, decides when
     /// the screen closes. The reason can change while the same presentation remains active.
-    /// A disabled or refused draw leaves the vanilla loading screen without the mod's paint
-    /// or blur request. A panic also discards that output and disables only the registration's
-    /// draw callback for the session.
+    /// A disabled, refused or panicking draw leaves the vanilla loading screen. Failed draws
+    /// leave no paint or pending blur, local sound, particle clear or camera changes from that
+    /// invocation. A draw panic disables the registration's draw callback for the session.
     fn draw(
         &self,
         host: &dyn ClientHost,
