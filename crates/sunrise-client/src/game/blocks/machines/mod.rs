@@ -244,6 +244,7 @@ enum MoveIn {
 impl PlacementAttempt {
     fn ask(
         &mut self,
+        world: &World,
         pos: Pos,
         entity: &sunrise_client::containers::ModBlockEntity,
         slot: usize,
@@ -304,8 +305,26 @@ impl PlacementAttempt {
         if offered.count() != stack.count && offered.set_count(stack.count).is_err() {
             return Some(false);
         }
+        let (x, y, z) = pos;
+        let state = world.block(x, y, z);
+        let state = match state.try_into_api() {
+            Ok(state) => state,
+            Err(error) => {
+                log::debug!(
+                    "Sunrise: can_place_item could not read block state at {pos:?}: {error:?}"
+                );
+                return Some(false);
+            }
+        };
         let mut allowed = None;
-        Game::native_can_place_item(snapshot, slot, offered, &mut allowed);
+        Game::native_can_place_item(
+            snapshot,
+            mod_api::BlockPos::new(x, y, z),
+            state,
+            slot,
+            offered,
+            &mut allowed,
+        );
         allowed
     }
 
@@ -588,7 +607,9 @@ impl Containers<'_> {
                 return false;
             };
             let answer = match query {
-                PlacementQuery::Offer(attempt) => attempt.ask(pos, entity, index, stack),
+                PlacementQuery::Offer(attempt) => {
+                    attempt.ask(self.world, pos, entity, index, stack)
+                }
                 PlacementQuery::Planning => mod_api::__private::block_entity_type_listens(
                     mod_api::HookId::CanPlaceItem,
                     entity.id(),
