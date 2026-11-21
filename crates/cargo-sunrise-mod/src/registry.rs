@@ -148,7 +148,14 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 nightly: None,
                 binary_checks: binary_checks(sdk_data),
             };
-            if files.is_some() {
+            if let Some(files) = files {
+                review.check_native_requirements(
+                    &base.entries,
+                    &head.entries,
+                    files,
+                    sdk_data,
+                    sunrise_addresses::CARGO_CRATES_IO_SOURCE,
+                );
                 match registry::candidate(&head, &sources) {
                     Ok(mut index) => {
                         if let Err(error) =
@@ -193,7 +200,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 }
             }
             if json {
-                let json = serde_json::json!({"errors": review.errors, "notes": review.notes,
+                let json = serde_json::json!({"errors": review.errors, "warnings": review.warnings, "notes": review.notes,
                     "collection_reviews": review.collection_reviews, "nightly_reviews": review.nightly_reviews, "build_reviews": review.build_reviews});
                 println!("{json}");
             } else {
@@ -212,6 +219,9 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 }
                 for n in &review.notes {
                     println!("note: {n}");
+                }
+                for w in &review.warnings {
+                    println!("warning: {w}");
                 }
                 for e in &review.errors {
                     println!("error: {e}");
