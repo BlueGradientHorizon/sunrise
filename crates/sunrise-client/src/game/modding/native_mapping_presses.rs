@@ -91,17 +91,15 @@ impl Game<'_> {
     /// `KeyMapping.setDown` for any resolved vanilla mapping, from a mod: attack and use
     /// as their mouse button sets them, sneak and sprint toggled by their option, and every
     /// other mapping held uniformly in `vanilla_mappings` (with non-debug keys also updating
-    /// `self.keys` in lockstep). With a screen or overlay open a press does nothing: the
-    /// mappings hear none behind it, and its opening lets go of all of them (`KeyMapping.releaseAll`).
+    /// `self.keys` in lockstep). Explicit host writes always mutate the mapping slot (even in
+    /// `ClientSetup` / while a screen or overlay is shown, matching `KeyMapping.setDown`),
+    /// while physical event gating and screen-transition `release_all` remain separate.
     pub(in crate::game) fn vanilla_key_mapping_set_down(
         &mut self,
         mapping: VanillaKeyMappingRef,
         down: bool,
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        if down && self.mod_mappings_screen_open() {
-            return Ok(());
-        }
         let (_, _, category) = slot.definition();
         match (category, slot.default_input()) {
             ("gameplay", Some(Err(button @ (MouseButton::Left | MouseButton::Right)))) => {
@@ -130,23 +128,19 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// `KeyMapping.click` for any resolved vanilla mapping, from a mod: records the click in
-    /// `vanilla_mappings`, and when in a world dispatches the vanilla `handleKeybinds` action
-    /// (attack/use/pick clicks on the next tick, hotbar/drop/inventory/swap/chat/perspective
-    /// via `key_pressed`, smooth camera, spectator hotbar). Behind a screen or overlay the click
-    /// is dropped, as its opening drops every click.
+    /// `KeyMapping.click` for any resolved vanilla mapping, from a mod: always records the click
+    /// in `vanilla_mappings` (including in `ClientSetup` / behind a screen or overlay), and when
+    /// playing with no screen/overlay open dispatches the vanilla `handleKeybinds` action.
     pub(in crate::game) fn vanilla_key_mapping_click(
         &mut self,
         mapping: VanillaKeyMappingRef,
     ) -> Result<(), MappingError> {
         let slot = self.vanilla_mapping_slot(mapping)?;
-        if self.mod_mappings_screen_open() {
-            return Ok(());
-        }
+        let can_dispatch = self.player.is_some() && !self.mod_mappings_screen_open();
         let (name, _, category) = slot.definition();
         match (name, category, slot.default_input()) {
             ("key.attack" | "key.use", _, Some(Err(button))) => {
-                if self.player.is_some() {
+                if can_dispatch {
                     self.mouse_mapping_click(button);
                 } else {
                     let t_slot = if button == MouseButton::Left {
@@ -161,19 +155,19 @@ impl Game<'_> {
             }
             ("key.pickItem", _, Some(Err(button))) => {
                 self.vanilla_mappings.click(slot);
-                if self.player.is_some() {
+                if can_dispatch {
                     self.mouse_mapping_click(button);
                 }
             }
             ("key.spectatorHotbar", _, _) => {
                 self.vanilla_mappings.click(slot);
-                if self.player.is_some() && self.spectator() {
+                if can_dispatch && self.spectator() {
                     self.spectator_action_key();
                 }
             }
             ("key.smoothCamera", _, _) => {
                 self.vanilla_mappings.click(slot);
-                if self.player.is_some() {
+                if can_dispatch {
                     self.smooth_camera_action();
                 }
             }
@@ -191,9 +185,7 @@ impl Game<'_> {
                 }
                 None => {
                     self.vanilla_mappings.click(slot);
-                    if self.player.is_some()
-                        && let Err(error) = self.key_pressed(code, code)
-                    {
+                    if can_dispatch && let Err(error) = self.key_pressed(code, code) {
                         log::warn!("vanilla_key_mapping_click {name}: {error:#}");
                     }
                 }

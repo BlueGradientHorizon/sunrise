@@ -225,27 +225,30 @@ fn clicking_attack_on_nothing_punches_and_waits_out_the_miss_cooldown() {
     });
 }
 
-/// Behind a screen a click is dropped and a press holds nothing, and a click queued before the
-/// screen opened is not acted on.
+/// Behind a screen explicit host writes still update the logical mapping slot (`KeyMapping.setDown`
+/// / `KeyMapping.click`), while gameplay action consumption does not run behind the screen and a
+/// click queued before the screen opened is cleared on the transition (`Gui.setScreen`).
 #[test]
 #[ignore = "daily"]
 fn a_screen_drops_the_clicks_and_holds_nothing() {
     with_pressing_game(|game, packets, triggered| {
         let attack_mapping = game.vanilla_key_mapping("key.attack").unwrap();
         stone_under_the_crosshair(game);
-        game.screen = Screen::Inventory;
+        game.set_screen(Screen::Inventory);
         assert_eq!(attack_mapping.click(game), Ok(()));
         assert_eq!(attack_mapping.set_down(game, true), Ok(()));
-        assert!(!game.left);
+        assert_eq!(attack_mapping.is_down(game), Ok(true));
         game.remote_handle_input();
-        game.screen = Screen::Playing;
+        assert_eq!(sent(packets), Vec::<String>::new());
+        assert_eq!(attack_mapping.set_down(game, false), Ok(()));
+        game.set_screen(Screen::Playing);
         game.remote_handle_input();
         assert_eq!(sent(packets), Vec::<String>::new());
 
         assert_eq!(attack_mapping.click(game), Ok(()));
-        game.screen = Screen::Inventory;
+        game.set_screen(Screen::Inventory);
         game.remote_handle_input();
-        game.screen = Screen::Playing;
+        game.set_screen(Screen::Playing);
         game.remote_handle_input();
         assert_eq!(sent(packets), Vec::<String>::new());
         assert_eq!(*triggered.lock().unwrap(), Vec::<Hand>::new());
@@ -306,18 +309,26 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         }
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(game.hotbar_presses[2], 0);
-        // `ClientSetup` allows setup-phase and no-world logical state writes.
+        // `ClientSetup` allows setup-phase and no-world logical state writes even while the
+        // title screen / overlay is active (`mod_mappings_screen_open()` is true).
+        game.player = None;
+        game.title = Some(game.new_title(game.save.root.clone()));
+        assert!(game.mod_mappings_screen_open());
+        let hotbar_slot = game.vanilla_mapping_slot(hotbar).unwrap();
+        let before_clicks = game.vanilla_mappings.pending_clicks(hotbar_slot);
         {
             let _phase = PhaseOwner::scope(ModPhase::Setup);
             assert_eq!(forward.set_down(game, true), Ok(()));
             assert_eq!(forward.is_down(game), Ok(true));
             assert_eq!(forward.set_down(game, false), Ok(()));
+            assert_eq!(forward.is_down(game), Ok(false));
+            assert_eq!(hotbar.click(game), Ok(()));
         }
-        game.player = None;
-        assert_eq!(forward.set_down(game, true), Ok(()));
-        assert_eq!(forward.is_down(game), Ok(true));
-        assert_eq!(forward.set_down(game, false), Ok(()));
-        assert_eq!(hotbar.click(game), Ok(()));
+        assert_eq!(
+            game.vanilla_mappings.pending_clicks(hotbar_slot),
+            before_clicks + 1
+        );
+        assert!(game.vanilla_mappings.consume_click(hotbar_slot));
     });
 }
 
@@ -362,15 +373,13 @@ fn opening_a_screen_releases_mod_holds() {
         assert!(game.left && game.right);
         game.physical_buttons
             .extend([MouseButton::Left, MouseButton::Right]);
-        game.screen = Screen::Inventory;
-        game.build_screen();
+        game.set_screen(Screen::Inventory);
         // No redraw/reconciliation before the screen closes. Controller releases
         // forwarded for cleanup cannot give the hold back to the mouse in a screen.
         for button in [MouseButton::Left, MouseButton::Right] {
             game.mouse_mapping(button, false, Source::Pad).unwrap();
         }
-        game.screen = Screen::Playing;
-        game.build_screen();
+        game.set_screen(Screen::Playing);
         assert!(!game.left && !game.right);
         assert!(!forward_mapping.is_down(game).unwrap());
 
