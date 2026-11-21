@@ -10,11 +10,12 @@
 //! scoped reads hide it immediately, while the leave notification waits for publication. A mob's list entry is marked at once too; the other
 //! kinds stay in their lists until the level's next sweep of departed
 //! entities, a few times per tick, so a hook that removes one never shifts the
-//! lists the game is walking. A vehicle with a chest spills it at that sweep, as vanilla's `remove` does.
+//! lists the game is walking. A container vehicle spills before its logical removal;
+//! only taking the row out of its list waits for the sweep.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, RemovalReason};
 use sunrise_client::items::ItemStack;
-use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_core::geometry::Vec3;
 
 impl Game<'_> {
     /// Removes the entity with no death and no loot (`Entity.discard`): a
@@ -34,6 +35,7 @@ impl Game<'_> {
         match self.native_entity_target(entity) {
             // A part leaves the level with its dragon, never alone.
             None | Some(Target::Player | Target::Guest(_) | Target::DragonPart(_)) => false,
+            Some(t) if self.persist.preparing_vehicle_removals.contains(&t) => false,
             Some(Target::Item(id)) if self.block_entity_tick_key.is_some() => {
                 self.stage_tick_item(id, None).unwrap_or(false)
             }
@@ -50,24 +52,22 @@ impl Game<'_> {
     }
     /// `Entity.setRemoved` of `t`, which `entity` names and is no mob, player or dragon part.
     pub(in crate::game) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
-        // Read before the entity counts as removed: its handle stops resolving.
-        let vehicle_y = match t {
-            Target::Boat(id) => self.boats.iter().find(|b| b.id == id).map(|b| b.position.y),
-            Target::Cart(id) => self.carts.iter().find(|c| c.id == id).map(|c| c.position.y),
-            _ => None,
-        };
-        let passengers: Vec<_> = self
-            .entity_passengers(entity)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|passenger| {
-                vehicle_y.is_none()
-                    || !matches!(
-                        self.native_entity_target(*passenger),
-                        Some(Target::Mob(_) | Target::General(_))
-                    )
-            })
-            .collect();
+        let id = entity.id();
+        if matches!(t, Target::Boat(_) | Target::Cart(_)) {
+            self.with_vehicle_removal_effects(
+                t,
+                |game| game.prepare_vehicle_removal(t, id),
+                |game| {
+                    // Keep the logical removal visible after the guard is released.
+                    game.persist.removals.push(t);
+                    game.persist.notified_vehicle_removals.insert(id);
+                    game.score_destroyed_vehicle_once(id);
+                    game.native_entity_left(id);
+                },
+            );
+            return;
+        }
+        let position = self.target_position(t);
         // `Entity.setRemoved`: the reason first, so the hooks below see
         // it removed; then the riding links are ended and the level is told.
         let mount = self.native_vehicle_id(t);
@@ -78,17 +78,16 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
         self.retire_vehicle_registration(t);
-        if vehicle_y.is_some() {
+        if matches!(
+            t,
+            Target::Stand(_) | Target::Tnt(_) | Target::Other(_) | Target::Cushion(_)
+        ) {
+            // The physical sweep uses the same destruction paths, but a
+            // passenger veto here must not trigger another attempt there.
             self.persist.notified_vehicle_removals.insert(entity.id());
         }
-        for passenger in passengers {
-            self.entity_stop_riding(passenger);
-        }
-        if let Some(y) = vehicle_y {
-            // Notify actual Mob edges here, including rejected objects.
-            // A reentrant physical sweep must not notify them again.
-            self.dismount_destroyed_vehicle_mobs(entity.id(), y);
-            self.score_destroyed_vehicle_once(entity.id());
+        if let Some([_, y, _]) = position {
+            self.dismount_removed_passengers(entity.id(), y);
         }
         self.native_entity_left(entity.id());
     }
@@ -138,17 +137,53 @@ impl Game<'_> {
             .then(|| EntityRef::new(entity.epoch(), id))
     }
     /// A mob leaves the level: its effects act first when it was killed.
-    fn remove_mob_now(&mut self, id: u32, killed: bool) {
+    pub(super) fn remove_mob_now(&mut self, id: u32, killed: bool) {
+        self.remove_mob_after(id, killed, |_| {});
+    }
+
+    /// Run the caller's preparation and the killed effects while the mob still resolves.
+    pub(super) fn remove_mob_after(
+        &mut self,
+        id: u32,
+        killed: bool,
+        prepare: impl FnOnce(&mut Self),
+    ) {
         if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
             return;
         }
-        if killed {
-            self.mob_removal_effects(id);
+        if self
+            .with_removal_preparation(Target::Mob(id), |game| {
+                prepare(game);
+                if killed {
+                    game.mob_removal_effects(id);
+                }
+            })
+            .is_some()
+            && self.mobs.iter().any(|m| m.id == id && !m.removed)
+        {
+            self.finish_mob_removal(id);
         }
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-            m.removed = true;
+    }
+
+    /// `Entity.setRemoved` for a mob, also reached by the tick and the root
+    /// transaction commit. A departing rider gets off before its own passengers.
+    pub(in crate::game) fn finish_mob_removal(&mut self, id: u32) {
+        let Some(mob) = self.mob_object_mut(id) else {
+            return;
+        };
+        mob.removed = true;
+        let position = mob.position;
+        self.dismount_mob(id);
+        self.dismount_removed_passengers(id, position.y);
+        if self.has_seated_passengers(id)
+            && let Some(mob) = self.mob_object(id)
+        {
+            let vehicle = super::persist::RemovedVehicle::Mob {
+                position,
+                kind: super::native_hooks::mob_kind(mob),
+            };
+            self.retain_removed_vehicle(id, vehicle);
         }
-        self.dismount_general_passengers(id);
         self.native_entity_left(id);
     }
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind
@@ -165,52 +200,12 @@ impl Game<'_> {
                 .iter()
                 .map(|e| e.id.trim_start_matches("minecraft:"))
                 .collect();
-            let (bounds, mut random) = (m.bounds(), m.random.clone());
-            self.effects_on_death(&names, bounds, false, Some(id), Some(&mut random));
+            let (bounds, silent, mut random) = (m.bounds(), m.silent, m.random.clone());
+            self.effects_on_death(&names, bounds, silent, Some(id), Some(&mut random));
             if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
                 m.random = random;
             }
         }
-    }
-    /// `AbstractMinecartContainer.remove` and `AbstractChestBoat.remove`: a
-    /// chest or hopper minecart or a chest boat spills what it holds
-    /// (`Containers.dropContents`) for every destroying reason.
-    fn spill_vehicle(&mut self, t: Target) {
-        let id = match t {
-            Target::Cart(id) | Target::Boat(id) => id,
-            _ => return,
-        };
-        // What an open menu edited goes back to the vehicle first.
-        self.release_vehicle_container(id);
-        let take = |at, items: &mut Vec<_>| {
-            if items.iter().all(Option::is_none) {
-                None
-            } else {
-                Some((at, std::mem::take(items)))
-            }
-        };
-        let held = match t {
-            Target::Cart(_) => self
-                .carts
-                .iter()
-                .position(|c| c.id == id)
-                .and_then(|i| self.carts.update(i, |c| take(c.position, &mut c.items))),
-            _ => self
-                .boats
-                .iter()
-                .position(|b| b.id == id)
-                .and_then(|i| self.boats.update(i, |b| take(b.position, &mut b.items))),
-        };
-        let Some((at, items)) = held else {
-            return;
-        };
-        let at = BlockPos {
-            x: at.x.floor() as i32,
-            y: at.y.floor() as i32,
-            z: at.z.floor() as i32,
-        };
-        self.with_level(|_, level, _| level.drop_lost_contents(at, items));
-        self.flush_spill();
     }
     /// Takes out the entities mods removed since the last sweep.
     pub(super) fn native_removals_flush(&mut self) {
@@ -238,13 +233,13 @@ impl Game<'_> {
                 }
                 Target::Boat(id) | Target::Cart(id) => {
                     let marked = !already_marked.contains(&t);
-                    self.spill_vehicle(t);
-                    // Actual native removals already notified the edges. A
-                    // raw deferred entry still needs its own guarded pass.
-                    if marked && !self.persist.notified_vehicle_removals.contains(&id) {
+                    if self.persist.notified_vehicle_removals.remove(&id) {
+                        self.take_destroyed_vehicle_row(t, id);
+                    } else if marked {
+                        // A raw deferred entry still needs the whole removal.
                         self.persist.destroying_vehicles.remove(&t);
+                        self.kill_vehicle_object(t);
                     }
-                    self.kill_vehicle_object(t);
                     self.score_destroyed_vehicle_once(id);
                     if marked {
                         self.persist.destroying_vehicles.remove(&t);
@@ -273,7 +268,7 @@ mod tests {
     use crate::game::api_values::{StackReadError, TryIntoApi, test_snapshot};
     #[test]
     #[ignore = "daily"]
-    fn destroying_a_cart_spills_all_slots_after_the_removal_flush() {
+    fn destroying_a_cart_spills_all_slots_before_removing_its_row() {
         use super::super::{
             minecarts::{CartKind, Minecart},
             native_entity_refs::tests::with_game,
@@ -287,9 +282,8 @@ mod tests {
             game.carts.push(cart);
             let entity = game.entity(600).unwrap();
             assert!(game.entity_remove(entity, RemovalReason::Killed));
-            assert!(game.dropped.is_empty());
-            game.native_removals_flush();
-            assert!(game.carts.is_empty());
+            assert!(game.entity(600).is_none());
+            assert_eq!(game.carts.len(), 1);
             let mut totals = std::collections::BTreeMap::new();
             for item in game.dropped.iter() {
                 *totals.entry(item.stack.item.to_string()).or_insert(0) += item.stack.count;
@@ -303,6 +297,7 @@ mod tests {
             );
             let count = game.dropped.len();
             game.native_removals_flush();
+            assert!(game.carts.is_empty());
             assert_eq!(game.dropped.len(), count);
         });
     }

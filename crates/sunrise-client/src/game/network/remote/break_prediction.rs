@@ -229,3 +229,85 @@ impl Game<'_> {
         }
     }
 }
+
+impl Game<'_> {
+    /// `MultiPlayerGameMode.stopDestroyBlock`: aborts the break and starts the attack strength
+    /// again, if one is running (`if (!isDestroying) return;`), and says whether it did. Only the
+    /// progress goes: `destroyBlockPos` and `destroyingItem` keep the target, so a dig resumed on
+    /// the same block sends no START and the server's clock runs on (#4124).
+    pub(super) fn stop_remote_mining(&mut self) -> bool {
+        let kept = self.remote.as_mut().and_then(|r| {
+            if !std::mem::take(&mut r.is_destroying) {
+                return None;
+            }
+            let (pos, face, _) = r.destroying?;
+            r.destroying = Some((pos, face, 0.0));
+            r.destroying
+        });
+        let Some((pos, _, _)) = kept else {
+            return false;
+        };
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        self.tutorial_destroy(state, -1.0);
+        self.send(S::PlayerAction(play::PlayerAction {
+            action: 2,
+            pos,
+            direction: 0,
+            sequence: 0,
+        }));
+        self.reset_attack_strength();
+        true
+    }
+
+    pub(super) fn veto_mining_prediction(
+        &self,
+        pos: [i32; 3],
+        face: [i32; 3],
+        starting: bool,
+        progress: f32,
+    ) -> bool {
+        if !mod_api::__private::listened(mod_api::HookId::ClientMiningPredict) {
+            return false;
+        }
+        let mut canceled = false;
+        self.native_client_mining_predict(
+            mod_api::ClientMiningPrediction {
+                pos,
+                face,
+                starting,
+                progress: progress.clamp(0.0, 1.0),
+            },
+            &mut canceled,
+        );
+        canceled
+    }
+
+    /// `Player.blockActionRestricted` for the block at `pos`: a spectator
+    /// never breaks, an adventure player only with a main-hand item whose
+    /// `can_break` matches the block (`ItemStack.canBreakBlockInAdventureMode`).
+    /// A predicate this client could not decode (exact components) only
+    /// tells that the server gave one, and the server sends the block back
+    /// if it does not match.
+    pub(super) fn remote_break_restricted(&self, pos: [i32; 3]) -> bool {
+        use sunrise_protocol::item::{WirePatch, component::CAN_BREAK};
+        if self
+            .held()
+            .and_then(|s| s.data())
+            .is_some_and(|d| d.other("minecraft:can_break").is_some())
+        {
+            return self.block_action_restricted(pos);
+        }
+        self.spectator()
+            || (!self.may_build()
+                && !self
+                    .held()
+                    .and_then(|s| s.wire_patch())
+                    .is_some_and(|p| WirePatch::adds(&p, CAN_BREAK)))
+    }
+
+    pub(in crate::game) fn request_remote_mining_stop(&mut self) {
+        if let Some(r) = self.remote.as_mut() {
+            r.stop_mining = true;
+        }
+    }
+}

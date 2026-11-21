@@ -74,6 +74,8 @@ pub struct GeneralEntityTypeDeclaration {
     pub summonable: bool,
     /// Whether the client can target the row for use and attack (`Entity.isPickable`).
     pub pickable: bool,
+    /// How instances respond to a piston. The vanilla default is `PushPull`.
+    pub piston_push_reaction: crate::PushReaction,
     /// Tracking distance in chunks, stored directly like vanilla's signed integer.
     pub tracking_chunks: i32,
     /// Update interval in ticks, stored directly like vanilla's signed integer.
@@ -100,6 +102,7 @@ impl Default for GeneralEntityTypeDeclaration {
             save_policy: GeneralSavePolicy::Save,
             summonable: true,
             pickable: false,
+            piston_push_reaction: crate::PushReaction::PushPull,
             tracking_chunks: 5,
             update_interval: 3,
             payload_version: 1,
@@ -150,6 +153,7 @@ pub trait GeneralTypesRegistrar {
     /// Pass `false` for vanilla's plain `Entity.isPickable` default. Pass `true`
     /// to let the player's crosshair target the declared box for use and attack.
     /// This does not make the box solid or give it a middle-click item.
+    /// `piston_push_reaction` defaults to vanilla's `PushPull` when omitted (`None`).
     ///
     /// `passenger_attachment` is the finite `[x, y, z]` passenger point in vehicle-local
     /// blocks, rotated with the vehicle's yaw. `None` uses `[0.0, height, 0.0]`.
@@ -169,6 +173,7 @@ pub trait GeneralTypesRegistrar {
         save_policy: GeneralSavePolicy,
         summonable: bool,
         pickable: bool,
+        piston_push_reaction: Option<crate::PushReaction>,
         tracking_chunks: i32,
         update_interval: i32,
         payload_version: u16,

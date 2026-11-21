@@ -83,7 +83,10 @@ def windows_daily_runs(root):
     # Recognize the daily's non-skipped resolve path and the commit it passes; do not guess whether arbitrary
     # expressions are true. Likewise the called job either is unconditional or accepts a nonempty commit.
     enabled = (None, "true", "${{ true }}")
-    if call.get("if") not in (*enabled, "needs.resolve.outputs.skip == 'false'"):
+    # A full daily (no break-glass leg selection, `legs` empty) always runs it.
+    if call.get("if") not in (*enabled, "needs.resolve.outputs.skip == 'false'",
+                              "needs.resolve.outputs.skip == 'false' && (needs.resolve.outputs.legs == '' || "
+                              "contains(fromJSON(needs.resolve.outputs.legs), 'windows-runtime-leases'))"):
         return False
     job = (windows.get("jobs") or {}).get("runtime-leases") or {}
     if (job.get("if") not in enabled and

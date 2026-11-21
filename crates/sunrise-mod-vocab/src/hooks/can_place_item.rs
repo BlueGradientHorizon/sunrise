@@ -4,10 +4,12 @@ pub trait Hooks {
     /// `Container.canPlaceItem`: whether `slot` of this mod block entity's container admits
     /// the offered nonempty `stack`. `Some(true)` or `Some(false)` replaces the declared
     /// `ModContainer::insert_rules` answer; `None` keeps it. A subscribed slot refuses
-    /// insertion if the entity snapshot or stack cannot be represented. Face, input-slot
-    /// and stack limits still apply.
+    /// insertion if the entity snapshot, block state or offered stack cannot be represented.
+    /// Face, input-slot and stack limits still apply.
     ///
-    /// This is a read-only query on the entity's saved data and current slots, with no Host.
+    /// This is a read-only query on the entity's position, block state, saved data and
+    /// current slots, with no Host. The state is the block at this entity's own position,
+    /// not the block of the hopper, dropper or other caller.
     /// Hoppers, droppers, default `ITEMS` and `STORAGE` inserts, and nonempty `/loot insert`
     /// and `/loot replace block` offers ask it. Inserts query with the remaining offer
     /// before clamping to room. Default `STORAGE.space_for` does not ask this hook: for a
@@ -19,6 +21,7 @@ pub trait Hooks {
     /// writing its own storage can issue an explicit `set_changed` or seed the filter itself.
     #[hook(
         side = "server",
+        version = 2,
         contract = "replace",
         out = "allowed",
         scope = "block_entity",

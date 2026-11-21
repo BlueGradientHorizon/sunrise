@@ -22,6 +22,8 @@ mod player_loot_entity;
 mod projectile_targets;
 pub(super) use sunrise_gameplay::projectile_world::ProjWorld;
 mod pufferfish_player;
+#[cfg(test)]
+pub(in crate::game) mod render_fixture;
 mod residency;
 #[cfg(test)]
 mod retained_limits_tests;
@@ -139,6 +141,12 @@ pub(super) struct NativeSound {
     /// The entity the sound follows (`ClientboundSoundEntityPacket`), sent
     /// from `at`, where it was when the mod queued the sound.
     pub entity: Option<i32>,
+}
+
+/// Shared state for the mob runs in one entity pass.
+pub(in crate::game) struct MobDrawFrame<'a> {
+    living: LivingFrame<'a>,
+    precheck: bool,
 }
 
 #[derive(Default)]
@@ -1601,12 +1609,7 @@ impl Game<'_> {
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
         for (id, at, width, height, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
+            self.finish_mob_death_animation(id, at, width, height, split);
         }
         laps.lap("creature_retain");
         self.sync_riders();
@@ -1708,6 +1711,24 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
+    /// also splits a large cube before it reaches `Entity.setRemoved`.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        let at = at.components();
+        self.lan_entity_event(id as i32, 60, at);
+        self.death_poof(at, width, height);
+        if let Some(mob) = split {
+            self.split_dead_cube(mob);
+        }
+    }
+
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
     pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
         let options = sunrise_client::particles::ParticleOptions::simple(
@@ -2624,9 +2645,7 @@ impl Game<'_> {
                         if self.died.insert(target) {
                             self.mob_died(&m);
                         }
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == target) {
-                            m.removed = true;
-                        }
+                        self.remove_mob_now(target, false);
                     }
                 }
                 MobEvent::Push { target, velocity } => {
@@ -6789,7 +6808,7 @@ impl Game<'_> {
             let id = self.mobs[index].id as i32;
             // Leashable.dropLeash, then discard.
             self.break_leash(id as u32, true, false);
-            self.mobs[index].removed = true;
+            self.remove_mob_now(id as u32, false);
             if self.creative {
                 if let Some(rest) = self.add_stack_to_inventory(filled) {
                     self.spawn_item(rest, self.eye_position().unwrap_or([0.0; 3]), [0.0; 3], 40);
@@ -6978,11 +6997,9 @@ impl Game<'_> {
         let is_food = m.kind.food.contains(&item);
         let baby_turtle = species == Species::Turtle && m.is_baby();
         // MushroomCow.getEffectsFromItemStack: the item's block supplies them.
-        let flower = if species == Species::Mooshroom {
-            sunrise_client::flowers::stew_effect(&item)
-        } else {
-            None
-        };
+        let stew_effects = (species == Species::Mooshroom && m.extra.variant == 1 && !m.is_baby())
+            .then(|| world_items!(self).suspicious_stew_effects(&item))
+            .flatten();
         let mut give_stew: Option<Vec<(Arc<str>, i32)>> = None;
         // `Some(true)` for the four spell particles, `Some(false)` for the two
         // smoke puffs of a cow that already holds effects.
@@ -7030,14 +7047,13 @@ impl Game<'_> {
                 self.post_game_event("minecraft:shear", feet, ctx);
                 self.damage_held_tool();
             }
-            // MushroomCow.mobInteract: a brown adult takes the flower's effects
+            // MushroomCow.mobInteract: a brown adult takes the block's effects
             // unless it holds some already, when it only puffs smoke.
-            Species::Mooshroom if m.extra.variant == 1 && !m.is_baby() && flower.is_some() => {
+            Species::Mooshroom if let Some(effects) = stew_effects => {
                 if m.extra.stew_effects.is_some() {
                     stew_particles = Some(false);
                 } else {
-                    let (effect, ticks) = flower.expect("the guard checked");
-                    m.extra.stew_effects = Some(vec![(Arc::from(effect), ticks)]);
+                    m.extra.stew_effects = Some(effects.to_vec());
                     consume = true;
                     eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
                     stew_particles = Some(true);
@@ -8152,15 +8168,14 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn mob_geometry(
+    pub(in crate::game) fn begin_mob_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
+    ) -> MobDrawFrame<'_> {
         // The coarse mob bounds pay off only in dense async scenes; otherwise,
         // keep the existing exact mesh-culling path.
-        if self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
+        let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
                 .occlusion
                 .async_culler
@@ -8169,25 +8184,8 @@ impl Game<'_> {
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
             && !self.occlusion.shadow_casters.0
-            && mod_api::__private::mods().is_empty()
-        {
-            self.mob_geometry_inner::<true>(camera, alpha, out);
-        } else {
-            self.mob_geometry_inner::<false>(camera, alpha, out);
-        }
-    }
-
-    fn mob_geometry_inner<const PRECHECK: bool>(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
-        let scale = self.view_scale();
-        // Who watches (`Entity.isInvisibleTo`): the local player's team.
-        let viewer = self.player_team();
+            && mod_api::__private::mods().is_empty();
         self.rendered_mobs.set(0);
-        let (skinning, listened) = (self.skinning(), self.mob_render_listened());
         // What custom entity model animations read of the frame.
         sunrise_client::mobs::cem_anim::set_frame(sunrise_client::mobs::cem_anim::Frame {
             time: self.world.game_time as f64 + alpha,
@@ -8207,19 +8205,62 @@ impl Game<'_> {
                 == sunrise_client::camera::CameraType::ThirdPersonFront,
             ..Default::default()
         });
-        let frame = LivingFrame {
-            camera,
-            alpha,
-            scale,
-            viewer,
-            skinning,
-            listened,
-        };
-        for mob in &self.mobs {
-            self.living_geometry::<PRECHECK>(mob, &frame, out);
+        MobDrawFrame {
+            precheck,
+            living: LivingFrame {
+                camera,
+                alpha,
+                scale: self.view_scale(),
+                viewer: self.player_team(),
+                skinning: self.skinning(),
+                listened: self.mob_render_listened(),
+            },
         }
-        // Close the last tracked mob's span before the remaining world entities.
+    }
+
+    pub(in crate::game) fn mob_run_geometry(
+        &self,
+        frame: &MobDrawFrame<'_>,
+        range: std::ops::Range<usize>,
+        out: &mut Vec<Vertex>,
+    ) {
+        if frame.precheck {
+            self.mob_run::<true>(&frame.living, range, out);
+        } else {
+            self.mob_run::<false>(&frame.living, range, out);
+        }
+    }
+
+    fn mob_run<const PRECHECK: bool>(
+        &self,
+        frame: &LivingFrame<'_>,
+        range: std::ops::Range<usize>,
+        out: &mut Vec<Vertex>,
+    ) {
+        for mob in &self.mobs[range] {
+            self.living_geometry::<PRECHECK>(mob, frame, out);
+        }
+    }
+
+    #[cfg(test)]
+    pub(in crate::game) fn mob_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
+        let frame = self.begin_mob_geometry(camera, alpha);
+        self.mob_run_geometry(&frame, 0..self.mobs.len(), out);
         self.mark_motion(out.len(), 0);
+        self.other_creature_geometry(camera, alpha, out);
+    }
+
+    pub(in crate::game) fn other_creature_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+    ) {
         self.general_entity_geometry(camera, alpha, out);
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
@@ -8263,6 +8304,7 @@ impl Game<'_> {
             if let Some((start, rgb)) = glowing.take() {
                 self.mark_outline(&out[start..], rgb);
             }
+            self.mark_entity(out.len(), a.entity_type());
             if a.id != 0
                 && let Some(rgb) = self.thing_outline(a.id, a.kind.id())
             {
