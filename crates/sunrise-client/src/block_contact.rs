@@ -316,7 +316,7 @@ pub enum StepLevel<'a, 'world> {
 /// parts, and says which block states have a part for each.
 pub struct Hooks {
     pub step_listens: fn(BlockStateId) -> bool,
-    /// `Block.stepOn` for a block's subscribed Parts, on the simulating side.
+    /// `Block.stepOn` for the block's subscribed Parts; returns only checked outputs.
     pub step_on: fn(StepLevel<'_, '_>, StepContact<'_>, &mut [f64; 3]) -> Vec<mod_api::EntityWrite>,
     pub any_inside: fn() -> bool,
     pub inside_listens: fn(BlockStateId) -> bool,
@@ -452,7 +452,7 @@ pub fn step_on(
     let mut answer = movement.components();
     let writes = (hooks.step_on)(level, step, &mut answer);
     let [x, y, z] = answer;
-    *movement = accepted_movement(sunrise_core::geometry::Vec3::new(x, y, z), *movement);
+    *movement = sunrise_core::geometry::Vec3::new(x, y, z);
     writes
 }
 

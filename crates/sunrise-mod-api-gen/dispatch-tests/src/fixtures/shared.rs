@@ -109,7 +109,6 @@ impl LevelSide<'_> {
         }
     }
 }
-#[allow(dead_code)]
 enum LevelRandomSide<'a> {
     Server(&'a mut dyn LevelRandomHost),
     Client(&'a dyn LevelHost),
@@ -130,6 +129,20 @@ impl HitHost for TestLevel {}
 impl Host for TestHost {}
 impl ServerHost for TestHost {}
 impl ClientHost for TestHost {}
+
+#[test]
+fn level_random_dispatch_reborrows_the_active_side() {
+    let mut host = TestLevel;
+    assert!(matches!(
+        LevelRandomSide::Server(&mut host).reborrow(),
+        LevelRandomSide::Server(_)
+    ));
+    assert!(matches!(
+        LevelRandomSide::Client(&host).reborrow(),
+        LevelRandomSide::Client(_)
+    ));
+}
+
 #[allow(dead_code)]
 mod generated {
     pub(super) mod mod_api {

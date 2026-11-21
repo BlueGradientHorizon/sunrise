@@ -17,18 +17,53 @@ impl FrictionView<'_> {
     }
 }
 
-pub(super) struct StepOnView<'a>(pub(super) mod_api::LevelRandomSide<'a>);
+pub(super) struct StepOnView<'a> {
+    pub(super) level: mod_api::LevelRandomSide<'a>,
+    pub(super) state: BlockStateId,
+}
 
 impl StepOnView<'_> {
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
-    pub(super) fn native_step_on(&mut self, call: mod_api::__private::StepOnCall<'_>) {
-        let side = match &mut self.0 {
-            mod_api::LevelRandomSide::Server(level) => {
-                mod_api::LevelRandomSide::Server(&mut **level)
-            }
+    pub(super) fn native_step_on(
+        &mut self,
+        call: mod_api::__private::StepOnCall<'_>,
+    ) -> Vec<mod_api::EntityWrite> {
+        use crate::game::api_values::TryIntoEngine;
+        let position = BlockPos::new(call.pos.x, call.pos.y, call.pos.z);
+        let side = match &mut self.level {
+            mod_api::LevelRandomSide::Server(level) => mod_api::LevelRandomSide::Server(*level),
             mod_api::LevelRandomSide::Client(level) => mod_api::LevelRandomSide::Client(*level),
         };
-        mod_api::dispatch_step_on(side, call);
+        let mut blocks = Vec::new();
+        let mut entity_writes = Vec::new();
+        mod_api::dispatch_step_on(side, call, |part, level, event| {
+            let previous = *event.movement;
+            part.step_on(level, event);
+            let (requests, writes) = event.__take_writes();
+            let valid = event.movement.iter().all(|v| v.is_finite())
+                && writes.iter().all(|write| match write {
+                    mod_api::EntityWrite::Push(v)
+                    | mod_api::EntityWrite::SetMovement(v)
+                    | mod_api::EntityWrite::StuckIn(v) => v.iter().all(|v| v.is_finite()),
+                    mod_api::EntityWrite::Hurt { amount } => amount.is_finite(),
+                    _ => true,
+                });
+            let kept = blocks.len();
+            if valid
+                && requests
+                    .into_iter()
+                    .map(|write| write.try_into_engine(&()))
+                    .try_for_each(|write| write.map(|write| blocks.push(write)))
+                    .is_ok()
+            {
+                entity_writes.extend(writes);
+            } else {
+                blocks.truncate(kept);
+                *event.movement = previous;
+            }
+        });
+        sunrise_client::block_contact::landed(self.state, position, blocks);
+        entity_writes
     }
 }
 

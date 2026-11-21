@@ -260,7 +260,7 @@ impl Game<'_> {
         let side = game_side!(self);
         let body = self.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
-        let _ = self.body_step_on(
+        let writes = self.body_step_on(
             entity,
             (
                 f.position,
@@ -268,6 +268,13 @@ impl Game<'_> {
             ),
             &f.ground,
             &mut f.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut f.velocity,
+            Some(&mut f.fall_distance),
+            Some(&mut f.stuck),
+            Some(&mut f.fire_ticks),
         );
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck
         // (Entity.makeStuckInBlock), BubbleColumnBlock.entityInside lifts or

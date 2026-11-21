@@ -166,8 +166,8 @@ on replay.
 lends the same level random host as `fall_on`. `event.write_entity(EntityWrite::Hurt { amount })` applies damage to the stepping body through its own damage path, before the inside scan.
 Use `bounds` to test overlap with a surface that is smaller than the block. `event.request(LandingWrite::…)`
 queues a write at `pos`. The `fall_on` drain applies the ordered block writes after the entity batch,
-only if the block still holds the contacted state. An invalid requested state refuses the batch
-and the callback's other outputs. This replaces `Hooks::block_step_on`, the former server-only notice.
+only if the block still holds the contacted state. An invalid state or non-finite movement or damage
+refuses that Part's outputs. Other Parts' accepted writes and movement edits remain. This replaces `Hooks::block_step_on`, the former server-only notice.
 
 Boats and minecarts do not take damage from `EntityWrite::Hurt` in `step_on` or `entity_inside` yet
 ([#4177](https://github.com/sunrise-org/sunrise/issues/4177)).

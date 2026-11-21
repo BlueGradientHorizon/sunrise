@@ -1398,7 +1398,8 @@ impl Game<'_> {
         let side = game_side!(self);
         let motion = self.body_motion(&side);
         motion.apply_block_speed(position, velocity);
-        let _ = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
+        let writes = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
+        super::entity::apply_contact_writes(writes, velocity, None, None, None);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.

@@ -10,7 +10,7 @@ pub trait Hooks {
     ///
     /// `stepping_carefully` is the body's `Entity.isSteppingCarefully` at this contact.
     /// `movement` is its current velocity. Set it to change the velocity before the
-    /// inside effects and later drag; a non-finite result is ignored. There is no veto.
+    /// inside effects and later drag. There is no veto.
     /// `bounds` is the body's current world-space box, `[min, max]` in XYZ order.
     /// Only Parts on the contacted state run, after that block's vanilla step behavior.
     /// The server lends the level random host as `fall_on` does, and accepts
@@ -18,6 +18,8 @@ pub trait Hooks {
     /// Contact Parts cannot hurt boats or minecarts yet (#4177).
     /// `event.request(LandingWrite::…)` queues a change at `pos` through the `fall_on`
     /// drain: requests apply at the batch end if `pos` still holds `state`.
+    /// A Part's invalid block state or non-finite movement or damage discards only its
+    /// own outputs; earlier edits remain, and the next Part sees the last accepted movement.
     /// The client lends a read-only level and accepts only movement edits.
     /// Keep movement answers consistent between the two sides and on replay.
     #[hook(

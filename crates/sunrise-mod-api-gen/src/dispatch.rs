@@ -971,6 +971,12 @@ pub(super) fn emit<'a>(
             && host
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "&mut dyn LevelWriteHost");
+        let scoped_random_collect = contract == Contract::Collect
+            && scoped.is_some()
+            && !observer_routed
+            && host
+                .as_ref()
+                .is_some_and(|(_, param)| param.ty == "LevelRandomSide");
         let filtered_subscribers = name == "add_pack_finders";
         let allow_subscriber = fresh_name("allow", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
@@ -1193,7 +1199,12 @@ pub(super) fn emit<'a>(
             } else {
                 run(&format!("{callee}.{name}({invoke})"))
             };
-            let plain_call = run(&format!("{callee}.{name}({invoke})"));
+            let plain_call = if scoped_random_collect {
+                let level = &call_args[0];
+                run(&format!("{invoke_part}({callee}, {level}, &mut {event})"))
+            } else {
+                run(&format!("{callee}.{name}({invoke})"))
+            };
             let invocation = match contract {
                 _ if name == "block_entity_tick" => format!(
                     "*{event}.reply = BlockEntityTickReply::Changed; {event}.entity.__begin_tick_listener(); {plain_call}; let listener_reply = *{event}.reply; {event}.entity.__finish_tick_listener(listener_reply); tick_changed |= listener_reply == BlockEntityTickReply::Changed;"
@@ -1479,6 +1490,11 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ dispatch_{name}_with({args}, |part, event| part.{name}(&mut *{host}, event)); }}\n\
                  #[doc(hidden)] pub fn dispatch_{name}_with({params}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, &mut {event_type}{elided}){result}) {{ {unpack}{early_return}\n{body} }}\n"
+            ));
+        } else if scoped_random_collect {
+            let (part_trait, _) = scoped.as_ref().unwrap();
+            dispatch.push_str(&format!(
+                "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, LevelRandomSide<'_>, &mut {event_type}{elided})) {{ {unpack}{early_return}\n{body} }}\n"
             ));
         } else if filtered_subscribers {
             let wrapper_params = dispatch_params

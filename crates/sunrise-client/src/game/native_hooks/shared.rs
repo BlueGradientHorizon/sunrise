@@ -1842,12 +1842,11 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
         },
         step_on: |level, step, movement| {
             use self::bounce_restitution::StepOnView;
-            use sunrise_client::block_contact::{StepLevel, landed};
+            use sunrise_client::block_contact::StepLevel;
             let c = step.contact;
             let Ok(state) = c.state.try_into_api() else {
                 return Vec::new();
             };
-            let mut proposed = *movement;
             use mod_api::LevelRandomSide;
             let (mut hit, read);
             let (side, mut writes) = match level {
@@ -1866,7 +1865,11 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
                     )
                 }
             };
-            StepOnView(side).native_step_on(mod_api::__private::StepOnCall {
+            StepOnView {
+                level: side,
+                state: c.state,
+            }
+            .native_step_on(mod_api::__private::StepOnCall {
                 entity: c.entity,
                 kind: c.kind,
                 state,
@@ -1876,20 +1879,9 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
                     step.bounds.min_position().components(),
                     step.bounds.max_position().components(),
                 ],
-                movement: &mut proposed,
+                movement,
                 writes: &mut writes,
-            });
-            let (blocks, entity) = writes.into_writes();
-            let Ok(blocks) = blocks
-                .into_iter()
-                .map(|write| write.try_into_engine(&()))
-                .collect()
-            else {
-                return Vec::new();
-            };
-            landed(c.state, c.position, blocks);
-            *movement = proposed;
-            entity
+            })
         },
         any_inside: || mod_api::__private::has_scoped_hook(mod_api::HookId::EntityInside),
         inside_listens: |state| {

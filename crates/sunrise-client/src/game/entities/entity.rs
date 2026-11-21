@@ -780,6 +780,43 @@ macro_rules! stored_motion {
     };
 }
 
+/// Apply the common non-damage `Entity` writes to the state the mover actually owns.
+/// An absent field means this mover does not track that effect.
+pub(super) fn apply_contact_writes(
+    writes: Vec<mod_api::EntityWrite>,
+    velocity: &mut Vec3,
+    mut fall_distance: Option<&mut f64>,
+    mut stuck: Option<&mut Vec3>,
+    mut fire_ticks: Option<&mut i32>,
+) {
+    use mod_api::EntityWrite;
+    for write in writes {
+        match write {
+            EntityWrite::Push([x, y, z]) => *velocity = velocity.add_vector(Vec3::new(x, y, z)),
+            EntityWrite::SetMovement([x, y, z]) => *velocity = Vec3::new(x, y, z),
+            EntityWrite::StuckIn([x, y, z]) => {
+                if let Some(stuck) = stuck.as_deref_mut() {
+                    *stuck = Vec3::new(x, y, z);
+                }
+                if let Some(fall) = fall_distance.as_deref_mut() {
+                    *fall = 0.0;
+                }
+            }
+            EntityWrite::ResetFallDistance => {
+                if let Some(fall) = fall_distance.as_deref_mut() {
+                    *fall = 0.0;
+                }
+            }
+            EntityWrite::SetFireTicks(ticks) => {
+                if let Some(fire) = fire_ticks.as_deref_mut() {
+                    *fire = ticks;
+                }
+            }
+            EntityWrite::AddEffect { .. } | EntityWrite::Hurt { .. } => {}
+        }
+    }
+}
+
 impl Game<'_> {
     /// `Block.fallOn` effects for bodies whose `causeFallDamage` does nothing.
     pub(super) fn nonliving_fall_on(
@@ -927,7 +964,7 @@ impl Game<'_> {
                 );
             }
             mod_api::EntityWrite::Hurt { amount } => {
-                let _ = item.hurt(amount as i32);
+                self.hurt_moving_item(item, amount);
             }
             mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
             mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,

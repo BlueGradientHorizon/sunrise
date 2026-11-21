@@ -476,11 +476,18 @@ impl Game<'_> {
         let side = game_side!(self);
         let motion = self.body_motion(&side);
         motion.apply_block_speed(r.position, &mut r.velocity);
-        let _ = self.body_step_on(
+        let writes = self.body_step_on(
             entity,
             (r.position, Rocket::bounds_at(r.position)),
             &r.ground,
             &mut r.velocity,
+        );
+        super::entity::apply_contact_writes(
+            writes,
+            &mut r.velocity,
+            Some(&mut r.fall_distance),
+            Some(&mut r.stuck),
+            None,
         );
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;

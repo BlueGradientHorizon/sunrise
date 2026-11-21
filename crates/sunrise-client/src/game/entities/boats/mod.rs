@@ -215,6 +215,17 @@ pub(super) fn put_ticks_frozen(map: &mut sunrise_core::nbt::Compound, ticks: i32
 pub(super) const WIDTH: f64 = 1.375;
 pub(super) const HEIGHT: f64 = 0.5625;
 impl Boat {
+    fn apply_step_writes(&mut self, velocity: Vec3, writes: Vec<mod_api::EntityWrite>) {
+        self.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut self.velocity,
+            Some(&mut self.fall_distance),
+            Some(&mut self.stuck),
+            Some(&mut self.fire_ticks),
+        );
+    }
+
     /// `AbstractBoat.tick`: the hurt wobble and the damage wear off, before
     /// `Entity.baseTick` can burn the boat.
     fn wear_off_hurt(&mut self) {
@@ -1493,13 +1504,13 @@ impl Game<'_> {
     }
     fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
-        let _ = self.body_step_on(
+        let writes = self.body_step_on(
             (boat.id, boat.entity_type_name()),
             (boat.position, boat.bounds()),
             &boat.ground,
             &mut velocity,
         );
-        boat.velocity = velocity;
+        boat.apply_step_writes(velocity, writes);
     }
     /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
     pub(super) fn boat_second_step(&mut self, i: usize) {
@@ -1512,8 +1523,9 @@ impl Game<'_> {
                 (b.position, b.bounds()),
                 b.ground,
             );
-            let _ = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
-            self.boats.update(i, |b| b.velocity = velocity);
+            let writes = self.body_step_on((id, &kind), footprint, &ground, &mut velocity);
+            self.boats
+                .update(i, |b| b.apply_step_writes(velocity, writes));
         }
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it

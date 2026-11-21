@@ -486,15 +486,18 @@ impl StepOnWrites {
             ..Self::default()
         }
     }
-
-    // hidden: only the engine may validate and drain the staged writes.
-    #[doc(hidden)]
-    pub fn into_writes(self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
-        (self.block, self.entity)
-    }
 }
 
 impl StepOnEvent<'_> {
+    // hidden: the game validates and drains one Part's outputs before invoking the next.
+    #[doc(hidden)]
+    pub fn __take_writes(&mut self) -> (Vec<LandingWrite>, Vec<EntityWrite>) {
+        (
+            std::mem::take(&mut self.writes.block),
+            std::mem::take(&mut self.writes.entity),
+        )
+    }
+
     /// Queue a write to the contacted block. Returns false on the client.
     pub fn request(&mut self, write: LandingWrite) -> bool {
         if !self.writes.server {

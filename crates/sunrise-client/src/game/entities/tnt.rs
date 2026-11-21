@@ -474,11 +474,18 @@ impl Game<'_> {
         let t = &self.tnts[i];
         let (id, footprint, ground, mut velocity) =
             (t.id, (t.position, t.bounds()), t.ground, t.velocity);
-        let _ = self.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
+        let writes = self.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
         let side = game_side!(self);
         let t = &mut self.tnts[i];
         let known = t.velocity;
         t.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut t.velocity,
+            Some(&mut t.fall_distance),
+            Some(&mut t.stuck),
+            None,
+        );
         let tops = t.apply_effects_from_blocks(
             sunrise_client::motion::BodyMotion {
                 world: &self.world,
@@ -539,7 +546,7 @@ impl Game<'_> {
         self.body_motion(&game_side!(self))
             .apply_block_speed(position, &mut velocity);
         let ground = self.tnts[i].ground;
-        let _ = self.body_step_on(
+        let writes = self.body_step_on(
             (id, "minecraft:tnt"),
             (position, bounds),
             &ground,
@@ -548,6 +555,13 @@ impl Game<'_> {
         let side = game_side!(self);
         let t = &mut self.tnts[i];
         t.velocity = velocity;
+        super::entity::apply_contact_writes(
+            writes,
+            &mut t.velocity,
+            Some(&mut t.fall_distance),
+            Some(&mut t.stuck),
+            None,
+        );
         let tops = t.finish_tick(
             sunrise_client::motion::BodyMotion {
                 world: &self.world,
