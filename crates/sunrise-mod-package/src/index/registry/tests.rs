@@ -936,6 +936,38 @@ fn duplicate_fields_refuse_only_the_affected_binary() {
 }
 
 #[test]
+fn reading_an_index_drops_the_taken_down_host_but_keeps_the_source() {
+    let commit = "b".repeat(40);
+    let client = "x86_64-unknown-linux-gnu";
+    let server = "x86_64-unknown-linux-gnu-server";
+    let mut old: Index = serde_json::from_str(STABLE_NATIVE).unwrap();
+    let original = &old.project("release_probe").unwrap().versions[0];
+    old.revoked.push(Revoked {
+        id: "release_probe".into(),
+        sha256: Some(
+            original
+                .native_binary(&commit, client)
+                .unwrap()
+                .file
+                .sha256
+                .clone(),
+        ),
+        reason: "Withdrawn test archive.".into(),
+        date: String::new(),
+    });
+    let read = Index::parse(&serde_json::to_string(&old).unwrap()).unwrap();
+    let source = read.project("release_probe").unwrap();
+    let version = read.installable(source, "26.3").unwrap();
+    assert_eq!(
+        version.file,
+        old.project(&source.id).unwrap().versions[0].file
+    );
+    assert!(version.native_binary(&commit, client).is_err());
+    assert!(version.native_binary(&commit, server).is_ok());
+    assert_eq!(version.verdicts["26.3-0.1.1"].targets, [server]);
+}
+
+#[test]
 fn native_binary_build_limits() {
     let mut index = Index::parse(STABLE_NATIVE).unwrap();
     let version = &mut index.projects[0].versions[0];

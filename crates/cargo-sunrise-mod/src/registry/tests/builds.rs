@@ -204,6 +204,48 @@ fn descriptors_must_be_in_the_projects_own_repository() {
 }
 
 #[test]
+fn taking_down_an_archive_does_not_require_it_or_hide_another_host() {
+    let release = Release::new("source.smod");
+    release.use_descriptor("valid");
+    release.0.make_base();
+    let original = release.build();
+    let version = &original.project(ID).unwrap().versions[0];
+    let client = version.native_binary(BUILD, TARGET).unwrap();
+    let root = release.0.0.path();
+    let head_path = root.join("head");
+    let registry_row = head_path.join(format!("mods/{ID}.toml"));
+    let unchanged = fs::read(&registry_row).unwrap();
+    fs::write(
+        head_path.join("revoked.toml"),
+        format!(
+            "[[revoked]]\nid='{ID}'\nsha256='{}'\nreason='Withdrawn test archive.'\n",
+            client.file.sha256
+        ),
+    )
+    .unwrap();
+    let files = root.join("files");
+    fs::remove_file(files.join(&client.file.sha256)).unwrap();
+    let checkout = registry::load(&head_path).unwrap();
+    let assets =
+        registry::builds::assets(&checkout.entries, Some(&files), &checkout.revoked).unwrap();
+    assert_eq!(assets.len(), 1);
+    assert!(assets[0].name.ends_with("-server.tar.xz"));
+    release.check().unwrap();
+    release.build();
+    // The raw writer output must already omit the archive, before tolerant reader filtering.
+    let built: Index = serde_json::from_slice(&fs::read(root.join("index.json")).unwrap()).unwrap();
+    let row = &built.project(ID).unwrap().versions[0];
+    assert_eq!(row.file, version.file);
+    assert!(row.native_binary(BUILD, TARGET).is_err());
+    assert_eq!(
+        row.verdicts[BUILD_TAG].targets,
+        [format!("{TARGET}-server")]
+    );
+    assert_eq!(row.native_binaries, version.native_binaries[1..]);
+    assert_eq!(fs::read(registry_row).unwrap(), unchanged);
+}
+
+#[test]
 fn registry_refuses_invalid_signed_build_submissions() {
     for (source, descriptor, message) in [
         ("source.smod", "missing-host", "must cover every SDK host"),
@@ -268,7 +310,10 @@ fn descriptor_authentication_binds_version_build_and_host_before_listing_archive
         );
         let root = release.0.0.path();
         let head = registry::load(&root.join("head")).unwrap();
-        assert!(registry::builds::assets(&head.entries, Some(&root.join("files"))).is_err());
+        assert!(
+            registry::builds::assets(&head.entries, Some(&root.join("files")), &head.revoked)
+                .is_err()
+        );
     }
     let release = Release::new("source.smod");
     let other = fs::read_to_string(fixtures().join("other-signer.minisig")).unwrap();
@@ -287,14 +332,15 @@ fn list_supplies_descriptor_then_each_verified_archive_url() {
     release.use_descriptor("valid");
     let root = release.0.0.path();
     let head = registry::load(&root.join("head")).unwrap();
-    let assets = registry::builds::assets(&head.entries, None).unwrap();
+    let assets = registry::builds::assets(&head.entries, None, &head.revoked).unwrap();
     assert_eq!(assets.len(), 1);
     assert!(assets[0].url.ends_with(&format!(
         "/{}",
         registry::builds::descriptor_name(ID, VERSION, BUILD_TAG)
     )));
     assert_eq!(assets[0].size, None);
-    let assets = registry::builds::assets(&head.entries, Some(&root.join("files"))).unwrap();
+    let assets =
+        registry::builds::assets(&head.entries, Some(&root.join("files")), &head.revoked).unwrap();
     assert_eq!(assets.len(), 2);
     for (asset, target) in assets.iter().zip([TARGET, &format!("{TARGET}-server")]) {
         let name = registry::builds::archive_name(ID, VERSION, BUILD_TAG, target);

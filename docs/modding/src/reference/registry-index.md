@@ -357,7 +357,9 @@ archives from verified descriptors. Both print JSON rows with `id`, `version`, `
 `sha256`, and `size` (null for a descriptor). The workflow supplies the listed files under their digests,
 along with `--releases` and `--sdk-data`, to `registry check`, `registry review` and `registry build`. The
 index points to the verified archives under the registry's release mirror, not the temporary hash-named
-files. The tool itself does not fetch or upload assets.
+files. The tool itself does not fetch or upload assets. A takedown in `revoked.toml` naming an archive's
+SHA-256 removes that host from the published and read index, without removing the source version,
+other hosts, or the signed build declaration. The offline asset list no longer requests that archive.
 
 ### Nightly source
 

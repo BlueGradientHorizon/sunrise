@@ -701,14 +701,19 @@ pub fn project(entry: &Entry, src: &Sources) -> Result<Project, Vec<String>> {
         Some(_) => Cache::read(src.registry, &entry.id).map_err(|e| vec![e])?,
         None => Cache::default(),
     };
-    project_with_cache(entry, &cache, src)
+    project_with_cache(entry, &cache, src, &[])
 }
 
 fn has_versions(entry: &Entry, cache: Option<&Cache>) -> bool {
     !entry.versions.is_empty() || cache.is_some_and(|c| !c.versions.is_empty())
 }
 
-fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Project, Vec<String>> {
+fn project_with_cache(
+    entry: &Entry,
+    cache: &Cache,
+    src: &Sources,
+    revoked: &[Revoked],
+) -> Result<Project, Vec<String>> {
     let entry = &entry.resolved(&cache.page);
     let no_versions = !has_versions(entry, Some(cache));
     let mut errors = entry.check_page(no_versions && entry.nightly.is_some());
@@ -730,7 +735,7 @@ fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Pro
     }
     let mut versions = Vec::new();
     for v in &entry.versions {
-        match version(entry, v, src) {
+        match version(entry, v, src, revoked) {
             Ok(v) => versions.push(v),
             Err(e) => errors.push(format!("{id} {}: {e}", v.version)),
         }
@@ -834,7 +839,12 @@ impl EntryVersion {
     }
 }
 
-fn version(entry: &Entry, v: &EntryVersion, src: &Sources) -> Result<Version, String> {
+fn version(
+    entry: &Entry,
+    v: &EntryVersion,
+    src: &Sources,
+    revoked: &[Revoked],
+) -> Result<Version, String> {
     let release = v.release(src.releases)?;
     let url = format!("{}{}/{}", src.release, tag(&entry.id, &v.version), v.file);
     version_at(
@@ -844,6 +854,7 @@ fn version(entry: &Entry, v: &EntryVersion, src: &Sources) -> Result<Version, St
         url,
         release,
         Some(src),
+        revoked,
     )
 }
 
@@ -855,6 +866,7 @@ fn version_at(
     url: String,
     release: Option<&SunriseRelease>,
     sources: Option<&Sources<'_>>,
+    revoked: &[Revoked],
 ) -> Result<Version, String> {
     if !plain_version(&v.version) {
         return Err("a version is letters, digits, '.', '-' and '_'".into());
@@ -925,7 +937,7 @@ fn version_at(
     let native_binaries = match &source {
         Some(source) => {
             let src = sources.ok_or("no registry inputs for build assets")?;
-            builds::verify(entry, v, source, release, src)?
+            builds::verify(entry, v, source, release, src, revoked)?
         }
         None => Vec::new(),
     };
@@ -1025,7 +1037,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         "https://github.com/{repo}/releases/download/{}/{}",
         r.tag, r.asset
     );
-    version_at(entry, &v, path, url, None, None)
+    version_at(entry, &v, path, url, None, None, &[])
 }
 
 /// A project's page file as it would fill `entry` (which names the repository): refused when it
@@ -1092,7 +1104,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
     let (collections, mut errors) = checkout.collection_pages(src);
     let empty = Cache::default();
     for (entry, cache) in checkout.listed() {
-        match project_with_cache(entry, cache.unwrap_or(&empty), src) {
+        match project_with_cache(entry, cache.unwrap_or(&empty), src, &checkout.revoked) {
             Ok(p) => projects.push(p),
             Err(e) => errors.extend(e),
         }

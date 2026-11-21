@@ -340,7 +340,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
             };
             let loaded = registry::load(Path::new(checkout)).map_err(lines)?;
             if build_assets {
-                let assets = registry::builds::assets(&loaded.entries, files)?;
+                let assets = registry::builds::assets(&loaded.entries, files, &loaded.revoked)?;
                 println!(
                     "{}",
                     serde_json::to_string(&assets).map_err(|e| e.to_string())?

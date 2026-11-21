@@ -41,23 +41,13 @@ impl ReadIndex {
             projects,
             collections,
         } = self;
-        let mut builds: BTreeMap<&str, &str> = index
-            .releases
-            .iter()
-            .flatten()
-            .map(|release| (release.tag.as_str(), release.commit.as_str()))
-            .collect();
-        if let Some(nightly) = &index.nightly_build {
-            builds.insert("nightly", &nightly.commit);
-        }
         for ReadProject {
             mut project,
             versions,
         } in projects
         {
             for version in versions {
-                let version =
-                    version.keep_binaries(&project, &builds, local_files, &mut index.left_out);
+                let version = version.keep_binaries(&project, local_files, &mut index.left_out);
                 project.versions.push(version);
             }
             index.projects.push(project);
@@ -78,6 +68,35 @@ impl ReadIndex {
             }
         }
         index.keep_valid(local_files);
+        let mut builds: BTreeMap<&str, &str> = index
+            .releases
+            .iter()
+            .flatten()
+            .map(|release| (release.tag.as_str(), release.commit.as_str()))
+            .collect();
+        if let Some(nightly) = &index.nightly_build {
+            builds.insert("nightly", &nightly.commit);
+        }
+        for project in &mut index.projects {
+            for version in &mut project.versions {
+                version.native_binaries.retain(|binary| {
+                    !index
+                        .revoked
+                        .iter()
+                        .any(|r| r.covers(&project.id, &binary.file.sha256))
+                });
+                for (release, verdict) in &mut version.verdicts {
+                    verdict.targets.retain(|target| {
+                        builds.get(release.as_str()).is_some_and(|build| {
+                            version
+                                .native_binaries
+                                .iter()
+                                .any(|binary| binary.build == *build && binary.target == *target)
+                        })
+                    });
+                }
+            }
+        }
         index
     }
 }
@@ -86,7 +105,6 @@ impl ReadVersion {
     fn keep_binaries(
         self,
         project: &Project,
-        builds: &BTreeMap<&str, &str>,
         local_files: bool,
         left_out: &mut Vec<LeftOut>,
     ) -> Version {
@@ -143,15 +161,6 @@ impl ReadVersion {
                 }
             }
             Err(_) => rejected("native_binaries must be a list".into()),
-        }
-        for (release, verdict) in &mut version.verdicts {
-            verdict.targets.retain(|target| {
-                builds.get(release.as_str()).is_some_and(|build| {
-                    accepted
-                        .iter()
-                        .any(|binary| binary.build == *build && binary.target == *target)
-                })
-            });
         }
         version.native_binaries = accepted;
         version.native_binary_refusals = refused;

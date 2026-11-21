@@ -1,6 +1,6 @@
 //! The author-signed assets for one stable SDK. No library is loaded or extracted.
 use super::{Entry, EntryVersion, Sources, read_regular, valid_repo};
-use crate::index::{File, Kind, MAX_FILE, NativeBinary, SunriseRelease, native};
+use crate::index::{File, Kind, MAX_FILE, NativeBinary, Revoked, SunriseRelease, native};
 use crate::sdk;
 use object::{
     Architecture, BinaryFormat, Object, ObjectKind, elf,
@@ -211,6 +211,7 @@ impl Submission<'_> {
 pub fn assets<'a>(
     entries: &'a [Entry],
     files: Option<&Path>,
+    revoked: &[Revoked],
 ) -> Result<Vec<AssetRequest<'a>>, String> {
     let mut requests = Vec::new();
     for entry in entries {
@@ -220,6 +221,9 @@ pub fn assets<'a>(
             {
                 if let Some(files) = files {
                     for archive in submission.descriptor(files)?.archives {
+                        if revoked.iter().any(|r| r.covers(&entry.id, &archive.sha256)) {
+                            continue;
+                        }
                         requests.push(AssetRequest {
                             id: &entry.id,
                             version: &version.version,
@@ -284,6 +288,7 @@ pub(super) fn verify(
     source: &native::Bundle,
     release: Option<&SunriseRelease>,
     src: &Sources<'_>,
+    revoked: &[Revoked],
 ) -> Result<Vec<NativeBinary>, String> {
     let submissions = submissions(entry, version)?;
     let made_for = release.ok_or("builds require --releases with the source's stable release")?;
@@ -336,28 +341,31 @@ pub(super) fn verify(
             "{} {} {} {} unwind",
             descriptor.build, descriptor.id, source.manifest.version, descriptor.rust
         );
-        for archive in &descriptor.archives {
+        for archive in descriptor.archives {
+            if revoked.iter().any(|r| r.covers(&entry.id, &archive.sha256)) {
+                continue;
+            }
             let checked = read_regular(src.files, Path::new(&archive.sha256), archive.size)
                 .map_err(|e| e.to_string())
-                .and_then(|bytes| check_archive(bytes, archive, &identity, submission.key));
+                .and_then(|bytes| check_archive(bytes, &archive, &identity, submission.key));
             checked.map_err(|e| format!("{}: {e}", archive.name))?;
+            records.push(NativeBinary {
+                build: release.commit.clone(),
+                target: archive.target,
+                file: File {
+                    url: format!(
+                        "{}{}/{}",
+                        src.release,
+                        super::tag(&entry.id, &version.version),
+                        archive.name
+                    ),
+                    name: archive.name,
+                    size: archive.size,
+                    sha256: archive.sha256,
+                    signature: Some(archive.signature),
+                },
+            });
         }
-        records.extend(descriptor.archives.into_iter().map(|archive| NativeBinary {
-            build: release.commit.clone(),
-            target: archive.target,
-            file: File {
-                url: format!(
-                    "{}{}/{}",
-                    src.release,
-                    super::tag(&entry.id, &version.version),
-                    archive.name
-                ),
-                name: archive.name,
-                size: archive.size,
-                sha256: archive.sha256,
-                signature: Some(archive.signature),
-            },
-        }));
     }
     Ok(records)
 }
