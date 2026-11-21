@@ -3,6 +3,7 @@ use super::{
     Body, Endpoint, Incoming, MainQueue, Prepared, Side,
     main_queue::{FailedMain, PreparedMain},
 };
+use crate::net::{Event, ingress};
 use mod_api::{
     HandlerThread, IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError,
     PayloadDirection, PayloadId, PayloadProtocol, PayloadSendError, PayloadWork, PayloadWorkStatus,
@@ -29,7 +30,7 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
     let wait_epoch =
         (!matches!(main, MainQueue::Server { conn: Some(_), .. })).then(|| incoming.epoch.clone());
     if let Some(incoming) = connection.queue_payload(incoming) {
-        execute(incoming, &endpoint, &main);
+        execute(incoming, &endpoint, &main, None);
     }
     dispatch_pending(&endpoint, &main);
     if let Some(epoch) = wait_epoch {
@@ -48,11 +49,32 @@ pub fn dispatch_pending(endpoint: &Endpoint, main: &MainQueue) {
         return;
     }
     while let Some(incoming) = connection.next_payload() {
-        execute(incoming, endpoint, main);
+        execute(incoming, endpoint, main, None);
     }
 }
 
-fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
+/// A complete clientbound bundle is one receiving turn. NETWORK handlers still
+/// run here; MAIN handlers and work are staged at their subpacket's position.
+pub(crate) fn stage_client_bundle(
+    incoming: Incoming,
+    endpoint: &Endpoint,
+    events: &ingress::Producer<Event>,
+    bundle: &mut Vec<ingress::Prepared<Event>>,
+) {
+    execute(
+        incoming,
+        endpoint,
+        &MainQueue::Client(events.clone()),
+        Some(bundle),
+    );
+}
+
+fn execute(
+    mut incoming: Incoming,
+    endpoint: &Endpoint,
+    main: &MainQueue,
+    mut bundle: Option<&mut Vec<ingress::Prepared<Event>>>,
+) {
     if !incoming.epoch.active() {
         return;
     }
@@ -67,7 +89,7 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         };
         // The value stays outside the closure if invalidated before publication.
         let mut prepared = Some(prepared);
-        let result = epoch.with_active(|| prepared.take().unwrap().publish());
+        let result = epoch.with_active(|| prepared.take().unwrap().publish(bundle));
         drop(prepared);
         if let Some(Err(error)) = result {
             let reason = error.reason();
@@ -104,7 +126,9 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                 for action in &mut after {
                     match action.take().unwrap() {
                         After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
-                        After::Work(work) => work.publish().map_err(FailedPublication::Main)?,
+                        After::Work(work) => work
+                            .publish(bundle.as_deref_mut())
+                            .map_err(FailedPublication::Main)?,
                     }
                 }
                 Ok::<(), FailedPublication>(())
