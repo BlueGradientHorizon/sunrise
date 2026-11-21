@@ -55,7 +55,8 @@ impl Game<'_> {
             attack.projectile_weapon = weapon.cloned();
         }
     }
-    /// Commit the weapon only after hurtServer committed this projectile's source.
+    /// Hurt and settle a living target before the projectile resumes its on-hit work.
+    /// The weapon is committed only when hurtServer accepts this projectile's source.
     pub(in crate::game) fn damage_projectile_with_weapon(
         &mut self,
         projectile: &Projectile,
@@ -70,25 +71,24 @@ impl Game<'_> {
                 game.damage_projectile_with_weapon(projectile, id, amount, source, aim)
             });
         }
+        let Some(index) = self
+            .mob_index
+            .find(&self.mobs, id)
+            .filter(|&i| !self.mobs[i].removed)
+        else {
+            return false;
+        };
         let plan = self.prepare_knockback_credit(id as i32, source.attacker, self.combat.attack());
         let mut credit = plan.lend(&mut self.last_hurt_by_player);
-        self.mobs
-            .iter_mut()
-            .find(|mob| mob.id == id)
-            .is_some_and(|mob| {
-                mob.damage_projectile(
-                    crate::game::entity::damage_level_of!(
-                        self,
-                        self.combat.attack(),
-                        &mut credit,
-                        None
-                    ),
-                    amount,
-                    source,
-                    aim,
-                    [projectile.velocity.x, projectile.velocity.z],
-                )
-            })
+        let hurt = self.mobs[index].damage_projectile(
+            crate::game::entity::damage_level_of!(self, self.combat.attack(), &mut credit, None),
+            amount,
+            source,
+            aim,
+            [projectile.velocity.x, projectile.velocity.z],
+        );
+        self.finish_mob_damage_at(index);
+        hurt
     }
     /// What an arrow or a thrown trident hits an entity of type `victim`
     /// for (`AbstractArrow.onHitEntity`, `ThrownTrident.onHitEntity`): a

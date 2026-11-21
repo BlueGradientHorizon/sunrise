@@ -696,15 +696,14 @@ impl Game<'_> {
                 from: Some([p.position.x, p.position.y, p.position.z]),
                 attacker_species: None,
             };
-            let alive = g.mobs[index].alive();
-            if g.hurt_by_player(index, damage, source) {
-                g.remember_mob_player_credit(attacker);
-                if alive && !g.mobs[index].alive() {
-                    g.finish_mob_damage_at(index);
-                    if let Some(index) = g.mob_index.find(&g.mobs, attacker) {
-                        g.native_kill_event(index);
-                    }
-                }
+            let join = g.mobs[index].join;
+            let (_, killed) = g.hurt_by_player(index, damage, source);
+            if killed
+                && let Some(i) = g.mob_index.find(&g.mobs, attacker)
+                && g.mobs[i].join == join
+                && !g.mobs[i].removed
+            {
+                g.native_kill_event(i);
             }
         });
     }
@@ -838,7 +837,7 @@ impl Game<'_> {
         let attacker = attacker.filter(|_| attacker_kind.is_some());
         let direct = direct.or(attacker_kind.as_deref());
         use sunrise_client::mobs::finalize as f;
-        let Some(m) = self.mobs.iter().find(|m| m.id == target) else {
+        let Some(m) = self.mobs.iter().find(|m| m.id == target && !m.removed) else {
             return;
         };
         let (id, kind) = (m.id, m.kind.id.clone());

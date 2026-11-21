@@ -486,7 +486,8 @@ enum TravelStop {
     AfterHit,
 }
 
-pub(super) enum MovementAction {
+/// What the owning level must do before the mob's move can continue.
+pub enum MovementAction {
     Trample(FarmlandTrample),
     SettleHit,
     Passengers(PassengerFall),
@@ -502,12 +503,7 @@ pub struct PassengerFall {
 impl TravelPause {
     pub(super) fn action(&self) -> MovementAction {
         match &self.0 {
-            TravelStop::Move { movement, .. } => match &movement.fall {
-                FallPause::Trample(trample) => MovementAction::Trample(*trample),
-                FallPause::Hurt { stop, .. } => stop
-                    .passengers()
-                    .map_or(MovementAction::SettleHit, MovementAction::Passengers),
-            },
+            TravelStop::Move { movement, .. } => movement.fall.action(),
             TravelStop::AfterHit => MovementAction::SettleHit,
         }
     }
@@ -522,7 +518,7 @@ impl TravelPause {
         let TravelStop::Move { movement, tail } = self.0 else {
             return ControlFlow::Continue(());
         };
-        if let Some(fall) = mob.resume_fall(w, level, events, movement.fall, true) {
+        if let Some(fall) = mob.resume_fall(w, level, events, movement.fall) {
             return ControlFlow::Break(Self(TravelStop::Move {
                 movement: MovePause { fall, ..movement },
                 tail,
@@ -546,7 +542,6 @@ struct MovePause {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LandingOwner {
     Synchronous,
-    TrampleOnly,
     Borrowed,
 }
 
@@ -554,6 +549,26 @@ enum LandingOwner {
 enum FallPause {
     Trample(FarmlandTrample),
     Hurt { block: FallenOn, stop: FallHurtStop },
+}
+
+impl FallPause {
+    fn action(&self) -> MovementAction {
+        match self {
+            Self::Trample(trample) => MovementAction::Trample(*trample),
+            Self::Hurt { stop, .. } => stop
+                .passengers()
+                .map_or(MovementAction::SettleHit, MovementAction::Passengers),
+        }
+    }
+}
+
+/// A mount's `doCheckFallDamage` is waiting for the authoritative Game.
+pub struct ClientMovedFall(FallPause);
+
+impl ClientMovedFall {
+    pub fn action(&self) -> MovementAction {
+        self.0.action()
+    }
 }
 
 #[derive(Debug)]
@@ -1217,14 +1232,11 @@ impl Mob {
         delta: Vec3,
         on_ground: bool,
         events: &mut Vec<MobEvent>,
-    ) -> Option<FarmlandTrample> {
+    ) -> Option<ClientMovedFall> {
         self.on_ground = on_ground;
         self.supporting = self.supporting_block(w, delta);
-        match self.species_check_fall_damage(w, level, delta, events, LandingOwner::TrampleOnly) {
-            Some(FallPause::Trample(trample)) => Some(trample),
-            None => None,
-            Some(FallPause::Hurt { .. }) => unreachable!("this entry only stops for trampling"),
-        }
+        self.species_check_fall_damage(w, level, delta, events, LandingOwner::Borrowed)
+            .map(ClientMovedFall)
     }
     /// LivingEntity.checkFallDamage: the fluid state refreshed out of water
     /// (touching water resets the fall), then Entity.checkFallDamage.
@@ -1650,7 +1662,6 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         fall: FallPause,
-        handoff: bool,
     ) -> Option<FallPause> {
         let next = match fall {
             FallPause::Trample(trample) => {
@@ -1662,12 +1673,12 @@ impl Mob {
                     [p.x, p.y, p.z],
                     Some(trample.damage_call()),
                     trample.distance,
-                    handoff,
+                    true,
                 )
             }
             FallPause::Hurt { block, stop } => {
                 let contact = Some((w, block.pos));
-                let result = self.resume_fall_hurt(level, events, contact, stop, handoff);
+                let result = self.resume_fall_hurt(level, events, contact, stop, true);
                 self.finish_block_fall(w, level, events, block, result)
             }
         };
@@ -1677,15 +1688,16 @@ impl Mob {
         next
     }
 
-    /// Finish the superclass fall synchronously after the vehicle route's trample decision.
-    pub fn finish_trample_fall(
+    /// Continue the mount's fall after the level handled its pending action.
+    pub fn resume_client_moved_fall(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-        trample: FarmlandTrample,
-    ) {
-        self.resume_fall(w, level, events, FallPause::Trample(trample), false);
+        fall: ClientMovedFall,
+    ) -> Option<ClientMovedFall> {
+        self.resume_fall(w, level, events, fall.0)
+            .map(ClientMovedFall)
     }
     fn mod_block_fall(
         &self,

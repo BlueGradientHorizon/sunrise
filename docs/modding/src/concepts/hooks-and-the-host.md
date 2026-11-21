@@ -181,6 +181,10 @@ another goal. Trampling farmland is still decided before the landing hurt.
 A pufferfish's sting on a mob finishes the hurt, including any death and `living_damage_post`,
 before applying that sting's poison or starting the next sting. The fish's own `entity_tick_post`
 follows all of its stings.
+Direct projectile hits finish before the on-hit follow-up: for example, shulker bullet levitation,
+trident Channeling, or the damage from a large fireball's explosion. A mounted fall settles each
+rider's hurt before continuing to the next hit. A horse's own hurt finishes before the fall is
+passed to its passengers.
 
 For incoming damage, `event.weapon` is the direct entity's weapon, including a projectile's
 saved firing weapon. `event.causing_weapon` is instead the causing living entity's current

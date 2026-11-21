@@ -1724,7 +1724,7 @@ impl Game<'_> {
             self.particles.add(&options, [x, y, z], [xa, ya, za]);
         }
     }
-    /// Settle a killing hit while its damage owner still has the level in place.
+    /// Settle a hit while its damage owner still has the level in place.
     pub(in crate::game) fn finish_mob_damage_at(&mut self, index: usize) {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
@@ -1736,7 +1736,7 @@ impl Game<'_> {
         }
         let id = mob.id;
         let kind = mob.kind.clone();
-        if self.died.insert(id) {
+        if killed && self.died.insert(id) {
             // The death hooks may remove or revive the body. Do not hold a row borrow
             // across them or recover the hit state from the body afterward.
             let death = mob.clone();
@@ -5101,19 +5101,10 @@ impl Game<'_> {
         self.native_tick_post_batch(round);
         flushed
     }
-    /// `LivingEntity.hurtServer`'s `setLastHurtByPlayer` for a projectile a
-    /// player owns (a fireball they turned back): the kill is theirs, so a
-    /// guest's (the host on its server thread too) reaches their statistics
-    /// and `player_killed_entity`, as the arrow's hit does.
-    fn player_hurt_mob(&mut self, p: &Projectile, id: u32) {
-        if p.owner == Some(Who::Player) {
-            self.remember_mob_player_credit(id);
-        }
-    }
     /// `LivingEntity.hurtServer` for a snowball, egg or pearl (`kind`) that hurt the mob `id`,
-    /// 0 damage included: the hit is its owner's, and a player's fires PLAYER_HURT_ENTITY.
+    /// 0 damage included: the accepted hit already credited its owner; for a player,
+    /// also fire PLAYER_HURT_ENTITY.
     fn thrown_hurt_mob(&mut self, p: &Projectile, id: u32, kind: &str, amount: f32) {
-        self.player_hurt_mob(p, id);
         if p.owner == Some(Who::Player)
             && let Some(m) = self.mobs.iter().find(|m| m.id == id)
         {
@@ -5825,14 +5816,6 @@ impl Game<'_> {
             attacker_species,
         };
         let aim = self.attacker_aim(source.attacker);
-        let victim = match &hit {
-            Hit::Entity {
-                who: Who::Mob(id), ..
-            } => *id as i32,
-            _ => 0,
-        };
-        let credit_plan =
-            self.prepare_knockback_credit(victim, source.attacker, self.combat.attack());
         match (&p.kind, hit) {
             // ThrownTrident.onHitEntity: 8 damage (Impaling on aquatic mobs),
             // dealt whether or not the hurt lands, then it bounces off.
@@ -5896,8 +5879,17 @@ impl Game<'_> {
                 // it back when hurtOrSimulate fails and the target still takes
                 // a projectile's side effects.
                 let mob_fire = match who {
-                    Who::Mob(id) => self.mobs.iter().find(|m| m.id == id).map(|m| m.fire_ticks),
+                    Who::Mob(id) => self
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .map(|m| (m.join, m.fire_ticks)),
                     Who::Player => None,
+                };
+                let same_target = |mob: &Mob, id| {
+                    mob.id == id
+                        && !mob.removed
+                        && mob_fire.is_some_and(|(join, _)| mob.join == join)
                 };
                 let mut dodged = false;
                 // AbstractArrow.onHitEntity: a burning arrow sets its target alight.
@@ -5917,13 +5909,16 @@ impl Game<'_> {
                     Who::Mob(id) => {
                         let hurt = self.damage_projectile_with_weapon(p, id, amount, source, aim);
                         dodged = !hurt
-                            && self.mobs.iter().find(|m| m.id == id).is_some_and(|m| {
-                                m.species() == Species::Enderman
-                                    && sunrise_client::mobs::enderman::dodges(m, &source)
-                            });
+                            && self
+                                .mobs
+                                .iter()
+                                .find(|m| same_target(m, id))
+                                .is_some_and(|m| {
+                                    m.species() == Species::Enderman
+                                        && sunrise_client::mobs::enderman::dodges(m, &source)
+                                });
                         if p.owner == Some(Who::Player) {
-                            self.remember_mob_player_credit(id);
-                            if hurt && let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+                            if hurt && let Some(m) = self.mobs.iter().find(|m| same_target(m, id)) {
                                 // LivingEntity.hurtServer: PLAYER_HURT_ENTITY.
                                 let victim = self.mob_entity(m);
                                 let spectral = p.arrow.as_ref().is_some_and(|a| {
@@ -5944,7 +5939,7 @@ impl Game<'_> {
                             // AbstractArrow.onHitEntity: KILLED_BY_ARROW for a kill
                             // (piercing arrows are not modelled).
                             if hurt
-                                && let Some(m) = self.mobs.iter().find(|m| m.id == id)
+                                && let Some(m) = self.mobs.iter().find(|m| same_target(m, id))
                                 && !m.alive()
                             {
                                 let victim = self.mob_entity(m);
@@ -5956,7 +5951,13 @@ impl Game<'_> {
                         hurt
                     }
                 };
-                self.burning_arrow_primes(p, who);
+                let target_present = match who {
+                    Who::Player => self.player.is_some(),
+                    Who::Mob(id) => self.mobs.iter().any(|m| same_target(m, id)),
+                };
+                if target_present {
+                    self.burning_arrow_primes(p, who);
+                }
                 // doKnockback: Punch pushes along the flight, less the target's
                 // knockback resistance.
                 let flight = (p.velocity.x * p.velocity.x + p.velocity.z * p.velocity.z).sqrt();
@@ -5972,7 +5973,7 @@ impl Game<'_> {
                         .find(|m| m.id == id)
                         .map_or(0.0, |m| m.knockback_resistance()),
                 };
-                let knockback = if !hurt {
+                let knockback = if !hurt || !target_present {
                     0.0
                 } else if let Some(weapon) =
                     p.arrow.as_ref().and_then(|a| a.fired_from_weapon.as_ref())
@@ -6029,7 +6030,7 @@ impl Game<'_> {
                         velocity: [p.velocity.x * k, 0.1, p.velocity.z * k],
                     }])?;
                 }
-                if hurt {
+                if hurt && target_present {
                     let spectral = p
                         .arrow
                         .as_ref()
@@ -6063,8 +6064,11 @@ impl Game<'_> {
                     // deflect(REVERSE, entity, owner, false, 0.2). The hit
                     // sound plays only when the hurt lands.
                     (false, Who::Mob(id)) => {
-                        if let (Some(m), Some(ticks)) =
-                            (self.mobs.iter_mut().find(|m| m.id == id), mob_fire)
+                        if let Some((join, ticks)) = mob_fire
+                            && let Some(m) = self
+                                .mobs
+                                .iter_mut()
+                                .find(|m| m.id == id && m.join == join && !m.removed)
                         {
                             m.fire_ticks = ticks;
                         }
@@ -6087,26 +6091,15 @@ impl Game<'_> {
                 } else if let Hit::Entity {
                     who: Who::Mob(id), ..
                 } = hit
-                    && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+                    && let Some(i) = self.mob_index.find(&self.mobs, id)
                 {
                     // Snowball.onHitEntity: 3 damage to blazes, 0 otherwise.
-                    let amount = if m.species() == Species::Blaze {
+                    let amount = if self.mobs[i].species() == Species::Blaze {
                         3.0
                     } else {
                         0.0
                     };
-                    if m.damage_projectile(
-                        crate::game::entity::damage_level_of!(
-                            self,
-                            self.combat.attack(),
-                            &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                            None
-                        ),
-                        amount,
-                        source,
-                        aim,
-                        [p.velocity.x, p.velocity.z],
-                    ) {
+                    if self.damage_projectile_with_weapon(p, id, amount, source, aim) {
                         self.thrown_hurt_mob(p, id, "minecraft:snowball", amount);
                     }
                 } else if let Hit::Entity {
@@ -6126,26 +6119,8 @@ impl Game<'_> {
                     Hit::Entity {
                         who: Who::Mob(id), ..
                     } => {
-                        let push = [p.velocity.x, p.velocity.z];
-                        let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                            m.damage_projectile(
-                                crate::game::entity::damage_level_of!(
-                                    self,
-                                    self.combat.attack(),
-                                    &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                                    None
-                                ),
-                                t.damage,
-                                source,
-                                aim,
-                                push,
-                            )
-                        });
-                        if hurt {
-                            self.player_hurt_mob(p, id);
-                        }
                         // LivingEntity.hurtServer: PLAYER_HURT_ENTITY.
-                        if hurt
+                        if self.damage_projectile_with_weapon(p, id, t.damage, source, aim)
                             && p.owner == Some(Who::Player)
                             && let Some(m) = self.mobs.iter().find(|m| m.id == id)
                         {
@@ -6183,20 +6158,9 @@ impl Game<'_> {
                 } else if let Hit::Entity {
                     who: Who::Mob(id), ..
                 } = hit
-                    && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+                    && self.mob_index.find(&self.mobs, id).is_some()
                 {
-                    if m.damage_projectile(
-                        crate::game::entity::damage_level_of!(
-                            self,
-                            self.combat.attack(),
-                            &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                            None
-                        ),
-                        0.0,
-                        source,
-                        aim,
-                        [p.velocity.x, p.velocity.z],
-                    ) {
+                    if self.damage_projectile_with_weapon(p, id, 0.0, source, aim) {
                         self.thrown_hurt_mob(p, id, "minecraft:egg", 0.0);
                     }
                 } else if let Hit::Entity {
@@ -6237,20 +6201,9 @@ impl Game<'_> {
                 } else if let Hit::Entity {
                     who: Who::Mob(id), ..
                 } = hit
-                    && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+                    && self.mob_index.find(&self.mobs, id).is_some()
                 {
-                    if m.damage_projectile(
-                        crate::game::entity::damage_level_of!(
-                            self,
-                            self.combat.attack(),
-                            &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                            None
-                        ),
-                        0.0,
-                        source,
-                        aim,
-                        [p.velocity.x, p.velocity.z],
-                    ) {
+                    if self.damage_projectile_with_weapon(p, id, 0.0, source, aim) {
                         self.thrown_hurt_mob(p, id, "minecraft:ender_pearl", 0.0);
                     }
                 } else if let Hit::Entity {
@@ -6340,37 +6293,26 @@ impl Game<'_> {
                         }
                     }
                     Who::Mob(id) => {
-                        let hurt = self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                            let remaining = m.fire_ticks;
+                        if let Some(i) = self.mob_index.find(&self.mobs, id) {
+                            let m = &mut self.mobs[i];
+                            let (join, remaining) = (m.join, m.fire_ticks);
                             if !m.fire_immune() {
                                 m.ignite_for_ticks(100);
                             }
-                            let hurt = m.damage_projectile(
-                                crate::game::entity::damage_level_of!(
-                                    self,
-                                    self.combat.attack(),
-                                    &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                                    None
-                                ),
-                                5.0,
-                                source,
-                                aim,
-                                [p.velocity.x, p.velocity.z],
-                            );
-                            if !hurt {
-                                m.fire_ticks = remaining;
+                            if self.damage_projectile_with_weapon(p, id, 5.0, source, aim) {
+                                self.shot_post_attack(
+                                    p,
+                                    who,
+                                    "minecraft:small_fireball",
+                                    "minecraft:fireball",
+                                );
+                            } else if let Some(i) = self.mob_index.find(&self.mobs, id)
+                                && self.mobs[i].join == join
+                                && !self.mobs[i].removed
+                            {
+                                self.mobs[i].fire_ticks = remaining;
                             }
-                            hurt
-                        });
-                        if hurt {
-                            self.player_hurt_mob(p, id);
-                            self.shot_post_attack(
-                                p,
-                                who,
-                                "minecraft:small_fireball",
-                                "minecraft:fireball",
-                            );
-                        } else if !self.mobs.iter().any(|m| m.id == id) {
+                        } else {
                             // SmallFireball.onHitEntity: 5 damage to a boat or minecart.
                             self.hurt_vehicle(p, id, 5.0);
                         }
@@ -6418,22 +6360,7 @@ impl Game<'_> {
                             );
                         }
                         Who::Mob(id) => {
-                            if self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                                m.damage_projectile(
-                                    crate::game::entity::damage_level_of!(
-                                        self,
-                                        self.combat.attack(),
-                                        &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                                        None
-                                    ),
-                                    6.0,
-                                    source,
-                                    aim,
-                                    [p.velocity.x, p.velocity.z],
-                                )
-                            }) {
-                                self.player_hurt_mob(p, id);
-                            }
+                            self.damage_projectile_with_weapon(p, id, 6.0, source, aim);
                             self.shot_post_attack(
                                 p,
                                 who,
@@ -6529,20 +6456,7 @@ impl Game<'_> {
                     );
                 }
                 Who::Mob(id) => {
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
-                        && m.damage_projectile(
-                            crate::game::entity::damage_level_of!(
-                                self,
-                                self.combat.attack(),
-                                &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                                None
-                            ),
-                            1.0,
-                            source,
-                            aim,
-                            [p.velocity.x, p.velocity.z],
-                        )
-                    {
+                    if self.damage_projectile_with_weapon(p, id, 1.0, source, aim) {
                         self.shot_post_attack(p, who, "minecraft:llama_spit", "minecraft:spit");
                     }
                 }
@@ -6560,28 +6474,16 @@ impl Game<'_> {
                     }
                 }
                 Who::Mob(id) => {
-                    let hurt = if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                        let hurt = m.damage_projectile(
-                            crate::game::entity::damage_level_of!(
-                                self,
-                                self.combat.attack(),
-                                &mut credit_plan.lend(&mut self.last_hurt_by_player),
-                                None
-                            ),
-                            4.0,
-                            source,
-                            aim,
-                            [p.velocity.x, p.velocity.z],
-                        );
-                        if hurt {
+                    let Some(index) = self.mob_index.find(&self.mobs, id) else {
+                        return Ok(());
+                    };
+                    let join = self.mobs[index].join;
+                    let same_target = |m: &Mob| m.id == id && m.join == join && !m.removed;
+                    if self.damage_projectile_with_weapon(p, id, 4.0, source, aim) {
+                        if let Some(m) = self.mobs.iter_mut().find(|m| same_target(m)) {
                             // Shulker.hurtServer: a shulker hit by a bullet.
                             sunrise_client::mobs::shulker::hit_by_bullet(m);
                         }
-                        hurt
-                    } else {
-                        false
-                    };
-                    if hurt {
                         // The hurt's teleport (`teleportSomewhere`,
                         // `hitByShulkerBullet`) comes before the levitation.
                         self.settle_hurt_teleports()?;
@@ -6591,7 +6493,7 @@ impl Game<'_> {
                             "minecraft:shulker_bullet",
                             "minecraft:mob_projectile",
                         );
-                        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                        if let Some(m) = self.mobs.iter_mut().find(|m| same_target(m)) {
                             m.add_effect("minecraft:levitation", 200, 0);
                         }
                     }

@@ -123,9 +123,8 @@ fn death_weapon_refused_crossbow_cannot_replace_accepted_longbow() {
             let mut attempted = second.clone();
             game.shot_damage(&mut attempted, Some("minecraft:pig"), Who::Mob(70));
             assert!(!hit(game, &second, 1.0));
-            let dead = game.mobs.iter().find(|mob| mob.id == 70).unwrap().clone();
+            let dead = game.mobs.iter().find(|mob| mob.id == 70).unwrap();
             assert_eq!(dead.last_damage.unwrap().1, committed.unwrap().1);
-            game.mob_died(&dead);
         });
     });
 }
@@ -151,8 +150,6 @@ fn death_weapon_dispenser_arrow_without_recorded_weapon_is_none() {
             .invulnerable = 0;
         game.mobs.iter_mut().find(|mob| mob.id == 70).unwrap().age += 1;
         assert!(hit(game, &arrow(None), 100.0));
-        let dead = game.mobs.iter().find(|mob| mob.id == 70).unwrap().clone();
-        game.mob_died(&dead);
     });
 }
 

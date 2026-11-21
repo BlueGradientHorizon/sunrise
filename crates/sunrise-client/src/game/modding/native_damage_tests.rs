@@ -629,6 +629,143 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
 
 #[test]
 #[ignore = "daily"]
+fn projectile_killing_hit_posts_before_its_follow_up() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_client::{
+        mobs::Who,
+        projectiles::{Hit, Projectile, ProjectileKind},
+    };
+
+    if run_fresh_cases(
+        "game::native_damage_tests::projectile_killing_hit_posts_before_its_follow_up",
+        "SUNRISE_PROJECTILE_ORDER_CHILD",
+        &["fireball"],
+    ) {
+        return;
+    }
+    let trace = Arc::new(DeathOrder::default());
+    let mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.streaming
+                .insert_remote(&mut game.world, sunrise_client::chunk::Chunk::empty(0, 0));
+            let center = Vec3::new(4.5, 80.0, 4.5);
+            let (direct, blast) = (225034, 225035);
+            let mut target = mob(game, direct, "minecraft:pig");
+            target.position = center;
+            target.health = 0.5;
+            game.mobs.push(target);
+            let mut bystander = mob(game, blast, "minecraft:pig");
+            bystander.position = center.add_vector(Vec3::new(1.5, 0.0, 0.0));
+            game.mobs.push(bystander);
+            let mut shot =
+                Projectile::new(ProjectileKind::LargeFireball { power: 1 }, center, None);
+            shot.id = 225036;
+            game.projectile_hit(
+                &shot,
+                Hit::Entity {
+                    who: Who::Mob(direct),
+                    at: center,
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", i64::from(direct)),
+                    ("pre", i64::from(direct)),
+                    ("death", i64::from(direct)),
+                    ("death-tail", i64::from(direct)),
+                    ("post", i64::from(direct)),
+                    ("incoming", i64::from(blast)),
+                    ("pre", i64::from(blast)),
+                    ("post", i64::from(blast)),
+                ],
+                "the direct hit completes before the blast starts another hurt",
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn mounted_fall_posts_before_the_next_rider() {
+    use super::{
+        lan_vehicles::controller_tests::guest_horse_at_start_of_fall,
+        native_entity_refs::tests::run_fresh_cases,
+    };
+    use std::sync::atomic::Ordering::Relaxed;
+    use sunrise_protocol::packets::play::MoveVehicleRequest;
+
+    if run_fresh_cases(
+        "game::native_damage_tests::mounted_fall_posts_before_the_next_rider",
+        "SUNRISE_MOUNTED_FALL_ORDER_CHILD",
+        &["horse"],
+    ) {
+        return;
+    }
+    let trace = Arc::new(DeathOrder::default());
+    trace.cancel.store(true, Relaxed);
+    trace.revive.store(true, Relaxed);
+    let mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (horse, _packets) = guest_horse_at_start_of_fall(game);
+            game.mobs[0].health = 0.5;
+            let rider = game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.health = 0.5;
+                g.entity_id
+            });
+            for (y, on_ground) in [
+                (209.0, false),
+                (207.0, false),
+                (204.0, false),
+                (200.0, true),
+            ] {
+                game.guest_move_vehicle(
+                    2,
+                    &MoveVehicleRequest {
+                        position: [4.5, y, 4.5],
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        on_ground,
+                    },
+                );
+            }
+            let horse = i64::from(horse);
+            let rider = i64::from(rider);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", horse),
+                    ("pre", horse),
+                    ("death", horse),
+                    ("post", horse),
+                    ("incoming", rider),
+                    ("pre", rider),
+                    ("death", rider),
+                    ("post", rider)
+                ],
+                "the horse settles its own hurt before calling causeFallDamage on its rider",
+            );
+            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].health, 5.0);
+            assert_eq!(game.mobs[0].health, 5.0);
+            assert_eq!(game.mobs[0].fall_distance, 0.0);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn splash_water_finishes_a_lethal_hit_before_the_next_target() {
     let trace = Arc::new(DeathOrder::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -1561,6 +1698,77 @@ fn guest_landing_posts_before_its_ground_hit() {
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.position, next);
             assert_eq!(guest.motion.as_ref().unwrap().fall_distance, 0.0);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn ordinary_guest_move_settles_fall_before_resuming() {
+    use super::{
+        native_entity_refs::tests::run_fresh_cases, native_player_death::tests::add_guest,
+    };
+    use sunrise_client::chunk::Chunk;
+    use sunrise_world::entity_move::MoverType;
+
+    if run_fresh_cases(
+        "game::native_damage_tests::ordinary_guest_move_settles_fall_before_resuming",
+        "SUNRISE_ORDINARY_GUEST_LANDING_CHILD",
+        &["honey"],
+    ) {
+        return;
+    }
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "landing-order",
+        Box::new(GuestLandingProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            add_guest(game);
+            game.streaming
+                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            let honey = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:honey_block")
+                .unwrap();
+            game.world.set(1, 78, 1, honey).unwrap();
+            let start = Vec3::new(1.5, 79.25, 1.5);
+            let landing = Vec3::new(1.5, 78.9375, 1.5);
+            let mut body = PlayerMotion::new(game.motion, start).unwrap();
+            body.fall_distance = 10.0;
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.loaded = true;
+                guest.load_timeout = 0;
+                guest.place(start.components());
+                guest.health = 0.5;
+                guest.motion = Some(Box::new(body));
+            });
+            let entity = game.lan.as_ref().unwrap().hub.guests[0].entity_id;
+            game.as_guest(1, |game| {
+                let moved = game
+                    .move_local_player(MoverType::SelfMovement, Vec3::new(0.0, -1.0, 0.0), false)
+                    .unwrap();
+                assert_eq!(moved, Some(landing.subtract(start)));
+                assert_eq!(
+                    *trace.lock().unwrap(),
+                    [
+                        GuestLandingMoment::Death(
+                            entity as u32,
+                            Some(landing.components()),
+                            Some(mod_api::Tag::Double(10.3125_f64.to_bits()))
+                        ),
+                        GuestLandingMoment::Post(entity),
+                    ]
+                );
+                let player = game.player.as_ref().unwrap();
+                assert_eq!(player.health.health(), 5.0);
+                assert_eq!(player.fall_distance, 0.0);
+            })
+            .unwrap();
         });
     });
 }

@@ -2290,7 +2290,7 @@ mod allay_owner_damage_tests {
                     game.mobs.push(mob);
                     let source = Damage::player([20.5, 102.0, 20.5]);
                     let accepted = if melee {
-                        game.hurt_by_player(0, 2.0, source)
+                        game.hurt_by_player(0, 2.0, source).0
                     } else {
                         // The command entry point lends its resolved attacker to the damage path.
                         let attack = game.attack_of_who(source.attacker);

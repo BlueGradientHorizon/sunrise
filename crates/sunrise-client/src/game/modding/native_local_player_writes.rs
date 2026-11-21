@@ -48,7 +48,7 @@ impl Game<'_> {
         }
         let [x, y, z] = delta;
         self.in_this_levels_colliders(|game| {
-            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z))
+            game.move_local_player(MoverType::SelfMovement, Vec3::new(x, y, z), false)
         })
         .map(|moved| moved.map(Vec3::components))
         .map_err(|_| LevelWriteError::Unavailable)

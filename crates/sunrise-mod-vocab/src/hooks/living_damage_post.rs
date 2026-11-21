@@ -13,6 +13,9 @@ pub trait Hooks {
     /// the fall reset, movement restitution, travel's collision hurt or a later goal.
     /// A pufferfish sting on a mob finishes the hit before applying poison or starting the
     /// next sting, and before the fish's own `entity_tick_post`.
+    /// A projectile hit finishes before its enchantment effects, levitation or a follow-up
+    /// explosion. Each mount or passenger's hurt finishes before the fall routine continues
+    /// to the next hit: a horse is hurt before its riders.
     /// `container.inflicted()` is the amount before absorption;
     /// `container.health_damage()` is the amount applied to health. A hit that took no
     /// health (a shield, absorption, armor or a `living_damage_pre` listener took it all) fires

@@ -1002,6 +1002,28 @@ pub struct MotionWorld<'p, 'w, 'r> {
     /// The cached block parser table, when available to level hooks.
     pub block_registries: Option<&'w crate::command::args::Registries>,
 }
+
+/// A player landing interrupted `Entity.move`, before restitution or auto-jump.
+pub struct PlayerMovePause {
+    pub landing: crate::landing::PlayerLandingPause,
+    pub movement: PlayerMoveTail,
+}
+
+pub struct PlayerMoveTail {
+    movement: entity_move::MoveTail,
+    auto_jump_from: Option<Vec3>,
+}
+
+impl PlayerMoveTail {
+    pub fn finish(self, world: &mut MotionWorld<'_, '_, '_>) -> Result<()> {
+        self.movement.finish(world)?;
+        if let Some(before) = self.auto_jump_from {
+            world.auto_jump_after_move(before)?;
+        }
+        Ok(())
+    }
+}
+
 enum TickInput {
     Living([f32; 3]),
     PreparedLocal { direction: [f32; 2], jumping: bool },
@@ -1996,7 +2018,28 @@ impl MotionWorld<'_, '_, '_> {
     /// and collision state (`Entity.setOnGroundWithMovement`). A piston's move
     /// uses its per-tick budget (`limitPistonMovement`).
     pub fn move_with_cause(&mut self, mover: MoverType, movement: Vec3) -> Result<()> {
-        let gate = crate::move_gate::armed(
+        self.move_ordinary(&mut MoveGate::new(), mover, movement, false, false)
+            .map(|_| ())
+    }
+    /// `LocalPlayer.move`: the move, then `updateAutoJump` with the float
+    /// horizontal displacement. The gate is this invocation's (#2414), armed
+    /// here before the move's own handling, no-physics included.
+    pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
+        self.move_ordinary(gate, MoverType::SelfMovement, movement, true, false)
+            .map(|_| ())
+    }
+
+    /// An ordinary move; its acting server player can hand off a landing to Game.
+    pub fn move_ordinary(
+        &mut self,
+        gate: &mut MoveGate,
+        mover: MoverType,
+        movement: Vec3,
+        auto_jump: bool,
+        handoff: bool,
+    ) -> Result<Option<PlayerMovePause>> {
+        crate::move_gate::arm(
+            gate,
             self.loop_context,
             self.player.entity_id as u32,
             "minecraft:player",
@@ -2004,27 +2047,36 @@ impl MotionWorld<'_, '_, '_> {
             movement,
         );
         if gate.skipped() {
-            return Ok(());
+            return Ok(None);
         }
-        entity_move::move_entity(self, mover, gate.delta())
+        let auto_jump_from = auto_jump.then_some(self.player.position);
+        if handoff {
+            if let Some((landing, movement)) = entity_move::move_entity_until_landing(
+                self,
+                mover,
+                gate.delta(),
+                |world, dy, grounded, state, p| {
+                    world.check_guest_fall_damage(dy, grounded, state, p)
+                },
+            )? {
+                return Ok(Some(PlayerMovePause {
+                    landing,
+                    movement: PlayerMoveTail {
+                        movement,
+                        auto_jump_from,
+                    },
+                }));
+            }
+        } else {
+            entity_move::move_entity(self, mover, gate.delta())?;
+        }
+        if let Some(before) = auto_jump_from {
+            self.auto_jump_after_move(before)?;
+        }
+        Ok(None)
     }
-    /// `LocalPlayer.move`: the move, then `updateAutoJump` with the float
-    /// horizontal displacement. The gate is this invocation's (#2414), armed
-    /// here before the move's own handling, no-physics included.
-    pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
-        crate::move_gate::arm(
-            gate,
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            MoverType::SelfMovement,
-            movement,
-        );
-        if gate.skipped() {
-            return Ok(());
-        }
-        let before = self.player.position;
-        entity_move::move_entity(self, MoverType::SelfMovement, gate.delta())?;
+
+    fn auto_jump_after_move(&mut self, before: Vec3) -> Result<()> {
         let dx = (self.player.position.x - before.x) as f32;
         let dz = (self.player.position.z - before.z) as f32;
         self.update_auto_jump(dx, dz)

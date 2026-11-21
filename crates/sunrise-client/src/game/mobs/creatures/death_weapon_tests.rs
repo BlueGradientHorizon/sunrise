@@ -185,10 +185,9 @@ fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap
                 game.mobs.push(victim);
                 damage.kind = game.projectile_damage_kind(&shot);
                 assert!(game.damage_projectile_with_weapon(&shot, 70, 100.0, damage, None));
-                victim = game.mobs.iter().find(|mob| mob.id == 70).unwrap().clone();
-                drop(shot);
+            } else {
+                game.mob_died(&victim);
             }
-            game.mob_died(&victim);
         });
         assert_eq!(*seen.lock().unwrap(), 1);
     });

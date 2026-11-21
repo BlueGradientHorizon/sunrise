@@ -9,7 +9,8 @@ pub trait Hooks {
     /// it, including the causing player, direct projectile and weapon components.
     /// A server player's lethal fall is heard on the landing body before its fall distance is reset.
     /// A lethal pufferfish sting is heard before the fish applies that sting's poison or stings
-    /// the next mob.
+    /// the next mob. A projectile's killing blow is heard before on-hit follow-ups;
+    /// a mount or passenger's killing blow is heard before falling on to the next rider.
     /// Cancellation skips death and loot without changing the listener's health:
     /// heal it to keep it alive; at health <= 0 its body is removed after 20 ticks.
     /// Armor stands, boats and other non-mob entities are not told.
