@@ -72,6 +72,27 @@ pub trait DrawContext {
     fn text(&mut self, text: &str, at: [f32; 2], argb: u32, shadow: bool) {
         unimplemented!("DrawContext::text")
     }
+    /// Draw a formatted [`Text`] component at `(x, y)` in GUI pixels using font `font`
+    /// (falling back to `minecraft:default` when unknown), in `argb` (`0xAARRGGBB`; opaque
+    /// white is `0xFFFFFFFF`), with optional drop shadow. Returns the drawn width in GUI
+    /// pixels, or [`TextFormError`] if `text` exceeds vanilla's component-depth limit.
+    fn text_with_font(
+        &mut self,
+        font: &Identifier,
+        text: &Text,
+        at: [f32; 2],
+        argb: u32,
+        shadow: bool,
+    ) -> Result<f32, TextFormError> {
+        unimplemented!("DrawContext::text_with_font")
+    }
+    /// Borrow the tooltip font `font` for measurement or splitting through an object-safe
+    /// callback; callers use [`DrawContext::with_tooltip_font`].
+    // hidden: object-safe backing method for `impl dyn DrawContext::with_tooltip_font`.
+    #[doc(hidden)]
+    fn with_tooltip_font_raw(&self, font: &Identifier, f: &mut dyn FnMut(&dyn TooltipFont)) {
+        unimplemented!("DrawContext::with_tooltip_font_raw")
+    }
     /// `text` scaled by `scale` about `at`, its top-left corner: what a GUI pose of translate,
     /// scale and translate back around `text` draws (`PoseStack.scale` in vanilla's HUD), without
     /// a `gui_paint` buffer. `0.5` is the half-size line under a widget's label.
