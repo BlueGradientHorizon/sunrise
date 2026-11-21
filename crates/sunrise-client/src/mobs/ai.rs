@@ -6142,27 +6142,77 @@ mod burn_and_rose_tests {
         }
     }
 
-    /// `Entity.baseTick`'s burn asks `isInLava`, which is false on an entity's first tick: a
-    /// pig loaded in lava with `Fire` a multiple of 20 takes the burn first (`HurtTime` 10,
-    /// then counted down to 9), and the lava's own hit later that tick lands inside it. With
-    /// `Fire:21` the burn waits and only the lava hurts it, after the countdown (10).
+    /// Vanilla 26.3 witness (tools/witness/26.3/first_tick_lava_burn.tsv): a NoAI pig in lava on its first and later ticks.
     #[test]
     #[ignore = "daily"]
     fn a_mob_loaded_in_lava_burns_on_its_first_tick() {
+        const WITNESS: &str =
+            include_str!("../../../../tools/witness/26.3/first_tick_lava_burn.tsv");
+        struct Row {
+            initial_fire: i32,
+            ticks: usize,
+            hurt_time: i32,
+            fire: i32,
+            health_bits: u32,
+        }
+        let mut rows = Vec::new();
+        for line in WITNESS.lines() {
+            if line.is_empty() || line.starts_with('#') || line.starts_with("initial_fire\t") {
+                continue;
+            }
+            let mut cols = line.split('\t');
+            let initial_fire: i32 = cols.next().unwrap().parse().unwrap();
+            let ticks: usize = cols.next().unwrap().parse().unwrap();
+            let hurt_time: i32 = cols.next().unwrap().parse().unwrap();
+            let fire: i32 = cols.next().unwrap().parse().unwrap();
+            let health_bits: u32 = u32::from_str_radix(cols.next().unwrap(), 16).unwrap();
+            assert!(
+                cols.next().is_none(),
+                "unexpected trailing column in {line}"
+            );
+            rows.push(Row {
+                initial_fire,
+                ticks,
+                hurt_time,
+                fire,
+                health_bits,
+            });
+        }
+        assert!(!rows.is_empty(), "empty 26.3 witness");
         let ran = crate::mobs::world::with_built_test_world(
             &[],
             build_with("minecraft:lava"),
             |w, types| {
-                for (fire, hurt_time) in [(20, 9), (21, 10)] {
+                for row in &rows {
                     let kind = Arc::new(types.types["minecraft:pig"].clone());
                     let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
                     register(&mut m);
                     m.no_ai = true;
-                    m.fire_ticks = fire;
+                    m.persistent = true;
+                    m.fire_ticks = row.initial_fire;
                     assert!(m.first_tick);
                     let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
-                    assert!(tick(&mut m, w, &mut lr.level(), &mut events));
-                    assert_eq!(m.hurt_time, hurt_time, "Fire:{fire}");
+                    for _ in 0..row.ticks {
+                        events.clear();
+                        assert!(tick(&mut m, w, &mut lr.level(), &mut events));
+                    }
+                    assert_eq!(
+                        m.hurt_time, row.hurt_time,
+                        "Fire:{} ticks:{}",
+                        row.initial_fire, row.ticks
+                    );
+                    assert_eq!(
+                        m.fire_ticks, row.fire,
+                        "Fire:{} ticks:{}",
+                        row.initial_fire, row.ticks
+                    );
+                    assert_eq!(
+                        m.health.to_bits(),
+                        row.health_bits,
+                        "Fire:{} ticks:{}",
+                        row.initial_fire,
+                        row.ticks
+                    );
                 }
             },
         );
