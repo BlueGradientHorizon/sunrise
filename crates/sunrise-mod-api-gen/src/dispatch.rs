@@ -497,7 +497,8 @@ pub(super) fn emit<'a>(
             let (field, scalar) = lifetimes.field(&field_ty);
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
-            if scalar || task_registration {
+            let custom_spawners = event_type == "ModifyCustomSpawnersEvent" && name == "spawners";
+            if scalar || task_registration || custom_spawners {
                 rollback.push((name.clone(), false));
             } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
@@ -1004,7 +1005,9 @@ pub(super) fn emit<'a>(
                 continue;
             }
             let index = snaps.len();
-            if event_type == "RegisterConfigurationTasksEvent" && field == "registration" {
+            if (event_type == "RegisterConfigurationTasksEvent" && field == "registration")
+                || (event_type == "ModifyCustomSpawnersEvent" && field == "spawners")
+            {
                 snaps.push(format!("{event}.{field}.checkpoint()"));
                 restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
                 continue;
@@ -1037,7 +1040,10 @@ pub(super) fn emit<'a>(
             String::new()
         } else {
             // A snapshot that only copies is no work to defer: `then_some`.
-            let (then, arm) = if !snaps.iter().any(|snap| snap.starts_with("ToOwned")) {
+            let (then, arm) = if !snaps
+                .iter()
+                .any(|snap| snap.starts_with("ToOwned") || snap.ends_with(".checkpoint()"))
+            {
                 ("then_some", "")
             } else {
                 ("then", "|| ")
@@ -1067,8 +1073,11 @@ pub(super) fn emit<'a>(
         } else {
             "Default::default()"
         };
-        let report = if event_type == "RegisterConfigurationTasksEvent" {
-            // A refusal from task_type also unwinds to this listener's checkpoint.
+        let report = if matches!(
+            event_type.as_str(),
+            "RegisterConfigurationTasksEvent" | "ModifyCustomSpawnersEvent"
+        ) {
+            // A refusal from task_type or listener setup also unwinds to this listener's checkpoint.
             "report_each"
         } else {
             "report"

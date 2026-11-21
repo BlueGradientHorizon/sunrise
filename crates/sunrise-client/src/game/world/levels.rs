@@ -1687,12 +1687,13 @@ impl Game<'_> {
         }
         self.bind_dimension_attachments(dim);
         self.levels.heard_open.push(dim);
+        self.init_custom_spawners(dim);
         self.native_level_load(dim.id());
     }
 
     /// The mods hear `dim`'s level close (`LevelEvent.Unload`), once for
     /// each open they heard.
-    fn native_level_closed(&mut self, dim: Dim) {
+    pub(super) fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
         if let Some(i) = self.levels.heard_open.iter().position(|d| *d == dim) {
             self.levels.heard_open.remove(i);
@@ -1703,6 +1704,7 @@ impl Game<'_> {
         } else if let Some(world) = self.levels.parked_world_mut_of(dim.id()) {
             world.water_tickets.clear();
         }
+        self.creatures.custom_spawners.remove(&dim);
         self.attachment_indexes.remove(&dim);
         self.passages.retire_level(dim.key());
     }

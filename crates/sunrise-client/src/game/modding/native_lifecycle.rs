@@ -228,6 +228,7 @@ impl Game<'_> {
             remote.clear_attachments();
         }
         self.attachment_indexes.clear();
+        self.creatures.custom_spawners.clear();
         self.passages.retire_world();
         self.native_lifecycle
             .begin_open(self.native_lifecycle_authority());
@@ -252,6 +253,7 @@ impl Game<'_> {
         if let Some(context) = self.native_lifecycle.world_open_failed() {
             self.native_world_lifecycle(&context, WorldPhase::WorldOpenFailed, error_text);
         }
+        self.creatures.custom_spawners.clear();
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.resident_entities.table.get_mut().reset();
@@ -265,6 +267,7 @@ impl Game<'_> {
         if let Some(context) = self.native_lifecycle.world_close_failed() {
             self.native_world_lifecycle(&context, WorldPhase::WorldCloseFailed, error_text);
         }
+        self.creatures.custom_spawners.clear();
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.resident_entities.table.get_mut().reset();
@@ -281,6 +284,7 @@ impl Game<'_> {
         if let Some(context) = self.native_lifecycle.world_close_final() {
             self.native_world_lifecycle(&context, WorldPhase::WorldCloseFinal, "");
         }
+        self.creatures.custom_spawners.clear();
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.resident_entities.table.get_mut().reset();
