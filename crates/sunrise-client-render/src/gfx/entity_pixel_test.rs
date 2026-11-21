@@ -1279,6 +1279,340 @@ mod scrgb {
             "instanced scRGB {gpu} != cpu {cpu} at tint 0xFF3040 light 0x00F0 (ratio {ratio})"
         );
     }
+
+    #[test]
+    fn block_display_83224_has_no_seam_at_x1026() {
+        use super::super::*;
+        use bytemuck::Zeroable;
+        let _gpu = crate::gfx::test_gpu::lock();
+
+        let w: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tools/witness/26.3/display_parity/witness.json"
+        ))
+        .unwrap();
+        let hex_f32 = |v: &serde_json::Value| {
+            f32::from_bits(u32::from_str_radix(v.as_str().unwrap(), 16).unwrap())
+        };
+
+        // Pack a minimal HudAtlas containing opaque block/lime_concrete so its UV placement
+        // and border padding match real client builds.
+        let root = std::env::temp_dir().join(format!("sunrise-83224-seam-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let blocks = root.join("assets/minecraft/textures/block");
+        std::fs::create_dir_all(&blocks).unwrap();
+        let file = std::fs::File::create(blocks.join("lime_concrete.png")).unwrap();
+        let mut enc = png::Encoder::new(file, 16, 16);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header()
+            .unwrap()
+            .write_image_data(&[100u8, 180, 30, 255].repeat(16 * 16))
+            .unwrap();
+        let atlas = crate::hud::HudAtlas::build(
+            &crate::resource_source::ResourceSource::directory(root.clone()),
+        )
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        let sprite = atlas.sprites["block/lime_concrete"];
+
+        // Build EID 83224's exact 6 faces from the 26.3 witness.
+        let faces = w["block_display_83224"]["faces"].as_object().unwrap();
+        let mut verts = Vec::with_capacity(24);
+        let uvs = [
+            [sprite.u0, sprite.v0],
+            [sprite.u0, sprite.v1],
+            [sprite.u1, sprite.v1],
+            [sprite.u1, sprite.v0],
+        ];
+        for dir in ["down", "up", "north", "south", "west", "east"] {
+            let emitted = faces[dir]["emitted_vertices"].as_array().unwrap();
+            for (k, v) in emitted.iter().enumerate() {
+                let p = v["pos_bits"].as_array().unwrap();
+                let n = v["normal_bits"].as_array().unwrap();
+                let nb = [
+                    (hex_f32(&n[0]).clamp(-1.0, 1.0) * 127.0) as i8,
+                    (hex_f32(&n[1]).clamp(-1.0, 1.0) * 127.0) as i8,
+                    (hex_f32(&n[2]).clamp(-1.0, 1.0) * 127.0) as i8,
+                    crate::mesher::SHADED_CULL_W,
+                ];
+                verts.push(Vertex {
+                    pos: [hex_f32(&p[0]), hex_f32(&p[1]), hex_f32(&p[2])],
+                    uv: uvs[k],
+                    layer: 0,
+                    color: u32::MAX,
+                    light: 0x00F0_00F0,
+                    normal: nb,
+                    glint_uv: [0.0, 0.0],
+                });
+            }
+        }
+
+        let view_proj =
+            world_projection(70.0, 1280.0 / 800.0, 2048.0) * crate::camera::view_matrix(0.0, 0.0);
+
+        // Prefer hardware Vulkan (reproduces the RTX 4090 boundary sample) with software fallback.
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = wgpu::Backends::VULKAN;
+        let instance = wgpu::Instance::new(desc);
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            force_fallback_adapter: false,
+            ..Default::default()
+        }))
+        .or_else(|_| {
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                force_fallback_adapter: true,
+                ..Default::default()
+            }))
+        })
+        .expect("Vulkan adapter");
+        let mut limits = wgpu::Limits::default();
+        limits.max_texture_dimension_2d = limits
+            .max_texture_dimension_2d
+            .max(atlas.width)
+            .max(atlas.height);
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: limits,
+            ..Default::default()
+        }))
+        .expect("device");
+
+        let tex = |w, h, fmt, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: fmt,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let color = tex(
+            1280,
+            800,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth = tex(
+            1280,
+            800,
+            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
+        let atlas_tex = tex(
+            atlas.width,
+            atlas.height,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
+        queue.write_texture(
+            atlas_tex.as_image_copy(),
+            &atlas.pixels(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(atlas.width * 4),
+                rows_per_image: None,
+            },
+            atlas_tex.size(),
+        );
+        let lm_tex = tex(
+            16,
+            16,
+            wgpu::TextureFormat::Rgba8Unorm,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
+        queue.write_texture(
+            lm_tex.as_image_copy(),
+            &[255u8; 16 * 16 * 4],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(64),
+                rows_per_image: None,
+            },
+            lm_tex.size(),
+        );
+        let sampler = device.create_sampler(&Default::default());
+        let mut globals = Globals::zeroed();
+        globals.view_proj = view_proj.to_cols_array_2d();
+        globals.fog = [1000.0, 2000.0, 1000.0, 2000.0];
+        let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::bytes_of(&globals),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let bindings = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &entity_binding_entries(),
+        });
+        let atlas_view = atlas_tex.create_view(&Default::default());
+        let lm_view = lm_tex.create_view(&Default::default());
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bindings,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&lm_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::TextureView(&atlas_view),
+                },
+            ],
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(entity_shader().into()),
+        });
+        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[Some(&bindings)],
+            immediate_size: 0,
+        });
+        let buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ENTITY_ATTRIBUTES,
+        })];
+        let reuse = reuse::Reuse::default();
+        let kept = reuse.on(&device);
+        let pipeline = entity_pipeline_factory(
+            &kept,
+            &layout,
+            &layout,
+            &shader,
+            &buffers,
+            wgpu::TextureFormat::Rgba8Unorm,
+            false,
+        )(EntityPipelineOptions {
+            label: "Entities",
+            cull_mode: None,
+            depth_write: true,
+            compare: wgpu::CompareFunction::GreaterEqual,
+            bias: wgpu::DepthBiasState {
+                constant: 128,
+                slope_scale: 0.0,
+                clamp: 0.0,
+            },
+            blend: wgpu::BlendState::ALPHA_BLENDING,
+            clouds: false,
+            vertex: "vs_entity",
+            fragment: "fs_entity",
+            write_mask: wgpu::ColorWrites::ALL,
+        });
+        let vbuf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let indices: Vec<u32> = (0..6u32)
+            .flat_map(|i| [4 * i, 4 * i + 1, 4 * i + 2, 4 * i, 4 * i + 2, 4 * i + 3])
+            .collect();
+        let ibuf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let cv = color.create_view(&Default::default());
+            let dv = depth.create_view(&Default::default());
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &cv,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &dv,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &group, &[]);
+            pass.set_vertex_buffer(0, vbuf.slice(..));
+            pass.set_index_buffer(ibuf.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..36, 0, 0..1);
+        }
+        let pitch = (1280 * 4u32).div_ceil(256) * 256;
+        let rb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: u64::from(pitch) * 800,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        enc.copy_texture_to_buffer(
+            color.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &rb,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(pitch),
+                    rows_per_image: None,
+                },
+            },
+            color.size(),
+        );
+        queue.submit([enc.finish()]);
+        rb.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let mapped = rb.slice(..).get_mapped_range().unwrap();
+        let px_at = |x: u32, y: u32| -> [u8; 3] {
+            let off = (y * pitch + x * 4) as usize;
+            [mapped[off], mapped[off + 1], mapped[off + 2]]
+        };
+        assert_ne!(px_at(1025, 126), [0, 0, 0], "shaded west face at x=1025");
+        assert_ne!(px_at(1026, 132), [0, 0, 0], "shaded down face at y=132");
+        for y in 124..=131 {
+            assert_eq!(
+                px_at(1026, y),
+                px_at(1027, y),
+                "seam at (1026, {y}) on {}: got {:?}, front face at x=1027 is {:?}",
+                adapter.get_info().name,
+                px_at(1026, y),
+                px_at(1027, y),
+            );
+        }
+    }
 }
 
 #[test]

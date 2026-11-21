@@ -1,7 +1,7 @@
 {
   "meta": {
     "game_version": "26.3",
-    "java_version": "25.0.5.1+2-LTS",
+    "java_version": "27.0.1.0.3",
     "oracle": "VanillaDisplayParityOracle"
   },
   "lifecycle": {
@@ -928,5 +928,1939 @@
     "inside_build_empty_fade_0": true,
     "above_build_height_uncompiled": true,
     "below_build_height_uncompiled": true
+  },
+  "missing_glyph_quads": {
+    "bitmap": {
+      "pixel_width": 5,
+      "pixel_height": 8,
+      "oversample_bits": "3f800000",
+      "left_bits": "00000000",
+      "right_bits": "40a00000",
+      "top_bits": "00000000",
+      "bottom_bits": "41000000",
+      "advance_bits": "40c00000",
+      "bold_advance_bits": "40e00000",
+      "bold_offset_bits": "3f800000",
+      "shadow_offset_bits": "3f800000",
+      "mask": [
+        "#####",
+        "#...#",
+        "#...#",
+        "#...#",
+        "#...#",
+        "#...#",
+        "#...#",
+        "#####"
+      ]
+    },
+    "eid_83246_prefix_width": 75,
+    "cases": {
+      "plain_flat": {
+        "quad_count": 1,
+        "left_bits": "00000000",
+        "top_bits": "00000000",
+        "right_bits": "40a00000",
+        "bottom_bits": "41000000",
+        "active_right_bits": "40c00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "00000000",
+                "00000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "00000000",
+                "41000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a00000",
+                "41000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a00000",
+                "00000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "bold_flat": {
+        "quad_count": 2,
+        "left_bits": "bdcccccd",
+        "top_bits": "bdcccccd",
+        "right_bits": "40a33333",
+        "bottom_bits": "4101999a",
+        "active_right_bits": "40e00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3f666666",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3f666666",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "bold_world": {
+        "quad_count": 2,
+        "left_bits": "bdcccccd",
+        "top_bits": "bdcccccd",
+        "right_bits": "40a33333",
+        "bottom_bits": "4101999a",
+        "active_right_bits": "40e00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "4101999a",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "bdcccccd",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3f666666",
+                "bdcccccd",
+                "3a83126f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3f666666",
+                "4101999a",
+                "3a83126f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "4101999a",
+                "3a83126f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "bdcccccd",
+                "3a83126f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "bold_shadow_world": {
+        "quad_count": 4,
+        "left_bits": "bdcccccd",
+        "top_bits": "bdcccccd",
+        "right_bits": "40c33333",
+        "bottom_bits": "4111999a",
+        "active_right_bits": "40e00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "3f666666",
+                "3f666666",
+                "00000000"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3f666666",
+                "4111999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "4111999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "3f666666",
+                "00000000"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3ff33333",
+                "3f666666",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3ff33333",
+                "4111999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40e33333",
+                "4111999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40e33333",
+                "3f666666",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "bdcccccd",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bdcccccd",
+                "4101999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "4101999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40a33333",
+                "bdcccccd",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3f666666",
+                "bdcccccd",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3f666666",
+                "4101999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "4101999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "bdcccccd",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "italic_flat": {
+        "quad_count": 1,
+        "left_bits": "bf800000",
+        "top_bits": "00000000",
+        "right_bits": "40c00000",
+        "bottom_bits": "41000000",
+        "active_right_bits": "40c00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "3f800000",
+                "00000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bf800000",
+                "41000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40800000",
+                "41000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c00000",
+                "00000000",
+                "00000000"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "bold_italic_shadow_world": {
+        "quad_count": 4,
+        "left_bits": "3f666666",
+        "top_bits": "4039999a",
+        "right_bits": "4111999a",
+        "bottom_bits": "4141999a",
+        "active_right_bits": "41100000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "4079999a",
+                "4079999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3ff33333",
+                "4141999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40e33333",
+                "4141999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4111999a",
+                "4079999a",
+                "00000000"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "409ccccd",
+                "4079999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4039999a",
+                "4141999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4101999a",
+                "4141999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4121999a",
+                "4079999a",
+                "3a83126f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "4039999a",
+                "4039999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3f666666",
+                "4131999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40c33333",
+                "4131999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4101999a",
+                "4039999a",
+                "3cf5c28f"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "4079999a",
+                "4039999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3ff33333",
+                "4131999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "40e33333",
+                "4131999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "4111999a",
+                "4039999a",
+                "3cfdf3b6"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "eid_83100_cursor_world": {
+        "quad_count": 4,
+        "left_bits": "bdcccccd",
+        "top_bits": "bdcccccd",
+        "right_bits": "40c33333",
+        "bottom_bits": "4111999a",
+        "active_right_bits": "40e00000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "be760a9e",
+                "bfe8660b",
+                "4079999a"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "be760a9e",
+                "c00930f9",
+                "4079999a"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bee5844a",
+                "c00930f9",
+                "4079999a"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bee5844a",
+                "bfe8660b",
+                "4079999a"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "be8f8030",
+                "bfe8660b",
+                "407998f2"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "be8f8030",
+                "c00930f9",
+                "407998f2"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bef9ff2a",
+                "c00930f9",
+                "407998f2"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bef9ff2a",
+                "bfe8660b",
+                "407998f2"
+              ],
+              "color_argb": "ff3f3f3f",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "be4d14dc",
+                "bfe34753",
+                "407985f1"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "be4d14dc",
+                "c006a19d",
+                "407985f1"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bed10968",
+                "c006a19d",
+                "407985f1"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bed10968",
+                "bfe34753",
+                "407985f1"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "be760a9e",
+                "bfe34753",
+                "40798549"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "be760a9e",
+                "c006a19d",
+                "40798549"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bee5844a",
+                "c006a19d",
+                "40798549"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "bee5844a",
+                "bfe34753",
+                "40798549"
+              ],
+              "color_argb": "ffffffff",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      },
+      "eid_83246_icon_world": {
+        "quad_count": 4,
+        "left_bits": "4295cccd",
+        "top_bits": "bdcccccd",
+        "right_bits": "42a23333",
+        "bottom_bits": "4111999a",
+        "active_right_bits": "42a40000",
+        "quads": [
+          [
+            {
+              "pos_bits": [
+                "3e9217c4",
+                "3cc5b6f2",
+                "40866666"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e9217c4",
+                "be0193ae",
+                "40866666"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e4257b0",
+                "be0193ae",
+                "40866666"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e4257b0",
+                "3cc5b6f2",
+                "40866666"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3e88af50",
+                "3cc5b6f2",
+                "4086663f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e88af50",
+                "be0193ae",
+                "4086663f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e2f86c8",
+                "be0193ae",
+                "4086663f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e2f86c8",
+                "3cc5b6f2",
+                "4086663f"
+              ],
+              "color_argb": "ff3f2a00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3e9b8034",
+                "3d2e1f0e",
+                "408661e2"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e9b8034",
+                "bddd8592",
+                "408661e2"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e552890",
+                "bddd8592",
+                "408661e2"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e552890",
+                "3d2e1f0e",
+                "408661e2"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ],
+          [
+            {
+              "pos_bits": [
+                "3e9217c4",
+                "3d2e1f0e",
+                "408661bb"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3823d70a"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e9217c4",
+                "bddd8592",
+                "408661bb"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3823d70a",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e4257b0",
+                "bddd8592",
+                "408661bb"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3cffae14"
+              ],
+              "light": 15728880
+            },
+            {
+              "pos_bits": [
+                "3e4257b0",
+                "3d2e1f0e",
+                "408661bb"
+              ],
+              "color_argb": "ffffaa00",
+              "uv_bits": [
+                "3c9fae14",
+                "3823d70a"
+              ],
+              "light": 15728880
+            }
+          ]
+        ]
+      }
+    }
+  },
+  "block_display_83224": {
+    "display_pose_bits": [
+      "bfce6666",
+      "00000000",
+      "00000000",
+      "00000000",
+      "00000000",
+      "3d5c28f6",
+      "00000000",
+      "00000000",
+      "00000000",
+      "00000000",
+      "bca3d70a",
+      "00000000",
+      "c039c28f",
+      "4000ffc1",
+      "4089eb85",
+      "3f800000"
+    ],
+    "faces": {
+      "down": {
+        "direction": "down",
+        "local_positions_bits": [
+          [
+            "00000000",
+            "00000000",
+            "3f800000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "3f800000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "bf800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "bf800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "bf800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "bf800000",
+              "00000000"
+            ]
+          }
+        ]
+      },
+      "up": {
+        "direction": "up",
+        "local_positions_bits": [
+          [
+            "00000000",
+            "3f800000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "3f800000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "3f800000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "3f800000",
+            "00000000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "3f800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "3f800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "3f800000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "3f800000",
+              "00000000"
+            ]
+          }
+        ]
+      },
+      "north": {
+        "direction": "north",
+        "local_positions_bits": [
+          [
+            "3f800000",
+            "3f800000",
+            "00000000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "3f800000",
+            "00000000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "3f800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "3f800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "3f800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "3f800000"
+            ]
+          }
+        ]
+      },
+      "south": {
+        "direction": "south",
+        "local_positions_bits": [
+          [
+            "00000000",
+            "3f800000",
+            "3f800000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "3f800000",
+            "3f800000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "bf800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "bf800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "bf800000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "00000000",
+              "00000000",
+              "bf800000"
+            ]
+          }
+        ]
+      },
+      "west": {
+        "direction": "west",
+        "local_positions_bits": [
+          [
+            "00000000",
+            "3f800000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "3f800000"
+          ],
+          [
+            "00000000",
+            "3f800000",
+            "3f800000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "3f800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "3f800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "3f800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c039c28f",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "3f800000",
+              "00000000",
+              "00000000"
+            ]
+          }
+        ]
+      },
+      "east": {
+        "direction": "east",
+        "local_positions_bits": [
+          [
+            "3f800000",
+            "3f800000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "3f800000"
+          ],
+          [
+            "3f800000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "3f800000",
+            "3f800000",
+            "00000000"
+          ]
+        ],
+        "emitted_vertices": [
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "bf800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "408947ae"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "00000000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "bf800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "4000ffc1",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "3f800000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "bf800000",
+              "00000000",
+              "00000000"
+            ]
+          },
+          {
+            "pos_bits": [
+              "c0907ae1",
+              "40047065",
+              "4089eb85"
+            ],
+            "color_argb": "ffffffff",
+            "uv_bits": [
+              "3f800000",
+              "00000000"
+            ],
+            "light": 15728880,
+            "normal_bits": [
+              "bf800000",
+              "00000000",
+              "00000000"
+            ]
+          }
+        ]
+      }
+    },
+    "stitcher_padding": {
+      "mip0_aniso0": 1,
+      "mip4_aniso2": 32
+    },
+    "projection_70_1280x800_bits": [
+      "3f6480f0",
+      "00000000",
+      "00000000",
+      "00000000",
+      "00000000",
+      "3fb6cd8e",
+      "00000000",
+      "00000000",
+      "00000000",
+      "00000000",
+      "bf80019a",
+      "bf800000",
+      "00000000",
+      "00000000",
+      "bdccce15",
+      "00000000"
+    ]
   }
 }

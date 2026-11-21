@@ -1930,3 +1930,118 @@ fn a_builtin_sprite_source_override_supplies_the_particle_atlas_consumer() {
         (1, 1, [3, 9, 24, 255].as_slice())
     );
 }
+
+#[test]
+fn packed_sprites_have_clamp_to_edge_padding_matching_vanilla_26_3() {
+    let w: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../tools/witness/26.3/display_parity/witness.json"
+    ))
+    .unwrap();
+    let pad = w["block_display_83224"]["stitcher_padding"]["mip0_aniso0"]
+        .as_u64()
+        .unwrap();
+    assert!(
+        pad >= 1,
+        "vanilla 26.3 Stitcher always pads sprites by >= 1 texel"
+    );
+
+    let root = std::env::temp_dir().join(format!("sunrise-atlas-clamp-pad-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let blocks = root.join("assets/minecraft/textures/block");
+    let items = root.join("assets/minecraft/textures/item");
+    fs::create_dir_all(&blocks).unwrap();
+    fs::create_dir_all(&items).unwrap();
+
+    // 1. Opaque 16x16 block/lime_concrete with distinct edge/corner colors to distinguish clamp from wrap.
+    let write_rgba = |path: &std::path::Path, w: u32, h: u32, pixels: &[u8]| {
+        let file = fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, w, h);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        enc.write_header()
+            .unwrap()
+            .write_image_data(pixels)
+            .unwrap();
+    };
+    let mut concrete = vec![0u8; 16 * 16 * 4];
+    for y in 0..16u32 {
+        for x in 0..16u32 {
+            let i = ((y * 16 + x) * 4) as usize;
+            concrete[i..i + 4].copy_from_slice(&[10 + x as u8 * 10, 20 + y as u8 * 10, 50, 255]);
+        }
+    }
+    write_rgba(&blocks.join("lime_concrete.png"), 16, 16, &concrete);
+
+    // 2. Transparent-edged item sprite: edge padding must stay transparent, not bleed opaque interior.
+    let mut blade = vec![0u8; 16 * 16 * 4];
+    for y in 4..12u32 {
+        for x in 4..12u32 {
+            let i = ((y * 16 + x) * 4) as usize;
+            blade[i..i + 4].copy_from_slice(&[200, 210, 220, 255]);
+        }
+    }
+    write_rgba(&items.join("cutout_blade.png"), 16, 16, &blade);
+
+    // 3. Animated block sprite (2 frames, starting on frame 1 via mcmeta): frame 1 must populate its border.
+    write_strip(
+        &blocks.join("anim_bar.png"),
+        16,
+        32,
+        &[[20, 30, 40, 255], [90, 180, 45, 255]],
+        Some(r#"{"animation":{"width":16,"height":16,"frames":[1,0]}}"#),
+    );
+
+    let atlas = HudAtlas::build(&ResourceSource::directory(root.clone())).unwrap();
+    let _ = fs::remove_dir_all(&root);
+
+    let raw = |x: u32, y: u32| -> [u8; 4] {
+        let i = ((y * atlas.width + x) * 4) as usize;
+        atlas.pixels[i..i + 4].try_into().unwrap()
+    };
+
+    // Opaque block/lime_concrete: exact 16x16 Rect, and 1-texel clamp border on all 4 sides + 4 corners.
+    let r = atlas.sprites["block/lime_concrete"];
+    assert_eq!(r.texels((atlas.width, atlas.height)), (16, 16));
+    let px = (r.u0 * atlas.width as f32).round() as u32;
+    let py = (r.v0 * atlas.height as f32).round() as u32;
+    assert!(px >= 1 && py >= 1, "sprite must have room for 1px padding");
+    for y in 0..16u32 {
+        assert_eq!(raw(px - 1, py + y), raw(px, py + y), "left border row {y}");
+        assert_eq!(
+            raw(px + 16, py + y),
+            raw(px + 15, py + y),
+            "right border row {y}"
+        );
+    }
+    for x in 0..16u32 {
+        assert_eq!(raw(px + x, py - 1), raw(px + x, py), "top border col {x}");
+        assert_eq!(
+            raw(px + x, py + 16),
+            raw(px + x, py + 15),
+            "bottom border col {x}"
+        );
+    }
+    assert_eq!(raw(px - 1, py - 1), raw(px, py), "top-left corner");
+    assert_eq!(raw(px + 16, py - 1), raw(px + 15, py), "top-right corner");
+    assert_eq!(raw(px - 1, py + 16), raw(px, py + 15), "bottom-left corner");
+    assert_eq!(
+        raw(px + 16, py + 16),
+        raw(px + 15, py + 15),
+        "bottom-right corner"
+    );
+
+    // Transparent-edged item keeps transparent border.
+    let rb = atlas.sprites["item/cutout_blade"];
+    let bx = (rb.u0 * atlas.width as f32).round() as u32;
+    let by = (rb.v0 * atlas.height as f32).round() as u32;
+    assert_eq!(raw(bx - 1, by + 8), [0, 0, 0, 0]);
+    assert_eq!(raw(bx + 16, by + 8), [0, 0, 0, 0]);
+
+    // Animated block sprite frame 1 (green) also populates its 1-texel border.
+    let ra = atlas.sprites["block/anim_bar"];
+    let ax = (ra.u0 * atlas.width as f32).round() as u32;
+    let ay = (ra.v0 * atlas.height as f32).round() as u32;
+    assert_eq!(raw(ax, ay), [90, 180, 45, 255]);
+    assert_eq!(raw(ax - 1, ay), [90, 180, 45, 255]);
+    assert_eq!(raw(ax + 16, ay + 15), [90, 180, 45, 255]);
+}

@@ -1,11 +1,17 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.*;
+import com.mojang.blaze3d.font.GlyphBitmap;
+import com.mojang.blaze3d.font.GlyphInfo;
+import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.platform.Transparency;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.CompactVectorArray;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexSorting;
+import com.mojang.math.Quadrant;
 import com.mojang.math.Transformation;
 import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import com.mojang.renderpearl.api.pipeline.RenderPipeline;
@@ -20,6 +26,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.font.GlyphStitcher;
+import net.minecraft.client.gui.font.glyphs.BakedSheetGlyph;
+import net.minecraft.client.gui.font.glyphs.SpecialGlyphs;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -29,6 +38,7 @@ import net.minecraft.client.renderer.SubmitNodeCollection;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.ViewArea;
 import net.minecraft.client.renderer.block.BlockModelRenderState;
+import net.minecraft.client.renderer.block.dispatch.ModelState;
 import net.minecraft.client.renderer.chunk.CompiledSectionMesh;
 import net.minecraft.client.renderer.chunk.SectionMesh;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
@@ -50,13 +60,21 @@ import net.minecraft.client.renderer.feature.submit.SubmitNode;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.GameRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.texture.Stitcher;
+import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.client.resources.model.ModelBaker;
+import net.minecraft.client.resources.model.cuboid.CuboidFace;
+import net.minecraft.client.resources.model.cuboid.FaceBakery;
+import net.minecraft.client.resources.model.geometry.BakedQuad;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.Identifier;
@@ -285,6 +303,8 @@ public final class VanillaDisplayParityOracle {
         root.add("display_entity_features", recordDisplayEntityFeatures(level, font));
         root.add("teleport_duration_and_pos_rot_lerp", recordTeleportDurationAndPosRotLerp(level));
         root.add("section_compiled_and_visible_gate", recordSectionCompiledAndVisibleGate(level, font));
+        root.add("missing_glyph_quads", recordMissingGlyphQuads(font));
+        root.add("block_display_83224", recordBlockDisplay83224(level));
 
         Path outPath = Path.of(args[0]);
         Files.createDirectories(outPath.getParent());
@@ -1076,5 +1096,300 @@ public final class VanillaDisplayParityOracle {
         public SectionRenderDispatcher.RenderSection getRenderSectionAt(BlockPos pos) {
             return target[0];
         }
+    }
+
+    static final class CapturingStitcher extends GlyphStitcher {
+        GlyphInfo capturedInfo;
+        GlyphBitmap capturedBitmap;
+        BakedSheetGlyph baked;
+
+        CapturingStitcher() { super(null, null); }
+
+        @Override
+        public BakedSheetGlyph stitch(GlyphInfo info, GlyphBitmap glyphBitmap) {
+            this.capturedInfo = info;
+            this.capturedBitmap = glyphBitmap;
+            // FontTexture.add(info, glyphBitmap) at slot (0, 0) in a 256x256 sheet
+            float u0 = (0.0F + 0.01F) / 256.0F;
+            float u1 = (0.0F - 0.01F + glyphBitmap.getPixelWidth()) / 256.0F;
+            float v0 = (0.0F + 0.01F) / 256.0F;
+            float v1 = (0.0F - 0.01F + glyphBitmap.getPixelHeight()) / 256.0F;
+            this.baked = new BakedSheetGlyph(
+                info, null, null, u0, u1, v0, v1,
+                glyphBitmap.getLeft(), glyphBitmap.getRight(),
+                glyphBitmap.getTop(), glyphBitmap.getBottom()
+            );
+            return this.baked;
+        }
+    }
+
+    static final class RecordingVertexConsumer implements VertexConsumer {
+        final List<JsonObject> vertices = new ArrayList<>();
+        JsonObject current;
+
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            current = new JsonObject();
+            current.add("pos_bits", fArr(x, y, z));
+            vertices.add(current);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            return setColor((a & 0xFF) << 24 | (r & 0xFF) << 16 | (g & 0xFF) << 8 | (b & 0xFF));
+        }
+
+        @Override
+        public VertexConsumer setColor(int color) {
+            current.addProperty("color_argb", String.format("%08x", color));
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            current.add("uv_bits", fArr(u, v));
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) { return this; }
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            current.addProperty("light", (v << 16) | (u & 0xFFFF));
+            return this;
+        }
+        @Override
+        public VertexConsumer setUv3(float u, float v) { return this; }
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z) {
+            current.add("normal_bits", fArr(x, y, z));
+            return this;
+        }
+        @Override
+        public VertexConsumer setLineWidth(float width) { return this; }
+    }
+
+    static Matrix4f mat4FromHex(String... hex) {
+        float[] a = new float[16];
+        for (int i = 0; i < 16; i++) {
+            a[i] = Float.intBitsToFloat(Integer.parseUnsignedInt(hex[i], 16));
+        }
+        return new Matrix4f().set(a);
+    }
+
+    static JsonObject recordMissingGlyphQuads(Font font) throws Exception {
+        JsonObject out = new JsonObject();
+        CapturingStitcher stitcher = alloc(CapturingStitcher.class);
+        BakedSheetGlyph missing = SpecialGlyphs.MISSING.bake(stitcher);
+        GlyphInfo info = stitcher.capturedInfo;
+        GlyphBitmap bm = stitcher.capturedBitmap;
+
+        NativeImage img = (NativeImage) findField(SpecialGlyphs.class, "image").get(SpecialGlyphs.MISSING);
+        JsonObject bitmap = new JsonObject();
+        bitmap.addProperty("pixel_width", bm.getPixelWidth());
+        bitmap.addProperty("pixel_height", bm.getPixelHeight());
+        bitmap.addProperty("oversample_bits", fb(bm.getOversample()));
+        bitmap.addProperty("left_bits", fb(bm.getLeft()));
+        bitmap.addProperty("right_bits", fb(bm.getRight()));
+        bitmap.addProperty("top_bits", fb(bm.getTop()));
+        bitmap.addProperty("bottom_bits", fb(bm.getBottom()));
+        bitmap.addProperty("advance_bits", fb(info.getAdvance()));
+        bitmap.addProperty("bold_advance_bits", fb(info.getAdvance(true)));
+        bitmap.addProperty("bold_offset_bits", fb(info.getBoldOffset()));
+        bitmap.addProperty("shadow_offset_bits", fb(info.getShadowOffset()));
+        JsonArray rows = new JsonArray();
+        for (int y = 0; y < img.getHeight(); y++) {
+            StringBuilder row = new StringBuilder();
+            for (int x = 0; x < img.getWidth(); x++) {
+                row.append(img.getPixel(x, y) != 0 ? '#' : '.');
+            }
+            rows.add(row.toString());
+        }
+        bitmap.add("mask", rows);
+        out.add("bitmap", bitmap);
+
+        // Record exact emitted quads for local poses and real EID 83100 cursor pose from settled.json.
+        Matrix4f identity = new Matrix4f();
+        Matrix4f pose83100 = mat4FromHex(
+            "bd23d70b", "80000000", "31704e50", "80000000",
+            "80000000", "bd23d70b", "80000000", "80000000",
+            "b1704e50", "00000000", "bd23d70b", "00000000",
+            "be512d6f", "bfe3ca65", "4079999a", "3f800000"
+        );
+        // EID 83246 ("Crystal PvP \u25a6", bold) render_pose_bits from settled.json and prefix width
+        int crystalPrefixWidth = font.width(Component.literal("Crystal PvP ").withStyle(Style.EMPTY.withBold(true)));
+        Matrix4f pose83246 = mat4FromHex(
+            "bc96872b", "80000000", "30dcc7f3", "80000000",
+            "80000000", "bc96872b", "80000000", "80000000",
+            "b0dcc7f3", "00000000", "bc96872b", "00000000",
+            "3fd70a3e", "3d26984c", "40866666", "3f800000"
+        );
+        out.addProperty("eid_83246_prefix_width", crystalPrefixWidth);
+
+        record GlyphCase(String name, float x, float y, int color, int shadowColor, boolean bold, boolean italic, boolean flat, Matrix4f pose) {}
+        List<GlyphCase> cases = List.of(
+            new GlyphCase("plain_flat", 0.0F, 0.0F, 0xFFFFFFFF, 0, false, false, true, identity),
+            new GlyphCase("bold_flat", 0.0F, 0.0F, 0xFFFFFFFF, 0, true, false, true, identity),
+            new GlyphCase("bold_world", 0.0F, 0.0F, 0xFFFFFFFF, 0, true, false, false, identity),
+            new GlyphCase("bold_shadow_world", 0.0F, 0.0F, 0xFFFFFFFF, 0xFF3F3F3F, true, false, false, identity),
+            new GlyphCase("italic_flat", 0.0F, 0.0F, 0xFFFFFFFF, 0, false, true, true, identity),
+            new GlyphCase("bold_italic_shadow_world", 2.0F, 3.0F, 0xFFFFAA00, 0xFF3F2A00, true, true, false, identity),
+            new GlyphCase("eid_83100_cursor_world", 0.0F, 0.0F, 0xFFFFFFFF, 0xFF3F3F3F, true, false, false, pose83100),
+            new GlyphCase("eid_83246_icon_world", (float) crystalPrefixWidth, 0.0F, 0xFFFFAA00, 0xFF3F2A00, true, false, false, pose83246)
+        );
+        JsonObject casesJson = new JsonObject();
+        for (GlyphCase gc : cases) {
+            Style style = Style.EMPTY.withBold(gc.bold()).withItalic(gc.italic());
+            var inst = missing.createGlyph(
+                gc.x(), gc.y(), gc.color(), gc.shadowColor(), style,
+                info.getBoldOffset(), info.getShadowOffset()
+            );
+            RecordingVertexConsumer vc = new RecordingVertexConsumer();
+            inst.render(gc.pose(), vc, 0x00F000F0, gc.flat());
+            JsonObject c = new JsonObject();
+            c.addProperty("quad_count", vc.vertices.size() / 4);
+            c.addProperty("left_bits", fb(inst.left()));
+            c.addProperty("top_bits", fb(inst.top()));
+            c.addProperty("right_bits", fb(inst.right()));
+            c.addProperty("bottom_bits", fb(inst.bottom()));
+            c.addProperty("active_right_bits", fb(inst.activeRight()));
+            JsonArray quads = new JsonArray();
+            for (int q = 0; q < vc.vertices.size(); q += 4) {
+                JsonArray quad = new JsonArray();
+                for (int k = 0; k < 4; k++) {
+                    quad.add(vc.vertices.get(q + k));
+                }
+                quads.add(quad);
+            }
+            c.add("quads", quads);
+            casesJson.add(gc.name(), c);
+        }
+        out.add("cases", casesJson);
+        return out;
+    }
+
+    static JsonObject recordBlockDisplay83224(StubClientLevel level) throws Exception {
+        JsonObject out = new JsonObject();
+        var A_BILLBOARD = accessor(Display.class, "DATA_BILLBOARD_RENDER_CONSTRAINTS_ID");
+        var A_TRANS = accessor(Display.class, "DATA_TRANSLATION_ID");
+        var A_SCALE = accessor(Display.class, "DATA_SCALE_ID");
+        var A_LEFT = accessor(Display.class, "DATA_LEFT_ROTATION_ID");
+        var A_RIGHT = accessor(Display.class, "DATA_RIGHT_ROTATION_ID");
+        var A_BLOCK = accessor(Display.BlockDisplay.class, "DATA_BLOCK_STATE_ID");
+        var A_BRIGHT = accessor(Display.class, "DATA_BRIGHTNESS_OVERRIDE_ID");
+
+        // Exact EID 83224 (minecraft:lime_concrete) and camera from tools/witness/26.3/genpvp_menu/settled.json
+        double entX = Double.longBitsToDouble(Long.parseUnsignedLong("3fe0000000000000", 16));
+        double entY = Double.longBitsToDouble(Long.parseUnsignedLong("4072d9eb851eb852", 16));
+        double entZ = Double.longBitsToDouble(Long.parseUnsignedLong("3fe0000000000000", 16));
+        double camX = Double.longBitsToDouble(Long.parseUnsignedLong("3fe0000000000000", 16));
+        double camY = Double.longBitsToDouble(Long.parseUnsignedLong("4072d9eb94c00000", 16));
+        double camZ = Double.longBitsToDouble(Long.parseUnsignedLong("3fe0000000000000", 16));
+
+        Display.BlockDisplay bd = new Display.BlockDisplay(entityType("minecraft:block_display"), level);
+        bd.snapTo(entX, entY, entZ, 0.0F, 0.0F);
+        assign(bd,
+            dv(A_BILLBOARD, (byte) 3),
+            dv(A_TRANS, new Vector3f(
+                Float.intBitsToFloat(Integer.parseUnsignedInt("4039c28f", 16)),
+                Float.intBitsToFloat(Integer.parseUnsignedInt("40010000", 16)),
+                Float.intBitsToFloat(Integer.parseUnsignedInt("c089eb85", 16)))),
+            dv(A_SCALE, new Vector3f(
+                Float.intBitsToFloat(Integer.parseUnsignedInt("3fce6666", 16)),
+                Float.intBitsToFloat(Integer.parseUnsignedInt("3d5c28f6", 16)),
+                Float.intBitsToFloat(Integer.parseUnsignedInt("3ca3d70a", 16)))),
+            dv(A_LEFT, new Quaternionf(0.0F, 0.0F, 0.0F, 1.0F)),
+            dv(A_RIGHT, new Quaternionf(0.0F, 0.0F, 0.0F, 1.0F)),
+            dv(A_BRIGHT, 15728880),
+            dv(A_BLOCK, BuiltInRegistries.BLOCK.getValue(Identifier.parse("minecraft:lime_concrete")).defaultBlockState()));
+        tickEntity(bd);
+
+        DisplayRenderer.BlockDisplayRenderer renderer = alloc(DisplayRenderer.BlockDisplayRenderer.class);
+        EntityRenderDispatcher dispatcher = alloc(EntityRenderDispatcher.class);
+        StubCamera camera = alloc(StubCamera.class);
+        set(camera, Camera.class, "position", new Vec3(camX, camY, camZ));
+        set(camera, Camera.class, "xRot", 0.0F);
+        set(camera, Camera.class, "yRot", 0.0F);
+        dispatcher.camera = camera;
+        set(renderer, EntityRenderer.class, "entityRenderDispatcher", dispatcher);
+        set(renderer, DisplayRenderer.class, "entityRenderDispatcher", dispatcher);
+
+        BlockDisplayEntityRenderState st = renderer.createRenderState();
+        st.renderState = bd.renderState();
+        st.interpolationProgress = bd.calculateInterpolationProgress(1.0F);
+        st.entityYRot = bd.getYRot(1.0F);
+        st.entityXRot = bd.getXRot(1.0F);
+        st.cameraYRot = camera.yRot();
+        st.cameraXRot = camera.xRot();
+
+        Method calcOri = findMethod(DisplayRenderer.class, "calculateOrientation",
+            Display.RenderState.class, DisplayEntityRenderState.class, Quaternionf.class);
+        Quaternionf ori = (Quaternionf) calcOri.invoke(renderer, st.renderState, st, new Quaternionf());
+        PoseStack poseStack = new PoseStack();
+        poseStack.translate((float) (entX - camX), (float) (entY - camY), (float) (entZ - camZ));
+        poseStack.rotate(ori);
+        poseStack.mulPose(st.renderState.transformation().get(st.interpolationProgress));
+        out.add("display_pose_bits", mat4Bits(poseStack.last().pose()));
+
+        // Bake minecraft:block/lime_concrete (cube_all: [0,0,0]..[16,16,16]) via real FaceBakery.bakeQuad
+        TextureAtlasSprite unitSprite = alloc(TextureAtlasSprite.class);
+        set(unitSprite, TextureAtlasSprite.class, "atlasLocation", TextureAtlas.LOCATION_BLOCKS);
+        set(unitSprite, TextureAtlasSprite.class, "u0", 0.0F);
+        set(unitSprite, TextureAtlasSprite.class, "u1", 1.0F);
+        set(unitSprite, TextureAtlasSprite.class, "v0", 0.0F);
+        set(unitSprite, TextureAtlasSprite.class, "v1", 1.0F);
+        BakedQuad.MaterialInfo matInfo = new BakedQuad.MaterialInfo(
+            unitSprite, net.minecraft.client.renderer.chunk.ChunkSectionLayer.SOLID,
+            Sheets.cutoutBlockItemSheet(), Sheets.cutoutBlockItemGlintSheet(),
+            Sheets.cutoutBlockItemGlintSpecialSheet(), -1, null, 0
+        );
+        ModelBaker.Interner interner = new ModelBaker.Interner() {
+            @Override public Vector3fc vector(Vector3fc v) { return new Vector3f(v); }
+            @Override public BakedQuad.MaterialInfo materialInfo(BakedQuad.MaterialInfo m) { return m; }
+        };
+        ModelState identityState = new ModelState() {};
+        Vector3fc from = new Vector3f(0.0F, 0.0F, 0.0F);
+        Vector3fc to = new Vector3f(16.0F, 16.0F, 16.0F);
+        Method defaultUv = findMethod(FaceBakery.class, "defaultFaceUV", Vector3fc.class, Vector3fc.class, Direction.class);
+
+        QuadInstance quadInst = new QuadInstance();
+        quadInst.setColor(0xFFFFFFFF);
+        quadInst.setLightCoords(0x00F000F0);
+        quadInst.setOverlayCoords(net.minecraft.client.renderer.texture.OverlayTexture.NO_OVERLAY);
+
+        JsonObject faces = new JsonObject();
+        for (Direction dir : Direction.values()) {
+            CuboidFace.UVs uvs = (CuboidFace.UVs) defaultUv.invoke(null, from, to, dir);
+            BakedQuad quad = FaceBakery.bakeQuad(interner, from, to, uvs, Quadrant.R0, matInfo, dir, identityState, null);
+            RecordingVertexConsumer vc = new RecordingVertexConsumer();
+            vc.putBakedQuad(poseStack.last(), quad, quadInst);
+            JsonObject f = new JsonObject();
+            f.addProperty("direction", quad.direction().getName());
+            JsonArray localPts = new JsonArray();
+            for (int i = 0; i < 4; i++) {
+                Vector3fc p = quad.position(i);
+                localPts.add(fArr(p.x(), p.y(), p.z()));
+            }
+            f.add("local_positions_bits", localPts);
+            JsonArray emitted = new JsonArray();
+            for (JsonObject v : vc.vertices) emitted.add(v);
+            f.add("emitted_vertices", emitted);
+            faces.add(dir.getName(), f);
+        }
+        out.add("faces", faces);
+
+        // Stitcher atlas sprite padding in vanilla 26.3
+        Field padField = findField(Stitcher.class, "padding");
+        JsonObject stitcherPad = new JsonObject();
+        stitcherPad.addProperty("mip0_aniso0", (int) padField.get(new Stitcher<>(4096, 4096, 0, 0)));
+        stitcherPad.addProperty("mip4_aniso2", (int) padField.get(new Stitcher<>(4096, 4096, 4, 2)));
+        out.add("stitcher_padding", stitcherPad);
+
+        // Vanilla projection matrix at fov=70, 1280x800, near=0.05, far=2048
+        Matrix4f proj = new Matrix4f().setPerspective((float) (70.0 * (Math.PI / 180.0)), 1280.0F / 800.0F, 0.05F, 2048.0F);
+        out.add("projection_70_1280x800_bits", mat4Bits(proj));
+
+        return out;
     }
 }

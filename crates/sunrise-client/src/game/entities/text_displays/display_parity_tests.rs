@@ -1445,3 +1445,174 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
         }
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
+    let w = parity_witness();
+    let menu = genpvp_menu_witness();
+    let cam = &menu["camera"];
+    let cam_pos = DVec3::from_array(hex_f64_arr::<3>(&cam["camera_pos_bits"]));
+    let cam_yaw = hex_f32(&cam["camera_yRot_bits"]);
+    let cam_pitch = hex_f32(&cam["camera_xRot_bits"]);
+
+    let argb_to_abgr = |v: &serde_json::Value| {
+        let argb = u32::from_str_radix(v.as_str().unwrap(), 16).unwrap();
+        sunrise_client::hud::rgba(
+            (argb >> 16) as u8,
+            (argb >> 8) as u8,
+            argb as u8,
+            (argb >> 24) as u8,
+        )
+    };
+
+    with_client_game(|game| {
+        game.view_frustum = None;
+        game.camera_type = CameraType::FirstPerson;
+        game.posed_rotation = Some((cam_yaw, cam_pitch));
+        game.view.y_rot = cam_yaw;
+        game.view.x_rot = cam_pitch;
+        game.settings.render_distance = 8;
+        game.settings.entity_distance = 1.0;
+
+        // 1. EID 83100 (bold missing cursor \u2196 with shadow) emits 4 exact BakedSheetGlyph quads.
+        let e83100 = menu["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == 83100)
+            .unwrap();
+        game.text_displays.clear();
+        apply_witness_display(game, e83100);
+        game.tick_text_displays();
+        let (mut normal, mut see_through) = (Vec::new(), Vec::new());
+        game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
+        let want_83100 = w["missing_glyph_quads"]["cases"]["eid_83100_cursor_world"]["quads"]
+            .as_array()
+            .unwrap();
+        assert_eq!(
+            normal.len(),
+            want_83100.len() * 4,
+            "EID 83100 must emit {} quads (bold+shadow SpecialGlyphs.MISSING), got {}",
+            want_83100.len(),
+            normal.len() / 4
+        );
+        // CORNERS = [5, 2, 1, 0] puts world vertices in [bl, br, tr, tl] while BakedSheetGlyph
+        // emits [tl, bl, br, tr], so Sunrise vertex [(k + 3) % 4] matches vanilla corner k.
+        for (qi, (got_q, want_q)) in normal.as_chunks::<4>().0.iter().zip(want_83100).enumerate() {
+            for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
+                let gv = got_q[(k + 3) % 4];
+                let wp = hex_f32_arr::<3>(&want_v["pos_bits"]);
+                for axis in 0..3 {
+                    assert!(
+                        (gv.pos[axis] - wp[axis]).abs() <= 1e-5,
+                        "EID 83100 quad {qi} corner {k} axis {axis}: got {:?} ({:08x}) vs vanilla {:?} ({:08x})",
+                        gv.pos[axis],
+                        gv.pos[axis].to_bits(),
+                        wp[axis],
+                        wp[axis].to_bits()
+                    );
+                }
+                assert_eq!(gv.color, argb_to_abgr(&want_v["color_argb"]));
+            }
+        }
+
+        // 2. EID 83246 ("Crystal PvP \u25a6", bold with shadow): the trailing bold gold \u25a6
+        // emits 2 shadow quads and 2 front quads matching eid_83246_icon_world.
+        let e83246 = menu["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == 83246)
+            .unwrap();
+        game.text_displays.clear();
+        apply_witness_display(game, e83246);
+        game.tick_text_displays();
+        normal.clear();
+        see_through.clear();
+        game.text_display_geometry(cam_pos, 1.0, &mut normal, &mut see_through);
+        let want_83246 = w["missing_glyph_quads"]["cases"]["eid_83246_icon_world"]["quads"]
+            .as_array()
+            .unwrap();
+        let gold_shadow = argb_to_abgr(&want_83246[0][0]["color_argb"]);
+        let gold_front = argb_to_abgr(&want_83246[2][0]["color_argb"]);
+        let gold_quads: Vec<&[Vertex; 4]> = normal
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|q| q[0].color == gold_shadow || q[0].color == gold_front)
+            .collect();
+        assert_eq!(
+            gold_quads.len(),
+            want_83246.len(),
+            "EID 83246 gold missing glyph must emit {} quads, got {}",
+            want_83246.len(),
+            gold_quads.len()
+        );
+        for (qi, (got_q, want_q)) in gold_quads.iter().zip(want_83246).enumerate() {
+            for (k, want_v) in want_q.as_array().unwrap().iter().enumerate() {
+                let gv = got_q[(k + 3) % 4];
+                let wp = hex_f32_arr::<3>(&want_v["pos_bits"]);
+                for axis in 0..3 {
+                    assert!(
+                        (gv.pos[axis] - wp[axis]).abs() <= 1e-5,
+                        "EID 83246 quad {qi} corner {k} axis {axis}: got {:?} vs vanilla {:?}",
+                        gv.pos[axis],
+                        wp[axis]
+                    );
+                }
+                assert_eq!(gv.color, argb_to_abgr(&want_v["color_argb"]));
+            }
+        }
+
+        // 3. EID 83224 (minecraft:lime_concrete): exact 6-face vertex parity + opaque atlas padding.
+        let e83224 = menu["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == 83224)
+            .unwrap();
+        game.text_displays.clear();
+        apply_witness_display(game, e83224);
+        game.tick_text_displays();
+        let mut block_verts = Vec::new();
+        game.block_item_display_geometry(cam_pos, 1.0, &mut block_verts);
+        assert_eq!(block_verts.len(), 24, "EID 83224 must emit 6 cube faces");
+        let want_faces = w["block_display_83224"]["faces"].as_object().unwrap();
+        for dir in ["down", "up", "north", "south", "west", "east"] {
+            let want_pos: Vec<[u32; 3]> = want_faces[dir]["emitted_vertices"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| hex_f32_arr::<3>(&v["pos_bits"]).map(f32::to_bits))
+                .collect();
+            let found = block_verts.as_chunks::<4>().0.iter().any(|q| {
+                q.iter()
+                    .map(|v| v.pos.map(f32::to_bits))
+                    .collect::<Vec<_>>()
+                    == want_pos
+            });
+            assert!(
+                found,
+                "EID 83224 missing exact vanilla face {dir}: expected {want_pos:08x?}"
+            );
+        }
+        let sprite = game.gui.atlas.sprites["block/lime_concrete"];
+        let px = (sprite.u0 * game.gui.atlas.width as f32).round() as u32;
+        let py = (sprite.v0 * game.gui.atlas.height as f32).round() as u32;
+        let pixels = game.gui.atlas.pixels();
+        assert!(px >= 1 && py >= 1);
+        for (label, bx, by) in [
+            ("left", px - 1, py),
+            ("right", px + 16, py),
+            ("top", px, py - 1),
+            ("bottom", px, py + 16),
+        ] {
+            let a = pixels[((by * game.gui.atlas.width + bx) * 4 + 3) as usize];
+            assert_eq!(
+                a, 255,
+                "block/lime_concrete {label} border pixel ({bx},{by}) must be padded opaque, not transparent gutter"
+            );
+        }
+    });
+}
