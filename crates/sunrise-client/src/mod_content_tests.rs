@@ -2809,7 +2809,7 @@ fn declared_stew_effects_generate_food_and_search_variants_and_work_in_recipes()
             ),
             (
                 "data/testmod/sunrise/block/copy.json",
-                r#"{"template":"minecraft:test","suspicious_stew_effects":[{"id":"minecraft:luck","duration":160},{"id":"minecraft:speed","duration":24}]}"#,
+                r#"{"template":"minecraft:test","suspicious_stew_effects":[{"id":"minecraft:luck","duration":null},{"id":"minecraft:speed","duration":24}]}"#,
             ),
             (
                 "data/testmod/sunrise/block/reversed.json",

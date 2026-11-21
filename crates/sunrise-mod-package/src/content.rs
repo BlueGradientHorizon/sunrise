@@ -589,12 +589,25 @@ struct BlockFile {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, Deserialize)]
 pub struct StewEffect {
     pub id: String,
-    #[serde(default = "stew_duration")]
+    /// Duration in ticks. Omitted or invalid durations use 160.
+    #[serde(
+        default = "stew_duration",
+        deserialize_with = "deserialize_stew_duration"
+    )]
     pub duration: i32,
 }
 
 fn stew_duration() -> i32 {
     160
+}
+
+fn deserialize_stew_duration<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<i32, D::Error> {
+    Ok(serde_json::Value::deserialize(deserializer)?
+        .as_i64()
+        .and_then(|duration| i32::try_from(duration).ok())
+        .unwrap_or_else(stew_duration))
 }
 
 fn yes() -> bool {
