@@ -45,23 +45,25 @@ impl<T> fmt::Display for Refused<T> {
     }
 }
 impl<T> std::error::Error for Refused<T> {}
-pub struct Prepared<T> {
-    value: T,
+pub struct Prepared<T, V = T> {
+    value: V,
     permit: byte_channel::Permit<T>,
 }
-impl<T> Prepared<T> {
+impl<T, V> Prepared<T, V> {
     /// Consume a staged value without publishing a standalone queue item.
-    pub fn into_value(self) -> T {
+    pub fn into_value(self) -> V {
         self.value
     }
     /// Use a staged value while retaining its original queue credit.
-    pub fn consume<R>(self, consume: impl FnOnce(T) -> R) -> R {
+    pub fn consume<R>(self, consume: impl FnOnce(V) -> R) -> R {
         let Self {
             value,
             permit: _permit,
         } = self;
         consume(value)
     }
+}
+impl<T> Prepared<T> {
     /// Failure returns the owned value, so its resources can be dropped after
     /// releasing any publication gate held by the caller.
     pub fn publish(self) -> Result<(), Refused<T>> {
@@ -88,7 +90,16 @@ impl<T> Producer<T> {
     /// Reserve before reporting acceptance. Allocation traversal occurs before
     /// taking the channel lock, and all failure values leave that lock intact.
     pub fn prepare(&self, value: T) -> Result<Prepared<T>, Refused<T>> {
-        match self.sender.reserve((self.charge)(&value)) {
+        let charge = (self.charge)(&value);
+        self.prepare_value(value, charge)
+    }
+    /// Stage a typed member under the same credit as a standalone event.
+    pub(super) fn prepare_value<V>(
+        &self,
+        value: V,
+        charge: usize,
+    ) -> Result<Prepared<T, V>, Refused<V>> {
+        match self.sender.reserve(charge) {
             Ok(permit) => Ok(Prepared { value, permit }),
             Err(error) => Err(Refused {
                 reason: match error {
