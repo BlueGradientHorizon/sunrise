@@ -254,29 +254,26 @@ impl Menu {
                     let quick_slots = self.state.quick_slots.clone();
                     let mut distribute = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
                         for &s in &quick_slots {
-                            if self.quick_replace(s, &source, env) {
-                                let (allowed, slot_max) =
-                                    self.placement_rules_with(env, can_equip, s, &source);
-                                if allowed
-                                    && (self.state.quick_type == 2
-                                        || source.count as usize >= quick_slots.len())
-                                    && self.can_drag_to(s)
-                                {
-                                    let have = self.slot(s).map_or(0, |c| c.count);
-                                    let max = Self::max_stack(env, &source).min(slot_max);
-                                    let new_count = quick_craft_count(
-                                        self.state.quick_type as u8,
-                                        source.count,
-                                        quick_slots.len(),
-                                        have,
-                                        max,
-                                        Self::max_stack(env, &source),
-                                    );
-                                    remaining -= i64::from(new_count) - i64::from(have);
-                                    let mut placed = source.clone();
-                                    placed.count = new_count;
-                                    self.set_by_player(env, s, Some(placed));
-                                }
+                            if self.quick_replace(s, &source, env)
+                                && self.may_place_with(env, can_equip, s, &source)
+                                && (self.state.quick_type == 2
+                                    || source.count as usize >= quick_slots.len())
+                                && self.can_drag_to(s)
+                            {
+                                let have = self.slot(s).map_or(0, |c| c.count);
+                                let max = self.slot_max(env, s, &source);
+                                let new_count = quick_craft_count(
+                                    self.state.quick_type as u8,
+                                    source.count,
+                                    quick_slots.len(),
+                                    have,
+                                    max,
+                                    Self::max_stack(env, &source),
+                                );
+                                remaining -= i64::from(new_count) - i64::from(have);
+                                let mut placed = source.clone();
+                                placed.count = new_count;
+                                self.set_by_player(env, s, Some(placed));
                             }
                         }
                     };
@@ -647,8 +644,8 @@ impl Menu {
                 }
             }
             (Some(mut source), None) => {
-                let (allowed, max) = self.placement_rules(env, target, &source);
-                if allowed {
+                if self.may_place(env, target, &source) {
+                    let max = self.slot_max(env, target, &source);
                     if source.count > max {
                         let part = split(&mut source, max);
                         self.state.containers[PLAYER][inv_slot] = Some(source);
@@ -660,26 +657,23 @@ impl Menu {
                 }
             }
             (Some(mut source), Some(mut taken)) => {
-                if self.may_pickup(env, target) {
-                    let (allowed, max) = self.placement_rules(env, target, &source);
-                    if allowed {
-                        if source.count > max {
-                            let part = split(&mut source, max);
-                            self.state.containers[PLAYER][inv_slot] = Some(source);
-                            self.set_by_player(env, target, Some(part));
-                            self.on_take(env, target, &mut taken);
-                            let rest = ClickStep::SwapOverflow(taken);
-                            return if self.take_pending() {
-                                Some(ClickContinuation(rest))
-                            } else {
-                                self.run_click_step(env, rest)
-                            };
+                if self.may_pickup(env, target) && self.may_place(env, target, &source) {
+                    let max = self.slot_max(env, target, &source);
+                    if source.count > max {
+                        let part = split(&mut source, max);
+                        self.state.containers[PLAYER][inv_slot] = Some(source);
+                        self.set_by_player(env, target, Some(part));
+                        self.on_take(env, target, &mut taken);
+                        let rest = ClickStep::SwapOverflow(taken);
+                        return if self.take_pending() {
+                            Some(ClickContinuation(rest))
                         } else {
-                            self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
-                            self.set_by_player(env, target, Some(source));
-                            self.on_take(env, target, &mut taken);
-                        }
+                            self.run_click_step(env, rest)
+                        };
                     }
+                    self.state.containers[PLAYER][inv_slot] = Some(taken.clone());
+                    self.set_by_player(env, target, Some(source));
+                    self.on_take(env, target, &mut taken);
                 }
             }
             (None, None) => {}
@@ -887,15 +881,13 @@ impl Menu {
                 while index < slots.len() {
                     let s = slots[index];
                     index += 1;
-                    if !self.quick_replace(s, &source, env) {
-                        continue;
-                    }
-                    let (allowed, max) = self.placement_rules(env, s, &source);
-                    if allowed
+                    if self.quick_replace(s, &source, env)
+                        && self.may_place(env, s, &source)
                         && (quick_type == 2 || source.count as usize >= slots.len())
                         && self.can_drag_to(s)
                     {
                         let have = self.slot(s).map_or(0, |c| c.count);
+                        let max = self.slot_max(env, s, &source);
                         let new_count = quick_craft_count(
                             quick_type as u8,
                             source.count,

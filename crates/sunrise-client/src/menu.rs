@@ -1678,10 +1678,18 @@ impl Menu {
     // ---- Slot ----
 
     fn may_place(&self, env: &Env, s: usize, stack: &ItemStack) -> bool {
-        if self.state.slots[s].role == Role::Hidden {
-            return false;
-        }
-        self.slot_rules(env, s, stack).0
+        self.may_place_with(env, env.can_equip, s, stack)
+    }
+
+    /// Placement with the equipment scope lent to a scan of unchanged-stack candidates.
+    fn may_place_with(
+        &self,
+        env: &Env,
+        can_equip: Option<&dyn crate::mobs::equip::CanEquip>,
+        s: usize,
+        stack: &ItemStack,
+    ) -> bool {
+        self.state.slots[s].role != Role::Hidden && self.slot_rules_with(env, can_equip, s, stack).0
     }
 
     fn vanilla_may_place_with(

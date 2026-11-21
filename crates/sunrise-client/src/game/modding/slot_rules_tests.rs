@@ -388,8 +388,8 @@ fn a_lan_hub_click_asks_the_same_questions_in_the_same_order() {
             assert_eq!(pickup(game, &mut menu), (8, 0));
             assert_eq!(lan, asked());
             assert_eq!(lan.len(), 2);
-            // A click made with the game whole (the local route) reaches the guest.
-            assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true]);
+            // Both questions on the local route can read the guest through the Host.
+            assert_eq!(SAW_GUEST.with(|saw| saw.borrow().clone()), [true, true]);
             let placed = game.world.block_entities.get(&pos).unwrap().slots()[0]
                 .as_ref()
                 .map_or(0, |s| s.count);

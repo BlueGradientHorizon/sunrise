@@ -407,8 +407,8 @@ fn a_lan_hub_click_is_decided_the_same_way() {
             // Row 72 on the LAN route: stone 3 into the empty slot, one dispatch with the
             // frozen stacks, and the LAN host is back.
             assert_eq!(click(game, window), (3, 0, 0));
-            // The live click asks the slot rules once for the placement and capacity check.
-            assert_eq!(ASKS.get(), 1);
+            // Placement and capacity are separate live slot queries.
+            assert_eq!(ASKS.get(), 2);
             assert_eq!(SEEN.with(|s| s.borrow().clone()), [(3, 0)]);
             assert!(game.lan.is_some());
             // Rows 73 and 84: a write and then a panic: undone, the click does nothing, the
@@ -444,7 +444,8 @@ fn a_lan_hub_click_is_decided_the_same_way() {
                     click(game, window),
                     (count, if count == 0 { 3 } else { 0 }, 0)
                 );
-                assert_eq!(ASKS.get(), 1);
+                // A placement refusal short-circuits before the capacity query.
+                assert_eq!(ASKS.get(), if may_place { 2 } else { 1 });
                 assert_eq!(game.score.board.objective("pickup").is_some(), count != 0);
             }
         });
@@ -639,7 +640,7 @@ mod families {
                         assert_eq!(menu.slot(1), Some(&ItemStack::new("minecraft:dirt", 2)));
                         assert_eq!(cursor(game), None);
                     }
-                    assert_eq!(ASKS.get(), 1);
+                    assert_eq!(ASKS.get(), 2);
                 }
             });
         });

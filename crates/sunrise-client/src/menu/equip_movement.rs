@@ -135,11 +135,11 @@ impl Menu {
         let mut chosen = None;
         let mut scan = |can_equip: Option<&dyn crate::mobs::equip::CanEquip>| {
             while let Some(dest) = pass.next_slot() {
-                if self.has_item(dest) {
+                if self.has_item(dest) || !self.may_place_with(env, can_equip, dest, stack) {
                     continue;
                 }
-                let (allowed, max) = self.placement_rules_with(env, can_equip, dest, stack);
-                if allowed && max != 0 {
+                let max = self.slot_max(env, dest, stack);
+                if max != 0 {
                     chosen = Some((dest, max));
                     break;
                 }

@@ -887,6 +887,8 @@ impl Game<'_> {
         game_of.extend((9..36).chain(0..9).map(Some));
         let to_menu = |g: usize| game_of.iter().position(|x| *x == Some(g));
         let mut menu = Menu::new(Kind::Anvil);
+        // Prediction must dispatch the result update between the two input writes in onTake.
+        menu.anvil_hook = true;
         menu.set_registry_id(self.remote_menu_type());
         let before: Vec<Option<ItemStack>> = game_of
             .iter()
