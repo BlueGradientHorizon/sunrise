@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "releases": [
+    {
+      "tag": "26.3-0.1.0",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "line": "26.3-0"
+    },
+    {
+      "tag": "26.3-0.1.1",
+      "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "line": "26.3-0"
+    }
+  ],
+  "projects": [
+    {
+      "id": "release_probe",
+      "kind": "native-mod",
+      "name": "Release Probe",
+      "summary": "Synthetic native release.",
+      "license": "MIT",
+      "source": "https://github.com/test-author/release_probe",
+      "key": "RWSDLS1CMb+niCZG+N0sAOfOdxoT6lHaBuSFBEc1TpnLV31afpRJEdpH",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "published": "2026-11-20",
+          "api": "native-1/0123456789abcdef0123456789abcdef01234567",
+          "game": "26.3",
+          "sunrise": "26.3-0.1.0",
+          "file": {
+            "name": "release_probe-1.0.0.smod",
+            "url": "https://github.com/sunrise-org/sunrise-mods/releases/download/release_probe-1.0.0/release_probe-1.0.0.smod",
+            "sha256": "a708af934e1f5707a636a4d52c833c55f9b5bc787ecfd0f24eff41dfd90e57e3",
+            "size": 840,
+            "signature": "untrusted comment: test fixture signature\nRUSDLS1CMb+niGBqlyZyGQASrFSpdMx2EsNy0cJrZiSXttSsaN7K4qwRVTCNhtxpZt11f4WcZGk9xetqY5HmAprZ81KeFIiDYQY=\ntrusted comment: synthetic Sunrise registry fixture\nU5pmSj1U7FFACFl7n+9zU1OSq3aLnID83n+Vr1s35vcqVil/pG7BfBV63NeGO2lQLNcj85uFbYLJDCYucGABAg==\n"
+          },
+          "native_binaries": [
+            {
+              "build": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "target": "x86_64-unknown-linux-gnu",
+              "file": {
+                "url": "https://github.com/sunrise-org/sunrise-mods/releases/download/release_probe-1.0.0/release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz",
+                "name": "release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz",
+                "size": 380,
+                "sha256": "d64bdaaa3df649c1891b5c82791f422b1706d6c79e43d4d5981a94074dd708d3",
+                "signature": "untrusted comment: test fixture signature\nRUSDLS1CMb+niBvEKM3vSgwekTvDpFDxxWbX4FN1jajB9G230G8RT3Pgil3EjqwP+1HKnAFlq43VejDFsSmQqD3m92GbR8rhXA8=\ntrusted comment: synthetic Sunrise registry fixture\nF73mrSKVXU3KZlLI95lYBpIXOdme9j34InAxmmSjoc9aDkW8zg/fIhfV2xYXPPLe9VYEEy2/YldhDkb6uFpjBg==\n"
+              }
+            },
+            {
+              "build": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "target": "x86_64-unknown-linux-gnu-server",
+              "file": {
+                "url": "https://github.com/sunrise-org/sunrise-mods/releases/download/release_probe-1.0.0/release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu-server.tar.xz",
+                "name": "release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu-server.tar.xz",
+                "size": 384,
+                "sha256": "5dd7b1fe7eaf65d9ce24f2daeed124a62209f6ba5d86d96b943246586d3830b0",
+                "signature": "untrusted comment: test fixture signature\nRUSDLS1CMb+niPs/TPACGVQnM5zFhWWVkA/RNaDjeqpVZkBEOnrZEfDAoJLP6ScdppRA7gm91eVrf/JVJFeXbQxxQwEou8WHVg4=\ntrusted comment: synthetic Sunrise registry fixture\n+x9GQrWVun0a0409C1iGb2bnUSS8UpkiFR2d/VoxFuEEzmo6Lz8/NPWr0yanT7pkBmlAq4M+0nY/nnUbggkLAQ==\n"
+              }
+            }
+          ],
+          "verdicts": {
+            "26.3-0.1.0": {
+              "verdict": "made-for",
+              "targets": []
+            },
+            "26.3-0.1.1": {
+              "verdict": "exact",
+              "reason": "no uses list",
+              "targets": [
+                "x86_64-unknown-linux-gnu",
+                "x86_64-unknown-linux-gnu-server"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "independent",
+      "kind": "mod",
+      "name": "Independent",
+      "summary": "Unrelated source-only package.",
+      "license": "MIT",
+      "source": "https://github.com/test-author/independent",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "api": "0.2",
+          "game": "26.3",
+          "file": {
+            "name": "independent-1.0.0.smod",
+            "url": "https://example.test/independent-1.0.0.smod",
+            "size": 1,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dependent",
+      "kind": "mod",
+      "name": "Dependent",
+      "summary": "Requires the source version of the native mod.",
+      "license": "MIT",
+      "source": "https://github.com/test-author/independent",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "api": "0.2",
+          "game": "26.3",
+          "dependencies": [
+            {
+              "id": "release_probe",
+              "version": "^1.0"
+            }
+          ],
+          "file": {
+            "name": "dependent-1.0.0.smod",
+            "url": "https://example.test/dependent-1.0.0.smod",
+            "size": 1,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      ]
+    }
+  ]
+}

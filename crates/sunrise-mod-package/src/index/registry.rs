@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
+pub mod builds;
 mod collections;
 pub use collections::{COLLECTIONS, CollectionEntry, review_collections};
 
@@ -300,7 +301,7 @@ fn owner_ids_error(owners: &[String], ids: &[u64]) -> Option<String> {
 #[serde(deny_unknown_fields)]
 pub struct EntryVersion {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub native_binaries: Vec<super::NativeBinary>,
+    pub builds: Vec<builds::BuildRow>,
     pub version: String,
     /// `YYYY-MM-DD`.
     pub published: String,
@@ -344,6 +345,8 @@ pub struct Sources<'a> {
     pub releases: Option<&'a [SunriseRelease]>,
     /// Nightly branch heads CI supplied, keyed by project ID.
     pub nightly: Option<&'a BTreeMap<String, NightlyMetadata>>,
+    /// Required when any written version has prebuilt assets.
+    pub binary_checks: Option<builds::Checks<'a>>,
 }
 
 /// Read the workflow's release list, adding the line from each validated tag.
@@ -834,7 +837,14 @@ impl EntryVersion {
 fn version(entry: &Entry, v: &EntryVersion, src: &Sources) -> Result<Version, String> {
     let release = v.release(src.releases)?;
     let url = format!("{}{}/{}", src.release, tag(&entry.id, &v.version), v.file);
-    version_at(entry, v, &src.files.join(&v.sha256), url, release)
+    version_at(
+        entry,
+        v,
+        &src.files.join(&v.sha256),
+        url,
+        release,
+        Some(src),
+    )
 }
 
 /// A version of `entry` whose file is at `path` and is downloaded from `url`.
@@ -844,6 +854,7 @@ fn version_at(
     path: &Path,
     url: String,
     release: Option<&SunriseRelease>,
+    sources: Option<&Sources<'_>>,
 ) -> Result<Version, String> {
     if !plain_version(&v.version) {
         return Err("a version is letters, digits, '.', '-' and '_'".into());
@@ -870,7 +881,20 @@ fn version_at(
         (None, Some(_)) => return Err("signed, but the project has no key".into()),
         (None, None) => {}
     }
-    let facts = inspect(&entry.kind, path)?;
+    let source = if v.builds.is_empty() {
+        None
+    } else {
+        if entry.kind != Kind::NativeMod {
+            return Err("only a native mod may list builds".into());
+        }
+        let source = super::native::Bundle::read(path)?;
+        crate::Content::read(path, &source.manifest)?;
+        Some(source)
+    };
+    let facts = match &source {
+        Some(source) => source.facts(),
+        None => inspect(&entry.kind, path)?,
+    };
     if facts.id.as_ref().is_some_and(|id| *id != entry.id) {
         return Err(format!(
             "the file's id is {:?}, not {:?}",
@@ -898,10 +922,18 @@ fn version_at(
     if let Some(release) = release {
         facts.matches_release(release)?;
     }
+    let native_binaries = match &source {
+        Some(source) => {
+            let src = sources.ok_or("no registry inputs for build assets")?;
+            builds::verify(entry, v, source, release, src)?
+        }
+        None => Vec::new(),
+    };
     Ok(Version {
         sunrise: v.sunrise.clone(),
         verdicts: BTreeMap::new(),
-        native_binaries: v.native_binaries.clone(),
+        native_binaries,
+        native_binary_refusals: Vec::new(),
         version: v.version.clone(),
         published: v.published.clone(),
         changelog: v.changelog.clone(),
@@ -977,7 +1009,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
     }
     let v = EntryVersion {
         sunrise: None,
-        native_binaries: Vec::new(),
+        builds: Vec::new(),
         game: facts.game.clone().unwrap_or_else(|| r.game.to_owned()),
         file: r.asset.to_owned(),
         sha256: super::sha256_file(path)?,
@@ -993,7 +1025,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         "https://github.com/{repo}/releases/download/{}/{}",
         r.tag, r.asset
     );
-    version_at(entry, &v, path, url, None)
+    version_at(entry, &v, path, url, None, None)
 }
 
 /// A project's page file as it would fill `entry` (which names the repository): refused when it
@@ -1142,6 +1174,8 @@ pub struct Review {
     pub notes: Vec<String>,
     /// Changes to a project's Nightly source declaration.
     pub nightly_reviews: Vec<ReviewChange>,
+    /// New or changed binary build declarations. Routine is conditional on a passing check.
+    pub build_reviews: Vec<ReviewChange>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -1301,13 +1335,20 @@ pub fn review_with_revoked(
         if let Err(error) = check_kind(&old.id, &old.kind, &new.kind) {
             r.errors.push(error);
         }
+        let mut without_builds = None;
+        let mut only_appended = true;
         for v in &old.versions {
             let taken_down = || {
                 revoked
                     .iter()
                     .any(|t| t.id == old.id && t.sha256.as_deref() == Some(v.sha256.as_str()))
             };
-            match new.versions.iter().find(|w| w.version == v.version) {
+            match new
+                .versions
+                .iter()
+                .enumerate()
+                .find(|(_, w)| w.version == v.version)
+            {
                 None if taken_down() => r.notes.push(format!(
                     "{} {}: leaves the entry, taken down in {REVOKED}",
                     old.id, v.version
@@ -1316,12 +1357,50 @@ pub fn review_with_revoked(
                     "{} {}: removed; take it down in {REVOKED} instead",
                     old.id, v.version
                 )),
-                Some(w) if w.sha256 != v.sha256 || w.file != v.file => r.errors.push(format!(
-                    "{} {}: a published file never changes: publish a new version",
-                    old.id, v.version
-                )),
-                Some(_) => {}
+                Some((position, w)) => {
+                    if w.sha256 != v.sha256
+                        || w.file != v.file
+                        || w.signature != v.signature
+                        || w.sunrise != v.sunrise
+                        || w.game != v.game
+                    {
+                        r.errors.push(format!(
+                            "{} {}: a published file or source pin never changes: publish a new version",
+                            old.id, v.version
+                        ));
+                    }
+                    if w.builds != v.builds {
+                        if !w.builds.starts_with(&v.builds) {
+                            only_appended = false;
+                            r.errors.push(format!(
+                                "{} {}: published builds are append-only",
+                                old.id, v.version
+                            ));
+                        }
+                        without_builds.get_or_insert_with(|| new.clone()).versions[position]
+                            .builds
+                            .clone_from(&v.builds);
+                    }
+                }
             }
+        }
+        if let Some(without_builds) = without_builds {
+            let (status, reason) = if owner && only_appended && without_builds == *old {
+                (
+                    ReviewStatus::Routine,
+                    "an owner only appended builds to a published version",
+                )
+            } else {
+                (
+                    ReviewStatus::ReviewRequired,
+                    "not an owner-only append of stable builds",
+                )
+            };
+            r.build_reviews.push(ReviewChange {
+                id: old.id.clone(),
+                status,
+                reason: reason.into(),
+            });
         }
         if new.repo != old.repo {
             r.notes.push(format!(

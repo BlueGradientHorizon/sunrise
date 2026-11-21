@@ -1,0 +1,15 @@
+{
+  "id": "release_probe",
+  "version": "1.0.0",
+  "build": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "rust": "1.99.1",
+  "archives": [
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "name": "release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz",
+      "size": 380,
+      "sha256": "d64bdaaa3df649c1891b5c82791f422b1706d6c79e43d4d5981a94074dd708d3",
+      "signature": "untrusted comment: test fixture signature\nRUSDLS1CMb+niBvEKM3vSgwekTvDpFDxxWbX4FN1jajB9G230G8RT3Pgil3EjqwP+1HKnAFlq43VejDFsSmQqD3m92GbR8rhXA8=\ntrusted comment: synthetic Sunrise registry fixture\nF73mrSKVXU3KZlLI95lYBpIXOdme9j34InAxmmSjoc9aDkW8zg/fIhfV2xYXPPLe9VYEEy2/YldhDkb6uFpjBg==\n"
+    }
+  ]
+}

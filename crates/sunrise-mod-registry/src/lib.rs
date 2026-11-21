@@ -934,7 +934,7 @@ pub fn publish(
     let extension = kind.extension().unwrap_or("zip");
     let version = EntryVersion {
         sunrise: None,
-        native_binaries: Vec::new(),
+        builds: Vec::new(),
         version: form.version.trim().to_owned(),
         published: date(now()),
         game: form.game.trim().to_owned(),
@@ -1064,6 +1064,7 @@ pub fn publish(
             generated: String::new(),
             releases: None,
             nightly: None,
+            binary_checks: None,
         },
     )
     .map_err(|errors| bad(errors.join("; ")))?;

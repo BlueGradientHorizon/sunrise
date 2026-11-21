@@ -147,18 +147,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
             (USES_FILE, &uses),
         ],
     );
-    let sample: Value = serde_json::from_str(include_str!(
-        "../../../../sunrise-mod-package/tests/index/index-v1.json"
-    ))
-    .unwrap();
-    let signature = sample["projects"][0]["versions"][0]["file"]["signature"]
-        .as_str()
-        .unwrap();
-    let triple = "x86_64-unknown-linux-gnu";
-    r.edit("patched", |t| format!("{t}sunrise='{made_for}'\n\
-        [[versions.native_binaries]]\nbuild='{RELEASE_PIN}'\ntarget='{triple}'\n\
-        [versions.native_binaries.file]\nurl='https://example.test/native.tar.xz'\nname='native.tar.xz'\n\
-        size=1\nsha256='{}'\nsignature='''{signature}'''\n", "a".repeat(64)));
+    r.edit("patched", |t| format!("{t}sunrise='{made_for}'\n"));
     r.add("legacy", "1.0.0", "26.3", "");
     r.add_package(
         "unlisted",
@@ -236,7 +225,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
         serde_json::to_value(&version.verdicts).unwrap(),
         json!({
             (RELEASE_TAG): {"verdict": "fits", "targets": []},
-            (made_for): {"verdict": "made-for", "targets": [triple]},
+            (made_for): {"verdict": "made-for", "targets": []},
             (signature_break): {"verdict": "breaks", "targets": [], "changed": [game_item]},
             (api_break): {"verdict": "breaks", "targets": [], "changed": ["fn:example"]},
             (content_break): {"verdict": "breaks", "targets": [], "changed": ["content-api"]},

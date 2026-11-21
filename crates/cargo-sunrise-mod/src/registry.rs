@@ -18,11 +18,18 @@ const RELEASE: &str = "https://github.com/sunrise-org/sunrise-mods/releases/down
 const SITE: &str = "https://sunrise-org.github.io/sunrise-mods/";
 
 const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files <dir> --out <index.json> [--release <url>] [--site <url>] [--generated <time>] [--counts <counts.json>] [--releases <file>] [--nightly <file>] [--nightly-build <file>] [--sdk-data <dir>]
-       cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--releases <file>] [--json]
-       cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--releases <file>] [--json]
-       cargo sunrise-mod registry list <checkout>
+       cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--releases <file>] [--sdk-data <dir>] [--json]
+       cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--releases <file>] [--sdk-data <dir>] [--json]
+       cargo sunrise-mod registry list <checkout> [--build-assets [--files <dir>]]
        cargo sunrise-mod registry release <checkout> <id> <file> --tag <tag> --published <YYYY-MM-DD> [--notes <file>] [--signature <file>] [--name <asset>] [--game <version>]
        cargo sunrise-mod registry page <checkout> <id> <sunrise-registry.toml>";
+
+fn binary_checks(sdk_data: Option<&Path>) -> Option<registry::builds::Checks<'_>> {
+    sdk_data.map(|sdk_data| registry::builds::Checks {
+        sdk_data,
+        source: sunrise_native_build::prebuilt::release_source,
+    })
+}
 
 fn lines(errors: Vec<String>) -> String {
     format!("{} problem(s):\n  {}", errors.len(), errors.join("\n  "))
@@ -84,10 +91,12 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 generated,
                 releases: releases.as_deref(),
                 nightly: nightly.as_ref(),
+                binary_checks: binary_checks(sdk_data),
             })
             .map_err(lines)?;
             index.nightly_build = nightly_build;
             fit::publish(&mut index, Path::new(files), sdk_data)?;
+            fit::check_binaries(&index)?;
             for problem in uninstallable_versions(&index, |_| true) {
                 eprintln!("warning: {problem}");
             }
@@ -107,6 +116,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
         Some("review") => {
             let (author, files) = (options.value("--author")?, options.value("--files")?);
             let releases = options.value("--releases")?;
+            let sdk_data = options.value("--sdk-data")?.map(Path::new);
             let json = options.switch("--json");
             let pos = options.positional();
             options.finish()?;
@@ -129,10 +139,16 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 generated: String::new(),
                 releases: releases.as_deref(),
                 nightly: None,
+                binary_checks: binary_checks(sdk_data),
             };
             if files.is_some() {
                 match registry::candidate(&head, &sources) {
-                    Ok(index) => {
+                    Ok(mut index) => {
+                        if let Err(error) =
+                            fit::verify_binaries(&mut index, sources.files, sdk_data)
+                        {
+                            review.errors.push(error);
+                        }
                         review.notes.extend(registry::takedown_notes(
                             &base.entries,
                             &base.revoked,
@@ -161,15 +177,24 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 &head.entries,
                 checkout,
             ));
+            if files.is_none() || !review.errors.is_empty() {
+                for change in &mut review.build_reviews {
+                    if change.status == registry::ReviewStatus::Routine {
+                        change.status = registry::ReviewStatus::ReviewRequired;
+                        change.reason = "binary checks have not passed".into();
+                    }
+                }
+            }
             let collections = registry::review_collections(&base, &head, author);
             if json {
                 let json = serde_json::json!({"errors": review.errors, "notes": review.notes,
-                    "collection_reviews": collections, "nightly_reviews": review.nightly_reviews});
+                    "collection_reviews": collections, "nightly_reviews": review.nightly_reviews, "build_reviews": review.build_reviews});
                 println!("{json}");
             } else {
                 for (label, changes) in [
                     ("collection", collections),
                     ("nightly", review.nightly_reviews),
+                    ("builds", review.build_reviews),
                 ] {
                     for change in changes {
                         let status = match change.status {
@@ -200,6 +225,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
         Some("check") => {
             let (files, json) = (options.value("--files")?, options.switch("--json"));
             let releases = options.value("--releases")?;
+            let sdk_data = options.value("--sdk-data")?.map(Path::new);
             let pos = options.positional();
             options.finish()?;
             let [base, head] = pos[..] else {
@@ -224,12 +250,13 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     generated: String::new(),
                     releases: releases.as_deref(),
                     nightly: None,
+                    binary_checks: binary_checks(sdk_data),
                 },
             );
             let mut reports = Vec::new();
             let errors = match assembled {
                 Err(errors) => errors,
-                Ok(index) => {
+                Ok(mut index) => {
                     // Cache versions are already published. Check only the files added to the
                     // entries by this submission, not unchanged listings harmed by a takedown.
                     let submitted: std::collections::HashSet<_> = head
@@ -239,7 +266,10 @@ pub fn main(args: &[String]) -> Result<(), String> {
                         .filter(|v| !old.contains(&v.sha256))
                         .map(|v| v.sha256.as_str())
                         .collect();
-                    let mut errors = match index.check() {
+                    let checked = index
+                        .check()
+                        .and_then(|()| fit::verify_binaries(&mut index, files, sdk_data));
+                    let mut errors = match checked {
                         Ok(()) => uninstallable_versions(&index, |v| {
                             submitted.contains(v.file.sha256.as_str())
                         }),
@@ -297,12 +327,26 @@ pub fn main(args: &[String]) -> Result<(), String> {
         }
         // The files CI must download for `build`: `<sha256> <id> <version> <file>`.
         Some("list") => {
+            let build_assets = options.switch("--build-assets");
+            let files = if build_assets {
+                options.value("--files")?.map(Path::new)
+            } else {
+                None
+            };
             let pos = options.positional();
             options.finish()?;
             let [checkout] = pos[..] else {
                 return Err(USAGE.into());
             };
             let loaded = registry::load(Path::new(checkout)).map_err(lines)?;
+            if build_assets {
+                let assets = registry::builds::assets(&loaded.entries, files)?;
+                println!(
+                    "{}",
+                    serde_json::to_string(&assets).map_err(|e| e.to_string())?
+                );
+                return Ok(());
+            }
             for e in &loaded.entries {
                 for v in &e.versions {
                     println!("{} {} {} {}", v.sha256, e.id, v.version, v.file);

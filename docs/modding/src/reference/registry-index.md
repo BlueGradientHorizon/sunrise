@@ -79,23 +79,22 @@ leaves out every project with that id. Dependency failures are diagnosed when pl
 tell you which mod is missing or why it cannot be installed. The rest of the index still loads; only text that is not
 an index, or a newer schema, fails as a whole.
 
-Each version may list `native_binaries`, an array of records with `build` (the
-exact game build ID, at most 128 bytes with no ASCII control characters), `target` (the canonical Rust target triple), and `file`.
-The file uses the index's existing name, URL, size, SHA-256 and minisign signature
-fields; the signature is required. Records live only in the registry, never in
-`sunrise-mod.toml`. Duplicate build/target pairs are rejected. Lookup returns a
-typed absence when the exact pair is unavailable, so source preparation can
-handle it without selecting another build or architecture. These signatures are
-registry-produced metadata, independent of project package keys. The launcher
-builds native mods locally with its pinned Rust toolchain against the prebuilt
-game; registry-built native binaries are not used.
+A native version can list `native_binaries`: `{ build, target, file }` for each verified archive in its
+[stable build rows](#stable-native-builds). `build` is the exact SDK commit. `target` is the SDK host name:
+the Rust target triple with `-server` appended for a dedicated server slice. `file` uses the index's
+existing name, URL, size, SHA-256 and signature fields. Its signature is the author's minisign signature
+of the archive, verified with the same project key as the source package. There is no separate `side` field.
+
+Build/target pairs are unique. A reader ignores bad optional binary records and keeps the valid `.smod`
+version, with a named refusal for an invalid exact build/host pair. It never substitutes another build
+or host. Reading the index does not download or run an archive.
 
 ## Fit on Stable and Nightly
 
 `registry build` judges content and native mods that declare `sunrise` against every listed release on that
 release's line, including earlier ones, and against the current Nightly if supplied. Other kinds, including shader
 packs, have independent requirements and do not get verdicts. Each decision is an object with `verdict` and
-`targets`, the sorted Rust target triples with `native_binaries` for that exact build's commit:
+`targets`, the sorted SDK host names with `native_binaries` for that exact build's commit:
 
 - `made-for`: the target commit is the one the version was made for and its build requirements match.
 - `fits`: the target uses the same Minecraft version and manifest API, and everything the package uses is unchanged.
@@ -312,7 +311,8 @@ changelog = ""
 ```
 
 A mod's API, side, capabilities and dependencies are read from the file, not listed. A new version is a new
-`[[versions]]` table at the top; a listed one never changes, and `registry review` refuses a changed file or hash.
+`[[versions]]` table at the top. `registry review` refuses a change to a listed version's file, hash, signature
+or source pin; adding a new binary build does not require another source version.
 The category lists are in `crates/sunrise-mod-package/src/index/page.rs`.
 
 A version can declare `sunrise = "26.3-0.1.0"`: the tag is the Minecraft version (dotted numbers, matching `game`),
@@ -321,6 +321,43 @@ a hyphen, and Sunrise's `X.Y.Z` without prerelease or build metadata. This field
 `tag` and `commit` (40 hex digits, published as lowercase), one per stable release. With that file, declared tags must be in the
 list. When package files are checked, a native package's `[native] sunrise` pin must match the named commit. The
 workflow supplies the file; the tool does not discover releases itself.
+
+### Stable native builds
+
+A reviewed standalone native mod can add an author-signed binary build to its `[[versions]]` row:
+
+```toml
+[[versions.builds]]
+sunrise = "26.3-0.1.1"
+binaries = "https://github.com/you/example/releases/download/v0.1.0/example-0.1.0+26.3-0.1.1.binaries.json"
+sha256 = "<lowercase hex of the descriptor>"
+signature = """<descriptor .minisig text>"""
+```
+
+The source version must be signed and pin a stable release of the same line. It must contain
+`Cargo.lock` and use the standalone `prebuilt-api` route: game edits, crates.io libraries and linked mod
+dependencies do not produce an independent release library. Builds are optional. Each stable release
+gets at most one row, and published rows are append-only. `registry review` reports an owner's append of
+only these rows as routine after validation; JSON reports these under `build_reviews`.
+
+The descriptor `<id>-<version>+<release>.binaries.json` names `id`, `version`, `build` (the SDK commit),
+`rust` (the SDK's Rust release), and `archives`. Every archive record has `target`, `name`, `size`,
+`sha256` and `signature` (its `.minisig` text). Its name is `<id>-<version>+<release>-<target>.tar.xz`
+and its URL is beside the descriptor in the author's GitHub release. The archive contains exactly the
+library and `identity.json`, both regular root files. `identity.json` has `target`, `file` (the library
+name), `sha256` (the library digest) and `identity` (`<build> <id> <version> <rust> unwind`). The same
+project key signs the source, every archive, and the descriptor. The descriptor binds each archive's
+bytes to the declared project, mod version and SDK host. Validation checks every host the SDK ships,
+without running or rebuilding any library. A binary for a package with a known `breaks` verdict is
+refused; a verified exact binary can supply a build whose fit verdict is `exact`.
+
+`registry list <checkout>` retains the source package staging list. For build assets, use
+`registry list <checkout> --build-assets` to list descriptors, then repeat with `--files <dir>` to list
+archives from verified descriptors. Both print JSON rows with `id`, `version`, `sunrise`, `url`, `name`,
+`sha256`, and `size` (null for a descriptor). The workflow supplies the listed files under their digests,
+along with `--releases` and `--sdk-data`, to `registry check`, `registry review` and `registry build`. The
+index points to the verified archives under the registry's release mirror, not the temporary hash-named
+files. The tool itself does not fetch or upload assets.
 
 ### Nightly source
 
