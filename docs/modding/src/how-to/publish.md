@@ -1,11 +1,11 @@
 # Publishing your mod
 
 Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods), lists mods, modpacks,
-resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). The
-[registry submission form](https://playsunrise.net/mods/submit) uploads your package and opens a pull request for a
-person to review. To prepare a mod submission locally, follow the steps below with `cargo sunrise-mod publish`,
-then upload the package and open the pull request yourself. Native mods for stable releases use the
-[stable source submission](#publishing-a-stable-source-version) below.
+resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). Every new or changed
+registry version row must name a stable Sunrise release in `sunrise`. A native mod submits a version through
+[the stable source submission](#publishing-a-stable-source-version); for any other kind, a content-only mod
+included, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows. The steps below show how to prepare and check
+a local draft, and what review does with a submission.
 
 ## 1. Build and write the submission
 
@@ -48,7 +48,7 @@ cargo sunrise-mod check 'target/sunrise-mod/publish/my_mod-0.1.0.smod'
 ```
 
 This checks the new package and, for a signed project, its signature. `publish` also lists anything left to fill in
-on the entry or page. Registry CI checks the whole checkout and plans installations after staging, with all listed
+on the entry or page. Registry CI checks the whole checkout and plans installations with all listed
 files available. Your submission folder does not contain previously published packages or an existing project's images.
 
 For a first listing, you can also try an index containing just your project once the entry and icon are complete:
@@ -61,6 +61,10 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 
 ## 3. Open the pull request
 
+A row without `sunrise` is refused by review. For a native mod, give `publish` the flags of
+[the stable source submission](#publishing-a-stable-source-version) before opening the pull request; for any other
+kind, write the row by hand as [the registry reference](../reference/registry-index.md#the-entry) shows.
+
 1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.
    For a first listing, copy in `icons/<id>.png` too, and at least one screenshot: save a PNG or JPEG (320×180 to
@@ -70,12 +74,11 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 3. Commit with `git commit -s`: every commit needs a `Signed-off-by:` line.
 4. Open the pull request with the text of `PULL_REQUEST.md`, after pasting the artifact URL into it.
 
-## 4. What review and staging do
+## 4. What review does
 
-- A maintainer copies your file from the artifact URL to the registry's `staging` release, named
-  `<sha256>.smod`. Nothing is fetched from an address in a pull request on its own, and you cannot stage a file yourself.
-- The `check` workflow then downloads each listed file, compares its SHA-256 with the entry's, and runs
-  `registry review`, `registry check` and `registry build` on the result.
+- The `check` workflow downloads each listed file, compares its SHA-256 with the entry's, and runs
+  `registry review`, `registry check` and `registry build` on the result. It fetches a new version from the
+  release asset its row names; nothing is staged by hand.
 - A reviewer reads the change and merges it. The `publish` workflow then releases the file as `<id>-<version>` and
   adds the project to the index.
 - The hash is checked again before any download reaches the game folder, so a file changed after
@@ -99,8 +102,10 @@ not written into the entry. The dependencies are read from the package itself, s
 `--registry`, the registry's CI checks both when the pull request opens; it also checks sides and what the dependencies
 themselves require.
 
-Published source versions never change. A file that must go is taken down by the registry's maintainers in
-`revoked.toml`. The only update `publish` makes to an existing version is an [append of signed native builds](#publishing-native-binaries).
+Published source files never change. Removing a row published with `sunrise` requires a takedown by the
+registry's maintainers in `revoked.toml` naming the project id and file hash. Legacy rows without `sunrise`
+can be removed without a takedown, but the project entry must stay. The only update `publish` makes to an
+existing version is an [append of signed native builds](#publishing-native-binaries).
 
 ## Signing
 
@@ -149,7 +154,9 @@ and copies the exact bytes you signed, without rebuilding.
 
 ## Publishing a stable source version
 
-You can publish the signed `.smod` without binaries, including for a mod that is not eligible to ship them.
+A native mod can publish its signed `.smod` without binaries, including a mod that is not eligible to ship
+them. `publish --sunrise` checks the package's `[native] sunrise` pin, so it does not write a row for a
+content-only mod or a pack.
 Set `homepage` in the manifest to your project's GitHub repository. Pin the project to the stable Sunrise
 commit, build and [sign the source package](#signing), and pass a release list (`releases.json`, an array of
 `{ "tag", "commit" }` records). Use `--asset-base` for your GitHub release's download URL without the asset name:
@@ -166,6 +173,11 @@ Upload only the author-release assets listed in `PULL_REQUEST.md`: the exact `.s
 Submit `mods/<id>.toml` to the registry with `icons/<id>.png` if an icon was staged. The `file` field already
 points to your release asset. Registry CI downloads it from there, verifies it and mirrors it after merge.
 For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
+
+An entry that still lists unsigned versions from before stable releases cannot take a key through
+`--registry`. Run `publish` without it for the signed package, then edit the entry in your checkout by hand:
+add the `key`, remove the unsigned rows and add the new row. Review notes each removed row and needs no
+takedown for it.
 
 ## Publishing native binaries
 

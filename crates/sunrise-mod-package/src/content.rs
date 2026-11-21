@@ -2432,8 +2432,12 @@ capabilities = ["registries"]
             let content = load(value).unwrap();
             assert_eq!(content.blocks[0].properties.friction, Some(expected));
         }
-        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
-        // becomes infinity and is refused by the check.
+        // Just above the midpoint of two neighbouring f32 values: rounded once, from the decimal text.
+        let content = load("1.0000000596046448").unwrap();
+        let friction = content.blocks[0].properties.friction.unwrap();
+        assert_eq!(friction.to_bits(), 0x3f80_0001);
+        // JSON has no NaN or infinity: a literal is a parse error, and so is a number past f32's
+        // range. The finite check remains for declarations built in code.
         assert!(load("NaN").is_err());
         assert!(load("1e39").is_err());
     }
