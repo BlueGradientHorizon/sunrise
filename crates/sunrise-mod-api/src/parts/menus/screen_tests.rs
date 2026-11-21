@@ -154,6 +154,26 @@ fn served_content_menu_screen_dispatches_to_serving_host_only() {
         );
         assert_eq!(menu_screen_owner("plain:table", None), None);
     });
+    // Per-frame screen dispatch reads the pre-indexed table without querying the package
+    // inventory again: clearing the test package inventory leaves the resolved owners intact.
+    assert_eq!(menu_screen_owner("runes:altar", None), Some("horizon_java"));
+    assert_eq!(
+        menu_screen_owner("runes_extra:forge", None),
+        Some("horizon_java")
+    );
+    assert_eq!(
+        menu_screen_owner("minecraft:hopper", Some("runes:altar")),
+        Some("horizon_java")
+    );
+    assert_eq!(
+        menu_screen_owner("minecraft:hopper", Some("runes_extra:forge")),
+        Some("horizon_java")
+    );
+    assert_eq!(
+        menu_screen_owner("minecraft:hopper", Some("minecraft:hopper")),
+        None
+    );
+    assert_eq!(menu_screen_owner("plain:table", None), None);
 
     crate::load_state::with_test_package_inventory(packages(), || {
         crate::parts::tests::install_parts_fixture(&[crate::ModEntry::new(

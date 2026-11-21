@@ -553,18 +553,26 @@ pub(crate) fn block_entity_covers(kind: &str, block: &str) -> bool {
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct LoadedMods {
     pub(crate) entries: Arc<[PackageInfo]>,
+    pub(crate) authority: Arc<crate::parts::NamespaceAuthority>,
 }
 
 impl LoadedMods {
+    #[cfg(test)]
+    pub(crate) fn from_entries(entries: Arc<[PackageInfo]>) -> Self {
+        let authority = Arc::new(crate::parts::NamespaceAuthority::from_packages(&entries));
+        Self { entries, authority }
+    }
+
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        if let Some(entries) = TEST_PACKAGES.with_borrow(Clone::clone) {
-            return Self { entries };
+        if let Some((entries, authority)) = TEST_PACKAGES.with_borrow(Clone::clone) {
+            return Self { entries, authority };
         }
-        Self {
-            entries: crate::dispatch_scope::backend()
-                .map_or_else(|| Arc::from([]), |backend| (backend.packages)()),
-        }
+        let (entries, authority) = crate::dispatch_scope::backend().map_or_else(
+            || (Arc::from([]), Arc::default()),
+            |backend| ((backend.packages)(), (backend.namespace_authority)()),
+        );
+        Self { entries, authority }
     }
 
     /// Package IDs in dispatch order.
@@ -1061,7 +1069,20 @@ impl WorldgenHost for OwningWorldgen<'_> {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_PACKAGES: std::cell::RefCell<Option<Arc<[PackageInfo]>>> = const { std::cell::RefCell::new(None) };
+    static TEST_PACKAGES: std::cell::RefCell<Option<(Arc<[PackageInfo]>, Arc<crate::parts::NamespaceAuthority>)>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn test_owns_namespace(owner: &str, namespace: &str) -> Option<bool> {
+    TEST_PACKAGES.with_borrow(|slot| {
+        slot.as_ref()
+            .map(|(_, authority)| authority.owns(owner, namespace))
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn test_namespace_authority() -> Option<Arc<crate::parts::NamespaceAuthority>> {
+    TEST_PACKAGES.with_borrow(|slot| slot.as_ref().map(|(_, authority)| authority.clone()))
 }
 
 #[cfg(test)]
@@ -1069,7 +1090,9 @@ pub(crate) fn with_test_package_inventory<R>(
     packages: Vec<PackageInfo>,
     f: impl FnOnce() -> R,
 ) -> R {
-    let previous = TEST_PACKAGES.replace(Some(packages.into()));
+    let entries: Arc<[PackageInfo]> = packages.into();
+    let authority = Arc::new(crate::parts::NamespaceAuthority::from_packages(&entries));
+    let previous = TEST_PACKAGES.replace(Some((entries, authority)));
     let result = f();
     TEST_PACKAGES.set(previous);
     result

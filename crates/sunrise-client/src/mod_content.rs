@@ -963,7 +963,7 @@ pub fn accept_declared(
             if let Some(other) = mods.iter().find(|m| {
                 m.id != id
                     && (m.content.blocks.iter().any(|b| b.id == block_id)
-                        || m.content.items.iter().any(|i| i.id == block_id))
+                        || (block.get().item && m.content.items.iter().any(|i| i.id == block_id)))
             }) {
                 errors.push(DeclarationRefusal::new(
                     id,

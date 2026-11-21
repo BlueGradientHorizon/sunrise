@@ -188,6 +188,20 @@ pub fn client_requirement(id: &str) -> Option<String> {
     Some(format!("sends the required payload {channel} to clients"))
 }
 
+/// Every required client-bound payload channel declared by `id`, in sorted channel order.
+pub fn client_bound_payloads(id: &str) -> Vec<String> {
+    crate::parts::installed()
+        .and_then(|installed| installed.keys.payloads.as_ref())
+        .map(|payloads| {
+            payloads
+                .client_bound_channels(id)
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// The command argument types mods registered at startup, by namespaced id, for the game's
 /// command trees. Not part of the mod surface.
 pub fn command_argument_types() -> Vec<(String, std::sync::Arc<dyn crate::CommandArgumentType>)> {

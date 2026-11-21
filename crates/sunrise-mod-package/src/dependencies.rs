@@ -8,6 +8,36 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::path::Path;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InvalidServerReason {
+    NativeDeclaresServedBy,
+    MissingHost,
+    HostIsContentPackage,
+    HostDoesNotServeContent,
+    SideNotCovered { host: Side, content: Side },
+}
+
+impl fmt::Display for InvalidServerReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NativeDeclaresServedBy => f.write_str("a [native] mod cannot declare served_by"),
+            Self::MissingHost => f.write_str("serving native mod is not installed"),
+            Self::HostIsContentPackage => {
+                f.write_str("target is a content package, not a [native] mod")
+            }
+            Self::HostDoesNotServeContent => {
+                f.write_str("target does not declare [native] serves_content = true")
+            }
+            Self::SideNotCovered { host, content } => write!(
+                f,
+                "side {:?} is not covered by host side {:?}",
+                side_name(*content),
+                side_name(*host)
+            ),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     Manifest {
@@ -50,9 +80,11 @@ pub enum Error {
     InvalidServer {
         owner: String,
         target: String,
-        reason: String,
+        reason: InvalidServerReason,
     },
 }
+
+impl std::error::Error for Error {}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -269,39 +301,38 @@ pub fn validate_served_by(manifests: &[&crate::Manifest]) -> Result<(), Error> {
             return Err(Error::InvalidServer {
                 owner: manifest.id.clone(),
                 target: target_id.to_owned(),
-                reason: "a [native] mod cannot declare served_by".into(),
+                reason: InvalidServerReason::NativeDeclaresServedBy,
             });
         }
         let Some(host) = by_id.get(target_id).copied() else {
             return Err(Error::InvalidServer {
                 owner: manifest.id.clone(),
                 target: target_id.to_owned(),
-                reason: "serving native mod is not installed".into(),
+                reason: InvalidServerReason::MissingHost,
             });
         };
         let Some(native) = &host.native else {
             return Err(Error::InvalidServer {
                 owner: manifest.id.clone(),
                 target: target_id.to_owned(),
-                reason: "target is a content package, not a [native] mod".into(),
+                reason: InvalidServerReason::HostIsContentPackage,
             });
         };
         if !native.serves_content {
             return Err(Error::InvalidServer {
                 owner: manifest.id.clone(),
                 target: target_id.to_owned(),
-                reason: "target does not declare [native] serves_content = true".into(),
+                reason: InvalidServerReason::HostDoesNotServeContent,
             });
         }
         if !side_covers(host.side, manifest.side) {
             return Err(Error::InvalidServer {
                 owner: manifest.id.clone(),
                 target: target_id.to_owned(),
-                reason: format!(
-                    "side {:?} is not covered by host side {:?}",
-                    side_name(manifest.side),
-                    side_name(host.side)
-                ),
+                reason: InvalidServerReason::SideNotCovered {
+                    host: host.side,
+                    content: manifest.side,
+                },
             });
         }
     }
@@ -1375,36 +1406,76 @@ mod tests {
         let runes = content("runes", "both", "horizon_java");
         let missing = validate_served_by(&[&runes]).unwrap_err();
         assert!(
-            matches!(&missing, Error::InvalidServer { owner, target, .. } if owner == "runes" && target == "horizon_java"),
+            matches!(
+                &missing,
+                Error::InvalidServer {
+                    owner,
+                    target,
+                    reason: InvalidServerReason::MissingHost,
+                } if owner == "runes" && target == "horizon_java"
+            ),
             "{missing}"
         );
         // dependency-overrides.toml cannot drop served_by validation.
         let drop_override: Overrides = toml::from_str("[runes]\nhorizon_java='drop'\n").unwrap();
         assert!(matches!(
             resolve_manifests(&[&runes], Side::Client, &drop_override),
-            Err(Error::InvalidServer { .. })
+            Err(Error::InvalidServer {
+                owner,
+                target,
+                reason: InvalidServerReason::MissingHost,
+            }) if owner == "runes" && target == "horizon_java"
         ));
 
         let content_target = manifest("horizon_java", "side='both'\n");
         let err = validate_served_by(&[&runes, &content_target]).unwrap_err();
-        assert!(err.to_string().contains("content package"), "{err}");
+        assert!(
+            matches!(
+                &err,
+                Error::InvalidServer {
+                    owner,
+                    target,
+                    reason: InvalidServerReason::HostIsContentPackage,
+                } if owner == "runes" && target == "horizon_java"
+            ),
+            "{err}"
+        );
 
         let unopted = native("horizon_java", "both", false, "");
         let err = validate_served_by(&[&runes, &unopted]).unwrap_err();
-        assert!(err.to_string().contains("serves_content"), "{err}");
+        assert!(
+            matches!(
+                &err,
+                Error::InvalidServer {
+                    owner,
+                    target,
+                    reason: InvalidServerReason::HostDoesNotServeContent,
+                } if owner == "runes" && target == "horizon_java"
+            ),
+            "{err}"
+        );
 
-        for (host_side, content_side) in [
-            ("client", "both"),
-            ("server", "both"),
-            ("server", "client"),
-            ("client", "server"),
+        for ((host_side, expected_host), (content_side, expected_content)) in [
+            (("client", Side::Client), ("both", Side::Both)),
+            (("server", Side::Server), ("both", Side::Both)),
+            (("server", Side::Server), ("client", Side::Client)),
+            (("client", Side::Client), ("server", Side::Server)),
         ] {
             let host = native("horizon_java", host_side, true, "");
             let pkg = content("runes", content_side, "horizon_java");
             let err = validate_served_by(&[&pkg, &host]).unwrap_err();
             assert!(
-                matches!(&err, Error::InvalidServer { .. })
-                    && err.to_string().contains("not covered"),
+                matches!(
+                    &err,
+                    Error::InvalidServer {
+                        owner,
+                        target,
+                        reason: InvalidServerReason::SideNotCovered { host, content },
+                    } if owner == "runes"
+                        && target == "horizon_java"
+                        && *host == expected_host
+                        && *content == expected_content
+                ),
                 "host={host_side} content={content_side}: {err}"
             );
         }

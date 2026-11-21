@@ -69,4 +69,22 @@ impl Payloads {
             .map(|(channel, _)| channel.as_str())
             .min()
     }
+
+    /// All required channels `owner` declared that the server sends to clients, in channel order.
+    pub(crate) fn client_bound_channels(&self, owner: &str) -> Vec<&str> {
+        let mut channels: Vec<&str> = self
+            .phases
+            .iter()
+            .flat_map(|phase| phase.iter())
+            .filter(|(_, entry)| {
+                let declaration = &entry.declaration;
+                entry.owner == owner
+                    && !declaration.optional
+                    && declaration.direction != PayloadDirection::ToServer
+            })
+            .map(|(channel, _)| channel.as_str())
+            .collect();
+        channels.sort_unstable();
+        channels
+    }
 }

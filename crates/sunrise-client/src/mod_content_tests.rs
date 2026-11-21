@@ -8473,7 +8473,56 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
         itemless_errors[0]
     );
 
-    // Every collision against a served package's blocks/items refuses atomically.
+    // An itemless block never reserves an item ID in either direction across layers:
+    // (1) code itemless block + file item with the same ID, and
+    // (2) file itemless block + code item with the same ID.
+    let mut itemless_cross_runes = Content::declared("runes");
+    itemless_cross_runes
+        .blocks
+        .push(block("runes:no_item", false));
+    itemless_cross_runes.items.push(item("runes:stone", None));
+    let mut itemless_cross_mods = vec![ContentMod {
+        id: "runes".into(),
+        content: itemless_cross_runes,
+        jars: Vec::new(),
+    }];
+    let mut itemless_cross_errors = Vec::new();
+    let itemless_cross_batches = BTreeMap::from([(
+        "horizon_java",
+        DeclaredContent {
+            blocks: vec![block("runes:stone", false).validate_local().unwrap()],
+            items: vec![item("runes:no_item", None).validate_local().unwrap()],
+            ..Default::default()
+        },
+    )]);
+    accept_declared(
+        &mut itemless_cross_mods,
+        &itemless_cross_batches,
+        &manifests,
+        &known,
+        &mut itemless_cross_errors,
+    )
+    .unwrap();
+    assert!(
+        itemless_cross_errors.is_empty(),
+        "{itemless_cross_errors:?}"
+    );
+    assert!(
+        itemless_cross_mods[1]
+            .content
+            .blocks
+            .iter()
+            .any(|b| b.id == "runes:stone" && !b.item)
+    );
+    assert!(
+        itemless_cross_mods[1]
+            .content
+            .items
+            .iter()
+            .any(|i| i.id == "runes:no_item")
+    );
+
+    // Every true block/item collision against a served package refuses atomically.
     let cases = [
         (
             "duplicate block",
@@ -8487,9 +8536,12 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
             "runes:altar",
         ),
         (
-            "block colliding with served item",
+            "item-bearing block colliding with served item",
             DeclaredContent {
-                blocks: vec![block("runes:stone", false).validate_local().unwrap()],
+                blocks: [block("runes:stone", true), block("runes:atomic_skip", true)]
+                    .into_iter()
+                    .map(|b| b.validate_local().unwrap())
+                    .collect(),
                 ..Default::default()
             },
             "runes:stone",
@@ -8497,6 +8549,7 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
         (
             "item colliding with served block item",
             DeclaredContent {
+                blocks: vec![block("runes:atomic_skip", true).validate_local().unwrap()],
                 items: vec![item("runes:altar", None).validate_local().unwrap()],
                 ..Default::default()
             },
@@ -8505,6 +8558,7 @@ fn accept_declared_refuses_host_duplicates_of_served_content_and_keeps_served_re
         (
             "duplicate item",
             DeclaredContent {
+                blocks: vec![block("runes:atomic_skip", true).validate_local().unwrap()],
                 items: vec![item("runes:stone", None).validate_local().unwrap()],
                 ..Default::default()
             },

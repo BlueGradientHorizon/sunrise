@@ -100,7 +100,8 @@ admits them with the content-file checks, atomically for each owner.
 A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
 New identifiers from code that check namespace ownership through `owns_namespace`
 or `owned_declaration_id`—including blocks, items, block entity types, recipe
-types and serializers, menu recipe books, menu screen dispatch, custom stats,
+types and serializers, menu recipe books, menu screen dispatch, mob-effect tick
+ownership (`MobEffectPart`), custom stats,
 game rules, recipe book types, recipe property sets, render pipelines, and
 runtime levels—may use any namespace owned by that mod's manifest, or any
 namespace of an installed content package that delegates to it via `served_by`

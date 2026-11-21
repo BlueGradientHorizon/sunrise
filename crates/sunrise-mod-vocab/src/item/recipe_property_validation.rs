@@ -42,16 +42,14 @@ mod tests {
 
     #[test]
     fn owned_manifest_namespace_can_create_but_foreign_new_key_cannot() {
-        let packages = crate::LoadedMods {
-            entries: Arc::from([PackageInfo::new(
-                "ported_farmersdelight".into(),
-                "1".into(),
-                PackageKind::Code,
-                Side::Both,
-                vec!["ported_farmersdelight".into(), "farmersdelight".into()],
-                vec![],
-            )]),
-        };
+        let packages = crate::LoadedMods::from_entries(Arc::from([PackageInfo::new(
+            "ported_farmersdelight".into(),
+            "1".into(),
+            PackageKind::Code,
+            Side::Both,
+            vec!["ported_farmersdelight".into(), "farmersdelight".into()],
+            vec![],
+        )]));
         let previous = vec![RecipePropertyAddition::new("another:known", vec![])];
         let mut additions: Vec<_> = [
             "farmersdelight:cooking_pot_input",
@@ -83,43 +81,41 @@ mod tests {
 
     #[test]
     fn served_content_namespace_grants_recipe_property_creation_only_to_its_host() {
-        let packages = crate::LoadedMods {
-            entries: Arc::from([
-                PackageInfo::new(
-                    "horizon_java".into(),
-                    "1".into(),
-                    PackageKind::Code,
-                    Side::Both,
-                    vec!["horizon_java".into()],
-                    vec![],
-                ),
-                PackageInfo::new(
-                    "third".into(),
-                    "1".into(),
-                    PackageKind::Code,
-                    Side::Both,
-                    vec!["third".into()],
-                    vec![],
-                ),
-                PackageInfo::new(
-                    "runes".into(),
-                    "1".into(),
-                    PackageKind::Content,
-                    Side::Both,
-                    vec!["runes".into(), "runes_extra".into()],
-                    vec![],
-                )
-                .with_served_by(Some("horizon_java".into())),
-                PackageInfo::new(
-                    "plain".into(),
-                    "1".into(),
-                    PackageKind::Content,
-                    Side::Both,
-                    vec!["plain".into()],
-                    vec![],
-                ),
-            ]),
-        };
+        let packages = crate::LoadedMods::from_entries(Arc::from([
+            PackageInfo::new(
+                "horizon_java".into(),
+                "1".into(),
+                PackageKind::Code,
+                Side::Both,
+                vec!["horizon_java".into()],
+                vec![],
+            ),
+            PackageInfo::new(
+                "third".into(),
+                "1".into(),
+                PackageKind::Code,
+                Side::Both,
+                vec!["third".into()],
+                vec![],
+            ),
+            PackageInfo::new(
+                "runes".into(),
+                "1".into(),
+                PackageKind::Content,
+                Side::Both,
+                vec!["runes".into(), "runes_extra".into()],
+                vec![],
+            )
+            .with_served_by(Some("horizon_java".into())),
+            PackageInfo::new(
+                "plain".into(),
+                "1".into(),
+                PackageKind::Content,
+                Side::Both,
+                vec!["plain".into()],
+                vec![],
+            ),
+        ]));
         let keys = [
             "runes:altar_input",
             "runes_extra:catalyst",

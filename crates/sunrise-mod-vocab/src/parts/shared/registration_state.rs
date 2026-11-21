@@ -7,6 +7,7 @@ pub(crate) struct Installed {
     /// Names this installation among all of the process's; never reused, unlike an address.
     pub(crate) epoch: u64,
     pub(crate) dependencies: Arc<crate::__private::EffectiveDependencies>,
+    pub(crate) namespace_authority: Arc<crate::parts::NamespaceAuthority>,
     pub(crate) effect_ticks: crate::parts::effects::ResolvedEffectTicks,
     pub(crate) menu_recipe_books: HashMap<String, crate::parts::menus::MenuBookDeclaration>,
     pub(crate) recipe_book_types: HashMap<String, String>,
