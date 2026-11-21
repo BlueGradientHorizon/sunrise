@@ -859,48 +859,6 @@ impl ResolvedGuiQuad {
         batch.rect_uv(x, y, w, h, self.rect, abgr(self.color));
     }
 
-    /// Paint a GUI sprite, optionally cut to a region `[sprite_w, sprite_h, u, v]`, then apply
-    /// Polytone sprite modifiers and the GUI sprite's blend to the resulting draws.
-    pub fn paint_sprite(
-        mut self,
-        batch: &mut HudBatch,
-        atlas: &HudAtlas,
-        sprite: &str,
-        region: Option<[i32; 4]>,
-        blend: Blend,
-    ) {
-        let start = batch.vertices.len();
-        if let Some([sw, sh, u, v]) = region {
-            let r = &mut self.rect;
-            let [_, _, w, h] = self.dst;
-            let (du, dv) = (r.u1 - r.u0, r.v1 - r.v0);
-            let u0 = r.u0 + du * u as f32 / sw as f32;
-            let v0 = r.v0 + dv * v as f32 / sh as f32;
-            r.u1 = u0 + du * w / sw as f32;
-            r.v1 = v0 + dv * h / sh as f32;
-            r.u0 = u0;
-            r.v0 = v0;
-        }
-        match crate::hud::sprite_modifiers::draws(
-            atlas,
-            sprite,
-            self.rect,
-            self.dst,
-            abgr(self.color),
-        ) {
-            // A Polytone screen sprite modifier: the sprite changed, then its overlays.
-            Some(draws) => {
-                for d in draws {
-                    batch.rect_uv(d.at[0], d.at[1], d.at[2], d.at[3], d.rect, d.color);
-                }
-            }
-            None => self.paint(batch),
-        }
-        if blend == Blend::Crosshair {
-            batch.invert_since(start);
-        }
-    }
-
     /// Paint a raw texture cut at `uv` with source size `src` in the texture's `tex` units.
     pub fn paint_blit(
         mut self,
@@ -986,19 +944,38 @@ fn paint_with(
                     || sprite
                         .split_once(':')
                         .is_some_and(|(_, path)| path.starts_with("mob_effect/"));
-                let found = match effect {
-                    true => atlas.gui_sprite_or_missing(sprite),
-                    false => atlas.gui_rect(sprite).copied(),
+                let (rect, scaling) = match atlas.gui_lookup(sprite) {
+                    Some(crate::hud::GuiSprite::Present { rect, scaling }) => (rect, scaling),
+                    Some(crate::hud::GuiSprite::Missing) | None if effect => {
+                        let Some(rect) = atlas.gui_sprite_or_missing(sprite) else {
+                            continue;
+                        };
+                        (rect, None)
+                    }
+                    Some(crate::hud::GuiSprite::Missing) => {
+                        let Some(&rect) = atlas.gui_rect(sprite) else {
+                            continue;
+                        };
+                        (rect, None)
+                    }
+                    None => continue,
                 };
-                let Some(rect) = found else {
-                    continue;
-                };
-                ResolvedGuiQuad {
-                    rect,
-                    dst: [*x as f32, *y as f32, *w as f32, *h as f32],
-                    color: *color,
-                }
-                .paint_sprite(batch, atlas, sprite, *region, *blend);
+                crate::ui::blit_gui_sprite(
+                    batch,
+                    atlas,
+                    sprite,
+                    crate::ui::GuiSpriteBlit {
+                        rect,
+                        scaling,
+                        dst: [*x as f32, *y as f32, *w as f32, *h as f32],
+                        color: abgr(*color),
+                        region: *region,
+                        blend: *blend,
+                    },
+                    pose,
+                    None,
+                );
+                continue;
             }
             GuiDraw::AtlasSprite {
                 sprite,

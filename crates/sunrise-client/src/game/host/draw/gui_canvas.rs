@@ -137,62 +137,23 @@ impl<'a, 'g> GameGuiCanvas<'a, 'g> {
         }
     }
 
-    /// Conservative sprite-local bounds for tiled parts. The emitted quads still go through
-    /// the exact screen-space scissor, including for non-axis-aligned poses.
-    fn visible_tile_bounds(&self) -> [f64; 4] {
-        let [left, top, right, bottom] = self
-            .scissor
-            .unwrap_or([0.0, 0.0, self.batch.width, self.batch.height])
-            .map(f64::from);
-        let [a, b, c, d, x, y] = self.pose.map(f64::from);
-        let det = a * d - b * c;
-        if det == 0.0 || left >= right || top >= bottom {
-            return [0.0; 4];
-        }
-        [[left, top], [left, bottom], [right, top], [right, bottom]]
-            .into_iter()
-            .fold(
-                [
-                    f64::INFINITY,
-                    f64::INFINITY,
-                    f64::NEG_INFINITY,
-                    f64::NEG_INFINITY,
-                ],
-                |[lo_x, lo_y, hi_x, hi_y], [sx, sy]| {
-                    let lx = (d * (sx - x) - c * (sy - y)) / det;
-                    let ly = (a * (sy - y) - b * (sx - x)) / det;
-                    [lo_x.min(lx), lo_y.min(ly), hi_x.max(lx), hi_y.max(ly)]
-                },
-            )
-    }
-
     fn clip_emitted(&mut self, start: usize) {
-        let Some([left, top, right, bottom]) = self.scissor else {
-            return;
-        };
-        if start >= self.batch.vertices.len() {
-            return;
-        }
-        let needs_clip = left == right
-            || top == bottom
-            || self.batch.vertices[start..].iter().any(|vertex| {
-                let [x, y] = vertex.pos;
-                x < left || y < top || x > right || y > bottom
-            });
-        if needs_clip {
-            self.batch.clip_since(start, left, top, right, bottom);
+        if let Some(clip) = self.scissor {
+            self.batch.scissor_since(start, clip);
         }
     }
 
-    fn paint_emit(&mut self, emit: impl FnOnce(&mut HudBatch, &HudAtlas)) {
+    fn paint_emit(
+        &mut self,
+        emit: impl FnOnce(&mut HudBatch, &HudAtlas),
+    ) -> Result<(), GuiDrawError> {
         let start = self.batch.vertices.len();
         emit(self.batch, self.atlas);
-        if self.pose != IDENTITY {
-            for vertex in &mut self.batch.vertices[start..] {
-                vertex.pos = pose_point(self.pose, vertex.pos);
-            }
+        if !self.batch.try_pose_since(start, self.pose) {
+            return Err(GuiDrawError::NotFinite);
         }
         self.clip_emitted(start);
+        Ok(())
     }
 }
 
@@ -239,13 +200,8 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         }
         let clip = if let Some(rect) = scissor {
             Some(
-                crate::game::gui_clips::intersect_posed_scissor(
-                    self.batch,
-                    pose,
-                    rect,
-                    self.scissor,
-                )
-                .map_err(|_| GuiDrawError::NotFinite)?,
+                sunrise_client::ui::intersect_posed_scissor(self.batch, pose, rect, self.scissor)
+                    .map_err(|_| GuiDrawError::NotFinite)?,
             )
         } else {
             self.scissor
@@ -269,14 +225,12 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
                 [[left, top], [right, top], [right, bottom], [left, bottom]],
                 abgr(argb),
             );
-        });
-        Ok(())
+        })
     }
 
     fn fill_gradient(&mut self, rect: [f32; 4], top: u32, bottom: u32) -> Result<(), GuiDrawError> {
         self.check_rect_geometry(rect)?;
-        self.paint_emit(|batch, atlas| paint_fill_gradient(batch, atlas, rect, top, bottom));
-        Ok(())
+        self.paint_emit(|batch, atlas| paint_fill_gradient(batch, atlas, rect, top, bottom))
     }
 
     fn text(
@@ -301,8 +255,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         let game = self.game.ok_or(GuiDrawError::Unavailable)?;
         self.paint_emit(|batch, _| {
             game.draw_item_model(batch, &stack, x, y, seed);
-        });
-        Ok(())
+        })
     }
 
     fn item_decorations(
@@ -351,34 +304,25 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         let Some(GuiSprite::Present { rect, scaling }) = self.atlas.gui_lookup(name) else {
             return Err(GuiDrawError::UnknownSprite);
         };
-        if let Some([sw, sh, u, v]) = region {
-            if scaling.is_some() {
-                let full = [dst[0] - u as f32, dst[1] - v as f32, sw as f32, sh as f32];
-                self.check_rect_geometry(full)?;
-                return self.scope(&[], Some(dst), &mut |clipped| {
-                    clipped.blit_sprite(name, full, None, argb, blend)
-                });
-            }
-            let quad = ResolvedGuiQuad {
+        if sunrise_client::ui::blit_gui_sprite(
+            self.batch,
+            self.atlas,
+            name,
+            sunrise_client::ui::GuiSpriteBlit {
                 rect,
+                scaling,
                 dst,
-                color: argb,
-            };
-            self.paint_emit(|batch, atlas| {
-                quad.paint_sprite(batch, atlas, name, Some([sw, sh, u, v]), blend)
-            });
+                color: abgr(argb),
+                region,
+                blend,
+            },
+            self.pose,
+            self.scissor,
+        ) {
+            Ok(())
         } else {
-            let color = abgr(argb);
-            let bounds = self.visible_tile_bounds();
-            self.paint_emit(|batch, atlas| {
-                let start = batch.vertices.len();
-                sunrise_client::ui::blit_gui_sprite(batch, atlas, name, dst, color, bounds);
-                if blend == Blend::Crosshair {
-                    batch.invert_since(start);
-                }
-            });
+            Err(GuiDrawError::NotFinite)
         }
-        Ok(())
     }
 
     fn atlas_sprite(&mut self, name: &str, dst: [f32; 4], argb: u32) -> Result<(), GuiDrawError> {
@@ -393,8 +337,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             dst,
             color: argb,
         };
-        self.paint_emit(|batch, _| quad.paint(batch));
-        Ok(())
+        self.paint_emit(|batch, _| quad.paint(batch))
     }
 
     fn blit(
@@ -424,8 +367,7 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
             dst,
             color: argb,
         };
-        self.paint_emit(|batch, _| quad.paint_blit(batch, uv, src, tex, blend));
-        Ok(())
+        self.paint_emit(|batch, _| quad.paint_blit(batch, uv, src, tex, blend))
     }
 }
 
@@ -508,16 +450,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn pack_tile_scaling_repeats_full_sprites_and_scissors_partial_blits() {
-        let root = tempfile::tempdir().unwrap();
-        let textures = root.path().join("assets/test/textures/gui");
-        std::fs::create_dir_all(&textures).unwrap();
-        let mut encoder = png::Encoder::new(
-            std::fs::File::create(textures.join("tile.png")).unwrap(),
-            2,
-            2,
-        );
+    fn tiled_status_pack(shift: bool) -> HudAtlas {
+        use sunrise_assets::resource_source::Resource;
+        let mut png = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png, 2, 2);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         encoder
@@ -525,16 +461,24 @@ mod tests {
             .unwrap()
             .write_image_data(&[255; 16])
             .unwrap();
-        std::fs::write(
-            textures.join("tile.png.mcmeta"),
-            r#"{"gui":{"scaling":{"type":"tile","width":2,"height":2}}}"#,
-        )
-        .unwrap();
-        let defs = root.path().join("assets/minecraft/atlases");
-        std::fs::create_dir_all(&defs).unwrap();
-        std::fs::write(defs.join("gui.json"), r#"{"sources":[{"type":"minecraft:single","resource":"test:gui/tile","sprite":"test:tile"}]}"#).unwrap();
-        let atlas = HudAtlas::build(&ResourceSource::directory(root.path().into())).unwrap();
-        let r = *atlas.gui_draw_rect("test:tile").unwrap();
+        let mut files = std::collections::BTreeMap::from([
+            ("assets/test/textures/gui/tile.png".into(), Resource::bytes(png)),
+            ("assets/test/textures/gui/tile.png.mcmeta".into(), Resource::bytes(br#"{"gui":{"scaling":{"type":"tile","width":2,"height":2}}}"#.to_vec())),
+            ("assets/minecraft/atlases/gui.json".into(), Resource::bytes(br#"{"sources":[{"type":"minecraft:single","resource":"test:gui/tile","sprite":"minecraft:hud/food_full"}]}"#.to_vec())),
+        ]);
+        if shift {
+            files.insert(
+                "assets/test/polytone/overlay_modifiers/shift.json".into(),
+                Resource::bytes(br#"{"texture":"minecraft:hud/food_full","x_inc":4}"#.to_vec()),
+            );
+        }
+        HudAtlas::build(&ResourceSource::indexed(files)).unwrap()
+    }
+
+    #[test]
+    fn pack_tile_scaling_matches_in_hud_and_canvas_for_full_and_partial_blits() {
+        let atlas = tiled_status_pack(false);
+        let r = *atlas.gui_draw_rect("hud/food_full").unwrap();
         for (dst, region, expected) in [
             (
                 [10.0, 10.0, 5.0, 2.0],
@@ -550,20 +494,127 @@ mod tests {
                 vec![(10.0, (r.u0 + r.u1) / 2.0), (11.0, r.u0)],
             ),
         ] {
-            let mut batch = HudBatch::scratch([320, 240]);
-            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |canvas| {
-                canvas.blit_sprite("test:tile", dst, region, u32::MAX, Blend::Textured)
+            let [x, y, w, h] = dst.map(|n| n as i32);
+            let mut canvas_batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw(&mut canvas_batch, &atlas, None, &mut |canvas| {
+                canvas.blit_sprite("hud/food_full", dst, region, u32::MAX, Blend::Crosshair)
             })
             .unwrap();
-            assert_eq!(
-                batch
-                    .vertices
-                    .chunks_exact(6)
-                    .map(|q| (q[0].pos[0], q[0].uv[0]))
-                    .collect::<Vec<_>>(),
-                expected
+            let mut hud_batch = HudBatch::scratch([320, 240]);
+            sunrise_client::hud_layout::paint(
+                &mut hud_batch,
+                &atlas,
+                &[sunrise_client::hud_layout::GuiDraw::Sprite {
+                    sprite: "hud/food_full".into(),
+                    x,
+                    y,
+                    w,
+                    h,
+                    region: region.map(
+                        |GuiSpriteRegion {
+                             size: [sw, sh],
+                             offset: [u, v],
+                         }| [sw, sh, u, v],
+                    ),
+                    color: u32::MAX,
+                    blend: Blend::Crosshair,
+                }],
             );
+            for batch in [canvas_batch, hud_batch] {
+                assert_eq!(
+                    batch.blends,
+                    [(0..expected.len() as u32 * 6, HudBlend::Invert)]
+                );
+                assert_eq!(
+                    batch
+                        .vertices
+                        .chunks_exact(6)
+                        .map(|q| (q[0].pos[0], q[0].uv[0]))
+                        .collect::<Vec<_>>(),
+                    expected,
+                );
+            }
         }
+    }
+
+    #[test]
+    fn extreme_tile_counts_clip_both_axes_and_keep_subpixel_repeat_phase() {
+        use sunrise_client::ui::GuiSpriteScaling;
+        let mut atlas = HudAtlas::build(&ResourceSource::indexed(Default::default())).unwrap();
+        atlas.gui.insert(
+            "test:tile".into(),
+            GuiSprite::Present {
+                rect: Rect {
+                    u0: 0.25,
+                    v0: 0.25,
+                    u1: 0.75,
+                    v1: 0.75,
+                    w: 2,
+                    h: 2,
+                },
+                scaling: Some(GuiSpriteScaling::Tile([1, 1])),
+            },
+        );
+        for (pose, dst, visible) in [
+            (
+                [PoseOp::Scale(1.0, 1e-20), PoseOp::Translate(0.0, 0.0)],
+                [-2.0, 0.0, 1.0, 1e22],
+                false,
+            ),
+            (
+                [PoseOp::Translate(0.0, 0.0625), PoseOp::Scale(1.0, 0.25)],
+                [0.0, 0.0, 1.0, 1e22],
+                true,
+            ),
+        ] {
+            let mut batch = HudBatch::scratch([320, 240]);
+            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+                root.scope(&pose, None, &mut |canvas| {
+                    canvas.blit_sprite("test:tile", dst, None, u32::MAX, Blend::Textured)
+                })
+            })
+            .unwrap();
+            assert_eq!(batch.vertices.len(), if visible { 6 } else { 0 });
+            if let Some(v) = batch.vertices.first() {
+                // Sample at physical (0.5, 0.5): local (0.5, 1.75), so sample the (1/2, 3/4)
+                // point of the atlas subrect. Adjacent device samples advance by whole periods.
+                assert_eq!(v.repeat_x, [0, 0, 0x8000_0000, 1]);
+                assert_eq!(v.repeat_y, [0, 0, 0xC000_0000]);
+                assert_eq!((v.uv, v.glint_uv), ([0.25; 2], [0.75; 2]));
+            }
+        }
+    }
+
+    #[test]
+    fn sprite_modifier_cannot_publish_non_finite_vertices_or_blends() {
+        let atlas = tiled_status_pack(true);
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            root.blit_sprite(
+                "hud/food_full",
+                [0.0, 0.0, 1.0, 1.0],
+                None,
+                u32::MAX,
+                Blend::Crosshair,
+            )?;
+            root.scope(&[PoseOp::Scale(f32::MAX / 2.0, 1.0)], None, &mut |canvas| {
+                assert_eq!(
+                    canvas.blit_sprite(
+                        "hud/food_full",
+                        [0.0, 0.0, 1.0, 1.0],
+                        None,
+                        u32::MAX,
+                        Blend::Crosshair
+                    ),
+                    Err(GuiDrawError::NotFinite)
+                );
+                Ok(())
+            })
+        })
+        .unwrap();
+        assert_eq!(batch.vertices.len(), 6);
+        assert_eq!(batch.vertices[0].pos, [4.0, 0.0]);
+        assert_eq!(batch.blends, [(0..6, HudBlend::Invert)]);
     }
 
     #[test]

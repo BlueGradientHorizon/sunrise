@@ -43,7 +43,7 @@ ids = [
     "type:GuiSpriteRegion",
     "type:GuiDrawError",
 ]
-why = "GUI drawing and clipping now append directly into the HUD batch inside lexical RAII pose and scissor scopes instead of buffering Wire command lists or pairing manual push_clip/pop_clip calls. Follows vanilla net.minecraft.client.gui.GuiGraphicsExtractor (pose, enableScissor/disableScissor, fill, fillGradient, text, blit, blitSprite, item, itemDecorations): each primitive validates its own inputs before emitting vertices, refuses invalid calls with GuiDrawError without rolling back prior draws (no transactional rollback or GuiDrawError::Abort), and always restores pose and scissor on return, error, or unwind. DrawContext::with_scissor has no artificial 64-level nesting limit, so GuiClipRefusal::TooDeep and GuiClipRefusal::NoneOpen are removed. PoseOp and Blend stay in-process and no longer derive Wire."
+why = "GUI drawing and clipping now append directly into the HUD batch inside lexical RAII pose and scissor scopes instead of buffering Wire command lists or pairing manual push_clip/pop_clip calls. Follows vanilla net.minecraft.client.gui.GuiGraphicsExtractor (pose, enableScissor/disableScissor, fill, fillGradient, text, blit, blitSprite, item, itemDecorations): each primitive validates its inputs and its actual posed geometry before publishing vertices or blend ranges, refuses invalid calls with GuiDrawError without rolling back prior draws (no transactional rollback or GuiDrawError::Abort), and always restores pose and scissor on return, error, or unwind. DrawContext::with_scissor has no artificial 64-level nesting limit, so GuiClipRefusal::TooDeep and GuiClipRefusal::NoneOpen are removed. Full and partial sprites follow vanilla blitSprite and TiledBlitRenderState using the same pack metadata as the built-in HUD. PoseOp and Blend stay in-process and no longer derive Wire."
 migrate = '''
 Replace `draw.gui_paint(&[...])` with `draw.draw_gui(&mut |canvas| { ... })` using `GuiCanvas` methods directly:
 - `GuiDraw::Push(ops)` ... `GuiDraw::Pop` -> `canvas.scope(&ops, None, &mut |scoped| { ... })?` (pass `Some([x, y, w, h])` for a posed scissor).
@@ -58,7 +58,7 @@ Replace `draw.gui_paint(&[...])` with `draw.draw_gui(&mut |canvas| { ... })` usi
 Match each call's `GuiDrawError`, not an error for the whole replay buffer:
 - `Text(e)` -> `GuiDrawError::Text(e)`.
 - `ItemSlot { slot, .. }` -> no slot argument; resolve the hotbar/offhand stack first, handle an empty slot yourself and pass the stack to `item` (which can return `Stack(e)` for an invalid stack).
-- `ItemNotFinite { .. }` -> `NotFinite` from `scope` or the draw call.
+- `ItemNotFinite { .. }` -> `NotFinite` from `scope` or the draw call, including for oversized item geometry or pack-modified sprite geometry. Earlier successful calls are unaffected.
 - `BlitTexture { .. }` -> `UnknownTexture`; `BlitSize { .. }` -> `BadBlitRegion` for non-positive whole texture size or `NotFinite` for invalid UVs.
 - `Sprite { .. }` -> `UnknownSprite`; `SpriteRegion { .. }` -> `BadSpriteRegion`; `SpriteBlend { .. }` -> `UnsupportedSpriteBlend`.
 - Delete buffer `index` lookups. If you need a diagnostic, attach the draw's operation name or resource ID to its `Result` at the call site. Past draws remain visible and pose/scissor are restored on return, `Err`, or unwind.

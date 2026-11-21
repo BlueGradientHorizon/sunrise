@@ -91,18 +91,17 @@ impl Game<'_> {
     pub(super) fn zoom_turn_scale(&self) -> f64 {
         self.zoom_now().2
     }
-    /// The PvP HUD widgets and mods' corner panels, in the HUD layer (hidden with F1
-    /// by the caller).
-    pub(super) fn draw_extras(&mut self, batch: &mut HudBatch) {
+    /// The PvP HUD widgets and Extras panels; return the same occupied corners to HUD Post.
+    pub(super) fn draw_extras(&mut self, batch: &mut HudBatch) -> Corners {
         let mut corners = Corners::new(batch.width, batch.height, self.effect_rows_height());
         self.draw_pvp_hud(batch, &mut corners);
-        self.native_render_gui_post(batch, &mut corners);
         // The layers crates registered (`sunrise_hooks::hud`): none, no canvas.
         let layers = sunrise_hooks::hud::engine::all();
         if !layers.is_empty() {
             let shown = Corner::ALL.map(|corner| !(self.debug && corner == Corner::TopLeft));
             extras_hud::draw_layers(layers, batch, &self.gui.atlas, &mut corners, shown);
         }
+        corners
     }
     /// The height the status effect icons take at the top right
     /// (`Hud.extractEffects`: beneficial at y 1, harmful at y 26).

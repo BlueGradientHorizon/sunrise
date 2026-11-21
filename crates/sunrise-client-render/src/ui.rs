@@ -3,9 +3,10 @@
 //! EditBox text field with vanilla cursor, selection and scrolling.
 use crate::{
     hud::{GuiSprite, HudAtlas, HudBatch, Rect, rgba},
+    hud_layout::{Blend, IDENTITY, Pose, pose_point},
     text::Text,
 };
-use mod_api::ButtonSprites;
+use mod_api::{ButtonSprites, GuiClipRefusal};
 use std::time::Instant;
 
 /// `GuiSpriteScaling.NineSlice`: the sprite's size in GUI pixels, whatever
@@ -55,64 +56,194 @@ pub(crate) fn parse_gui_scaling(v: &serde_json::Value) -> Option<GuiSpriteScalin
     }))
 }
 
+/// Transform `rect` (`[x, y, w, h]`) by `pose` and intersect it with `enclosing` (or the viewport
+/// `[0, 0, batch.width, batch.height]` when `enclosing` is `None`).
+///
+/// Matches vanilla's `ScreenRectangle.transformAxisAligned` and `GuiGraphicsExtractor.ScissorStack`:
+/// the two ordered corners are transformed, origin and extents are floored separately, and an
+/// empty, inverted, or disjoint transformed result collapses to `[0.0; 4]`.
+pub fn intersect_posed_scissor(
+    batch: &HudBatch,
+    pose: Pose,
+    rect @ [x, y, w, h]: [f32; 4],
+    enclosing: Option<[f32; 4]>,
+) -> Result<[f32; 4], GuiClipRefusal> {
+    let end = [x + w, y + h];
+    if !rect.into_iter().chain(end).all(f32::is_finite) {
+        return Err(GuiClipRefusal::NotFinite);
+    }
+    let [tx, ty] = pose_point(pose, [x, y]);
+    let [tright, tbottom] = pose_point(pose, end);
+    let [left, top] = [tx.floor(), ty.floor()];
+    let [width, height] = [(tright - tx).floor(), (tbottom - ty).floor()];
+    let mut clip = [left, top, left + width, top + height];
+    if !clip.into_iter().all(f32::is_finite) {
+        return Err(GuiClipRefusal::NotFinite);
+    }
+    let [vx0, vy0, vx1, vy1] = enclosing.unwrap_or([0.0, 0.0, batch.width, batch.height]);
+    clip = [
+        clip[0].max(vx0),
+        clip[1].max(vy0),
+        clip[2].min(vx1),
+        clip[3].min(vy1),
+    ];
+    if clip[2] <= clip[0] || clip[3] <= clip[1] {
+        clip = [0.0; 4];
+    }
+    Ok(clip)
+}
+
 /// The region `[x, y, w, h]` of a sprite `size` GUI pixels large, in its
 /// own units (`TextureAtlasSprite.getU(x / width)`).
 fn sub(r: Rect, size: [f32; 2], [x, y, w, h]: [f32; 4]) -> Rect {
-    let (du, dv) = ((r.u1 - r.u0) / size[0], (r.v1 - r.v0) / size[1]);
+    let u = |x| r.u0 + (r.u1 - r.u0) * (x / size[0]);
+    let v = |y| r.v0 + (r.v1 - r.v0) * (y / size[1]);
     Rect {
-        u0: r.u0 + x * du,
-        v0: r.v0 + y * dv,
-        u1: r.u0 + (x + w) * du,
-        v1: r.v0 + (y + h) * dv,
+        u0: u(x),
+        v0: v(y),
+        u1: u(x + w),
+        v1: v(y + h),
         w: w as u32,
         h: h as u32,
     }
 }
-/// `blitTiledSprite`: `src` (a region of a sprite `size` large, in its
-/// units) repeated over `dst` from its top left, the last row and column cut.
+/// The inverse pose and device viewport used to cull tiles and sample subpixel repeats.
+struct SpriteViewport {
+    to_local: [[f64; 2]; 2],
+    translation: [f64; 2],
+    local_bounds: [f64; 4],
+    device_scale: f64,
+}
+
+impl SpriteViewport {
+    fn new(batch: &HudBatch, pose: Pose, scissor: Option<[f32; 4]>) -> Option<Self> {
+        let [left, top, right, bottom] = scissor
+            .unwrap_or([0.0, 0.0, batch.width, batch.height])
+            .map(f64::from);
+        if left >= right || top >= bottom {
+            return None;
+        }
+        let device_scale = f64::from(batch.scale);
+        if pose == IDENTITY {
+            return Some(Self {
+                to_local: [[1.0, 0.0], [0.0, 1.0]],
+                translation: [0.0; 2],
+                local_bounds: [left, top, right, bottom],
+                device_scale,
+            });
+        }
+        let [a, b, c, d, x, y] = pose.map(f64::from);
+        let det = a * d - b * c;
+        if det == 0.0 {
+            return None;
+        }
+        let to_local = [[d / det, -c / det], [-b / det, a / det]];
+        let mut bounds = [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ];
+        for [sx, sy] in [[left, top], [right, top], [right, bottom], [left, bottom]] {
+            for (i, [u, v]) in to_local.into_iter().enumerate() {
+                let value = u * (sx - x) + v * (sy - y);
+                bounds[i] = bounds[i].min(value);
+                bounds[i + 2] = bounds[i + 2].max(value);
+            }
+        }
+        Some(Self {
+            to_local,
+            translation: [x, y],
+            local_bounds: bounds,
+            device_scale,
+        })
+    }
+}
+
+/// `blitTiledSprite`: `src` (a region of a sprite `size` large, in its units) repeated over
+/// `dst` from its top left, the last row and column cut.
 fn tile(
     batch: &mut HudBatch,
     r: Rect,
     size: [f32; 2],
     [sx, sy, sw, sh]: [f32; 4],
-    [dx, dy, dw, dh]: [f32; 4],
+    dst @ [dx, dy, dw, dh]: [f32; 4],
     color: u32,
-    [left, top, right, bottom]: [f64; 4],
+    viewport: &SpriteViewport,
 ) {
     if ![sw, sh, dw, dh]
         .into_iter()
         .all(|n| n.is_finite() && n > 0.0)
-        || right <= left
-        || bottom <= top
     {
         return;
     }
-    // The local bounds are the inverse-transformed viewport/scissor. Skip invisible tiles,
-    // but keep the phase of the original destination (especially for partial sprite blits).
-    // Index by number of visible tiles, not repeated f32 addition to a large coordinate.
-    let axis = |origin: f32, extent: f32, step: f32, low: f64, high: f64| {
-        let (origin, extent, step) = (f64::from(origin), f64::from(extent), f64::from(step));
-        let lo = (low - origin).max(0.0);
-        let hi = (high - origin).min(extent);
-        let first = lo - lo.rem_euclid(step);
-        let count = if hi > lo {
-            ((hi - first) / step).ceil() as u64
-        } else {
-            0
-        };
+    let [left, top, right, bottom] = viewport.local_bounds;
+    let [ox, oy, width, height] = dst.map(f64::from);
+    let [lo_x, lo_y] = [left.max(ox), top.max(oy)];
+    let [hi_x, hi_y] = [right.min(ox + width), bottom.min(oy + height)];
+    if hi_x <= lo_x || hi_y <= lo_y {
+        return;
+    }
+    let periods = [f64::from(sw), f64::from(sh)];
+    let subpixel = viewport
+        .to_local
+        .into_iter()
+        .zip(periods)
+        .any(|([u, v], period)| u.abs() + v.abs() > period * viewport.device_scale)
+        || (lo_x + periods[0]) as f32 == lo_x as f32
+        || (lo_y + periods[1]) as f32 == lo_y as f32;
+    if subpixel {
+        // A device sample crosses a tile in one step. Emit the destination once; the fragment
+        // shader samples exactly that atlas subrect, with a phase relative to the original origin.
+        let [repeat_x, repeat_y] = [0, 1].map(|axis| {
+            let origin = [ox, oy][axis];
+            let period = periods[axis];
+            let [u, v] = viewport.to_local[axis];
+            const ONE: f64 = (1u64 << 32) as f64;
+            let fraction = |value: f64| value.rem_euclid(1.0);
+            let fixed = |value: f64| (fraction(value) * ONE).round() as u64 as u32;
+            let [tx, ty] = viewport.translation;
+            let x = u / (period * viewport.device_scale);
+            let y = v / (period * viewport.device_scale);
+            // Reduce the separate terms before combining them, including the half-pixel center.
+            let at_origin = fraction(x * 0.5) + fraction(y * 0.5)
+                - fraction(u * tx / period)
+                - fraction(v * ty / period)
+                - fraction(origin / period);
+            [fixed(x), fixed(y), fixed(at_origin)]
+        });
+        let uv = sub(r, size, [sx, sy, sw, sh]);
+        let start = batch.vertices.len();
+        batch.quad(
+            [[dx, dy], [dx + dw, dy], [dx + dw, dy + dh], [dx, dy + dh]],
+            [[uv.u0, uv.v0]; 4],
+            color,
+        );
+        for vertex in &mut batch.vertices[start..] {
+            vertex.glint_uv = [uv.u1, uv.v1];
+            vertex.repeat_x = [repeat_x[0], repeat_x[1], repeat_x[2], 1];
+            vertex.repeat_y = repeat_y;
+        }
+        return;
+    }
+    // At normal scale there are only as many iterations per axis as visible pixels, plus
+    // the cut edge tiles. Keep the phase from the original origin, not the clipped origin.
+    let axis = |origin: f64, extent: f64, step: f64, low: f64, high: f64| {
+        let first = low - (low - origin).rem_euclid(step);
+        let count = ((high - first) / step).ceil() as u64;
         (0..count).map(move |index| {
-            let distance = index as f64 * step;
-            let position = (origin + first + distance) as f32;
-            let length = (extent - first - distance).min(step) as f32;
-            (position, length)
+            let position = first + index as f64 * step;
+            let length = (origin + extent - position).min(step);
+            (position as f32, length as f32)
         })
     };
-    for (y, h) in axis(dy, dh, sh, top, bottom) {
-        for (x, w) in axis(dx, dw, sw, left, right) {
+    for (y, h) in axis(oy, height, periods[1], lo_y, hi_y) {
+        for (x, w) in axis(ox, width, periods[0], lo_x, hi_x) {
             batch.rect_uv(x, y, w, h, sub(r, size, [sx, sy, w, h]), color);
         }
     }
 }
+
 /// `GuiGraphicsExtractor.blitSprite`: draw using the atlas's stretch, tile or nine-slice
 /// metadata, in GUI units regardless of texture resolution.
 pub fn nine_slice(
@@ -125,41 +256,123 @@ pub fn nine_slice(
     h: f32,
     color: u32,
 ) {
+    let (rect, scaling) =
+        if let Some(GuiSprite::Present { rect, scaling }) = atlas.gui_lookup(sprite) {
+            (rect, scaling)
+        } else if let Some(&rect) = atlas.gui_draw_rect(sprite) {
+            (rect, None)
+        } else {
+            return;
+        };
     blit_gui_sprite(
         batch,
         atlas,
         sprite,
-        [x, y, w, h],
-        color,
-        [0.0, 0.0, f64::from(batch.width), f64::from(batch.height)],
+        GuiSpriteBlit {
+            rect,
+            scaling,
+            dst: [x, y, w, h],
+            color,
+            region: None,
+            blend: Blend::Textured,
+        },
+        IDENTITY,
+        None,
     );
 }
 
-/// As [`nine_slice`], but with the visible bounds in the sprite's local coordinate space.
+/// Sprite resolved by the caller, with its draw bounds in local GUI pixels and packed HUD color.
+pub struct GuiSpriteBlit {
+    pub rect: Rect,
+    pub scaling: Option<GuiSpriteScaling>,
+    pub dst: [f32; 4],
+    pub color: u32,
+    pub region: Option<[i32; 4]>,
+    pub blend: Blend,
+}
+
+/// Paint a resolved GUI sprite under its pose, using atlas metadata for both full and partial
+/// blits. The caller chooses the missing-resource policy. False means non-finite geometry.
 pub fn blit_gui_sprite(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     sprite: &str,
-    dst: [f32; 4],
-    color: u32,
-    tile_bounds: [f64; 4],
-) {
-    let Some(r) = atlas.gui_draw_rect(sprite) else {
-        return;
+    GuiSpriteBlit {
+        mut rect,
+        mut dst,
+        scaling: base_scaling,
+        color,
+        region,
+        blend,
+    }: GuiSpriteBlit,
+    pose: Pose,
+    mut scissor: Option<[f32; 4]>,
+) -> bool {
+    if let Some([sw, sh, u, v]) = region {
+        if base_scaling.is_some() {
+            let Ok(clip) = intersect_posed_scissor(batch, pose, dst, scissor) else {
+                return false;
+            };
+            scissor = Some(clip);
+            dst = [dst[0] - u as f32, dst[1] - v as f32, sw as f32, sh as f32];
+        } else {
+            let [_, _, w, h] = dst;
+            rect = sub(rect, [sw as f32, sh as f32], [u as f32, v as f32, w, h]);
+        }
+    }
+    let finite = |[x, y, w, h]: [f32; 4]| {
+        [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+            .into_iter()
+            .flat_map(|point| pose_point(pose, point))
+            .all(f32::is_finite)
     };
-    // Each effective draw's own scaling: what the entry the key resolves to published.
-    let scaling = |key: &str| match atlas.gui_lookup(key) {
-        Some(GuiSprite::Present { scaling, .. }) => scaling,
-        _ => None,
-    };
-    match crate::hud::sprite_modifiers::draws(atlas, sprite, *r, dst, color) {
+    let start = batch.vertices.len();
+    match crate::hud::sprite_modifiers::draws(atlas, sprite, rect, dst, color) {
         Some(draws) => {
-            for d in draws {
-                draw_sprite(batch, d.rect, scaling(&d.key), d.at, d.color, tile_bounds);
+            if !draws.iter().all(|draw| finite(draw.at)) {
+                return false;
+            }
+            for draw in draws {
+                let scaling = match atlas.gui_lookup(&draw.key) {
+                    Some(GuiSprite::Present { scaling, .. }) => scaling,
+                    _ => None,
+                };
+                let viewport = scaling.and_then(|_| SpriteViewport::new(batch, pose, scissor));
+                draw_sprite(
+                    batch,
+                    draw.rect,
+                    scaling,
+                    draw.at,
+                    draw.color,
+                    viewport.as_ref(),
+                );
             }
         }
-        None => draw_sprite(batch, *r, scaling(sprite), dst, color, tile_bounds),
+        None => {
+            if !finite(dst) {
+                return false;
+            }
+            let viewport = base_scaling.and_then(|_| SpriteViewport::new(batch, pose, scissor));
+            draw_sprite(batch, rect, base_scaling, dst, color, viewport.as_ref());
+        }
     }
+    if !batch.try_pose_since(start, pose) {
+        return false;
+    }
+    if let Some(clip) = scissor {
+        batch.scissor_since(start, clip);
+    } else if batch.vertices[start..]
+        .iter()
+        .any(|vertex| vertex.repeat_x[3] != 0)
+    {
+        // Bound the submitted rectangle as well as the repeat work. With an enormous
+        // finite extent the projected geometry must not overflow before raster clipping.
+        batch.scissor_since(start, [0.0, 0.0, batch.width, batch.height]);
+    }
+    if blend == Blend::Crosshair {
+        batch.invert_since(start);
+    }
+    true
 }
 fn draw_sprite(
     batch: &mut HudBatch,
@@ -167,25 +380,18 @@ fn draw_sprite(
     scaling: Option<GuiSpriteScaling>,
     dst @ [x, y, w, h]: [f32; 4],
     color: u32,
-    tile_bounds: [f64; 4],
+    viewport: Option<&SpriteViewport>,
 ) {
     match scaling {
-        Some(GuiSpriteScaling::NineSlice(n)) => {
-            draw_nine_slice(batch, r, n, dst, color, tile_bounds)
-        }
+        Some(GuiSpriteScaling::NineSlice(n)) => draw_nine_slice(batch, r, n, dst, color, viewport),
         Some(GuiSpriteScaling::Tile(size)) => {
             let [sw, sh] = size.map(|n| n as f32);
-            tile(
-                batch,
-                r,
-                [sw, sh],
-                [0.0, 0.0, sw, sh],
-                dst,
-                color,
-                tile_bounds,
-            );
+            if let Some(viewport) = viewport {
+                tile(batch, r, [sw, sh], [0.0, 0.0, sw, sh], dst, color, viewport);
+            }
         }
-        None => batch.rect_uv(x, y, w, h, r, color),
+        None if w != 0.0 && h != 0.0 => batch.rect_uv(x, y, w, h, r, color),
+        None => {}
     }
 }
 fn draw_nine_slice(
@@ -194,7 +400,7 @@ fn draw_nine_slice(
     n: NineSlice,
     [x, y, w, h]: [f32; 4],
     color: u32,
-    tile_bounds: [f64; 4],
+    viewport: Option<&SpriteViewport>,
 ) {
     if w <= 0.0 || h <= 0.0 {
         return;
@@ -224,8 +430,8 @@ fn draw_nine_slice(
         }
         if n.stretch_inner {
             batch.rect_uv(dst[0], dst[1], dst[2], dst[3], sub(r, size, src), color);
-        } else {
-            tile(batch, r, size, src, dst, color, tile_bounds);
+        } else if let Some(viewport) = viewport {
+            tile(batch, r, size, src, dst, color, viewport);
         }
     };
     if w == sw && h == sh {
@@ -286,15 +492,17 @@ pub fn tiled_sized(
     let Some(r) = atlas.gui_draw_rect(sprite).copied() else {
         return;
     };
-    tile(
-        batch,
-        r,
-        size,
-        [0.0, 0.0, size[0], size[1]],
-        [x, y, w, h],
-        color,
-        [0.0, 0.0, f64::from(batch.width), f64::from(batch.height)],
-    );
+    if let Some(viewport) = SpriteViewport::new(batch, IDENTITY, None) {
+        tile(
+            batch,
+            r,
+            size,
+            [0.0, 0.0, size[0], size[1]],
+            [x, y, w, h],
+            color,
+            &viewport,
+        );
+    }
 }
 /// Text drawn at `scale` times its size (a scaled pose).
 pub fn text_scaled(
@@ -2407,6 +2615,7 @@ mod tests {
     #[test]
     fn separator_tiles_sample_both_rows_and_clip_the_last_column() {
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         tile(
             &mut batch,
             sprite(32, 2),
@@ -2414,7 +2623,7 @@ mod tests {
             [0.0, 0.0, 32.0, 2.0],
             [0.0, 5.0, 40.0, 2.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            &viewport,
         );
         let q = quads(&batch);
         assert_eq!(q.len(), 2);
@@ -2448,13 +2657,14 @@ mod tests {
                 "border":{"left":20,"top":4,"right":20,"bottom":4}}}}"#,
         );
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_nine_slice(
             &mut batch,
             sprite(400, 40),
             n,
             [10.0, 5.0, 150.0, 20.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         // Full height: left border, the centre tiled, right border
@@ -2471,13 +2681,14 @@ mod tests {
             r#"{"gui":{"scaling":{"type":"nine_slice","width":100,"height":100,"border":12,"stretch_inner":true}}}"#,
         );
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_nine_slice(
             &mut batch,
             sprite(200, 200),
             n,
             [0.0, 0.0, 300.0, 40.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         assert_eq!(q.len(), 9);
@@ -2497,13 +2708,14 @@ mod tests {
             stretch_inner: false,
         };
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_nine_slice(
             &mut batch,
             sprite(100, 100),
             n,
             [4.0, 4.0, 50.0, 50.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         assert_eq!(q.len(), 1);
@@ -2516,13 +2728,14 @@ mod tests {
             r#"{"gui":{"scaling":{"type":"nine_slice","width":100,"height":100,"border":10,"stretch_inner":true}}}"#,
         );
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_sprite(
             &mut batch,
             sprite(100, 100),
             Some(GuiSpriteScaling::NineSlice(n)),
             [10.0, 10.0, 160.0, 26.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         assert_eq!(q.len(), 9);
@@ -2533,13 +2746,14 @@ mod tests {
     #[test]
     fn blit_sprite_stretches_a_sprite_without_metadata() {
         let mut batch = HudBatch::scratch([640, 480]);
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_sprite(
             &mut batch,
             sprite(9, 9),
             None,
             [0.0, 0.0, 27.0, 18.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         assert_eq!(q.len(), 1);
@@ -2634,13 +2848,14 @@ mod tests {
         };
         let mut batch = HudBatch::scratch([640, 480]);
         // 9 wide: borders of floor(9 / 2) = 4, as vanilla's integer division.
+        let viewport = SpriteViewport::new(&batch, IDENTITY, None).unwrap();
         draw_nine_slice(
             &mut batch,
             sprite(20, 20),
             n,
             [0.0, 0.0, 9.0, 30.0],
             u32::MAX,
-            [0.0, 0.0, 640.0, 480.0],
+            Some(&viewport),
         );
         let q = quads(&batch);
         assert_quad(q[0], ([0.0, 0.0, 4.0, 8.0], [0.0, 0.0, 0.2, 0.4]));

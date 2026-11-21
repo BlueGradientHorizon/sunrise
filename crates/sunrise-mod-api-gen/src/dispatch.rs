@@ -2354,7 +2354,8 @@ mod runtime {{
     pub struct Refusal;
     impl Refusal {{ pub fn report(&self) {{}} }}
     pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn contain_gui_panics() -> bool {{ false }}
+    pub fn call_listener<T>(_: super::generated::HookId, _: bool, _: bool, call: impl FnOnce() -> T) -> Result<Option<T>, Refusal> {{ Ok(Some(call())) }}
     pub struct ListenerScope;
     impl ListenerScope {{
         pub fn new() -> Self {{ Self }}
@@ -2608,7 +2609,8 @@ mod runtime {{
     pub struct Refusal;
     impl Refusal {{ pub fn report(&self) {{}} }}
     pub fn outside_world() -> bool {{ false }}
-    pub fn refusable<T>(_: bool, call: impl FnOnce() -> T) -> Result<T, Refusal> {{ Ok(call()) }}
+    pub fn contain_gui_panics() -> bool {{ false }}
+    pub fn call_listener<T>(_: super::generated::HookId, _: bool, _: bool, call: impl FnOnce() -> T) -> Result<Option<T>, Refusal> {{ Ok(Some(call())) }}
 }}
 impl Gatherer {{ fn gather(&self, _: &mut dyn generated::ServerHost, event: &mut generated::GatherEvent<'_>) {{ assert!(event.entries.is_empty()); event.entries.extend(self.pushes); }} }}
 mod generated {{

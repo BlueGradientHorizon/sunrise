@@ -125,6 +125,68 @@ fn canvas_item_forwards_seed_and_skips_air() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn oversized_item_refuses_its_actual_non_finite_posed_vertices() {
+    use mod_api::DrawContext as _;
+    use sunrise_assets::{
+        item_model::{ItemModelNode, ModelLeaf},
+        resource_source::ResourceRoot,
+    };
+    crate::game::native_entity_refs::tests::with_client_game(|game| {
+        let root = ResourceRoot::directory(game.options.resources.clone());
+        let mut renderer =
+            sunrise_client::item_render::ItemRenderer::load(&root, &game.res.item_data).unwrap();
+        let item = renderer
+            .models
+            .definitions
+            .get_mut("minecraft:stick")
+            .unwrap();
+        item.oversized_in_gui = true;
+        item.model = ItemModelNode::Model(ModelLeaf {
+            model: "minecraft:item/stick".into(),
+            transformation: Some(glam::Mat4::from_translation(glam::Vec3::new(4.0, 0.0, 0.0))),
+            tints: Vec::new(),
+        });
+        game.pack.item_renderer = std::sync::Arc::new(renderer);
+        let host: &dyn ClientHost = game;
+        let key = host
+            .item_key(&Identifier::parse("minecraft:stick").unwrap())
+            .unwrap();
+        let stack = ItemStack::of(key);
+        let mut batch = HudBatch::scratch([320, 240]);
+        let mut draw = crate::game::host::draw::GameDrawContext::new(game, &mut batch);
+        draw.draw_gui(&mut |canvas| {
+            canvas.item(&stack, [0.0, 0.0], 0)?;
+            let result = canvas.scope(&[PoseOp::Scale(f32::MAX / 20.0, 1.0)], None, &mut |posed| {
+                posed.item(&stack, [0.0, 0.0], 0)
+            });
+            assert_eq!(result, Err(GuiDrawError::NotFinite));
+            canvas.fill([1.0, 1.0, 1.0, 1.0], 0xFFEE_CC33)
+        })
+        .unwrap();
+        drop(draw);
+        assert!(
+            batch
+                .vertices
+                .iter()
+                .all(|v| v.pos.into_iter().all(f32::is_finite))
+        );
+        assert!(batch.vertices.iter().any(|v| v.pos[0] > 20.0));
+        let mut expected = HudBatch::scratch([320, 240]);
+        game.draw_item_model(
+            &mut expected,
+            &EngineStack::new("minecraft:stick", 1),
+            0.0,
+            0.0,
+            0,
+        );
+        expected.fill(&game.gui.atlas, 1.0, 1.0, 1.0, 1.0, abgr(0xFFEE_CC33));
+        assert_eq!(vertices_snapshot(&batch), vertices_snapshot(&expected));
+        assert_eq!(batch.blends, expected.blends);
+    });
+}
+
 static DECORATOR_COORDS: Mutex<Vec<[f32; 2]>> = Mutex::new(Vec::new());
 
 const DECORATOR_VISIBLE: u32 = 0xFF00_FF00;

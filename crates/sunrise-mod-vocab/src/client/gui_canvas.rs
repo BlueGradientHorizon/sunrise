@@ -125,7 +125,8 @@ pub trait GuiCanvas {
 
     /// Draw the stack's 16-pixel GUI item model with its top-left at `at`, passing `seed` to
     /// its model resolver. This does not draw decorations. An empty stack draws nothing;
-    /// inventory storage limits do not apply.
+    /// inventory storage limits do not apply. Non-finite posed model geometry is refused with
+    /// `GuiDrawError::NotFinite`, leaving earlier draws intact.
     fn item(&mut self, stack: &ItemStack, at: [f32; 2], seed: i32) -> Result<(), GuiDrawError>;
 
     /// Draw the stack's bar, cooldown, count and custom item decorations at `at`, in that order.
@@ -142,7 +143,8 @@ pub trait GuiCanvas {
 
     /// Draw a present GUI sprite by id at `dst = [x, y, w, h]`, honouring its metadata scaling
     /// (stretch, tile or nine-slice) and optional source region. A removed sprite is refused. Accepts
-    /// `Blend::Textured` and `Blend::Crosshair`.
+    /// `Blend::Textured` and `Blend::Crosshair`. Pack sprite modifiers are applied as in the HUD;
+    /// non-finite resulting geometry is refused without affecting earlier draws.
     fn blit_sprite(
         &mut self,
         name: &str,

@@ -640,9 +640,8 @@ impl Game<'_> {
     }
     /// Before a vanilla or registered HUD slot draws (`RenderGuiLayerEvent.Pre`).
     /// Paint into `draw` below the layer, or set `canceled` to skip the installed body
-    /// and `native_gui_layer_post`, without skipping the layer's game logic. Replacing
-    /// or wrapping a slot keeps its ID, position and paint conditions. Focused chat still
-    /// draws from the chat screen, and a layer F1 hides fires neither hook.
+    /// and `native_gui_layer_post`. Replacing or wrapping a slot keeps its ID and position;
+    /// F1 only hides the original bodies. Focused chat still draws from the chat screen.
     pub(in crate::game) fn native_gui_layer_pre(
         &self,
         layer: &str,

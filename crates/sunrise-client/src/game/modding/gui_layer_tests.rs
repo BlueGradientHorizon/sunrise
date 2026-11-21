@@ -243,7 +243,7 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             [[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]]
         );
 
-        // With the HUD hidden (F1), vanilla's sleep overlay still draws, and no mod layer.
+        // With no insertion cursor active, a standalone vanilla slot still fires its hooks.
         game.gui_layer(VanillaGuiLayer::SleepOverlay, &mut batch, &mut |_, _| {
             log("sleep paint")
         });

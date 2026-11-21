@@ -41,6 +41,152 @@ impl Hooks for CancelPlayerHealth {
 
 #[test]
 #[ignore = "daily"]
+fn f1_hides_only_original_health_and_hud_post_follows_every_slot() {
+    use crate::game::native_entity_refs::tests::run_fresh_cases;
+    use mod_api::{GuiLayerPlacement, GuiLayerRegistrar, RenderGuiPostEvent, RenderGuiPreEvent};
+    use std::sync::atomic::AtomicBool;
+
+    const FLAG: &str = "SUNRISE_HIDDEN_HEALTH_HUD_FIXTURE";
+    const BODY: u32 = 0xFF11_2233;
+    const LAST: u32 = 0xFF33_4455;
+    const POST: u32 = 0xFF55_6677;
+    if run_fresh_cases(
+        "game::health_hud_tests::f1_hides_only_original_health_and_hud_post_follows_every_slot",
+        FLAG,
+        &["original", "replacement", "wrapper"],
+    ) {
+        return;
+    }
+    let case = std::env::var(FLAG).unwrap();
+    let mut layers = crate::gui_layers::GuiLayers::default();
+    match case.as_str() {
+        "original" => {}
+        "replacement" => assert!(layers.replace_layer(
+            PLAYER_HEALTH,
+            Box::new(|_, draw| {
+                draw.fill([3.0, 3.0, 2.0, 2.0], BODY);
+            })
+        )),
+        "wrapper" => assert!(layers.wrap_layer(
+            PLAYER_HEALTH,
+            Box::new(|ctx| {
+                ctx.draw_previous();
+                ctx.with_draw(&mut |draw| draw.fill([3.0, 3.0, 2.0, 2.0], BODY));
+            })
+        )),
+        _ => panic!("unknown layer test case: {case}"),
+    }
+    assert!(layers.register(
+        "test:last".into(),
+        GuiLayerPlacement::AboveAll,
+        Box::new(|_, draw| {
+            draw.fill([3.0, 3.0, 2.0, 2.0], LAST);
+        })
+    ));
+    crate::gui_layers::freeze(layers);
+
+    #[derive(Default)]
+    struct Trace {
+        pre: AtomicUsize,
+        post: AtomicUsize,
+        selected: AtomicUsize,
+        cancel_health: AtomicBool,
+        cancel_hud: AtomicBool,
+    }
+    struct Observe(Arc<Trace>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+            if self.0.cancel_hud.load(Ordering::Relaxed) {
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+        fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+            if event.layer == PLAYER_HEALTH {
+                self.0.pre.fetch_add(1, Ordering::Relaxed);
+                if self.0.cancel_health.load(Ordering::Relaxed) {
+                    return Flow::Cancel;
+                }
+            }
+            Flow::Continue
+        }
+        fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
+            if event.layer == PLAYER_HEALTH {
+                self.0.post.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        fn health_hud(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut HealthHudEvent<'_>,
+        ) -> Option<HealthHudReplacement> {
+            self.0.selected.fetch_add(1, Ordering::Relaxed);
+            None
+        }
+        fn render_gui_post(&self, _: &dyn ClientHost, event: &mut RenderGuiPostEvent<'_>) {
+            event.draw.fill([3.0, 3.0, 2.0, 2.0], POST);
+        }
+    }
+    let trace = Arc::new(Trace::default());
+    with_client_game(|game| {
+        prepare_survival_hud(game);
+        game.ui.hide_gui = true;
+        with_mods(
+            vec![ModEntry::new(
+                "observer",
+                Box::new(Observe(Arc::clone(&trace))),
+            )]
+            .into(),
+            || {
+                for (skip_hud, skip_health, pre, post) in [
+                    (false, false, 1, 1),
+                    (false, true, 2, 1),
+                    (true, false, 2, 1),
+                ] {
+                    trace.cancel_hud.store(skip_hud, Ordering::Relaxed);
+                    trace.cancel_health.store(skip_health, Ordering::Relaxed);
+                    let batch = game.hud_layers(SIZE);
+                    assert_eq!(trace.pre.load(Ordering::Relaxed), pre);
+                    assert_eq!(trace.post.load(Ordering::Relaxed), post);
+                    assert_eq!(
+                        trace.selected.load(Ordering::Relaxed),
+                        0,
+                        "hidden vanilla health ran"
+                    );
+                    let colors: Vec<_> = batch
+                        .vertices
+                        .iter()
+                        .filter_map(|vertex| {
+                            [BODY, LAST, POST]
+                                .into_iter()
+                                .find(|&color| abgr(color) == vertex.color)
+                        })
+                        .collect();
+                    let expected = if skip_hud {
+                        Vec::new()
+                    } else if skip_health || case == "original" {
+                        vec![LAST; 6].into_iter().chain([POST; 6]).collect()
+                    } else {
+                        vec![BODY; 6]
+                            .into_iter()
+                            .chain([LAST; 6])
+                            .chain([POST; 6])
+                            .collect()
+                    };
+                    assert_eq!(colors, expected);
+                    if !skip_hud {
+                        assert_eq!(batch.vertices[batch.blur_at as usize - 1].color, abgr(POST));
+                    }
+                }
+            },
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn first_answering_health_hud_wins_between_layer_hooks_in_its_mod_scope() {
     let trace: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let seen_call: Arc<Mutex<Option<ModCall>>> = Arc::new(Mutex::new(None));

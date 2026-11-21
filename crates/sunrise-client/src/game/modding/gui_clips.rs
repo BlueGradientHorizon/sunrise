@@ -1,6 +1,7 @@
 //! Screen-space scissor intersection shared by `DrawContext::with_scissor` and `GuiCanvas::scope`.
 use crate::hud::HudBatch;
-use crate::hud_layout::{IDENTITY, Pose, pose_point};
+use crate::hud_layout::IDENTITY;
+use crate::ui::intersect_posed_scissor;
 use mod_api::GuiClipRefusal;
 
 /// Intersect `rect` (`[x, y, w, h]`) in screen space with `enclosing` (or the viewport when
@@ -11,43 +12,6 @@ pub(crate) fn intersect_scissor(
     enclosing: Option<[f32; 4]>,
 ) -> Result<[f32; 4], GuiClipRefusal> {
     intersect_posed_scissor(batch, IDENTITY, rect, enclosing)
-}
-
-/// Transform `rect` (`[x, y, w, h]`) by `pose` and intersect it with `enclosing` (or the viewport
-/// `[0, 0, batch.width, batch.height]` when `enclosing` is `None`).
-///
-/// Matches vanilla's `ScreenRectangle.transformAxisAligned` and `GuiGraphicsExtractor.ScissorStack`:
-/// the two ordered corners are transformed, origin and extents are floored separately, and an
-/// empty, inverted, or disjoint transformed result collapses to `[0.0; 4]`.
-pub(crate) fn intersect_posed_scissor(
-    batch: &HudBatch,
-    pose: Pose,
-    rect @ [x, y, w, h]: [f32; 4],
-    enclosing: Option<[f32; 4]>,
-) -> Result<[f32; 4], GuiClipRefusal> {
-    let end = [x + w, y + h];
-    if !rect.into_iter().chain(end).all(f32::is_finite) {
-        return Err(GuiClipRefusal::NotFinite);
-    }
-    let [tx, ty] = pose_point(pose, [x, y]);
-    let [tright, tbottom] = pose_point(pose, end);
-    let [left, top] = [tx.floor(), ty.floor()];
-    let [width, height] = [(tright - tx).floor(), (tbottom - ty).floor()];
-    let mut clip = [left, top, left + width, top + height];
-    if !clip.into_iter().all(f32::is_finite) {
-        return Err(GuiClipRefusal::NotFinite);
-    }
-    let [vx0, vy0, vx1, vy1] = enclosing.unwrap_or([0.0, 0.0, batch.width, batch.height]);
-    clip = [
-        clip[0].max(vx0),
-        clip[1].max(vy0),
-        clip[2].min(vx1),
-        clip[3].min(vy1),
-    ];
-    if clip[2] <= clip[0] || clip[3] <= clip[1] {
-        clip = [0.0; 4];
-    }
-    Ok(clip)
 }
 
 #[cfg(test)]

@@ -1,10 +1,10 @@
 //! The `render_gui_post` hooks and helpers: declarations the mod API generator reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// After the boss overlay, which follows the health and contextual HUD layers
-    /// (skipped under F1; NeoForge's `RenderGuiEvent.Post`). Place a box with
-    /// `corners.place` (boxes stack away from their edge) and draw it with
-    /// `native_fill` and `native_text`.
+    /// After all HUD layers, including chat, tab list and any inserted layers, and before
+    /// screen drawing (NeoForge's `RenderGuiEvent.Post`). Fires even under F1.
+    /// Place a box with `corners.place` (boxes stack away from their edge) and draw it
+    /// with `event.draw`.
     /// Use `ClientHost::debug_overlay_visible()` to avoid drawing over the debug overlay.
     /// Not heard when a mod canceled `render_gui_pre`. Client-side.
     #[hook(

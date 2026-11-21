@@ -19,8 +19,8 @@ load order. Invalid, reserved or duplicate IDs and unknown relative anchors are 
 refused. The client calls each installed callback as the mod that registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
-`layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
-position and draw conditions. A wrapper uses `ctx.with_draw` to paint with the current
+`layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID
+and position. A wrapper uses `ctx.with_draw` to paint with the current
 scoped drawing context and `ctx.draw_previous()` to draw the previous body at that point.
 It can omit that call to skip the previous body. Both methods refuse an unknown ID.
 
@@ -28,11 +28,11 @@ A layer fires `Hooks::gui_layer_pre` with its ID, runs its installed body, and f
 `Hooks::gui_layer_post` once. No body or Post runs if Pre cancels. Drawing a previous
 body does not fire layer hooks again.
 
-A vanilla layer Sunrise does not draw this frame (the crosshair in third person, the mount's
-health off a mount) still keeps its place: the inserted layers around it draw in order, at the
-next layer that is drawn. F1 and a canceled `Hooks::render_gui_pre` hide all inserted layers;
-a replacement or wrapper inherits its slot's draw conditions. A mod that needs a foreground
-pass regardless of F1 uses `Hooks::gui_render_post`."#]
+A vanilla body that draws nothing this frame (for example, the crosshair in third person or a
+health body hidden by F1) does not skip its slot. Pre, the installed body and Post are still
+visited in order unless Pre cancels. Replacements, wrappers and inserted layers can draw under F1;
+only the original bodies have the vanilla visibility conditions. A canceled `Hooks::render_gui_pre`
+skips the entire layer walk."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

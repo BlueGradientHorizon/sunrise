@@ -19,8 +19,8 @@ invalid IDs, duplicate IDs and unknown anchors; `register` returns whether it in
 
 The client keeps the callback for the session and calls it as the mod that installed it. Capture
 any state the layer needs in the closure, and use the current `ClientHost` and `DrawContext`
-passed on each draw. The callback runs only for its own layer, and not when the HUD is hidden
-or `gui_layer_pre` cancels the layer.
+passed on each draw. The callback runs for its own layer, even under F1, unless `render_gui_pre`
+cancels the HUD pass or `gui_layer_pre` cancels that layer.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The player
 health, armor, food, vehicle health, air and contextual bar anchors follow NeoForge's paint order
 (`player_health`, `armor_level`, `food_level`, `vehicle_health`, `air_level`,
@@ -31,8 +31,8 @@ health, armor, food, vehicle health, air and contextual bar anchors follow NeoFo
 In the same registration hook, call `event.layers.replace_layer(id, Box::new(draw))` to discard
 an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
-registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
-place in the HUD and its draw conditions.
+registered mod ID and return `false` if the ID isn't registered. Both keep the layer's ID and
+its place in the HUD. F1 affects the original vanilla body, not a replacement or wrapper.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
@@ -53,8 +53,8 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
 runs. A skipped status body reserves no height. Only the original hearts body fires
 `player_heart_type` and reseeds the status jitter; replacing the hearts leaves armor, food,
-vehicle health and air on their own slots. For work that must happen even when the HUD is hidden, use the independent foreground
-`gui_render_post` hook.
+vehicle health and air on their own slots. `render_gui_post` runs after the final HUD layer and
+before screen drawing, including under F1. For a foreground pass after screens, use `gui_render_post`.
 
 ## Registering F3 text
 

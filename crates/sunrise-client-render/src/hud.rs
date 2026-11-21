@@ -2158,7 +2158,14 @@ fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -
         }
     };
     let lerp = |a: &HudVertex, b: &HudVertex, t: f32| {
-        let mix = |p: f32, q: f32| p + (q - p) * t;
+        let mix = |p: f32, q: f32| {
+            let delta = q - p;
+            if delta.is_finite() {
+                p + delta * t
+            } else {
+                (f64::from(p) + (f64::from(q) - f64::from(p)) * f64::from(t)) as f32
+            }
+        };
         let mut v = *a;
         v.pos = [mix(a.pos[0], b.pos[0]), mix(a.pos[1], b.pos[1])];
         v.uv = [mix(a.uv[0], b.uv[0]), mix(a.uv[1], b.uv[1])];
@@ -2180,7 +2187,13 @@ fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -
             out.push(*a);
         }
         if ia != ib {
-            let t = (limit - a.pos[axis]) / (b.pos[axis] - a.pos[axis]);
+            let (from, to) = (a.pos[axis], b.pos[axis]);
+            let delta = to - from;
+            let t = if delta.is_finite() {
+                (limit - from) / delta
+            } else {
+                ((f64::from(limit) - f64::from(from)) / (f64::from(to) - f64::from(from))) as f32
+            };
             out.push(lerp(a, b, t));
         }
     }
@@ -2551,6 +2564,49 @@ impl HudBatch {
             v.pos[1] = cy + (v.pos[1] - cy) * sy;
         }
     }
+    /// Check the actual vertices of one primitive under a GUI pose, before it is visible to the
+    /// renderer. A refused primitive publishes neither vertices nor blend ranges.
+    pub fn try_pose_since(&mut self, start: usize, pose: crate::hud_layout::Pose) -> bool {
+        for vertex in &mut self.vertices[start..] {
+            if pose != crate::hud_layout::IDENTITY {
+                vertex.pos = crate::hud_layout::pose_point(pose, vertex.pos);
+            }
+            if !vertex
+                .pos
+                .into_iter()
+                .chain(vertex.uv)
+                .chain(vertex.glint_uv)
+                .chain([vertex.depth])
+                .all(f32::is_finite)
+            {
+                self.vertices.truncate(start);
+                let start = start as u32;
+                self.blends.truncate(
+                    self.blends
+                        .partition_point(|(range, _)| range.start < start),
+                );
+                if let Some((last, _)) = self.blends.last_mut() {
+                    last.end = last.end.min(start);
+                }
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Clip only when a primitive really crosses the screen-space scissor.
+    pub fn scissor_since(&mut self, start: usize, [left, top, right, bottom]: [f32; 4]) {
+        if left == right
+            || top == bottom
+            || self.vertices[start..].iter().any(|vertex| {
+                let [x, y] = vertex.pos;
+                x < left || y < top || x > right || y > bottom
+            })
+        {
+            self.clip_since(start, left, top, right, bottom);
+        }
+    }
+
     /// Clip the quads drawn since `start` to `[x0, x1) x [y0, y1)` (the
     /// GUI scissor): axis-aligned quads are cut with their UVs, others (item
     /// triangles) are clipped as polygons.
@@ -2608,7 +2664,16 @@ impl HudBatch {
             if cx0 >= cx1 || cy0 >= cy1 {
                 continue;
             }
-            let t = |p: f32, lo: f32, hi: f32| if hi == lo { 0.0 } else { (p - lo) / (hi - lo) };
+            let t = |p: f32, lo: f32, hi: f32| {
+                let span = hi - lo;
+                if span == 0.0 {
+                    0.0
+                } else if span.is_finite() {
+                    (p - lo) / span
+                } else {
+                    ((f64::from(p) - f64::from(lo)) / (f64::from(hi) - f64::from(lo))) as f32
+                }
+            };
             let corner = |x, y| {
                 clip_corner::clip_corner(
                     [tl, tr, br, bl],
@@ -3319,8 +3384,7 @@ impl HudRenderer {
             bind_group_layouts: &[Some(&layout)],
             ..Default::default()
         });
-        let attributes =
-            wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2];
+        let attributes = wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2,5=>Uint32,6=>Uint32x4,7=>Uint32x3];
         // `depth`: the model's depth test, and whether the run writes depth.
         let create = |label, blend, fragment_entry, depth: Option<bool>| {
             let desc = wgpu::RenderPipelineDescriptor {
