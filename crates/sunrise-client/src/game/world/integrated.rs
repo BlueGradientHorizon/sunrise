@@ -1699,6 +1699,69 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+        use sunrise_client::{lan::data::SyncData, text::Text};
+
+        if run_fresh_cases(
+            "game::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
+            "SUNRISE_INTEGRATED_DISCONNECT_SYNC_CHILD",
+            &["disconnect"],
+        ) {
+            return;
+        }
+        with_client_game(|game| {
+            for failure in [None, Some("test shutdown failure")] {
+                let sync = Arc::new(SyncData::empty());
+                super::super::lan::sync::install_wire_reload(
+                    &game.options.resources,
+                    &game.res.core.item_data,
+                    &game.pack_files(),
+                    Some(sync.clone()),
+                    game.adv.tree.clone(),
+                );
+                let flags = Arc::new(Flags::default());
+                let stopping = flags.clone();
+                let (tasks, _waiting_server) = channel();
+                let (observed, probe) = channel();
+                game.integrated = Some(Integrated {
+                    emergency_save: None,
+                    flags,
+                    thread: Some(std::thread::spawn(move || {
+                        let deadline = Instant::now() + Duration::from_secs(5);
+                        while !stopping.stop.load(Ordering::Relaxed) {
+                            assert!(Instant::now() < deadline, "stop was never requested");
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                        observed
+                            .send(super::super::lan::sync::cached_reload_sync())
+                            .unwrap();
+                        *stopping.failure.lock().unwrap() = failure.map(str::to_owned);
+                    })),
+                    tasks,
+                    world_name: "fixture".into(),
+                    save_folder: "fixture".into(),
+                    rule_registry: Arc::new(sunrise_client::gamerules::RuleRegistry::vanilla()),
+                });
+                let result = game.leave_server(Some(Text::literal("test disconnect")));
+                assert_eq!(
+                    result.err().map(|error| error.to_string()),
+                    failure.map(str::to_owned)
+                );
+                assert!(
+                    probe
+                        .try_recv()
+                        .unwrap()
+                        .is_some_and(|seen| Arc::ptr_eq(&seen, &sync)),
+                    "the cache must still hold the server's snapshot during shutdown"
+                );
+                assert!(super::super::lan::sync::cached_reload_sync().is_none());
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn client_session_identifies_only_its_own_integrated_server() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let _pipe = super::super::native_client_session::tests::logged_client(game);
