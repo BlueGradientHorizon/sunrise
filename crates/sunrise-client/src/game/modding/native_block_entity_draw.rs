@@ -35,9 +35,7 @@ pub(super) struct StandaloneGeometry {
     bounds: Vec<[[f32; 3]; 2]>,
     /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
     /// this generation (the table is rebuilt with the resources, so a reload resolves anew).
-    fluid_looks: std::cell::RefCell<
-        Vec<Option<Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>>>,
-    >,
+    fluid_looks: std::cell::RefCell<Vec<Option<Option<super::native_fluid_render::FluidBoxLook>>>>,
     /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
     states_from: u32,
     /// Block states resolved by `block_state_model`, each once per generation.
@@ -187,9 +185,8 @@ impl StandaloneGeometry {
     pub(super) fn fluid_look(
         &self,
         slot: u32,
-        resolve: impl FnOnce()
-            -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>,
-    ) -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError> {
+        resolve: impl FnOnce() -> Option<super::native_fluid_render::FluidBoxLook>,
+    ) -> Option<super::native_fluid_render::FluidBoxLook> {
         let mut looks = self.fluid_looks.borrow_mut();
         let at = slot as usize;
         if looks.len() <= at {

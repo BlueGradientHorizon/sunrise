@@ -427,7 +427,21 @@ impl Game<'_> {
                             .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
                             .copied()
                     },
-                    |vertex| entities.push(vertex),
+                    |quad| {
+                        if !super::draw_boundary::quad_allowed(
+                            quad.map(|v| v.pos),
+                            quad.map(|v| v.uv),
+                            entities.len(),
+                            super::draw_boundary::MAX_DRAW_VERTICES,
+                        ) {
+                            return entities
+                                .len()
+                                .checked_add(4)
+                                .is_some_and(|end| end <= super::draw_boundary::MAX_DRAW_VERTICES);
+                        }
+                        entities.extend_from_slice(&quad);
+                        true
+                    },
                 );
             }
         }

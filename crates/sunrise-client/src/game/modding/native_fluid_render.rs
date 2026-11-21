@@ -2,7 +2,7 @@
 //! with their own sorted translucent material (`FLUID_OVERLAY`).
 use super::{Game, native_block_entity_draw::BlockEntityDraw};
 use glam::Vec3;
-use mod_api::{FluidBoxError, FluidBoxOptions, FluidStack};
+use mod_api::{FluidBoxOptions, FluidStack};
 use sunrise_client::{
     fluid_render::{NativeFluidRenderOptions, fluid_box, fluid_light},
     gfx::FLUID_OVERLAY,
@@ -27,20 +27,34 @@ impl Game<'_> {
         stack: &FluidStack,
         bounds: [f32; 6],
         options: FluidBoxOptions,
-    ) -> Result<(), FluidBoxError> {
-        let key = stack.key().ok_or(FluidBoxError::UnsupportedFluid)?;
-        let look = self.standalone_geometry.fluid_look(
+    ) {
+        if stack.amount == 0 {
+            return;
+        }
+        let Some(key) = stack.key() else {
+            return;
+        };
+        let Some(look) = self.standalone_geometry.fluid_look(
             mod_api::__private::parts_installation::fluid_key_slot(key),
             || self.resolve_fluid_look(key),
-        )?;
-        draw_fluid_box(draw, look, stack, bounds, options)
+        ) else {
+            return;
+        };
+        draw_fluid_box(
+            draw,
+            look,
+            stack,
+            bounds,
+            options,
+            super::draw_boundary::MAX_DRAW_VERTICES,
+        );
     }
 
     /// The look of `key`, once per resource generation: water and lava keep their own sprite,
     /// tint and light, any other fluid reads its look (`data/<mod>/sunrise/fluid/`).
-    fn resolve_fluid_look(&self, key: mod_api::FluidKey) -> Result<FluidBoxLook, FluidBoxError> {
+    fn resolve_fluid_look(&self, key: mod_api::FluidKey) -> Option<FluidBoxLook> {
         let layers = &self.pack.render.sprite_layers;
-        let id = mod_api::__private::fluid_id(key).ok_or(FluidBoxError::UnsupportedFluid)?;
+        let id = mod_api::__private::fluid_id(key)?;
         let luminosity = super::native_block_tables::BlockTables::new(&self.res, &self.pack)
             .fluid_type_properties(key)
             .map_or(0, |properties| properties.light_level);
@@ -60,30 +74,32 @@ impl Game<'_> {
 
 /// The look of fluid `id`, whose declared look is `look` and whose block light is `luminosity`:
 /// vanilla's water and lava by their own sprites and tints, any other fluid by its look (a look
-/// with no sprite draws its tint flat). `UnsupportedFluid` for the empty fluid, `MissingSprite`
-/// for a fluid with no look or a sprite the loaded resources lack.
+/// with no sprite draws its tint flat, and a registered fluid with no look falls back to
+/// `minecraft:missingno`, matching vanilla `FluidStateModelSet.missingModel`). A missing sprite
+/// falls back to `minecraft:missingno` (matching `TextureAtlas.getSprite`). Returns `None` for
+/// `minecraft:empty` or if neither the sprite nor `minecraft:missingno` is loaded.
 fn fluid_box_look(
     id: &str,
     look: Option<&sunrise_mod_package::content::FluidLook>,
     luminosity: u8,
     sprite_layer: impl Fn(&str) -> Option<u32>,
-) -> Result<FluidBoxLook, FluidBoxError> {
+) -> Option<FluidBoxLook> {
     let (sprite, tint) = match id {
-        "minecraft:empty" => return Err(FluidBoxError::UnsupportedFluid),
+        "minecraft:empty" => return None,
         "minecraft:water" => ("minecraft:block/water_still", 0xFF3F_76E4),
         "minecraft:lava" => ("minecraft:block/lava_still", 0xFFFF_FFFF),
-        _ => {
-            let look = look.ok_or(FluidBoxError::MissingSprite)?;
-            (
+        _ => match look {
+            Some(look) => (
                 look.sprite
                     .as_deref()
                     .unwrap_or(sunrise_client::fluid_models::FLAT_SPRITE),
                 super::native_panel_recipes::fluid_tint(id, look.tint),
-            )
-        }
+            ),
+            None => ("minecraft:missingno", 0xFFFF_FFFF),
+        },
     };
-    Ok(FluidBoxLook {
-        layer: sprite_layer(sprite).ok_or(FluidBoxError::MissingSprite)?,
+    Some(FluidBoxLook {
+        layer: sprite_layer(sprite).or_else(|| sprite_layer("minecraft:missingno"))?,
         tint,
         luminosity,
     })
@@ -99,11 +115,15 @@ fn draw_fluid_box(
     stack: &FluidStack,
     bounds: [f32; 6],
     options: FluidBoxOptions,
-) -> Result<(), FluidBoxError> {
+    vertex_limit: usize,
+) {
     if stack.amount == 0 {
-        return Ok(());
+        return;
     }
     let pose = draw.pose();
+    if !pose.is_finite() {
+        return;
+    }
     let light = fluid_light(draw.light(), luminosity);
     let argb = options.argb.unwrap_or(tint);
     // The vertex colour is ABGR.
@@ -114,19 +134,29 @@ fn draw_fluid_box(
         uv_shrink_ratio: options.uv_shrink_ratio,
     };
     let vertices = draw.vertices_mut();
-    let drawn = fluid_box(bounds, options, |v| {
-        vertices.push(Vertex {
-            pos: pose.transform_point3(Vec3::from_array(v.pos)).to_array(),
-            uv: v.uv,
-            layer: FLUID_OVERLAY,
-            color,
-            light,
-            // The source TRANSLUCENT shader does not use normals for lighting.
-            normal: [0; 4],
-            glint_uv: [layer as f32, 0.0],
-        });
+    fluid_box(bounds, options, |quad| {
+        let corners = quad.map(|v| pose.transform_point3(Vec3::from_array(v.pos)).to_array());
+        let uvs = quad.map(|v| v.uv);
+        if !super::draw_boundary::quad_allowed(corners, uvs, vertices.len(), vertex_limit) {
+            return vertices
+                .len()
+                .checked_add(4)
+                .is_some_and(|end| end <= vertex_limit);
+        }
+        for (pos, uv) in corners.into_iter().zip(uvs) {
+            vertices.push(Vertex {
+                pos,
+                uv,
+                layer: FLUID_OVERLAY,
+                color,
+                light,
+                // The source TRANSLUCENT shader does not use normals for lighting.
+                normal: [0; 4],
+                glint_uv: [layer as f32, 0.0],
+            });
+        }
+        true
     });
-    drawn.then_some(()).ok_or(FluidBoxError::InvalidBox)
 }
 
 #[cfg(test)]
@@ -153,15 +183,25 @@ mod tests {
         )
     }
 
-    fn drawn(
-        stack: &FluidStack,
-        bounds: [f32; 6],
-        options: FluidBoxOptions,
-    ) -> (Result<(), FluidBoxError>, Vec<Vertex>) {
+    fn drawn(stack: &FluidStack, bounds: [f32; 6], options: FluidBoxOptions) -> Vec<Vertex> {
         let mut draw = frame();
-        let result = look(stack, None, |_| Some(7))
-            .and_then(|look| draw_fluid_box(&mut draw, look, stack, bounds, options));
-        (result, draw.into_vertices())
+        if let Some(look) = look(stack, None, |sprite| {
+            Some(if sprite == "minecraft:missingno" {
+                1
+            } else {
+                7
+            })
+        }) {
+            draw_fluid_box(
+                &mut draw,
+                look,
+                stack,
+                bounds,
+                options,
+                super::super::draw_boundary::MAX_DRAW_VERTICES,
+            );
+        }
+        draw.into_vertices()
     }
 
     /// The look of `stack`'s fluid, lava's block light 15 and the others' 0.
@@ -169,7 +209,7 @@ mod tests {
         stack: &FluidStack,
         declared: Option<&sunrise_mod_package::content::FluidLook>,
         sprite_layer: impl Fn(&str) -> Option<u32>,
-    ) -> Result<FluidBoxLook, FluidBoxError> {
+    ) -> Option<FluidBoxLook> {
         let id = mod_api::__private::fluid_id(stack.key().unwrap()).unwrap();
         let light = if id == "minecraft:lava" { 15 } else { 0 };
         fluid_box_look(id, declared, light, sprite_layer)
@@ -186,12 +226,11 @@ mod tests {
 
     #[test]
     fn water_tiles_under_the_pose_in_its_own_material_with_the_stack_tint() {
-        let (result, vertices) = drawn(
+        let vertices = drawn(
             &stack("minecraft:water", 1000),
             [0.0, 0.0, 0.0, 2.0, 1.0, 1.0],
             FluidBoxOptions::new(false, 0.0),
         );
-        assert_eq!(result, Ok(()));
         // Two tiles on top, front, back; one on each end; the bottom left out.
         assert_eq!(vertices.len(), (2 + 2 + 2 + 1 + 1) * 4);
         assert!(vertices.iter().all(|v| v.layer == FLUID_OVERLAY
@@ -206,12 +245,11 @@ mod tests {
 
     #[test]
     fn lava_raises_block_light_and_an_explicit_tint_replaces_the_stack_tint() {
-        let (result, vertices) = drawn(
+        let vertices = drawn(
             &stack("minecraft:lava", 1),
             [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
             FluidBoxOptions::new(true, 0.0).with_argb(0x8011_2233),
         );
-        assert_eq!(result, Ok(()));
         assert_eq!(vertices.len(), 6 * 4);
         // Sky 12 kept, block light 3 raised to lava's 15.
         assert!(
@@ -222,58 +260,79 @@ mod tests {
     }
 
     #[test]
-    fn refusals_and_empty_stacks_append_nothing() {
+    fn empty_invalid_and_missing_sprite_fallback_behaviour() {
         let unit = [0.0, 0.0, 0.0, 1.0, 1.0, 1.0];
         let options = FluidBoxOptions::new(true, 0.0);
-        let cases = [
-            // A registered fluid with no look has no sprite.
-            (
-                stack("test:potion", 1000),
-                unit,
-                options,
-                Err(FluidBoxError::MissingSprite),
-            ),
+        // Empty fluid, empty stack, reversed bounds and non-finite bounds draw nothing.
+        for (stack, bounds, options) in [
             (
                 stack("minecraft:water", 1000),
                 [1.0, 0.0, 0.0, 0.0, 1.0, 1.0],
                 options,
-                Err(FluidBoxError::InvalidBox),
             ),
             (
                 stack("minecraft:water", 1000),
                 [0.0, 0.0, 0.0, f32::NAN, 1.0, 1.0],
                 options,
-                Err(FluidBoxError::InvalidBox),
             ),
-            (
-                stack("minecraft:water", 1000),
-                [0.0, 0.0, 0.0, 1_000.0, 1_000.0, 1_000.0],
-                options,
-                Err(FluidBoxError::InvalidBox),
-            ),
+            (stack("minecraft:water", 0), [f32::NAN; 6], options),
             (
                 stack("minecraft:water", 1000),
                 unit,
-                FluidBoxOptions::new(true, 1.5),
-                Err(FluidBoxError::InvalidBox),
+                FluidBoxOptions::new(true, f32::NAN),
             ),
-            // An empty stack is drawn as nothing without its bounds being read.
-            (stack("minecraft:water", 0), [f32::NAN; 6], options, Ok(())),
-        ];
-        for (stack, bounds, options, expected) in cases {
-            let (result, vertices) = drawn(&stack, bounds, options);
-            assert_eq!(result, expected, "{bounds:?} {options:?}");
+        ] {
+            let vertices = drawn(&stack, bounds, options);
             assert!(vertices.is_empty(), "{bounds:?} {options:?}");
         }
-        // A sprite the loaded resources lack.
-        assert_eq!(
-            look(&stack("minecraft:lava", 1000), None, |_| None),
-            Err(FluidBoxError::MissingSprite)
-        );
         assert_eq!(
             fluid_box_look("minecraft:empty", None, 0, |_| Some(7)),
-            Err(FluidBoxError::UnsupportedFluid)
+            None
         );
+
+        // A registered fluid with no look draws with `minecraft:missingno` and white tint.
+        let vertices = drawn(&stack("test:potion", 1000), unit, options);
+        assert_eq!(vertices.len(), 6 * 4);
+        assert!(
+            vertices
+                .iter()
+                .all(|v| v.glint_uv == [1.0, 0.0] && v.color == 0xFFFF_FFFF)
+        );
+
+        // A missing sprite falls back to `minecraft:missingno`.
+        assert_eq!(
+            look(&stack("minecraft:lava", 1000), None, |sprite| {
+                (sprite == "minecraft:missingno").then_some(1)
+            }),
+            Some(FluidBoxLook {
+                layer: 1,
+                tint: 0xFFFF_FFFF,
+                luminosity: 15,
+            })
+        );
+        // When even `minecraft:missingno` is absent, look resolution returns `None`.
+        assert_eq!(look(&stack("minecraft:lava", 1000), None, |_| None), None);
+
+        // Unclamped shrink ratio and large coordinates emit without invented caps.
+        let vertices = drawn(
+            &stack("minecraft:water", 1000),
+            [2_000_000.0, 0.0, 0.0, 2_000_001.0, 1.0, 1.0],
+            FluidBoxOptions::new(true, 1.5),
+        );
+        assert_eq!(vertices.len(), 6 * 4);
+
+        // Hitting the vertex-index limit stops cleanly at whole quads without partial vertices.
+        let mut draw = frame();
+        let look = look(&stack("minecraft:water", 1000), None, |_| Some(7)).unwrap();
+        draw_fluid_box(
+            &mut draw,
+            look,
+            &stack("minecraft:water", 1000),
+            [0.0, 0.0, 0.0, 10.0, 1.0, 10.0],
+            options,
+            10,
+        );
+        assert_eq!(draw.into_vertices().len(), 8);
     }
 
     #[test]
@@ -296,18 +355,18 @@ mod tests {
         let drawn_with = |stack: &FluidStack, options| {
             let mut draw = frame();
             let look = fluid_box_look("test:potion", Some(&honey), 15, layers).unwrap();
-            let result = draw_fluid_box(
+            draw_fluid_box(
                 &mut draw,
                 look,
                 stack,
                 [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
                 options,
+                super::super::draw_boundary::MAX_DRAW_VERTICES,
             );
-            (result, draw.into_vertices())
+            draw.into_vertices()
         };
         let options = FluidBoxOptions::new(true, 0.0);
-        let (result, vertices) = drawn_with(&plain, options);
-        assert_eq!(result, Ok(()));
+        let vertices = drawn_with(&plain, options);
         assert_eq!(vertices.len(), 6 * 4);
         // The look's sprite layer and its 0xAARRGGBB tint as ABGR; block light raised from the
         // draw's to the look's own light level 15.
@@ -319,13 +378,12 @@ mod tests {
                 .all(|v| v.glint_uv == [9.0, 0.0] && v.color == 0xC000_AAFF && v.light == lit)
         );
         // Components change nothing, and `argb` still replaces the look's tint.
-        let (result, same) = drawn_with(&with_components, options);
-        assert_eq!(result, Ok(()));
+        let same = drawn_with(&with_components, options);
         assert_eq!(same.len(), vertices.len());
         assert!(same.iter().zip(&vertices).all(|(a, b)| {
             (a.pos, a.color, a.light, a.glint_uv) == (b.pos, b.color, b.light, b.glint_uv)
         }));
-        let (_, argb) = drawn_with(&plain, options.with_argb(0x8011_2233));
+        let argb = drawn_with(&plain, options.with_argb(0x8011_2233));
         assert!(argb.iter().all(|v| v.color == 0x8033_2211));
     }
 
@@ -338,7 +396,7 @@ mod tests {
         let layers = |sprite: &str| (sprite == "sunrise:flat_color").then_some(4);
         assert_eq!(
             fluid_box_look("test:honey", Some(&flat), 0, layers),
-            Ok(FluidBoxLook {
+            Some(FluidBoxLook {
                 layer: 4,
                 tint: 0xC0FF_AA00,
                 luminosity: 0
@@ -348,7 +406,7 @@ mod tests {
         let plain = sunrise_mod_package::content::FluidLook { tint: None, ..flat };
         assert_eq!(
             fluid_box_look("test:honey", Some(&plain), 0, layers).map(|look| look.tint),
-            Ok(0xFF9A_9A9A)
+            Some(0xFF9A_9A9A)
         );
     }
 }
