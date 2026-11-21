@@ -1536,39 +1536,25 @@ impl Game<'_> {
         all
     }
 
-    /// Draws block `block`'s model (`mymod:cog`, any block with a model) in
-    /// the state with `properties` (`[("axis", "x")]`, the rest default)
-    /// under `draw`'s pose, as vanilla's `submitBlockModel` draws a block in
-    /// an entity's place: a block's baked model, with its default tints. A
-    /// moving part that is no block is a standalone model
-    /// (`native_draw_model`). False for an unknown block or property.
+    /// Draws resolved block state `state`'s baked model under `draw`'s pose
+    /// with its default tints, matching vanilla's
+    /// `SubmitNodeCollector.submitBlockModel` (`BlockEntityDrawContext::block`
+    /// lowers an API `BlockState` to `BlockStateId` before calling here). A
+    /// moving part that is not a block is a standalone model
+    /// (`native_draw_model`). Returns `false` without emitting vertices when
+    /// `state` is not in the active block registry.
     pub(super) fn native_draw_block(
         &self,
         draw: &mut BlockEntityDraw,
-        block: &str,
-        properties: &[(&str, &str)],
+        state: BlockStateId,
     ) -> bool {
-        let registry = &self.pack.assets.registry;
-        let Some(mut state) = registry
-            .default_state(block)
-            .and_then(|id| registry.state(id))
-            .cloned()
-        else {
+        if self.pack.assets.registry.state(state).is_none() {
             return false;
-        };
-        for (key, value) in properties {
-            match state.properties.get_mut(*key) {
-                Some(v) => *v = (*value).to_owned(),
-                None => return false,
-            }
         }
-        let Some(id) = registry.id(&state) else {
-            return false;
-        };
         let pose = draw.pose();
         let start = draw.vertices.len();
         self.block_model_vertices(
-            id,
+            state,
             Self::BLOCK_MODEL_SEED,
             pose,
             draw.element_ambient(),
@@ -1579,9 +1565,11 @@ impl Game<'_> {
         true
     }
 
-    /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
-    /// parts for its properties at seed 42, each tinted face holding the block's default tint
-    /// (no position) in its colour. Resolved once per state in this generation.
+    /// Resolved block state `id` as one model: what `native_draw_block` draws
+    /// for a `BlockState` lowered to `BlockStateId`, combining the blockstate
+    /// file's parts at `BLOCK_MODEL_SEED` (42) with each tinted face holding
+    /// the block's default tint (no position) in its colour. Resolved once per
+    /// state in this generation.
     pub(super) fn native_block_state_model(
         &self,
         id: BlockStateId,
@@ -3116,6 +3104,115 @@ mod tests {
             faces[0] = Some(mod_api::CubeFace::new("mymod:block/missing"));
             assert!(!drawn.cube([0.0; 3], [16.0; 3], faces, 0xFFFFFF));
             assert_eq!(surface.vertices.len(), 4, "the casing face alone");
+        });
+    }
+
+    /// `BlockEntityDrawContext::block` / `Game::native_draw_block` draws a resolved
+    /// `BlockState`'s baked block model under the current pose with its default tints,
+    /// and rejects out-of-range states with `false` without appending geometry.
+    #[test]
+    #[ignore = "daily"]
+    fn block_draws_resolved_states_and_rejects_unknown_states() {
+        use super::super::api_values::TryIntoEngine;
+        use super::super::host::draw::GameBlockEntityDrawContext;
+        use mod_api::{BlockEntityDrawContext, BlockState, HostBlockStates, StateConstraint};
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let mut surface = draw();
+            assert!(!game.native_draw_block(&mut surface, BlockStateId(u32::MAX)));
+            assert!(surface.vertices.is_empty());
+
+            let log_key = game.block_key("minecraft:oak_log").expect("oak_log key");
+            let states = game.block_states();
+            let log_x = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "x")])
+                .expect("oak_log[axis=x]");
+            let log_y = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "y")])
+                .expect("oak_log[axis=y]");
+            let log_x_id = log_x.try_into_engine(&()).expect("engine id for axis=x");
+            let log_y_id = log_y.try_into_engine(&()).expect("engine id for axis=y");
+
+            let invalid_ordinal = mod_api::__private::block_state_from_ordinal(log_key, u16::MAX);
+            let unknown_block = mod_api::__private::block_state_from_ordinal(
+                mod_api::__private::parts_installation::block_key(u32::MAX),
+                0,
+            );
+            {
+                let mut drawn = GameBlockEntityDrawContext {
+                    game,
+                    surface: &mut surface,
+                };
+                assert!(!drawn.block(invalid_ordinal));
+                assert!(!drawn.block(unknown_block));
+            }
+            assert!(surface.vertices.is_empty());
+
+            let bytes = |vertices: &[Vertex]| bytemuck::cast_slice::<_, u8>(vertices).to_vec();
+            let top_sprite = game.gui.atlas.sprites["block/oak_log_top"];
+            let side_sprite = game.gui.atlas.sprites["block/oak_log"];
+            let face_in_sprite = |quad: &[Vertex], rect: Rect| {
+                quad.iter().all(|v| {
+                    (rect.u0..=rect.u1).contains(&v.uv[0]) && (rect.v0..=rect.v1).contains(&v.uv[1])
+                })
+            };
+
+            let render = |state: BlockState| {
+                let mut surface = draw();
+                surface.light = 0x7030;
+                {
+                    let mut drawn = GameBlockEntityDrawContext {
+                        game,
+                        surface: &mut surface,
+                    };
+                    assert!(drawn.block(state));
+                }
+                surface
+            };
+
+            let drawn_y = render(log_y);
+            let drawn_x = render(log_x);
+            assert_eq!(drawn_y.vertices.len(), 24, "upright oak_log has 6 faces");
+            assert_eq!(drawn_x.vertices.len(), 24, "horizontal oak_log has 6 faces");
+            assert!(drawn_y.vertices.iter().all(|v| v.light == 0x7030));
+            assert!(drawn_x.vertices.iter().all(|v| v.light == 0x7030));
+
+            let y_top = drawn_y
+                .vertices
+                .chunks_exact(4)
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=y");
+            let y_east = drawn_y
+                .vertices
+                .chunks_exact(4)
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=y");
+            assert!(face_in_sprite(y_top, top_sprite));
+            assert!(face_in_sprite(y_east, side_sprite));
+
+            let x_top = drawn_x
+                .vertices
+                .chunks_exact(4)
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=x");
+            let x_east = drawn_x
+                .vertices
+                .chunks_exact(4)
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=x");
+            assert!(face_in_sprite(x_top, side_sprite));
+            assert!(face_in_sprite(x_east, top_sprite));
+
+            for (state_id, drawn) in [(log_y_id, &drawn_y), (log_x_id, &drawn_x)] {
+                let mut expected = Vec::new();
+                game.block_model_vertices(
+                    state_id,
+                    Game::BLOCK_MODEL_SEED,
+                    drawn.pose(),
+                    drawn.element_ambient(),
+                    true,
+                    &mut expected,
+                );
+                assert_eq!(bytes(&drawn.vertices), bytes(&expected));
+            }
         });
     }
 

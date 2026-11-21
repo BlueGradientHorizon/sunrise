@@ -395,13 +395,13 @@ pub trait BlockEntityDrawContext {
     ) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_cube")
     }
-    /// Draws block `block`'s model (`mymod:cog`, any block with a model) in
-    /// the state with `properties` (`[("axis", "x")]`, the rest default)
-    /// under `draw`'s pose, as vanilla's `submitBlockModel` draws a block in
-    /// an entity's place: a block's baked model, with its default tints. A
-    /// moving part that is no block is a standalone model
-    /// (`native_draw_model`). False for an unknown block or property.
-    fn block(&mut self, block: BlockKey, properties: &[(&str, &str)]) -> bool {
+    /// Draws `state`'s baked block model under the current draw pose with its
+    /// default tints, matching vanilla's `SubmitNodeCollector.submitBlockModel`.
+    /// Resolve states once through `host.block_states()` (or pass an event's
+    /// resolved `BlockState`) rather than parsing properties each frame. A
+    /// moving part that is not a block is a standalone model ([`Self::model`]).
+    /// Returns `false` for an unknown state without appending geometry.
+    fn block(&mut self, state: BlockState) -> bool {
         unimplemented!("BlockEntityDrawContext::draw_block")
     }
     /// Draws `stack` under `draw`'s pose as an item is drawn in the world
