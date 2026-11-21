@@ -796,7 +796,8 @@ fn a_collider_on_a_collider_passes_the_displacement_on() {
         let (c1, c1_ref) = stand_with_id(game, [8.0, 70.0, 8.0]);
         c1_ref.set_collider(game, Some(deck())).unwrap();
         // The second collider's holder rests on the first deck, with a small deck above it.
-        let c2 = drop_item(game, [8.5, 70.0, 8.0]);
+        // Its descent clears the pig that holds the first deck, so this tests carry only.
+        let c2 = drop_item(game, [9.0, 70.0, 8.0]);
         game.entity(c2)
             .unwrap()
             .set_collider(
@@ -811,7 +812,7 @@ fn a_collider_on_a_collider_passes_the_displacement_on() {
             )
             .unwrap();
         // And a body on that.
-        let rider = drop_dirt(game, [8.5, 70.2, 8.0]);
+        let rider = drop_dirt(game, [9.0, 70.2, 8.0]);
         settle(game);
         let (from_c2, from) = (item_at(game, c2), item_at(game, rider));
         assert!(
