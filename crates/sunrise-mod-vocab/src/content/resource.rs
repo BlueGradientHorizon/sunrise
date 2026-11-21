@@ -3,7 +3,7 @@
 //! only inside a transaction.
 use crate::{
     Capability, Host, HostTransaction, ItemStack, ItemStackView, ServerHost, Tag,
-    TransactionContext, backend_of,
+    TransactionContext, TransactionError, backend_of,
 };
 use std::fmt;
 use sunrise_core::nbt::JavaString;
@@ -558,7 +558,8 @@ pub trait ResourceHandler<R> {
     ) -> u32;
     /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
     /// Prefer this to `insert_at` unless targeting a specific index. The default runs in its
-    /// own journal and rolls back with [`Overanswered`] if an index answers more than requested.
+    /// own journal and rolls back with `TransactionError::Aborted(Overanswered)` if an index
+    /// answers more than requested. A refused savepoint returns `TransactionError::Unavailable`.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
@@ -568,7 +569,7 @@ pub trait ResourceHandler<R> {
     ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
-        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
+        in_turn(host, amount, 0..size, |host, tx, index, left| {
             Ok(self.insert_at(host, tx, *index, resource, left))
         })
     }
@@ -584,7 +585,7 @@ pub trait ResourceHandler<R> {
     ) -> Result<u32, TransactionError<Overanswered>> {
         crate::item::transaction::assert_transaction_matches(host, Some(tx));
         let size = self.size(host);
-        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
+        in_turn(host, amount, 0..size, |host, tx, index, left| {
             Ok(self.extract_at(host, tx, *index, resource, left))
         })
     }
@@ -593,20 +594,20 @@ pub trait ResourceHandler<R> {
 /// A slot-less transfer owns its journal, so an overanswer cannot leave part of it committed.
 pub(crate) fn in_turn<P>(
     host: &mut dyn ServerHost,
-    tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, TransactionError<Overanswered>>,
+    ask: impl FnMut(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        &P,
+        u32,
+    ) -> Result<u32, TransactionError<Overanswered>>,
 ) -> Result<u32, TransactionError<Overanswered>> {
-    crate::item::transaction::assert_transaction_matches(host, Some(tx));
     if amount == 0 {
         return Ok(0);
     }
-    match host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask)) {
-        Ok(done) => Ok(done),
-        Err(crate::TransactionError::Aborted(over)) => Err(over),
-        Err(crate::TransactionError::Unavailable) => Ok(0),
-    }
+    host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
+        .map_err(TransactionError::flatten)
 }
 
 /// Asks each part for the full remaining amount. The owning transaction aborts on `Err`.
@@ -615,7 +616,12 @@ pub(crate) fn try_in_turn<P>(
     tx: &TransactionContext,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(&mut dyn ServerHost, &TransactionContext, &P, u32) -> Result<u32, TransactionError<Overanswered>>,
+    mut ask: impl FnMut(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        &P,
+        u32,
+    ) -> Result<u32, TransactionError<Overanswered>>,
 ) -> Result<u32, TransactionError<Overanswered>> {
     let mut done = 0;
     for part in parts {
@@ -623,7 +629,8 @@ pub(crate) fn try_in_turn<P>(
         if left == 0 {
             break;
         }
-        done += checked_transfer(ask(host, tx, &part, left)?, left)?;
+        done += checked_transfer(ask(host, tx, &part, left)?, left)
+            .map_err(TransactionError::Aborted)?;
     }
     Ok(done)
 }
@@ -662,23 +669,26 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     ends: Ends<'_, A, B>,
     want: N,
     extract: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> N,
-    insert: impl Fn(&mut dyn ServerHost, &TransactionContext, N) -> Result<N, TransactionError<Overanswered>>,
+    insert: impl Fn(
+        &mut dyn ServerHost,
+        &TransactionContext,
+        N,
+    ) -> Result<N, TransactionError<Overanswered>>,
 ) -> Result<N, TransactionError<Overanswered>> {
     let Ends { from, to, at } = ends;
-    // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: a handler answered more than it
-    // was asked.
+    // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: the transfer failed.
     let step = |host: &mut dyn ServerHost, want: N| {
         host.transaction(|host, tx| {
             let Some(out) = from.checked(extract(host, tx, want), want, at) else {
-                return Err(Err(Overanswered {
+                return Err(Err(TransactionError::Aborted(Overanswered {
                     owner: Some(from.owner()),
-                }));
+                })));
             };
             let took = insert(host, tx, out).map_err(Err)?;
             match to.checked(took, out, at) {
-                None => Err(Err(Overanswered {
+                None => Err(Err(TransactionError::Aborted(Overanswered {
                     owner: Some(to.owner()),
-                })),
+                }))),
                 Some(took) if took == out && took > N::default() => Ok(out),
                 Some(took) => Err(Ok(took)),
             }
@@ -689,10 +699,9 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
         answer => answer,
     }
     .or_else(|error| match error {
-        crate::TransactionError::Aborted(Ok(_)) | crate::TransactionError::Unavailable => {
-            Ok(N::default())
-        }
-        crate::TransactionError::Aborted(Err(over)) => Err(over),
+        TransactionError::Unavailable => Err(TransactionError::Unavailable),
+        TransactionError::Aborted(Ok(_)) => Ok(N::default()),
+        TransactionError::Aborted(Err(error)) => Err(error),
     })
 }
 

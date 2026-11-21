@@ -1568,16 +1568,20 @@ pub(super) mod tests {
                     ))
                 );
             }
+            let mut edited = false;
             let mismatch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 game.storage_transaction(|game, outer| {
                     game.storage_transaction(|game, _| {
-                        let _ =
-                            hand.edit(game, outer, |_| panic!("ancestor transaction ran editor"));
+                        let _ = hand.edit(game, outer, |_| edited = true);
                         Ok::<(), ()>(())
                     })
                 })
+            }))
+            .expect_err("an ancestor write must panic");
+            assert!(!edited, "an ancestor write must not call its editor");
+            assert!(mismatch.downcast_ref::<String>().is_some_and(|message| {
+                message.contains("does not match the host's innermost open transaction")
             }));
-            assert!(mismatch.is_err());
             assert!(game.transactions.is_empty());
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));

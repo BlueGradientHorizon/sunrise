@@ -2,8 +2,8 @@
 
 Use `level.capability(host, &ENERGY, pos, side)` to look up a block's
 `EnergyHandler`. Transfer energy inside a transaction with
-`move_energy(host, &from, &to, max, tx)`. It returns the amount moved or
-[`Overanswered`](answer-limits.md). A partially accepted move is rolled back and
+`move_energy(host, &from, &to, max, tx)`. It returns `Result<u32, TransactionError<Overanswered>>`: the amount moved, an
+[overanswer](answer-limits.md), or a refused savepoint. A partially accepted move is rolled back and
 retried with the accepted amount.
 
 `ENERGY` corresponds to NeoForge's `Capabilities.Energy.BLOCK`. An `EnergyHandler`

@@ -18,7 +18,10 @@ fn update(host: &mut dyn ServerHost) -> Result<(), TransactionError<()>> {
 The closure's `Ok(value)` commits and returns `Ok(value)`. Its `Err(error)`
 rolls back the transaction's journaled work and returns `TransactionError::Aborted(error)`.
 `TransactionError::Unavailable` means the host could not open the transaction and did not
-call the closure. Handle that separately from an error in your own work.
+call the closure. Handle that separately from an error in your own work. The callback
+receives `&mut dyn ServerHost`, even if you call `transaction` on a concrete or generic
+host. Use that type in explicitly typed callbacks and in the helpers they call, and
+keep concrete-host-only setup and assertions outside the loan.
 
 Two other entry points use the same result type:
 
@@ -135,7 +138,7 @@ These methods are server-only:
 
 | Method | Result |
 |---|---|
-| `tx.depth()` | `0` for a root transaction, increasing by one per nesting level. Depth does not identify a transaction. |
+| `tx.depth()` | A `usize`: `0` for a root transaction, increasing by one per nesting level. It does not say whether the context is current; use `transaction_matches` for that. |
 | `host.transaction_matches(Some(tx))` | Whether `tx` belongs to the innermost open transaction on this host. |
 | `host.transaction_matches(None)` | Whether there is no open transaction on this host. |
 | `host.transaction_lifecycle()` | A process-local `TransactionLifecycle` describing the open or closing phase. It does not implement `Wire`. |

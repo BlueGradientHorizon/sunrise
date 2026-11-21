@@ -22,7 +22,7 @@
 use crate::content::resource::{Ends, move_once};
 use crate::{
     BlockSide, Capability, CapabilityKey, ITEMS, ItemResource, ResourceHandler, ServerHost,
-    TransactionContext,
+    TransactionContext, TransactionError,
 };
 use std::{marker::PhantomData, ops::ControlFlow};
 
@@ -39,6 +39,8 @@ pub enum StorageError {
         /// The mod whose handler answered, or "the game".
         owner: String,
     },
+    /// The host refused to open the transfer savepoint.
+    TransactionUnavailable,
     /// The handler could not answer.
     Unavailable {
         /// The provider whose handler was asked, or "the game".
@@ -355,7 +357,8 @@ impl ItemStorage for Slots {
 /// Extract from `from` first, then offer the extracted amount to `to` in the same journal. If
 /// `to` takes only part, roll back and retry once with that amount. A handler that answers more
 /// than it was asked rolls back the move with [`StorageError::Overanswered`]. If `from` has none
-/// or `to` has no room, neither is asked to transfer anything.
+/// or `to` has no room, neither is asked to transfer anything. A refused transfer savepoint
+/// returns [`StorageError::TransactionUnavailable`].
 pub fn transfer(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
@@ -371,7 +374,7 @@ pub fn transfer(
     if want == 0 {
         return Ok(0);
     }
-    Ok(move_once(
+    move_once(
         host,
         Ends {
             from,
@@ -381,7 +384,11 @@ pub fn transfer(
         want,
         |host, tx, want| from.extract(host, tx, resource, want),
         |host, tx, out| Ok(to.insert(host, tx, resource, out)),
-    )?)
+    )
+    .map_err(|error| match error {
+        TransactionError::Aborted(over) => over.into(),
+        TransactionError::Unavailable => StorageError::TransactionUnavailable,
+    })
 }
 
 /// Moves up to `max` of what `filter` accepts out of `from` into `to` (NeoForge's

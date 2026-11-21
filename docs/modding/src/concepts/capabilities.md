@@ -108,7 +108,7 @@ Each method receives the host; the handler holds no borrow of the game.
 | `capacity` / `capacity_int` | Limit for `Some(&resource)`, or the general limit for `None`. An unknown general limit is `u32::MAX`; `capacity_int` caps the answer at `i32::MAX`. This is not free space or permission to insert. |
 | `is_valid` | Whether the resource is allowed at an index. The default checks for nonzero capacity; override it for separate acceptance rules and enforce those rules in `insert_at`. |
 | `insert_at` / `extract_at` | Move up to the requested amount at one index, using the innermost `&TransactionContext`. Return the actual amount moved. Insertion can refuse even with nonzero capacity. |
-| `insert` / `extract` | Let the handler choose where to move the resource. The default visits indices in order. Prefer these unless you need to target a specific index. They return `Result<u32, Overanswered>`. |
+| `insert` / `extract` | Let the handler choose where to move the resource. The default visits indices in order. Prefer these unless you need to target a specific index. They return `Result<u32, TransactionError<Overanswered>>`. |
 
 Keep handler state in transaction-managed storage such as block entity slots, saved compounds or
 attachments. Your handler can look up and call a neighbour's capability through the host.
@@ -119,7 +119,9 @@ back before asking the destination to insert. A step commits only if the source 
 exactly what went in. An overanswer rolls back the entire helper call, even if you handle the error
 and commit the enclosing transaction. Use `Some(tx)` for the innermost transaction or `None` to open a
 root transaction. A foreign or ancestor context, or `None` while a transaction is open, panics.
-Pass capability references to keep their provider names in `Overanswered` errors. For a handler
+A refused root or nested scope returns `Err(TransactionError::Unavailable)`; it is not a
+successful zero transfer. Pass capability references to keep their provider names in
+`TransactionError::Aborted(Overanswered)` errors. For a handler
 you compose directly, pass it as `&dyn ResourceHandler<R>`; the helper does not infer a provider.
 
 `move_resources_stacking` tops up matching destination indices before filling empty ones.
@@ -130,10 +132,11 @@ including more of the same resource from later source indices, and return which 
 uses general capacity at empty indices, so an empty, zero-capacity index is already full.
 `comparator_signal` averages the fill over all indices: empty and zero-capacity indices contribute
 zero and overfilled indices contribute at most one. `insert_stacking` tops up matching indices
-before filling empty ones; an overanswer rolls it back and returns `Overanswered`. `extract_first`
+before filling empty ones; an overanswer rolls it back and returns `TransactionError::Aborted(Overanswered)`. `extract_first`
 takes the first extractable resource matching a filter. `find_extractable_resource` probes each
 candidate with its full int amount in a separate transaction that always rolls back. These three
-helpers follow the same rule for `Some(tx)` and `None`.
+helpers follow the same rule for `Some(tx)` and `None`. The two extraction queries return
+`Ok(None)` when nothing matches, not when opening the required transaction fails.
 
 Compose handlers from the same module: `CombinedResourceHandler` assigns indices in order and fixes
 its size at construction; `RangedResourceHandler::of` and `of_single_index` return `None` for

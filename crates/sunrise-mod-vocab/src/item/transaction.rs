@@ -116,6 +116,15 @@ pub enum TransactionError<E> {
     Aborted(E),
 }
 
+impl<E> TransactionError<TransactionError<E>> {
+    pub(crate) fn flatten(self) -> TransactionError<E> {
+        match self {
+            Self::Unavailable => TransactionError::Unavailable,
+            Self::Aborted(inner) => inner,
+        }
+    }
+}
+
 impl<E: fmt::Display> fmt::Display for TransactionError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -145,15 +154,12 @@ pub(crate) fn assert_transaction_matches(
     if host.transaction_matches(expected) {
         return;
     }
-    let lifecycle = host.transaction_lifecycle();
     match expected {
         Some(tx) => panic!(
-            "transaction context at depth {} does not match the host's innermost open transaction (lifecycle: {lifecycle:?})",
+            "transaction context at depth {} does not match the host's innermost open transaction",
             tx.depth()
         ),
-        None => panic!(
-            "expected no open transaction on this host, but a transaction is open (lifecycle: {lifecycle:?})"
-        ),
+        None => panic!("expected no open transaction on this host, but a transaction is open"),
     }
 }
 
@@ -211,7 +217,8 @@ pub trait HostTransaction: ServerHost {
     /// An error returned by `f` becomes [`TransactionError::Aborted`]. If a transaction cannot
     /// be opened, [`TransactionError::Unavailable`] means `f` did not run.
     ///
-    /// `f` gets a loan of the server host and [`TransactionContext`] to write in. Only the
+    /// `f` gets a loan of `&mut dyn ServerHost`, even on a concrete receiver, and a
+    /// [`TransactionContext`] to write in. Only the
     /// host's owning scope ends the transaction.
     ///
     /// Covered: block entities (item slots, saved compound, custom name and attachments), cauldrons,
@@ -265,14 +272,25 @@ mod tests {
         (fake, resource)
     }
 
+    struct NoTx;
+    impl Host for NoTx {}
+    crate::impl_host_areas!(NoTx);
+    impl ServerHost for NoTx {}
+    crate::impl_server_host_areas!(NoTx);
+
+    #[test]
+    #[should_panic(expected = "does not match the host's innermost open transaction")]
+    fn generated_handle_checks_a_foreign_context_before_backend_lookup() {
+        let mut owner = FakeHost::new();
+        let level = owner.level.level();
+        let _ = owner.transaction(|_, tx| {
+            let _ = level.pickup_fluid(&mut NoTx, AT, None, tx);
+            Ok::<_, ()>(())
+        });
+    }
+
     #[test]
     fn a_host_without_transactions_returns_unavailable_without_calling_closure() {
-        struct NoTx;
-        impl Host for NoTx {}
-        crate::impl_host_areas!(NoTx);
-        impl ServerHost for NoTx {}
-        crate::impl_server_host_areas!(NoTx);
-
         let mut host = NoTx;
         assert!(host.transaction_matches(None));
         let outcome = host.transaction(|_, _| -> Result<(), ()> {

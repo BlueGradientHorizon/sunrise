@@ -1061,6 +1061,7 @@ fn handle_method(
     };
     let mut args = String::new();
     let mut rest = vec![syn::parse_quote!(self), host];
+    let mut check_transaction = String::new();
     for arg in entry.sig.inputs.iter().skip(2) {
         let mut arg = arg.clone();
         let FnArg::Typed(typed) = &mut arg else {
@@ -1071,6 +1072,19 @@ fn handle_method(
         };
         pat.mutability = None;
         args.push_str(&format!(", {}", pat.ident));
+        if matches!(&*typed.ty, Type::Reference(reference)
+            if matches!(&*reference.elem, Type::Path(path) if path.path.is_ident("TransactionContext")))
+        {
+            if !mutable || tier.client() {
+                return Err(format!(
+                    "{name}: transaction loans require a mutable server host"
+                ));
+            }
+            check_transaction = format!(
+                "crate::item::transaction::assert_transaction_matches(host, Some({})); ",
+                pat.ident
+            );
+        }
         rest.push(arg);
     }
     sig.inputs = rest.into_iter().collect();
@@ -1110,7 +1124,10 @@ fn handle_method(
     };
     Ok(Some((
         handle,
-        format!("{docs}pub {} {{ {body} }}\n", sig.to_token_stream()),
+        format!(
+            "{docs}pub {} {{ {check_transaction}{body} }}\n",
+            sig.to_token_stream()
+        ),
     )))
 }
 

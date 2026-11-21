@@ -6,7 +6,7 @@
 //! attachments).
 use crate::{
     Direction, Host, ItemResource, LevelRef, Overanswered, ResourceHandler, ServerHost,
-    TransactionContext, backend_mut_of, backend_of,
+    TransactionContext, TransactionError, backend_mut_of, backend_of,
 };
 use std::{fmt::Debug, marker::PhantomData, ops::Deref};
 
@@ -176,11 +176,21 @@ impl<R> Capability<dyn ResourceHandler<R>> {
         operation: &str,
     ) -> Result<u32, TransactionError<Overanswered>> {
         answer
-            .and_then(|answer| crate::content::resource::checked_transfer(answer, amount))
+            .and_then(|answer| {
+                crate::content::resource::checked_transfer(answer, amount)
+                    .map_err(TransactionError::Aborted)
+            })
             .map_err(|mut error| {
-                if error.owner.is_none() {
-                    crate::block::item_place::warn_broken(self.owner, &operation);
-                    error.owner = Some(self.owner());
+                match &mut error {
+                    TransactionError::Unavailable => {
+                        let owner = self.owner.unwrap_or("the game");
+                        log::warn!("Resource handler from {owner}: {operation} could not open a transaction");
+                    }
+                    TransactionError::Aborted(over) if over.owner.is_none() => {
+                        crate::block::item_place::warn_broken(self.owner, &operation);
+                        over.owner = Some(self.owner());
+                    }
+                    TransactionError::Aborted(_) => {}
                 }
                 error
             })

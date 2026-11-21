@@ -4,7 +4,7 @@
 use crate::content::resource::{Ends, move_once};
 use crate::{
     BlockSide, Capability, CapabilityKey, ItemCapabilityKey, Overanswered, ServerHost,
-    TransactionContext,
+    TransactionContext, TransactionError,
 };
 use std::marker::PhantomData;
 
@@ -72,7 +72,8 @@ impl EnergyHandler for GameEnergy {
 /// Moves up to `max` energy out of `from` into `to` (NeoForge's `EnergyHandlerUtil.move`), in
 /// transaction `tx`: how much moved. Extract from `from` first, then offer the extracted amount
 /// to `to` in the same journal. If `to` takes only part, roll back and retry once with that amount.
-/// A handler that answers more than it was asked rolls back the move with [`Overanswered`].
+/// An overanswer rolls back the move with `TransactionError::Aborted(Overanswered)`. If the
+/// host refuses a savepoint, the move returns `TransactionError::Unavailable`.
 pub fn move_energy(
     host: &mut dyn ServerHost,
     from: &Capability<dyn EnergyHandler>,

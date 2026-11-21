@@ -4,7 +4,7 @@
 use crate::{
     Capability, ComponentId, Direction, EnergyHandler, EntityRef, EquipmentSlot, FluidResource,
     Host, ItemPlace, ItemResource, Overanswered, PREVENT_ARMOR_CHANGE, ProvidedBy, ResourceHandler,
-    ServerHost, Tag, TransactionContext, backend_of,
+    ServerHost, Tag, TransactionContext, TransactionError, backend_of,
 };
 use std::marker::PhantomData;
 

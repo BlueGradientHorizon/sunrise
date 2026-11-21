@@ -1,8 +1,10 @@
 # Capability answer limits
 
 If a handler answers more than requested, `resource_util::move_resources` rolls back the
-whole move and returns `Overanswered`. Use `?` to abort the enclosing transaction too when
-its other writes depend on the move succeeding.
+whole move and returns `Err(TransactionError::Aborted(Overanswered))`. If a needed scope
+cannot open, the move returns `Err(TransactionError::Unavailable)`. Use `?` to abort the
+enclosing transaction too when its other writes depend on the move succeeding; an error
+returned from its closure is wrapped in the outer transaction's `Aborted` variant.
 
 - `Overanswered.owner` is `Some` with the mod ID or `"the game"` when a capability can
   attribute a slot-less error. A direct handler or a raw indexed answer may leave it `None`.

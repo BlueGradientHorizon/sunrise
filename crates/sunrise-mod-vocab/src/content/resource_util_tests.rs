@@ -1,5 +1,5 @@
 use super::*;
-use crate::testing::FakeHost;
+use crate::testing::{FakeHost, FakeJournal};
 use crate::{Capability, ItemResource, Tag};
 use std::{cell::RefCell, rc::Rc};
 
@@ -327,7 +327,9 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
         let inner = tank_then_liar(host);
         assert_eq!(
             insert(host, &inner, amount),
-            Err(TransactionError::Aborted(Overanswered { owner: None }))
+            Err(TransactionError::Aborted(TransactionError::Aborted(
+                Overanswered { owner: None }
+            )))
         );
     }
     // The ranged wrapper inherits the default slot-less implementation.
@@ -341,11 +343,13 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
     let indices = RangedResourceHandler::of(host, Box::new(indices), 0..2).unwrap();
     assert_eq!(
         insert(host, &indices, 20),
-        Err(TransactionError::Aborted(Overanswered { owner: None }))
+        Err(TransactionError::Aborted(TransactionError::Aborted(
+            Overanswered { owner: None }
+        )))
     );
     assert_eq!(
         insert_stacking(host, &indices, &HYDROGEN, 20, None),
-        Err(Overanswered { owner: None })
+        Err(TransactionError::Aborted(Overanswered { owner: None }))
     );
 }
 
@@ -494,14 +498,8 @@ fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
     chest(&mut fake, A, &[Some((dirt, 3)), Some((stone, 5))]);
     let items = WholeSlot(items_at(&mut fake, A));
     let host: &mut dyn ServerHost = &mut fake;
-    let found = host.transaction(|host, tx| {
-        Ok::<_, ()>(find_extractable_resource(
-            host,
-            &items,
-            |r| r == stone,
-            Some(tx),
-        ))
-    });
+    let found = host
+        .transaction(|host, tx| find_extractable_resource(host, &items, |r| r == stone, Some(tx)));
     assert_eq!(found, Ok(Some(stone.clone())));
     assert_eq!(counts(&fake, A), [3, 5]);
     assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
@@ -579,7 +577,7 @@ fn each_extractability_probe_starts_with_unchanged_storage() {
     let probe = Probe(items_at(&mut fake, A));
     assert_eq!(
         find_extractable_resource(&mut fake, &probe, |_| true, None),
-        Some(r[1].clone())
+        Ok(Some(r[1].clone()))
     );
     assert_eq!(counts(&fake, A), [3, 5]);
 }
@@ -595,7 +593,7 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
     );
     let items = items_at(&mut fake, A);
     let taken = extract_first(&mut fake, &*items, |r| r == stone, 8, None);
-    assert_eq!(taken, Some((stone.clone(), 8)));
+    assert_eq!(taken, Ok(Some((stone.clone(), 8))));
     assert_eq!(counts(&fake, A), [3, 0, 4]);
     assert_eq!(fake.journal.closed().last(), Some(&(1, true)));
 }
@@ -673,9 +671,11 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
         });
         assert_eq!(
             moved,
-            Err(TransactionError::Aborted(Overanswered {
-                owner: Some("test:liar".into())
-            }))
+            Err(TransactionError::Aborted(TransactionError::Aborted(
+                Overanswered {
+                    owner: Some("test:liar".into())
+                }
+            )))
         );
         assert_eq!(counts(&fake, A), [5]);
         assert_eq!(counts(&fake, B), [62]);
@@ -683,7 +683,7 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     let host: &mut dyn ServerHost = &mut fake;
     assert_eq!(
         move_resources_stacking(host, &from, &*to, |_| true, 5, None),
-        Err(Overanswered { owner: None })
+        Err(TransactionError::Aborted(Overanswered { owner: None }))
     );
     assert_eq!(counts(&fake, A), [5]);
     assert_eq!(counts(&fake, B), [62]);
@@ -765,9 +765,9 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
         assert_eq!(other.insert_at(host, parent, 0, stone, 1), 1);
         assert_eq!(
             move_resources(host, &from, &to, |_| true, 8, Some(parent)),
-            Err(Overanswered {
+            Err(TransactionError::Aborted(Overanswered {
                 owner: Some("test:sink".into())
-            })
+            }))
         );
         Ok::<_, ()>(())
     })
@@ -799,9 +799,9 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
     let refused = host.transaction(|host, tx| Ok::<_, ()>(to.insert(host, tx, stone, u32::MAX)));
     assert_eq!(
         refused,
-        Ok(Err(Overanswered {
+        Ok(Err(TransactionError::Aborted(Overanswered {
             owner: Some("test:liar".into())
-        }))
+        })))
     );
     assert_eq!(counts(&fake, B), [62]);
     assert_eq!(fake.journal.closed().last(), Some(&(1, true)));
@@ -810,9 +810,9 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
     let moved = move_resources(host, &from, &to, |_| true, u32::MAX, None);
     assert_eq!(
         moved,
-        Err(Overanswered {
+        Err(TransactionError::Aborted(Overanswered {
             owner: Some("test:liar".into())
-        })
+        }))
     );
     assert_eq!(counts(&fake, B), [62]);
     assert_eq!(fake.journal.closed().last(), Some(&(1, false)));
@@ -908,4 +908,88 @@ fn moves_accept_public_wrappers_without_registering_providers() {
         move_resources(host, source, sink, |_| true, 17, None),
         Ok(17)
     );
+}
+
+#[test]
+fn transfers_and_probes_report_a_refused_scope_on_every_attempt() {
+    struct Refuses {
+        journal: FakeJournal<()>,
+        allow_root: bool,
+        refusals: usize,
+    }
+    impl crate::Host for Refuses {}
+    crate::impl_host_areas!(Refuses);
+    crate::impl_server_host_areas!(Refuses);
+    impl ServerHost for Refuses {
+        fn with_transaction_scope(
+            &mut self,
+            callback: &mut dyn for<'loan> FnMut(
+                &'loan mut dyn ServerHost,
+                &'loan TransactionContext,
+            ) -> bool,
+        ) -> Result<(), crate::TransactionUnavailable> {
+            if self.allow_root && self.journal.matches(None) {
+                FakeJournal::with_scope(
+                    self,
+                    |host| &mut host.journal,
+                    |_| (),
+                    |_, ()| {},
+                    callback,
+                )
+            } else {
+                self.refusals += 1;
+                Err(crate::TransactionUnavailable)
+            }
+        }
+        fn transaction_matches(&self, tx: Option<&TransactionContext>) -> bool {
+            self.journal.matches(tx)
+        }
+    }
+
+    let from = InfiniteResourceHandler::new(HYDROGEN);
+    let to = VoidingResourceHandler;
+    let mut host = Refuses {
+        journal: FakeJournal::default(),
+        allow_root: false,
+        refusals: 0,
+    };
+    let from_handler: &dyn ResourceHandler<Chemical> = &from;
+    let to_handler: &dyn ResourceHandler<Chemical> = &to;
+    for _ in 0..2 {
+        assert_eq!(
+            insert_stacking(&mut host, &to, &HYDROGEN, 1, None),
+            Err(TransactionError::Unavailable)
+        );
+        assert_eq!(
+            find_extractable_resource(&mut host, &from, |_| true, None),
+            Err(TransactionError::Unavailable)
+        );
+        assert_eq!(
+            extract_first(&mut host, &from, |_| true, 1, None),
+            Err(TransactionError::Unavailable)
+        );
+        assert_eq!(
+            move_resources(&mut host, from_handler, to_handler, |_| true, 1, None),
+            Err(TransactionError::Unavailable)
+        );
+        assert_eq!(
+            move_first(&mut host, from_handler, to_handler, |_| true, 1, None),
+            Err(TransactionError::Unavailable)
+        );
+    }
+    host.allow_root = true;
+    assert_eq!(
+        move_resources(&mut host, from_handler, to_handler, |_| true, 1, None),
+        Err(TransactionError::Unavailable)
+    );
+    assert_eq!(host.journal.closed(), [(1, false)]);
+    host.transaction(|host, tx| {
+        assert_eq!(
+            from.extract(host, tx, &HYDROGEN, 1),
+            Err(TransactionError::Unavailable)
+        );
+        Ok::<_, ()>(())
+    })
+    .unwrap();
+    assert_eq!(host.refusals, 12);
 }
