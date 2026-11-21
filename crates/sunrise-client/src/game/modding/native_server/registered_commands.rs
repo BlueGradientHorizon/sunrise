@@ -142,11 +142,10 @@ impl Game<'_> {
             host.native_commands_sent = revision;
             host.hub
                 .set_selector_tokens(super::super::native_entity_selectors::selector_tokens());
-            if !force_resend && !replacing {
-                host.hub.set_mod_commands(0, tree);
+            let changed = host.hub.set_mod_commands(0, tree);
+            if !force_resend && !replacing && !changed {
                 return;
             }
-            host.hub.store_mod_commands(0, tree);
         } else if !force_resend {
             return;
         }

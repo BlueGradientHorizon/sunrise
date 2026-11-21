@@ -182,6 +182,20 @@ fn record_callback_panic(
         });
 }
 
+/// Contain an isolated hook listener and report its panic through the normal mod error toast.
+pub(crate) fn contain_listener<T>(
+    owner: &'static str,
+    hook: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, String> {
+    contain_unwind(invoke).inspect_err(|message| {
+        log::error!(
+            "mod {owner}: {hook} listener panicked and is disabled for this session: {message}"
+        );
+        record_callback_panic(owner, "hook", hook, message.clone());
+    })
+}
+
 /// Owner identity and poison state for one retained mod callback.
 // no wire: the callback's enablement and poison state belong to this process.
 // exhaustive: engine-only callback bookkeeping; private fields prevent downstream construction.

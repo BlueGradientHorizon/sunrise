@@ -1878,8 +1878,9 @@ impl Hub {
     }
 
     /// PlayerList.sendPlayerPermissionLevel: the op level as an entity event
-    /// (24 + level), then the commands that level may use.
-    fn send_permission_level(&self, i: usize) {
+    /// (24 + level), sent before the commands that level may use.
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn send_permission_level(&self, i: usize) {
         let g = &self.guests[i];
         g.send(&C::EntityEvent(play::EntityEvent {
             id: g.entity_id,
@@ -1887,19 +1888,7 @@ impl Hub {
         }));
     }
 
-    /// The permissions changed: tell everyone their level and commands again.
-    pub fn resend_commands(&mut self) {
-        self.refresh_permissions();
-        for i in 0..self.guests.len() {
-            if self.guests[i].placed {
-                self.send_permission_level(i);
-                self.send_commands(i, self.commands_packet(self.guests[i].permission));
-            }
-        }
-    }
-
-    /// Every guest's level from the operator list and the settings, the first
-    /// half of [`Hub::resend_commands`].
+    /// Recompute every guest's level from the operator list and settings.
     pub fn refresh_permissions(&mut self) {
         for i in 0..self.guests.len() {
             {
@@ -1907,26 +1896,6 @@ impl Hub {
                 self.guests.update(i, |guest| guest.permission = value);
             }
         }
-    }
-
-    /// The names of the root commands the tree `conn`'s player would get
-    /// holds (before the mods take any out), in the tree's order.
-    pub fn command_names(&self, conn: u32) -> Vec<String> {
-        let Some(g) = self.guest(conn) else {
-            return Vec::new();
-        };
-        let packet = self.commands_packet(g.permission);
-        packet
-            .nodes
-            .get(packet.root as usize)
-            .map(|root| {
-                root.children
-                    .iter()
-                    .filter_map(|&c| packet.nodes.get(c as usize))
-                    .map(|n| n.name.clone())
-                    .collect()
-            })
-            .unwrap_or_default()
     }
 
     /// Whether vanilla's command tree has a command of this name.
@@ -1939,22 +1908,9 @@ impl Hub {
     pub fn mod_commands_key(&self) -> Option<u64> {
         self.mod_commands.1
     }
-    /// Server mods' commands changed: every player gets their tree again.
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn set_mod_commands(&mut self, key: u64, commands: serde_json::Value) {
-        if self.store_mod_commands(key, commands) {
-            for i in 0..self.guests.len() {
-                if self.guests[i].placed {
-                    self.send_commands(i, self.commands_packet(self.guests[i].permission));
-                }
-            }
-        }
-    }
-
-    /// [`Hub::set_mod_commands`] without sending: true when the tree changed.
-    /// The caller sends the trees itself (`native_refresh_commands` first asks
-    /// the mods which root commands each player keeps).
-    pub fn store_mod_commands(&mut self, key: u64, commands: serde_json::Value) -> bool {
+    /// Install server mods' commands; true when the display tree changed.
+    /// Gameplay sends the per-player trees after each live recipient's filter.
+    pub fn set_mod_commands(&mut self, key: u64, commands: serde_json::Value) -> bool {
         let changed = self.mod_commands.0 != commands;
         self.mod_commands = (commands, Some(key));
         changed
@@ -5556,9 +5512,8 @@ mod tests {
             for refresh in [false, true] {
                 if refresh {
                     hub.set_mod_commands(7, serde_json::json!({"children":{"plugin":{"type":"literal","executable":true}}}));
-                } else {
-                    hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
                 }
+                hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
                 let crate::lan::Out::Packet(body) = rx.try_recv().unwrap() else {
                     panic!("packet");
                 };
@@ -5931,9 +5886,7 @@ mod tests {
         );
     }
 
-    /// `store_mod_commands` keeps a new mod tree without sending it (the
-    /// game sends it after the mods filtered it: `native_refresh_commands`),
-    /// and `set_mod_commands` still sends a changed tree, and only a changed one.
+    /// Installation never bypasses the per-recipient send.
     #[test]
     fn stored_mod_commands_are_not_sent_until_asked() {
         let (mut hub, rx) = hub_with_a_guest();
@@ -5951,16 +5904,12 @@ mod tests {
             sent
         };
         let first = serde_json::json!({"hello": {}});
-        assert!(hub.store_mod_commands(0, first.clone()));
-        assert!(!hub.store_mod_commands(0, first.clone()));
-        assert_eq!(trees(&rx), 0);
+        assert!(hub.set_mod_commands(0, first.clone()));
+        assert!(!hub.set_mod_commands(0, first));
         assert_eq!(hub.mod_commands_key(), Some(0));
-        hub.set_mod_commands(0, first);
-        assert_eq!(trees(&rx), 0, "an unchanged tree is not sent again");
-        hub.set_mod_commands(0, serde_json::json!({"hello": {}, "bye": {}}));
+        assert_eq!(trees(&rx), 0, "installing the tree sends no packets");
+        hub.send_commands(0, hub.commands_packet(hub.guests[0].permission));
         assert_eq!(trees(&rx), 1);
-        hub.resend_commands();
-        assert_eq!(trees(&rx), 1, "every placed player gets their tree again");
     }
 
     /// `onGameRuleChanged`: a changed `reduced_debug_info` reaches each player

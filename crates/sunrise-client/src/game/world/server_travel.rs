@@ -998,8 +998,10 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_mut() {
             host.hub
                 .begin_level_change(i, at, yaw, None, PLAYER_DELAY, &ctx);
-            host.hub
-                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+        }
+        self.send_player_command_tree(conn);
+        let ctx = server_ctx!(self);
+        if let Some(host) = self.lan.as_mut() {
             host.hub.finish_level_change(i, true, &ctx);
         }
         if credits_respawn && let Some(host) = self.lan.as_mut() {
@@ -1673,8 +1675,10 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_mut() {
                 host.hub
                     .begin_level_change(i, t.at, yaw, Some(pitch), cooldown, &ctx);
-                host.hub
-                    .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+            }
+            self.send_player_command_tree(t.conn);
+            let ctx = server_ctx!(self);
+            if let Some(host) = self.lan.as_mut() {
                 host.hub.finish_level_change(i, false, &ctx);
                 host.hub.guests.update(i, |g| {
                     g.vehicle = t.vehicle;

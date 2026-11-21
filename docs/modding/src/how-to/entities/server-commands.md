@@ -347,6 +347,28 @@ command dispatcher and sends each player's tree after `player_commands_sent`
 filters it, as vanilla does after `/reload`. Repeated requests before that tick
 coalesce; without a world open to players, nothing is rebuilt.
 
+## Filter one player's command tree
+
+Use `Hooks::player_commands_sent` with a read-only `Host` and
+`PlayerCommandsSentEvent<'_>`. The event's `player` is the live `PlayerRef`, and
+`event.tree.root_names()` borrows the outgoing roots in send order, after the
+server has checked the player's permissions. For example, to hide one root
+from a particular recipient, return:
+
+```rust,ignore
+if event.player.name(host) == Some("Alex") {
+    event.tree.hide_where(|root| root == "my_debug_command")
+} else {
+    None
+}
+```
+
+Each send asks again: there is no saved answer from a previous join, refresh,
+respawn or dimension. Successful selections combine; another listener cannot
+restore a root. Redirects into a removed branch disappear with that branch.
+This filters client highlighting and suggestions, not permission to execute a
+typed command. Keep execution checks in the dispatcher.
+
 ## Who sees a usage
 
 A usage's `level` gates its whole path, and the same test answers running, the tree

@@ -10,7 +10,7 @@
 use super::{command_order::ORDER, command_suggestions::SUGGESTIONS};
 use serde_json::Value;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     path::Path,
     sync::OnceLock,
 };
@@ -254,6 +254,69 @@ impl CommandTree {
     }
 }
 
+/// Omit selected root branches and aliases to them, then enumerate the remaining graph as
+/// ClientboundCommandsPacket does: breadth first, each node's children before its redirect.
+pub fn filter_command_roots(packet: &mut Commands, hidden: &HashSet<String>) {
+    let root = packet.root as usize;
+    let mut removed: Vec<_> = packet.nodes[root]
+        .children
+        .iter()
+        .map(|&index| index as usize)
+        .filter(|&index| hidden.contains(&packet.nodes[index].name))
+        .collect();
+    if removed.is_empty() {
+        return;
+    }
+
+    // Follow incoming redirect edges from the removed roots. Removing the aliases too
+    // leaves neither a dangling redirect nor a second root leading to the removed one.
+    let mut aliases = vec![Vec::new(); packet.nodes.len()];
+    for (index, node) in packet.nodes.iter().enumerate() {
+        if let Some(target) = node.redirect {
+            aliases[target as usize].push(index);
+        }
+    }
+    let mut omit = vec![false; packet.nodes.len()];
+    while let Some(index) = removed.pop() {
+        if !std::mem::replace(&mut omit[index], true) {
+            removed.extend(aliases[index].iter().copied());
+            removed.extend(
+                packet.nodes[index]
+                    .children
+                    .iter()
+                    .map(|&child| child as usize),
+            );
+        }
+    }
+
+    let mut ids = vec![-1; packet.nodes.len()];
+    let mut order = Vec::new();
+    let mut queue = VecDeque::from([root]);
+    while let Some(index) = queue.pop_front() {
+        if omit[index] || ids[index] >= 0 {
+            continue;
+        }
+        ids[index] = order.len() as i32;
+        order.push(index);
+        let node = &packet.nodes[index];
+        queue.extend(node.children.iter().map(|&child| child as usize));
+        queue.extend(node.redirect.map(|target| target as usize));
+    }
+    let mut old: Vec<_> = packet.nodes.drain(..).map(Some).collect();
+    for index in order {
+        let mut node = old[index]
+            .take()
+            .expect("each reachable command node is visited once");
+        node.children.retain_mut(|child| {
+            *child = ids[*child as usize];
+            *child >= 0
+        });
+        node.redirect = node.redirect.map(|target| ids[target as usize]);
+        packet.nodes.push(node);
+    }
+    packet.root = 0;
+}
+
 /// Commands.fillUsableCommands over the report: the children the source may use.
 #[allow(clippy::too_many_arguments)]
 fn fill(
@@ -429,6 +492,55 @@ fn properties(parser: &str, p: &Value) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_filter_removes_branches_and_remaps_the_ordered_wire_graph() {
+        let node = |name: &str, children: Vec<i32>, redirect: Option<i32>| CommandNode {
+            name: name.into(),
+            kind: u8::from(!name.is_empty()),
+            executable: children.is_empty() && redirect.is_none(),
+            restricted: false,
+            children,
+            redirect,
+            parser: None,
+            suggestions: None,
+        };
+        let mut packet = Commands {
+            root: 0,
+            nodes: vec![
+                node("", vec![1, 2, 3, 4, 5, 6], None),
+                node("hide", vec![7], None),
+                node("keep", vec![8], None),
+                node("hidden_alias", vec![], Some(1)),
+                node("indirect_alias", vec![], Some(3)),
+                node("child_alias", vec![], Some(7)),
+                node("kept_alias", vec![], Some(2)),
+                node("hidden_child", vec![], None),
+                node("kept_child", vec![], None),
+            ],
+        };
+        filter_command_roots(&mut packet, &HashSet::from(["hide".to_owned()]));
+
+        use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
+        let encoded = Clientbound::Commands(packet).encode();
+        let mut reader = Reader::new(&encoded);
+        let id = reader.varint().unwrap();
+        let Clientbound::Commands(decoded) = Clientbound::decode(id, reader.rest()).unwrap() else {
+            panic!("expected outgoing command tree");
+        };
+        assert_eq!(
+            decoded,
+            Commands {
+                root: 0,
+                nodes: vec![
+                    node("", vec![1, 2], None),
+                    node("keep", vec![3], None),
+                    node("kept_alias", vec![], Some(1)),
+                    node("kept_child", vec![], None),
+                ],
+            },
+        );
+    }
 
     #[test]
     fn pregen_completion_keeps_permissions_and_radius_bounds() {

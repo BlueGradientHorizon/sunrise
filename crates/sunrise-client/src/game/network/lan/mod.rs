@@ -3067,7 +3067,7 @@ impl Game<'_> {
             return;
         };
         self.load_guest_records(conn);
-        // Collect the recipient's recipe types and filter their command tree.
+        // Collect the recipient's recipe types before their join packets.
         self.prepare_recipe_join(conn);
         // A level that will not open, its generator gone with a mod, is one the
         // world no longer has: left in it, the player would fail the next tick.
@@ -3098,32 +3098,41 @@ impl Game<'_> {
         } else {
             entities
         };
-        let clock_rate = self.network_clock_rate();
-        let ctx = TickCtx {
-            sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
-            world: &mut self.world,
-            entities,
-            next_entity: &mut self.next_entity,
-            spawn,
-            spawn_angle: self.level.world_spawn_angle,
-            spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
-            difficulty: i32::from(self.ui.difficulty),
-            difficulty_locked: self.level.difficulty_locked,
-            clock_rate,
-            tick_rate: self.clock.rate(),
-            tick_frozen: self.clock.frozen(),
-            tick_steps: self.clock.step_state(),
-            collision: Some(self.collision),
-            border: &self.border,
-            streaming: Some(&self.streaming),
+        macro_rules! join_ctx {
+            () => {{
+                let clock_rate = self.network_clock_rate();
+                TickCtx {
+                    sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
+                    world: &mut self.world,
+                    entities,
+                    next_entity: &mut self.next_entity,
+                    spawn,
+                    spawn_angle: self.level.world_spawn_angle,
+                    spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
+                    difficulty: i32::from(self.ui.difficulty),
+                    difficulty_locked: self.level.difficulty_locked,
+                    clock_rate,
+                    tick_rate: self.clock.rate(),
+                    tick_frozen: self.clock.frozen(),
+                    tick_steps: self.clock.step_state(),
+                    collision: Some(self.collision),
+                    border: &self.border,
+                    streaming: Some(&self.streaming),
+                }
+            }};
+        }
+        let index = {
+            let ctx = join_ctx!();
+            self.lan
+                .as_mut()
+                .and_then(|host| host.hub.begin_player_join(conn, &ctx))
         };
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if let Some(i) = host.hub.begin_player_join(conn, &ctx) {
-            host.hub
-                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
-            host.hub.finish_player_join(i, &ctx);
+        if let Some(i) = index {
+            self.send_player_command_tree(conn);
+            let ctx = join_ctx!();
+            if let Some(host) = self.lan.as_mut() {
+                host.hub.finish_player_join(i, &ctx);
+            }
         }
         self.bind_player_attachments(conn, false);
         if elsewhere && let Err(e) = self.enter_level(back) {

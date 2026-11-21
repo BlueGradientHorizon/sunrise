@@ -2149,55 +2149,67 @@ impl Game<'_> {
         self.native_commands.refresh = true;
     }
 
-    /// Asks the mods what root commands each player's tree keeps
-    /// (`native_player_commands_sent`) and stores the answer in the hub,
-    /// which sends the trees without what the mods took out: for `only`, or
-    /// for every placed player.
-    pub(super) fn native_filter_commands(&mut self, only: Option<u32>) {
+    /// Commands.sendCommands: build this recipient's tree once, let the installed
+    /// listeners select exclusions, then encode and send that same tree.
+    pub(in crate::game) fn send_player_command_tree(&mut self, conn: u32) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let players: Vec<(u32, u128, String)> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| only.map_or(g.placed, |conn| g.conn == conn))
-            .map(|g| (g.conn, g.uuid, g.name.clone()))
-            .collect();
-        for (conn, uuid, name) in players {
-            let Some(host) = self.lan.as_ref() else {
-                return;
+        let Some(i) = host.hub.guests.connection_index(conn) else {
+            return;
+        };
+        let guest = &host.hub.guests[i];
+        let (uuid, joining) = (guest.uuid, !guest.placed);
+        let mut packet = host.hub.commands_packet(guest.permission);
+        if mod_api::__private::listened(mod_api::HookId::PlayerCommandsSent)
+            && self.native_lifecycle.epoch().is_some()
+        {
+            let roots = &packet.nodes[packet.root as usize].children;
+            let mut hidden = std::collections::HashSet::new();
+            let mut dispatch = |game: &Self| {
+                if let Some(player) = game.player(uuid) {
+                    let mut answers = |answer: mod_api::Answered<mod_api::CommandTreeSelection>| {
+                        hidden.extend(mod_api::__private::selected_command_roots(answer.answer));
+                    };
+                    let name_at = |index: usize| packet.nodes[roots[index] as usize].name.as_str();
+                    game.native_player_commands_sent(mod_api::__private::PlayerCommandsSentCall {
+                        player,
+                        tree: mod_api::__private::command_tree_filter(roots.len(), &name_at),
+                        answers: &mut answers,
+                    });
+                }
             };
-            let names = host.hub.command_names(conn);
-            let mut kept = names.clone();
-            let placed = host.hub.guest(conn).is_some_and(|g| g.placed);
-            if !placed {
-                // A joining player has no world yet: nothing can be told them.
-                self.native_player_commands_sent(uuid, &name, &mut kept);
-            } else if self.lan_acting == Some(conn) {
-                self.native_player_commands_sent(uuid, &name, &mut kept);
+            if joining {
+                // The joining body exists but is not in the online player list yet.
+                let _ = self.as_guest(conn, |game| dispatch(game));
             } else {
-                self.as_guest(conn, |g| {
-                    g.native_player_commands_sent(uuid, &name, &mut kept);
-                });
+                dispatch(self);
             }
-            if let Some(host) = self.lan.as_mut() {
-                let _ = host.hub.update_guest(conn, |g| {
-                    g.hidden_commands = names.into_iter().filter(|n| !kept.contains(n)).collect();
-                });
+            if !hidden.is_empty() {
+                sunrise_client::lan::commands::filter_command_roots(&mut packet, &hidden);
             }
+        }
+        if let Some(host) = self.lan.as_ref() {
+            host.hub.send_commands(i, packet);
         }
     }
 
-    /// `Hub::resend_commands` with the mods' say on each tree.
+    /// Refresh permissions, then send each placed player their own tree.
     pub(super) fn resend_commands_filtered(&mut self) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
         host.hub.refresh_permissions();
-        self.native_filter_commands(None);
-        if let Some(host) = self.lan.as_mut() {
-            host.hub.resend_commands();
+        for i in 0..host.hub.guests.len() {
+            let Some(host) = self.lan.as_ref() else {
+                return;
+            };
+            let guest = &host.hub.guests[i];
+            if guest.placed && guest.participates_online() {
+                let conn = guest.conn;
+                host.hub.send_permission_level(i);
+                self.send_player_command_tree(conn);
+            }
         }
     }
 
@@ -3657,6 +3669,107 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn outgoing_command_filter_reads_each_live_recipient_and_isolates_panics() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use sunrise_client::lan::{Out, PlayerSender};
+        use sunrise_protocol::buf::Reader;
+
+        struct Filter(Arc<Mutex<Vec<u128>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Filter {
+            fn player_commands_sent(
+                &self,
+                host: &dyn mod_api::Host,
+                event: &mut mod_api::PlayerCommandsSentEvent<'_>,
+            ) -> Option<mod_api::CommandTreeSelection> {
+                let uuid = event.player.uuid();
+                assert_eq!(
+                    event.player.name(host),
+                    Some(if uuid == 12 { "guest12" } else { "guest13" })
+                );
+                self.0.lock().unwrap().push(uuid);
+                event
+                    .tree
+                    .hide_where(|name| uuid == 12 && name == "test_hide")
+            }
+        }
+
+        struct Broken(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Broken {
+            fn player_commands_sent(
+                &self,
+                _: &dyn mod_api::Host,
+                _: &mut mod_api::PlayerCommandsSentEvent<'_>,
+            ) -> Option<mod_api::CommandTreeSelection> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                panic!("test command filter panicked");
+            }
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let panics = Arc::new(AtomicUsize::new(0));
+        mod_platform::testing::with_mods(
+            vec![
+                mod_api::ModEntry::new("broken_command_filter", Box::new(Broken(panics.clone()))),
+                mod_api::ModEntry::new("command_filter", Box::new(Filter(calls.clone()))),
+            ],
+            || {
+                super::super::native_guest_turn_tests::with_guests(|game| {
+                    if game.native_lifecycle.epoch().is_none() {
+                        game.native_lifecycle.world_open_ready().unwrap();
+                    }
+                    let host = game.lan.as_mut().unwrap();
+                    let receivers = [12, 13].map(|conn| {
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        host.hub.update_guest(conn, |g| {
+                            g.sender = PlayerSender::new(tx, Arc::default());
+                            g.placed = conn != 12;
+                        });
+                        rx
+                    });
+                    assert!(host.hub.set_mod_commands(
+                        0,
+                        json!({"type": "root", "children": {
+                            "test_hide": {"type": "literal", "executable": true},
+                            "test_keep": {"type": "literal", "executable": true}
+                        }})
+                    ));
+                    for (conn, rx) in [12, 13].into_iter().zip(receivers) {
+                        game.send_player_command_tree(conn);
+                        let Out::Packet(body) = rx.try_recv().unwrap() else {
+                            panic!("expected command packet");
+                        };
+                        let mut reader = Reader::new(&body);
+                        let C::Commands(packet) =
+                            C::decode(reader.varint().unwrap(), reader.rest()).unwrap()
+                        else {
+                            panic!("expected command tree");
+                        };
+                        let names: Vec<_> = packet.nodes[packet.root as usize]
+                            .children
+                            .iter()
+                            .map(|&id| packet.nodes[id as usize].name.as_str())
+                            .filter(|name| name.starts_with("test_"))
+                            .collect();
+                        assert_eq!(
+                            names,
+                            if conn == 12 {
+                                vec!["test_keep"]
+                            } else {
+                                vec!["test_hide", "test_keep"]
+                            }
+                        );
+                    }
+                    assert_eq!(*calls.lock().unwrap(), [12, 13]);
+                    assert_eq!(panics.load(Ordering::Relaxed), 1);
+                })
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn command_refresh_rebuilds_the_typed_dispatcher_only_on_request() {
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         struct ChangingCommands {
@@ -3700,10 +3813,10 @@ mod tests {
             }
             fn player_commands_sent(
                 &self,
-                _: &mut dyn mod_api::ServerHost,
+                _: &dyn mod_api::Host,
                 event: &mut mod_api::PlayerCommandsSentEvent<'_>,
-            ) {
-                event.names.retain(|name| name != "before");
+            ) -> Option<mod_api::CommandTreeSelection> {
+                event.tree.hide_where(|name| name == "before")
             }
         }
         let changed = Arc::new(AtomicBool::new(false));

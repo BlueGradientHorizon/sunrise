@@ -185,8 +185,9 @@ impl Game<'_> {
         };
         if let Some(host) = self.lan.as_mut() {
             host.hub.begin_respawn(i, spawn, rotation, &ctx);
-            host.hub
-                .send_commands(i, host.hub.commands_packet(host.hub.guests[i].permission));
+        }
+        self.send_player_command_tree(conn);
+        if let Some(host) = self.lan.as_mut() {
             host.hub.finish_respawn(i);
         }
         self.bind_player_attachments(conn, false);
