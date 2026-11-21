@@ -38,12 +38,13 @@ packages are compiled for the mod and linked into the mod's library, so a packag
 twice. A mod can enable different features on its copy without changing the prebuilt game.
 
 All native mods of an instance compile in one Cargo workspace, which resolves one version of a
-package per semver line (the same major, or the same `0.minor` below 1.0). If the game locks a
-package on that line, the build uses the game's version and checksum even if a mod's lock pins a
-newer version. If a dependency requirement excludes the game's version, the build refuses instead
-of compiling a different version. For packages the game doesn't lock on that line, mods that pin
-different versions build on one of their pins if all their requirements allow it. To require a
-particular version of a mod-only crate, use an exact requirement (`dtoa = "=1.0.9"`).
+package per semver line: the same major from 1.0 onward, the same `0.minor` from 0.1 to 1.0,
+and a separate line for each `0.0.patch`. If the game locks a package on that line, the build uses
+its version and checksum even if a mod's lock pins a different version. If a dependency's version
+requirement excludes the game's version or requests a feature that version doesn't have, the build
+refuses instead of compiling a different version. For packages the game doesn't lock on that line,
+mods that pin different versions build on one of their pins if all their requirements allow it. To
+require a particular version of a mod-only crate, use an exact requirement (`dtoa = "=1.0.9"`).
 
 Each mod is its own library, and a library carries a copy of every registry package linked into it,
 so a mod depending on two mods that each use `serde` would reach two copies of `serde`, which Rust

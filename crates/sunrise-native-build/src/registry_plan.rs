@@ -9,6 +9,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
 };
+use sunrise_mod_package::native_route::game_registry_pin_conflicts;
 
 pub struct Plan {
     pub game: RegistryLock,
@@ -112,7 +113,12 @@ impl Plan {
     fn conflicting_pins(&self, game: &Identity) -> String {
         self.owners
             .iter()
-            .filter(|(id, _)| game.same_slot(id) && !self.game.packages.contains_key(id))
+            .filter(|(id, _)| {
+                game.name == id.name
+                    && game.source == id.source
+                    && !self.game.packages.contains_key(id)
+                    && game_registry_pin_conflicts(&game.version, &id.version)
+            })
             .flat_map(|(id, mods)| {
                 mods.iter()
                     .map(move |name| format!("{name}: {}", id.version))
