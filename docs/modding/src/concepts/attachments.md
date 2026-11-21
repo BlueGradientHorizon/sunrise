@@ -76,7 +76,8 @@ the storage-relative `Holder`, it carries the handle's world scope.
 Import `AttachmentQueries` to use `host.query(&TYPE)` on either host side. The
 returned batch is a **snapshot** of membership and stored value bindings in the
 host's current dimension. Iterate its rows with `iter()`, then borrow each value
-with `row.with_value(|value| ...)` without cloning it. Iteration decodes saved
+with `row.with_value(scope, |value| ...)` without cloning it. Get `scope` from
+`host.attachment_read_scope()?`. Iteration decodes saved
 entries lazily; malformed or incompatible values produce row errors, not defaults. Later sets, removals and unloads appear only in fresh queries. This
 is a residency view: an entity queued for removal can appear until the removal sweep. Captured handles do not keep holders loaded, and stale writes fail.
 Interior mutability inside `T` is not deep-frozen by a snapshot.
@@ -93,7 +94,9 @@ implicit transaction, or commit on drop: wrap a system in `host.transaction` for
 all-or-nothing writes. Unload or replacement produces `AttachmentRowError::StaleHolder`.
 Rows retain captured values even after successful write-through updates. A capture
 made during a transaction can only be used while its capturing frame is current.
-After commit or rollback, create a fresh query; using the old one returns
+A value read borrows the capturing host for the whole call, so the frame cannot
+close or open a child during that read. After commit or rollback, create a fresh
+query; using the old one returns
 `AttachmentRowError::OutsideTransaction`.
 
 Traversal follows dense index order: insertion appends, and removal fills its slot

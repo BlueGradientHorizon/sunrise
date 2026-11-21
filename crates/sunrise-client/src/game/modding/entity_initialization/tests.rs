@@ -537,7 +537,11 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
             let batch = game.query_mut(&SAVED).unwrap();
             assert_eq!(batch.iter().count(), 1);
             let row = batch.iter().next().unwrap().unwrap();
-            assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 7);
+            assert_eq!(
+                row.with_value(game.attachment_frame_borrow(), |value| *value)
+                    .unwrap(),
+                7
+            );
             // Serialize by object ID: the child's equal UUID cannot select the root's map.
             crate::game::persist::write_attachments(&mut child, ghost, &game.entity_attachments);
             let child_state = game.take_transferred_entity_state(ghost);
@@ -566,7 +570,11 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 row.set(game, 88),
                 Err(mod_api::AttachmentRowError::StaleHolder)
             );
-            assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 7);
+            assert_eq!(
+                row.with_value(game.attachment_frame_borrow(), |value| *value)
+                    .unwrap(),
+                7
+            );
             game.persist.off_level.remove(&refused);
             game.forget_entity(refused);
             game.prune_entity_attachments();
@@ -612,7 +620,10 @@ fn mob_constructor_first_store_binds_only_the_resident_lifetime() {
             let rows: Vec<_> = batch.iter().collect();
             assert_eq!(rows.len(), 1);
             let row = rows[0].as_ref().unwrap();
-            assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value), Ok(41));
+            assert_eq!(
+                row.with_value(game.attachment_frame_borrow(), |value| *value),
+                Ok(41)
+            );
             assert_eq!(
                 row.holder,
                 mod_api::AttachmentHolder::Entity(game.entity(id).unwrap())
@@ -721,7 +732,10 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             let rows: Vec<_> = batch.iter().collect();
             assert_eq!(rows.len(), 1);
             let row = rows[0].as_ref().unwrap();
-            assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value), Ok(41));
+            assert_eq!(
+                row.with_value(game.attachment_frame_borrow(), |value| *value),
+                Ok(41)
+            );
             assert_eq!(
                 row.holder,
                 mod_api::AttachmentHolder::Entity(game.entity(421).unwrap())

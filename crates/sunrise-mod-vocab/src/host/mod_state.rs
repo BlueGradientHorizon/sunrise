@@ -18,6 +18,11 @@ pub trait ModStateHost {
         name: &str,
     ) -> Result<AttachmentBatch, AttachmentError>;
     /// Side: both.
+    /// Borrow this host for an attachment snapshot read in its transaction. Pass the
+    /// result to `row.with_value` or `query.get`; it does not open a transaction.
+    #[access(WorldOnly)]
+    fn attachment_read_scope(&self) -> Result<AttachmentReadScope<'_>, AttachmentRowError>;
+    /// Side: both.
     /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
     /// one. On a client it is the copy of what the server synced: `set` and
     /// `remove` change only the copy.
@@ -30,7 +35,8 @@ pub trait ModStateServerHost {
     /// Side: server.
     /// Validate the capture's transaction, if any, and residency in the current dimension
     /// immediately before an ordinary journaled attachment write. The token comes from a
-    /// captured row, not from disk or the network. This does not open a transaction.
+    /// captured row, not from disk or the network. An expired frame is reported even
+    /// if the current dimension has no index. This does not open a transaction.
     #[access(WorldOnly)]
     fn attachment_validate_write(
         &self,

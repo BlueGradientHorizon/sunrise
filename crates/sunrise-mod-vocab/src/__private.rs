@@ -291,12 +291,21 @@ pub mod game {
     use crate::*;
     use std::fmt::Debug;
 
+    pub use crate::entity::attachment_query::validate_attachment_write;
+
     /// A type's fields the game reads, as `value.fields().name`.
     pub trait Fields {
         type Fields<'a>
         where
             Self: 'a;
         fn fields(&self) -> Self::Fields<'_>;
+    }
+
+    /// Borrow the attachment frame tracker exposed by a game-owned host or level.
+    pub fn attachment_read_scope(
+        scopes: &sunrise_mod_runtime::attachments::AttachmentQueryScopes,
+    ) -> AttachmentReadScope<'_> {
+        AttachmentReadScope(Some(scopes))
     }
 
     /// A block entity handle the game names.

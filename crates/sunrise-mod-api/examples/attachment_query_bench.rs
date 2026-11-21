@@ -94,6 +94,9 @@ impl ModStateHost for BenchHost {
         )
         .into())
     }
+    fn attachment_read_scope(&self) -> Result<AttachmentReadScope<'_>, AttachmentRowError> {
+        Ok(AttachmentReadScope::default())
+    }
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         self
     }
@@ -105,7 +108,7 @@ impl ModStateServerHost for BenchHost {
         &self,
         token: AttachmentWriteToken,
     ) -> Result<(), AttachmentRowError> {
-        token.validate(&self.index.lock().unwrap())
+        mod_api::__private::game::validate_attachment_write(&token, Some(&self.index))
     }
 }
 impl AttachmentHost for BenchHost {
@@ -138,7 +141,7 @@ fn contribution(holder: AttachmentHolder, value: &u32) -> u64 {
     u64::from(entity.id()) + u64::from(*value)
 }
 fn api(host: &dyn Host) -> u64 {
-    let scope = host.attachment_read_scope();
+    let scope = host.attachment_read_scope().unwrap();
     host.query(&VALUE)
         .unwrap()
         .iter()
@@ -166,7 +169,7 @@ fn timed(rounds: u32, mut f: impl FnMut() -> u64) -> f64 {
     start.elapsed().as_secs_f64() * 1e6 / f64::from(rounds)
 }
 fn warm(host: &BenchHost) -> f64 {
-    let scope = host.attachment_read_scope();
+    let scope = host.attachment_read_scope().unwrap();
     let rows = host.raw();
     let batch = host.query(&VALUE).unwrap();
     assert_eq!(api(host), 99_990_000);
@@ -225,7 +228,7 @@ fn cold() {
         let mut eager = Vec::new();
         for _ in 0..9 {
             let host = BenchHost::new(true, true);
-            let scope = host.attachment_read_scope();
+            let scope = host.attachment_read_scope().unwrap();
             let start = Instant::now();
             let (sum, counts) = measured(|| {
                 host.query(&VALUE)
@@ -242,7 +245,7 @@ fn cold() {
             lazy.push(start.elapsed().as_secs_f64() * 1e6);
             assert_eq!(sum, (limit * (limit - 1)) as u64);
             let host = BenchHost::new(true, true);
-            let scope = host.attachment_read_scope();
+            let scope = host.attachment_read_scope().unwrap();
             let start = Instant::now();
             let (_, eager_counts) = measured(|| {
                 // Eager policy measured using the very same production decode path.

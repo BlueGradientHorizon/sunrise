@@ -9,8 +9,8 @@ writes.
 
 Call `host.query(&TYPE)` on `&dyn Host`, then borrow rows with `batch.iter()`.
 Each successful row contains a copyable `holder` and lends its value through
-`row.with_value(|value| ...)`. Copy what you need inside the loan; a borrowed
-value cannot outlive it.
+`row.with_value(scope, |value| ...)`. Get `scope` from `host.attachment_read_scope()?`.
+Copy what you need inside the loan; a borrowed value cannot outlive it.
 Match `AttachmentHolder` to obtain an `EntityRef`, `PlayerRef`, `BlockEntityRef`,
 `ChunkRef` or `LevelRef`. Keep the batch and its holder identities in process;
 use the [attachment codec](../attachments.md#synchronization) for values that
@@ -32,9 +32,10 @@ static VALUE: AttachmentType<u32> = AttachmentType {
 
 fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
     let batch = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
+    let scope = host.attachment_read_scope()?;
     let mut total = 0;
     for row in batch.iter() {
-        total += row?.with_value(|value| *value)?;
+        total += row?.with_value(scope, |value| *value)?;
     }
     Ok(total)
 }
@@ -44,13 +45,13 @@ fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
 |---|---|
 | Value bounds | Iteration requires `T: Send + Sync + 'static`, not `Clone`. |
 | Snapshot | Membership and stored value bindings are captured at query creation. Create a fresh query to see later sets, removals, loads or unloads. |
-| Borrowing | Rows borrow from the batch, not the host. You can use the host while retaining a batch; using a transaction capture additionally requires its frame to be current. |
+| Borrowing | Rows borrow from the batch. Reading a captured value borrows the original host through its read scope, so you can mutate the host between reads, but not during a read loan. |
 | Defaults | Queries never initialize defaults, dirty holders or queue synchronization. An absent key produces an empty batch. |
 | Saved data | Saved values on bound holders decode lazily when visited, without an earlier typed read. Malformed data and incompatible Rust types produce row errors instead of defaults. |
 | Interior mutability | A snapshot does not deep-freeze interior mutability inside `T`. |
 
 For an immutable keyed read, including in a render hook, call
-`query.get(holder)?` with an `AttachmentHolder`. This requires `T: Clone` and
+`query.get(scope, holder)?` with an `AttachmentHolder`. This requires `T: Clone` and
 returns an owned `Option<T>`. The expected O(1) lookup precedes decoding and does
 not scan rows. Decode and type errors use `AttachmentRowError::Value`.
 
@@ -70,7 +71,8 @@ fn increment(host: &mut dyn ServerHost) -> Result<(), AttachmentRowError> {
     let batch = host.query_mut(&VALUE).map_err(AttachmentRowError::Value)?;
     for row in batch.iter() {
         let row = row?;
-        row.set(host, row.with_value(|value| *value + 1)?)?;
+        let replacement = row.with_value(host.attachment_read_scope()?, |value| *value + 1)?;
+        row.set(host, replacement)?;
     }
     Ok(())
 }
@@ -107,7 +109,11 @@ closes; a child capture cannot be used in the parent even after the child
 commits. After commit or rollback, capture a fresh query. Using an out-of-scope
 capture reports `AttachmentRowError::OutsideTransaction` for lookup, iteration,
 value loans and writes. An iterator ends after reporting that error; use a fresh
-iterator if the capturing frame becomes current again.
+iterator if the capturing frame becomes current again. A value read through
+`with_value` or `get` also requires a scope borrowed from the capturing host.
+The scope prevents that host from opening or closing a frame during the call.
+A capture made outside any transaction can be read with
+`AttachmentReadScope::default()` without borrowing a host.
 
 A query is a residency view, not an immediate liveness filter. An entity queued
 for removal can appear until cleanup runs. Its handle's stale rules apply, and
@@ -152,8 +158,9 @@ do not themselves register a holder.
 | `AttachmentError::HolderBusy` | Physical storage is temporarily unavailable during an engine pass. Retry after the pass. The refused store writes no value and registers no holder. |
 | `AttachmentError::UnsupportedHolder(family)` | The physical family cannot own attachments. Retrying does not help. `family` is a lowercase identifier, not an engine type. |
 | `AttachmentRowError::HolderBusy` / `AttachmentRowError::UnsupportedHolder(family)` | The corresponding error from a retained row write. |
-| `AttachmentRowError::StaleHolder` | The row's holder is missing or its captured residency is invalid. |
-| `AttachmentRowError::OutsideTransaction` | The snapshot's capturing frame is not current on the calling thread. |
+| `AttachmentRowError::StaleHolder` | An in-scope row's holder is missing or its captured residency is invalid. |
+| `AttachmentRowError::OutsideTransaction` | The capturing frame is not current on this thread, or the value read did not borrow its original host. An expired frame is refused even if the current dimension has no index. |
+| `AttachmentRowError::Unavailable` | This host operation is not available in the current phase. |
 
 Handle these errors locally. If a message needs to report a refusal, give the
 message its own payload fields rather than encoding the attachment error.

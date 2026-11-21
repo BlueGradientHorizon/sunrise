@@ -422,7 +422,11 @@ fn a_denied_break_restores_wall_sign_text_and_synced_attachments() {
                 .query(&VALUE)
                 .unwrap()
                 .iter()
-                .map(|row| row.unwrap().with_value(host.attachment_read_scope(), |value| *value).unwrap())
+                .map(|row| {
+                    row.unwrap()
+                        .with_value(host.attachment_read_scope().unwrap(), |value| *value)
+                        .unwrap()
+                })
                 .collect::<Vec<_>>()
         };
         game.world.set(1, 65, 0, support).unwrap();

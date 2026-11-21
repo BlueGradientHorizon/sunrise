@@ -67,7 +67,7 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
                 .next()
                 .unwrap()
                 .unwrap()
-                .with_value(game.attachment_read_scope(), |value| *value),
+                .with_value(game.attachment_frame_borrow(), |value| *value),
             Ok(7)
         );
         let entity = game.entity(id).unwrap();
@@ -85,7 +85,11 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
             row.set(game, 9),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 7);
+        assert_eq!(
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
+                .unwrap(),
+            7
+        );
     });
 }
 
@@ -130,7 +134,11 @@ fn saved_mob_binding_tracks_serialized_transfer_and_parked_levels() {
             row.set(game, 12),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 11);
+        assert_eq!(
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
+                .unwrap(),
+            11
+        );
         game.mobs.clear();
         assert!(
             game.attachment_indexes[&Dim::Nether]
@@ -173,7 +181,11 @@ fn saved_mob_binding_rebinds_retained_id_with_a_new_generation() {
             row.set(game, 14),
             Err(mod_api::AttachmentRowError::StaleHolder)
         );
-        assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 13);
+        assert_eq!(
+            row.with_value(game.attachment_frame_borrow(), |value| *value)
+                .unwrap(),
+            13
+        );
         game.mobs.clear();
         assert!(
             game.attachment_indexes[&Dim::Nether]
@@ -245,7 +257,7 @@ fn mob_first_store_binds_and_nested_rollback_retires_authority() {
                 .next()
                 .unwrap()
                 .unwrap()
-                .with_value(game.attachment_read_scope(), |value| *value),
+                .with_value(game.attachment_frame_borrow(), |value| *value),
             Ok(11)
         );
     });
@@ -328,7 +340,10 @@ fn mob_inner_first_binding_commit_outer_abort_invalidates_retained_row() {
                 VALUE.set(host, holder, 13)?;
                 let query = host.query_mut(&VALUE).unwrap();
                 let row = query.iter().next().unwrap().unwrap();
-                assert_eq!(row.with_value(host.attachment_read_scope(), |value| *value), Ok(13));
+                assert_eq!(
+                    row.with_value(host.attachment_read_scope().unwrap(), |value| *value),
+                    Ok(13)
+                );
                 retained = Some(query);
                 Ok(())
             });

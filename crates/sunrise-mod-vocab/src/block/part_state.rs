@@ -77,7 +77,10 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
             .block_entity_part_snapshot(entity, Self::DATA.namespace, Self::DATA.name)?
             .query(Self::DATA)
             .map_err(|error| attachment(Self::DATA, error))?
-            .get(AttachmentHolder::BlockEntity(entity))
+            .get(
+                level.attachment_read_scope(),
+                AttachmentHolder::BlockEntity(entity),
+            )
             .map_err(|error| match error {
                 AttachmentRowError::Value(error) => attachment(Self::DATA, error),
                 _ => PartStateError::Stale,
@@ -366,7 +369,7 @@ pub fn read_state<H: PartStateHolder, T: Clone + Send + Sync + 'static>(
     entity.part_state_holder(host)?;
     host.query(key)
         .map_err(|error| attachment(key, error))?
-        .get(entity.attachment_holder())
+        .and_then(|query| query.get(host.attachment_read_scope()?, entity.attachment_holder()))
         .map_err(|error| match error {
             AttachmentRowError::Value(error) => attachment(key, error),
             _ => PartStateError::Stale,

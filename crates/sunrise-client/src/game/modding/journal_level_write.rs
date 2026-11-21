@@ -79,6 +79,9 @@ impl LevelHost for JournalLevelWrite<'_, '_> {
     fn block_states(&self) -> mod_api::BlockStates<'_> {
         mod_api::BlockStates::of(&*self.game)
     }
+    fn attachment_read_scope(&self) -> mod_api::AttachmentReadScope<'_> {
+        self.game.attachment_frame_borrow()
+    }
     read_level! {
         fn block_entity(&self, pos: [i32; 3]) -> Option<BlockEntityRef>;
         fn container_size(&self, at: BlockSide) -> Option<usize>;

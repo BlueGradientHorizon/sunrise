@@ -78,9 +78,14 @@ impl<T: Clone + Send + Sync + 'static> AttachmentRowMut<'_, T> {
         self.row.holder
     }
     /// Lend the captured value; interior mutability in `T` is not deep-frozen.
-    /// Refuses if this snapshot's transaction is not current.
-    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, AttachmentRowError> {
-        self.row.with_value(f)
+    /// Pass `host.attachment_read_scope()?` for captures made in a transaction. The loan
+    /// borrows the original host and refuses unless the capturing frame is current.
+    pub fn with_value<R>(
+        &self,
+        scope: AttachmentReadScope<'_>,
+        f: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentRowError> {
+        self.row.with_value(scope, f)
     }
     fn holder_for_write(&self, host: &dyn ServerHost) -> Result<Holder, AttachmentRowError> {
         host.attachment_validate_write(self.row.write_token())?;

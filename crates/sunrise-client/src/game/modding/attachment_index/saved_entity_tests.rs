@@ -228,7 +228,11 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 Err(mod_api::AttachmentRowError::StaleHolder),
                 "{kind}"
             );
-            assert_eq!(row.with_value(game.attachment_read_scope(), |value| *value).unwrap(), 19);
+            assert_eq!(
+                row.with_value(game.attachment_frame_borrow(), |value| *value)
+                    .unwrap(),
+                19
+            );
         }
     });
 }
@@ -263,7 +267,7 @@ fn saved_binding_family_first_stores_publish_to_queries() {
                     let rows: Vec<_> = query.iter().map(|row| row.unwrap()).collect();
                     assert_eq!(rows.len(), 1, "{} first store", $kind);
                     assert_eq!(rows[0].holder, AttachmentHolder::Entity(entity), "{}", $kind);
-                    assert_eq!(rows[0].with_value(game.attachment_read_scope(), |value| *value), Ok(7), "{}", $kind);
+                    assert_eq!(rows[0].with_value(game.attachment_frame_borrow(), |value| *value), Ok(7), "{}", $kind);
                 }
                 assert!(game.entity_discard(entity), "{} discard", $kind);
                 game.native_removals_flush();

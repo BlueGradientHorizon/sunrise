@@ -159,8 +159,8 @@ Many hand-written impls exist only because the type is built through a checked c
 | `wire_types.rs`: impls whose `take` validates or converts (`Identifier`, `LevelKey`, `ConfigPath`, `JavaString`, `BlockState`, `BlockStateRange`, `Components`, `ItemStack`, `StatePredicate`, …) | ~25 | **`#[wire(via = …)]`** where one simple form exists (`LevelKey`, `ConfigPath` via `String`); **hand-written** where `take` runs several steps (`ItemStack`, `Identifier` as two strings) | validation stays where it is |
 | `wire_patch.rs`: `RecordPatch` | 1 | **deleted by #2242** | — |
 
-Attachment holders, write tokens and batches stay in process and do not implement `Wire`.
-Attachment persistence and synchronization use the registered value codec.
+Attachment holders, write tokens, batches and read scopes stay in process and do not implement
+`Wire`. Attachment persistence and synchronization use the registered value codec.
 
 The first PR classifies every impl in a table in its description, with the golden test proving each "derive" row.
 

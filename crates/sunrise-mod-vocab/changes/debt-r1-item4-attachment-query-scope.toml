@@ -1,8 +1,12 @@
 ids = [
     "type:AttachmentQuery",
+    "type:AttachmentReadScope",
     "type:AttachmentRow",
     "type:AttachmentWriteToken",
     "type:AttachmentRowError.OutsideTransaction",
+    "type:AttachmentRowError.Unavailable",
+    "method:prelude::ModStateHost::attachment_read_scope",
+    "method:LevelHost::attachment_read_scope",
     "handle:AttachmentQuery::get",
     "handle:AttachmentQuery::iter",
     "handle:AttachmentRow::with_value",
@@ -11,20 +15,29 @@ ids = [
     "handle:AttachmentRowMut::value",
     "handle:AttachmentRowMut::with_value",
 ]
-why = "A query used to expose a rollback's discarded bindings and could still write when its holder stayed resident. Both read and write captures now follow NeoForge TransactionManager.validateCurrentTransaction and Transaction.close: only the current, open frame on the owning thread can use them. NeoForge AttachmentHolder.getExistingDataOrNull is a live holder read, not a detachable snapshot; vanilla HopperBlockEntity.tryTakeInItemFromSlot restores the source slot on a failed transfer and has no attachment-query API. This changes only the lifetime of Sunrise's in-process captures, not vanilla storage behaviour."
+why = "An attachment query could expose bindings discarded by rollback, even from a value loan whose own closure closed the transaction, and could still write while the holder stayed resident. Reads now borrow the capturing host through the whole loan; writes refuse an expired frame before testing residency. This follows NeoForge TransactionManager.validateCurrentTransaction and Transaction.close: only the current, open frame on its thread can use a capture. NeoForge AttachmentHolder.getExistingDataOrNull is a live holder read; vanilla HopperBlockEntity.tryTakeInItemFromSlot restores the source slot on a failed transfer and has no attachment query API. No vanilla storage behaviour changes."
 migrate = """
-Replace a read-only row's `row.value` and a writable row's `row.value()` with
-`row.with_value(|value| ...)?`, for example `let count = row.with_value(|value| *value)?;`.
-Keep only owned data after that loan. An explicit runtime row or query annotation becomes
+Replace `row.value`, `row.value()` or `row.with_value(read)` with
+`row.with_value(host.attachment_read_scope()?, read)?`. For example use
+`let count = row.with_value(host.attachment_read_scope()?, |value| *value)?;`
+and then pass the owned result to any write. Replace `query.get(holder)` with
+`query.get(host.attachment_read_scope()?, holder)`. A `LevelHost` view lends
+`level.attachment_read_scope()` directly. For a capture made outside any transaction,
+you can instead pass `AttachmentReadScope::default()`. An explicit runtime row or query annotation becomes
 `mod_api::AttachmentRow<'_, T>` (read-only) or `mod_api::AttachmentQuery<'_, T>`.
 Both `iter()` methods return an iterator of fallible rows, not an exact-size iterator; use
 `for row in query.iter() { let row = row?; ... }`. To count while still handling errors,
 use `query.iter().try_fold(0usize, |count, row| row.map(|_| count + 1))?`.
 Replace `AttachmentWriteToken::from(row.write_token())` with `row.write_token()` on a
-read-only API row. Prefer `row.set(host, value)` or `row.remove(host)` on a writable row;
-write tokens are not Wire values.
-Catch `AttachmentRowError::OutsideTransaction` for a query, iterator, borrowed row or token
-captured in a different transaction frame. Use it inside its capturing frame or make a
-fresh query after commit or abort; even a committed child's query does not move to the parent.
+read-only API row. Replace `Reader::decode::<AttachmentWriteToken>(bytes)` with a local
+`host.query_mut(&KEY)?` (import `AttachmentQueriesMut`), then call `row.set(host, value)`
+or `row.remove(host)` on an issued writable row. Replace `row.write_token().parts()` by
+retaining only `row.holder` (or `row.holder()` on a writable row) and querying again with
+`host.query_mut(&KEY)?`, matching the retained holder. Do not preserve a residency generation.
+Handle `AttachmentRowError::OutsideTransaction` for an expired capture even when the supplied
+host's dimension has no index. Use captures in their own current frame or make a fresh query
+once that frame closes; a committed child's query does not move to the parent. A scoped
+value read also refuses if its scope does not borrow the capturing host. Handle
+`AttachmentRowError::Unavailable` if the current phase disallows the host operation.
 For serialization, use the declared attachment value codec, not the retired AttachmentEntry helpers.
 """

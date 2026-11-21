@@ -21,11 +21,13 @@ use super::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum AttachmentRowError {
+    /// The attachment operation is unavailable in the current host phase.
+    Unavailable,
     /// The stored binding could not be read as the requested type.
     Value(AttachmentError),
     /// The holder unloaded, was replaced, or belongs to another index.
     StaleHolder,
-    /// The snapshot's transaction is not the active frame on the calling thread.
+    /// The captured frame is not current on this thread, or the value loan did not borrow its host.
     OutsideTransaction,
     /// The physical holder storage is temporarily unavailable; retry after the pass.
     HolderBusy,
@@ -36,10 +38,11 @@ pub enum AttachmentRowError {
 impl fmt::Display for AttachmentRowError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Unavailable => f.write_str("attachment operation unavailable in this phase"),
             Self::Value(error) => write!(f, "attachment row read failed: {error:?}"),
             Self::StaleHolder => f.write_str("attachment row holder is stale"),
             Self::OutsideTransaction => {
-                f.write_str("attachment query's transaction is not current")
+                f.write_str("attachment query requires its current transaction and a matching host for value loans")
             }
             Self::HolderBusy => f.write_str("attachment row holder is busy"),
             Self::UnsupportedHolder(kind) => write!(f, "unsupported attachment holder: {kind}"),
@@ -95,6 +98,13 @@ impl AttachmentQueryScope {
         } else {
             Err(AttachmentRowError::OutsideTransaction)
         }
+    }
+
+    fn check_on(&self, host: Option<&AttachmentQueryScopes>) -> Result<(), AttachmentRowError> {
+        if !host.is_some_and(|host| Arc::ptr_eq(&host.current, &self.current)) {
+            return Err(AttachmentRowError::OutsideTransaction);
+        }
+        self.check()
     }
 }
 
@@ -183,9 +193,14 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
     /// alike return `Ok(None)` when absent from captured membership, without a
     /// host liveness check. Only scoped residency probes report `StaleHolder`.
     /// Later replacements, removals and rebinds require a fresh snapshot.
-    pub fn get(&self, holder: H) -> Result<Option<T>, AttachmentRowError> {
+    /// Scoped reads borrow the original frame tracker through decode and clone.
+    pub fn get(
+        &self,
+        host: Option<&AttachmentQueryScopes>,
+        holder: H,
+    ) -> Result<Option<T>, AttachmentRowError> {
         if let Some(scope) = &self.batch.scope {
-            scope.check()?;
+            scope.check_on(host)?;
         }
         let Some(rows) = self.batch.rows.as_deref() else {
             return Ok(None);
@@ -259,9 +274,15 @@ pub struct AttachmentRowRef<'q, H, T> {
 
 impl<H, T> AttachmentRowRef<'_, H, T> {
     /// Lend the captured value without permitting its reference to escape the loan.
-    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, AttachmentRowError> {
+    /// For a scoped row, borrowing the original frame tracker also prevents the host
+    /// from mutating the frame stack while `f` runs.
+    pub fn with_value<R>(
+        &self,
+        host: Option<&AttachmentQueryScopes>,
+        f: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentRowError> {
         if let Some(scope) = self.scope {
-            scope.check()?;
+            scope.check_on(host)?;
         }
         Ok(f(self.value))
     }
@@ -582,13 +603,13 @@ mod existing_tests {
         let token = retained.iter().next().unwrap().unwrap().write_token();
         index.unload(7).into_result();
         let fresh = query(&index);
-        assert_eq!(fresh.get(7), Ok(None)); // no longer live
-        assert_eq!(fresh.get(11), Ok(None)); // never resident
+        assert_eq!(fresh.get(None, 7), Ok(None)); // no longer live
+        assert_eq!(fresh.get(None, 11), Ok(None)); // never resident
         assert_eq!(
             index.validate_owner(&token),
             Err(AttachmentRowError::StaleHolder)
         );
-        assert_eq!(retained.get(7), Ok(Some(7))); // captured, not live
+        assert_eq!(retained.get(None, 7), Ok(Some(7))); // captured, not live
     }
 
     #[test]
@@ -597,21 +618,21 @@ mod existing_tests {
         let a = index.register(7, [(key(), entry(7u32))]).into_result();
         index.register(9, [(key(), entry(9u32))]).into_result();
         let old = query(&index);
-        assert_eq!(old.get(7), Ok(Some(7)));
-        assert_eq!(old.get(9), Ok(Some(9)));
-        assert_eq!(old.get(11), Ok(None));
+        assert_eq!(old.get(None, 7), Ok(Some(7)));
+        assert_eq!(old.get(None, 9), Ok(Some(9)));
+        assert_eq!(old.get(None, 11), Ok(None));
         index.set(&a, &key(), entry(8u32)).into_result();
-        assert_eq!(query(&index).get(7), Ok(Some(8)));
-        assert_eq!(old.get(7), Ok(Some(7)));
+        assert_eq!(query(&index).get(None, 7), Ok(Some(8)));
+        assert_eq!(old.get(None, 7), Ok(Some(7)));
         index.remove(&a, &key()).into_result();
-        assert_eq!(query(&index).get(7), Ok(None));
+        assert_eq!(query(&index).get(None, 7), Ok(None));
         index.register(7, [(key(), entry(10u32))]).into_result();
         assert_eq!(
             index.validate_owner(&a),
             Err(AttachmentRowError::StaleHolder)
         );
         assert_eq!(index.snapshot(&key()).slot_of(&a), None);
-        assert_eq!(query(&index).get(7), Ok(Some(10)));
-        assert_eq!(query(&AttachmentIndex::default()).get(7), Ok(None));
+        assert_eq!(query(&index).get(None, 7), Ok(Some(10)));
+        assert_eq!(query(&AttachmentIndex::default()).get(None, 7), Ok(None));
     }
 }

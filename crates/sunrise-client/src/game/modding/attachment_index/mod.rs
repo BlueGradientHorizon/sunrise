@@ -48,15 +48,24 @@ impl Game<'_> {
             .into())
     }
 
+    pub(in crate::game) fn attachment_read_scope(
+        &self,
+    ) -> Result<mod_api::AttachmentReadScope<'_>, mod_api::AttachmentRowError> {
+        Ok(self.attachment_frame_borrow())
+    }
+
+    pub(in crate::game) fn attachment_frame_borrow(&self) -> mod_api::AttachmentReadScope<'_> {
+        mod_api::__private::game::attachment_read_scope(&self.transactions.attachment_query_scopes)
+    }
+
     pub(in crate::game) fn attachment_validate_write(
         &self,
         token: mod_api::AttachmentWriteToken,
     ) -> Result<(), mod_api::AttachmentRowError> {
-        let index = self
-            .attachment_indexes
-            .get(&self.dim)
-            .ok_or(mod_api::AttachmentRowError::StaleHolder)?;
-        token.validate(&index.lock().unwrap())
+        mod_api::__private::game::validate_attachment_write(
+            &token,
+            self.attachment_indexes.get(&self.dim).map(Arc::as_ref),
+        )
     }
 
     /// Publish saved contents only when an authoritative entity owns their lifetime.

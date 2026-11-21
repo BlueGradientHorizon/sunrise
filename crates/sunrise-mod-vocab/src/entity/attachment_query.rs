@@ -1,6 +1,21 @@
 //! Owned snapshot data of attachment queries.
 use crate::*;
+use std::sync::Mutex;
 use sunrise_mod_runtime::attachments::{self as runtime, index};
+
+/// An immutable borrow of a host for reading attachments captured in its transaction.
+/// Get it from `host.attachment_read_scope()?` or `level.attachment_read_scope()`.
+/// While it is in use the host cannot open or close a transaction. The default
+/// value can be used for captures made outside a transaction.
+// no wire: borrows the capturing host's frame tracker.
+#[derive(Clone, Copy, Default)]
+pub struct AttachmentReadScope<'host>(pub(crate) Option<&'host runtime::AttachmentQueryScopes>);
+
+impl crate::AccessRefusal for AttachmentRowError {
+    fn unavailable() -> Self {
+        Self::Unavailable
+    }
+}
 
 /// A SNAPSHOT of membership and value bindings in the host's current dimension.
 /// Later changes require a fresh query. This is a residency view: removed but
@@ -37,7 +52,7 @@ impl AttachmentBatch {
 }
 
 /// A typed snapshot whose rows lend values from their captured bindings.
-/// `get(holder)` returns an owned clone with an expected O(1) probe before decode.
+/// `get(scope, holder)` returns an owned clone with an expected O(1) probe before decode.
 /// Missing or not yet synced holders return `Ok(None)`; no default is created.
 /// `None` does not mean the holder is alive: absent and not-live holders alike
 /// return `Ok(None)` when absent from the snapshot, without a host liveness check.
@@ -61,9 +76,14 @@ impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
 }
 
 impl<T: Clone + Send + Sync + 'static> AttachmentQuery<'_, T> {
-    /// Read an owned captured value without inserting a default.
-    pub fn get(&self, holder: AttachmentHolder) -> Result<Option<T>, AttachmentRowError> {
-        self.0.get(holder)
+    /// Read an owned captured value without inserting a default. A capture made in a
+    /// transaction requires its current frame and a read scope from the capturing host.
+    pub fn get(
+        &self,
+        scope: AttachmentReadScope<'_>,
+        holder: AttachmentHolder,
+    ) -> Result<Option<T>, AttachmentRowError> {
+        self.0.get(scope.0, holder)
     }
 }
 
@@ -78,9 +98,26 @@ pub struct AttachmentRow<'q, T: 'static> {
 
 impl<T: 'static> AttachmentRow<'_, T> {
     /// Lend the value for this call. To keep data beyond the loan, copy what you need.
-    /// Refuses if this snapshot's transaction is not current.
-    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, AttachmentRowError> {
-        self.binding.with_value(f)
+    /// A transactional capture requires a read scope from the same host and the current
+    /// frame. The scope borrows the host so the frame cannot change during the loan.
+    /// The default scope is only for captures made outside a transaction.
+    ///
+    /// ```compile_fail,E0500
+    /// use mod_api::{AttachmentRow, ServerHost, TransactionSeal};
+    /// fn close_during_read(row: &AttachmentRow<'_, u32>, host: &mut dyn ServerHost,
+    ///                      seal: &TransactionSeal) {
+    ///     let _ = row.with_value(host.attachment_read_scope().unwrap(), |value| {
+    ///         host.transaction_close(seal, false);
+    ///         *value
+    ///     });
+    /// }
+    /// ```
+    pub fn with_value<R>(
+        &self,
+        scope: AttachmentReadScope<'_>,
+        f: impl FnOnce(&T) -> R,
+    ) -> Result<R, AttachmentRowError> {
+        self.binding.with_value(scope.0, f)
     }
 
     /// The row's residency token. A token captured in a transaction is scoped to that frame.
@@ -107,19 +144,19 @@ pub struct AttachmentWriteToken {
     owner: index::AttachmentOwner<AttachmentHolder>,
     scope: Option<runtime::AttachmentQueryScope>,
 }
-impl AttachmentWriteToken {
-    /// Check the current dimension's residency before the ordinary write path.
-    // hidden: the owning engine validates tokens; mods use the row's set/remove methods.
-    #[doc(hidden)]
-    pub fn validate(
-        &self,
-        index: &index::AttachmentIndex<AttachmentHolder>,
-    ) -> Result<(), AttachmentRowError> {
-        if let Some(scope) = &self.scope {
-            scope.check()?;
-        }
-        index.validate_owner(&self.owner)
+/// The engine's write boundary: check the frame before checking dimension residency.
+pub fn validate_attachment_write(
+    token: &AttachmentWriteToken,
+    index: Option<&Mutex<index::AttachmentIndex<AttachmentHolder>>>,
+) -> Result<(), AttachmentRowError> {
+    if let Some(scope) = &token.scope {
+        scope.check()?;
     }
+    index
+        .ok_or(AttachmentRowError::StaleHolder)?
+        .lock()
+        .unwrap()
+        .validate_owner(&token.owner)
 }
 
 #[cfg(test)]
@@ -147,25 +184,25 @@ mod tests {
         let query = batch.query(&KEY).unwrap();
         let row = query.iter().next().unwrap().unwrap();
         assert_eq!(row.holder, holder);
-        assert_eq!(row.with_value(None, |value| *value), Ok(7));
+        assert_eq!(row.with_value(Default::default(), |value| *value), Ok(7));
         let token = row.write_token();
-        assert_eq!(token.validate(&index.lock().unwrap()), Ok(()));
+        assert_eq!(validate_attachment_write(&token, Some(&index)), Ok(()));
         assert_eq!(
-            token.validate(&index::AttachmentIndex::default()),
+            validate_attachment_write(&token, Some(&Mutex::new(index::AttachmentIndex::default()))),
             Err(AttachmentRowError::StaleHolder)
         );
         index.lock().unwrap().unload(holder).into_result();
         assert_eq!(
-            token.validate(&index.lock().unwrap()),
+            validate_attachment_write(&token, Some(&index)),
             Err(AttachmentRowError::StaleHolder)
         );
         let mut again = runtime::Attachments::default();
         KEY.set(&mut again, runtime::Holder::Level, 7).unwrap();
         again.bind_index(&index, holder);
         assert_eq!(
-            token.validate(&index.lock().unwrap()),
+            validate_attachment_write(&token, Some(&index)),
             Err(AttachmentRowError::StaleHolder)
         );
-        assert_eq!(row.with_value(None, |value| *value), Ok(7));
+        assert_eq!(row.with_value(Default::default(), |value| *value), Ok(7));
     }
 }

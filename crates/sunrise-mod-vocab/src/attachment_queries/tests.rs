@@ -43,7 +43,7 @@ impl ModStateServerHost for Store {
         &self,
         token: AttachmentWriteToken,
     ) -> Result<(), AttachmentRowError> {
-        token.validate(&self.index.lock().unwrap())
+        crate::__private::game::validate_attachment_write(&token, Some(&self.index))
     }
 }
 impl AttachmentHost for Store {
@@ -130,7 +130,10 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
             .iter()
             .map(|row| {
                 let row = row.unwrap();
-                (row.holder(), row.with_value(None, |value| *value).unwrap())
+                (
+                    row.holder(),
+                    row.with_value(Default::default(), |value| *value).unwrap(),
+                )
             })
             .collect::<Vec<_>>()
     };
@@ -157,7 +160,7 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
                 .map(Result::unwrap)
                 .find(|captured| captured.holder() == scoped)
                 .unwrap()
-                .with_value(None, |value| *value),
+                .with_value(Default::default(), |value| *value),
             Ok(10)
         );
         assert_eq!(row.remove(&mut host).unwrap(), Some(23));
@@ -168,7 +171,10 @@ fn all_scoped_variants_write_and_remove_the_exact_storage_target() {
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(row.with_value(None, |value| *value).unwrap(), 10);
+        assert_eq!(
+            row.with_value(Default::default(), |value| *value).unwrap(),
+            10
+        );
     }
     for target in decoys {
         assert_eq!(
