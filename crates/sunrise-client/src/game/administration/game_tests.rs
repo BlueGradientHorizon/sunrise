@@ -180,6 +180,7 @@ impl Info {
 pub(super) struct Batch {
     pub(super) index: i32,
     pub(super) environment: String,
+    dimension: String,
     pub(super) infos: Vec<Info>,
 }
 
@@ -232,33 +233,25 @@ struct Tracked {
     failed: bool,
 }
 
-/// `GameTestBatchFactory.fromGameTestInfo(size)`: one batch per environment
-/// (and dimension), `size` to a batch.
+/// `GameTestBatchFactory.fromGameTestInfo(size)`: partition each environment
+/// and definition dimension into batches of up to `size`.
 fn batch_infos(infos: Vec<Info>, size: usize) -> Vec<Batch> {
     let mut batches: Vec<Batch> = Vec::new();
-    let mut counts: Vec<(String, i32)> = Vec::new();
     for info in infos {
-        let env = info.def.environment.clone();
-        let open = batches
-            .iter_mut()
-            .find(|b| b.environment == env && b.infos.len() < size);
-        if let Some(batch) = open {
-            batch.infos.push(info);
-            continue;
-        }
-        let index = match counts.iter_mut().find(|(e, _)| *e == env) {
-            Some((_, n)) => {
-                *n += 1;
-                *n
+        let index = match batches.iter_mut().rev().find(|batch| {
+            batch.environment == info.def.environment && batch.dimension == info.def.dimension
+        }) {
+            Some(batch) if batch.infos.len() < size => {
+                batch.infos.push(info);
+                continue;
             }
-            None => {
-                counts.push((env.clone(), 0));
-                0
-            }
+            Some(full) => full.index + 1,
+            None => 0,
         };
         batches.push(Batch {
             index,
-            environment: env,
+            environment: info.def.environment.clone(),
+            dimension: info.def.dimension.clone(),
             infos: vec![info],
         });
     }
@@ -289,6 +282,7 @@ pub(super) fn verify_batches(infos: &[Info], mut next_id: impl FnMut() -> u32) -
             batches.push(Batch {
                 index: ordinal as i32,
                 environment: info.def.environment.clone(),
+                dimension: info.def.dimension.clone(),
                 infos: copies,
             });
         }

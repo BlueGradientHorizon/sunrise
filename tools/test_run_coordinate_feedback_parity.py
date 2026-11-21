@@ -20,6 +20,7 @@ KEYS = ['commands.test.summary', 'commands.test.summary.all_required_passed',
         'test.player.coordinates', 'test.run.coordinates']
 SCENES = [('nether-player', 'the_nether', 8.5), ('overworld-player', 'overworld', 24.5),
           ('console', 'overworld', 16.5)]
+MULTI_LEVELS = ['overworld', 'the_nether', 'the_end']
 HELPERS = ['tools/net_capture.py', 'tools/test_locator_bar_parity.py',
            'tools/test_hostile_sound_categories_parity.py', 'tools/test_dedicated_server_parity.py',
            'mods/sunrise/src/test/java/dev/sunriselab/parity/LocatorBarClient.java']
@@ -48,6 +49,18 @@ def chats(path, stage):
 def generate(java, build):
     directory = build / 'generate'
     net.server_dir(directory)
+    pack = directory / 'world/datapacks/coordinate-batches'
+    instances = pack / 'data/coords/test_instance'
+    instances.mkdir(parents=True)
+    version = net.lab.version_info()['pack_version']
+    fmt = [version['data_major'], version['data_minor']]
+    (pack / 'pack.mcmeta').write_text(json.dumps({'pack': {
+        'description': 'Coordinate feedback test batches', 'min_format': fmt, 'max_format': fmt}}))
+    for level in MULTI_LEVELS[:2]:
+        (instances / f'{level}.json').write_text(json.dumps({
+            'type': 'minecraft:function', 'function': 'minecraft:always_pass',
+            'structure': 'minecraft:empty', 'environment': 'minecraft:default',
+            'dimension': f'minecraft:{level}', 'max_ticks': 1, 'setup_ticks': 1}))
     server = Server(java, directory, 'generate')
     commands = sound.Commands(server, build / 'generate-commands.json')
     try:
@@ -69,6 +82,54 @@ def generate(java, build):
     finally:
         server.stop()
     return directory / 'world'
+
+
+def step(commands, server, start, ticks):
+    for at in range(1, ticks + 1):
+        commands.reply('tick step 1')
+        deadline = time.monotonic() + 45
+        while game_time(server) < start + at:
+            assert time.monotonic() < deadline, ('step stalled', start, at)
+            time.sleep(.02)
+        assert game_time(server) == start + at
+
+
+def ticket_state(commands, level, x, z, expected):
+    commands.reply(f'execute store success score ticket coords in minecraft:{level} '
+                   f'run forceload query {x} {z}')
+    commands.passed(f'execute if score ticket coords matches {expected}')
+
+
+def inspect_completed_test(commands, level, x, z, test_id):
+    # Acquire a fresh ticket rather than relying on residency after cleanup.
+    commands.reply(f'execute store success score probe_force coords in minecraft:{level} '
+                   f'run forceload add {x} {z}')
+    commands.passed('execute if score probe_force coords matches 1')
+    block = f'execute in minecraft:{level}'
+    pos = f'{x} 200 {z}'
+    commands.passed(f'{block} if block {pos} test_instance_block')
+    for field, expected in [('test', test_id), ('status', 'finished')]:
+        text = commands.reply(f'{block} run data get block {pos} data.{field}')
+        assert expected in text, (level, field, text)
+    commands.reply(f'{block} run data get block {pos}')
+    commands.reply(f'{block} run forceload remove {x} {z}')
+
+
+def check_dimension_batches(commands, server):
+    # Both fixtures use the same environment, with a third level holding an
+    # unrelated force ticket. One command must schedule both instances.
+    for level in ['overworld', 'the_end']:
+        commands.reply(f'execute in minecraft:{level} run forceload add 8 24')
+    for level in MULTI_LEVELS:
+        ticket_state(commands, level, 8, 24, 1)
+    start = game_time(server)
+    scheduled = commands.reply('execute positioned 8.5 200 24.5 run test run coords:*')
+    assert 'Running 2 test(s)' in scheduled, scheduled
+    step(commands, server, start, 16)
+    for level in MULTI_LEVELS:
+        ticket_state(commands, level, 8, 24, int(level == 'the_end'))
+    for level in MULTI_LEVELS[:2]:
+        inspect_completed_test(commands, level, 8, 27, f'coords:{level}')
 
 
 def run(label, command, client_command, build, world, java):
@@ -118,31 +179,12 @@ def run(label, command, client_command, build, world, java):
             for name in ['result', 'success']:
                 text = commands.reply(f'scoreboard players get {name} coords')
                 assert f'{name} has 1 [coords]' in text, text
-            for at in range(1, 9):
-                commands.reply('tick step 1')
-                deadline = time.monotonic() + 45
-                while game_time(server) < start + at:
-                    assert time.monotonic() < deadline, ('step stalled', scene, at)
-                    time.sleep(.02)
-                assert game_time(server) == start + at
+            step(commands, server, start, 8)
             clocks.append(dict(scene=scene, before=start, after=game_time(server), elapsed=8))
             client.sync(['Alice'])
             sound.dump(client, scene)
-            commands.reply('execute store success score nether_force coords in the_nether '
-                           f'run forceload query {int(x)} 8')
-            commands.passed('execute if score nether_force coords matches 1')
-            # GameTestRunner removes the Overworld force. Request our own ticket
-            # for inspecting the completed block rather than relying on residency.
-            commands.reply('execute store success score probe_force coords in overworld '
-                           f'run forceload add {int(x)} 11')
-            commands.passed('execute if score probe_force coords matches 1')
-            p = f'{int(x)} 200 11'
-            commands.passed(f'execute in overworld if block {p} test_instance_block')
-            for field, expected in [('test', 'minecraft:always_pass'), ('status', 'finished')]:
-                text = commands.reply(f'execute in overworld run data get block {p} data.{field}')
-                assert expected in text, (scene, field, text)
-            commands.reply(f'execute in overworld run data get block {p}')
-            commands.reply(f'execute in overworld run forceload remove {int(x)} 11')
+            ticket_state(commands, 'the_nether', int(x), 8, 1)
+            inspect_completed_test(commands, 'overworld', int(x), 11, 'minecraft:always_pass')
             commands.reply('data get entity Alice')
             client.sync(['Alice'])
             sound.dump(client, scene)
@@ -155,6 +197,9 @@ def run(label, command, client_command, build, world, java):
                 expected = KEYS if scene == 'nether-player' else KEYS[:2]
                 assert [k for v in selected for k in keys(v) if k in KEYS] == expected, (scene, selected)
             result.append(dict(scene=scene, messages=selected))
+        client.tell('step dimension-batches')
+        client.sync(['Alice'])
+        check_dimension_batches(commands, server)
         client.end()
         client.kill()
         client = None
