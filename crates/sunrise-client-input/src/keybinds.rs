@@ -396,7 +396,7 @@ impl VanillaMappingSlot {
     /// The gameplay mapping whose default is `key`, independent of its current binding.
     pub fn by_default_key(key: KeyCode) -> Option<Self> {
         static BY_KEY: LazyLock<HashMap<KeyCode, VanillaMappingSlot>> = LazyLock::new(|| {
-            Self::all()
+            VanillaMappingSlot::all()
                 .filter(|slot| slot.definition().2 != "debug")
                 .filter_map(|slot| Some((slot.default_input()?.ok()?, slot)))
                 .collect()
