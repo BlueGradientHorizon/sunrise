@@ -240,7 +240,7 @@ impl Connection {
             queue.clear();
         }
     }
-    pub fn accept(&self, entries: &[Entry]) -> Result<(), String> {
+    pub(super) fn accept(&self, entries: &[Entry]) -> Result<Arc<Epoch>, String> {
         let mut peer = self.local.freeze(entries, self.side)?;
         let bytes = peer.owned_snapshot_bytes();
         let physical = self
@@ -259,13 +259,11 @@ impl Connection {
         if current.closed {
             return Err("payload connection disconnected".into());
         }
-        if let Some(old) = current
-            .epoch
-            .replace(Epoch::new(peer, Phase::Configuration))
-        {
+        let epoch = Epoch::new(peer, Phase::Configuration);
+        if let Some(old) = current.epoch.replace(epoch.clone()) {
             old.invalidate();
         }
-        Ok(())
+        Ok(epoch)
     }
     /// No configuration acknowledgement overtakes a queued main-thread handler or its replies.
     /// Never hold the connection-state or writer lock while waiting for gameplay.

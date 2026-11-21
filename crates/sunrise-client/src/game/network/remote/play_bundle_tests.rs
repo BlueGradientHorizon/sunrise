@@ -651,3 +651,80 @@ fn standalone_transfer_keeps_its_earlier_cookie_even_after_source_eof() {
         }
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_second_admitted_standalone_transfer_keeps_the_first_opening() {
+    with_client_game(|game| {
+        let (_reader, mut writer) = connect_play_test(game, |_, _| {});
+        spawn_menu_test(game);
+        game.remote.as_mut().unwrap().session.address = "source.invalid".into();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let first = listener.local_addr().unwrap();
+        let unexpected = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        unexpected.set_nonblocking(true).unwrap();
+        let target = thread::spawn(move || {
+            accept_transfer_login(listener);
+        });
+        for packet in [
+            transfer_to(first),
+            transfer_to(unexpected.local_addr().unwrap()),
+            C::Ping(cfg::Ping { id: 35 }),
+        ] {
+            writer.send(&packet.encode()).unwrap();
+        }
+        game.wait_for_test_remote_event(|event| {
+            matches!(event, Event::Packet(packet) if matches!(&**packet, C::Ping(p) if p.id == 35))
+        });
+        writer.shutdown();
+        game.wait_for_test_remote_event(|event| matches!(event, Event::Disconnected { .. }));
+        game.poll_remote_events(true).unwrap();
+        target.join().unwrap();
+        assert_eq!(
+            game.remote.as_ref().unwrap().session.address,
+            first.to_string()
+        );
+        assert!(
+            matches!(unexpected.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_negotiated_member_refuses_the_source_without_stopping_the_bundle() {
+    with_probe(|game, witness| {
+        let (local, _reader, mut writer) = connect_probe(game);
+        let old = game.remote.as_ref().unwrap().session.cookies.clone();
+        let key = "bundle_probe:after_refusal";
+        for packet in [
+            C::BundleDelimiter(Empty),
+            C::CustomPayload(CustomPayload {
+                channel: SERVER_ONLY.into(),
+                data: vec![0],
+            }),
+            C::StoreCookie(cfg::StoreCookie {
+                key: key.into(),
+                payload: vec![45],
+            }),
+            C::CustomPayload(CustomPayload {
+                channel: NETWORK.into(),
+                data: vec![3],
+            }),
+            C::BundleDelimiter(Empty),
+        ] {
+            writer
+                .send(
+                    &packet
+                        .try_encode_with_payload_codecs(&local.codecs)
+                        .unwrap(),
+                )
+                .unwrap();
+        }
+        wait_for_bundle(game);
+        game.poll_remote_events(true).unwrap();
+        assert!(game.remote.is_none());
+        assert_eq!(old.lock().unwrap().get(key), Some(&vec![45]));
+        assert_eq!(*witness.order.lock().unwrap(), ["network after close"]);
+    });
+}

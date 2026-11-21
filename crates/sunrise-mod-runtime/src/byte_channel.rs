@@ -76,7 +76,6 @@ impl<T> Drop for ReceiveLease<T> {
 #[derive(Clone, Copy)]
 enum Admission {
     Bounded,
-    Wait,
     Terminal,
 }
 
@@ -87,6 +86,7 @@ struct State<T> {
     stats: Stats,
     senders: usize,
     receiver_alive: bool,
+    wait_admission_open: bool,
     waiting_for_space: usize,
 }
 struct Shared<T> {
@@ -143,6 +143,7 @@ pub fn channel<T>(capacity: usize) -> Result<(Sender<T>, Receiver<T>), InvalidCa
             },
             senders: 1,
             receiver_alive: true,
+            wait_admission_open: true,
             waiting_for_space: 0,
         }),
         ready: Condvar::new(),
@@ -171,16 +172,39 @@ impl<T> Sender<T> {
     /// admitted alone. In that case do not let the reader allocate its next
     /// record until this one gives back its exceptional credit.
     pub fn send_wait(&self, value: T, owned_bytes: usize) -> Result<(), TrySendError<T>> {
-        let permit = match self.reserve_with(owned_bytes, Admission::Wait) {
-            Ok(permit) => permit,
-            Err(ReserveError::Full) => return Err(TrySendError::Full(value)),
-            Err(ReserveError::Disconnected) => return Err(TrySendError::Disconnected(value)),
+        let Some(charge) = owned_bytes.checked_add(message_overhead::<T>()) else {
+            return Err(TrySendError::Full(value));
         };
-        let oversized = permit.charge > self.0.capacity;
-        permit.publish(value).map_err(TrySendError::Disconnected)?;
+        let oversized = charge > self.0.capacity;
+        let mut state = self.0.lock();
+        let reserved = loop {
+            if !state.receiver_alive || !state.wait_admission_open {
+                return Err(TrySendError::Disconnected(value));
+            }
+            let total = state.stats.reserved_bytes;
+            if oversized {
+                if total == 0 {
+                    break charge;
+                }
+            } else if let Some(next) = total.checked_add(charge)
+                && next <= self.0.capacity
+            {
+                break next;
+            }
+            state = self.0.wait_for_space(state);
+        };
+        // Commit under the same lock as the cutoff: a waiting reader cannot
+        // reserve before close and publish its record after close.
+        state.stats.reserved_bytes = reserved;
+        state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
+        state.queue.push_back((value, charge));
+        state.stats.queued_items += 1;
+        self.0.ready.notify_one();
         if oversized {
-            let mut state = self.0.lock();
-            while state.receiver_alive && state.stats.reserved_bytes > self.0.capacity {
+            while state.receiver_alive
+                && state.wait_admission_open
+                && state.stats.reserved_bytes > self.0.capacity
+            {
                 state = self.0.wait_for_space(state);
             }
         }
@@ -202,33 +226,22 @@ impl<T> Sender<T> {
             .checked_add(message_overhead::<T>())
             .ok_or(ReserveError::Full)?;
         let mut state = self.0.lock();
-        loop {
-            if !state.receiver_alive {
-                return Err(ReserveError::Disconnected);
-            }
-            let total = state.stats.reserved_bytes;
-            let reserved = total.checked_add(charge);
-            let fits = match admission {
-                Admission::Bounded => reserved.is_some_and(|bytes| bytes <= self.0.capacity),
-                Admission::Wait if charge > self.0.capacity => total == 0,
-                Admission::Wait => reserved.is_some_and(|bytes| bytes <= self.0.capacity),
-                Admission::Terminal => reserved.is_some(),
-            };
-            if fits {
-                let reserved = total + charge;
-                state.pending_bytes += charge;
-                state.stats.reserved_bytes = reserved;
-                state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
-                return Ok(Permit {
-                    shared: self.0.clone(),
-                    charge,
-                });
-            }
-            if !matches!(admission, Admission::Wait) {
-                return Err(ReserveError::Full);
-            }
-            state = self.0.wait_for_space(state);
+        if !state.receiver_alive {
+            return Err(ReserveError::Disconnected);
         }
+        let reserved = state
+            .stats
+            .reserved_bytes
+            .checked_add(charge)
+            .filter(|bytes| matches!(admission, Admission::Terminal) || *bytes <= self.0.capacity)
+            .ok_or(ReserveError::Full)?;
+        state.pending_bytes += charge;
+        state.stats.reserved_bytes = reserved;
+        state.stats.peak_reserved_bytes = state.stats.peak_reserved_bytes.max(reserved);
+        Ok(Permit {
+            shared: self.0.clone(),
+            charge,
+        })
     }
     pub fn stats(&self) -> Stats {
         self.0.lock().stats
@@ -282,6 +295,14 @@ impl<T> Drop for Sender<T> {
     }
 }
 impl<T> Receiver<T> {
+    /// Stop admitting waiting sends while keeping the published FIFO and its
+    /// held credits intact. Wakes a producer parked before this cutoff.
+    pub fn close_wait_admission(&self) {
+        let mut state = self.0.lock();
+        state.wait_admission_open = false;
+        self.0.refunded(&state);
+    }
+
     fn pop(&self, state: &mut State<T>) -> Option<T> {
         let (value, charge) = state.queue.pop_front()?;
         state.stats.reserved_bytes -= charge;
@@ -447,6 +468,34 @@ mod tests {
         assert_eq!(rx.stats().reserved_bytes, message_overhead::<()>());
         drop(receipt);
         assert_eq!(rx.stats().reserved_bytes, 0);
+    }
+
+    #[test]
+    fn closing_wait_admission_keeps_published_records_and_wakes_a_parked_sender() {
+        let (tx, rx) = channel::<u32>(message_overhead::<u32>() * 2).unwrap();
+        tx.send_wait(1, 0).unwrap();
+        let held = rx.recv_owned().unwrap();
+        tx.send_wait(2, 0).unwrap();
+        let waiter = tx.clone();
+        let parked = std::thread::spawn(move || waiter.send_wait(3, 0));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while rx.0.lock().waiting_for_space == 0 {
+            assert!(
+                Instant::now() < deadline,
+                "reader did not park for held credit"
+            );
+            std::thread::yield_now();
+        }
+        rx.close_wait_admission();
+        assert_eq!(parked.join().unwrap(), Err(TrySendError::Disconnected(3)));
+        assert_eq!(rx.stats().queued_items, 1);
+        assert_eq!(rx.stats().reserved_bytes, 2 * message_overhead::<u32>());
+        drop(held);
+        let terminal = tx.reserve_terminal(0).unwrap();
+        terminal.publish(4).unwrap();
+        assert_eq!(rx.recv(), Ok(2));
+        assert_eq!(rx.recv(), Ok(4));
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
     }
 
     #[test]

@@ -131,7 +131,7 @@ pub enum Event {
     /// A main-affine configuration action on the current listener.
     Configuration(Box<ConfigurationTask>),
     /// Configuration finish commits the ACK and Play phase on main.
-    FinishConfiguration(Box<PhaseChange>),
+    FinishConfiguration(Box<configuration::FinishConfiguration>),
     /// The server sent us back to configuration and finished it again.
     Reconfigured(Arc<Dynamic>),
     /// ClientboundResourcePackPushPacket, in configuration or in play.
@@ -151,7 +151,7 @@ pub enum Event {
     CodeOfConduct(String),
     /// The source listener marked itself transferring before queuing this task.
     /// Main commits the handoff even if the source has since closed.
-    Transfer(cfg::Transfer),
+    Transfer(Box<TransferTask>),
     /// `ClientboundServerLinksPacket`: the links the pause menu's "Server
     /// Links..." lists (ClientCommonPacketListenerImpl.handleServerLinks).
     ServerLinks(Vec<cfg::ServerLink>),
@@ -220,7 +220,8 @@ impl Event {
                 s.capacity()
             }
             Self::Bundle(bundle) => bundle.owned_bytes(),
-            Self::Reconfiguring(_) | Self::FinishConfiguration(_) => size_of::<PhaseChange>(),
+            Self::Reconfiguring(_) => size_of::<PhaseChange>(),
+            Self::FinishConfiguration(task) => task.owned_bytes(),
             Self::Configuration(task) => task.owned_bytes(),
             Self::Cookie(task) => size_of::<CookieTask>() + task.cookie.owned_bytes(),
             Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
@@ -246,7 +247,7 @@ impl Event {
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
                 .saturating_add(dynamic(registries)),
-            Self::Transfer(packet) => packet.host.capacity(),
+            Self::Transfer(task) => size_of::<TransferTask>() + task.packet.host.capacity(),
             Self::ServerLinks(links) => links.owned_heap_bytes(),
             Self::Disconnected {
                 reason,
@@ -574,7 +575,9 @@ impl Session {
     }
     /// Stop output at a main-affine close but let preceding replies drain.
     pub fn close_after_pending(&self) {
-        if let Some(writer) = self.writer.lock().unwrap().as_ref() {
+        let writer = self.writer.lock().unwrap();
+        self.events.close_reader_admission();
+        if let Some(writer) = writer.as_ref() {
             writer.close_after_pending();
         }
     }
@@ -1205,51 +1208,42 @@ fn report_connection_end(
     let _ = events.send_terminal(why.ended(from_server));
 }
 
-/// The ordered main task owns the outbound protocol switch; the reader owns
-/// only the decoder resumption once that task has queued the ACK.
+/// `Connection.setupOutboundProtocol`, run by the ordered main phase task.
+fn switch_client_protocol(
+    writer: &Mutex<Option<QueuedWriter>>,
+    configuring: &AtomicBool,
+    target: sunrise_protocol::payload_negotiation::Phase,
+    ack: &[u8],
+) -> sunrise_protocol::Result<()> {
+    let writer = writer.lock().unwrap();
+    writer
+        .as_ref()
+        .ok_or_else(|| sunrise_protocol::Error::new("Disconnected"))?
+        .transition_protocol(target, ack)?;
+    configuring.store(
+        target == sunrise_protocol::payload_negotiation::Phase::Configuration,
+        Ordering::Release,
+    );
+    Ok(())
+}
+
+/// The main Play → Configuration action switches the writer before resuming the decoder.
 pub struct PhaseChange {
     writer: Arc<Mutex<Option<QueuedWriter>>>,
     configuring: Arc<AtomicBool>,
-    target: PhaseTarget,
+    payloads: Arc<crate::raw_payloads::Transport>,
     resume: std::sync::mpsc::Sender<sunrise_protocol::Result<()>>,
-}
-
-enum PhaseTarget {
-    Configuration(Arc<crate::raw_payloads::Transport>),
-    Play(crate::raw_payloads::PlayTransition),
 }
 
 impl PhaseChange {
     pub fn acknowledge(self) {
-        use sunrise_protocol::payload_negotiation::Phase;
-        let transition = |target, ack: &[u8]| {
-            let writer = self.writer.lock().unwrap();
-            writer
-                .as_ref()
-                .ok_or_else(|| sunrise_protocol::Error::new("Disconnected"))?
-                .transition_protocol(target, ack)?;
-            self.configuring
-                .store(target == Phase::Configuration, Ordering::Release);
-            Ok(())
-        };
-        let result = match self.target {
-            PhaseTarget::Configuration(payloads) => {
-                payloads.begin_configuration();
-                transition(
-                    Phase::Configuration,
-                    &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
-                )
-            }
-            PhaseTarget::Play(play) => play
-                .commit(|| {
-                    transition(
-                        Phase::Play,
-                        &cfg::Serverbound::FinishConfiguration(Empty).encode(),
-                    )
-                    .map_err(|e: sunrise_protocol::Error| e.to_string())
-                })
-                .map_err(sunrise_protocol::Error::new),
-        };
+        self.payloads.begin_configuration();
+        let result = switch_client_protocol(
+            &self.writer,
+            &self.configuring,
+            sunrise_protocol::payload_negotiation::Phase::Configuration,
+            &play::Serverbound::ConfigurationAcknowledged(Empty).encode(),
+        );
         let _ = self.resume.send(result);
     }
 }
@@ -1338,14 +1332,29 @@ impl CommonIo {
     }
 
     fn queue_transfer(
-        &self,
+        self: &Arc<Self>,
         send: &ingress::Producer<Event>,
         packet: cfg::Transfer,
     ) -> Result<(), Reason> {
         // ClientCommonPacketListenerImpl sets this before handing off to main.
         self.transferring.store(true, Ordering::Release);
-        send.send_wait(Event::Transfer(packet))
-            .map_err(|error| Reason::plain(error.to_string()))
+        send.send_wait(Event::Transfer(Box::new(TransferTask {
+            io: self.clone(),
+            packet,
+        })))
+        .map_err(|error| Reason::plain(error.to_string()))
+    }
+}
+
+pub struct TransferTask {
+    io: Arc<CommonIo>,
+    packet: cfg::Transfer,
+}
+
+impl TransferTask {
+    /// A queued Transfer retains its original listener and may run after it closes.
+    pub fn into_eligible_packet(self) -> Option<cfg::Transfer> {
+        self.io.may_handle(true).then_some(self.packet)
     }
 }
 
@@ -1497,18 +1506,17 @@ fn receive_play(
             None => continue,
             Some(PlayTurn::Single(packet)) => packet,
             Some(PlayTurn::Bundle(packets)) => {
-                send.send_wait(Event::Bundle(Box::new(CompletedBundle {
-                    packets,
-                    io: io.clone(),
-                })))
-                .map_err(|error| Reason::plain(error.to_string()))?;
+                if io.accepts_bundle() {
+                    send.send_wait(Event::Bundle(Box::new(CompletedBundle {
+                        packets,
+                        io: io.clone(),
+                    })))
+                    .map_err(|error| Reason::plain(error.to_string()))?;
+                }
                 continue;
             }
         };
-        if !io.common.may_handle(matches!(
-            packet,
-            play::Clientbound::StoreCookie(_) | play::Clientbound::Transfer(_)
-        )) {
+        if !io.common.accepts_packets() {
             continue;
         }
         match packet {
@@ -1536,7 +1544,7 @@ fn receive_play(
                 send.send_wait(Event::Reconfiguring(Box::new(PhaseChange {
                     writer: shared_writer.clone(),
                     configuring: configuring.clone(),
-                    target: PhaseTarget::Configuration(payloads.clone()),
+                    payloads: payloads.clone(),
                     resume,
                 })))
                 .map_err(|error| Reason::plain(error.to_string()))?;
@@ -1647,7 +1655,6 @@ fn configure(
     let mut menu_extra_revision = 0;
     let mut content_verified = false;
     let mut features = None;
-    payloads.begin_configuration();
     let mut negotiation =
         sunrise_protocol::payload_negotiation::Negotiation::new(payloads.local.manifest.clone());
     crate::datapack_net::clear_received();
@@ -1670,10 +1677,7 @@ fn configure(
         let packet =
             cfg::Clientbound::decode_with_payload_codecs(id, &payload, &payloads.local.codecs)
                 .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
-        if !io.may_handle(matches!(
-            packet,
-            cfg::Clientbound::StoreCookie(_) | cfg::Clientbound::Transfer(_)
-        )) {
+        if !io.accepts_packets() {
             continue;
         }
         match packet {
@@ -1826,38 +1830,32 @@ fn configure(
             }
             cfg::Clientbound::Disconnect(d) => return Err(Reason::tag(&d.reason, lang)),
             cfg::Clientbound::FinishConfiguration(_) => {
-                negotiation
-                    .finish_without_offer()
-                    .map_err(|error| Reason::plain(error.to_string()))?;
-                if payloads.epoch().is_none() {
-                    payloads
-                        .accept(
-                            negotiation
-                                .accepted()
-                                .expect("configuration barrier freezes negotiation"),
-                        )
-                        .map_err(Reason::plain)?;
-                }
-                crate::datapack_net::finish_transfer().map_err(Reason::plain)?;
-                let play = payloads.prepare_play().map_err(Reason::plain)?;
+                use configuration::{FinishConfiguration, PlayPreparation};
+                // A prior callback may still hold main work. Let the reader
+                // wait for it, but hand off either outcome in FIFO order.
+                let play = if negotiation.accepted().is_some() {
+                    payloads.prepare_play().map(PlayPreparation::Ready)
+                } else {
+                    negotiation
+                        .finish_without_offer()
+                        .map_err(|e| e.to_string())
+                        .map(|()| PlayPreparation::WithoutOffer(payloads.clone()))
+                };
                 let (resume, ready) = std::sync::mpsc::channel();
-                send.send_wait(Event::FinishConfiguration(Box::new(PhaseChange {
+                send.send_wait(Event::FinishConfiguration(Box::new(FinishConfiguration {
+                    listener: config,
                     writer: writer.clone(),
                     configuring: configuring.clone(),
-                    target: PhaseTarget::Play(play),
+                    play,
+                    content_verified,
+                    menu_extra_revision,
                     resume,
                 })))
                 .map_err(|error| Reason::plain(error.to_string()))?;
-                ready
-                    .recv()
-                    .map_err(|_| Reason::plain("Disconnected"))?
-                    .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
+                let registries = ready.recv().map_err(|_| Reason::plain("Disconnected"))??;
                 if let Some(features) = features {
                     let _ = send.send_wait(Event::Features(features));
                 }
-                let mut registries = config.take_registries();
-                registries.custom_components = content_verified;
-                registries.menu_extra_revision = menu_extra_revision;
                 return Ok(registries);
             }
             _ => {}
@@ -3293,25 +3291,38 @@ mod tests {
     fn bundle_pipe(
         name: &str,
         capacity: usize,
-    ) -> (
-        PathBuf,
-        Connection,
-        ingress::Consumer<Event>,
-        std::thread::JoinHandle<()>,
-    ) {
+    ) -> (PathBuf, Connection, Session, std::thread::JoinHandle<()>) {
         let (root, data) = empty_item_data(name);
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         let (mut reader, writer) = Connection::local(client).split();
         let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
         let (send, events) = ingress::channel(capacity, Event::ingress_charge).unwrap();
+        let session = Session {
+            events,
+            payload_events: event_channel().0,
+            payloads: crate::raw_payloads::Transport::empty(),
+            writer: writer.clone(),
+            configuring: Arc::new(AtomicBool::new(false)),
+            thread: None,
+            address: "local".into(),
+            name: "Player".into(),
+            counters: Arc::new(Mutex::new(None)),
+            cookies: Cookies::default(),
+            debug: false,
+            far: Arc::default(),
+            recorder: Arc::new(Mutex::new(None)),
+            pings: Arc::default(),
+            serial: next_serial(),
+        };
+        let (configuring, cookies) = (session.configuring.clone(), session.cookies.clone());
         let thread = std::thread::spawn(move || {
             let result = receive_play(
                 &mut reader,
                 &writer,
-                &Arc::new(AtomicBool::new(false)),
+                &configuring,
                 &Arc::new(Language::new()),
                 &send,
-                &Cookies::default(),
+                &cookies,
                 &Arc::default(),
                 &data,
                 &Arc::new(Mutex::new(None)),
@@ -3325,7 +3336,7 @@ mod tests {
             .reader
             .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
-        (root, server, events, thread)
+        (root, server, session, thread)
     }
 
     #[test]
@@ -3334,7 +3345,8 @@ mod tests {
         let capacity = 2
             * (Event::Packet(Box::new(ping(-1))).ingress_charge()
                 + sunrise_mod_runtime::byte_channel::message_overhead::<Event>());
-        let (root, mut server, events, thread) = bundle_pipe("bundle-pressure", capacity);
+        let (root, mut server, session, thread) = bundle_pipe("bundle-pressure", capacity);
+        let events = &session.events;
         let delimiter = play::Clientbound::BundleDelimiter(Empty);
         server.send(&ping(-1).encode()).unwrap();
         server.send(&delimiter.encode()).unwrap();
@@ -3389,7 +3401,8 @@ mod tests {
     fn the_4097th_member_disconnects_before_a_closing_delimiter() {
         use play::Clientbound as C;
 
-        let (root, mut server, events, thread) = bundle_pipe("bundle-member-limit", 1 << 20);
+        let (root, mut server, session, thread) = bundle_pipe("bundle-member-limit", 1 << 20);
+        let events = &session.events;
         server.send(&C::BundleDelimiter(Empty).encode()).unwrap();
         for id in 0..4097 {
             server.send(&C::Ping(cfg::Ping { id }).encode()).unwrap();
@@ -3421,7 +3434,8 @@ mod tests {
             + members * std::mem::size_of::<C>()
             + sunrise_mod_runtime::byte_channel::message_overhead::<Event>();
         let capacity = one * 2;
-        let (root, mut server, events, thread) = bundle_pipe("bundle-aggregate", capacity);
+        let (root, mut server, session, thread) = bundle_pipe("bundle-aggregate", capacity);
+        let events = &session.events;
         let delimiter = C::BundleDelimiter(Empty).encode();
         for id in 0..5 {
             server.send(&delimiter).unwrap();
@@ -3480,6 +3494,54 @@ mod tests {
     }
 
     #[test]
+    fn a_store_cookie_waiting_for_credit_does_not_join_the_transfer_tail() {
+        use play::Clientbound as C;
+        let transfer = cfg::Transfer {
+            host: "first.invalid".into(),
+            port: 25565,
+        };
+        let capacity = Event::INGRESS_RECORD_OVERHEAD
+            + size_of::<TransferTask>()
+            + transfer.host.capacity()
+            + sunrise_mod_runtime::byte_channel::message_overhead::<Event>();
+        let (root, mut server, session, thread) = bundle_pipe("transfer-credit", capacity);
+        let events = &session.events;
+        server.send(&C::Transfer(transfer).encode()).unwrap();
+        let receipt = events.recv_timeout_owned(Duration::from_secs(5)).unwrap();
+        assert_eq!(events.stats().reserved_bytes, capacity);
+        server
+            .send(
+                &C::StoreCookie(cfg::StoreCookie {
+                    key: "test:waiting".into(),
+                    payload: vec![1],
+                })
+                .encode(),
+            )
+            .unwrap();
+        assert!(matches!(
+            events.recv_timeout_owned(Duration::from_millis(25)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        let (Event::Transfer(task), receipt) = receipt.into_parts() else {
+            panic!("missing transfer")
+        };
+        session.close_after_pending();
+        assert_eq!(task.into_eligible_packet().unwrap().host, "first.invalid");
+        drop(receipt);
+        let (event, _credit) = events
+            .recv_timeout_owned(Duration::from_secs(5))
+            .unwrap()
+            .into_parts();
+        assert!(
+            matches!(event, Event::Disconnected { .. }),
+            "a cookie without admission credit must not appear after the cutoff"
+        );
+        assert!(session.cookies.lock().unwrap().is_empty());
+        thread.join().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn bundle_waits_in_main_order_without_stalling_standalone_controls() {
         use play::{Clientbound as C, Serverbound as S};
         let timeout = Duration::from_secs(5);
@@ -3487,7 +3549,8 @@ mod tests {
             let (id, body) = server.recv().unwrap();
             S::decode(id, &body).unwrap()
         };
-        let (root, mut server, events, thread) = bundle_pipe("bundle-order", 1 << 20);
+        let (root, mut server, session, thread) = bundle_pipe("bundle-order", 1 << 20);
+        let events = &session.events;
         let cookie = "test:session";
         let delimiter = C::BundleDelimiter(Empty);
         let request = C::CookieRequest(cfg::CookieRequest { key: cookie.into() });
@@ -3623,7 +3686,8 @@ mod tests {
         use play::Clientbound as C;
         let timeout = Duration::from_secs(5);
         for (complete, disconnect) in [(true, true), (true, false), (false, false)] {
-            let (root, mut server, events, thread) = bundle_pipe("bundle-read-close", 1 << 20);
+            let (root, mut server, session, thread) = bundle_pipe("bundle-read-close", 1 << 20);
+            let events = &session.events;
             let delimiter = C::BundleDelimiter(Empty);
             server.send(&delimiter.encode()).unwrap();
             server.send(&C::Ping(cfg::Ping { id: 5 }).encode()).unwrap();

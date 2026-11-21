@@ -1,7 +1,11 @@
 //! Main-thread actions of `ClientConfigurationPacketListenerImpl`.
-use super::{CommonIo, Dynamic, Event, Reason, cfg, ingress, select_known_packs};
-use std::sync::{Arc, Mutex};
-use sunrise_protocol::retained::OwnedHeap;
+use super::{
+    CommonIo, Dynamic, Empty, Event, QueuedWriter, Reason, cfg, ingress, select_known_packs,
+    switch_client_protocol,
+};
+use crate::raw_payloads::{PlayTransition, Transport};
+use std::sync::{Arc, Mutex, atomic::AtomicBool, mpsc};
+use sunrise_protocol::{payload_negotiation::Phase, retained::OwnedHeap};
 
 #[derive(Default)]
 pub(super) struct Configuration {
@@ -119,5 +123,62 @@ impl ConfigurationTask {
             let _ = writer.send(&reply.encode());
         }
         None
+    }
+}
+
+pub(super) enum PlayPreparation {
+    Ready(PlayTransition),
+    // A peer without an Offer still needs its configuration setup frozen, but
+    // has no negotiated callbacks to wait for on the reader.
+    WithoutOffer(Arc<Transport>),
+}
+
+/// `ClientConfigurationPacketListenerImpl.handleConfigurationFinished`:
+/// finish the registries and datapack state after earlier main callbacks, then
+/// publish Play. An ordered refusal leaves those earlier replies on the wire.
+pub struct FinishConfiguration {
+    pub(super) listener: Arc<Configuration>,
+    pub(super) writer: Arc<Mutex<Option<QueuedWriter>>>,
+    pub(super) configuring: Arc<AtomicBool>,
+    pub(super) play: Result<PlayPreparation, String>,
+    pub(super) content_verified: bool,
+    pub(super) menu_extra_revision: u8,
+    pub(super) resume: mpsc::Sender<Result<Dynamic, Reason>>,
+}
+
+impl FinishConfiguration {
+    pub(super) fn owned_bytes(&self) -> usize {
+        size_of::<Self>() + self.play.as_ref().err().map_or(0, String::capacity)
+    }
+
+    pub fn acknowledge(self) {
+        let result = self.play.and_then(|play| {
+            crate::datapack_net::finish_transfer()?;
+            let mut registries = self.listener.take_registries();
+            registries.custom_components = self.content_verified;
+            registries.menu_extra_revision = self.menu_extra_revision;
+            let publish = || {
+                switch_client_protocol(
+                    &self.writer,
+                    &self.configuring,
+                    Phase::Play,
+                    &cfg::Serverbound::FinishConfiguration(Empty).encode(),
+                )
+                .map_err(|e| e.to_string())
+            };
+            match play {
+                PlayPreparation::Ready(prepared) => prepared.commit(publish)?,
+                PlayPreparation::WithoutOffer(payloads) => {
+                    payloads.accept_empty_and_play(publish)?
+                }
+            }
+            Ok(registries)
+        });
+        if result.is_err()
+            && let Some(writer) = self.writer.lock().unwrap().as_ref()
+        {
+            writer.close_after_pending();
+        }
+        let _ = self.resume.send(result.map_err(Reason::plain));
     }
 }

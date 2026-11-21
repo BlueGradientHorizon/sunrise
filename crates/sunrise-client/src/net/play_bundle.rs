@@ -79,9 +79,8 @@ impl PlayIo {
         self.common.accepts_packets()
     }
 
-    pub fn invalid_bundle_payload(&self) -> Event {
-        self.close_after_pending();
-        Reason::keyed("multiplayer.disconnect.invalid_packet", &self.lang).ended(false)
+    pub fn incompatible_payload(&self, detail: &str) -> Event {
+        Reason::keyed_arg("multiplayer.disconnect.incompatible", &self.lang, detail).ended(false)
     }
 
     pub fn bundle_member(&self, packet: C) -> BundleStep {
@@ -114,7 +113,6 @@ impl PlayIo {
                 return BundleStep::Transfer(p);
             }
             C::Disconnect(p) => {
-                self.close_after_pending();
                 return BundleStep::Close(Reason::tag(&p.reason, &self.lang).ended(true));
             }
             C::CustomPayload(p) if p.channel == "minecraft:brand" => {

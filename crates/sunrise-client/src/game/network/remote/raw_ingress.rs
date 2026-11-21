@@ -159,22 +159,30 @@ impl Game<'_> {
                 }
             };
             self.handle_remote_event(event, &mut turn)?;
-            if let Some(opening) = turn.opening.take() {
-                // Only the old listener's admitted StoreCookie tasks survive
-                // this handoff. Snapshot its remaining FIFO without waiting.
-                for item in events {
-                    if let Received::Event(Event::Cookie(task), _credit) = item {
-                        task.handle();
+            if turn.opening.is_some() {
+                // The handoff already closed reader admission. Freeze any
+                // published tail before dropping any older receipt, then keep
+                // the old listener installed for its eligible common tasks.
+                let tail = self
+                    .remote
+                    .as_ref()
+                    .map(|old| old.session.poll())
+                    .unwrap_or_default();
+                let admitted = events
+                    .into_iter()
+                    .filter_map(|item| match item {
+                        Received::Event(event, credit) => Some((event, credit)),
+                        Received::Chunk(..) => None,
+                    })
+                    .chain(tail.into_iter().map(|receipt| receipt.into_parts()));
+                for (event, _credit) in admitted {
+                    if matches!(event, Event::Cookie(_) | Event::Transfer(_)) {
+                        self.handle_remote_event(event, &mut turn)?;
                     }
                 }
-                if let Some(old) = &self.remote {
-                    for receipt in old.session.poll() {
-                        if let (Event::Cookie(task), _credit) = receipt.into_parts() {
-                            task.handle();
-                        }
-                    }
-                }
-                self.install_remote_transfer(opening)?;
+                self.install_remote_transfer(
+                    turn.opening.take().expect("handoff kept its first opening"),
+                )?;
                 return Ok(());
             }
             chunks += started.map_or(Duration::ZERO, |t| t.elapsed());
@@ -251,24 +259,36 @@ impl Game<'_> {
                         Ok(Classified::Raw(_)) => {}
                         Err(error) => {
                             log::warn!("Sunrise: bundle payload refused: {error}");
-                            turn.end.get_or_insert(io.invalid_bundle_payload());
+                            if let Some(remote) = &self.remote {
+                                remote.session.close_after_pending();
+                            }
+                            turn.end
+                                .get_or_insert_with(|| io.incompatible_payload(&error.to_string()));
                         }
                     }
                 }
-                BundleStep::Transfer(packet) => {
-                    // ConnectScreen.startConnecting keeps the first opening.
-                    if turn.opening.is_none() {
-                        turn.opening = self.start_remote_transfer(packet)?;
-                        if turn.opening.is_none() {
-                            turn.end.get_or_insert_with(local_transfer_notice);
-                        }
-                    }
-                }
+                BundleStep::Transfer(packet) => self.handle_listener_transfer(packet, turn)?,
                 BundleStep::Close(notice) => {
                     // Discard the old listener only after its remaining handlers run.
                     turn.end.get_or_insert(notice);
                 }
                 BundleStep::Continue => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_listener_transfer(
+        &mut self,
+        packet: sunrise_protocol::packets::configuration::Transfer,
+        turn: &mut ListenerTurn,
+    ) -> Result<()> {
+        // ConnectScreen.startConnecting keeps the first opening, even if a
+        // later eligible Transfer runs as a separate old-listener task.
+        if turn.opening.is_none() {
+            turn.opening = self.start_remote_transfer(packet)?;
+            if turn.opening.is_none() {
+                turn.end.get_or_insert_with(local_transfer_notice);
             }
         }
         Ok(())
@@ -394,10 +414,9 @@ impl Game<'_> {
                 self.ui.registries.custom_completions.clear();
                 self.set_registries(registries);
             }
-            Event::Transfer(packet) => {
-                turn.opening = self.start_remote_transfer(packet)?;
-                if turn.opening.is_none() {
-                    turn.end.get_or_insert_with(local_transfer_notice);
+            Event::Transfer(task) => {
+                if let Some(packet) = task.into_eligible_packet() {
+                    self.handle_listener_transfer(packet, turn)?;
                 }
             }
             Event::PackPush(p) => self.handle_pack_push(p),
