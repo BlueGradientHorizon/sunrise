@@ -27,7 +27,14 @@ python3 tools/port_ledger.py gaps --kind seam                         # see the 
 python3 tools/port_ledger.py report                                   # .local/port-ledger/report.{md,html}
 python3 tools/port_ledger.py diff old/ledger.json                     # against another build
 python3 tools/port_ledger.py todo --package world/entity/animal       # the next methods with no answer
+python3 tools/ci/check_port_map_paths.py                             # every row's Rust function is still there
 ```
+
+A `port` or `inline` row's third column is `path::owner::fn`: it must name a file that exists and mentions that
+function, or the ledger answers with a file the function left. `tools/ci/check_port_map_paths.py` holds every row
+to that, and CI and `pr_ready.py` run it, so a refactor repoints its rows in the same change. The rows that do not
+resolve yet are listed in `tools/ci/port_map_known_stale.txt`, which only shrinks: `--refresh` deletes the lines
+that resolve now, and fixing a row means pointing it at the function's new file (or the `impl` it moved into).
 
 `--json` on any query gives machine output for agents.
 

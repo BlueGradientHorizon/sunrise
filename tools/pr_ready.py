@@ -379,6 +379,8 @@ def plan(args, base, changed, crates_of, libraries, dependencies):
         # docs/layers.md: a crate depends only on its own layer or a lower one, and the exceptions only shrink.
         Step("Layers", f"python3 tools/check_layers.py --base {shlex.quote(base)}", where="here"),
         Step("Addresses", f"python3 tools/check_addresses.py --base {shlex.quote(base)}", where="here"),
+        # tools/port_map/: a row that names a Sunrise function still finds it, and the known-stale list only shrinks.
+        Step("Port map", f"python3 tools/ci/check_port_map_paths.py --base {shlex.quote(base)}", where="here"),
         # tools/hotspots/README.md: export brace lists stay at 12 names or under; longer ones only shrink.
         Step("Export lists", "python3 tools/hotspots/check_lists.py", where="here"),
         # tools/hotspots/check_stand_ins.py: test stand-ins keep up with the hooks and traits they mirror.
