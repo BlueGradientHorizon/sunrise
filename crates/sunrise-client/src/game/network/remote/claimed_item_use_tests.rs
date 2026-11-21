@@ -171,9 +171,8 @@ fn interception_does_not_send_item_use_or_release_packets() {
                 inside: false,
             });
             game.set_mapping_held("key.use", true);
-            let input = &mut game.remote.as_mut().unwrap().input;
-            input.press(Button::Use);
-            input.press(Button::Use);
+            game.queue_mapping_click(Button::Use.mapping());
+            game.queue_mapping_click(Button::Use.mapping());
             game.remote_handle_input();
             assert!(game.client_item_use.is_some());
             assert!(game.using.is_none());
