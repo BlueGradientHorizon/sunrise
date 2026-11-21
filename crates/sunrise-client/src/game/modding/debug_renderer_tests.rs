@@ -1,5 +1,9 @@
 //! Native debug renderer selection, refresh, and world geometry, with prepared client resources.
-use super::{Game, native_entity_refs::tests::with_client_game};
+use super::{
+    Game,
+    debug_options::{Row, rows},
+    native_entity_refs::tests::with_client_game,
+};
 use glam::Mat4;
 use mod_api::{
     __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
@@ -9,7 +13,7 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex, Weak};
 use sunrise_client::{
-    debug_entries::{self, DebugEntries, Profile, Status},
+    debug_entries::{self, Category, DebugEntries, Profile, Status},
     world_geometry::WorldGeometry,
 };
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -100,7 +104,7 @@ fn with_debug_renderers(test: impl FnOnce(&mut Game<'_>, &Mutex<Fixture>)) {
                 let _phase = PhaseOwner::scope(ModPhase::Registration);
                 Game::native_register_debug_entries(&RegistrationContext::new(), &mut entries);
             }
-            game.test_debug_entries = Some(debug_entries::collect_registrations(entries));
+            game.registered_debug_entries = debug_entries::collect_registrations(entries);
             // Status changes stay out of debug-profile.json.
             game.debug_entries = DebugEntries::default();
             test(game, &fixture);
@@ -146,8 +150,15 @@ fn push(fixture: &Mutex<Fixture>, ids: &[&'static str]) {
 fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
     with_debug_renderers(|game, fixture| {
         push(fixture, &[SHOWN, OTHER, UNDECLARED, SHOWN, TEXT_ONLY]);
-        // Registration declares the switches without collecting a renderer list.
-        assert_eq!(game.test_debug_entries.as_ref().unwrap().len(), 3);
+        // F3 options lists both switches before the first renderer refresh.
+        let toggles: Vec<_> = rows(&game.registered_debug_entries, "marker:")
+            .into_iter()
+            .filter_map(|row| match row {
+                Row::Option(entry) if entry.category == Category::Renderer => Some(entry.path),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(toggles, [SHOWN, OTHER]);
         assert_eq!(refreshes(fixture), 0);
         game.debug_entries.set_status(UNDECLARED, Status::AlwaysOn);
         game.debug_entries.set_status(TEXT_ONLY, Status::AlwaysOn);
