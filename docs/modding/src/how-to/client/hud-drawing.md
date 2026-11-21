@@ -27,12 +27,12 @@ A vanilla anchor still determines the layer's position if its body doesn't draw 
 In the same registration hook, call `event.layers.replace_layer(id, Box::new(draw))` to discard
 an existing layer's body, including any wrappers. Use `event.layers.wrap_layer(id, Box::new(wrap))`
 to keep the previous body and draw around it. Both methods accept a vanilla ID or an already
-registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID, its
-place in the HUD and its draw conditions.
+registered mod ID and return `false` if the ID isn't registered. They keep the layer's ID,
+order and dispatch. A replacement does not inherit the original body's eligibility checks.
 
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
-The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
+That call runs the previous body with its own eligibility checks. The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
 for this draw without discarding it at registration.
 
 ```rust,ignore
@@ -47,8 +47,7 @@ event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
 
 `gui_layer_pre` and `gui_layer_post` fire once per slot, not per wrapper. Post still fires if the
 wrapper omitted the previous body. If Pre cancels the slot, neither the installed body nor Post
-runs. For work that must happen even when the HUD is hidden, use the independent foreground
-`gui_render_post` hook.
+runs. For a foreground pass independent of any HUD slot, use `gui_render_post`.
 
 ## Status rows and fixed text positions
 
@@ -72,9 +71,11 @@ event.layers.replace_layer("minecraft:player_health", Box::new(|host, draw| {
 Use `wrap_layer` and call `ctx.draw_previous()` if the vanilla row should still draw. Heart
 flashing and `player_heart_type` run only in the vanilla heart body, after the layer's Pre hook.
 Bubble bookkeeping and pop audio run only in the vanilla air body, even if the heart layer was
-cancelled or replaced. With the HUD visible, status slots still run their layer hooks and installed
-bodies in creative or spectator mode. Only the vanilla bodies check whether the player is in
-survival or adventure (or, for vehicle health, whether a mount has hearts to show). To replace all
+cancelled or replaced. The status slots still run their layer hooks and installed bodies under F1,
+in creative or spectator mode, and off a mount. The original bodies check HUD visibility and the
+conditions for the row: survival or adventure for the player's rows, a mount with hearts for vehicle
+health. To hide your own paint under F1, check `host.hud_mode() == mod_api::HudMode::AllVisible`.
+A `Flow::Cancel` from `render_gui_pre` still skips those slots, even under F1. To replace all
 rows formerly drawn by `health_hud`, replace or wrap `player_health`, `armor_level`, `food_level`
 and `air_level`; `vehicle_health` is separate.
 You can keep a `GuiDraw` list: pass it to `draw.gui_paint(&draws)` and handle its returned error.

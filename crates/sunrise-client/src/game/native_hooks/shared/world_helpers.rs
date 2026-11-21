@@ -189,8 +189,9 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
 }
 
 impl<'g> Game<'g> {
-    /// Dispatches a vanilla slot where the HUD calls for it, first flushing inserted layers below
-    /// it. A replacement or wrapper keeps the slot's hooks, not conditions inside the vanilla body.
+    /// Dispatches a vanilla slot after flushing inserted layers below it. Replacing or wrapping
+    /// a body leaves the slot's ID, order and hooks unchanged. The original body's eligibility
+    /// applies only to the original paint, including when a wrapper delegates to it.
     pub(in crate::game) fn gui_layer(
         &mut self,
         layer: VanillaGuiLayer,

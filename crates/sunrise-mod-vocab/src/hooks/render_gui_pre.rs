@@ -2,15 +2,16 @@
 
 pub trait Hooks {
     /// Before the in-world HUD is drawn (NeoForge's `RenderGuiEvent.Pre`):
-    /// return `Flow::Cancel` and none of it is, as under F1: no vanilla layer (and so
-    /// no `gui_layer_pre` or `gui_layer_post`), no `render_gui_post`, and no
-    /// chat or toasts. Fires once a frame in a world, not under F1 and not
-    /// while a server dialog or the connection screen covers the window.
+    /// return `Flow::Cancel` to veto the HUD pass, including the status slots and their
+    /// layer events. F1 hides the original status bodies but does not veto their slots.
+    /// Fires once a frame in a world, including under F1, but not while a server dialog,
+    /// the connection screen or a loading screen covers the window.
     /// Client-side.
     #[hook(
         receiver = "read",
         dispatch = "flat",
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderGuiEvent.Pre",

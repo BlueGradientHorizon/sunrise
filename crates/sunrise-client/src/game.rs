@@ -7229,11 +7229,13 @@ impl Game<'_> {
         let spectator = self.spectator();
         let (wi, hi) = (w as i32, h as i32);
         let mut gui_canceled = false;
-        if !self.ui.hide_gui {
+        let replaying = self.replay.playing();
+        // RenderGuiEvent.Pre can veto the status slots even when F1 hides their vanilla paint.
+        if !replaying || !self.ui.hide_gui {
             self.native_render_gui_pre(&mut gui_canceled);
         }
-        // RenderGuiEvent.Pre: a mod's cancel hides the HUD as F1 does.
-        let show_hud = !self.ui.hide_gui && !gui_canceled && !self.replay.playing();
+        let dispatch_status = !gui_canceled && !replaying;
+        let show_hud = dispatch_status && !self.ui.hide_gui;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the
         // rest of the HUD.
@@ -7316,23 +7318,12 @@ impl Game<'_> {
             });
             self.draw_extras(&mut batch);
         }
-        if show_hud {
-            // Hud.nextContextualInfoState: the jump bar, the experience bar or
-            // the locator bar above the hotbar.
-            let has_experience = !self.creative && !spectator;
-            let contextual = sunrise_client::locator_bar::ContextualBar::next(
-                self.waypoints.has_waypoints(),
-                !spectator && self.jumpable_mount(),
-                self.mount_jumping(),
-                has_experience,
-                self.experience_recent(),
-            );
-            use sunrise_client::locator_bar::ContextualBar;
+        if dispatch_status {
             // NeoForge's Hud.registerVanillaLayers: each status row owns its own extraction.
             // The installed vanilla bodies share the column heights and a scratch draw list.
             let mut status_heights = hud_layout::StatusBarHeights::default();
             let mut status_rows = Vec::new();
-            let mount = if spectator {
+            let mount = if !show_hud || spectator {
                 None
             } else {
                 self.mount_index().map(|i| {
@@ -7343,13 +7334,13 @@ impl Game<'_> {
                     )
                 })
             };
-            // NeoForge applies survivalVisible to the vanilla bodies, not to slot dispatch.
-            let survival_mode = !self.creative && !spectator;
+            // NeoForge applies hudVisible and survivalVisible to the vanilla bodies only.
+            let show_survival_status = show_hud && !self.creative && !spectator;
             self.gui_layer(
                 VanillaGuiLayer::PlayerHealth,
                 &mut batch,
                 &mut |g, batch| {
-                    if !survival_mode {
+                    if !show_survival_status {
                         return;
                     }
                     let (tick, millis) = (g.visual_ticks() as i32, g.visual_millis());
@@ -7384,7 +7375,7 @@ impl Game<'_> {
                 },
             );
             self.gui_layer(VanillaGuiLayer::ArmorLevel, &mut batch, &mut |g, batch| {
-                if !survival_mode {
+                if !show_survival_status {
                     return;
                 }
                 let Some(p) = &mut g.player else { return };
@@ -7397,7 +7388,7 @@ impl Game<'_> {
                 hud_layout::paint(batch, &g.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
-                if !survival_mode || mount.is_some_and(|(hearts, _)| hearts != 0) {
+                if !show_survival_status || mount.is_some_and(|(hearts, _)| hearts != 0) {
                     return;
                 }
                 let Some(p) = &g.player else { return };
@@ -7432,7 +7423,7 @@ impl Game<'_> {
                 },
             );
             self.gui_layer(VanillaGuiLayer::AirLevel, &mut batch, &mut |g, batch| {
-                if !survival_mode {
+                if !show_survival_status {
                     return;
                 }
                 let Some(p) = &g.player else { return };
@@ -7462,6 +7453,19 @@ impl Game<'_> {
                     g.audio.capture = capture;
                 }
             });
+        }
+        if show_hud {
+            // Hud.nextContextualInfoState: the jump bar, the experience bar or
+            // the locator bar above the hotbar.
+            let has_experience = !self.creative && !spectator;
+            let contextual = sunrise_client::locator_bar::ContextualBar::next(
+                self.waypoints.has_waypoints(),
+                !spectator && self.jumpable_mount(),
+                self.mount_jumping(),
+                has_experience,
+                self.experience_recent(),
+            );
+            use sunrise_client::locator_bar::ContextualBar;
             // After the health rows (Hud.extractHotbarAndDecorations): jump, locator or XP bar.
             self.gui_layer(
                 VanillaGuiLayer::ContextualInfoBar,

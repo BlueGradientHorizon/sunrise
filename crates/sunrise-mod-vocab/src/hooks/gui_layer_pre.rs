@@ -14,9 +14,9 @@ pub trait Hooks {
     /// `vehicle_health`, `air_level`, `contextual_info_bar` (jump, locator or experience
     /// bar, with the level number), `selected_item_name`, `sleep_overlay`,
     /// `overlay_message` (action bar), `title`, `scoreboard_sidebar`, `subtitle_overlay`,
-    /// `chat` and `tab_list`. The status slots fire whenever the HUD is visible, even
-    /// if their vanilla bodies do not draw (for example, hearts in creative or vehicle
-    /// health off a mount). A skipped slot, such as one F1 hides, fires neither hook.
+    /// `chat` and `tab_list`. The status slots dispatch even when F1 hides the vanilla HUD,
+    /// in creative, or off a mount. F1 and other eligibility checks belong to those original
+    /// bodies, not to status-slot dispatch. A canceled `render_gui_pre` skips the status slots.
     /// Focused chat still draws at the chat screen's paint site. The camera overlays and debug
     /// screen are not HUD layers. The selected item name and action bar keep vanilla's
     /// fixed positions; adding bars doesn't move them. Cancel and redraw the

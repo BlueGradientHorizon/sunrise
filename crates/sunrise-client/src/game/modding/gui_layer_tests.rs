@@ -6,8 +6,8 @@ use super::{
 };
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, client::hud_layout::GuiDraw,
-    content::crash::current_native_mod,
+    PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPreEvent,
+    client::hud_layout::GuiDraw, content::crash::current_native_mod,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::{
@@ -168,6 +168,7 @@ const HEALTH_MARKER: u32 = 0xFF2D_2D2D;
 
 #[derive(Default)]
 struct HealthTrace {
+    cancel_gui: bool,
     cancel_health: bool,
     cancel_air: bool,
     calls: Vec<&'static str>,
@@ -206,6 +207,14 @@ impl Hooks for HealthLayer {
                 ctx.draw_previous();
             }),
         ));
+    }
+
+    fn render_gui_pre(&self, _: &dyn ClientHost, _: &mut RenderGuiPreEvent) -> Flow {
+        if self.trace.lock().unwrap().cancel_gui {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
     }
 
     fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
@@ -292,10 +301,15 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         // Above water the same depleted air instead resets the pop latch, with no sound.
         player.air = 181;
         game.player = Some(player);
-        for (under_water, creative) in [(false, false), (true, false), (true, true)] {
-            if creative {
-                game.set_mode_id(1);
-            } else if under_water {
+        for (under_water, creative, hidden) in [
+            (false, false, false),
+            (true, false, false),
+            (true, true, false),
+            (true, false, true),
+        ] {
+            game.set_mode_id(if creative { 1 } else { 0 });
+            game.ui.hide_gui = hidden;
+            if under_water && !game.player.as_ref().unwrap().is_eye_in_fluid(WATER) {
                 let water = game
                     .pack
                     .assets
@@ -327,7 +341,8 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 .unwrap();
                 assert!(player.is_eye_in_fluid(WATER));
             }
-            let vetoes: &[(bool, bool)] = if creative {
+            let vanilla_eligible = !creative && !hidden;
+            let vetoes: &[(bool, bool)] = if !vanilla_eligible {
                 &[(false, false)]
             } else {
                 &[(true, false), (true, true), (false, false), (false, true)]
@@ -339,7 +354,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 *trace.lock().unwrap() = HealthTrace {
                     cancel_health,
                     cancel_air,
-                    calls: Vec::new(),
+                    ..HealthTrace::default()
                 };
                 let batch = game.hud_layers([640, 480]);
                 let calls = std::mem::take(&mut trace.lock().unwrap().calls);
@@ -347,7 +362,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 if !cancel_health {
                     if replace {
                         expected.push("replacement");
-                    } else if !creative {
+                    } else if vanilla_eligible {
                         expected.push("hearts");
                     }
                     expected.push("health post");
@@ -372,7 +387,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 );
                 if painted_replacement {
                     assert_eq!(game.ui.room.bottom(), 100.0);
-                } else if creative {
+                } else if !vanilla_eligible {
                     assert_eq!(
                         game.ui.room.bottom(),
                         batch.height,
@@ -383,13 +398,13 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 }
                 assert_eq!(
                     game.health_hud.last_health,
-                    if cancel_health || replace || creative {
+                    if cancel_health || replace || !vanilla_eligible {
                         17
                     } else {
                         12
                     }
                 );
-                let draws_air = !cancel_air && !creative;
+                let draws_air = !cancel_air && vanilla_eligible;
                 let pops = draws_air && under_water;
                 assert_eq!(
                     game.health_hud.last_bubble_pop_sound,
@@ -405,6 +420,14 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
                 assert_eq!(game.audio.heard.get(BUBBLE_POP).copied(), pops.then_some(1));
             }
         }
+        // The last frame hid the vanilla HUD. The global veto still applies to its slots.
+        *trace.lock().unwrap() = HealthTrace {
+            cancel_gui: true,
+            ..HealthTrace::default()
+        };
+        let batch = game.hud_layers([640, 480]);
+        assert!(trace.lock().unwrap().calls.is_empty());
+        assert!(!batch.vertices.iter().any(|v| v.color == HEALTH_MARKER));
     });
 }
 
