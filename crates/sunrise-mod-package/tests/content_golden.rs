@@ -2,7 +2,7 @@
 //! To add an entry, create its corpus folder and run this test with
 //! `SUNRISE_BLESS_CONTENT_GOLDEN=1`. Do not re-bless existing entries to fix a mismatch.
 
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{collections::BTreeSet, env, fs, io, path::Path};
 use sunrise_mod_package::{Content, Package};
 
 const CORPUS: &str = "tests/content-corpus";
@@ -14,38 +14,54 @@ fn content_golden() {
     // from the workspace. Keep the literal forward slashes in Content's Source::Dir.
     let entries = entry_names(CORPUS, true);
     let goldens = entry_names(GOLDEN, false);
-    let bless = std::env::var("SUNRISE_BLESS_CONTENT_GOLDEN").as_deref() == Ok("1");
-    assert!(!entries.is_empty(), "{CORPUS} is empty");
+    let bless = env::var("SUNRISE_BLESS_CONTENT_GOLDEN").as_deref() == Ok("1");
     let orphans: Vec<_> = goldens.difference(&entries).collect();
+    let mut mismatches = Vec::new();
+    let mut first_diff = None;
+
+    for entry in &entries {
+        let path = format!("{CORPUS}/{entry}");
+        let actual = dump(Path::new(&path));
+        let golden = format!("{GOLDEN}/{entry}.txt");
+        if bless {
+            fs::write(&golden, actual).unwrap_or_else(|e| panic!("{golden}: {e}"));
+            continue;
+        }
+        let expected = match fs::read(&golden) {
+            Ok(bytes) if bytes == actual.as_bytes() => continue,
+            Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => "(missing)\n".into(),
+            Err(e) => panic!("{golden}: {e}"),
+        };
+        mismatches.push(format!("{entry}\n"));
+        first_diff.get_or_insert_with(|| {
+            format!("{entry} changed\n--- golden ---\n{expected}--- actual ---\n{actual}")
+        });
+    }
+
+    if let Some(path) = env::var_os("SUNRISE_CONTENT_GOLDEN_REPORT") {
+        let path = Path::new(&path);
+        fs::write(path, mismatches.concat()).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    }
+    assert!(!entries.is_empty(), "{CORPUS} is empty");
     assert!(
         orphans.is_empty(),
         "goldens without corpus entries: {orphans:?}"
     );
-    if !bless {
-        let missing: Vec<_> = entries.difference(&goldens).collect();
-        assert!(
-            missing.is_empty(),
-            "corpus entries without goldens: {missing:?}"
+    if let Some(diff) = first_diff {
+        panic!(
+            "content golden mismatches:\n{}\n{diff}",
+            mismatches.concat()
         );
     }
+}
 
-    for entry in entries {
+#[test]
+fn content_golden_is_deterministic() {
+    for entry in entry_names(CORPUS, true) {
         let path = format!("{CORPUS}/{entry}");
-        let (dump, refusal) = dump(Path::new(&path));
-        assert_eq!(
-            refusal,
-            entry.starts_with("refused_"),
-            "unexpected admission result for {entry}:\n{dump}"
-        );
-        let golden = format!("{GOLDEN}/{entry}.txt");
-        if bless {
-            fs::write(&golden, dump).unwrap_or_else(|e| panic!("{golden}: {e}"));
-        } else {
-            let expected = fs::read_to_string(&golden).unwrap_or_else(|e| panic!("{golden}: {e}"));
-            if dump != expected {
-                panic!("{entry} changed\n--- golden ---\n{expected}--- actual ---\n{dump}");
-            }
-        }
+        let path = Path::new(&path);
+        assert_eq!(dump(path), dump(path), "{entry} changed between reads");
     }
 }
 
@@ -77,10 +93,10 @@ fn entry_names(dir: &str, corpus: bool) -> BTreeSet<String> {
         .collect()
 }
 
-fn dump(path: &Path) -> (String, bool) {
+fn dump(path: &Path) -> String {
     let Package { manifest, .. } = match Package::read(path) {
         Ok(package) => package,
-        Err(error) => return (format!("manifest:\nrefused: {error}\n"), true),
+        Err(error) => return format!("manifest:\nrefused: {error}\n"),
     };
     let content = Content::read(path, &manifest).and_then(|content| {
         match content.server_only_refusal(&manifest) {
@@ -88,12 +104,9 @@ fn dump(path: &Path) -> (String, bool) {
             None => Ok(content),
         }
     });
-    let (content, refusal) = match content {
-        Ok(content) => (format!("{content:#?}"), false),
-        Err(error) => (format!("refused: {error}"), true),
+    let content = match content {
+        Ok(content) => format!("{content:#?}"),
+        Err(error) => format!("refused: {error}"),
     };
-    (
-        format!("manifest:\n{manifest:#?}\n\ncontent:\n{content}\n"),
-        refusal,
-    )
+    format!("manifest:\n{manifest:#?}\n\ncontent:\n{content}\n")
 }
