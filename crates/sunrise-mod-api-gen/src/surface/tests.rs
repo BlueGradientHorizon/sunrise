@@ -1303,6 +1303,33 @@ fn a_private_alias_keeps_references_from_its_public_type_expansion() {
 }
 
 #[test]
+fn a_generic_projection_does_not_resolve_to_a_same_named_workspace_module() {
+    let edited = "use engine::*;
+        pub trait LocalTrait { type Out; }
+        pub fn project<T: LocalTrait>(_: T) -> T::Out { unimplemented!() }
+        /// A colour.";
+    let export = export_fixture(
+        &[
+            (LIB, "/// A colour.", edited),
+            (
+                "engine-fixture/src/lib.rs",
+                "pub struct Secret;",
+                "pub mod T { pub struct Out; }",
+            ),
+        ],
+        HOOKS,
+    );
+    let project = export
+        .surface
+        .functions
+        .iter()
+        .find(|f| f.id == "fn:project")
+        .unwrap();
+    assert!(project.signature.contains("-> T::Out"), "{project:?}");
+    assert_eq!(project.refs, ["trait:LocalTrait"]);
+}
+
+#[test]
 fn a_private_alias_keeps_trait_references_from_a_qualified_associated_type() {
     let edited = "pub trait LocalTrait { type Out; }\nimpl LocalTrait for u32 { type Out = u8; }\ntype Private = <u32 as LocalTrait>::Out;\npub fn through_alias() -> Private { unimplemented!() }\n/// A colour.";
     let export = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)

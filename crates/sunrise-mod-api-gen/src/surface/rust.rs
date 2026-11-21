@@ -296,10 +296,10 @@ impl Paths<'_, '_> {
     fn rewrite(&mut self, path: &mut syn::Path) {
         let segments: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
         let rooted = path.leading_colon.is_some();
-        if path.leading_colon.is_none()
-            && segments.len() == 1
-            && self.params.iter().any(|p| *p == segments[0])
-            || segments.first().is_some_and(|s| s == "Self")
+        if !rooted
+            && segments
+                .first()
+                .is_some_and(|first| first == "Self" || self.params.contains(first))
         {
             return;
         }
