@@ -2,6 +2,7 @@
 //! SUNRISE_LAUNCHER_HOME, XDG_DATA_HOME and XDG_CONFIG_HOME (AGENTS.md).
 //! `python3 tools/run_standard_pack_gpu_entities.py <output-dir>`
 use client::{
+    fog::{FogType, sky_pass_present},
     gfx::{
         Frame, Renderer, ScreenshotRequest,
         entity_skin::{SkinFrame, SkinJob, SkinPart, SkinVertex},
@@ -21,6 +22,7 @@ use std::{
     },
 };
 use sunrise_client_render as client;
+use sunrise_world::dimension_type::Skybox;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -396,6 +398,7 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     };
     frame.skybox = false;
     frame.end_sky = false;
+    frame.sky_pass = sky_pass_present(FogType::Atmospheric, false, Skybox::None);
     renderer.screenshot = Some(ScreenshotRequest {
         path: out.join("world-stage-pack.png"),
         size: None,
@@ -416,7 +419,10 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             .any(|p| p[2] == 123)
     );
     use mod_api::RenderLevelStage as Stage;
-    assert!(!hooks.stages.contains(&Stage::AfterSky), "no sky work ran");
+    assert!(
+        !hooks.stages.contains(&Stage::AfterSky),
+        "a dimension with no skybox has no sky stage"
+    );
     assert!(
         !hooks.stages.contains(&Stage::AfterOpaqueBlocks),
         "the pack owns terrain"
@@ -425,11 +431,16 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
     assert!(hooks.stages.contains(&Stage::AfterTranslucentParticles));
     assert_eq!(hooks.stages.last(), Some(&Stage::AfterLevel));
     assert_eq!(hooks.prepared_after_sky, Some(false));
+    frame.sky_pass = sky_pass_present(FogType::Atmospheric, false, Skybox::Overworld);
+    for draw_sky in [true, false] {
+        // The Sky option changes pixels, not the stage's admission.
+        frame.skybox = draw_sky;
+        let mut sky_hooks = WorldStageProbe::default();
+        renderer.render(&frame, Some(&mut sky_hooks))?;
+        assert_eq!(sky_hooks.stages.first(), Some(&Stage::AfterSky));
+        assert_eq!(sky_hooks.prepared_after_sky, Some(true));
+    }
     frame.skybox = true;
-    let mut sky_hooks = WorldStageProbe::default();
-    renderer.render(&frame, Some(&mut sky_hooks))?;
-    assert_eq!(sky_hooks.stages.first(), Some(&Stage::AfterSky));
-    assert_eq!(sky_hooks.prepared_after_sky, Some(true));
 
     // Exercise the actual classic pack route, not just an engine sky with a pack active.
     // The pack's final shader distinguishes sky, hand, and depth1 with the hand vs depth2
@@ -515,14 +526,44 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             .count(),
         1
     );
-    frame.sky_blocked = true;
+    // A classic pack keeps the inline End sky outside dragon fog. Even with no
+    // End sky sprite, that pass owns the notification. In boss fog the pack owns it.
+    frame.skybox = false;
+    frame.end_sky = true;
+    frame.sky_pass = sky_pass_present(FogType::Atmospheric, false, Skybox::End);
+    for boss_world_fog in [false, true] {
+        frame.boss_world_fog = boss_world_fog;
+        frame.sky_blocked = boss_world_fog;
+        let mut end = WorldStageProbe::default();
+        renderer.render(&frame, Some(&mut end))?;
+        assert_eq!(
+            end.stages
+                .iter()
+                .filter(|&&stage| stage == Stage::AfterSky)
+                .count(),
+            1,
+            "classic-pack End with boss fog {boss_world_fog}"
+        );
+        assert_eq!(end.prepared_after_sky, Some(false));
+        if boss_world_fog {
+            assert!(end.stages.ends_with(&[Stage::AfterSky, Stage::AfterLevel]));
+        } else {
+            assert_eq!(end.stages.first(), Some(&Stage::AfterSky));
+        }
+    }
+    // The classic pack still draws its boss-fog fan, but powder snow vetoes the stage.
+    frame.sky_pass = sky_pass_present(FogType::PowderSnow, false, Skybox::End);
     let mut blocked_sky = WorldStageProbe::default();
     renderer.render(&frame, Some(&mut blocked_sky))?;
     assert!(
         !blocked_sky.stages.contains(&Stage::AfterSky),
-        "loading a sky program is not enough: it must draw this frame"
+        "powder-snow camera fog has no sky stage, even with a pack sky"
     );
+    frame.skybox = true;
+    frame.end_sky = false;
+    frame.boss_world_fog = false;
     frame.sky_blocked = false;
+    frame.sky_pass = sky_pass_present(FogType::Atmospheric, false, Skybox::Overworld);
     frame.hand = &[];
 
     pack(&mut renderer, &out.join("failed-pack"), false, false);

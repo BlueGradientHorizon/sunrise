@@ -15,6 +15,13 @@ mod water_mirror;
 use super::*;
 use post::{PostPassArgs, PostPassResult};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SkyStageOwner {
+    Engine,
+    Inline,
+    ClassicPack,
+}
+
 impl Renderer {
     /// `checks`: the error scopes of a scaled screenshot's frame, checked before its PNG is written.
     /// `output`: what this frame is drawn for, the window's output or a screenshot's.
@@ -1379,6 +1386,18 @@ impl Renderer {
             [self.config.width, self.config.height],
             pack_reads_world || fg,
         );
+        let pack_world_runs = pack_post && scaled.is_some();
+        // Admission is independent of pixels. A classic pack leaves the End's cube inline,
+        // but owns the boundary when its dragon-fog sky draws instead.
+        let sky_stage = if !live_hooks || !frame.sky_pass {
+            None
+        } else if !pack_draws_sky {
+            Some(SkyStageOwner::Engine)
+        } else if pack_world_runs && (!frame.end_sky || end_fog_sky(frame)) {
+            Some(SkyStageOwner::ClassicPack)
+        } else {
+            Some(SkyStageOwner::Inline)
+        };
         let pack_sky_clear = pack_draws_sky
             .then(|| self.pack_post.as_ref().and_then(|p| p.1.as_ref()))
             .flatten()
@@ -1518,7 +1537,7 @@ impl Renderer {
             );
         }
         if live_hooks && let Some(hooks) = hooks.as_deref_mut() {
-            if separate_sky {
+            if sky_stage == Some(SkyStageOwner::Engine) {
                 hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
             }
             hook_geometry =
@@ -2538,11 +2557,8 @@ impl Renderer {
                     pack_draws_celestial,
                     hdr_gain,
                 );
-                // A classic sky program doesn't replace the visible End skybox. That sky
-                // stays at the start of the engine world pass; don't lend the pass to mods.
-                if live_hooks
-                    && sky_visible
-                    && frame.end_sky
+                // The inline sky boundary does not lend the world pass to mods.
+                if sky_stage == Some(SkyStageOwner::Inline)
                     && let Some(hooks) = hooks.as_deref_mut()
                 {
                     hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
@@ -3775,7 +3791,6 @@ impl Renderer {
         }
         // RenderLevelStageEvent.AfterLevel: after the world finishes and before the engine
         // hand and overlays. A classic pack finishes its world inside PackPost.
-        let pack_world_runs = pack_post && scaled.is_some();
         if live_hooks
             && !pack_world_runs
             && let Some(hooks) = hooks.as_deref_mut()
@@ -3806,6 +3821,7 @@ impl Renderer {
                 fg_frames: fg_frames.as_ref(),
                 pack_post,
                 native_post,
+                after_pack_sky: sky_stage == Some(SkyStageOwner::ClassicPack),
                 pack_draws_weather,
                 pack_draws_terrain,
                 pack_draws_shadow,

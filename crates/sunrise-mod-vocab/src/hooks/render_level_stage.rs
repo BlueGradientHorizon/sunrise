@@ -10,16 +10,17 @@ pub trait DrawContexts {
 
 pub trait Hooks {
     /// Observe or draw world geometry at an active stage of a world view (NeoForge 26.3's
-    /// `RenderLevelStageEvent`). With a classic shader pack, `AfterSky` follows the sky that
-    /// actually draws (engine or pack), and `AfterLevel` follows the pack's world passes, before
-    /// composition and the engine hand overlay. `context` exposes `StagePass::None` for those
-    /// two stages, `StagePass::World` for standard pass stages, and `StagePass::Oit` for
-    /// `OitTranslucent` sub-passes. Client-only, noncancellable.
+    /// `RenderLevelStageEvent`). NeoForge's `RenderLevelStageEvent.AfterSky` runs once when
+    /// `LevelRenderer.addSkyPass` adds the sky pass, after the engine or classic pack's sky
+    /// work even if no geometry was visible. A classic pack's `AfterLevel` follows its world
+    /// passes, before composition and the engine hand overlay. `context` exposes
+    /// `StagePass::None` for those two stages, `StagePass::World` for standard pass stages,
+    /// and `StagePass::Oit` for `OitTranslucent` sub-passes. Client-only, noncancellable.
     #[notes = r#"## World render stages
 
 `Hooks::render_level_stage` is the client counterpart of NeoForge 26.3's
 `RenderLevelStageEvent`, covering all 9 stages as one hook with a `RenderLevelStage`:
-- `AfterSky` (no active render pass, immediately after the engine or pack sky draws)
+- `AfterSky` (no active render pass, immediately after the logical sky pass's drawing work)
 - `AfterOpaqueBlocks` (after solid and cutout chunk geometry, before opaque features)
 - `AfterOpaqueFeatures` (after opaque entities, block entities and particles)
 - When classic transparency is active (`!view.improved_transparency`):
@@ -37,12 +38,15 @@ Each frame asks `Hooks::submit_custom_geometry` and registered debug renderers f
 `WorldDrawContext`, for `name_tag`, `draw_model_instances`, `draw_instance_group`, and custom
 world primitives drawn at the end of the world pass). `Hooks::prepare_render_buffers` comes before
 primitive, entity, prepared-instance, and glyph uploads so group updates apply to this frame.
-`AfterSky` fires as soon as the sky draws. If a classic pack replaces the sky, that happens
-later, after the pack imports the engine world. No sky draw means no `AfterSky`. Each active
-pass-bearing stage fires at its own render-pass boundary. `AfterLevel` follows the world and
-precedes the engine's first-person hand and other overlays. A classic pack's own hand remains
-inside its world passes for the pack's depth snapshots; `AfterLevel` runs before pack composition,
-not before that hand. These hooks never fire on title or connect screens.
+`AfterSky` runs when `LevelRenderer.addSkyPass` adds a pass: the dimension has a skybox,
+there is no lava or powder-snow camera fog, and no camera mob effect blocks the sky. It fires
+once at the end of that pass's work even when no sky geometry is visible. Sunrise's sky setting
+and dragon boss fog affect drawing, not admission. If a classic pack owns the sky, the stage
+follows the pack's world import. Each active pass-bearing stage fires at its own render-pass
+boundary. `AfterLevel` follows the world and precedes the engine's first-person hand and other
+overlays. A classic pack's own hand remains inside its world passes for the pack's depth
+snapshots; `AfterLevel` runs before pack composition, not before that hand. These hooks never
+fire on title or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return
@@ -64,7 +68,7 @@ Draws already accepted are not rolled back."#]
         contract = "listen",
         neoforge = "RenderLevelStageEvent",
         cancellable = false,
-        version = 3
+        version = 4
     )]
     fn render_level_stage(
         stage: mod_api::RenderLevelStage,

@@ -18,9 +18,9 @@ pub trait Hooks {
 
 `Hooks::prepare_render_buffers` is the client counterpart of NeoForge 26.3's
 `PrepareRenderBuffersEvent`. It fires once per world view before any pass-bearing world render
-stages execute. Unlike `RenderLevelStage::AfterSky`, it does not depend on when or whether the sky
-is drawn. When a classic shader pack draws its own sky, `AfterSky` follows preparation and the
-engine world import. Preparation never fires on title or connect screens.
+stages execute, whether or not the frame has an `AfterSky` stage. When a classic shader pack
+owns the sky pass, `AfterSky` follows preparation and the engine world import. Preparation never
+fires on title or connect screens.
 
 Use `event.context.lines(stage, lines)`, `.quads(stage, quads)`, or
 `.pipeline_quads(stage, pipeline, quads)` to prepare a batch for a pass-bearing stage. Keep the

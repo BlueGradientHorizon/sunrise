@@ -178,9 +178,11 @@ pub enum OitStage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum RenderLevelStage {
-    /// Immediately after the sky draws (`RenderLevelStageEvent.AfterSky`). A classic shader
-    /// pack's replacement sky finishes after it imports the engine world. Absent if no sky
-    /// draws. Provides no active render pass.
+    /// NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`. Fires once
+    /// immediately after the engine or classic pack's sky work, even if it draws nothing visible.
+    /// Absent for a dimension without a skybox, lava or powder-snow camera fog, or a camera mob
+    /// effect that blocks the sky. A pack's replacement sky follows its world import. Provides
+    /// no active render pass.
     AfterSky,
     /// After solid and cutout chunk geometry, before opaque entities and block entities
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).

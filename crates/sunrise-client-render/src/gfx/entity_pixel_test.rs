@@ -1130,6 +1130,8 @@ pub fn render_pack(
         [SIZE; 2],
         &[],
         &mut |_, _, _, _| {},
+        false,
+        |_| {},
         &std::sync::atomic::AtomicBool::new(false),
     )
     .unwrap();

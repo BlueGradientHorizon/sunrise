@@ -351,6 +351,7 @@ fn render(
         window,
         &[],
         &mut |_, _, _, _| {},
+        false,
         |_| {},
         &std::sync::atomic::AtomicBool::new(false),
     )

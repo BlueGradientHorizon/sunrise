@@ -11213,6 +11213,12 @@ impl Game<'_> {
         let glowing = std::mem::take(self.glowing_vertices.get_mut());
         let shadow_only = std::mem::take(self.shadow_only_vertices.get_mut());
         let skin = std::mem::take(self.skin_frame.get_mut());
+        use sunrise_world::dimension_type::Skybox;
+        let skybox = self.dimension_type().skybox;
+        let camera_fog = self.camera_fog_type(camera.to_array());
+        let player_effect_blocks_sky = self.potions.effects.get("blindness").is_some()
+            || self.potions.effects.get("darkness").is_some();
+        let boss_world_fog = self.boss_overlay.should_create_world_fog();
         let frame = Frame {
             weather: &weather,
             weather_time: sunrise_client::weather::Time::new(self.world.game_time, alpha as f32),
@@ -11245,22 +11251,34 @@ impl Game<'_> {
                 self.water_plane(camera)
             },
             title,
-            sky_pass: false,
+            sky_pass: !title
+                && sunrise_client::fog::sky_pass_present(
+                    camera_fog,
+                    // Camera.extractRenderState asks the camera entity, not the local player.
+                    if self.controls_camera() {
+                        player_effect_blocks_sky
+                    } else {
+                        self.camera_mob().is_some_and(|mob| {
+                            mob.has_effect("minecraft:blindness")
+                                || mob.has_effect("minecraft:darkness")
+                        })
+                    },
+                    skybox,
+                ),
             sky_blocked: sunrise_client::fog::sky_pass_skipped(
-                self.camera_fog_type([camera.x, camera.y, camera.z]),
-                self.potions.effects.get("blindness").is_some()
-                    || self.potions.effects.get("darkness").is_some(),
-                self.boss_overlay.should_create_world_fog(),
+                camera_fog,
+                player_effect_blocks_sky,
+                boss_world_fog,
             ),
-            skybox: self.overworld_skybox() && self.settings.sunrise.sky,
-            end_sky: self.end_skybox() && self.settings.sunrise.sky,
+            skybox: skybox == Skybox::Overworld && self.settings.sunrise.sky,
+            end_sky: skybox == Skybox::End && self.settings.sunrise.sky,
             end_sky_sprite: self
                 .gui
                 .atlas
                 .sprites
                 .get("environment/end_sky")
                 .map(|r| [r.u0, r.v0, r.u1, r.v1]),
-            boss_world_fog: self.boss_overlay.should_create_world_fog(),
+            boss_world_fog,
             environment_fog: (self.dim == Dim::Nether).then_some((sky.fog_start, sky.fog_end)),
             cave_culling,
             water_fog,

@@ -158,6 +158,7 @@ impl Gpu {
             SIZE,
             &[],
             terrain,
+            false,
             |_| {},
             &std::sync::atomic::AtomicBool::new(false),
         )

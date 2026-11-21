@@ -195,13 +195,19 @@ quads because OIT writes different attachments. The renderer pages uploads at it
 buffer limits rather than capping the number of mod quads. A stage skipped by the render route
 is not replayed later.
 
-With a classic shader pack, `AfterSky` and `AfterLevel` observe the equivalent pack boundaries.
-`AfterSky` fires immediately after the sky that actually draws. If the pack keeps the engine sky,
-that is the engine's sky boundary. If it replaces the sky, that is after the pack imports the engine
-world, so `prepare_render_buffers` has already run. Use preparation, not `AfterSky`, for work that
-needs to precede the main world passes. No sky draw means no `AfterSky`.
-`AfterLevel` runs after the pack finishes drawing the world and before pack composition and the
-engine's hand overlay. If the pack draws its own hand, it stays inside the pack's world passes
+`AfterSky` follows NeoForge's `RenderLevelStageEvent.AfterSky` in `LevelRenderer.addSkyPass`.
+It fires once at the end of the sky pass's work, even if no geometry is visible. There is no
+stage if the dimension has no skybox, the camera has lava or powder-snow fog, or a camera mob
+effect (Blindness or Darkness) blocks the sky. Sunrise's sky setting and dragon boss fog affect
+drawing, not admission to the stage.
+
+A classic shader pack that keeps the engine sky leaves `AfterSky` at the engine's sky boundary.
+If the pack owns the sky pass, `AfterSky` runs after the pack imports the engine world and
+finishes its sky work, so `prepare_render_buffers` has already run. Use preparation, not
+`AfterSky`, for work that needs to precede the main world passes.
+
+A classic pack's `AfterLevel` runs after it finishes drawing the world and before composition and
+the engine's hand overlay. If the pack draws its own hand, it stays inside the pack's world passes
 so that `depthtex1` contains the opaque hand and `depthtex2` does not.
 
 ## Sampling a texture
