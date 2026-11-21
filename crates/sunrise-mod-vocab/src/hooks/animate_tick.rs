@@ -10,7 +10,8 @@ pub trait Hooks {
     /// `random.next_float() < 0.04` as `random.nextFloat() < 0.04f`. Only parts on the picked
     /// state's block are called, inside the pick: after the block's own vanilla effects, before
     /// its fluid's and the next pick. A block with no part answering costs the sampler one table
-    /// lookup. Never called on a server, nor for a screen's scene.
+    /// lookup. Never called on a server, nor for a screen's scene. A resource pack's Polytone
+    /// `disable_particles` on the block stops the part's call too, as it stops the block's own.
     #[notes = r##"### Random display ticks: sparks, smoke and dust
 
 `animate_tick` is vanilla's `Block.animateTick(BlockState, Level, BlockPos, RandomSource)` for a mod's block:

@@ -12,6 +12,8 @@ and 667 within 32. When a picked position's block has a part with `animate_tick`
 once for the pick, inside it as vanilla calls a block's `animateTick`: after the block's own vanilla
 effects, before its fluid's effects and the next pick. A block near the player is picked more
 often than one far away, so the effect thins out with distance as vanilla's does.
+A resource pack's Polytone `disable_particles` on the block stops the part's `animate_tick` too,
+as it stops the block's own animation.
 
 `AnimateTickEvent` carries:
 
@@ -100,5 +102,11 @@ impl BlockPart for QuartzFixture {
 }
 ```
 
-Attach it at registration with `r.block_part(r.block_key("ae2:quartz_fixture"), QuartzFixture { lightning })`.
+Attach it at registration:
+
+```rust,ignore
+let key = r.block_key("ae2:quartz_fixture");
+r.block_part(key, QuartzFixture { lightning });
+```
+
 A mod without its own particle can use vanilla's `minecraft:electric_spark` the same way.
