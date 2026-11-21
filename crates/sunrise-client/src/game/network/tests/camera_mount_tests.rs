@@ -69,7 +69,7 @@ fn spawn(game: &mut Game<'_>, id: i32, kind: &str) {
 }
 
 fn attributes(game: &mut Game<'_>, id: i32, scale: f64, distance: f64) {
-    let mut snapshot = |name: &str, base: f64| {
+    let snapshot = |name: &str, base: f64| {
         let attribute = game.motion.attributes.id(name).unwrap().registry_id();
         play::AttributeSnapshot {
             attribute,
@@ -168,10 +168,11 @@ fn setup(game: &mut Game<'_>, key: &Value, attributes_first: bool) {
                 bits64(&key["rider_distance"]),
             );
         }
-        if let (Some(v), Some(kind)) = (vehicle, vehicle_kind) {
-            if kind != "minecraft:oak_boat" && kind != "minecraft:armor_stand" {
-                attributes(game, VEHICLE, bits64(&v[1]), bits64(&v[2]));
-            }
+        if let (Some(v), Some(kind)) = (vehicle, vehicle_kind)
+            && kind != "minecraft:oak_boat"
+            && kind != "minecraft:armor_stand"
+        {
+            attributes(game, VEHICLE, bits64(&v[1]), bits64(&v[2]));
         }
     };
     let seat = |game: &mut Game<'_>| {
