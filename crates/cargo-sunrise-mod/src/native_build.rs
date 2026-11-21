@@ -51,7 +51,7 @@ fn get(url: &str) -> Result<host::Body, String> {
     match sunrise_proxy::get(url, &[], None) {
         Ok(response) => Ok(Some(Box::new(response.into_reader()))),
         Err(error) if error.status() == Some(404) => Ok(None),
-        Err(error) => Err(format!("{url}: {error}")),
+        Err(error) => Err(error.to_string()),
     }
 }
 

@@ -85,7 +85,8 @@ fn agent_for(
 /// An HTTP failure or a request that could not be sent or followed.
 #[derive(Debug)]
 pub enum GetError {
-    Http(Box<ureq::Error>),
+    Status { url: String, code: u16 },
+    Transport { url: String, kind: ureq::ErrorKind },
     Request(String),
 }
 
@@ -93,11 +94,8 @@ impl GetError {
     /// The server's status code, if the request failed with an HTTP error status.
     pub fn status(&self) -> Option<u16> {
         match self {
-            Self::Http(error) => match error.as_ref() {
-                ureq::Error::Status(code, _) => Some(*code),
-                ureq::Error::Transport(_) => None,
-            },
-            Self::Request(_) => None,
+            Self::Status { code, .. } => Some(*code),
+            Self::Transport { .. } | Self::Request(_) => None,
         }
     }
 }
@@ -105,22 +103,17 @@ impl GetError {
 impl fmt::Display for GetError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Http(error) => fmt::Display::fmt(error, f),
+            Self::Status { url, code } => write!(f, "{url}: HTTP {code}"),
+            Self::Transport { url, kind } => write!(f, "{url}: {kind}"),
             Self::Request(message) => f.write_str(message),
         }
     }
 }
 
-impl std::error::Error for GetError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Http(error) => Some(error.as_ref()),
-            Self::Request(_) => None,
-        }
-    }
-}
+impl std::error::Error for GetError {}
 
 /// An optional policy for the initial URL and each redirect destination, before any request.
+/// Refusal messages must not include credentials or other sensitive URL data.
 pub type UrlCheck<'a> = dyn Fn(&Url) -> Result<(), String> + 'a;
 
 /// GET with a fresh proxy decision per hop, including `NO_PROXY`. Only `Accept` and
@@ -146,9 +139,22 @@ pub fn get(
                 request = request.set(name, value);
             }
         }
-        request
-            .call()
-            .map_err(|error| GetError::Http(Box::new(error)))
+        request.call().map_err(|error| {
+            // Don't retain ureq's error: its URL, response and nested messages can contain secrets.
+            let mut url = current.clone();
+            url.set_query(None);
+            url.set_fragment(None);
+            let _ = url.set_password(None);
+            let _ = url.set_username("");
+            let url = url.into();
+            match error {
+                ureq::Error::Status(code, _) => GetError::Status { url, code },
+                ureq::Error::Transport(error) => GetError::Transport {
+                    url,
+                    kind: error.kind(),
+                },
+            }
+        })
     })
 }
 
@@ -659,9 +665,26 @@ mod tests {
             let response = get(&format!("{origin}/start"), &headers, None).unwrap();
             assert_eq!(response.into_string().unwrap(), "direct again");
             let error = get(&format!("{origin}/secure"), &headers, None).unwrap_err();
-            assert!(
-                matches!(error, GetError::Http(error) if error.kind() == ureq::ErrorKind::ProxyConnect)
-            );
+            let kind = ureq::ErrorKind::ProxyConnect;
+            assert!(matches!(error, GetError::Transport { kind: k, .. } if k == kind));
+            assert!(error.to_string().contains(&kind.to_string()));
+            assert!(error.to_string().contains("https://sunrise.invalid/asset"));
+
+            let status = get(&format!("{origin}/status"), &headers, None).unwrap_err();
+            assert_eq!(status.status(), Some(403));
+            assert!(status.to_string().contains("403"));
+            assert!(status.to_string().contains(&format!("{origin}/denied")));
+
+            for message in [
+                error.to_string(),
+                format!("{error:?}"),
+                status.to_string(),
+                format!("{status:?}"),
+            ] {
+                for secret in ["dummy-user", "dummy-password", "dummy-signature"] {
+                    assert!(!message.contains(secret), "{message}");
+                }
+            }
             return;
         }
 
@@ -705,6 +728,10 @@ mod tests {
         let to_origin = format!(
             "HTTP/1.1 302 Found\r\nLocation: {local_url}/finish\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         );
+        let denied = local_url.replacen("http://", "http://dummy-user:dummy-password@", 1);
+        let to_denied = format!(
+            "HTTP/1.1 302 Found\r\nLocation: {denied}/denied?sig=dummy-signature\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
         let http = std::thread::spawn(move || {
             reply(
                 &http,
@@ -743,7 +770,15 @@ mod tests {
                 "GET /secure HTTP/1.1",
                 true,
                 None,
-                "HTTP/1.1 302 Found\r\nLocation: https://sunrise.invalid/asset\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                "HTTP/1.1 302 Found\r\nLocation: https://dummy-user:dummy-password@sunrise.invalid/asset?sig=dummy-signature\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            reply(&origin, "GET /status HTTP/1.1", true, None, &to_denied);
+            reply(
+                &origin,
+                "GET /denied?sig=dummy-signature HTTP/1.1",
+                false,
+                None,
+                "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
             );
         });
 

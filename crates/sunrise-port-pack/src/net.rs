@@ -15,7 +15,7 @@ pub(crate) fn get_from_hosts(url: &str, hosts: &[&str]) -> Result<Option<ureq::R
     ) {
         Ok(response) => Ok(Some(response)),
         Err(error) if error.status() == Some(404) => Ok(None),
-        Err(error) => Err(format!("{url}: {error}")),
+        Err(error) => Err(error.to_string()),
     }
 }
 

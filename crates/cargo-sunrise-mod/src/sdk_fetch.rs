@@ -234,8 +234,8 @@ impl Base {
         match self {
             Self::Url(base) => {
                 let url = format!("{base}/{release}/{file}");
-                let response =
-                    sunrise_proxy::get(&url, &[], None).map_err(|e| format!("{url}: {e}"))?;
+                let response = sunrise_proxy::get(&url, &[], None)
+                    .map_err(|e| format!("{release}/{file}: {e}"))?;
                 Ok(Box::new(response.into_reader()))
             }
             Self::Folder(base) => {
