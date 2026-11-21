@@ -1105,10 +1105,9 @@ pub fn write_mob(
             map.insert("InWaterTime".into(), Tag::Int(-1));
         } else if matches!(species, S::Zombie | S::Husk) {
             map.insert("InWaterTime".into(), Tag::Int(m.extra.counter));
-        } else if species == S::Drowned {
-            map.entry("InWaterTime".into()).or_insert(Tag::Int(-1));
         } else {
-            map.retain("InWaterTime");
+            // Not counting for this kind: the drowning tracker writes its time as loaded, 0 by default.
+            map.retain_or("InWaterTime", || Tag::Int(0));
         }
     }
     // PatrollingMonster and Raider write before their subclasses.
