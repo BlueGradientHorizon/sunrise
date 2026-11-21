@@ -1369,10 +1369,11 @@ A code mod declares the same modifiers without a file: `Registrar::declare_biome
 `AddSpawnCosts`, `RemoveSpawnCosts`, `AddCarvers`, `RemoveCarvers` or `ModifyBiome`, whose `Option` fields are the
 values above). `BiomeModifier::json` renders it as the file above, so a declared modifier and
 a shipped one are applied by the same code, in the same order (additions first, then removals, then modifications, mods in dispatch
-order, declarations in registration order). An id outside the mod's namespace or that is not a file path, a repeated
-id, an empty list, a name that is not namespaced, an unknown generation step, a spawner of weight 0 or with its
-smallest group above its largest, a spawn cost that is not finite, a climate number that is not finite, a colour above
-0xFFFFFF and a temperature modifier other than `none` or `frozen` refuse the mods at startup, naming the mod.
+order, declarations in registration order). A bare path uses the declaring mod's namespace, while an explicit valid
+`namespace:path` keeps its namespace. A malformed id, a repeated id, an empty list, a name that is not namespaced, an
+unknown generation step, a spawner of weight 0 or with its smallest group above its largest, a spawn cost that is not
+finite, a climate number that is not finite, a colour above 0xFFFFFF and a temperature modifier other than `none` or
+`frozen` refuse the mods at startup, naming the mod.
 Declared modifiers apply when the world loads, through the same content loader as file modifiers, to both the
 generator and the game's biome table, including when no data pack is enabled.
 

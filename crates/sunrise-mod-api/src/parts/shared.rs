@@ -50,8 +50,8 @@ pub struct PartRegistrar {
     pub(crate) recipe_book_types: HashMap<String, String>,
     pub(crate) recipe_book_fields: HashMap<String, (String, String)>,
     pub(crate) recipe_book_filters: HashMap<String, crate::RecipeBookFilterLook>,
-    pub(crate) game_rule_categories: Vec<String>,
-    pub(crate) game_rules: Vec<crate::GameRuleDecl>,
+    pub(crate) game_rule_categories: Vec<(&'static str, String)>,
+    pub(crate) game_rules: Vec<(&'static str, crate::GameRuleDecl)>,
     pub(crate) attachment_uses: Vec<(String, String, String)>,
     pub(crate) attachment_types: HashMap<String, HashMap<String, AttachmentTypeDeclaration>>,
     pub(crate) custom_stats: Vec<String>,
@@ -325,8 +325,16 @@ pub(crate) fn install_registrar(
         recipe_book_fields: registrar.recipe_book_fields,
         recipe_book_filters: registrar.recipe_book_filters,
         game_rule_slots,
-        game_rules: registrar.game_rules,
-        game_rule_categories: registrar.game_rule_categories,
+        game_rules: registrar
+            .game_rules
+            .into_iter()
+            .map(|(_, rule)| rule)
+            .collect(),
+        game_rule_categories: registrar
+            .game_rule_categories
+            .into_iter()
+            .map(|(_, category)| category)
+            .collect(),
         attachment_types: registrar.attachment_types,
         custom_stats: registrar.custom_stats,
         entity_tick_each: mod_vocab::__private::EntityTickEach::of(&registrar.entity_tick_each),

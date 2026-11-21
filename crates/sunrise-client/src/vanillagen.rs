@@ -854,10 +854,7 @@ pub fn biome_modifiers_over_packs(
     // The modifiers code mods declared: they register after the content root is built.
     let declared: Vec<[String; 3]> = mod_api::__private::biome_modifier_declarations()
         .iter()
-        .filter_map(|d| {
-            let (mod_id, _) = d.id.split_once(':')?;
-            Some([mod_id.to_owned(), d.file(), d.modifier.json()])
-        })
+        .map(|d| [d.mod_id.clone(), d.file(), d.modifier.json()])
         .collect();
     crate::mod_content::biome_modifiers_over_packs(root, overrides, &declared).unwrap_or_else(|e| {
         log::warn!("Sunrise: biome modifiers over data packs: {e}");
