@@ -443,12 +443,13 @@ class SdkAssetTests(unittest.TestCase):
             prebuilt_game.slices(metadata, copied, ["bin/sunrise-client"])
 
     def test_fixed_client_links_and_installs_official_layer(self):
-        for platform, expected_link_args in (
-            ("linux", ["link-arg=-Wl,-rpath,$ORIGIN"]),
-            ("darwin", ["link-arg=-Wl,-rpath,@executable_path"]),
-            ("win32", []),
+        for platform, host, expected_link_args in (
+            ("linux", "x86_64-unknown-linux-gnu", ["link-arg=-Wl,-rpath,$ORIGIN"]),
+            ("darwin", "aarch64-apple-darwin", ["link-arg=-Wl,-rpath,@executable_path"]),
+            ("win32", "aarch64-pc-windows-msvc", ["link-arg=/STACK:8388608"]),
+            ("win32", "x86_64-pc-windows-gnu", ["link-arg=-Wl,--stack,8388608"]),
         ):
-            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory, \
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as directory, \
                     patch.object(sys, "platform", platform), patch.object(prebuilt_game, "run") as rustc:
                 out = Path(directory)
                 deps = out / "deps"
@@ -459,12 +460,10 @@ class SdkAssetTests(unittest.TestCase):
                 (deps / f"{prefix}sunrise_mod_host{suffix}").touch()
                 official = deps / f"{prefix}sunrise_official{suffix}"
                 official.touch()
-                files = prebuilt_game.api_route(out)
+                files = prebuilt_game.api_route(out, host)
                 command = rustc.call_args.args[0]
                 self.assertIn('feature="official"', command)
                 self.assertIn(f"sunrise_official={official}", command)
-                for flag in ("/STACK", "--stack", "-stack_size"):
-                    self.assertFalse(any(flag in arg for arg in command), command)
                 self.assertEqual([arg for arg in command if arg.startswith("link-arg=")], expected_link_args)
                 metadata = {"packages": [{"id": "official", "name": "sunrise-official"}], "resolve": {"nodes": []}}
                 compiled = official.relative_to(out).as_posix()

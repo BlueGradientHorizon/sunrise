@@ -55,11 +55,11 @@ fn asynchronous_chunk_save_hook_runs_on_the_region_writer() {
     assert_ne!(writer.id, caller, "the save hook ran on the calling thread");
     #[cfg(target_os = "linux")]
     {
-        const EXPECTED_STACK_FLOOR: usize = 136 * 1024 * 1024;
+        let minimum = sunrise_threads::GAME_THREAD_STACK_BYTES;
         let bytes = writer.stack_bytes.expect("could not read the writer stack");
         assert!(
-            bytes >= EXPECTED_STACK_FLOOR,
-            "the writer stack was {bytes} bytes, below {EXPECTED_STACK_FLOOR}"
+            bytes >= minimum,
+            "the writer stack was {bytes} bytes, below {minimum}"
         );
     }
 }

@@ -268,8 +268,11 @@ The seam's points 1-3 above, as they work today (layer plan M5).
 | `sunrise-game` | platform | The game for an executable to start: `sunrise_game::main()`, the allocator, the mod API mark. The platform's own parts register here as they leave the engine (M6) |
 | `sunrise-official` | Sunrise | The official executable: `register()` adds the Sunrise crates' hooks, then it runs `sunrise_game::main()` |
 
-If you embed the game in your own executable, delete the `prepare_main_stack()` call and any import of it.
-Register your hooks as before, then call the same game entry point, `sunrise_game::main()`.
+If you embed the game in your own executable, remove calls to and imports of the retired
+`sunrise_game::prepare_main_stack`, `sunrise_platform::prepare_main_stack` and
+`sunrise_mod_host::prepare_main_stack` re-exports. Register your hooks as before, then call
+`sunrise_game::main()`. On Windows, reserve the main stack at your executable's link as the
+[game build does](release-flow.md#builds).
 
 A Sunrise crate that runs in the game:
 

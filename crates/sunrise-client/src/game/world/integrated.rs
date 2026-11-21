@@ -50,28 +50,20 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const NO_ANSWER: &str =
     "the integrated server stopped or did not answer within 10 s (the game log says which)";
 
-/// The minimum stack for the integrated server, which holds its `Game` by value
-/// and runs every tick on it.
-fn server_thread_stack_floor() -> usize {
-    sunrise_threads::GAME_THREAD_STACK_BYTES
-}
-
-/// The server thread's stack size: [`server_thread_stack_floor`], or what `RUST_MIN_STACK` asks for
-/// when that is larger. std reads the variable only for a thread spawned without a size, and
-/// harnesses raise it for this thread (`tools/test_wind_burst_hook.py`, the parity tools).
+/// The server thread holds its `Game` by value and runs every tick on it. It uses the game
+/// worker stack floor or a larger `RUST_MIN_STACK` requested by a harness. std only reads that
+/// variable for threads spawned without an explicit size.
 fn server_thread_stack() -> usize {
     static SIZE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
     *SIZE.get_or_init(|| stack_for(std::env::var("RUST_MIN_STACK").ok().as_deref()))
 }
 
-/// [`server_thread_stack_floor`], or `min_stack` (a byte count, as std parses `RUST_MIN_STACK`) when
-/// that is larger.
+/// Interpret `min_stack` as a byte count, as std parses `RUST_MIN_STACK`.
 fn stack_for(min_stack: Option<&str>) -> usize {
     min_stack
         .and_then(|bytes| bytes.parse::<usize>().ok())
-        .map_or(server_thread_stack_floor(), |bytes| {
-            bytes.max(server_thread_stack_floor())
-        })
+        .unwrap_or_default()
+        .max(sunrise_threads::GAME_THREAD_STACK_BYTES)
 }
 
 /// `LevelLoadProgressTracker.EXPECTED_PLAYER_CHUNKS`: the 7x7 chunks around the spawn.
@@ -1560,7 +1552,7 @@ pub(super) mod tests {
     /// `RUST_MIN_STACK` override (#2430).
     #[test]
     fn integrated_server_stack_honors_its_floor_and_larger_overrides() {
-        let minimum = 136 * 1024 * 1024;
+        let minimum = sunrise_threads::GAME_THREAD_STACK_BYTES;
         assert_eq!(super::stack_for(None), minimum);
         assert_eq!(
             super::stack_for(Some("1048576")),
@@ -1568,7 +1560,6 @@ pub(super) mod tests {
             "smaller values keep the integrated server floor"
         );
         assert_eq!(super::stack_for(Some("268435456")), 256 * 1024 * 1024);
-        assert_eq!(super::stack_for(Some("16777216")), minimum);
         assert_eq!(
             super::stack_for(Some("lots")),
             minimum,
