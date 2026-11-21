@@ -355,7 +355,8 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
                     .set(support.x, support.y, support.z, air)
                     .unwrap();
                 item.velocity = Vec3::ZERO;
-                item.ticks = item.id.wrapping_neg();
+                // The next tick must not be one of the four-tick movement updates.
+                item.ticks = item.id.wrapping_neg() & 3;
                 assert_eq!(tick(game, &mut item), (true, false));
                 assert_eq!(item.position, Vec3::new(5.5, 64.0, 4.5));
                 assert_eq!(item.ground.supporting_block, Some(support));
