@@ -90,3 +90,7 @@ mod tests {
         assert_eq!(fov(walking_speed(None), 0.1), 1.0);
     }
 }
+
+#[cfg(test)]
+#[path = "gamemode_split_tests.rs"]
+mod gamemode_split_tests;
