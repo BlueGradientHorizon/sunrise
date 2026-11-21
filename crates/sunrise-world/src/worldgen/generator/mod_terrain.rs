@@ -240,7 +240,7 @@ mod tests {
     /// settings, at seed 12345.
     fn level(stages: VanillaStages) -> OverworldGenerator {
         let stem = stem(Value::from("minecraft:overworld"));
-        OverworldGenerator::for_mod(
+        for_mod(
             data(),
             12345,
             "minecraft:overworld",
@@ -488,7 +488,7 @@ mod tests {
             };
             // The block entities queued over a region of chunks around 0 0, `existing` first.
             let queued = |full: bool, existing: Option<([i32; 3], Compound)>| {
-                let level = OverworldGenerator::for_mod(
+                let level = for_mod(
                     data.clone(),
                     12345,
                     "minecraft:overworld",
@@ -537,7 +537,7 @@ mod tests {
                 surface: true,
                 ..Default::default()
             }));
-            match OverworldGenerator::for_mod(
+            match for_mod(
                 data(),
                 0,
                 "minecraft:overworld",
@@ -585,7 +585,7 @@ mod tests {
             }
         }
         let stem = stem(Value::from("minecraft:nether"));
-        let level = OverworldGenerator::for_mod(
+        let level = for_mod(
             data(),
             0,
             "minecraft:overworld",
@@ -626,7 +626,7 @@ mod tests {
             ("test:other", "minecraft:air"),
         ] {
             let level =
-                OverworldGenerator::for_mod(data(), 12345, id, &stem, Arc::new(Pocket), true)
+                for_mod(data(), 12345, id, &stem, Arc::new(Pocket), true)
                     .unwrap();
             let chunk = level.worker().generate_proto(ChunkPos::new(0, 0)).unwrap();
             assert_eq!(chunk.block_name(0, 64, 0), expected, "level {id}");
@@ -650,7 +650,7 @@ mod tests {
         fields.structure_resources = None;
         let open = |stages| {
             let stem = stem(Value::from("minecraft:overworld"));
-            OverworldGenerator::for_mod(
+            for_mod(
                 bare.clone(),
                 12345,
                 "minecraft:overworld",
@@ -830,7 +830,7 @@ mod tests {
         stem["generator"]["biome_source"] =
             serde_json::json!({"type": "minecraft:multi_noise", "preset": "minecraft:overworld"});
         let open = || {
-            OverworldGenerator::for_mod(
+            for_mod(
                 data(),
                 12345,
                 "minecraft:overworld",

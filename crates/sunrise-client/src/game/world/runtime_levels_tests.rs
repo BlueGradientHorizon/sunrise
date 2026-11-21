@@ -19,7 +19,7 @@ fn runtime_table_has_no_artificial_level_cap() {
     for n in 0..80 {
         assert!(
             table
-                .queue_open("test", &format!("cap:l{n}"), flat())
+                .queue_open("test", &format!("cap:l{n}"), admitted_flat(1))
                 .is_ok()
         );
     }
@@ -147,14 +147,14 @@ fn runtime_biome_source_validates_fields_and_composes_with_generators() {
 #[test]
 fn an_id_is_open_once_and_each_open_has_its_own_generation() {
     let mut table = RuntimeTable::default();
-    let first = table.queue_open("test", "gen:a", flat()).unwrap();
+    let first = table.queue_open("test", "gen:a", admitted_flat(1)).unwrap();
     assert_eq!(
-        table.queue_open("test", "gen:a", flat()),
+        table.queue_open("test", "gen:a", admitted_flat(1)),
         Err(RuntimeLevelError::AlreadyOpen)
     );
     assert_eq!(table.generation_of("gen:a"), first);
     table.remove("gen:a");
-    let second = table.queue_open("test", "gen:a", flat()).unwrap();
+    let second = table.queue_open("test", "gen:a", admitted_flat(1)).unwrap();
     assert_ne!(first, second);
     assert_eq!(table.generation_of("gen:a"), second);
     assert_eq!(table.generation_of("minecraft:the_nether"), 0);
@@ -163,7 +163,7 @@ fn an_id_is_open_once_and_each_open_has_its_own_generation() {
 #[test]
 fn a_level_is_open_after_its_request_is_applied_and_until_its_close_is() {
     let mut table = RuntimeTable::default();
-    table.queue_open("test", "state:a", flat()).unwrap();
+    table.queue_open("test", "state:a", admitted_flat(1)).unwrap();
     assert!(!table.is_open("state:a"));
     assert_eq!(
         table.queue_unload("state:a"),
@@ -889,7 +889,7 @@ fn a_delete_of_a_level_still_waiting_to_open_is_refused() {
 #[test]
 fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() {
     let mut table = RuntimeTable::default();
-    table.queue_open("test", "del:a", flat()).unwrap();
+    table.queue_open("test", "del:a", admitted_flat(1)).unwrap();
     assert_eq!(
         table.queue_delete("test", "del:a"),
         Err(RuntimeLevelError::AlreadyOpen)
@@ -899,7 +899,7 @@ fn a_delete_marks_an_open_level_closing_and_a_second_unload_finds_it_not_open() 
     assert!(table.is_open("del:a"));
     assert_eq!(table.queue_unload("del:a"), Err(RuntimeLevelError::NotOpen));
     assert_eq!(
-        table.queue_open("test", "del:a", flat()),
+        table.queue_open("test", "del:a", admitted_flat(1)),
         Err(RuntimeLevelError::AlreadyOpen),
         "no reopen until the delete is applied"
     );
@@ -1414,7 +1414,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             let level = RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, seed);
             game.levels
                 .runtime
-                .queue_open("cycle", "cycle:a", level)
+                .queue_open("cycle", "cycle:a", admitted_flat(seed))
                 .unwrap();
             game.apply_runtime_levels();
             assert!(game.runtime_level_is_open("cycle:a"));

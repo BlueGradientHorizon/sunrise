@@ -345,7 +345,7 @@ mod tests {
 
     fn terrain(stem: &serde_json::Value, shape: LevelShape, seed: i64) -> Option<ModTerrain> {
         let sources = sources(&["minecraft:plains", "minecraft:desert"]);
-        ModTerrain::for_stem(
+        for_stem(
             "test:pocket",
             stem,
             &generators(),
@@ -400,7 +400,7 @@ mod tests {
         )]);
         let open = |level: &str| {
             let stem = stem("test:by_level");
-            ModTerrain::for_stem(
+            for_stem(
                 level,
                 &stem,
                 &generators,
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn a_missing_biome_or_source_refuses_the_level() {
         let refused = |stem: serde_json::Value, biomes: &[&str]| {
-            ModTerrain::for_stem(
+            for_stem(
                 "test:pocket",
                 &stem,
                 &generators(),
@@ -515,7 +515,7 @@ mod tests {
         let sources = sources(&["minecraft:plains", "minecraft:desert"]);
         let known = |name: &str| biomes.contains(name).then(|| biomes.id(name));
         let shape = LevelShape::OVERWORLD;
-        let terrain = ModTerrain::for_stem(
+        let terrain = for_stem(
             "test:pocket",
             &oasis_stem(),
             &generators(),
@@ -574,7 +574,7 @@ mod tests {
                 Arc::new(Staged(stages)) as Arc<dyn ModChunkGenerator>,
             )]);
             let stem = stem("test:slab");
-            ModTerrain::for_stem(
+            for_stem(
                 "test:pocket",
                 &stem,
                 &generators,
@@ -691,7 +691,7 @@ mod tests {
                 },
             }),
         ] {
-            let result = ModTerrain::for_stem(
+            let result = for_stem(
                 "test:pocket",
                 &bad,
                 &generators(),
