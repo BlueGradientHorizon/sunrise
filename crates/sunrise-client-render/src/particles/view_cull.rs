@@ -130,6 +130,31 @@ impl ParticleEngine {
             partial,
             0.0,
             view,
+            false,
+            &mut |_, _| false,
+            light_at,
+            out,
+        );
+    }
+
+    /// With optional geometry culling off, preserve the ordinary draw and keep the vanilla
+    /// current-position point test for providers that extract their own quads.
+    pub fn render_with_provider_view(
+        &self,
+        camera: DVec3,
+        base: Quat,
+        partial: f32,
+        view: Option<&crate::gfx::JoinedFrusta>,
+        light_at: &dyn Fn([i32; 3]) -> u8,
+        out: &mut Vec<Vertex>,
+    ) {
+        self.render_inner::<false>(
+            camera,
+            base,
+            partial,
+            0.0,
+            view,
+            true,
             &mut |_, _| false,
             light_at,
             out,

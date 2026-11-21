@@ -3,7 +3,7 @@
 pub trait Hooks {
     /// Binds a logical client's sprite-set providers to already registered [`ParticleType`]s
     /// (NeoForge's `RegisterParticleProvidersEvent`). Each provider creates particles from typed
-    /// options and ticks its live particles in one batch. Later registration for the same type
+    /// options, ticks its live particles in one batch, and extracts quads for visible particles. Later registration for the same type
     /// replaces the previous provider. Registration runs once before resources load; each reload
     /// rebinds the sprite sets and discards live provider particles.
     #[notes = r#"## Particle providers
@@ -33,7 +33,11 @@ enough capacity. A tick has no `Host`, since the engine ticks particles below ga
 level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)`, both read-only. Light follows
 what the render level stores and the sky layer always reads zero in a dimension without skylight.
 A code-defined type without its provider or sprite set draws nothing. Asset-only particles
-keep declarative motion. Reload drops the previous sprite set's live provider particles."#]
+keep declarative motion. Reload drops the previous sprite set's live provider particles.
+
+Each visible particle also calls `ParticleProvider::extract` with the current frame. The default
+submits its normal quad. An override may append independently placed opaque or translucent
+quads to its own sprite atlas or emit nothing."#]
     #[hook(
         side = "client",
         contract = "listen",

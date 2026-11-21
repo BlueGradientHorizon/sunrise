@@ -6307,10 +6307,11 @@ impl Game<'_> {
         let world = &self.world;
         let particle_mode = self.settings.sunrise.particle_culling;
         if particle_mode == sunrise_client::graphics::ParticleCullingMode::Off {
-            self.particles.render(
+            self.particles.render_with_provider_view(
                 camera,
                 self.particle_rotation(),
                 alpha as f32,
+                self.view_frustum.as_ref(),
                 &|b| world.light(b[0], b[1], b[2]),
                 out,
             );
