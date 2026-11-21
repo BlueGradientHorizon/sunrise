@@ -355,7 +355,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             if update_flags & flags::UPDATE_NEIGHBORS != 0 {
                 let old_block = self.block_of(old);
                 self.update_neighbors_at(pos, old_block);
-                if self.has_analog_output(state) {
+                if !self.level.is_client_side() && self.has_analog_output(state) {
                     let block = self.block_of(state);
                     self.update_neighbour_for_output_signal(pos, block);
                 }
