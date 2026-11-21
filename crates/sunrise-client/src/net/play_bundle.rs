@@ -89,6 +89,13 @@ impl PlayIo {
             C::KeepAlive(p) => PlayIoAction::KeepAlive(p),
             C::ChunkBatchStart(_) => PlayIoAction::ChunkBatchStart,
             C::ChunkBatchFinished(p) => PlayIoAction::ChunkBatchFinished(p.size),
+            packet if self.run_reader_diagnostic(&packet) => {
+                return if mod_api::__private::listened(mod_api::HookId::ClientPacket) {
+                    BundleStep::Event(Event::ObservePacket(Box::new(packet)))
+                } else {
+                    BundleStep::Continue
+                };
+            }
             C::CookieRequest(p) => {
                 self.common.handle_cookie(Cookie::Request(p));
                 return BundleStep::Continue;

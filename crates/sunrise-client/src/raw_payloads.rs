@@ -48,6 +48,7 @@ use sunrise_protocol::{
     packets::custom_payload::{PayloadCodecs, PayloadFlow, PayloadProtocol as CodecProtocol},
     payload_negotiation::{self as negotiation, Flow, Manifest, Phase, RegistrationPhase},
 };
+pub(crate) use transport::PlayTransition;
 pub use transport::Transport;
 
 /// Logical receiving side, never inferred from application bytes.

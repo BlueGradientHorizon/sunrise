@@ -232,6 +232,23 @@ fn drive<T>(
         host.tick();
         for receipt in session.poll() {
             let (event, _credit) = receipt.into_parts();
+            let event = match event {
+                Event::Configuration(task) => {
+                    let Some(effect) = task.handle() else {
+                        continue;
+                    };
+                    effect
+                }
+                Event::Cookie(task) => {
+                    task.handle();
+                    continue;
+                }
+                Event::FinishConfiguration(change) => {
+                    change.acknowledge();
+                    continue;
+                }
+                event => event,
+            };
             if let Some(found) = done(host, event) {
                 return found;
             }

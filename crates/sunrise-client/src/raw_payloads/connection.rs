@@ -270,18 +270,24 @@ impl Connection {
     /// No configuration acknowledgement overtakes a queued main-thread handler or its replies.
     /// Never hold the connection-state or writer lock while waiting for gameplay.
     pub fn finish_configuration(&self) -> Result<(), String> {
-        self.finish_configuration_with(|| Ok(()))
+        self.commit_play(self.wait_for_configuration()?, || Ok(()))
     }
-    /// Publish the phase-transition acknowledgement after invalidating old replies,
-    /// before exposing the new Play epoch. The closure only queues engine bytes.
-    pub fn finish_configuration_with(
-        &self,
-        publish: impl FnOnce() -> Result<(), String>,
-    ) -> Result<(), String> {
+
+    pub(super) fn wait_for_configuration(&self) -> Result<Arc<Epoch>, String> {
         let old = self.epoch().ok_or("payload negotiation is not complete")?;
         if !old.wait_main() {
             return Err("payload configuration epoch ended".into());
         }
+        Ok(old)
+    }
+
+    /// Publish the acknowledgement after invalidating old replies, before
+    /// exposing the new Play epoch. The closure only queues engine bytes.
+    pub(super) fn commit_play(
+        &self,
+        old: Arc<Epoch>,
+        publish: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
         let mut current = self.current.lock().unwrap();
         if current.closed {
             return Err("payload connection disconnected".into());
