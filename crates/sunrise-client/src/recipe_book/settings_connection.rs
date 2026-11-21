@@ -3,7 +3,7 @@
 #[path = "settings_placement.rs"]
 mod placement;
 use super::{
-    BookFlags, CustomBooks, settings_codec,
+    BookFlags, CustomBooks, placement_sync::ResourceId, settings_codec,
     settings_sync::{Authority, Message, RequestBudget},
 };
 use std::{collections::BTreeSet, time::Instant};
@@ -16,7 +16,7 @@ pub struct Connection {
 }
 pub struct Reply {
     pub message: Message,
-    pub changed: Option<(String, BookFlags)>,
+    pub changed: Option<(ResourceId, BookFlags)>,
 }
 impl Connection {
     /// Called only after resolving the actual placed player connection.
@@ -25,7 +25,7 @@ impl Connection {
         &mut self,
         data: &[u8],
         books: &mut CustomBooks,
-        registered: impl FnOnce() -> BTreeSet<String>,
+        registered: impl FnOnce() -> BTreeSet<ResourceId>,
         epoch: impl FnOnce() -> u64,
         now: Instant,
     ) -> Option<Reply> {
@@ -82,11 +82,13 @@ mod tests {
     use super::*;
     #[test]
     fn real_boundary_negotiates_before_snapshot_and_notifies_only_accepted_changes() {
-        let registered: BTreeSet<String> = ["demo:pot".to_owned(), "demo:oven".to_owned()].into();
+        let pot = ResourceId::try_from("demo:pot".to_owned()).unwrap();
+        let oven = ResourceId::try_from("demo:oven".to_owned()).unwrap();
+        let registered: BTreeSet<_> = [pot.clone(), oven].into();
         let mut connection = Connection::default();
         let mut books = CustomBooks::default();
         let now = Instant::now();
-        let offer = encode(&Message::Offer(vec!["demo:pot".into()])).unwrap();
+        let offer = encode(&Message::Offer(vec![pot.clone()])).unwrap();
         assert!(
             connection
                 .receive(&offer, &mut books, || registered.clone(), || 7, now)
@@ -101,12 +103,12 @@ mod tests {
             Message::Ready
         );
         assert!(
-            matches!(connection.receive(&offer,&mut books,|| registered.clone(),||7,now).unwrap().message,Message::Snapshot { entries,.. } if entries==vec![("demo:pot".into(),BookFlags::default())])
+            matches!(connection.receive(&offer,&mut books,|| registered.clone(),||7,now).unwrap().message,Message::Snapshot { entries,.. } if entries==vec![(pot.clone(),BookFlags::default())])
         );
         let request = encode(&Message::Request {
             epoch: 7,
             number: 1,
-            key: "demo:pot".into(),
+            key: pot.clone(),
             flags: BookFlags {
                 open: true,
                 filtering: true,
@@ -119,7 +121,7 @@ mod tests {
                 .unwrap()
                 .changed,
             Some((
-                "demo:pot".into(),
+                pot.clone(),
                 BookFlags {
                     open: true,
                     filtering: true

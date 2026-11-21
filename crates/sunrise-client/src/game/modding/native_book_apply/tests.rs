@@ -92,11 +92,8 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
     server.peer.publish(catalog).unwrap();
     game.native_net.placement.servers.insert(12, server);
     let mut connection = Connection::default();
-    connection.authority = Some(Authority::negotiate(
-        1,
-        vec!["review:book".into()],
-        &["review:book".into()].into_iter().collect(),
-    ));
+    let book = selection.catalog.book.clone();
+    connection.authority = Some(Authority::negotiate(1, vec![book.clone()], &[book].into()));
     game.native_net.book_connections.insert(12, connection);
     (pos, before, selection)
 }

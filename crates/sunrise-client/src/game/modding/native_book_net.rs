@@ -5,7 +5,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use sunrise_client::recipe_book::{
-    settings_codec,
+    placement_sync::ResourceId, settings_codec,
     settings_sync::{CHANNEL, Message},
 };
 use sunrise_protocol::packets::{
@@ -13,10 +13,10 @@ use sunrise_protocol::packets::{
     play::{Clientbound as C, Serverbound as S},
 };
 static EPOCH: AtomicU64 = AtomicU64::new(1);
-fn registered() -> BTreeSet<String> {
+fn registered() -> BTreeSet<ResourceId> {
     mod_api::RecipeBookTypeKey::registered()
         .into_iter()
-        .map(|key| key.as_str().to_owned())
+        .map(|key| ResourceId::from_registered_book(&key))
         .collect()
 }
 impl Game<'_> {
@@ -136,7 +136,7 @@ impl Game<'_> {
         let message = Message::Request {
             epoch,
             number,
-            key: book.as_str().into(),
+            key: ResourceId::from_registered_book(book),
             flags: sunrise_client::recipe_book::BookFlags {
                 open: flags.open,
                 filtering: flags.filtering,
@@ -246,7 +246,7 @@ impl Game<'_> {
         if let Some((uuid, name, id, flags)) = changed
             && let Some(key) = mod_api::RecipeBookTypeKey::registered()
                 .into_iter()
-                .find(|key| key.as_str() == id)
+                .find(|key| key.as_str() == id.as_str())
         {
             self.native_player_recipe_book_settings_change(
                 uuid,

@@ -1,5 +1,5 @@
 use super::super::super::{
-    placement_sync::{Frame, schema},
+    placement_sync::{Frame, ResourceId, schema},
     settings_sync::Message,
 };
 use super::*;
@@ -18,13 +18,14 @@ fn placement_requires_the_existing_negotiation_and_shares_its_budget() {
             .is_none()
     );
     let mut books = CustomBooks::default();
-    for message in [Message::Hello, Message::Offer(vec!["demo:book".into()])] {
+    let book = ResourceId::try_from("demo:book".to_owned()).unwrap();
+    for message in [Message::Hello, Message::Offer(vec![book.clone()])] {
         assert!(
             connection
                 .receive(
                     &settings_codec::encode(&message).unwrap(),
                     &mut books,
-                    || ["demo:book".into()].into(),
+                    || [book.clone()].into(),
                     || 7,
                     now
                 )

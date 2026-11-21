@@ -1,6 +1,6 @@
 use super::*;
 use std::sync::{Mutex, OnceLock};
-use sunrise_client::recipe_book::{BookFlags, settings_codec, settings_sync::Message};
+use sunrise_client::recipe_book::{BookFlags, placement_sync::ResourceId, settings_codec, settings_sync::Message};
 
 static KEY: OnceLock<mod_api::RecipeBookTypeKey> = OnceLock::new();
 struct BookMod;
@@ -423,7 +423,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     epoch: 6,
                     revision: 0,
                     entries: vec![(
-                        key.as_str().into(),
+                        ResourceId::from_registered_book(&key),
                         BookFlags {
                             open: true,
                             filtering: false,
@@ -449,7 +449,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     epoch: 7,
                     revision: 0,
                     entries: vec![(
-                        key.as_str().into(),
+                        ResourceId::from_registered_book(&key),
                         BookFlags {
                             open: false,
                             filtering: false,
@@ -476,7 +476,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 Message::Update {
                     epoch: 7,
                     revision: 1,
-                    key: key.as_str().into(),
+                    key: ResourceId::from_registered_book(&key),
                     flags: BookFlags {
                         open: true,
                         filtering: true,
@@ -499,7 +499,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 Message::Update {
                     epoch: 7,
                     revision: 2,
-                    key: key.as_str().into(),
+                    key: ResourceId::from_registered_book(&key),
                     flags: BookFlags {
                         open: false,
                         filtering: false,
@@ -512,7 +512,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 Message::Update {
                     epoch: 7,
                     revision: 3,
-                    key: key.as_str().into(),
+                    key: ResourceId::from_registered_book(&key),
                     flags: BookFlags {
                         open: true,
                         filtering: false,
@@ -528,7 +528,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     epoch: 7,
                     revision: 4,
                     entries: vec![(
-                        key.as_str().into(),
+                        ResourceId::from_registered_book(&key),
                         BookFlags {
                             open: true,
                             filtering: false,
