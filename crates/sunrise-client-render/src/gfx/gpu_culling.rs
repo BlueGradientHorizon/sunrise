@@ -1748,7 +1748,7 @@ mod tests {
     /// to, but for cave culling's graph (its `reached` is `Reach::contains`):
     /// whether it draws `record` with the parameters and tables `tables` makes
     /// (and the pages `prepare` gives them).
-    fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
+    pub(super) fn keeps(params: &Params, words: &[u32], record: &Record) -> bool {
         let (key, a) = (record.key, record.a);
         if key[3] < 0 || a[1] == 0 || (a[3] & FADING) != 0 || !near(params, key[0], key[2]) {
             return false;
@@ -3626,3 +3626,7 @@ struct Quad {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "gpu_culling_visibility_tests.rs"]
+mod visibility_tests;

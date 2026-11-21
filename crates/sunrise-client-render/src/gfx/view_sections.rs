@@ -298,4 +298,46 @@ mod tests {
         assert_eq!(keys, [(0, 10, 2), (0, 10, 1)]);
         assert_eq!(out[0].origin, [-8.0, -8.0, 132.0]);
     }
+
+    /// Vanilla 26.3 witness (`tools/witness/26.3/section_visibility/witness.json`): world views obey vertical clamp.
+    #[test]
+    fn a_view_respects_vanilla_26_3_vertical_render_distance() {
+        let witness: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../tools/witness/26.3/section_visibility/witness.json"
+        ))
+        .expect("valid witness JSON");
+        let case = witness["cases"]
+            .as_array()
+            .expect("cases")
+            .iter()
+            .find(|c| c["name"].as_str() == Some("genpvp_menu_looking_down"))
+            .expect("genpvp_menu_looking_down case");
+        let bits = case["camera_bits"].as_array().expect("camera_bits");
+        let hex = |v: &serde_json::Value| {
+            let s = v.as_str().expect("hex");
+            f64::from_bits(u64::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).unwrap())
+        };
+        let camera = DVec3::new(hex(&bits[0]), hex(&bits[1]), hex(&bits[2]));
+        let rd = case["render_distance"].as_i64().expect("rd") as i32;
+        let min_sec_y = case["min_section_y"].as_i64().expect("min_section_y") as i32;
+        let f = case["frustum"].as_object().expect("frustum");
+        let yaw = f["yaw"].as_f64().expect("yaw") as f32;
+        let pitch = f["pitch"].as_f64().expect("pitch") as f32;
+        let fov = f["fov"].as_f64().expect("fov") as f32;
+        let expected = case["frustum_visible_count"].as_u64().expect("count") as usize;
+
+        let mut sections = resident::Resident::default();
+        for cx in -3..=3 {
+            for cz in -3..=3 {
+                for sy in case["non_empty_world_sy"].as_array().expect("non_empty") {
+                    let y = sy.as_i64().unwrap() as i32 - min_sec_y;
+                    sections.insert((cx, y, cz), ());
+                }
+            }
+        }
+        let view = native_render::WorldView::new(1, camera, yaw, pitch, fov, [1280, 800]);
+        let mut out = Vec::new();
+        view_sections(&sections, &view, camera, 192.0, rd, &mut out);
+        assert_eq!(out.len(), expected);
+    }
 }
