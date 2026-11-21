@@ -3,6 +3,7 @@
 /// The move vector and the key presses are independent. Editing either leaves the other alone.
 // no wire: the client lends this tick's input in-process; only the key presses go to the server.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+// exhaustive: the engine samples the independent vector and key fields together by literal.
 pub struct MovementInput {
     /// `[left, forward]` movement before item-use and crouching multipliers. A vector whose
     /// squared length is not finite is ignored at the end of dispatch; key edits still apply.
@@ -14,6 +15,7 @@ pub struct MovementInput {
 /// The local player's seven independent key presses, including opposing directions.
 // no wire: these are hook values, not the protocol's player input packet.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+// exhaustive: the seven vanilla input flags are sampled and forwarded as one literal.
 pub struct MovementKeys {
     /// Forward is pressed.
     pub forward: bool,
