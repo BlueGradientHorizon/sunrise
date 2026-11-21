@@ -4,7 +4,8 @@ Sunrise's registry, [sunrise-org/sunrise-mods](https://github.com/sunrise-org/su
 resource packs and shader packs at [playsunrise.net/mods](https://playsunrise.net/mods). The
 [registry submission form](https://playsunrise.net/mods/submit) uploads your package and opens a pull request for a
 person to review. To prepare a mod submission locally, follow the steps below with `cargo sunrise-mod publish`,
-then upload the package and open the pull request yourself.
+then upload the package and open the pull request yourself. Native mods for stable releases use the
+[stable source submission](#publishing-a-stable-source-version) below.
 
 ## 1. Build and write the submission
 
@@ -123,6 +124,25 @@ and stages the exact bytes you signed, without rebuilding. If you change the pac
 Generate a key pair once with `minisign -G -p my_mod.pub -s my_mod.key`. Keep the secret key (`my_mod.key`) out of
 both your repository and releases; losing it means a new key and a review.
 
+## Publishing a stable source version
+
+You can publish the signed `.smod` without binaries, including for a mod that is not eligible to ship them.
+Set `homepage` in the manifest to your project's GitHub repository. Pin the project to the stable Sunrise
+commit, build and [sign the source package](#signing), and pass a release list (`releases.json`, an array of
+`{ "tag", "commit" }` records). Use `--asset-base` for your GitHub release's download URL without the asset name:
+
+```sh
+cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
+  --sunrise 26.3-0.1.0 --releases releases.json \
+  --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+  --package target/sunrise-mod/my_mod.smod \
+  --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
+```
+
+Upload the exact `.smod` and `.smod.minisig` that `PULL_REQUEST.md` lists, then submit the entry to the registry.
+The `file` field already points to your release asset. Registry CI downloads it from there, verifies it and
+mirrors it after merge. For a new version of an existing listing, use `--registry <checkout>` instead of the page flags.
+
 ## Publishing native binaries
 
 Builds are optional. They are available only to a standalone API native mod: no game patches, crates.io dependencies
@@ -148,8 +168,7 @@ for the target commit under `sdk-data/<commit>/`.
    ```
 
    The descriptor embeds the archive signatures; it does not sign the archives for you.
-3. Stage the submission. `--asset-base` is the tag's download URL in your project's own GitHub repository, without an
-   asset filename. For a new listing:
+3. Prepare the submission. For a new listing:
 
    ```sh
    minisign -S -s my_mod.key -m target/sunrise-mod/my_mod.smod
@@ -164,14 +183,15 @@ for the target commit under `sdk-data/<commit>/`.
    Sunrise build of an **already published** mod version, build archives from a temporary checkout of that source
    repinned to the new commit. Use `--registry <checkout>` and pass the **original published `.smod`** to `--package`,
    not the temporary build's package. Omit `--sunrise`, `--key`, and `--signature`: `publish` uses the source row's
-   existing stable pin, key and signature and adds one build row without touching them.
-   If staging fails, retry with a fresh `--out <dir>`. Use the output only after `publish` succeeds.
+   existing stable pin, key and signature and adds one build row without touching them. Keep `--asset-base`
+   on the original author release. `publish` checks the signed assets and the registry's fit verdict before writing output.
+   Use the output only after `publish` succeeds.
 4. Upload and verify every asset named in `PULL_REQUEST.md` on the author release at `--asset-base` before opening
-   the pull request. This includes each staged archive, the descriptor and its `.binaries.json.minisig`, and, for
+   the pull request. This includes each output archive, the descriptor and its `.binaries.json.minisig`, and, for
    a new mod version only, the source package and its `.smod.minisig`. The descriptor embeds the archive signatures,
    so no separate archive signature uploads are needed. If an upload fails partway through, upload the missing
    files from the same verified output rather than rebuilding or re-signing. The tool does not upload anything.
-   Then copy the entry to your fork as above; do not commit the staged assets. See the
+   Then copy the entry to your fork as above; do not commit the release assets. See the
    [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
 ## A collection

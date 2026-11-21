@@ -144,6 +144,16 @@ impl Assets {
     }
 
     fn publish(&self, out: &str, checkout: Option<&str>, binaries: bool) -> std::process::Output {
+        self.publish_to(out, checkout, binaries, ASSET_BASE)
+    }
+
+    fn publish_to(
+        &self,
+        out: &str,
+        checkout: Option<&str>,
+        binaries: bool,
+        base: &str,
+    ) -> std::process::Output {
         let mut args = vec![
             "publish",
             "--out",
@@ -152,6 +162,8 @@ impl Assets {
             "source.smod",
             "--releases",
             "releases.json",
+            "--asset-base",
+            base,
         ];
         if let Some(checkout) = checkout {
             args.extend(["--registry", checkout]);
@@ -174,14 +186,7 @@ impl Assets {
             ]);
         }
         if binaries {
-            args.extend([
-                "--binaries",
-                "assets",
-                "--asset-base",
-                ASSET_BASE,
-                "--sdk-data",
-                "sdk-data",
-            ]);
+            args.extend(["--binaries", "assets", "--sdk-data", "sdk-data"]);
         }
         run(self.path(), &args)
     }
@@ -281,8 +286,42 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     );
     let draft = fs::read_to_string(root.join("new/PULL_REQUEST.md")).unwrap();
     assert!(draft.contains(&format!("{ASSET_BASE}/{signature}")));
+    assert!(!draft.contains("staging") && !draft.contains("Artifact URL"));
+    assert_eq!(
+        entry("new").versions[0].file,
+        format!("{ASSET_BASE}/{SOURCE}")
+    );
 
     success(fixture.publish("reviewed", None, false));
+    let source_only = &entry("reviewed").versions[0];
+    assert_eq!(source_only.file, format!("{ASSET_BASE}/{SOURCE}"));
+    assert!(source_only.builds.is_empty());
+    let draft = fs::read_to_string(root.join("reviewed/PULL_REQUEST.md")).unwrap();
+    assert!(
+        draft.contains(&source_only.file) && draft.contains(&format!("{ASSET_BASE}/{signature}"))
+    );
+    assert!(!draft.contains("staging") && !draft.contains("Artifact URL"));
+    assert_eq!(
+        fs::read(root.join("reviewed").join(&signature)).unwrap(),
+        fs::read(root.join("source.smod.minisig")).unwrap()
+    );
+    assert_eq!(
+        success(run(root, &["registry", "list", "reviewed"])),
+        format!(
+            "{} release_probe 1.0.0 {}\n",
+            source_only.sha256, source_only.file
+        )
+    );
+
+    let refused = fixture.publish_to(
+        "wrong-release",
+        Some("reviewed"),
+        true,
+        "https://github.com/test-author/release_probe/releases/download/other",
+    );
+    assert!(!refused.status.success());
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("original author's release"));
+    assert!(!root.join("wrong-release").exists());
     let original = fs::read(root.join("reviewed").join(ROW)).unwrap();
     // The working checkout targets the rebuild; the reviewed release stays signed at its old pin.
     let path = root.join("sunrise-mod.toml");
@@ -360,7 +399,7 @@ fn a_reviewed_exact_source_can_add_binaries_without_repacking() {
     let original = format!(
         "id='release_probe'\nkind='native-mod'\nname='Release probe'\nrepo='test-author/release_probe'\n\
          owners=['test-author']\nkey='{}'\n\n[[versions]]\nversion='1.0.0'\n game='26.3'\n\
-         file='{SOURCE}'\nsunrise='{SOURCE_RELEASE}'\npublished='2026-11-20'\n\
+         file='{ASSET_BASE}/{SOURCE}'\nsunrise='{SOURCE_RELEASE}'\npublished='2026-11-20'\n\
          sha256='{hash}'\nsignature='''{signature}'''\n",
         fixture.key
     );

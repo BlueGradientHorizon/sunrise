@@ -49,8 +49,8 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "publish",
         everyday: false,
-        usage: "publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag>] [--releases <file>] [--binaries <dir> --asset-base <release URL> --sdk-data <dir>]",
-        summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases. --binaries verifies and stages signed release assets; to append to an existing version, give --registry and its original signed --package.",
+        usage: "publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag>] [--asset-base <author release URL> --releases <file>] [--binaries <dir> --sdk-data <dir>]",
+        summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases and uses the author’s release at --asset-base. --binaries checks signed release assets and fit; to append to an existing version, give --registry and its original signed --package.",
     },
     Command {
         name: "internals",

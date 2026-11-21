@@ -26,7 +26,7 @@ use sunrise_mod_package::{
 
 mod binaries;
 
-const USAGE: &str = "cargo sunrise-mod publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag> --releases <file>] [--binaries <dir> --asset-base <author release URL> --releases <file> --sdk-data <dir>]";
+const USAGE: &str = "cargo sunrise-mod publish [--out <dir>] [--registry <checkout>] [--summary <text>] [--owner <login>]… [--categories a,b] [--tags a,b] [--changelog <text>] [--key <public key> --signature <file.minisig>] [--package <file.smod>] [--sunrise <tag>] [--asset-base <author release URL> --releases <file>] [--binaries <dir> --sdk-data <dir>]";
 
 #[derive(Default)]
 struct Options {
@@ -255,7 +255,7 @@ fn checklist(before: &[Entry], entry: &Entry, checkout: Option<&Path>) -> Vec<St
     remaining
 }
 
-fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> (String, String) {
+fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> String {
     let id = &entry.id;
     let title = if first {
         format!("Add {} {}", id, v.version)
@@ -272,24 +272,26 @@ fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> (Str
     } else {
         "entry is"
     };
-    let body = format!(
+    let mut body = format!(
         "{title}\n\n\
          - Project: `{id}` ({}), version {}, for Minecraft {}\n\
          - File: `{}`, {size} bytes, {signed}\n\
-         - Artifact URL: {TODO}: paste the address of `{}` (a release asset of your repository works)\n\
-         - SHA-256: `{}`\n\n\
-         The {submitted} in this pull request; the file's facts (API, side, capabilities) are read from the file.\n\n\
-         For the maintainer: copy the file from the artifact URL to this repository's `staging` release as `{}`, check that its SHA-256 is the one above, and let the `check` workflow run. After the merge, `publish` releases it as `{id}-{}`.\n",
+         - SHA-256: `{}`\n\n",
         entry.kind.name(),
         v.version,
         v.game,
         v.file,
-        v.file,
         v.sha256,
-        staged_name(&v.sha256, &v.file),
-        v.version,
     );
-    (title, body)
+    if v.sunrise.is_none() {
+        body.push_str(&format!(
+            "Artifact URL: {TODO}: paste the address of `{}` (a release asset of your repository works).\n\n\
+             The {submitted} in this pull request; the file's facts (API, side, capabilities) are read from the file.\n\n\
+             For the maintainer: copy the file from the artifact URL to this repository's `staging` release as `{}`, check that its SHA-256 is the one above, and let the `check` workflow run. After the merge, `publish` releases it as `{id}-{}`.\n",
+            v.file, staged_name(&v.sha256, &v.file), v.version,
+        ));
+    }
+    body
 }
 
 pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Result<(), String> {
@@ -299,8 +301,12 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     let id = &manifest.id;
     let release_version = release::version(&manifest)?;
     let releases = o.releases.as_deref().map(release::releases).transpose()?;
-    let binaries = match (&o.binaries, &o.asset_base, &o.sdk_data) {
-        (None, None, None) => None,
+    let asset_base = o
+        .asset_base
+        .as_deref()
+        .map(|base| base.trim_end_matches('/'));
+    let binaries = match (&o.binaries, asset_base, &o.sdk_data) {
+        (None, _, None) => None,
         (Some(dir), Some(base), Some(sdk_data)) => Some(binaries::Inputs {
             dir,
             base,
@@ -309,11 +315,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
                 .as_deref()
                 .ok_or("--binaries requires --releases <file>")?,
         }),
-        _ => {
-            return Err(
-                "--binaries needs --asset-base <author release URL> and --sdk-data <dir>".into(),
-            );
-        }
+        _ => return Err("--binaries needs --asset-base <author release URL> and --sdk-data <dir> with the source and target SDKs".into()),
     };
     let kind = if manifest.native.is_some() {
         Kind::NativeMod
@@ -417,6 +419,15 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
                 .into(),
         );
     }
+    let asset_base = match (source_tag, asset_base) {
+        (Some(_), None) => {
+            return Err("a stable source version needs --asset-base <author release URL>".into());
+        }
+        (None, Some(_)) => {
+            return Err("--asset-base needs a stable source version (--sunrise)".into());
+        }
+        (_, base) => base,
+    };
     if source_tag.is_some() && (key.is_none() || signature.is_none()) {
         return Err("a stable source version needs a signed .smod and the project's key".into());
     }
@@ -535,10 +546,14 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             old.version
         ));
     }
+    let source_name = release_name(id, &release_version, "smod");
     let mut version = listed.cloned().unwrap_or_else(|| EntryVersion {
         sunrise: source_tag.map(str::to_owned),
         builds: Vec::new(),
-        file: release_name(id, &release_version, "smod"),
+        file: asset_base.map_or_else(
+            || source_name.clone(),
+            |base| format!("{base}/{source_name}"),
+        ),
         version: release_version,
         published: today(),
         game: report
@@ -553,6 +568,19 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     let before = existing.clone();
     let mut entry =
         existing.unwrap_or_else(|| draft(&manifest, kind, &o, icon.is_some(), version.clone()));
+    let file = entry.source_file_name(&version)?.to_owned();
+    if append && let Some(base) = asset_base {
+        let published = version
+            .file
+            .strip_suffix(&file)
+            .and_then(|prefix| prefix.strip_suffix('/'))
+            .expect("checked source URL");
+        if base != published {
+            return Err(format!(
+                "a build append must use the original author's release: pass --asset-base {published}"
+            ));
+        }
+    }
     let submission = binaries
         .map(|inputs| inputs.prepare(&entry, &version, &package_bytes))
         .transpose()?;
@@ -570,54 +598,42 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     } else {
         entry.versions.insert(0, version.clone());
     }
-    let file = &version.file;
     let source_signature = version
         .signature
         .as_deref()
-        .filter(|_| !append && submission.is_some())
+        .filter(|_| !append && asset_base.is_some())
         .map(|sig| (format!("{file}.minisig"), sig));
     let entry_text = entry.to_toml()?;
-    let (title, mut body) = if append {
-        let tag = &submission
-            .as_ref()
-            .expect("append has binaries")
-            .build
-            .sunrise;
-        (
-            format!("Build {id} {} for Sunrise {tag}", version.version),
-            format!(
-                "Append the Sunrise {tag} build of {id} {}. The reviewed source package and existing builds are unchanged.\n",
-                version.version
-            ),
+    let mut body = if let Some(submission) = &submission
+        && append
+    {
+        format!(
+            "Build {id} {} for Sunrise {}\n\nThe reviewed source package and existing builds are unchanged.\n",
+            version.version, submission.build.sunrise,
         )
     } else {
         pull_request(&entry, &version, report.size, first)
     };
-    if let Some(submission) = &submission {
-        body.push_str(&format!(
-            "\nSigned native assets for Sunrise {}. Upload and verify every file below on the author's release before opening the pull request:\n",
-            submission.build.sunrise
-        ));
-        let asset_base = o
-            .asset_base
-            .as_deref()
-            .expect("validated asset base")
-            .trim_end_matches('/');
+    if let Some(base) = asset_base {
+        body.push_str("\nUpload and verify these files on the author's release before opening the pull request:\n");
         if let Some((signature, _)) = &source_signature {
             body.push_str(&format!(
-                "- `{file}`: `{asset_base}/{file}` — SHA-256 `{}`\n\
-                 - `{signature}`: `{asset_base}/{signature}`\n",
-                version.sha256
+                "- `{file}`: `{}` — SHA-256 `{}`\n\
+                 - `{signature}`: `{base}/{signature}`\n",
+                version.file, version.sha256,
             ));
         }
-        for asset in &submission.assets {
-            body.push_str(&format!(
-                "- `{}`: `{asset_base}/{}` — SHA-256 `{}`\n",
-                asset.name, asset.name, asset.sha256
-            ));
+        if let Some(submission) = &submission {
+            for asset in &submission.assets {
+                body.push_str(&format!(
+                    "- `{}`: `{base}/{}` — SHA-256 `{}`\n",
+                    asset.name, asset.name, asset.sha256,
+                ));
+            }
+            let signature = &submission.descriptor_signature_name;
+            body.push_str(&format!("- `{signature}`: `{base}/{signature}`\n"));
         }
-        let signature = &submission.descriptor_signature_name;
-        body.push_str(&format!("- `{signature}`: `{asset_base}/{signature}`\n"));
+        body.push_str(&format!("\nThen submit `mods/{id}.toml` in the registry pull request. Do not commit the release assets.\n"));
     }
     for dir in [Some(&mods), Some(&files), icons.as_ref()]
         .into_iter()
@@ -631,7 +647,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     };
     if !append {
         write(files.join(&version.sha256), &package_bytes)?;
-        write(out.join(file), &package_bytes)?;
+        write(out.join(&file), &package_bytes)?;
     }
     if let Some((name, sig)) = &source_signature {
         write(out.join(name), sig.as_bytes())?;
@@ -722,7 +738,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             let escape = if cfg!(windows) { "''" } else { "'\\''" };
             format!("'{}'", arg.replace('\'', escape))
         };
-        let packaged = root.join(&out).join(file);
+        let packaged = root.join(&out).join(&file);
         let signing = match (&o.key, &o.signature) {
             (Some(key), Some(signature)) => format!(
                 " --key {} --signature {}",
@@ -736,7 +752,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             quote(&packaged.to_string_lossy()),
         );
     }
-    println!("\nPull request: {title}\n\n{body}");
+    println!("\nPull request:\n\n{body}");
     Ok(())
 }
 

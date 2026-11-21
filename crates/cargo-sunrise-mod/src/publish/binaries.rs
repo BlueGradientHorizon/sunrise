@@ -78,7 +78,7 @@ impl Inputs<'_> {
         let hash = index::sha256(&bytes);
         let build = BuildRow {
             sunrise: release.tag.clone(),
-            binaries: format!("{}/{}", self.base.trim_end_matches('/'), name),
+            binaries: format!("{}/{}", self.base, name),
             sha256: hash.clone(),
             signature,
         };
