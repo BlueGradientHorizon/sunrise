@@ -63,6 +63,12 @@ fall-distance reset. The server checks the report as usual, correcting a move it
 The server refuses a write of a player's velocity or ground flag. A server's write of a player's motion reaches
 that player's client only through an explicit motion packet, which replaces the client's velocity outright.
 
+On either side, `player.supporting_block(host)` returns the player's recorded support block,
+which may be beside the column under their feet. `player.on_block(host)` reads vanilla's
+`getOnPos()`: the support when present, otherwise the block at the feet with vanilla's small
+downward offset. The client reads its own player's last move; other players return `Ok(None)`
+there. More entity families need to retain their last-move state before this can be an entity-wide read.
+
 At `player_tick_pre` the player's input fields hold the previous tick's applied values, so to scale this tick's forward
 input (Create's boots multiply a slow one by 1.3) use the `movement_input` hook, which runs after the keys are read
 and before they are applied.

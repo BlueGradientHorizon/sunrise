@@ -23,6 +23,14 @@ fn section_read_backend_refuses_reads_outside_its_snapshot() {
     let menu = mod_api::__private::game::menu_ref(player, 1, 1);
 
     assert_eq!(entity.bounding_box(&host), None);
+    assert_eq!(
+        player.supporting_block(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    );
+    assert_eq!(
+        player.on_block(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    );
     assert!(matches!(
         menu.merchant_offers(&host),
         Err(mod_api::LevelReadError::Unavailable)
