@@ -5096,6 +5096,7 @@ dependencies = [
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
  "sunrise-mod-package",
+ "sunrise-proxy",
  "toml",
  "ureq",
  "url",
@@ -5131,6 +5132,13 @@ dependencies = [
  "sunrise-mod-runtime",
  "sunrise-threads",
  "sunrise-world",
+]
+
+[[package]]
+name = "sunrise-proxy"
+version = "0.1.0"
+dependencies = [
+ "ureq",
 ]
 
 [[package]]

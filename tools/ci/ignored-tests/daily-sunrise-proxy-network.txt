@@ -1,0 +1,2 @@
+# These loopback network tests run once a day without verify's inet guard.
+sunrise-proxy tests::a_request_goes_through_a_socks_proxy lib daily network
