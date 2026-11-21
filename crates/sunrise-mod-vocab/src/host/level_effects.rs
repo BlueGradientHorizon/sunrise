@@ -212,3 +212,36 @@ pub trait LevelEffectsBackendMut {
         interaction: ExplosionInteraction,
     ) -> Result<u32, ExplosionDestroyError>;
 }
+/// The handles' client writes of the `level_effects` area, reached through [`ClientBackendMut`].
+// hidden: mods call the handle, not the game-side implementation.
+#[doc(hidden)]
+#[sunrise_mod_api_macros::host_area]
+pub trait LevelEffectsClientBackendMut {
+    /// Side: client.
+    /// Queues the ordinary hit crumb on `face` for the supplied state at `pos`
+    /// (`ClientLevel.addBreakingParticles`). Uses the level random and the state's outline.
+    /// No sound, callback or block readback. `Ok(false)` means no sprite or outline. Returns
+    /// an error for an unavailable level or an unknown state. The engine still controls group admission.
+    #[access(WorldOnly)]
+    fn level_add_breaking_particles(
+        &mut self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        face: Direction,
+    ) -> Result<bool, LevelWriteError>;
+    /// Side: client.
+    /// Queues one `TerrainParticle`, with the given world position and velocity. The model's
+    /// sprite and tint come from `state` at `source_pos`, which can differ from the spawn point.
+    /// No sound or callback. `Ok(false)` means non-finite input or no sprite. Returns an error
+    /// for an unavailable level or an unknown state. The engine still controls group admission.
+    #[access(WorldOnly)]
+    fn level_add_terrain_particle(
+        &mut self,
+        level: LevelRef,
+        state: BlockState,
+        source_pos: [i32; 3],
+        at: [f64; 3],
+        velocity: [f64; 3],
+    ) -> Result<bool, LevelWriteError>;
+}

@@ -1,8 +1,8 @@
-//! Typed refusals of state-bearing writes through a server level handle.
+//! Typed refusals of state-bearing writes through a level handle.
 use crate::{BlockStateError, LevelReadError, StackWriteError};
 
-/// Why a block write cannot reach its authoritative level.
-/// `Ok(false)` instead means vanilla refused an otherwise valid write, for example an
+/// Why a level operation cannot reach its level.
+/// `Ok(false)` instead means the operation did not apply, for example at an
 /// unloaded or out-of-height position or an unchanged block.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]

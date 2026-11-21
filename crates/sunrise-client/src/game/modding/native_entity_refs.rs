@@ -724,7 +724,7 @@ impl Game<'_> {
     }
     /// The supplied state's block-local outline or collision boxes at a level
     /// position with an empty context. The world is never modified. Returns None
-    /// on a client, for a stale handle or for a closed level. Unloaded neighbors
+    /// for a stale or unavailable level. Unloaded neighbors
     /// read as air; collision errors return no boxes, like `block_collision`.
     pub(super) fn level_block_shape(
         &self,
@@ -733,7 +733,11 @@ impl Game<'_> {
         pos: [i32; 3],
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>> {
-        if !self.is_logical_server() || !self.level_handle_current(level) {
+        if !self.is_logical_server() {
+            return (self.native_client_level() == Some(level))
+                .then(|| self.state_shape_boxes(&self.world, &self.be_anims, state, pos, kind));
+        }
+        if !self.level_handle_current(level) {
             return None;
         }
         let (world, anims) = if self.dim.key() == level.dimension() {

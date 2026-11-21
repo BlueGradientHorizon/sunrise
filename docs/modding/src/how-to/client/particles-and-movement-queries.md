@@ -71,6 +71,13 @@ for padding sections and unloaded borders is tracked in [#2761](https://github.c
 
 Dispatch reuses its batch storage once it has enough capacity.
 
+## Block hit and destroy debris
+
+Use the [`BlockPart` hit/destroy callbacks](../../concepts/parts/block-parts.md#hit-and-destroy-particles)
+to replace or omit a block's ordinary crumbs. The raw client level helpers queue a hit crumb
+or an individual terrain particle without dispatching the callback again. They are separate from
+`host.add_particle`, which follows the ordinary camera and Particles setting checks.
+
 ## Client fireworks
 
 `ClientHost::create_fireworks` draws a firework's explosions from a `FireworksRequest`: the
