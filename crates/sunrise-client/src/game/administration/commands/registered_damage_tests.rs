@@ -493,12 +493,13 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
-    use crate::game::{combat::PlayerCredit, commands::Target, sculk::TEST_POSTED_EVENTS};
-    use mod_api::{ExplosionInteraction, ExplosionSettings};
-    use sunrise_client::{
-        mobs::creaking,
-        projectiles::{Hit, ProjectileKind},
+    use crate::game::{
+        combat::PlayerCredit,
+        commands::Target,
+        sculk::{TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS},
     };
+    use mod_api::{ExplosionInteraction, ExplosionSettings};
+    use sunrise_client::{mobs::creaking, projectiles::ProjectileKind};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
 
     if crate::game::native_entity_refs::tests::run_fresh_cases(
@@ -549,7 +550,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 critical: false,
                 effect: None,
             },
-            Vec3::new(5.5, 64.0, 4.5),
+            Vec3::new(5.5, 64.8, 4.5),
             None,
             [85, 0, 0, 3],
         );
@@ -670,40 +671,6 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         );
         assert_eq!(sounds.len(), events.len());
 
-        // AbstractArrow.onHitEntity plays its own hit sound only after hurtServer has
-        // finished. The heart is already emitting; this hit only sways the Creaking.
-        clear_anim(game);
-        game.audio.capture.as_mut().unwrap().clear();
-        let mut arrow = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == arrow_id)
-            .unwrap()
-            .clone();
-        arrow.velocity = Vec3::new(-1.0, 0.0, 0.0);
-        game.projectile_hit(
-            &arrow,
-            Hit::Entity {
-                who: Who::Mob(creaking_id),
-                at: Vec3::new(4.5, 64.0, 4.5),
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            game.audio
-                .capture
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|s| s.event.as_str())
-                .collect::<Vec<_>>(),
-            [
-                "minecraft:entity.creaking.sway",
-                "minecraft:entity.arrow.hit"
-            ]
-        );
-
         // Ownerless follow-up reacts while the timer is live and refuses once it expires.
         clear_anim(game);
         assert!(
@@ -796,28 +763,70 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
 
+        // The arrow's impact sound follows the Creaking's reaction to the live collision.
+        // The heart is already emitting; observe the impact and the next real mob tick.
+        clear_anim(game);
+        game.load_ticking_neighbourhood(0, 0);
+        game.update_chunk_tickets();
+        assert!(game.entity_ticking_area()(4, 4));
+        assert!(game.creatures.projectiles.iter().any(|p| p.id == arrow_id));
+        game.creatures.projectiles.for_each_mut(|p| {
+            if p.id == arrow_id {
+                p.velocity = Vec3::new(-1.0, 0.0, 0.0);
+            }
+        });
         game.audio.capture.as_mut().unwrap().clear();
         game.lan_entity_events.clear();
-        // The command cases hold the mob still with NoAI; run its real aiStep now.
+        TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
+        let reaction = |game: &Game<'_>| {
+            let action = TEST_POSTED_EVENT_ORDER.with(|order| {
+                order
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .filter(|(event, source, _, _)| {
+                        *event == "minecraft:entity_action"
+                            && *source == Some(Who::Mob(creaking_id))
+                    })
+                    .map(|(_, _, flashes, sounds)| [*flashes, *sounds])
+                    .collect::<Vec<_>>()
+            });
+            serde_json::json!({
+                "action": action,
+                "flashes": game.lan_entity_events.iter().filter(|e| **e == (creaking_id as i32, 66)).count(),
+                "sounds": game.audio.capture.as_ref().unwrap().iter().map(|s| &s.event).collect::<Vec<_>>(),
+                "emitter": heart_emitter(game),
+                "animation": creaking_state(game).1,
+            })
+        };
+        game.tick_projectiles().unwrap();
+        let impact = reaction(game);
+        assert_eq!(
+            impact,
+            serde_json::json!({
+                "action": [[1, 0]], "flashes": 1,
+                "sounds": ["minecraft:entity.creaking.sway", "minecraft:entity.arrow.hit"],
+                "emitter": 100, "animation": 8,
+            })
+        );
         game.mobs
             .iter_mut()
             .find(|m| m.id == creaking_id)
             .unwrap()
             .no_ai = false;
-        game.load_ticking_neighbourhood(0, 0);
-        game.update_chunk_tickets();
-        assert!(game.entity_ticking_area()(4, 4));
         game.tick_creature_entities().unwrap();
-        assert_eq!(creaking_state(game).1, 7, "the Creaking really ticked");
-        assert!(!game.lan_entity_events.contains(&(creaking_id as i32, 66)));
-        assert!(
-            game.audio
-                .capture
-                .as_ref()
-                .unwrap()
-                .iter()
-                .all(|sound| sound.event != "minecraft:entity.creaking.sway")
+        let next_tick = reaction(game);
+        TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = None);
+        let mut expected = impact.clone();
+        expected["animation"] = 7.into();
+        assert_eq!(
+            next_tick, expected,
+            "the mob tick must not replay the hurt reaction"
         );
+        if let Some(path) = std::env::var_os("SUNRISE_CREAKING_HIT_ORDER_OUTPUT") {
+            std::fs::write(path, serde_json::json!([impact, next_tick]).to_string()).unwrap();
+        }
     });
 }
 
