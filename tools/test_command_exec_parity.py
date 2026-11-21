@@ -195,6 +195,8 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-witness', type=Path,
+                        help='write the validated Java reference records with a version header to this path and stop')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -573,7 +575,7 @@ def main():
                 any(len(r.get('bits', [])) != 3 or
                     any(re.fullmatch(r'[0-9a-f]{1,16}', b) is None for b in r['bits']) for r in direct)):
             sys.exit('Java direct underwater reference prerequisite failed')
-    if args.reference_only:
+    if args.reference_only or args.record_witness:
         reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text().splitlines()]
         recorded = [op for op in script if op['op'] in ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or
                     (op['op'] == 'cmd' and op.get('record', True)) or
@@ -592,7 +594,18 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
-        print(f'Java reference: {len(reference)} records, fixture guards passed')
+        if args.record_witness:
+            target = args.record_witness if args.record_witness.is_absolute() else lab.ROOT / args.record_witness
+            target.parent.mkdir(parents=True, exist_ok=True)
+            header = json.dumps({
+                'minecraft': lock['minecraft']['version'],
+                'oracle': 'dev.sunriselab.parity.VanillaCommandExecOracle',
+                'groups': [name for name, _ in groups if name != 'setup'],
+            }, ensure_ascii=False)
+            target.write_text(header + '\n' + (build / 'vanilla.jsonl').read_text(encoding='utf-8'), encoding='utf-8')
+            print(f'Recorded witness ({len(reference)} records): {target}')
+        else:
+            print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
     if args.binary:
