@@ -1701,7 +1701,7 @@ mod tests {
             game.insert_device_key(KeyCode::ShiftLeft);
             assert!(!game.player.as_ref().unwrap().shift_key_down);
             assert_eq!(entity.is_shift_key_down(game), Some(true));
-            game.clear_device_keys();
+            game.remove_device_key(&KeyCode::ShiftLeft);
             game.player.as_mut().unwrap().shift_key_down = true;
             assert_eq!(
                 entity.is_shift_key_down(game),
