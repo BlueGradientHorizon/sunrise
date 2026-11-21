@@ -1,6 +1,6 @@
 # Controlling spawns
 
-Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or control despawning. All four hooks run on the server with a read-only host and fire on replayed ticks. Your listeners must be pure functions of their inputs. `finalize_spawn` can also change the mob it is about to finalize, through the editor it is handed, and the pack's group data; it changes nothing else.
+Use spawn hooks to accept or reject a spawn, edit a mob before finalization, edit pending breeding or split children, or control despawning. The four spawn-check and despawn hooks below run on the server with a read-only host and fire on replayed ticks, so their listeners must be pure functions of their inputs (`finalize_spawn` changes only `event.mob` and `event.group`). `baby_entity_spawn` and `mob_split` run on the server with `&mut dyn ServerHost`.
 
 | Moment | Hook | Answer |
 |---|---|---|
@@ -8,6 +8,8 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 | The mob's own position and obstruction checks | `mob_spawn_position_check` | `SpawnCheck::{Default, Succeed, Fail}` |
 | Just before `finalizeSpawn` | `finalize_spawn` | `Flow::Cancel`, `spawn_cancelled`, a new `difficulty`, edits to `mob`, a new `group` |
 | Each tick, before a mob's `checkDespawn` | `mob_despawn` | `Despawn::{Default, Allow, Deny}` |
+| After breeding constructs a baby, before insertion | `baby_entity_spawn` | `Flow::Cancel`, edits/replacement/removal on `event.child` |
+| After a cube splits on death, before insertion | `mob_split` | `Flow::Cancel`, edits/additions/removals on `event.children` |
 
 ## Registering a spawn predicate
 
@@ -223,21 +225,22 @@ fn mob_spawn_placement_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::
 }
 ```
 
-The position check also gets `event.mob`, the mob about to spawn, as an `UnspawnedMobRef` with the same reads as
-`finalize_spawn`'s (no editor: the hook only reads). Vanilla creates the mob before this check; Sunrise creates it there
-only when the hook has a listener, the same way the spawn would, and the spawn then goes on with that very mob, so what
-the listener read is what joins the level. A refused check drops the mob: it never joins the level. Creating it draws
-nothing from the level's random, so a listener that answers `Default` changes no draw.
+The position check (hook version 2) also gets `event.mob`, the mob about to spawn, as a scoped read-only
+`UnspawnedMobView<'_>` with the same reads as `finalize_spawn`'s (read-only: the hook does not edit the mob). Vanilla
+creates the mob before this check; Sunrise creates it there only when the hook has a listener, the same way the spawn
+would, and the spawn then goes on with that very mob, so what the listener read is what joins the level. A refused check
+drops the mob: it never joins the level. Creating it draws nothing from the level's random, so a listener that answers
+`Default` changes no draw.
 
 ```rust,ignore
-fn mob_spawn_position_check(&self, host: &dyn mod_api::Host, event: &mut mod_api::MobSpawnPositionCheckEvent<'_>) {
-    if event.mob.custom_name(host).is_ok_and(|name| name.is_some()) {
+fn mob_spawn_position_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::MobSpawnPositionCheckEvent<'_>) {
+    if event.mob.custom_name().is_ok_and(|name| name.is_some()) {
         *event.result = mod_api::SpawnCheck::Succeed;
     }
 }
 ```
 
-Where the game does not create the mob fresh, the handle answers only `kind` and `position` (the rest is
+Where the game does not create the mob fresh, the view answers only `kind` and `position` (the rest is
 `UnspawnedMobError::Unsupported`): chunk generation's packs, which the world generator creates and finalizes after the
 check, and a spawner or trial spawner whose spawn data carries entity data, which the game loads after the tick.
 
@@ -263,18 +266,18 @@ an explicit NBT compound follows the load route without finalization.
 
 ## Changing the mob before it is finalized
 
-`event.mob` is the mob itself, an `UnspawnedMobRef`: it is not in a level, so it is not an `EntityRef`, and only this
-hook call can use it. Read it through the host (`kind`, `position`, `equipment`, `attribute_base`, `attribute_value`,
-`tags`, `custom_name`) and change it through `event.edits`, which reaches only this mob: equipment (an API-owned `ItemStack`), an attribute's base or a permanent modifier, tags and the custom name. An edit applies at once, so the
-reads and the next listener see it. Once the hook returns, the handle answers `UnspawnedMobError::Expired`, as does a
-handle from another call passed to this call's editor.
+In `finalize_spawn` (hook version 2), `event.mob` is a scoped `UnspawnedMobEditor<'_>` borrowing the mob directly: it is
+not in a level, so it is not an `EntityRef`, and the borrow lasts only for this hook call. Read it directly without
+`host` (`kind`, `position`, `equipment`, `attribute_base`, `attribute_value`, `tags`, `custom_name`, or `as_view` for a
+read-only `UnspawnedMobView<'_>`) and edit it directly: equipment (an API-owned `ItemStack`), an attribute's base or a
+permanent modifier, tags and the custom name. An edit applies at once, so later reads and the next listener see it.
 
 ```rust,ignore
-fn finalize_spawn(&self, host: &dyn mod_api::Host, event: &mut mod_api::FinalizeSpawnEvent<'_>) -> mod_api::Flow {
-    if event.mob.kind(host).is_ok_and(|kind| kind.path() == "zombie") {
+fn finalize_spawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::FinalizeSpawnEvent<'_>) -> mod_api::Flow {
+    if event.mob.kind().is_ok_and(|kind| kind.path() == "zombie") {
         let health = mod_api::Identifier::parse("minecraft:max_health").unwrap();
-        let _ = event.edits.set_attribute_base(event.mob, &health, 40.0);
-        let _ = event.edits.add_tag(event.mob, "mymod:tough");
+        let _ = event.mob.set_attribute_base(&health, 40.0);
+        let _ = event.mob.add_tag("mymod:tough");
     }
     mod_api::Flow::Continue
 }
@@ -285,11 +288,11 @@ slot replaces what a listener put there, and the attribute bonuses it adds apply
 `Flow::Cancel` to keep exactly what the listener left, since no finalization runs. Attribute edits reach the
 attributes a mob keeps itself (max health, movement speed, follow range, attack damage, knockback resistance,
 spawn reinforcements, jump strength, burning time, flying speed); the others answer `Unsupported` until the mob has
-joined, when a `LivingRef` writes them. The ender dragon's handle answers its kind and position, and `Unsupported`
+joined, when a `LivingRef` writes them. The ender dragon's loan answers its kind and position, and `Unsupported`
 for the rest. A mob that finalization creates (a chicken jockey's chicken, a zombie horse's rider) fires the hook
-again with a handle of its own.
+again with a scoped loan of its own.
 
-The hook fires on replayed ticks with the read-only host, so the editor and `group` are the only things a
+The hook fires on replayed ticks with the read-only host, so `event.mob` and `group` are the only things a
 listener changes, and it must change them the same way every time: a pure function of the event.
 
 `event.group` is the pack's `SpawnGroupData` as plain data (`SpawnGroup`, variants named as vanilla saves them):
@@ -310,7 +313,7 @@ impl mod_api::EntityPart for ZombiePacks {
     fn spawn_cluster_size(
         &self,
         _: &dyn mod_api::Host,
-        _: mod_api::UnspawnedMobRef,
+        _: mod_api::UnspawnedMobView<'_>,
         _: mod_api::SpawnReason,
         _: Option<mod_api::SpawnSource>,
         vanilla: u32,
@@ -320,7 +323,39 @@ impl mod_api::EntityPart for ZombiePacks {
 }
 ```
 
-Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is the same `UnspawnedMobRef` as `finalize_spawn`'s, finalized and not in a level, and the call runs on replayed ticks like `finalize_spawn`, so an answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
+Only natural spawning's packs ask it: vanilla has no group limit anywhere else. A type with no part keeps vanilla's limit and costs nothing. The mob is a read-only `UnspawnedMobView<'_>`, lent after the natural spawn join attempt and spawn accounting, before the limit comparison. The primary mob and its passengers are offered to the level one at a time. The view includes join-listener edits even if admission was canceled or a listener moved the mob to another level. Read the view rather than looking up the entity in the source level. The answer must be a pure function of its inputs. Attach the part with `r.entity_part("minecraft:zombie", ZombiePacks)` as [entity parts](../../concepts/parts/entity-parts-and-mob-goals.md) describe.
+
+## Editing bred babies and split children
+
+`baby_entity_spawn` (hook version 3, NeoForge's `BabyEntitySpawnEvent`) fires after animal breeding has attempted to construct the baby (`Animal.spawnChildFromBreeding` / `Fox.FoxBreedGoal.breed`) and before breeding snaps the baby, finalizes breeding, and inserts it. `event.child` is a scoped `BabyEntitySpawnChild<'_>` lending the single optional child slot: inspect it with `get()` (`Option<UnspawnedMobView<'_>>`), edit it in place with `get_mut()` (`Option<PendingChildEditor<'_>>` — equipment, attributes, tags, custom name, position, yaw, baby state, size), construct a replacement detached `UnspawnedMob` with `construct(PendingMobSpec::new(...))?` and swap it in with `replace(baby)?`, or clear the slot with `take()` / `clear()`. A replacement must be an `AgeableMob` (`minecraft:fox` for fox breeding), but it can start as an adult. The event runs inside the breeding goal or brain behavior, before either parent's cooldown and before the initiating mob's movement and age/love countdown. Returning `Flow::Cancel` breeds no baby and resets both parents to age 6000 and love 0; returning `Flow::Continue` with an empty slot skips spawning and finalization without resetting the parents or consuming credit. An accepted child is made a baby and snapped to the initiating parent's live position with zero yaw and pitch before joining. Ordinary animals award breeding credit after those updates; foxes grant trust and award credit against the child's pre-snap age and position, then reset the parents before updating the child. Any detached `UnspawnedMob` not left in the slot is discarded cleanly on drop.
+
+```rust,ignore
+fn baby_entity_spawn(
+    &self,
+    _: &mut dyn mod_api::ServerHost,
+    event: &mut mod_api::BabyEntitySpawnEvent<'_>,
+) -> mod_api::Flow {
+    if let Some(mut baby) = event.child.get_mut() {
+        let _ = baby.add_tag("mymod:bred_baby");
+    }
+    mod_api::Flow::Continue
+}
+```
+
+`mob_split` (hook version 3, NeoForge's `MobSplitEvent`) fires when a slime, magma cube or sulfur cube above size 1 dies and splits (`AbstractCubeMob.remove`), after vanilla has constructed its children (a primed sulfur cube above size 1 dispatches with an empty list). `event.children` is a scoped `MobSplitChildren<'_>` lending an unbounded mutable child list: inspect with `len()`, `is_empty()` and `get(i)`, edit in place with `get_mut(i)`, construct a detached `UnspawnedMob` with `construct(spec)?`, and mutate the list with `push(child)?`, `insert(i, child)?`, `replace(i, child)?`, `remove(i)` and `clear()`. An invalid spec or out-of-bounds `insert` or `replace` returns `UnspawnedMobError::Invalid`; `get`, `get_mut`, and `remove` return `None` for an out-of-bounds index. The original proposals fire `entity_constructing` before this event, even for children later removed or canceled. Returning `Flow::Cancel` (or clearing the list) spawns no children but keeps the construction draws and unrelated Host writes; the parent still dies. Otherwise the remaining children join once each in list order.
+
+```rust,ignore
+fn mob_split(
+    &self,
+    _: &mut dyn mod_api::ServerHost,
+    event: &mut mod_api::MobSplitEvent<'_>,
+) -> mod_api::Flow {
+    if let Some(mut first) = event.children.get_mut(0) {
+        let _ = first.add_tag("mymod:first_split");
+    }
+    mod_api::Flow::Continue
+}
+```
 
 ## Keeping or removing a mob
 

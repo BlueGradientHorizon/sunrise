@@ -164,10 +164,10 @@
     "category": "reentrancy guard",
     "reason": "Per-thread nesting depth of hook-dispatch catch_unwind frames, read by the production panic hook so contained hook panics defer to the dispatcher instead of triggering a crash report or process abort."
   },
-  "runtime.rs::LISTENER_SERIAL": {
-    "type": "std::cell::Cell<(u64,u64)>",
+  "runtime.rs::ISOLATED_FAILURES": {
+    "type": "std::cell::Cell<u64>",
     "category": "dispatch table",
-    "reason": "Independent per-thread counts of listener entries and trapped listeners. Scoped engine leases compare the entry count; owning decide/fire/apply actions compare the trap count to decide whether to abort tentative Host writes."
+    "reason": "Per-thread count of trapped listener failures; owning decide/fire/apply actions compare it to decide whether to abort tentative Host writes."
   },
   "runtime.rs::MODS": {
     "type": "OnceLock<Installed>",

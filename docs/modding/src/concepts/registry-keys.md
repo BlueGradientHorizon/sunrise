@@ -54,7 +54,7 @@ For example, retain the zombie key at setup, then compare
 The key derives `Wire` through its scalar slot: host decoding checks the registered
 slot.
 
-`UnspawnedMobRef::kind` has a separate scoped `Identifier`/error contract,
+`UnspawnedMobView::kind` has a separate scoped `Identifier`/error contract,
 and block-entity type reads use `BlockEntityTypeKey`.
 
 ## Pinned registry names

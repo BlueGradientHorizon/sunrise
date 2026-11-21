@@ -1,0 +1,4 @@
+sunrise-client game::creatures::pending_birth_tests::a_panicking_breeding_constructor_retires_only_the_unpublished_child lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::a_noop_birth_listener_leaves_goal_position_age_and_random_unchanged lib daily game-boot
+sunrise-client game::creatures::pending_birth_tests::a_later_birth_unwind_does_not_lose_or_replay_a_cube_removal lib daily game-boot
+sunrise-client game::natural_spawning::tests::resuming_the_natural_spawn_pass_keeps_the_constructor_streams lib daily game-boot

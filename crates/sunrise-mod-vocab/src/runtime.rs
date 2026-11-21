@@ -220,7 +220,7 @@ pub(crate) fn install(mods: Mods) -> &'static Installed {
 // hidden: the game's own decide/fire/apply actions read it; it is not a mod-facing call.
 #[doc(hidden)]
 pub fn isolated_failures() -> u64 {
-    LISTENER_SERIAL.get().1
+    ISOLATED_FAILURES.get()
 }
 
 /// Mark `id`'s listener of `hook` disabled for the rest of the session: it is skipped by
@@ -228,8 +228,7 @@ pub fn isolated_failures() -> u64 {
 /// untouched, unlike a whole-mod disable. Returns `true` only on the first panic for
 /// `(hook, id)`, so the error log line and error toast fire once.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) -> bool {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+    ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
     let Some(installed) = installed() else {
         return true;
     };
@@ -453,8 +452,7 @@ pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> 
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
         Ok(()) => true,
         Err(payload) => {
-            let (entered, trapped) = LISTENER_SERIAL.get();
-            LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
+            ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
             log_and_queue_panic("register", mod_id, &*payload);
             dispose_panic_payload(payload);
             false
@@ -787,9 +785,6 @@ pub(crate) fn listening(
                     && !is_poisoned(installed, hook_id, installed.mods[subscriber.index].id)
             })
             .map(move |subscriber| {
-                // Every listener of a hook the loop reaches is one more entered: scoped
-                // resources end the previous listener's lease on it.
-                bump_listener_serial();
                 (
                     subscriber.receives_cancelled,
                     &installed.mods[subscriber.index],
@@ -810,7 +805,6 @@ pub(crate) fn listening_kind_owner(hook: HookId, kind: &str) -> Option<&'static 
     {
         return None;
     }
-    bump_listener_serial();
     Some(&installed.mods[index])
 }
 
@@ -846,70 +840,8 @@ impl ListenerScope {
 }
 
 thread_local! {
-    /// Listener entries (including nested hooks) and poisoned traps on this thread.
-    static LISTENER_SERIAL: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
-}
-
-#[inline]
-fn bump_listener_serial() {
-    let (entered, trapped) = LISTENER_SERIAL.get();
-    LISTENER_SERIAL.set((entered.wrapping_add(1), trapped));
-}
-
-pub(crate) fn listener_serial() -> u64 {
-    LISTENER_SERIAL.get().0
-}
-
-#[cfg(test)]
-mod listener_lease_tests {
-    use super::*;
-    use sunrise_mod_runtime::pending_children::{Decision, Error, PendingChildren};
-
-    #[test]
-    fn entering_a_different_hook_expires_a_retained_pending_child() {
-        struct Listener;
-        #[mod_api::__subscriptions]
-        impl crate::Hooks for Listener {
-            fn mob_split(
-                &self,
-                _: &mut dyn crate::ServerHost,
-                _: &mut crate::MobSplitEvent<'_>,
-            ) -> Flow {
-                Flow::Continue
-            }
-            fn baby_entity_spawn(
-                &self,
-                _: &mut dyn crate::ServerHost,
-                _: &mut crate::BabyEntitySpawnEvent<'_>,
-            ) -> Flow {
-                Flow::Continue
-            }
-        }
-        install(vec![ModEntry::new("lease-test", Box::new(Listener))].into());
-        let mut arena = PendingChildren::default();
-        arena
-            .run(
-                1,
-                1,
-                vec![7u32],
-                |arena, action| {
-                    let _outer = listening(generated::HookId::MobSplit).next().unwrap();
-                    arena.sync_listener(listener_serial()).unwrap();
-                    let child = arena.borrow(action, 0).unwrap();
-                    assert_eq!(arena.get(child), Ok(&7));
-                    let _nested = listening(generated::HookId::BabyEntitySpawn)
-                        .next()
-                        .unwrap();
-                    arena.sync_listener(listener_serial()).unwrap();
-                    assert_eq!(arena.get(child), Err(Error::Expired));
-                    let fresh = arena.borrow(action, 0).unwrap();
-                    assert_eq!(arena.get(fresh), Ok(&7));
-                    Decision::Accept
-                },
-                |_| true,
-            )
-            .unwrap();
-    }
+    /// Per-thread count of trapped listener failures on this thread.
+    static ISOLATED_FAILURES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]

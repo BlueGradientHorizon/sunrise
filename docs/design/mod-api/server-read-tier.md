@@ -47,7 +47,7 @@ argument is 255 reads (including multiline signatures):
 | MenuRef | 5 | MerchantRef | 6 |
 | MinecartRef | 13 | MobRef | 18 |
 | PlayerRef | 22 | ProjectileRef | 5 |
-| RaidRef | 14 | UnspawnedMobRef | 7 |
+| RaidRef | 14 | | |
 
 Reproduce from the fetched main ref with this single shell command (prints each
 handle count and the total; no build required):

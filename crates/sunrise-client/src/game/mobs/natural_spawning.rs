@@ -4,7 +4,6 @@
 use super::{Dim, Game, creatures::Finalized};
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
 use std::collections::HashMap;
-use sunrise_client::vanillagen::VanillaTerrain;
 use sunrise_client::{
     biome::{BiomeInfo, SpawnEntry},
     blocks::BlockFacts,
@@ -16,11 +15,12 @@ use sunrise_client::{
         spawn_rules::{Reason, SpawnLevel},
         spawn_selection::{
             self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers,
-            SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt,
+            SpawnCluster, SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, StructureAt,
             StructureSpawns,
         },
     },
 };
+use sunrise_client::{join_seq::JoinSeq, vanillagen::VanillaTerrain};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -31,6 +31,13 @@ use {
     sunrise_core::nbt::{Compound, Tag},
     sunrise_world::registry::BlockStateId,
 };
+
+/// The primary candidate survives the insertion attempt as an owning row (possibly
+/// restored with a new ID in another level) or as a detached body after a veto or transfer.
+pub(super) enum NaturalAdmission {
+    Placed { level: Dim, id: u32, join: JoinSeq },
+    Detached(Box<Mob>),
+}
 
 /// A level's natural spawning policy, as mods set it through its `LevelRef`
 /// (`Game::spawn_policies`): the categories' caps and which may spawn.
@@ -466,14 +473,8 @@ impl GameLevel<'_, '_> {
     }
     /// Creates a mob the spawner accepted, finalized the game's way
     /// (`finalizeSpawn` on this pass's level, its draws on the spawner's own
-    /// random, between its position draws, as vanilla interleaves them); the
-    /// caller adds it with [`Game::add_spawned`].
-    fn finalize_spawned<R: RandomSource>(
-        &self,
-        r: &SpawnRequest,
-        pending: &mut Vec<Mob>,
-        random: &mut R,
-    ) -> Option<Spawned> {
+    /// random, between its position draws, as vanilla interleaves them).
+    fn finalize_spawned<R: RandomSource>(&self, r: &SpawnRequest, random: &mut R) -> Option<Mob> {
         let mut mob = match self.take_checked(r.entity, r.position, r.yaw) {
             Some(mob) => mob,
             None => {
@@ -511,17 +512,7 @@ impl GameLevel<'_, '_> {
                 }
             }
         }
-        let bounds = mob.bounds();
-        let vanilla = spawn_selection::max_cluster_size(r.species);
-        let cluster_size = self
-            .game
-            .spawn_cluster_size(&mut mob, r.reason, None, vanilla);
-        pending.push(mob);
-        Some(Spawned {
-            bounds,
-            school: true,
-            cluster_size,
-        })
+        Some(mob)
     }
 }
 
@@ -730,7 +721,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         // An earlier check's mob that no spawn took is not this one.
         self.checked.take();
         let provisional = self.provisional.get();
-        let mut mob = pending
+        let mob = pending
             .fresh
             .then(|| self.game.res.mob_types().get(entity))
             .flatten()
@@ -744,20 +735,17 @@ impl NaturalLevel for GameLevel<'_, '_> {
                 )
             });
         let level = self.level_ref();
+        let borrowed = self.game.borrowed_unspawned_mob(entity, at, mob.as_ref());
         self.game
-            .lend_unspawned(entity, at, mob.as_mut(), |handle, _| {
-                self.game.native_mob_spawn_position_check(
-                    mod_api::__private::MobSpawnPositionCheckCall {
-                        dimension: self.game.dim.id(),
-                        kind: entity,
-                        reason,
-                        pos: at,
-                        level,
-                        spawner: self.spawner,
-                        mob: handle,
-                        result: &mut result,
-                    },
-                );
+            .native_mob_spawn_position_check(mod_api::__private::MobSpawnPositionCheckCall {
+                dimension: self.game.dim.id(),
+                kind: entity,
+                reason,
+                pos: at,
+                level,
+                spawner: self.spawner,
+                mob: mod_api::UnspawnedMobView::new(&borrowed),
+                result: &mut result,
             });
         if let Some(mob) = mob {
             *self.checked.borrow_mut() = Some(Checked { mob, provisional });
@@ -1259,9 +1247,7 @@ impl<'a> Game<'a> {
             &mut self.world.random,
             sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
         );
-        let mut pending = Vec::new();
-        let last_state;
-        let extras = {
+        let (mut state, categories) = {
             let level = self.natural_level();
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
@@ -1289,58 +1275,250 @@ impl<'a> Game<'a> {
                 .collect();
             laps.lap("sn_materialize");
             let buffers = std::mem::take(&mut scratch.spawn_buffers);
-            let mut state = self.natural_spawn_state(&level, spawnable, players, buffers, &counted);
+            let state = self.natural_spawn_state(&level, spawnable, players, buffers, &counted);
             laps.lap("sn_state");
-            last_state = state.counts();
             let categories = self.natural_categories(&state);
             laps.lap("sn_categories");
-            // Util.shuffle.
-            for i in (1..scratch.candidates.len()).rev() {
-                let j = random.next_int_bound(i as i32 + 1).unwrap_or(0) as usize;
-                scratch.candidates.swap(i, j);
-            }
-            laps.lap("sn_shuffle");
-            spawn_selection::attempt_counters(false);
-            if !categories.is_empty() {
-                for chunk in scratch.candidates.drain(..) {
-                    // ServerChunkCache.tickSpawningChunk gates the initial chunk too.
-                    if !level.can_spawn_in_chunk(chunk.0, chunk.1) {
-                        continue;
-                    }
-                    let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LevelRandom| {
-                        let spawned = l.finalize_spawned(r, &mut pending, rng);
-                        if let Some(s) = &spawned {
-                            l.pending.borrow_mut().push(s.bounds);
-                        }
-                        spawned
-                    };
-                    sunrise_threads::work::set_chunk(chunk.0, chunk.1);
-                    spawn_selection::spawn_for_chunk(
-                        &level,
-                        &mut random,
-                        &mut state,
-                        &categories,
-                        chunk,
-                        &mut spawn,
-                        &mut |_| {},
-                    );
-                }
-            }
-            scratch.spawn_buffers = state.into_parts().1;
-            let created = std::mem::take(&mut *level.spawned.borrow_mut());
-            let rides = std::mem::take(&mut *level.rides.borrow_mut());
-            (created, rides)
+            (state, categories)
         };
+        // ServerChunkCache.lastSpawnState, for the debug overlay.
+        let last_state = state.counts();
+        // Util.shuffle.
+        for i in (1..scratch.candidates.len()).rev() {
+            let j = random.next_int_bound(i as i32 + 1).unwrap_or(0) as usize;
+            scratch.candidates.swap(i, j);
+        }
+        laps.lap("sn_shuffle");
+        spawn_selection::attempt_counters(false);
+        let pass = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if !categories.is_empty() {
+                self.run_natural_spawn_pass(
+                    &categories,
+                    scratch.candidates.drain(..),
+                    &mut random,
+                    &mut state,
+                );
+            }
+        }));
         sunrise_threads::work::clear_work();
         spawn_selection::attempt_counters(true);
         laps.lap("sn_attempts");
         self.world.random = random;
-        // ServerChunkCache.lastSpawnState, for the debug overlay.
         self.spawn_counts.insert(self.dim, last_state);
-        let (created, rides) = extras;
-        self.add_spawned(pending, created, rides, false);
+        scratch.spawn_buffers = state.into_parts().1;
         self.spawn_scratch = scratch;
+        if let Err(payload) = pass {
+            std::panic::resume_unwind(payload);
+        }
         laps.lap("sn_finalize");
+    }
+
+    /// Resume the same chunk/category search after each admission, borrowing a single view for
+    /// all attempts that fail before insertion. A join can change the world's rows and blocks.
+    fn run_natural_spawn_pass(
+        &mut self,
+        categories: &[Category],
+        mut chunks: impl Iterator<Item = (i32, i32)>,
+        random: &mut LevelRandom,
+        state: &mut SpawnState,
+    ) {
+        let mut chunk = (0, 0);
+        let mut category_index = categories.len();
+        let mut cluster: Option<SpawnCluster> = None;
+        let mut provisional = 0;
+        let mut trace = |_: spawn_selection::Event<'_>| {};
+        let _save_lease = sunrise_client::join_seq::visibility::PassLease::enter();
+        loop {
+            let next = {
+                let level = self.natural_level();
+                level.provisional.set(provisional);
+                loop {
+                    if let Some(search) = cluster.as_mut() {
+                        if let Some(candidate) =
+                            search.next_candidate(&level, random, state, &mut trace)
+                        {
+                            if let Some(mob) =
+                                level.finalize_spawned(&search.request(candidate), random)
+                            {
+                                provisional = level.provisional.get();
+                                break Some((
+                                    candidate,
+                                    mob,
+                                    level.spawned.into_inner(),
+                                    level.rides.into_inner(),
+                                ));
+                            }
+                            continue;
+                        }
+                        cluster.take().unwrap().finish(state);
+                    }
+                    if let Some(&category) = categories.get(category_index) {
+                        category_index += 1;
+                        if state.can_spawn_local(category, chunk.0, chunk.1) {
+                            let start = spawn_selection::spawn_start(&level, random, chunk);
+                            if start[1] > level.min_y() {
+                                cluster = SpawnCluster::new(&level, state, category, chunk, start);
+                            }
+                        }
+                    } else {
+                        let Some(next) = chunks.find(|&(x, z)| level.can_spawn_in_chunk(x, z))
+                        else {
+                            break None;
+                        };
+                        chunk = next;
+                        category_index = 0;
+                        sunrise_threads::work::set_chunk(chunk.0, chunk.1);
+                    }
+                }
+            };
+            let Some((candidate, mob, passengers, rides)) = next else {
+                break;
+            };
+            self.complete_natural_spawn(
+                cluster.as_mut().unwrap(),
+                candidate,
+                mob,
+                passengers,
+                &rides,
+                random,
+                state,
+            );
+        }
+    }
+
+    /// Natural spawns still need the primary body after a veto or a transfer out of this level.
+    /// Take ownership of just that row before clearing its live state.
+    pub(super) fn detach_natural_candidate(&mut self, id: u32, index: usize) -> bool {
+        if !matches!(
+            self.creatures.natural_admission.as_ref(),
+            Some(NaturalAdmission::Placed { id: candidate, .. }) if *candidate == id
+        ) {
+            return false;
+        }
+        let mut mob = self.mobs.remove(index);
+        mob.extra.spawn_tags = self.tags_of(super::commands::Target::Mob(id));
+        mob.join = JoinSeq::UNJOINED;
+        self.creatures.natural_admission = Some(NaturalAdmission::Detached(Box::new(mob)));
+        true
+    }
+
+    /// NaturalSpawner.spawnCategoryForPosition: perform admission, then the spawn state's
+    /// callback, then ask the actual candidate for the cluster limit before resuming the search.
+    fn complete_natural_spawn(
+        &mut self,
+        cluster: &mut SpawnCluster,
+        candidate: spawn_selection::SpawnCandidate,
+        mob: Mob,
+        mut passengers: Vec<Mob>,
+        rides: &[(u32, u32)],
+        random: &mut LevelRandom,
+        state: &mut SpawnState,
+    ) {
+        let mut primary = [mob];
+        primary[0].persistent = false;
+        let ids = self.resolve_spawn_ids([&mut primary, &mut passengers], &[]);
+        let [mob] = primary;
+        let id = mob.id;
+        let last = self.next_entity;
+        // A real Host callback reads and writes the level stream between selection draws.
+        std::mem::swap(&mut self.world.random, random);
+        let saved = self.creatures.natural_admission.take();
+        let admitted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // ServerLevelAccessor.addFreshEntityWithPassengers inserts one body at a time.
+            // Until its turn, a passenger is only owned by this iterator.
+            for body in std::iter::once(mob).chain(passengers) {
+                let body_id = body.id;
+                let index = self.mobs.len();
+                self.mobs.push(body);
+                if body_id == id {
+                    self.creatures.natural_admission = Some(NaturalAdmission::Placed {
+                        level: self.dim,
+                        id,
+                        join: self.mobs[index].join,
+                    });
+                }
+                for &(chicken, rider) in rides {
+                    if ids.get(&rider) == Some(&body_id)
+                        && let Some(chicken) = self.mobs.iter_mut().find(|m| m.id == chicken)
+                    {
+                        chicken.extra.jockey = true;
+                        chicken.extra.rider = Some(body_id);
+                    }
+                }
+                self.join_spawn_tags(index);
+                self.native_joins_flush(false, 0);
+            }
+            let outcome = self
+                .creatures
+                .natural_admission
+                .take()
+                .expect("primary was offered");
+            let view = match &outcome {
+                NaturalAdmission::Placed { level, id, join } if *level == self.dim => {
+                    let mob = if join.is_joined() {
+                        self.mobs.locate(*join).map(|i| &self.mobs[i])
+                    } else {
+                        self.persist
+                            .off_level
+                            .get(id)
+                            .and_then(super::persist::OffLevel::as_mob)
+                    };
+                    mob.map(|mob| {
+                        (
+                            mob,
+                            Some(self.saved_entity_tags(super::commands::Target::Mob(*id))),
+                        )
+                    })
+                }
+                NaturalAdmission::Placed { level, id, join } => self
+                    .levels
+                    .parked
+                    .get(level)
+                    .and_then(|owner| owner.natural_spawn_mob(*id, *join)),
+                NaturalAdmission::Detached(mob) => Some((mob.as_ref(), None)),
+            };
+            if let Some((mob, tags)) = view {
+                let at = [mob.position.x, mob.position.y, mob.position.z];
+                cluster.after_spawn(
+                    &self.natural_level(),
+                    state,
+                    candidate,
+                    at.map(|x| x.floor() as i32),
+                    None,
+                    &mut |_| {},
+                );
+                let vanilla = spawn_selection::max_cluster_size(mob.species());
+                let limit = self.spawn_cluster_size(mob, Reason::Natural, None, vanilla, tags);
+                cluster.check_limit(candidate, limit, true);
+            } else {
+                log::error!("natural spawn admission lost candidate {id}");
+            }
+            // MobSpawned is a notice of successful insertion, not of rejected attempts.
+            if mod_api::__private::listened(mod_api::HookId::MobSpawned) {
+                if let NaturalAdmission::Placed { level, .. } = &outcome
+                    && *level != self.dim
+                    && let Some((mob, _)) = view
+                    && mob.join.is_joined()
+                    && !mob.removed
+                {
+                    let kind = super::native_hooks::mob_kind(mob);
+                    let at = [mob.position.x, mob.position.y, mob.position.z];
+                    self.native_mob_spawned(level.id(), &kind, at, true);
+                }
+                for id in id..=last {
+                    if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
+                        let kind = super::native_hooks::mob_kind(mob);
+                        let at = [mob.position.x, mob.position.y, mob.position.z];
+                        self.native_mob_spawned(self.dim.id(), &kind, at, true);
+                    }
+                }
+            }
+        }));
+        self.creatures.natural_admission = saved;
+        std::mem::swap(&mut self.world.random, random);
+        if let Err(payload) = admitted {
+            std::panic::resume_unwind(payload);
+        }
     }
     /// `NoiseBasedChunkGenerator.spawnOriginalMobs`: creature packs for a
     /// freshly generated chunk, from the biome at its corner column's top,
@@ -1995,14 +2173,14 @@ mod tests {
         }
         fn mob_spawn_position_check(
             &self,
-            host: &dyn mod_api::Host,
+            _: &dyn mod_api::Host,
             event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
         ) {
             let mob = event.mob;
             let reads = (
-                mob.kind(host),
-                mob.position(host),
-                mob.equipment(host, mod_api::EquipmentSlot::Head)
+                mob.kind(),
+                mob.position(),
+                mob.equipment(mod_api::EquipmentSlot::Head)
                     .map(|e| e.is_none()),
             );
             self.log.lock().unwrap().push(Heard {
@@ -2125,11 +2303,15 @@ mod tests {
                 let mut state = SpawnState::new(&natural, 289, players, &[], |_, _| true);
                 let mut pending = Vec::new();
                 let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LegacyRandom| {
-                    let spawned = l.finalize_spawned(r, &mut pending, rng);
-                    if let Some(s) = &spawned {
-                        l.pending.borrow_mut().push(s.bounds);
-                    }
-                    spawned
+                    let mob = l.finalize_spawned(r, rng)?;
+                    let bounds = mob.bounds();
+                    l.pending.borrow_mut().push(bounds);
+                    pending.push(mob);
+                    Some(spawn_selection::Spawned {
+                        bounds,
+                        school: true,
+                        cluster_size: None,
+                    })
                 };
                 spawn_selection::spawn_category_for_position(
                     &natural,
@@ -2144,7 +2326,6 @@ mod tests {
                 assert!(natural.checked.borrow().is_none(), "no created mob is left");
                 let used = natural.provisional.get();
                 drop(natural);
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 (
                     pending.iter().map(snap).collect::<Vec<_>>(),
                     used,
@@ -2226,7 +2407,6 @@ mod tests {
                 };
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2312,7 +2492,6 @@ mod tests {
                 };
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
-                assert!(game.lent_mobs.borrow().is_empty(), "every lend ended");
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
@@ -2665,13 +2844,13 @@ mod tests {
     impl mod_api::EntityPart for ZombieClusters {
         fn spawn_cluster_size(
             &self,
-            host: &dyn mod_api::Host,
-            mob: mod_api::UnspawnedMobRef,
+            _: &dyn mod_api::Host,
+            mob: mod_api::UnspawnedMobView<'_>,
             reason: mod_api::SpawnReason,
             _: Option<mod_api::SpawnSource>,
             vanilla: u32,
         ) -> Option<u32> {
-            assert_eq!(mob.kind(host).unwrap().to_string(), "minecraft:zombie");
+            assert_eq!(mob.kind().unwrap().to_string(), "minecraft:zombie");
             Some(if reason == mod_api::SpawnReason::Natural {
                 vanilla * 2
             } else {
@@ -2686,7 +2865,7 @@ mod tests {
         fn spawn_cluster_size(
             &self,
             _: &dyn mod_api::Host,
-            _: mod_api::UnspawnedMobRef,
+            _: mod_api::UnspawnedMobView<'_>,
             _: mod_api::SpawnReason,
             _: Option<mod_api::SpawnSource>,
             _: u32,
@@ -2698,6 +2877,35 @@ mod tests {
     struct SilentClusters;
     #[mod_api::sunrise_part]
     impl mod_api::EntityPart for SilentClusters {}
+    const JOINED_POSITION: [f64; 3] = [42.5, 65.0, 42.5];
+    const SPAWN_CLUSTER_CASE: &str = "SUNRISE_SPAWN_CLUSTER_CHILD";
+    static JOINED_CANDIDATE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    static CLUSTER_QUERIES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    struct JoinedClusters;
+    #[mod_api::sunrise_part]
+    impl mod_api::EntityPart for JoinedClusters {
+        fn spawn_cluster_size(
+            &self,
+            host: &dyn mod_api::Host,
+            mob: mod_api::UnspawnedMobView<'_>,
+            reason: mod_api::SpawnReason,
+            _: Option<mod_api::SpawnSource>,
+            _: u32,
+        ) -> Option<u32> {
+            let id = JOINED_CANDIDATE.load(std::sync::atomic::Ordering::Relaxed);
+            assert_eq!(reason, Reason::Natural);
+            if std::env::var(SPAWN_CLUSTER_CASE).as_deref() == Ok("valid") {
+                assert_eq!(
+                    host.entity(id).unwrap().position(host),
+                    Some(JOINED_POSITION)
+                );
+            }
+            assert_eq!(mob.position(), Ok(JOINED_POSITION));
+            assert_eq!(mob.tags().unwrap(), ["after-admission"]);
+            CLUSTER_QUERIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Some(1)
+        }
+    }
     struct ClusterMod;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ClusterMod {
@@ -2705,6 +2913,40 @@ mod tests {
             r.entity_part("minecraft:zombie", ZombieClusters);
             r.entity_part("minecraft:zombie", LaterClusters);
             r.entity_part("minecraft:skeleton", SilentClusters);
+            r.entity_part(SULFUR_CUBE, JoinedClusters);
+        }
+        fn entity_join_level(
+            &self,
+            host: &mut dyn mod_api::ServerHost,
+            event: &mut mod_api::EntityJoinLevelEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.kind != SULFUR_CUBE || event.dimension != "minecraft:overworld" {
+                return mod_api::Flow::Continue;
+            }
+            let id = event.entity;
+            if std::env::var(SPAWN_CLUSTER_CASE).as_deref() == Ok("unwind") {
+                panic!("primary admission stopped");
+            }
+            let entity = host.entity(id).unwrap();
+            assert!(entity.add_tag(host, "after-admission"));
+            JOINED_CANDIDATE.store(id, std::sync::atomic::Ordering::Relaxed);
+            match std::env::var(SPAWN_CLUSTER_CASE).unwrap().as_str() {
+                "move" => {
+                    assert!(entity.teleport_to_level(
+                        host,
+                        "minecraft:the_nether",
+                        JOINED_POSITION,
+                        None
+                    ));
+                }
+                case => {
+                    assert!(entity.teleport_to(host, JOINED_POSITION, None));
+                    if case == "reject" {
+                        return mod_api::Flow::Cancel;
+                    }
+                }
+            }
+            mod_api::Flow::Continue
         }
     }
 
@@ -2717,12 +2959,15 @@ mod tests {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         if run_fresh_cases(
             "game::natural_spawning::tests::entity_parts_answer_the_spawn_cluster_size",
-            "SUNRISE_SPAWN_CLUSTER_CHILD",
-            &["valid"],
+            SPAWN_CLUSTER_CASE,
+            &["valid", "reject", "move", "unwind"],
         ) {
             return;
         }
-        let entries = vec![mod_api::ModEntry::new("clusters", Box::new(ClusterMod))];
+        let entries = vec![
+            mod_api::ModEntry::new("clusters", Box::new(ClusterMod)),
+            mod_api::ModEntry::new("sulfur-cubes", Box::new(SulfurCubesOnly)),
+        ];
         mod_platform::__private::install(entries.into());
         crate::game::api_values::install_parts(&[mod_api::ModEntry::new(
             "clusters",
@@ -2735,7 +2980,7 @@ mod tests {
                 let kind = game.res.mob_types().get(id).unwrap().clone();
                 Mob::new(1, kind, Vec3::ZERO, 0.0)
             };
-            let ask = |id: &str, reason| game.spawn_cluster_size(&mut mob(id), reason, None, 4);
+            let ask = |id: &str, reason| game.spawn_cluster_size(&mob(id), reason, None, 4, None);
             assert_eq!(
                 ask("minecraft:zombie", mod_api::SpawnReason::Natural),
                 Some(8)
@@ -2749,6 +2994,198 @@ mod tests {
                 None
             );
             assert_eq!(ask("minecraft:cow", mod_api::SpawnReason::Natural), None);
+            spawn_check_world(game, Vec3::new(0.5, 64.0, 0.5));
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            for x in 32..48 {
+                for z in 32..48 {
+                    game.world.set(x, 63, z, stone).unwrap();
+                }
+            }
+            let mut random = LevelRandom::for_level(LegacyRandom::new(42));
+            let (mut cluster, mut state, candidate, primary) = {
+                let level = game.natural_level();
+                let players = vec![SpawnPlayer {
+                    position: [0.5, 64.0, 0.5],
+                    spectator: false,
+                }];
+                let mut state = SpawnState::new(&level, 289, players, &[], |_, _| true);
+                let mut cluster =
+                    SpawnCluster::new(&level, &mut state, Category::Monster, (2, 2), [40, 64, 40])
+                        .unwrap();
+                let candidate = cluster
+                    .next_candidate(&level, &mut random, &mut state, &mut |_| {})
+                    .unwrap();
+                let mob = level
+                    .finalize_spawned(&cluster.request(candidate), &mut random)
+                    .unwrap();
+                (cluster, state, candidate, mob)
+            };
+            let case = std::env::var(SPAWN_CLUSTER_CASE).unwrap();
+            if case == "unwind" {
+                let first = game.next_entity + 1;
+                let passengers = ["minecraft:cow", "minecraft:pig"]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, name)| {
+                        let kind = game.res.mob_types().get(name).unwrap().clone();
+                        Mob::new(u32::MAX - 1 - index as u32, kind, Vec3::ZERO, 0.0)
+                    })
+                    .collect();
+                let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    game.complete_natural_spawn(
+                        &mut cluster,
+                        candidate,
+                        primary,
+                        passengers,
+                        &[],
+                        &mut random,
+                        &mut state,
+                    );
+                }));
+                assert!(attempt.is_err());
+                game.native_joins_flush(false, 0);
+                assert!(
+                    game.mobs
+                        .iter()
+                        .all(|m| !(first..=first + 2).contains(&m.id))
+                );
+                assert!(game.creatures.natural_admission.is_none());
+                return;
+            }
+            game.complete_natural_spawn(
+                &mut cluster,
+                candidate,
+                primary,
+                Vec::new(),
+                &[],
+                &mut random,
+                &mut state,
+            );
+            let id = JOINED_CANDIDATE.load(std::sync::atomic::Ordering::Relaxed);
+            assert_ne!(id, 0);
+            assert_eq!(game.mobs.iter().any(|m| m.id == id), case == "valid");
+            if case == "move" {
+                let moved = game.levels.parked_mobs(Dim::Nether).unwrap();
+                assert!(moved.iter().any(|m| {
+                    m.species() == Species::SulfurCube
+                        && m.id != id
+                        && [m.position.x, m.position.y, m.position.z] == JOINED_POSITION
+                }));
+            }
+            assert_eq!(
+                CLUSTER_QUERIES.load(std::sync::atomic::Ordering::Relaxed),
+                1
+            );
+            assert_eq!(state.counts().1.into_iter().sum::<i32>(), 1);
+            assert!(
+                cluster
+                    .next_candidate(&game.natural_level(), &mut random, &mut state, &mut |_| {})
+                    .is_none(),
+                "the live candidate's part limits the cluster to one"
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn resuming_the_natural_spawn_pass_keeps_the_constructor_streams() {
+        use super::super::native_entity_refs::tests::with_game;
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "sulfur-cubes",
+            Box::new(SulfurCubesOnly),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                let player = Vec3::new(0.5, 64.0, 0.5);
+                spawn_check_world(game, player);
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                for x in 24..64 {
+                    for z in 24..64 {
+                        game.world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+                let chunk = (2, 2);
+                let mut random = {
+                    let level = game.natural_level();
+                    (0..4096)
+                        .find_map(|seed| {
+                            let random = LegacyRandom::new(seed);
+                            let [x, y, z] =
+                                spawn_selection::spawn_start(&level, &mut random.clone(), chunk);
+                            (y == 64 && (38..=42).contains(&x) && (38..=42).contains(&z))
+                                .then_some(LevelRandom::for_level(random))
+                        })
+                        .expect("a start over the platform")
+                };
+                let state = |level: &GameLevel<'_, '_>| {
+                    SpawnState::new(
+                        level,
+                        289,
+                        vec![SpawnPlayer {
+                            position: [player.x, player.y, player.z],
+                            spectator: false,
+                        }],
+                        &[],
+                        |_, _| true,
+                    )
+                };
+                let mut reference = Vec::new();
+                let mut expected_random = random.clone();
+                {
+                    let level = game.natural_level();
+                    let mut expected_state = state(&level);
+                    let start = spawn_selection::spawn_start(&level, &mut expected_random, chunk);
+                    // Reference: one uninterrupted level view assigns all constructor IDs.
+                    spawn_selection::spawn_category_for_position(
+                        &level,
+                        &mut expected_random,
+                        &mut expected_state,
+                        Category::Monster,
+                        chunk,
+                        start,
+                        &mut |level, request, random| {
+                            let mob = level.finalize_spawned(request, random)?;
+                            reference.push((mob.position, mob.random.state()));
+                            Some(spawn_selection::Spawned {
+                                bounds: mob.bounds(),
+                                cluster_size: None,
+                                school: true,
+                            })
+                        },
+                        &mut |_| {},
+                    );
+                }
+                assert!(
+                    reference.len() > 1,
+                    "the pass must resume after an admission"
+                );
+                let mut actual_state = state(&game.natural_level());
+                game.run_natural_spawn_pass(
+                    &[Category::Monster],
+                    std::iter::once(chunk),
+                    &mut random,
+                    &mut actual_state,
+                );
+                let actual: Vec<_> = game
+                    .mobs
+                    .iter()
+                    .filter(|mob| mob.species() == Species::SulfurCube)
+                    .map(|mob| (mob.position, mob.random.state()))
+                    .collect();
+                assert_eq!(actual, reference);
+                assert_eq!(random.next_int(), expected_random.next_int());
+            });
         });
     }
 

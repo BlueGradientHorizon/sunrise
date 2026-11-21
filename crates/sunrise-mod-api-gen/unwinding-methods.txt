@@ -832,13 +832,6 @@ mobs::mob_stop
 mobs::mob_target
 mobs::mob_target_goals
 mobs::mob_wanted_position
-mobs::unspawned_mob_attribute_base
-mobs::unspawned_mob_attribute_value
-mobs::unspawned_mob_custom_name
-mobs::unspawned_mob_equipment
-mobs::unspawned_mob_kind
-mobs::unspawned_mob_position
-mobs::unspawned_mob_tags
 mod_state::attachment_query
 mod_state::attachment_validate_write
 mod_state::attachments
