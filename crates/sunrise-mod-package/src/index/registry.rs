@@ -222,7 +222,11 @@ impl Entry {
                 "a stable source must use the full SemVer version from its manifest".into(),
             );
         }
-        let name = format!("{}-{}.smod", self.id, version.version);
+        let extension = self
+            .kind
+            .extension()
+            .ok_or_else(|| format!("a {} has no stable source file", self.kind.name()))?;
+        let name = format!("{}-{}.{extension}", self.id, version.version);
         let invalid = || {
             format!("file for a stable source must be a GitHub release asset URL ending in /{name}")
         };
