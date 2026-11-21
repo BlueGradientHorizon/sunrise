@@ -5626,7 +5626,8 @@ mod tests {
             panic!("commands")
         };
         let client =
-            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                .unwrap();
         let regs = crate::command::Registries {
             permission: 2,
             ..Default::default()
@@ -5698,7 +5699,8 @@ mod tests {
         expected.sort();
         assert_eq!(names, expected);
         let client =
-            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                .unwrap();
         let regs = crate::command::Registries {
             permission: 2,
             ..Default::default()

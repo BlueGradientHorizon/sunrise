@@ -407,7 +407,7 @@ mod tests {
             ],
             root: 4,
         };
-        from_packet(&tree, &Dispatcher::new())
+        from_packet(&tree, &Dispatcher::new()).unwrap()
     }
 
     #[test]
@@ -459,7 +459,7 @@ mod tests {
 
         let mut display = packet();
         display.nodes[1].executable = true; // The authorized display of the optional prefix.
-        let client = from_packet(&display, &server);
+        let client = from_packet(&display, &server).unwrap();
         for input in ["warp", "warp 7"] {
             let parsed = client.parse(input, &Registries::default());
             let (context, command) = parsed.executable().unwrap();
@@ -527,7 +527,7 @@ mod tests {
             ],
             root: 6,
         };
-        let d = from_packet(&packet, super::super::vanilla::dispatcher());
+        let d = from_packet(&packet, super::super::vanilla::dispatcher()).unwrap();
         let reg = crate::Registries::default();
         let signable = |command: &str| d.parse(command, &reg).signable_arguments(&d);
         assert_eq!(
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn server_tree_becomes_a_dispatcher() {
         let local = super::super::vanilla::dispatcher();
-        let d = from_packet(&packet(), local);
+        let d = from_packet(&packet(), local).unwrap();
         assert!(matches!(d.nodes[0].kind, NodeKind::Root));
         let warp = d.find("warp").expect("warp");
         let count = d.nodes[warp].children[0];

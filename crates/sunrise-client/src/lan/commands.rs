@@ -559,7 +559,8 @@ mod tests {
                     .executable
             );
             let dispatcher =
-                crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
+                crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                    .unwrap();
             let registries = crate::command::Registries::default();
             assert_eq!(
                 dispatcher.parse("foo", &registries).executable().is_ok(),
@@ -615,7 +616,8 @@ mod tests {
         );
 
         let dispatcher =
-            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
+            crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                .unwrap();
         let registries = crate::command::Registries::default();
         assert!(
             dispatcher
@@ -659,7 +661,8 @@ mod tests {
         for level in 0..=4 {
             let packet = tree.packet_with(level, true, &builtin, &mods);
             let dispatcher =
-                crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new());
+                crate::command::network::from_packet(&packet, &crate::command::Dispatcher::new())
+                    .unwrap();
             let registries = crate::command::Registries::default();
             let parsed = dispatcher.parse("foo 7", &registries);
             let (context, _) = parsed.executable().unwrap();
