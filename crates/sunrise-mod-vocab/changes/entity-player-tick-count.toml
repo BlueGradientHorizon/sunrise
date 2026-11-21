@@ -1,3 +1,0 @@
-ids = ["method:EntityRef::tick_count"]
-why = "EntityRef::tick_count now reads the authoritative Entity.tickCount for server players as well as mobs, item entities, experience orbs and minecarts. Acting and parked guests read the same PlayerMotion body that vanilla ticks, and the signed i32 wraps as Java's int does."
-migrate = "Rebuild native mods against this SDK. EntityRef::tick_count can now return Some for a player; handle None for stale handles and entity kinds whose tick count is not exposed."
