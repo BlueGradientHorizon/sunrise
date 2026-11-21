@@ -29,7 +29,16 @@ pub(super) struct StartupClientHost;
 impl Host for StartupClientHost {}
 mod_api::impl_host_areas!(StartupClientHost);
 impl ClientHost for StartupClientHost {}
-mod_api::impl_client_host_areas!(StartupClientHost, except(audio));
+mod_api::impl_client_host_areas!(StartupClientHost, except(audio, client_render));
+impl mod_api::prelude::ClientRenderClientHost for StartupClientHost {
+    fn biome_tint(
+        &self,
+        _: [i32; 3],
+        _: mod_api::ColorResolver,
+    ) -> Result<u32, mod_api::LevelReadError> {
+        Err(mod_api::LevelReadError::Unavailable)
+    }
+}
 // A startup reload opens no audio stream.
 impl mod_api::prelude::AudioClientHost for StartupClientHost {
     fn open_audio_stream(

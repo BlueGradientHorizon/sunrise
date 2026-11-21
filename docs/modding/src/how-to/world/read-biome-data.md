@@ -25,9 +25,26 @@ The table includes data packs and biome modifiers. Spawners describe the biome's
 
 ## Read blended biome tints on the client
 
-Grass, foliage and dry-foliage colormaps are client-only resources. On the client, read blended tints through the existing client tint APIs:
+Grass, foliage and dry-foliage colormaps are client-only resources. In a client hook in the World
+phase, use `ClientHost::biome_tint(pos, resolver)` to query a block position in the current client
+level, without looking up a block state or model.
 
-- **Inside `BlockTintSource` callbacks** (`color_in_world`, `color_as_terrain_particle`), call `BlockAndTintGetter::block_tint(pos, resolver)` with `ColorResolver::Grass`, `ColorResolver::Foliage`, `ColorResolver::DryFoliage`, `ColorResolver::Water`, or a mod resolver registered in `register_color_resolvers` (matching `BiomeColors.getAverageGrassColor` / `getAverageFoliageColor` / `getAverageDryFoliageColor` / `getAverageWaterColor`, opaque ARGB `0xFF00_0000 | rgb` blended over the biome blend radius):
+```rust,ignore
+use mod_api::{ClientHost, ColorResolver, LevelReadError};
+
+fn grass_tint(host: &dyn ClientHost, pos: [i32; 3]) -> Result<u32, LevelReadError> {
+    host.biome_tint(pos, ColorResolver::Grass)
+}
+```
+
+Pass `ColorResolver::Grass`, `Foliage`, `DryFoliage`, `Water` or a resolver registered in
+`register_color_resolvers`. The result is opaque ARGB (`0xFF00_0000 | rgb`), averaged over the
+client's biome blend radius, as in vanilla's `BiomeColors.getAverageGrassColor` and related
+methods. The host returns `LevelReadError::Unavailable` outside the World phase or when it has
+no client level to read.
+
+In a `BlockTintSource` callback (`color_in_world`, `color_as_terrain_particle`), make the same
+query on the meshing region passed to the callback with `BlockAndTintGetter::block_tint`:
 
 ```rust,ignore
 use mod_api::{BlockAndTintGetter, ColorResolver};
@@ -40,12 +57,7 @@ fn sample_in_tint_source(level: &dyn BlockAndTintGetter, pos: [i32; 3]) {
 }
 ```
 
-- **In other client hooks** (World phase), call `ClientHost::block_tint_color(state, tint_index, pos)` for a drawn block or fluid face's `0xRRGGBB` tint (for example, a face's `FaceSprite::tint_index`, or tint index `0` on `minecraft:grass_block`, `minecraft:oak_leaves`, `minecraft:leaf_litter`, or `minecraft:water`). This applies biome blending together with active resource pack `biome_colors` and Polytone block and fluid colormaps, matching what the chunk and fluid meshers draw:
-
-```rust,ignore
-use mod_api::{BlockState, ClientHost};
-
-fn sample_drawn_tint(host: &dyn ClientHost, grass_block: BlockState, pos: [i32; 3]) -> Option<u32> {
-    host.block_tint_color(grass_block, 0, pos)
-}
-```
+To match the tint drawn on a **specific face** of a block or fluid, use
+[`ClientHost::block_tint_color(state, tint_index, pos)`](../client/model-drawing.md#copycat-faces)
+with that face's tint index. Its `0xRRGGBB` result may differ from the biome tint because the face
+can use a different tint source or a pack's block or fluid colormap.

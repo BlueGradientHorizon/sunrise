@@ -1,8 +1,9 @@
 //! Where blocks' textures are in the block sprite arrays, for a client mod drawing blocks with the player's own
 //! textures (resource packs included) in its own pass: with `WorldDrawn::block_sprites`, the arrays themselves.
 use super::Game;
-use mod_api::{AtlasRegion, Identifier};
+use mod_api::{AtlasRegion, ColorResolver, Identifier, LevelReadError};
 use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
+use sunrise_client::chunk::Chunk;
 use sunrise_world::registry::BlockStateId;
 
 impl Game<'_> {
@@ -34,6 +35,24 @@ impl Game<'_> {
             .map(|texture| lookup.texture(texture))
             .collect()
     }
+    /// `ClientLevel.getBlockTint(pos, resolver)`, without consulting block or fluid tint sources.
+    pub(super) fn biome_tint(
+        &self,
+        pos: [i32; 3],
+        resolver: ColorResolver,
+    ) -> Result<u32, LevelReadError> {
+        self.native_client_level()
+            .ok_or(LevelReadError::Unavailable)?;
+        Ok(sunrise_client::mesher::biome_tint(
+            pos,
+            resolver,
+            &self.tint_region(pos),
+            world_biomes!(self),
+            self.streaming.biome_zoom,
+            self.streaming.biome_blend,
+        ))
+    }
+
     /// For a client mod drawing a block's faces itself (a copycat drawing its material's, from
     /// `block_sprites`): the 0xRRGGBB colour a face of `state` with tint index `tint_index` is
     /// multiplied by at `pos`, as the chunk mesher tints it there (`MeshTables::block_tints`:
@@ -47,15 +66,7 @@ impl Game<'_> {
         tint_index: i32,
         pos: [i32; 3],
     ) -> Option<u32> {
-        let (cx, cz) = (pos[0] >> 4, pos[2] >> 4);
-        let region: [[Option<&sunrise_client::chunk::Chunk>; 3]; 3] = std::array::from_fn(|dz| {
-            std::array::from_fn(|dx| {
-                self.world
-                    .chunks
-                    .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))
-                    .map(|c| &**c)
-            })
-        });
+        let region = self.tint_region(pos);
         let block = self
             .pack
             .context
@@ -85,6 +96,20 @@ impl Game<'_> {
         );
         tints(tint_index)
     }
+
+    /// The mesher's 3×3 chunk region centred on the chunk that contains `pos`.
+    fn tint_region(&self, [x, _, z]: [i32; 3]) -> [[Option<&Chunk>; 3]; 3] {
+        let (cx, cz) = (x >> 4, z >> 4);
+        std::array::from_fn(|dz| {
+            std::array::from_fn(|dx| {
+                self.world
+                    .chunks
+                    .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))
+                    .map(AsRef::as_ref)
+            })
+        })
+    }
+
     /// For a client mod: changes each time the resources load (a resource pack turned on or off can move every
     /// sprite): ask `block_sprites` again then. API 380.
     pub(super) fn block_sprites_version(&self) -> u64 {

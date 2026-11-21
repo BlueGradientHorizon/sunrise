@@ -14,7 +14,7 @@ Use biome content, region declarations and level handles to control biome genera
 | Run bone meal at a position | `LevelRef::bone_meal` | Server |
 | Place a feature (a tree, a patch, an ore vein) | `LevelRef::place_feature`, as `/place feature` does ([placing a template](placing-a-template.md#placing-a-feature)) | Server |
 | Add a feature type of my own (my tree's shape) | `Registrar::register_feature_type`, named by a configured feature's `"type"` ([feature types](feature-types.md)) | Both |
-| Read a position's blended biome tint | `BlockAndTintGetter::block_tint(pos, resolver)` (`ColorResolver::Grass`, `Foliage`, `DryFoliage`, `Water`, or a mod resolver) in `BlockTintSource` callbacks; `ClientHost::block_tint_color(state, tint_index, pos)` for a drawn block or fluid face in other client hooks | Client |
+| Read a position's blended biome tint | [`ClientHost::biome_tint(pos, resolver)`](read-biome-data.md#read-blended-biome-tints-on-the-client), or `BlockAndTintGetter::block_tint(pos, resolver)` in `BlockTintSource` callbacks | Client |
 | Tint foliage, grass or water by biome | The `register_color_resolvers` hook for new colour resolvers, and the `biome_colors` hook to change a biome's own colours | Client |
 
 Code and file modifiers support features, spawns, spawn costs, carvers, climate and effects. They apply additions,

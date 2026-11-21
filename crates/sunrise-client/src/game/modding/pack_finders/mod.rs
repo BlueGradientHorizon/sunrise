@@ -124,7 +124,16 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
     }
 }
 impl ClientHost for DiscoveryHost {}
-mod_api::impl_client_host_areas!(DiscoveryHost, except(audio));
+mod_api::impl_client_host_areas!(DiscoveryHost, except(audio, client_render));
+impl mod_api::prelude::ClientRenderClientHost for DiscoveryHost {
+    fn biome_tint(
+        &self,
+        _: [i32; 3],
+        _: mod_api::ColorResolver,
+    ) -> Result<u32, mod_api::LevelReadError> {
+        Err(mod_api::LevelReadError::Unavailable)
+    }
+}
 // Registration opens no audio stream.
 impl mod_api::prelude::AudioClientHost for DiscoveryHost {
     fn open_audio_stream(

@@ -1305,8 +1305,8 @@ pieces.
   colour (`water_colors`, `0xRRGGBB`, at the column's top). Blocks outside the level's height, and every block of a
   column not loaded, read as air (its water colour as 0). `below + above` must be 1 to the level's height, and the
   read at most 1,048,576 blocks. Colormap-derived grass and foliage tints are client-only: read blended biome tints
-  on the client with `BlockAndTintGetter::block_tint` inside block tint callbacks or `ClientHost::block_tint_color`
-  for a drawn block or fluid face in other client hooks.
+  on the client with `BlockAndTintGetter::block_tint` inside block tint callbacks or `ClientHost::biome_tint`
+  in other client hooks.
 
 ### Chat and commands a client mod sends
 
@@ -2260,7 +2260,7 @@ registration path.
 
 - `native_edit_blocks(dimension, edit)` for server mods: runs up columns, from a height or a heightmap's, of block states and filters written as commands write them, made at once straight into the chunks of the level being ticked with what `fill ... strict` does for block entities; the chunks changed go to the players whole.
 
-- Column reads for server mods, in the level being ticked: `native_surface_heights(dimension, columns, heightmap)` and `native_read_columns(dimension, columns, heightmap, (below, above))`, the blocks round each column's height as a palette and indexes with each column's biome JSON water colour (`water_colors`). Client-side blended tints live on `BlockAndTintGetter::block_tint` (in block tint callbacks) and `ClientHost::block_tint_color` (for drawn block and fluid faces in other client hooks).
+- Column reads for server mods, in the level being ticked: `native_surface_heights(dimension, columns, heightmap)` and `native_read_columns(dimension, columns, heightmap, (below, above))`, the blocks round each column's height as a palette and indexes with each column's biome JSON water colour (`water_colors`). Client-side blended biome tints are read with `BlockAndTintGetter::block_tint` in block tint callbacks or `ClientHost::biome_tint` in other client hooks.
 
 - `experience_orb_can_merge(dimension, into, from, into_value, from_value, can_merge)` is asked for each pair of orbs whose boxes meet, when an orb spawns (`ExperienceOrb.tryMergeToExisting`; `from` is 0, the new orb is no entity yet) and every 20 ticks as an orb scans (`scanForMerges`); `can_merge` holds vanilla's `canMerge` answer, which a mod may flip either way. `experience_orb_merge` follows a yes and may cancel it (its own notes). A merged orb counts as `count` orbs of the keeper's value. `native_set_experience_orb(dimension, id, value, count, age)` writes an orb's `value`, `count` and `age` (each optional; false for a `count` of 0 or an orb that isn't there; signed `value` is preserved, including zero and negative values).
 

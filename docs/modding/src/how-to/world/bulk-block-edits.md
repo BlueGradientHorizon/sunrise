@@ -24,10 +24,9 @@ states are converted to API values, not each block in the returned columns.
 
 `ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
 colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
-unloaded). Colormap-derived grass and foliage tints are client-side only: read
-blended tints on the client with `BlockAndTintGetter::block_tint(pos, resolver)` in
-block tint callbacks or `ClientHost::block_tint_color(state, tint_index, pos)` for a
-drawn block or fluid face in other client hooks.
+unloaded). Colormap-derived grass and foliage tints are client-side only. See
+[Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
 
 ## Query terrain before loading chunks
 

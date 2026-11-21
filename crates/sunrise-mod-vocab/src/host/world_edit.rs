@@ -74,8 +74,8 @@ pub trait WorldEditServerHost {
     /// palette of complete `BlockState` values and indexes, with each column's server-side biome JSON water
     /// colour (`water_colors`, `0xRRGGBB`; `0` where not loaded; air outside the column and in columns not
     /// loaded). Colormap-derived grass and foliage tints are client-side only: read blended tints on the client
-    /// with [`BlockAndTintGetter::block_tint`] in block tint callbacks or `ClientHost::block_tint_color` for a
-    /// drawn block or fluid face in other client hooks. `Err` says why nothing was read: another dimension or a
+    /// with [`BlockAndTintGetter::block_tint`] in block tint callbacks or `ClientHost::biome_tint` in other
+    /// client hooks. `Err` says why nothing was read: another dimension or a
     /// client of a server, `below + above` of 0 or more than the level's height, or a read of more than 1,048,576
     /// blocks (`MAX_READ`; it runs on the server tick, so read big areas in pieces).
     #[access(WorldOnly)]

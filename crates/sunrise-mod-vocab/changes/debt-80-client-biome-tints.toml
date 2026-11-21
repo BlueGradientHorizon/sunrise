@@ -1,4 +1,5 @@
 ids = [
+    "method:prelude::ClientRenderClientHost::biome_tint",
     "method:prelude::WorldEditServerHost::read_columns",
     "type:ColumnBlocks",
     "type:ColumnBlocks.tints",
@@ -19,9 +20,9 @@ ServerHost::read_columns previously returned colormap-derived grass and foliage 
 water colours in ColumnBlocks::tints (3 entries per column), forcing the server to load client
 colormap PNGs and exposing unblended tints that disagreed with what players see. ColumnBlocks now
 carries only water_colors (one 0xRRGGBB biome JSON water colour per column, 0 where unloaded), the
-server loads biomes without requiring colormap textures, and client mods read blended tints through
-the existing client tint APIs: BlockAndTintGetter::block_tint in block tint callbacks and
-ClientHost::block_tint_color for drawn block and fluid faces in other client hooks.
+server loads biomes without requiring colormap textures, and client mods read blended biome tints
+with BlockAndTintGetter::block_tint in block tint callbacks or the new ClientHost::biome_tint on the
+current client level. Neither biome query looks at a block model or its tint sources.
 """
 migrate = """
 - Replace reads of `column_blocks.tints[i * 3 + 2]` with `column_blocks.water_colors[i]` (`0xRRGGBB`,
@@ -33,11 +34,13 @@ migrate = """
     `ColorResolver::DryFoliage`, `ColorResolver::Water`, or a mod `ColorResolver` registered in
     `register_color_resolvers` (`BlockAndTintGetter::block_tint`, opaque ARGB `0xFF00_0000 | rgb`
     blended over the biome blend radius).
-  - In other client hooks (World phase), call `host.block_tint_color(state, tint_index, pos)` on
-    `ClientHost` for a drawn block or fluid face's `0xRRGGBB` tint (for example, a face's
-    `FaceSprite::tint_index` or tint index `0` on `minecraft:grass_block`, `minecraft:oak_leaves`,
-    `minecraft:leaf_litter`, or `minecraft:water`), which applies biome blending together with
-    active resource pack `biome_colors` and Polytone colormaps.
+  - In other client hooks (World phase), replace the old grass and foliage reads with
+    `host.biome_tint(pos, ColorResolver::Grass)` and `host.biome_tint(pos, ColorResolver::Foliage)`
+    on `&dyn ClientHost`. Pass a block position `[x, y, z]` in the current client level. Handle
+    `Result<u32, LevelReadError>` (opaque ARGB, `Unavailable` outside the World phase or without
+    a readable client level).
+    Mask a successful result with `0x00FF_FFFF` if you need `0xRRGGBB`. Use `block_tint_color` only
+    for a particular block or fluid face, not to read a biome resolver.
 - Update any literal construction or exhaustive destructuring of `ColumnBlocks` to use
   `water_colors` instead of `tints`.
 """
