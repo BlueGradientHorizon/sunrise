@@ -22,11 +22,13 @@ When adding a native hook, keep its declaration under `crates/sunrise-mod-vocab/
 function named by its target. Vocabulary generation does not read engine bodies, so it cannot tell whether
 those targets fire the hooks. `verify-static` runs `bash tools/ci/check_hook_wiring.sh` separately, without
 changing any sources.
-The check follows the declared Rust module to the target body and ignores test-only calls. Where the target
-uses a client-library or world bridge, the bridge must invoke the slot and its installed callback must reach
-the dispatcher. A native render replacement slot is intentionally empty, so the check starts at the corresponding
-installed renderer callback. `cargo run -p xtask -- mod-api` fills a new game hook's placeholder during authoring;
-a placeholder left in the checkout fails the wiring check.
+The check follows the declared Rust module to the target body, including conditional files and inline modules.
+It checks non-test `cfg` branches separately and does not count calls in closures that are never invoked. When a
+hook uses a client-library or world bridge, the bridge must invoke the slot and each production binding must reach
+the dispatcher. This includes client-library slots whose callbacks enter the target before it dispatches. A native
+render replacement slot is intentionally empty, so the check starts at the installed renderer callback.
+`cargo run -p xtask -- mod-api` fills a new game hook's placeholder during authoring; a placeholder left in the
+checkout fails the wiring check.
 
 ## Build it
 
