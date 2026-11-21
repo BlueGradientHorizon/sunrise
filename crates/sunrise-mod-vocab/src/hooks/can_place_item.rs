@@ -4,8 +4,8 @@ pub trait Hooks {
     /// `Container.canPlaceItem`: whether `slot` of this mod block entity's container admits
     /// the offered nonempty `stack`. `Some(true)` or `Some(false)` replaces the declared
     /// `ModContainer::insert_rules` answer; `None` keeps it. A subscribed slot refuses
-    /// insertion if the entity snapshot or stack cannot be represented. Face, input-slot
-    /// and stack limits still apply.
+    /// insertion if the entity snapshot, block state or offered stack cannot be represented.
+    /// Face, input-slot and stack limits still apply.
     ///
     /// This is a read-only query on the entity's position, block state, saved data and
     /// current slots, with no Host. The state is the block at this entity's own position,
