@@ -14,8 +14,13 @@ use std::{
     fmt::Write as _,
     fs, io,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock, PoisonError, Weak, mpsc},
-    thread::{self, JoinHandle},
+    sync::{
+        Arc, Mutex, OnceLock, PoisonError, Weak,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    thread,
+    time::Duration,
 };
 
 /// What the window has still to toast.
@@ -73,6 +78,8 @@ pub fn report_load_failure(dir: &Path, x: i32, z: i32, error: &dyn std::fmt::Dis
 
 const SAVE_LOCATION: &str = "chunk/save";
 const LATEST_ENTRY_COUNT: usize = 8;
+/// `Util.shutdownExecutors` gives the IO pool three seconds to finish its work.
+const REPORT_DRAIN_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// A server's suppressed chunk save failures, shared by all its dimensions.
 #[derive(Default)]
@@ -92,21 +99,36 @@ struct ReportTarget {
 
 struct ReportWorker {
     send: mpsc::Sender<ReportJob>,
-    thread: JoinHandle<()>,
+    done: Mutex<mpsc::Receiver<()>>,
+    abort: Arc<AtomicBool>,
 }
 
 impl ReportTarget {
     fn enqueue(&self, job: ReportJob) -> io::Result<()> {
         let worker = self.worker.get_or_init(|| {
             let (send, recv) = mpsc::channel::<ReportJob>();
-            let thread = thread::Builder::new()
-                .name("Chunk IO reports".into())
-                .spawn(move || {
-                    for job in recv {
-                        job();
-                    }
-                })?;
-            Ok(ReportWorker { send, thread })
+            let (running, done) = mpsc::channel();
+            let abort = Arc::new(AtomicBool::new(false));
+            let aborted = Arc::clone(&abort);
+            drop(
+                thread::Builder::new()
+                    .name("Chunk IO reports".into())
+                    .spawn(move || {
+                        // Disconnect the completion channel when the worker exits, even on panic.
+                        let _running = running;
+                        for job in recv {
+                            if aborted.load(Ordering::Acquire) {
+                                break;
+                            }
+                            job();
+                        }
+                    })?,
+            );
+            Ok(ReportWorker {
+                send,
+                done: Mutex::new(done),
+                abort,
+            })
         });
         match worker {
             Ok(worker) => worker
@@ -116,15 +138,24 @@ impl ReportTarget {
             Err(error) => Err(io::Error::new(error.kind(), error.to_string())),
         }
     }
+
+    /// Drain at server teardown, then abandon queued reports at the deadline. An in-flight
+    /// filesystem call cannot be interrupted here, but it cannot hold teardown open.
+    fn drain(&mut self, timeout: Duration) {
+        if let Some(Ok(ReportWorker { send, done, abort })) = self.worker.take() {
+            drop(send);
+            let done = done.into_inner().unwrap_or_else(PoisonError::into_inner);
+            if done.recv_timeout(timeout) == Err(mpsc::RecvTimeoutError::Timeout) {
+                abort.store(true, Ordering::Release);
+                log::warn!("Timed out draining chunk IO reports after {timeout:?}");
+            }
+        }
+    }
 }
 
 impl Drop for ReportTarget {
     fn drop(&mut self) {
-        // Drain scheduled reports at server teardown, not on the save path.
-        if let Some(Ok(ReportWorker { send, thread })) = self.worker.take() {
-            drop(send);
-            let _ = thread.join();
-        }
+        self.drain(REPORT_DRAIN_TIMEOUT);
     }
 }
 
@@ -739,6 +770,64 @@ mod tests {
                 .suppressed_summary()
                 .unwrap()
                 .contains("dedicated failure")
+        );
+    }
+
+    #[test]
+    fn a_stalled_report_worker_cannot_delay_dedicated_crash_diagnostics() {
+        crate::test_log::install();
+        let dir = tempfile::tempdir().unwrap();
+        let mut reporter = SaveFailureReporter::new(false, dir.path(), "world");
+        let diagnostics = SaveFailureDiagnostics::default();
+        diagnostics.register(&reporter);
+        let target = reporter.target.as_ref().unwrap();
+        let (started, entered) = mpsc::channel();
+        let (release, stalled) = mpsc::channel();
+        target
+            .enqueue(Box::new(move || {
+                started.send(()).unwrap();
+                stalled.recv().unwrap();
+            }))
+            .unwrap();
+        entered.recv_timeout(Duration::from_secs(1)).unwrap();
+        reporter.report(
+            SaveFailure {
+                world_root: dir.path(),
+                dimension: "minecraft:overworld",
+                storage: "chunk",
+                pos: (3, 4),
+                error: &io::Error::other("dedicated failure while reporter was stalled"),
+            },
+            &Mutex::new(Pending::default()),
+            |_| Ok(save::LOW_DISK_SPACE),
+        );
+        let (queued, ran) = mpsc::channel();
+        target
+            .enqueue(Box::new(move || queued.send(()).unwrap()))
+            .unwrap();
+
+        let (finished, drained) = mpsc::channel();
+        let shutdown = thread::spawn(move || {
+            reporter.target.as_mut().unwrap().drain(Duration::ZERO);
+            drop(reporter);
+            finished.send(crate::test_log::records()).unwrap();
+        });
+        // Clean up the worker before checking the result, even if shutdown blocked erroneously.
+        let logs = drained.recv_timeout(Duration::from_secs(1));
+        release.send(()).unwrap();
+        shutdown.join().unwrap();
+        assert!(logs.unwrap().iter().any(|(level, message)| {
+            *level == log::Level::Warn && message.contains("Timed out draining chunk IO reports")
+        }));
+        assert_eq!(
+            ran.recv_timeout(Duration::from_secs(1)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+        assert!(
+            diagnostics
+                .suppressed_summary()
+                .unwrap()
+                .contains("dedicated failure while reporter was stalled")
         );
     }
 
