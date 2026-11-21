@@ -139,38 +139,15 @@ fn a_content_mod_has_no_runtime() {
 }
 
 #[test]
-fn the_table_and_the_folder_are_capped_and_the_cap_is_named() {
+fn the_table_and_the_folder_have_no_file_count_or_size_caps() {
     let hash = sha512_of(b"1");
-    let many: std::collections::BTreeMap<String, String> = (0..=MAX_RUNTIME_FILES)
-        .map(|i| (format!("f{i}"), hash.clone()))
+    let many: std::collections::BTreeMap<String, String> =
+        (0..300).map(|i| (format!("f{i}"), hash.clone())).collect();
+    let table = RuntimeTable::try_from(many).unwrap();
+    let sizes: Vec<_> = (0..300)
+        .map(|i| (format!("f{i}"), (64 << 20) + 1))
         .collect();
-    let error = RuntimeTable::try_from(many).unwrap_err();
-    assert!(error.contains("256-file runtime cap"), "{error}");
-    let table = RuntimeTable::try_from(std::collections::BTreeMap::from([
-        ("big".to_owned(), hash.clone()),
-        ("also".to_owned(), hash.clone()),
-    ]))
-    .unwrap();
-    let error = RuntimeTable::check_layout(
-        Some(&table),
-        &[("big".into(), MAX_RUNTIME_FILE + 1), ("also".into(), 1)],
-    )
-    .unwrap_err();
-    assert!(
-        error.contains("runtime/big") && error.contains("64 MiB, the per-file runtime cap"),
-        "{error}"
-    );
-    let listed: std::collections::BTreeMap<String, String> =
-        (0..5).map(|i| (format!("f{i}"), hash.clone())).collect();
-    let table = RuntimeTable::try_from(listed).unwrap();
-    let sizes: Vec<_> = (0..5)
-        .map(|i| (format!("f{i}"), MAX_RUNTIME_FILE))
-        .collect();
-    let error = RuntimeTable::check_layout(Some(&table), &sizes).unwrap_err();
-    assert!(
-        error.contains("256 MiB, the package's runtime total cap"),
-        "{error}"
-    );
+    RuntimeTable::check_layout(Some(&table), &sizes).unwrap();
 }
 
 #[test]

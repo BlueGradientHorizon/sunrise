@@ -741,7 +741,6 @@ pub(super) fn stage_pack(
     let (staged, client_applies) = super::client_reload::stage_client_reload(
         &source,
         client_listeners,
-        mod_api::__private::ModPhase::World,
         || -> sunrise_client::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.

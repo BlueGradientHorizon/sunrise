@@ -40,12 +40,6 @@ impl std::fmt::Display for ModKeyRefusal {
 
 impl std::error::Error for ModKeyRefusal {}
 
-impl crate::AccessRefusal for ModKeyRefusal {
-    fn unavailable() -> Self {
-        Self::Unavailable
-    }
-}
-
 impl crate::NoBackend for ModKeyRefusal {
     fn no_backend() -> Self {
         Self::Unavailable

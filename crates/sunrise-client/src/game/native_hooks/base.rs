@@ -464,11 +464,7 @@ impl Game<'_> {
     /// Selection/F3+T and server-pack reloads share this point; initial startup does not
     /// (`client_setup` is the once-only moment after the initial load).
     pub(in crate::game) fn native_client_resources_reloaded(&mut self) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("client reload notice on its owning thread");
-        self.fire_client_resources_reloaded();
+        Self::fire_client_resources_reloaded(self);
     }
     /// The client made a new level for `dimension` (NeoForge's
     /// `LevelEvent.Load` from the `ClientLevel` constructor): on joining a
@@ -4538,6 +4534,12 @@ impl Game<'_> {
             return None;
         }
         self.stored_setting(mod_id, key)
+    }
+    pub(in crate::game) fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
+        if Self::another_mods(mod_id) {
+            return None;
+        }
+        mod_settings::read_raw(&Self::mod_data_root().join(mod_id), mod_id, key)
     }
     pub(super) fn stored_setting(&self, mod_id: &str, key: &str) -> Option<String> {
         mod_settings::read_raw(&self.native_data_dir(mod_id), mod_id, key)

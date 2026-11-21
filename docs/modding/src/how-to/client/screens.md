@@ -322,8 +322,9 @@ line at all.
 
 It refuses, answering no line at all, a `TextLinesRefusal` naming why: a width that is not finite (or
 that dividing by `scale` overflows), a `scale` that is not finite or is zero or less, text that wraps
-into more than 512 lines, lines holding more than 8192 characters together, and text deeper than 512
-component nodes — which the other text-drawing methods refuse too.
+into more than 512 lines, or lines holding more than 8192 characters together. This is in-process
+layout, so the serialization depth limit does not apply. Inline sprites and player heads remain
+objects in the returned lines, with their fallbacks.
 
 ## An item or a model turned in 3D
 

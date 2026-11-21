@@ -121,10 +121,9 @@ pub fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
     crate::runtime::invoke_registration(mod_id, call)
 }
 
-/// Dispose of one detached startup value under the register callback's panic fence.
-pub fn discard_startup_registration<T>(owner: &'static str, value: T, already_reported: &mut bool) {
-    *already_reported |=
-        !crate::runtime::invoke_registration_reporting(owner, || drop(value), !*already_reported);
+/// Discard one startup batch's values independently under the owning `register` callback's policy.
+pub fn discard_startup_registrations<T>(mod_id: &'static str, values: impl IntoIterator<Item = T>) {
+    crate::runtime::discard_startup_registrations(mod_id, values);
 }
 
 /// Revision of the enabled mod set, for engine caches of hook answers.
@@ -622,6 +621,19 @@ pub mod game {
         fn new() -> Self {
             RegistrationContext::new()
         }
+    }
+
+    /// Engine-only per-listener checked declaration staging.
+    // no wire: lends one registration sink for the duration of a callback.
+    pub type DeclarationListener<'a, D> = dyn FnMut(&mut dyn FnMut(crate::Answered<D>) -> Result<(), crate::DeclarationError>) -> bool
+        + 'a;
+
+    /// Lend a registration snapshot to the named listener, including on scoped workers.
+    pub fn bind_registration_context(
+        context: &RegistrationContext,
+        mod_id: &'static str,
+    ) -> RegistrationContext {
+        context.for_mod(mod_id)
     }
 
     pub trait ReloadContextNew {

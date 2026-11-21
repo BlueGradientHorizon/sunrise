@@ -323,16 +323,12 @@ impl<V> PreparedStep<V> {
     /// exclude its retained registration from the committed reload.
     pub fn apply<E>(
         self,
-        phase_owner: &crate::world::phase::PhaseOwner,
         hook: HookId,
         phase: &'static str,
         vanilla: impl FnOnce(V) -> Result<(), E>,
     ) -> Result<Option<Identifier>, E> {
         match self {
             Self::Mod { apply, owner, id } => {
-                let _reload = phase_owner
-                    .reloading()
-                    .expect("reload apply on its owning thread");
                 if let Some(owner) = owner {
                     if !session_callback_enabled(hook, owner, &id)
                         || call_session_callback(hook, owner, &id, phase, apply).is_err()
@@ -353,14 +349,13 @@ impl<V> PreparedStep<V> {
 /// Apply a server reload and collect listeners whose retained state must not be admitted.
 pub fn apply_listeners<V, E>(
     prepared: Vec<PreparedStep<V>>,
-    phase_owner: &crate::world::phase::PhaseOwner,
     hook: HookId,
     phase: &'static str,
     mut vanilla: impl FnMut(V) -> Result<(), E>,
 ) -> Result<HashSet<Identifier>, E> {
     let mut skipped = HashSet::new();
     for step in prepared {
-        if let Some(id) = step.apply(phase_owner, hook, phase, &mut vanilla)? {
+        if let Some(id) = step.apply(hook, phase, &mut vanilla)? {
             skipped.insert(id);
         }
     }
@@ -461,10 +456,8 @@ mod tests {
             trace.lock().unwrap().as_slice(),
             ["prepare first", "prepare last"]
         );
-        let phase = crate::world::phase::PhaseOwner::new(crate::world::phase::ModPhase::World);
         apply_listeners(
             prepared,
-            &phase,
             HookId::AddServerReloadListeners,
             "reload_apply",
             |vanilla| {
@@ -493,7 +486,6 @@ mod tests {
         let mods = vec![crate::ModEntry::new("reload_scene", Box::new(Mod))].into();
         crate::testing::with_dispatch(mods, || {
             let trace = Arc::new(Mutex::new(Vec::new()));
-            let phase = crate::world::phase::PhaseOwner::new(crate::world::phase::ModPhase::World);
             let hook = HookId::AddServerReloadListeners;
             for reload in 0..2 {
                 let ordered = ["bad_prepare", "vanilla", "bad_apply", "healthy"]
@@ -523,7 +515,7 @@ mod tests {
                     },
                 )
                 .unwrap();
-                let skipped = apply_listeners(prepared, &phase, hook, "reload_apply_probe", |()| {
+                let skipped = apply_listeners(prepared, hook, "reload_apply_probe", |()| {
                     trace.lock().unwrap().push(("apply", "vanilla"));
                     Ok::<_, std::convert::Infallible>(())
                 })

@@ -312,7 +312,8 @@ pub(super) fn install_registration_data(
     runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
 ) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
-    let directory = Game::game_dir();
+    let directory = mod_api::InstanceDirectory::from_path(&Game::game_dir())
+        .expect("the host path has an encoding the mod API carries");
     (mod_api::__private::platform::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
@@ -516,9 +517,8 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     }
     #[cfg(test)]
     {
-        // Test fixtures bypass startup; collect with the same thread phase as startup.
-        let _registration =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        // Test fixtures bypass startup; collect with registration open as startup does.
+        let _registration = mod_api::__private::RegistrationGuard::open();
         std::borrow::Cow::Owned(collect())
     }
 }
@@ -1897,13 +1897,6 @@ pub(super) struct ModsReload {
 }
 
 impl Game<'_> {
-    /// Observe the platform phase at construction, after bootstrapping the real test runtime.
-    pub(super) fn mod_phase_for_construction() -> mod_api::__private::ModPhase {
-        #[cfg(test)]
-        Self::initialize_mod_runtime_for_tests();
-        mod_api::__private::current_phase()
-    }
-
     #[cfg(test)]
     pub(super) fn initialize_mod_runtime_for_tests() {
         static INITIALIZED: std::sync::Once = std::sync::Once::new();
@@ -5463,7 +5456,7 @@ mod server_side_tests {
     impl Hooks for Reloads {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             _: &mut AddClientReloadListenersEvent<'_>,
         ) {
         }

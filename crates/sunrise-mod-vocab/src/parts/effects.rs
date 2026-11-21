@@ -135,7 +135,6 @@ pub fn dispatch_mob_effect_tick<'a>(
     else {
         return;
     };
-    let contained = crate::runtime::outside_world();
     let mut due = crate::entered_parts(
         HookId::ShouldApplyEffectTickThisTick,
         attached,
@@ -152,18 +151,13 @@ pub fn dispatch_mob_effect_tick<'a>(
             HookId::ShouldApplyEffectTickThisTick,
             "should_apply_effect_tick_this_tick",
             mod_id,
-            contained,
             || {
                 part.should_apply_effect_tick_this_tick(host, &mut should);
                 should.apply
             },
         ) {
-            crate::runtime::DispatchOutcome::Ok(apply) => apply,
-            crate::runtime::DispatchOutcome::Refused(refusal) => {
-                refusal.report();
-                false
-            }
-            crate::runtime::DispatchOutcome::Panicked => false,
+            Some(apply) => apply,
+            None => false,
         }
     });
     let Some(first) = due.next() else {
@@ -175,40 +169,30 @@ pub fn dispatch_mob_effect_tick<'a>(
             continue;
         }
         let changes_len = call.changes.len();
-        match crate::runtime::invoke(
-            HookId::ApplyEffectTick,
-            "apply_effect_tick",
-            mod_id,
-            contained,
-            || {
-                let mut event = crate::ApplyEffectTickEvent {
-                    effect: call.effect,
-                    dimension: call.dimension,
-                    entity: call.entity,
-                    amplifier: call.amplifier,
-                    holder: call.holder,
-                    health: call.health,
-                    max_health: call.max_health,
-                    food: call.food,
-                    active_effects: call.active_effects,
-                    changes: &mut *call.changes,
-                    keep: *call.keep,
-                };
-                part.apply_effect_tick(host, &mut event);
-                event.keep
-            },
-        ) {
-            crate::runtime::DispatchOutcome::Ok(keep) => {
+        match crate::runtime::invoke(HookId::ApplyEffectTick, "apply_effect_tick", mod_id, || {
+            let mut event = crate::ApplyEffectTickEvent {
+                effect: call.effect,
+                dimension: call.dimension,
+                entity: call.entity,
+                amplifier: call.amplifier,
+                holder: call.holder,
+                health: call.health,
+                max_health: call.max_health,
+                food: call.food,
+                active_effects: call.active_effects,
+                changes: &mut *call.changes,
+                keep: *call.keep,
+            };
+            part.apply_effect_tick(host, &mut event);
+            event.keep
+        }) {
+            Some(keep) => {
                 *call.keep = keep;
                 if !*call.keep {
                     break;
                 }
             }
-            crate::runtime::DispatchOutcome::Refused(refusal) => {
-                call.changes.truncate(changes_len);
-                refusal.report();
-            }
-            crate::runtime::DispatchOutcome::Panicked => {
+            None => {
                 call.changes.truncate(changes_len);
             }
         }

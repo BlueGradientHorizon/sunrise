@@ -12,7 +12,6 @@ pub trait DataMapsBackend {
     /// typed decoding. The tag borrows from this backend, not the lookup IDs. Clone it only
     /// to retain it beyond the borrow. `Ok(None)` means the map gives this entry no value;
     /// unavailable maps and unknown map types are errors.
-    #[access(PublishedResources)]
     fn data_map_value(
         &self,
         registry: &str,
@@ -23,7 +22,6 @@ pub trait DataMapsBackend {
     /// The published NBT entries of data map `map` in `registry`, sorted by entry ID
     /// (`IRegistryExtension.getDataMap`). The slice borrows from this backend; call `to_vec`
     /// only to retain all the rows beyond that borrow. An empty map gives an empty slice.
-    #[access(PublishedResources)]
     fn data_map_entries(&self, registry: &str, map: &str)
     -> Result<&[(String, Tag)], DataMapError>;
 }

@@ -92,14 +92,6 @@ impl SelectedBlockScreenEffectRenderer {
         let _scope = self
             .owner
             .map(|id| crate::mark_mod(id, "block_screen_effect_renderer::submit"));
-        match crate::runtime::refusable(crate::runtime::outside_world(), || {
-            self.renderer.submit(host, render)
-        }) {
-            Ok(replace) => replace,
-            Err(refusal) => {
-                refusal.report();
-                false
-            }
-        }
+        self.renderer.submit(host, render)
     }
 }

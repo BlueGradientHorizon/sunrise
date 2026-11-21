@@ -73,11 +73,7 @@ impl Iterator for Entered {
 impl Drop for Entered { fn drop(&mut self) { OWNER.set("outside"); } }
 fn entered_with_id(_: mod_api::HookId, _: &str) -> Entered { Entered { next: 0, count: ACTIONS.with_borrow(Vec::len) } }
 mod runtime {
-    pub struct Refusal;
-    impl Refusal { pub fn report(&self) {} }
-    pub enum DispatchOutcome<T> { Ok(T), Refused(Refusal), Panicked }
-    pub fn outside_world() -> bool { false }
-    pub fn invoke<T>(_: super::mod_api::HookId, _: &str, _: &str, _: bool, call: impl FnOnce() -> T) -> DispatchOutcome<T> { DispatchOutcome::Ok(call()) }
+    pub fn invoke<T>(_: super::mod_api::HookId, _: &str, _: &str, call: impl FnOnce() -> T) -> Option<T> { Some(call()) }
     pub struct ListenerScope;
     impl ListenerScope {
         pub fn new() -> Self { Self }

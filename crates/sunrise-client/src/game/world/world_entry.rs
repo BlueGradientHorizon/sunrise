@@ -243,10 +243,6 @@ impl Game<'_> {
         reload: bool,
         root: &std::path::Path,
     ) -> Result<super::condition_reload_state::StagedWorldTables> {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server tables on their owning thread");
         // The ask of this load, both here and on `/reload`: a native mod
         // recomputes the pack files it contributes every time.
         let mut contributed = Vec::new();

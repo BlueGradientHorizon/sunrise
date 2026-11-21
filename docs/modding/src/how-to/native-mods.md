@@ -155,10 +155,14 @@ Past a second of round trip the window stops growing: a player whose copy is
 older than it reaches is judged as a walker in the frame the cap allows, not carried. A vanilla client, which sends no age, gets the
 window around the expected age.
 
-## Host calls a load phase refuses
+## What a callback can access
 
-Each Host method says in which load phases it may be called (`#[access(...)]`).
-World reads and writes require the World phase. The other Host phases admit only the following classes:
+Registration, setup, initial config loading and data/asset reloads lend only the
+context in the hook signature, not a full game host. An operation that is not on
+the context cannot be called there. Config reload and unload lend the polling
+or stopping game's host; world and session lookups on a live host return
+`None` when no world or session is open. See [load callbacks](../concepts/load-phases.md)
+for the callback order and types.
 
 | Phase | Open |
 |---|---|

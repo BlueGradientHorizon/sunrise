@@ -70,12 +70,12 @@ impl Hooks for Keeper {
             assets.model(&id("keeper:missing")),
         ]);
     }
-    fn client_setup(&self, _: &mut dyn ClientHost, _: &mut ClientSetupEvent) {
+    fn client_setup(&self, _: &mut dyn ClientSetupContext, _: &mut ClientSetupEvent) {
         self.0.lock().unwrap().heard.push("setup".into());
     }
     fn client_resources_reloaded(
         &self,
-        _: &mut dyn ClientHost,
+        _: &dyn ClientReloadHost,
         _: &mut ClientResourcesReloadedEvent,
     ) {
         self.0.lock().unwrap().heard.push("reloaded".into());

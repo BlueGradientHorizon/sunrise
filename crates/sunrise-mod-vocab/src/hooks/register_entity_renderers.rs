@@ -17,7 +17,7 @@ pub trait Hooks {
     /// the published generation of synced attachments through `EntityRenderState::attachments`.
     /// Other entity families keep their own drawing, including the dragon and end crystals. General, living,
     /// primed TNT and experience orb renderers submit at each entity's slot in level join order.
-    /// If this listener panics or a phase call is refused, none of its registrations take effect.
+    /// If this listener panics, none of its registrations take effect.
     #[notes = r#"## Entity renderers
 
 An entity renderer (NeoForge's `EntityRenderersEvent.RegisterRenderers` and `EntityRenderer`) gives an

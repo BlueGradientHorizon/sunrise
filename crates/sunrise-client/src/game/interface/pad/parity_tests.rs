@@ -2,7 +2,6 @@
 //! What needs a renderer (inventory slots, screenshots) is covered by tools/pad_parity_e2e.py.
 
 use super::super::{Audio, Game, Options, Progress, Screen, Settings, load_resources};
-use mod_api::__private::{ModPhase, PhaseOwner};
 use sunrise_client::actions::Action;
 use sunrise_client::command::args::GameMode;
 use sunrise_client::gamepad::{Button, PadState};
@@ -164,7 +163,6 @@ fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
 #[ignore = "daily"]
 fn readers_of_the_movement_keys_see_the_stick() {
     playing(|game| {
-        let _phase = PhaseOwner::scope(ModPhase::World);
         game.options.execution_role = ExecutionRole::Client;
         let forward_mapping = game.vanilla_key_mapping("key.forward").unwrap();
         let left_mapping = game.vanilla_key_mapping("key.left").unwrap();
@@ -336,7 +334,6 @@ fn the_mouse_letting_go_leaves_what_the_pad_holds_and_back() {
 
         // Rebinding a physical mouse button to an ordinary key goes through
         // the keyboard source path, not the default attack/use path above.
-        let _phase = PhaseOwner::scope(ModPhase::World);
         game.options.execution_role = ExecutionRole::Client;
         with_player(game);
         let binding = "key.mouse.left";

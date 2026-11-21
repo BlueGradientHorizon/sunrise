@@ -9,6 +9,6 @@ impl Game<'_> {
         &self,
         listeners: &mut mod_api::ServerListenerRegistry,
     ) {
-        self.fire_add_server_reload_listeners(|listen| listeners.register_listener(listen));
+        Self::fire_add_server_reload_listeners(self, |listen| listeners.register_listener(listen));
     }
 }

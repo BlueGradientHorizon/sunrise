@@ -12,7 +12,7 @@ pub trait Hooks {
     /// reload, after the renderers resolve (`register_entity_renderers`): layers don't carry over
     /// from one load to the next, so add them again each time. In the ordered body pass,
     /// layers submit in level join order, interleaved with general entity renderer submissions.
-    /// A listener that panics or incurs a phase refusal adds no layers; later listeners still
+    /// If this listener panics, none of its registrations take effect; later listeners still
     /// register in the same order.
     #[notes = r#"## Entity layers
 
@@ -85,10 +85,9 @@ layers, in a follow-up of #860, which lifts their refusal."#]
         receiver = "associated",
         dispatch = "flat",
         side = "client",
-        version = 4,
         contract = "listen",
         staged_surface = "layers",
-        version = 3,
+        version = 4,
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"
     )]

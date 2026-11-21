@@ -239,13 +239,15 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     quote!(#implementation #export).into()
 }
 
-/// Generate the defaults of a host area from each method's access declaration. An optional
-/// callback method marked `#[decline_unavailable]` returns without calling it; others panic if
-/// unimplemented. The same declarations drive game forwarders in the build-time API generator.
+/// Generate the defaults of a host area trait. An optional callback method marked
+/// `#[decline_unavailable]` returns without calling it; others panic if unimplemented.
+/// The same declarations drive game forwarders in the build-time API generator.
 /// A backend trait may carry `#[table_backend("path")]`: the game answers its reads from the
 /// borrowed view at `path`, which implements the trait, and `Game` forwards to it. Methods can
 /// opt out of generated conversion in either direction with `#[forward_api_inputs]` or
 /// `#[forward_api_output]` when the implementation accepts or returns the API types directly.
+/// `#[serialize_text]` validates Text arguments at a forwarding boundary that writes a packet
+/// or a saved component; unmarked text arguments are converted only for in-process use.
 /// Use `#[manual_handle]` for an inherent handle wrapper written by hand.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
@@ -275,20 +277,6 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
         let syn::TraitItem::Fn(method) = member else {
             continue;
         };
-        let Some(index) = method
-            .attrs
-            .iter()
-            .position(|attr| attr.path().is_ident("access"))
-        else {
-            return syn::Error::new_spanned(&method.sig, "host method needs #[access(Level)]")
-                .to_compile_error()
-                .into();
-        };
-        let attr = method.attrs.remove(index);
-        let level = match attr.parse_args::<syn::Ident>() {
-            Ok(level) => level,
-            Err(error) => return error.to_compile_error().into(),
-        };
         let decline = method
             .attrs
             .iter()
@@ -299,6 +287,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
                 && !attr.path().is_ident("read_stack")
                 && !attr.path().is_ident("forward_api_inputs")
                 && !attr.path().is_ident("forward_api_output")
+                && !attr.path().is_ident("serialize_text")
                 && !attr.path().is_ident("decline_unavailable")
                 && !attr.path().is_ident("manual_handle")
         });
@@ -315,9 +304,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
         } else {
             let operation = method.sig.ident.to_string();
             let label = format!("{union}::{operation}");
-            syn::parse_quote!({
-                crate::world::phase::unprovided(#label, #operation, crate::world::phase::LoadAccess::#level)
-            })
+            syn::parse_quote!({ unimplemented!("{}", #label) })
         });
         method.semi_token = None;
     }

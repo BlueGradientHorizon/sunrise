@@ -109,7 +109,7 @@ impl mod_api::ServerReloadListener for Guard {
 impl Hooks for Guard {
     fn add_server_reload_listeners(
         &self,
-        _: &dyn mod_api::Host,
+        _: &dyn mod_api::ReloadContext,
         event: &mut mod_api::AddServerReloadListenersEvent<'_>,
     ) {
         event

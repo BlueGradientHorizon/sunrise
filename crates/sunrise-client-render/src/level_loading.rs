@@ -603,7 +603,7 @@ pub fn draw_loading_overlay(
 
 /// Mods' startup bars under the stage bar, newest first, each with its label above it, as many
 /// as fit and at most four; and their lines in the top left corner (NeoForge's
-/// `StartupNotificationManager`). Labels and lines are cut to one line.
+/// `StartupNotificationManager`). Message lines are cut to one line; labels are stored verbatim.
 pub fn draw_mod_progress(
     batch: &mut HudBatch,
     atlas: &HudAtlas,

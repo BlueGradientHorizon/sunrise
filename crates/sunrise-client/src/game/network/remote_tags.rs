@@ -112,9 +112,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use mod_api::{
-        Hooks, HostSide, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent,
-    };
+    use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
     use mod_platform::__private::part_tests::block_key;
     use std::sync::{Arc, Mutex};
     use sunrise_protocol::packets::{
@@ -139,23 +137,24 @@ mod tests {
     struct Probe(Arc<Mutex<Vec<Seen>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
-        fn tags_updated(&self, host: HostSide<'_>, event: &mut TagsUpdatedEvent) {
-            let HostSide::Client(host) = host else {
-                panic!("the server's tags are a client's to apply");
-            };
-            let host: &dyn mod_api::Host = &*host;
-            let tags = host.tags();
+        fn tags_updated(&self, context: &dyn mod_api::ReloadContext, event: &mut TagsUpdatedEvent) {
+            assert!(
+                matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }),
+                "the server's tags are a client's to apply"
+            );
+            let tags = context.tags();
             let key = |tag| tags.key(&Identifier::parse(tag).unwrap()).unwrap();
-            let stick = host.item_key(&Identifier::parse("minecraft:stick").unwrap());
+            let stick = context.item_key(&Identifier::parse("minecraft:stick").unwrap());
             self.0.lock().unwrap().push(Seen {
                 cause: event.cause,
                 items: tags.items(key("test:items")),
                 empty_items: tags.items(key("test:empty_items")),
                 fluids: tags.fluids(key("test:fluids")),
-                stone_in_block_tag: host.block_in_tag(block_key("minecraft:stone"), "test:blocks"),
-                dirt_in_block_tag: host.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
+                stone_in_block_tag: context
+                    .block_in_tag(block_key("minecraft:stone"), "test:blocks"),
+                dirt_in_block_tag: context.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
                 stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items")),
-                lava_in_fluid_tag: host.fluid_in_tag("minecraft:lava", "test:fluids"),
+                lava_in_fluid_tag: context.fluid_in_tag("minecraft:lava", "test:fluids"),
             });
         }
     }
@@ -466,10 +465,16 @@ mod tests {
                 r.block_key("minecraft:glass");
                 r.block_part_tag("power_test:providers", Provider);
             }
-            fn tags_updated(&self, host: HostSide<'_>, _: &mut TagsUpdatedEvent) {
-                let HostSide::Client(host) = host else { return };
+            fn tags_updated(
+                &self,
+                context: &dyn mod_api::ReloadContext,
+                event: &mut TagsUpdatedEvent,
+            ) {
+                if !matches!(event.cause, TagsUpdateCause::ClientPacketReceived { .. }) {
+                    return;
+                }
                 ENABLED.store(
-                    host.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
+                    context.block_in_tag(block_key("minecraft:glass"), "power_test:enabled")
                         == Some(true),
                     Ordering::Relaxed,
                 );

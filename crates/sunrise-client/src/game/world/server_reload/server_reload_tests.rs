@@ -72,7 +72,7 @@ impl ServerReloadListener for CheckListener {
 impl Hooks for DataListener {
     fn add_server_reload_listeners(
         &self,
-        _host: &dyn Host,
+        _context: &dyn mod_api::ReloadContext,
         event: &mut AddServerReloadListenersEvent<'_>,
     ) {
         let id = |text| Identifier::parse(text).unwrap();
@@ -171,7 +171,7 @@ fn reload_command_prepares_world_before_applying_listeners_and_preserves_tables_
     impl Hooks for Listener {
         fn add_server_reload_listeners(
             &self,
-            _: &dyn Host,
+            _: &dyn mod_api::ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             event
@@ -738,7 +738,7 @@ fn server_reload_skips_unparsable_files_and_delivers_the_rest() {
     impl Hooks for SkipHooks {
         fn add_server_reload_listeners(
             &self,
-            _host: &dyn Host,
+            _context: &dyn mod_api::ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             event
@@ -865,7 +865,7 @@ fn server_reload_registration_failure_stops_world_open_and_quiet_mods_never_list
     impl Hooks for Broken {
         fn add_server_reload_listeners(
             &self,
-            _host: &dyn Host,
+            _context: &dyn mod_api::ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             let a = Identifier::parse("broken:a").unwrap();
@@ -1011,7 +1011,7 @@ impl ServerReloadListener for RetainedData {
 impl Hooks for RetainedData {
     fn add_server_reload_listeners(
         &self,
-        _host: &dyn Host,
+        _context: &dyn mod_api::ReloadContext,
         event: &mut AddServerReloadListenersEvent<'_>,
     ) {
         let key = ListenerKey::<Self>::new(Identifier::parse("reload_test:kept").unwrap());
@@ -1132,26 +1132,13 @@ fn server_reload_retains_listeners_for_other_hooks() {
 #[test]
 #[ignore = "daily"]
 fn server_completion_reads_published_data_without_world_access_on_first_open() {
-    use mod_api::__private::{ModPhase, PhaseOwner};
-    use mod_api::{HostSide, TagsUpdateCause, TagsUpdatedEvent};
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use mod_api::{ReloadContext, TagsUpdateCause, TagsUpdatedEvent};
 
     struct Probe(Arc<Mutex<Vec<TagsUpdateCause>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
-        fn tags_updated(&self, host: HostSide<'_>, event: &mut TagsUpdatedEvent) {
-            let HostSide::Server(host) = host else {
-                panic!("a data load is the server's");
-            };
-            assert!(!host.recipes_of_type("minecraft:smelting").is_empty());
-            let refused =
-                catch_unwind(AssertUnwindSafe(|| host.level("minecraft:overworld"))).unwrap_err();
-            assert_eq!(
-                refused
-                    .downcast_ref::<mod_api::__private::PhaseRefusal>()
-                    .map(|refusal| refusal.phase),
-                Some(ModPhase::Reloading)
-            );
+        fn tags_updated(&self, context: &dyn ReloadContext, event: &mut TagsUpdatedEvent) {
+            assert!(!context.recipes_of_type("minecraft:smelting").is_empty());
             self.0.lock().unwrap().push(event.cause);
         }
     }
@@ -1163,13 +1150,9 @@ fn server_completion_reads_published_data_without_world_access_on_first_open() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.mod_phase = PhaseOwner::new(ModPhase::Setup);
             let root = std::env::current_dir().unwrap().join("published-world");
             game.load_world(request(&root)).unwrap();
-            assert_eq!(mod_api::__private::current_phase(), ModPhase::Setup);
-            game.mod_phase = PhaseOwner::new(ModPhase::World);
             game.native_tags_updated(TagsUpdateCause::ServerDataLoad { reload: true });
-            assert_eq!(mod_api::__private::current_phase(), ModPhase::World);
             assert_eq!(
                 *seen.lock().unwrap(),
                 [
@@ -1190,7 +1173,7 @@ fn server_completion_reads_published_data_without_world_access_on_first_open() {
 fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
     use mod_api::{
         BlockKey, DataMap, DataMapError, DataMapTypesEvent, DataMapsUpdateCause,
-        DataMapsUpdatedEvent, DataPackFilesEvent, HostSide, ItemKey, ServerHost, Tag,
+        DataMapsUpdatedEvent, DataPackFilesEvent, ItemKey, ReloadContext, ServerHost, Tag,
     };
     use std::sync::atomic::AtomicUsize;
 
@@ -1261,10 +1244,12 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
                 );
             }
         }
-        fn data_maps_updated(&self, host: HostSide<'_>, event: &mut DataMapsUpdatedEvent<'_>) {
-            let HostSide::Server(host) = host else {
-                panic!("the server's reload");
-            };
+        fn data_maps_updated(
+            &self,
+            context: &dyn ReloadContext,
+            event: &mut DataMapsUpdatedEvent<'_>,
+        ) {
+            assert_eq!(event.cause, DataMapsUpdateCause::ServerReload);
             self.seen
                 .lock()
                 .unwrap()
@@ -1272,15 +1257,14 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
             if event.registry != "minecraft:item" {
                 return;
             }
-            let host: &dyn Host = &*host;
-            let item = |id: &str| host.item_key(&Identifier::parse(id).unwrap()).unwrap();
+            let item = |id: &str| context.item_key(&Identifier::parse(id).unwrap()).unwrap();
             let stone = mod_api::__private::block_key("minecraft:stone").unwrap();
             self.reads.lock().unwrap().push([
-                item("minecraft:coal").data(host, &FUEL),
-                item("minecraft:oak_log").data(host, &FUEL),
-                item("minecraft:stone").data(host, &FUEL),
-                item("minecraft:coal").data(host, &Fuel("probe:unregistered")),
-                stone.data(host, &Hardness),
+                context.data_map(&item("minecraft:coal"), &FUEL),
+                context.data_map(&item("minecraft:oak_log"), &FUEL),
+                context.data_map(&item("minecraft:stone"), &FUEL),
+                context.data_map(&item("minecraft:coal"), &Fuel("probe:unregistered")),
+                context.data_map(&stone, &Hardness),
             ]);
         }
     }

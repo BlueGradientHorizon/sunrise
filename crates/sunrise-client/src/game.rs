@@ -3696,7 +3696,6 @@ struct Game<'a> {
     tutorial_toasts: Vec<tutorial::HintToast>,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
     narrator_toast: Option<sunrise_client::toasts::SystemToast>,
-    mod_callback_toasts: Vec<sunrise_client::toasts::SystemToast>,
     /// The open screen's narration (`Screen`'s narration state and timing).
     narration: sunrise_client::screen_narrator::ScreenNarrator,
     /// Where the options screen returns: true = title, false = pause menu.
@@ -3975,7 +3974,6 @@ struct Game<'a> {
     held_out: Vec<u32>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
-    mod_phase: mod_api::__private::PhaseOwner,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
     /// The mod whose own screen is open (`Screen::Mod`).
@@ -7102,7 +7100,6 @@ impl Game<'_> {
         // The ToastManager draws over every screen, the title and the
         // options included: the narrator's toast follows the player there.
         self.draw_narrator_toast(&mut batch);
-        self.draw_mod_callback_toasts(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
         self.draw_debug_overlay(&mut batch, size);
@@ -13120,14 +13117,8 @@ impl<'a> Game<'a> {
         prepared: Option<GameCpuResources>,
         initial: Option<&mut Option<initial_client_models::InitialModelGeneration>>,
     ) -> Result<Self> {
-        let phase = match Self::mod_phase_for_construction() {
-            mod_api::__private::ModPhase::Packages if cfg!(test) => {
-                mod_api::__private::ModPhase::World
-            }
-            mod_api::__private::ModPhase::Packages => mod_api::__private::ModPhase::Setup,
-            phase => phase,
-        };
-        let mod_phase = mod_api::__private::PhaseOwner::new(phase);
+        #[cfg(test)]
+        Self::initialize_mod_runtime_for_tests();
         // A scoped hook on this thread asks this game's parts.
         mod_api::__private::mark_game_thread();
         let loop_side = options.execution_role.loop_side();
@@ -13497,7 +13488,6 @@ impl<'a> Game<'a> {
             tutorial,
             tutorial_toasts: Vec::new(),
             narrator_toast: None,
-            mod_callback_toasts: Vec::new(),
             narration: Default::default(),
             options_from_title: false,
             dragging: false,
@@ -13668,7 +13658,6 @@ impl<'a> Game<'a> {
             lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
             native_configs: Default::default(),
-            mod_phase,
             native_net: Default::default(),
             native_mod_screen: None,
             sky_darken_memo: Default::default(),
@@ -13948,54 +13937,54 @@ pub(crate) fn run_with(
         .mods
         .select(&std::env::current_dir()?, &early_settings.mods.enabled);
     mods::validate_startup_packages(&options.mods)?;
-    let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
-    mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
-    crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
-    // The structure types those mods registered, handed to the engine before
-    // any world opens, as its StructureRegistry reads them.
-    if sunrise_world::worldgen::structure::mod_types::install_mod_structure_types(
-        native_structure_types::installed_structure_types(),
-    )
-    .is_err()
     {
-        log::warn!("Mod structure types already installed; keeping the first table");
+        let _registration = mod_api::__private::RegistrationGuard::open();
+        crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
+        // The structure types those mods registered, handed to the engine before
+        // any world opens, as its StructureRegistry reads them.
+        if sunrise_world::worldgen::structure::mod_types::install_mod_structure_types(
+            native_structure_types::installed_structure_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod structure types already installed; keeping the first table");
+        }
+        // Their feature types, before any world decodes its configured features.
+        if sunrise_world::worldgen::mod_features::install_mod_feature_types(
+            native_feature_types::installed_feature_types(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod feature types already installed; keeping the first table");
+        }
+        // The levels they registered, below the data packs of every world opened.
+        if sunrise_world::worldgen::overrides::install_mod_dimensions(
+            native_dimensions::installed_dimensions(),
+        )
+        .is_err()
+        {
+            log::warn!("Mod dimensions already installed; keeping the first table");
+        }
+        // Their chunk generators and biome sources, which those levels' and the packs' stems name.
+        native_chunk_generator::install();
+        native_biome_source::install();
+        mods::register_components(&vanilla_root)?;
+        mods::register_standalone_models(options.execution_role);
+        mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
+        mods::register_debug_entries(options.execution_role);
+        mods::register_gui_layers(options.execution_role);
+        mods::register_map_decoration_types();
+        mods::register_range_select_item_model_properties(options.execution_role);
+        mods::register_select_item_model_properties(options.execution_role);
+        mods::register_resource_sources(options.execution_role);
+        mods::register_enchantment_damage_effects();
+        mods::register_client_presentations(options.execution_role)?;
+        mods::register_meshing(options.execution_role);
+        mods::register_particles(options.execution_role)?;
+        mods::freeze_declarations();
     }
-    // Their feature types, before any world decodes its configured features.
-    if sunrise_world::worldgen::mod_features::install_mod_feature_types(
-        native_feature_types::installed_feature_types(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod feature types already installed; keeping the first table");
-    }
-    // The levels they registered, below the data packs of every world opened.
-    if sunrise_world::worldgen::overrides::install_mod_dimensions(
-        native_dimensions::installed_dimensions(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod dimensions already installed; keeping the first table");
-    }
-    // Their chunk generators and biome sources, which those levels' and the packs' stems name.
-    native_chunk_generator::install();
-    native_biome_source::install();
-    mods::register_components(&vanilla_root)?;
-    mods::register_standalone_models(options.execution_role);
-    mods::register_layer_definitions(options.execution_role, &vanilla_root)?;
-    mods::register_debug_entries(options.execution_role);
-    mods::register_gui_layers(options.execution_role);
-    mods::register_map_decoration_types();
-    mods::register_range_select_item_model_properties(options.execution_role);
-    mods::register_select_item_model_properties(options.execution_role);
-    mods::register_resource_sources(options.execution_role);
-    mods::register_enchantment_damage_effects();
-    mods::register_client_presentations(options.execution_role)?;
-    mods::register_meshing(options.execution_role);
-    mods::register_particles(options.execution_role)?;
-    mods::freeze_declarations();
-    mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
     if options.execution_role.is_client() {

@@ -92,36 +92,26 @@ impl RegisterConfigurationTasksEvent<'_> {
                     dispose_task(&owner, task);
                     return Ok(());
                 }
-                // A phase refusal escapes the retained callback to the listener's checkpoint.
-                // Keep the task alive across that unwind so its destructor can run separately.
-                let binding = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    owner.call_in_listener(
-                        "configuration task",
-                        "ConfigurationTask::task_type",
-                        || task.task_type(),
-                    )
-                }));
-                let refusal = match binding {
-                    Err(payload) => {
-                        dispose_task(&owner, task);
-                        std::panic::resume_unwind(payload);
-                    }
-                    Ok(Err(reason)) => ConfigurationTaskRegistrationError::CallbackFailed(reason),
-                    Ok(Ok(id)) if id.namespace().is_empty() || id.path().is_empty() => {
-                        ConfigurationTaskRegistrationError::EmptyType
-                    }
-                    Ok(Ok(id)) if !self.registration.types.insert(id.clone()) => {
-                        ConfigurationTaskRegistrationError::DuplicateType(id.clone())
-                    }
-                    Ok(Ok(id)) => {
-                        self.registration.tasks.push(RegisteredConfigurationTask {
-                            kind: id.clone(),
-                            task: Some(Box::new(task)),
-                            owner,
-                        });
-                        return Ok(());
-                    }
-                };
+                let refusal =
+                    match owner.call("configuration task", "ConfigurationTask::task_type", || {
+                        task.task_type()
+                    }) {
+                        Err(reason) => ConfigurationTaskRegistrationError::CallbackFailed(reason),
+                        Ok(id) if id.namespace().is_empty() || id.path().is_empty() => {
+                            ConfigurationTaskRegistrationError::EmptyType
+                        }
+                        Ok(id) if !self.registration.types.insert(id.clone()) => {
+                            ConfigurationTaskRegistrationError::DuplicateType(id.clone())
+                        }
+                        Ok(id) => {
+                            self.registration.tasks.push(RegisteredConfigurationTask {
+                                kind: id.clone(),
+                                task: Some(Box::new(task)),
+                                owner,
+                            });
+                            return Ok(());
+                        }
+                    };
                 dispose_task(&owner, task);
                 refusal
             }
@@ -162,7 +152,7 @@ impl ConfigurationTaskRegistration {
         (self.tasks.len(), self.refusal.is_some())
     }
 
-    /// Discard only a failed or phase-refused listener's tasks, reserved types and diagnostic.
+    /// Discard only a panicking listener's tasks, reserved types and diagnostic.
     pub fn rollback(&mut self, (len, had_refusal): (usize, bool)) {
         let discarded = self.tasks.split_off(len);
         for task in &discarded {

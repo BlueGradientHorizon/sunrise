@@ -1,5 +1,5 @@
 //! Each package's runtime data files, checked against their `[runtime]` hashes once when the
-//! package opens and handed to registration, which serves them to the mod that owns them.
+//! package opens and handed to registration, which serves them by mod id.
 use super::ModsState;
 use mod_api::RuntimePathError;
 use std::{collections::BTreeMap, path::Path, sync::Arc};
@@ -49,7 +49,8 @@ mod tests {
     use std::sync::Mutex;
     use sunrise_mod_package::manifest::Package;
 
-    const NAME: &str = "game::mods::runtime_files::tests::a_mod_reads_its_own_runtime_files_during_registration_and_no_other";
+    const NAME: &str =
+        "game::mods::runtime_files::tests::a_mod_reads_runtime_files_by_mod_id_during_registration";
     const BYTES: &[u8] = b"baked lookup table";
 
     /// A native package folder with one listed runtime file, opened as the engine opens it.
@@ -128,14 +129,14 @@ mod tests {
         assert_eq!(archived.file("nav.bin"), Some(BYTES));
     }
 
-    /// What each mod's registration saw of its runtime files.
-    struct Reader(&'static str, Arc<Mutex<Vec<String>>>);
+    /// What each mod's registration saw when looking up runtime files by mod id.
+    struct Reader(&'static str, &'static str, Arc<Mutex<Vec<String>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Reader {
         fn register(&self, _: &mut dyn Registrar, cx: &RegistrationContext) {
-            let seen = match cx.runtime_files() {
+            let record = |target: &str| match cx.runtime_files(target) {
                 Ok(files) => format!(
-                    "{} names={:?} nav={:?} other={:?} path={}",
+                    "{}->{target} names={:?} nav={:?} other={:?} path={}",
                     self.0,
                     files.names(),
                     files.file("nav.bin").map(|b| b == BYTES),
@@ -145,18 +146,22 @@ mod tests {
                         .unwrap()
                         .ends_with("runtime/nav.bin"),
                 ),
-                Err(error) => format!("{} {error}", self.0),
+                Err(error) => format!("{}->{target} {error}", self.0),
             };
-            self.1.lock().unwrap().push(seen);
+            let mut seen = self.2.lock().unwrap();
+            seen.push(record(self.1));
+            if self.1 != "reader_a" {
+                seen.push(record("reader_a"));
+            }
         }
     }
 
-    /// Each mod's registration reads only its own package's files: `reader_a` has a package with
-    /// one file, `reader_b` has none and is told so, and a name the manifest does not list is
-    /// `None`.
+    /// Registration reads runtime files by explicit mod id: `reader_a` has a package with one
+    /// file, `reader_b` can read `reader_a`'s files by id while reading its own returns
+    /// `NoRuntimeFiles`, and a name the manifest does not list is `None`.
     #[test]
     #[ignore = "daily"]
-    fn a_mod_reads_its_own_runtime_files_during_registration_and_no_other() {
+    fn a_mod_reads_runtime_files_by_mod_id_during_registration() {
         if run_fresh_cases(NAME, "SUNRISE_RUNTIME_FILES_CHILD", &["registration"]) {
             return;
         }
@@ -175,8 +180,8 @@ mod tests {
         files.insert("reader_a".into(), Arc::new(PackageRuntime(runtime)));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let entries = vec![
-            ModEntry::new("reader_a", Box::new(Reader("a", seen.clone()))),
-            ModEntry::new("reader_b", Box::new(Reader("b", seen.clone()))),
+            ModEntry::new("reader_a", Box::new(Reader("a", "reader_a", seen.clone()))),
+            ModEntry::new("reader_b", Box::new(Reader("b", "reader_b", seen.clone()))),
         ];
         let inventory: Vec<_> = ["reader_a", "reader_b"]
             .map(|id| {
@@ -205,8 +210,9 @@ mod tests {
         assert_eq!(
             seen,
             [
-                "a names=[\"nav.bin\"] nav=Some(true) other=None path=true",
-                "b this mod's package declares no [runtime] files",
+                "a->reader_a names=[\"nav.bin\"] nav=Some(true) other=None path=true",
+                "b->reader_a names=[\"nav.bin\"] nav=Some(true) other=None path=true",
+                "b->reader_b package declares no [runtime] files",
             ]
         );
     }

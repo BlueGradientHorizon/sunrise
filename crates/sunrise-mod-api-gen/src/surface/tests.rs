@@ -2039,6 +2039,15 @@ fn shapes_follow_the_wire_layout() {
         HOOKS,
     );
     assert_ne!(ident(&base), ident(&declared));
+    let contracted = export_fixture(
+        &[(
+            LIB,
+            "layout_fields!(\"namespace\" => String);",
+            "layout_fields!(\"contract:v2\"; \"namespace\" => String);",
+        )],
+        HOOKS,
+    );
+    assert_eq!(ident(&base), ident(&contracted));
     // A type that crosses as another has that type's shape inside `via`, and one with no
     // declared layout has none.
     let types: BTreeMap<&str, &Type> = base

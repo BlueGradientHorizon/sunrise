@@ -236,7 +236,7 @@ fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
         pre_victim: declare.pre_victim.clone(),
     };
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let _phase = mod_api::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(declare))].into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
@@ -250,7 +250,6 @@ fn with_counter(test: impl FnOnce(&mut Game<'_>, Levers)) {
             // The registration phase ends before the test's own ticks: a
             // part's writes are storage writes, which only a world's phases
             // take, as the server's own tick runs in World.
-            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             test(game, levers)
         })
     });

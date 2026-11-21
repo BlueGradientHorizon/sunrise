@@ -9,12 +9,10 @@ pub trait PlayerInventoryBackend {
     /// Side: both.
     /// `Inventory.getSelectedSlot`: the hotbar slot the player holds, 0..9. On a client,
     /// [`crate::ClientHost::select_hotbar_slot`] chooses it.
-    #[access(WorldOnly)]
     fn player_selected_slot(&self, player: PlayerRef) -> Option<usize>;
     /// Side: both.
     /// Lend the inventory once if available, including when empty.
     /// See [`PlayerRef::with_inventory`] for the slot numbering and side rules.
-    #[access(WorldOnly)]
     #[manual_handle]
     fn player_inventory_slots(
         &self,
@@ -24,7 +22,6 @@ pub trait PlayerInventoryBackend {
     /// Side: server.
     /// Lend the ender chest once if available, including when empty.
     /// See [`PlayerRef::with_ender_chest`] for the slot numbering and side rules.
-    #[access(WorldOnly)]
     #[manual_handle]
     fn player_ender_chest(
         &self,
@@ -44,7 +41,6 @@ pub trait PlayerInventoryBackendMut {
     /// `player_switch_hotbar_slot_pre`: that hook is for the player's own input. Returns false for
     /// a slot past 8, a stale or unavailable player, and a dead one; true when the player already
     /// held `slot`.
-    #[access(WorldOnly)]
     fn player_set_selected_slot(&mut self, player: PlayerRef, slot: usize) -> bool;
     /// Side: server.
     /// `Player.drop(stack, false, thrown_by_player)`: `stack` is thrown from the player's eyes
@@ -57,7 +53,6 @@ pub trait PlayerInventoryBackendMut {
     /// than the hook's, or a toss a mod canceled (`item_toss`), so a refused drop never loses
     /// items. Invalid API stack conversion returns
     /// `StackWriteError`, as other checked stack writes do.
-    #[access(WorldOnly)]
     fn player_drop_stack(
         &mut self,
         player: PlayerRef,
@@ -77,7 +72,6 @@ pub trait PlayerInventoryBackendMut {
     /// `Stack` (an item the world lacks, a count or damage the item does not allow).
     /// An open transaction journals this write; an abort restores the previous value.
     /// Equipment effects wait for the outermost commit.
-    #[access(WorldOnly)]
     fn player_set_inventory_slot(
         &mut self,
         player: PlayerRef,
@@ -90,7 +84,6 @@ pub trait PlayerInventoryBackendMut {
     /// with the open menu's sync. Refuses as `player_set_inventory_slot` does, with
     /// `SlotOutOfRange { last: 26 }` for a slot past 26 (never a panic).
     /// An open transaction journals this write; an abort restores the previous value.
-    #[access(WorldOnly)]
     fn player_set_ender_chest_slot(
         &mut self,
         player: PlayerRef,
@@ -109,7 +102,6 @@ pub trait PlayerInventoryBackendMut {
     /// dropped. Otherwise `Ok(None)`.
     /// An open transaction journals this write; an abort restores the previous value.
     /// Overflow drops and pickup sounds wait for the outermost commit.
-    #[access(WorldOnly)]
     fn player_give_stack(
         &mut self,
         player: PlayerRef,

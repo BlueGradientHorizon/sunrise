@@ -4597,14 +4597,6 @@ pub(super) mod tests {
             ))
         );
         assert_eq!(game.world.block(0, 64, 0), air);
-        {
-            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
-            assert_eq!(
-                level.set_block(&mut game, [0, 64, 0], api_stone, BlockUpdateFlags::NONE),
-                Err(mod_api::LevelWriteError::Unavailable)
-            );
-        }
-        assert_eq!(game.world.block(0, 64, 0), air);
         game.world.block_log = Some(Vec::new());
         assert_eq!(
             level.update_neighbors(

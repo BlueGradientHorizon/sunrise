@@ -58,10 +58,6 @@ impl Game<'_> {
         &self,
         stack: &PackStack,
     ) -> Result<PreparedServerReload, ReloadStageError> {
-        let _reload = self
-            .mod_phase
-            .reloading()
-            .expect("server reload on its owning thread");
         sunrise_client::mod_content::check_jars(
             &self.options.resources,
             &sunrise_client::logging::game_home().join("jars"),
@@ -96,15 +92,12 @@ impl Game<'_> {
         stack: &PackStack,
         enabled_features: &[String],
     ) {
-        let phase = self.mod_phase.clone();
         let skipped = apply_listeners(
             prepared.steps,
-            &phase,
             HookId::AddServerReloadListeners,
             "server_reload_apply",
             |store| {
                 self.build_native_commands(enabled_features);
-                let _reload = phase.reloading().expect("function library apply");
                 self.admit_store(*store, stack);
                 Ok::<_, std::convert::Infallible>(())
             },

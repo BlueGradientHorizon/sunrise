@@ -31,7 +31,6 @@ pub trait Hooks {
         contract = "collect",
         out = "commands",
         answered_by = "mod",
-        owned_answer_batch = true,
         neoforge = "RegisterCommandsEvent",
         version = 3
     )]

@@ -192,9 +192,8 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
     use crate::game::native_entity_refs::tests::with_client_game;
     use crate::game::remote::RemoteDimensionEntry;
     use mod_api::{
-        __private::{ModPhase, game::RegistrationContextNew},
-        CameraType, ClientHost, DimensionTransition, DimensionTransitionScreen, DrawContext,
-        SoundPlay, SoundRef, SoundState,
+        __private::game::RegistrationContextNew, CameraType, ClientHost, DimensionTransition,
+        DimensionTransitionScreen, DrawContext, SoundPlay, SoundRef, SoundState,
     };
     use std::sync::{
         OnceLock,
@@ -245,9 +244,6 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                             )
                             .is_some()
                         );
-                        if frame < 3 {
-                            mod_api::__private::refuse("test draw refusal", ModPhase::Setup);
-                        }
                         panic!("test draw panic");
                     })
                 },
@@ -363,7 +359,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
                                         .contains_key("minecraft:entity.player.levelup")
                                 );
                             }
-                            assert_eq!(DRAWS.load(Ordering::Relaxed), 4);
+                            assert_eq!(DRAWS.load(Ordering::Relaxed), 2);
                             game.remote.as_mut().unwrap().level_load.finish();
                             game.enter_remote_dimension(
                                 &overworld,

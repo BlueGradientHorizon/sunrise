@@ -234,10 +234,7 @@ fn entered_with_id(
     hook_id: HookId,
     hook: &'static str,
 ) -> impl Iterator<Item = (&'static str, &'static dyn Hooks)> {
-    listening(hook_id).map(move |(_, entry)| {
-        let ((), hooks) = enter_listener(entry, hook);
-        (entry.id, hooks)
-    })
+    runtime::entered_with_id_matching(hook_id, hook, |_| true)
 }
 fn listening(hook_id: HookId) -> impl Iterator<Item = (bool, &'static ModEntry)> {
     MODS.get().into_iter().flat_map(move |installed| {

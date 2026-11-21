@@ -36,7 +36,6 @@ thread_local! {
     static CONTAIN_HOOK_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-
 /// `message`, with the native mod hook this thread is inside, if any, and the converted package
 /// the hook's runtime is executing.
 fn attributed(message: String) -> String {
@@ -70,27 +69,8 @@ fn attributed(message: String) -> String {
 /// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting
 /// it end the game. For work that is not the game's own and whose failure the caller recovers
 /// from, such as handing a shader pack's programs to the GPU driver's compiler: the panic goes
-/// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
-/// the load phase comes back as an error that names it.
+/// to the log with its stack, and no crash report is made for it.
 pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
-    match contain_call(f) {
-        Ok(value) => Ok(value),
-        Err(CallError::Refused(refusal)) => {
-            refusal.report();
-            Err(refusal.to_string())
-        }
-        Err(CallError::Panicked(message)) => Err(message),
-    }
-}
-
-pub(crate) enum CallError {
-    Refused(mod_api::__private::PhaseRefusal),
-    Panicked(String),
-}
-
-/// The same crash boundary for callers with different policies for panics and phase refusals.
-/// The crash hook logs panics; the caller decides how to report refusals and recover.
-pub(crate) fn contain_call<T>(f: impl FnOnce() -> T) -> Result<T, CallError> {
     struct HookDepthGuard(u32);
     impl Drop for HookDepthGuard {
         fn drop(&mut self) {
@@ -100,14 +80,7 @@ pub(crate) fn contain_call<T>(f: impl FnOnce() -> T) -> Result<T, CallError> {
     let _depth = HookDepthGuard(
         CONTAIN_HOOK_DEPTH.with(|d| d.replace(mod_api::__private::hook_dispatch_depth())),
     );
-    contain_unwind(|| {
-        mod_api::__private::contain_refusal(
-            mod_api::content::crash::current_native_mod().unwrap_or("unknown"),
-            f,
-        )
-    })
-    .map_err(CallError::Panicked)?
-    .map_err(CallError::Refused)
+    contain_unwind(f)
 }
 
 /// For the hook: a contained panic is logged with its stack and kept for its boundary to

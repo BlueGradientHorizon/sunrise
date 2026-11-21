@@ -2,7 +2,6 @@
 //! It keeps keys, and a reload supersedes them.
 use super::model_baking_completed_tests::reload;
 use super::native_entity_refs::tests::with_client_game;
-use mod_api::__private::{ModPhase, PhaseOwner};
 use mod_api::{
     BakedModelKey, ClientHost, Hooks, ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef,
 };
@@ -172,7 +171,6 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 game.pack.source.clone(),
             );
             game.pack.render = Arc::new(game.pack.assets.reload_for_server(&root).unwrap());
-            let _phase = PhaseOwner::scope(ModPhase::World);
             let host: &dyn ClientHost = game;
             let stone = host.block_state_id("minecraft:stone").expect("stone");
             let keys = host.render_assets().block_state_models(stone).unwrap();

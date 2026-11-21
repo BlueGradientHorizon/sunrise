@@ -1709,17 +1709,15 @@ one, where vanilla gives the `by` one.
 `&RegistrationContext` before their event; `Hooks::register` takes it after
 its `Registrar`. `context.mods()` returns a read-only `LoadedMods` view whose
 `ids()` lists startup code and selected content packages in dispatch order.
-`context.registry("minecraft:item")` lists a built-in registry's names in ID order and
-`context.setting(mod_id, key)` reads a loaded mod's setting, so a mod can validate the keys it
-declares before its Parts are finalized. Both read one view the engine captures before the first
-registration hook runs: every registration step sees the same registries (as `registries.json`
-lists them, without what mods declare during registration) and the settings on disk at that
-moment, whatever the dispatch order. A read fails with a `RegistrationReadError` rather than
-panicking: `InvalidRegistryName` for a name that is not a namespaced identifier,
-`UnknownRegistry`, `InvalidSettingKey` for an empty key or one naming a path, `UnknownMod` for a
-package that is not loaded, and `Unavailable` when the engine supplied no data. These contexts are
-supplied by the engine and have no game `Host`, handle constructors or transactions. Declarations
-still go on each event or registrar.
+`context.registry("minecraft:item")` borrows a built-in registry's names in ID order as
+`Option<&[String]>`, `context.setting(mod_id, key)` borrows a captured setting as `Option<&str>`,
+and `context.instance_dir()` borrows the startup instance directory as `Option<&InstanceDirectory>`,
+so a mod can validate the keys it declares before its Parts are finalized. All three read one view
+the engine captures before the first registration hook runs: every registration step sees the same
+registries (as `registries.json` lists them, without what mods declare during registration) and the
+settings on disk at that moment, whatever the dispatch order. Missing registries, unset keys, and a
+context with no engine snapshot return `None`. These contexts are supplied by the engine and have no
+game `Host`, handle constructors or transactions. Declarations still go on each event or registrar.
 
 - `component_types(context, event)` runs once before content loads. Call `event.register(id)` with each owned namespaced ID. Duplicates, invalid IDs and the `minecraft` namespace stop startup. `native_component`, `native_set_component` and `native_remove_component` read, set and remove registered components, including item defaults. Values use NBT and must fit the network reader limits.
 
@@ -1846,7 +1844,7 @@ still go on each event or registrar.
 
 - `client_stopping()` (Fabric's `ClientLifecycleEvents.CLIENT_STOPPING`; NeoForge has no event for it) fires once per game process, on the render thread, when the game shuts down: after the world the player was in is left and saved, with the settings and resources still held, so a listener can read them through the `ClientHost` and save its own client state. Closing the window, a quit shortcut and the stop signals reach it; a crash does not. A dedicated server has no client and never fires it. Listeners are pure functions of the `ClientHost` reads and the mod's own state. Tick-time effect: none, it fires once at exit. Diverges from upstream: new hook.
 
-- `client_setup()` (NeoForge's `FMLClientSetupEvent`) fires once per game process on the render thread, after the first client load has applied and before the title screen's first frame, with the `ClientHost`. It is the moment `client_resources_reloaded` skips: that one never runs at initial startup and runs after every later reload, while this one runs once and never again. Returning to the title screen and opening another world is not a new start. NeoForge's `DeferredWorkQueue` has no counterpart (the listener already runs on the thread that would drain it; work a mod wants in parallel is its own). A dedicated server has no client and never fires it; `FMLDedicatedServerSetupEvent` is `server_about_to_start`. A failing listener is handled like any other listener of a hook. Listeners are pure functions of the `ClientHost` reads and the mod's own state.
+- `client_setup` (NeoForge's `FMLClientSetupEvent`) fires once per game process on the render thread, after the first client load has applied and before the title screen's first frame. It receives `&mut dyn ClientSetupContext` and `&mut ClientSetupEvent`, not a `ClientHost`; setup can use published resources and client setup operations, but it cannot open worlds or transactions. `client_resources_reloaded` skips initial startup and runs after later reloads; returning to the title or opening another world does not repeat setup. NeoForge's `DeferredWorkQueue` has no counterpart (the listener already runs on the thread that would drain it). A dedicated server has no client and never fires this hook; `server_about_to_start` covers its setup.
 
 - `vanilla_game_event(dimension, event, pos, cause, affected_state, cancel)` (NeoForge's `VanillaGameEvent`) fires on the server for every vanilla game event before the sculk sensors, wardens and allays hear it; canceling keeps them from hearing it. `cause` is the network id of the entity that caused it (`GameEvent.Context.sourceEntity`, None for none) and `affected_state` is the block state the event touched (`GameEvent.Context.affectedState`): the block a player broke or placed, the block a mob stepped on, and None where vanilla passes none (`Context.of(entity)`). Contract version `2`: version `1` had no `affected_state`. With no listener the cost is one `listened` branch per event. Diverges from upstream.
 
@@ -2106,7 +2104,11 @@ impl ServerReloadListener for MachineData {
 struct MyMod(Arc<MachineData>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_server_reload_listeners(&self, _host: &dyn Host, event: &mut AddServerReloadListenersEvent<'_>) {
+    fn add_server_reload_listeners(
+        &self,
+        _context: &dyn ReloadContext,
+        event: &mut AddServerReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:machines").unwrap(),
             FileToIdConverter::json("machines").unwrap(),
@@ -2165,8 +2167,8 @@ own live state.
 ```rust,ignore
 use std::sync::{Arc, RwLock};
 use mod_api::{
-    self, AddClientReloadListenersEvent, ClientHost, ClientReloadContext, ClientReloadListener,
-    FileToIdConverter, Hooks, Identifier, ReloadResourceError,
+    self, AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+    ClientReloadListenerContext, FileToIdConverter, Hooks, Identifier, ReloadResourceError,
 };
 
 #[derive(Default)]
@@ -2190,7 +2192,11 @@ impl ClientReloadListener for Theme {
 struct MyMod(Arc<Theme>);
 #[mod_api::sunrise_mod]
 impl Hooks for MyMod {
-    fn add_client_reload_listeners(&self, _host: &dyn ClientHost, event: &mut AddClientReloadListenersEvent<'_>) {
+    fn add_client_reload_listeners(
+        &self,
+        _context: &dyn ClientReloadListenerContext,
+        event: &mut AddClientReloadListenersEvent<'_>,
+    ) {
         event.listeners.add_listener(
             Identifier::parse("my_mod:theme").unwrap(),
             FileToIdConverter::json("ui").unwrap(),

@@ -276,7 +276,7 @@ impl Game<'_> {
         for element in elements {
             match element {
                 TooltipElement::Text(text, color) => {
-                    let text = text.try_into_engine(&()).ok()?;
+                    let text = sunrise_client_lib::api_text::to_engine_inprocess(&text);
                     if max_width < 0 {
                         result.push(Element::Text(text.resolve_legacy(), color));
                     } else {

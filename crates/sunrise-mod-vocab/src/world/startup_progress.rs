@@ -7,7 +7,7 @@ use std::sync::{Arc, OnceLock};
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum StartupProgressError {
-    /// The screen already has 64 open bars. Close a bar before retrying.
+    /// The calling mod already has 64 open bars. Close a bar before retrying.
     TooManyBars,
     /// The game's screen has already been installed.
     AlreadyInstalled,
@@ -15,7 +15,9 @@ pub enum StartupProgressError {
 impl std::fmt::Display for StartupProgressError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TooManyBars => f.write_str("the startup screen already has 64 open bars"),
+            Self::TooManyBars => {
+                f.write_str("the calling mod already has 64 open startup progress bars")
+            }
             Self::AlreadyInstalled => f.write_str("the startup screen is already installed"),
         }
     }
@@ -27,10 +29,12 @@ impl std::error::Error for StartupProgressError {}
 /// [`RegistrationContext::message`](crate::RegistrationContext::message), not directly.
 pub trait StartupScreen: Send + Sync + 'static {
     /// Open a bar of `steps` steps under the stage bar and return its owned meter.
+    /// `mod_id` identifies the registration listener, even on a scoped worker.
     /// The screen borrows `label` for the call; the meter does not borrow it.
-    /// Returns `StartupProgressError::TooManyBars` if 64 bars are already open.
+    /// Returns `StartupProgressError::TooManyBars` if the calling mod already has 64 open bars.
     fn open(
         self: Arc<Self>,
+        mod_id: &'static str,
         label: &str,
         steps: u32,
     ) -> Result<Box<dyn ProgressMeter>, StartupProgressError>;
@@ -46,13 +50,18 @@ pub trait ProgressMeter: Send + Sync + 'static {
     fn step(&self);
     /// `done` of the bar's steps are done, up to its total steps.
     fn set(&self, done: u32);
-    /// Replace the bar's label, cut to one line. The new label may outlive `text`.
+    /// Replace the bar's label. The new label may outlive `text`.
     fn label(&self, text: &str);
     /// Show a startup line, separate from the bar's label, or log it on a dedicated server.
     fn message(&self, text: &str);
 }
 
 static SCREEN: OnceLock<Arc<dyn StartupScreen>> = OnceLock::new();
+
+#[cfg(any(test, feature = "testing"))]
+std::thread_local! {
+    pub(crate) static TEST_SCREEN: std::cell::RefCell<Option<Arc<dyn StartupScreen>>> = const { std::cell::RefCell::new(None) };
+}
 
 /// Install the game's startup screen, once, before mods register.
 // hidden: engine plumbing, re-exported through __private for the game.
@@ -64,6 +73,10 @@ pub fn install_startup_screen(screen: Arc<dyn StartupScreen>) -> Result<(), Star
 }
 
 pub(crate) fn installed() -> Option<Arc<dyn StartupScreen>> {
+    #[cfg(any(test, feature = "testing"))]
+    if let Some(screen) = TEST_SCREEN.with_borrow(Clone::clone) {
+        return Some(screen);
+    }
     SCREEN.get().cloned()
 }
 
@@ -104,7 +117,7 @@ impl StartupProgress {
         }
     }
 
-    /// The bar reads `text` from now on, cut to one line.
+    /// The bar reads `text` from now on.
     pub fn label(&self, text: &str) {
         if let Some(meter) = &self.meter {
             meter.label(text);
@@ -115,17 +128,18 @@ impl StartupProgress {
 impl crate::RegistrationContext {
     /// Open an owned bar of `steps` steps labelled `label` on the startup loading screen,
     /// under the game's own stage bar, newest first (NeoForge's `addProgressBar`). The bar
-    /// may be updated from any thread and is removed when dropped. On a dedicated server,
+    /// may be opened on a scoped worker, updated from any thread, and is removed when dropped.
+    /// On a dedicated server,
     /// the label and progress in 10% increments are logged instead.
-    /// Returns `TooManyBars` when 64 bars are already open; no bar is created.
+    /// Returns `TooManyBars` when the calling mod already has 64 open bars; no bar is created.
     pub fn progress(
         &self,
         label: &str,
         steps: u32,
     ) -> Result<StartupProgress, StartupProgressError> {
-        let meter = match &self.startup {
-            Some(screen) => Some(screen.clone().open(label, steps)?),
-            None => None,
+        let meter = match (self.listener, &self.startup) {
+            (Some(id), Some(screen)) => Some(screen.clone().open(id, label, steps)?),
+            _ => None,
         };
         Ok(StartupProgress { meter })
     }
@@ -154,10 +168,11 @@ mod tests {
     impl StartupScreen for Record {
         fn open(
             self: Arc<Self>,
+            mod_id: &'static str,
             label: &str,
             steps: u32,
         ) -> Result<Box<dyn ProgressMeter>, StartupProgressError> {
-            self.push(format!("open {label} {steps}"));
+            self.push(format!("open {mod_id} {label} {steps}"));
             Ok(Box::new(RecordingMeter(self)))
         }
         fn message(&self, text: &str) {
@@ -189,7 +204,7 @@ mod tests {
     #[test]
     fn registration_returns_a_meter_that_outlives_the_context() {
         let screen = Arc::new(Record::default());
-        let mut context = crate::RegistrationContext::new();
+        let mut context = crate::RegistrationContext::new().for_mod("test");
         context.startup = Some(screen.clone());
         context.message("starting");
         let bar = context.progress("Baking", 10).unwrap();
@@ -210,7 +225,7 @@ mod tests {
             *screen.0.lock().unwrap(),
             [
                 "screen message starting",
-                "open Baking 10",
+                "open test Baking 10",
                 "step",
                 "label Baked",
                 "set 10",

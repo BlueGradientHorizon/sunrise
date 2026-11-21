@@ -10,23 +10,26 @@ pub trait Hooks {
     /// resource-pack overrides resolved, and its returned apply publishes the
     /// parsed state, all applies after all prepares, before
     /// `client_resources_reloaded`. Dependencies on the model manager order
-    /// both its real model build and its publication. Atlas upload precedes the model manager. A listener prepare or engine preflight that refuses the
+    /// both its real model build and its publication. Atlas upload precedes the
+    /// model manager. A listener prepare or engine preflight that refuses the
     /// candidate aborts the load before any listener applies.
-    /// Client-side, in Reloading nested in Setup initially and World later.
-    /// Later registration is on the render thread, prepare on the loader,
-    /// and apply on the owning game thread; completion restores the entering
-    /// phase. Startup's empty Host grants no extra access. Registration errors
-    /// are returned and logged at the call, without stopping the reload. A
-    /// registration callback that panics or incurs a phase refusal contributes
-    /// no listeners or dependencies; unrelated callbacks still run.
+    /// Client-side, taking a [`ClientReloadListenerContext`]. Later
+    /// registration is on the render thread, prepare on the loader, and apply
+    /// on the owning game thread. On initial startup before any resources are
+    /// published, `context.published()` is `None`; on later reloads it returns
+    /// `Some(&dyn ClientReloadHost)`.
+    /// Registration errors are returned and logged at the call, without stopping
+    /// the reload. A panicking registration callback contributes no listeners or
+    /// dependencies; unrelated callbacks still run.
     #[hook(
-        receiver = "read",
+        receiver = "associated",
+        context = "client_reload_listener",
         dispatch = "flat",
         side = "client",
         contract = "listen",
         staged_surface = "listeners",
-        version = 4,
-        neoforge = "AddClientReloadListenersEvent"
+        neoforge = "AddClientReloadListenersEvent",
+        version = 4
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }

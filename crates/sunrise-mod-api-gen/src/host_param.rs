@@ -80,6 +80,12 @@ pub(super) fn context_param(hook: &Hook) -> Option<HostParam> {
             PhaseContext::Loop => "&dyn LoopContext",
             PhaseContext::Worldgen => "&dyn WorldgenHost",
             PhaseContext::ChunkDisk => "&dyn ChunkDiskHost",
+            PhaseContext::Config => "&dyn ConfigContext",
+            PhaseContext::Reload => "&dyn ReloadContext",
+            PhaseContext::ClientReload => "&dyn ClientReloadHost",
+            PhaseContext::ClientReloadListener => "&dyn ClientReloadListenerContext",
+            PhaseContext::ClientSetup => "&mut dyn ClientSetupContext",
+            PhaseContext::PackDiscovery => "&mut dyn PackDiscoveryContext",
         }
         .into(),
         call: "context",
@@ -93,6 +99,12 @@ pub(super) fn phase_engine_type(phase: PhaseContext) -> &'static str {
         PhaseContext::Loop => "&sunrise_world::native_load_context::LoopContext",
         PhaseContext::Worldgen => "&mod_api::OwningWorldgen<'_>",
         PhaseContext::ChunkDisk => "&mod_api::OwningChunkDisk<'_>",
+        PhaseContext::Config => "&dyn mod_api::ConfigContext",
+        PhaseContext::Reload => "&dyn mod_api::ReloadContext",
+        PhaseContext::ClientReload => "&dyn mod_api::ClientReloadHost",
+        PhaseContext::ClientReloadListener => "&dyn mod_api::ClientReloadListenerContext",
+        PhaseContext::ClientSetup => "&mut dyn mod_api::ClientSetupContext",
+        PhaseContext::PackDiscovery => "&mut dyn mod_api::PackDiscoveryContext",
     }
 }
 
@@ -165,6 +177,15 @@ mod tests {
             (PhaseContext::Loop, "&dyn LoopContext"),
             (PhaseContext::Worldgen, "&dyn WorldgenHost"),
             (PhaseContext::ChunkDisk, "&dyn ChunkDiskHost"),
+            (PhaseContext::Config, "&dyn ConfigContext"),
+            (PhaseContext::Reload, "&dyn ReloadContext"),
+            (PhaseContext::ClientReload, "&dyn ClientReloadHost"),
+            (
+                PhaseContext::ClientReloadListener,
+                "&dyn ClientReloadListenerContext",
+            ),
+            (PhaseContext::ClientSetup, "&mut dyn ClientSetupContext"),
+            (PhaseContext::PackDiscovery, "&mut dyn PackDiscoveryContext"),
         ] {
             let hook = Hook {
                 context: Some(kind),

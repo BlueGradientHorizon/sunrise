@@ -3,7 +3,6 @@
 //! and sends the packets the player's own keys send.
 use super::super::super::Screen;
 use super::*;
-use mod_api::__private::{ModPhase, PhaseOwner};
 use mod_api::prelude::ClientInputClientHost;
 use mod_api::{
     ClientHost, InteractionKeyMappingTriggeredEvent, MappingError, VanillaKeyMappingRef,
@@ -77,7 +76,6 @@ fn with_callback_game(
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_game(true, |game| {
-            let _phase = PhaseOwner::scope(ModPhase::World);
             game.set_mode_id(0);
             game.title = None;
             game.screen = Screen::Playing;
@@ -295,11 +293,6 @@ fn the_host_presses_by_name_and_refuses_the_others() {
         assert_eq!(pick.click(game), Ok(()));
 
         let forward = game.vanilla_key_mapping("key.forward").unwrap();
-        {
-            let _phase = PhaseOwner::scope(ModPhase::Setup);
-            assert_eq!(forward.set_down(game, true), Err(MappingError::Unavailable));
-            assert_eq!(hotbar.click(game), Err(MappingError::Unavailable));
-        }
         assert_eq!(forward.is_down(game), Ok(false));
         assert_eq!(game.hotbar_presses[2].count(), 0);
         game.player = None;

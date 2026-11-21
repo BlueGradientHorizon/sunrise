@@ -220,8 +220,8 @@ fn a_client_reads_only_its_own_menu() {
 fn client_merchant_offers_follow_the_open_menu() {
     use super::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
-    use mod_api::__private::{ModPhase, PhaseOwner, game::Fields};
-    use mod_api::{ClientHost, LevelReadError};
+    use mod_api::__private::game::Fields;
+    use mod_api::ClientHost;
     use sunrise_client::text::Text;
     use sunrise_core::nbt::Tag;
     use sunrise_protocol::{
@@ -258,7 +258,6 @@ fn client_merchant_offers_follow_the_open_menu() {
                     data: None,
                 }],
             });
-            let _phase = PhaseOwner::scope(ModPhase::World);
             let current_menu =
                 |host: &dyn ClientHost| host.local_player().unwrap().container_menu(host).unwrap();
             let inventory = current_menu(game);
@@ -275,10 +274,6 @@ fn client_merchant_offers_follow_the_open_menu() {
                 menu.fields().generation,
             );
             assert_eq!(foreign.merchant_offers(game), Ok(None));
-            {
-                let _phase = PhaseOwner::scope(ModPhase::Reloading);
-                assert_eq!(menu.merchant_offers(game), Err(LevelReadError::Unavailable));
-            }
 
             let discounted_book = play::NetOffer {
                 cost_a: Stack::new(1, 10).into(),

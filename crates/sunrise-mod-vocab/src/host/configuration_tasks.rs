@@ -6,7 +6,6 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait ConfigurationTasksServerHost {
     /// Side: server. Whether the peer negotiated this configuration channel.
-    #[access(WorldOnly)]
     fn configuration_has_channel(
         &self,
         connection: ConfigurationConnection,
@@ -17,7 +16,6 @@ pub trait ConfigurationTasksServerHost {
     /// task state. A saved connection returns [`ConfigurationTaskError::Disconnected`]
     /// after it moves to Play. Prefer [`ConfigurationTaskContext::send_payload`] in
     /// start and tick callbacks.
-    #[access(WorldOnly)]
     fn configuration_send_payload(
         &mut self,
         connection: ConfigurationConnection,

@@ -282,18 +282,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn phase_refusal_drops_only_the_current_listeners_task_registrations() {
+    fn panic_drops_only_the_current_listeners_task_registrations() {
         use mod_api::{
-            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
-            ConfigurationTask, ConfigurationTaskContext, Identifier,
-            RegisterConfigurationTasksEvent, ServerHost,
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
+            Identifier, RegisterConfigurationTasksEvent, ServerHost,
         };
 
         struct Task(Identifier, bool);
         impl ConfigurationTask for Task {
             fn task_type(&self) -> &Identifier {
                 if self.1 {
-                    mod_api::__private::refuse("test gated operation", ModPhase::Setup);
+                    panic!("test task_type fault");
                 }
                 &self.0
             }
@@ -314,8 +313,7 @@ mod tests {
                 if self.1 {
                     // Both the reservation and this validation error belong to the refused listener.
                     assert!(event.register(task(false)).is_err());
-                    let _ = event.register(task(true));
-                    panic!("task_type must unwind to the listener's checkpoint");
+                    panic!("the listener unwinds to its checkpoint");
                 }
             }
         }
@@ -328,7 +326,6 @@ mod tests {
             ]
             .into(),
             || {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 let mut host = mod_api::testing::FakeHost::new();
                 let mut registration = ConfigurationTaskRegistration::default();
                 mod_api::dispatch_register_configuration_tasks(
@@ -351,10 +348,9 @@ mod tests {
     #[test]
     fn a_panicking_task_type_refuses_one_registration_and_disables_only_its_owner() {
         use mod_api::{
-            __private::{ConfigurationTaskRegistration, ModPhase, PhaseOwner},
-            ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskRegistrationError,
-            Identifier, RegisterConfigurationTasksEvent, ServerHost,
-            content::crash::current_native_call,
+            __private::ConfigurationTaskRegistration, ConfigurationTask, ConfigurationTaskContext,
+            ConfigurationTaskRegistrationError, Identifier, RegisterConfigurationTasksEvent,
+            ServerHost, content::crash::current_native_call,
         };
 
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -425,7 +421,6 @@ mod tests {
             ]
             .into(),
             || {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 let mut host = mod_api::testing::FakeHost::new();
                 for peer in [1, 2] {
                     let mut registration = ConfigurationTaskRegistration::default();
@@ -451,10 +446,10 @@ mod tests {
                 }
                 assert_eq!(BROKEN_LOOKUPS.load(Ordering::Relaxed), 1);
                 assert_eq!(BROKEN_DISPOSALS_IN_SCOPE.load(Ordering::Relaxed), 2);
-                let notices = mod_api::__private::game::take_callback_panic_notices()
+                let notices = mod_api::__private::take_hook_panics()
                     .into_iter()
                     .filter(|notice| notice.mod_id == BROKEN)
-                    .map(|notice| notice.operation)
+                    .map(|notice| notice.hook)
                     .collect::<Vec<_>>();
                 assert_eq!(
                     notices,

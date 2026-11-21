@@ -275,14 +275,12 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
     };
     mod_platform::__private::initialize().unwrap();
     // A general type is declared only while the registration phase is current.
-    let registration =
-        mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+    let registration = mod_api::__private::RegistrationGuard::open();
     mod_platform::testing::with_mods(mods().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
         super::mods::register_entity_renderers(super::execution_role::ExecutionRole::Client);
         // A frame draws with a world open, as the window does.
         drop(registration);
-        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         super::native_entity_refs::tests::with_client_game(|game| {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "Steve").unwrap();
@@ -634,8 +632,7 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
             Box::new(NativeProbe),
         )]
         .into();
-        let registration =
-            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+        let registration = mod_api::__private::RegistrationGuard::open();
         mod_platform::testing::with_mods(mods, || {
             super::native_entity_refs::tests::with_client_game(|game| {
                 super::mods::register_entity_renderers(
@@ -643,10 +640,6 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                 );
                 drop(registration);
                 game.resolve_entity_renderers();
-                // A window that loaded its mods sits in Setup when it joins a world, so the
-                // tags the server sends nest their reload notices in it.
-                game.mod_phase =
-                    mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Setup);
                 game.settings.render_distance = 2;
                 game.settings.simulation_distance = 2;
                 let options = sunrise_client::title::WorldOptions {

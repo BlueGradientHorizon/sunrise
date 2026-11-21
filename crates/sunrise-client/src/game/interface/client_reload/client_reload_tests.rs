@@ -12,13 +12,9 @@ fn hats() -> FileToIdConverter {
     FileToIdConverter::json("hats").unwrap()
 }
 
-fn apply_client_reload(
-    phase: &mod_api::__private::PhaseOwner,
-    prepared: Vec<PreparedClientReload>,
-) {
+fn apply_client_reload(prepared: Vec<PreparedClientReload>) {
     mod_api::__private::reload::apply_listeners(
         prepared,
-        phase,
         HookId::AddClientReloadListeners,
         "client_reload_apply",
         |()| Ok::<_, std::convert::Infallible>(()),
@@ -101,7 +97,7 @@ fn panicking_client_reload_registration_discards_its_listener_and_edges() {
     impl Hooks for Register {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             let anchor = VanillaClientListeners::model_manager();
@@ -240,22 +236,14 @@ fn stage_reads_resolved_asset_bytes_without_a_directory() {
     listeners
         .add_listener(id("test_mod:hats"), hats(), listener.clone())
         .unwrap();
-    let ((), prepared) = stage_client_reload(
-        &source,
-        listeners,
-        mod_api::__private::ModPhase::World,
-        || Ok::<_, ReloadStageError>(()),
-    )
-    .unwrap();
+    let ((), prepared) =
+        stage_client_reload(&source, listeners, || Ok::<_, ReloadStageError>(())).unwrap();
     assert_eq!(
         listener.seen.lock().unwrap().as_slice(),
         ["test_mod:top=selected"]
     );
     assert!(applied.lock().unwrap().is_empty());
-    apply_client_reload(
-        &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
-        prepared,
-    );
+    apply_client_reload(prepared);
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
 }
 
@@ -274,7 +262,6 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
     let ((), prepared) = stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
-        mod_api::__private::ModPhase::World,
         || Ok::<_, ReloadStageError>(()),
     )
     .unwrap();
@@ -283,10 +270,7 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
         ["test_mod:top=\"top\""]
     );
     assert!(applied.lock().unwrap().is_empty(), "nothing published yet");
-    apply_client_reload(
-        &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
-        prepared,
-    );
+    apply_client_reload(prepared);
     assert_eq!(applied.lock().unwrap().as_slice(), ["hats"]);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -331,7 +315,6 @@ fn a_listener_error_retains_its_cause_and_discards_pending_applies() {
     let Err(error) = stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
-        mod_api::__private::ModPhase::World,
         || Ok::<_, ReloadStageError>(()),
     ) else {
         panic!("a failing listener stops the whole reload")
@@ -375,7 +358,6 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
     stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
         listeners,
-        mod_api::__private::ModPhase::World,
         || Ok::<_, ReloadStageError>(()),
     )
     .unwrap();
@@ -397,8 +379,8 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         native_entity_refs::tests::fixture_root, start_game,
     };
     use mod_api::{
-        __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
-        AddClientReloadListenersEvent, ClientHost, ClientItemExtensionsRegistrar, Hooks, ModEntry,
+        __private::game::RegistrationContextNew, AddClientReloadListenersEvent,
+        ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
         ModelBakingCompletedEvent, RegistrationContext, StandaloneModelsEvent,
         VanillaClientListeners,
     };
@@ -430,7 +412,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
     impl Hooks for Broken {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _context: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             let after = id("startup_anchor:after");
@@ -556,7 +538,6 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             ]
             .into();
             mod_platform::testing::with_mods(mods, || {
-                let _phase = PhaseOwner::scope(ModPhase::Setup);
                 let mut registrations = Vec::new();
                 Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
                 let _models =
@@ -689,7 +670,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
 fn client_reload_reads_real_assets_with_pack_overrides() {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{self, ModEntry};
-    use mod_api::{AddClientReloadListenersEvent, ClientHost, Hooks};
+    use mod_api::{AddClientReloadListenersEvent, Hooks};
     use mod_platform::testing::with_mods;
     use std::{
         collections::BTreeSet,
@@ -762,7 +743,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
     impl Hooks for HatListener {
         fn add_client_reload_listeners(
             &self,
-            _host: &dyn ClientHost,
+            _context: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             event
@@ -844,18 +825,13 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             // The mod's packaged asset over nothing, with the real root's own
             // assets in the same view.
             let root = merged(&[]);
-            let ((), prepared) = stage_client_reload(
-                &root,
-                game.register_client_reload_listeners(),
-                mod_api::__private::ModPhase::World,
-                || Ok::<_, ReloadStageError>(()),
-            )
-            .unwrap();
+            let ((), prepared) =
+                stage_client_reload(&root, game.register_client_reload_listeners(), || {
+                    Ok::<_, ReloadStageError>(())
+                })
+                .unwrap();
             assert!(live.lock().unwrap().is_empty(), "nothing published yet");
-            apply_client_reload(
-                &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
-                prepared,
-            );
+            apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod"]);
             assert!(
                 vanilla.load(Ordering::SeqCst) >= 5,
@@ -868,27 +844,21 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
             );
             assert_eq!(packs.len(), 1);
             let root = merged(&packs);
-            let ((), prepared) = stage_client_reload(
-                &root,
-                game.register_client_reload_listeners(),
-                mod_api::__private::ModPhase::World,
-                || Ok::<_, ReloadStageError>(()),
-            )
-            .unwrap();
-            apply_client_reload(
-                &mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::World),
-                prepared,
-            );
+            let ((), prepared) =
+                stage_client_reload(&root, game.register_client_reload_listeners(), || {
+                    Ok::<_, ReloadStageError>(())
+                })
+                .unwrap();
+            apply_client_reload(prepared);
             assert_eq!(live.lock().unwrap().as_slice(), ["mod", "pack"]);
             // A rejected prepare aborts the reload and keeps the previous state.
             reject.store(true, Ordering::Relaxed);
             let root = merged(&[]);
-            let Err(error) = stage_client_reload(
-                &root,
-                game.register_client_reload_listeners(),
-                mod_api::__private::ModPhase::World,
-                || Ok::<_, ReloadStageError>(()),
-            ) else {
+            let Err(error) =
+                stage_client_reload(&root, game.register_client_reload_listeners(), || {
+                    Ok::<_, ReloadStageError>(())
+                })
+            else {
                 panic!("a failing listener stops the whole reload")
             };
             assert!(error.to_string().contains("client_test:hats"));
@@ -908,14 +878,18 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
 #[ignore = "daily"]
 fn client_setup_reaches_each_listener_once_per_firing() {
     use crate::game::native_entity_refs::tests::with_game;
-    use mod_api::{ClientHost, Hooks, ModEntry};
+    use mod_api::{ClientSetupContext, Hooks, ModEntry};
     use mod_platform::testing::with_mods;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct Setup(Arc<AtomicUsize>);
     #[mod_api::__subscriptions]
     impl Hooks for Setup {
-        fn client_setup(&self, _host: &mut dyn ClientHost, _event: &mut mod_api::ClientSetupEvent) {
+        fn client_setup(
+            &self,
+            _context: &mut dyn ClientSetupContext,
+            _event: &mut mod_api::ClientSetupEvent,
+        ) {
             self.0.fetch_add(1, Ordering::SeqCst);
         }
     }
@@ -1231,37 +1205,102 @@ fn refused_client_context_keeps_pack_and_listeners() {
 }
 
 #[test]
+fn startup_client_reload_listener_context_reports_known_facts_and_no_published_assets() {
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientReloadListenerContext, Dist, Hooks, ModEntry, Text,
+    };
+    use std::sync::Mutex;
+
+    struct StartupObservation {
+        dist: Dist,
+        data_version: i32,
+        math_profile: mod_api::MathProfile,
+        enabled_self: bool,
+        disabled_other: bool,
+        plain: String,
+        has_published: bool,
+    }
+    struct Probe(Arc<Mutex<Option<StartupObservation>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Probe {
+        fn add_client_reload_listeners(
+            &self,
+            context: &dyn ClientReloadListenerContext,
+            _: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            *self.0.lock().unwrap() = Some(StartupObservation {
+                dist: context.dist(),
+                data_version: context.server_data_version(),
+                math_profile: context.math_profile(),
+                enabled_self: context.on("startup_probe"),
+                disabled_other: context.on("muted_mod"),
+                plain: context.text_string(&Text::literal("hello startup")),
+                has_published: context.published().is_some(),
+            });
+        }
+    }
+    let observed = Arc::new(Mutex::new(None));
+    let mut settings = sunrise_client::settings::Settings::default();
+    settings.mods.disabled.insert("muted_mod".into());
+    let mods = vec![ModEntry::new(
+        "startup_probe",
+        Box::new(Probe(observed.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let _ = register_startup_client_reload_listeners(Some(&settings));
+    });
+    let seen = observed.lock().unwrap().take().expect("startup hook fired");
+    assert_eq!(seen.dist, Dist::Client);
+    assert_eq!(seen.data_version, sunrise_core::version::DATA_VERSION);
+    assert_eq!(seen.math_profile, Game::startup_math_profile());
+    assert!(seen.enabled_self);
+    assert!(!seen.disabled_other);
+    assert_eq!(seen.plain, "hello startup");
+    assert!(!seen.has_published);
+}
+
+#[test]
 #[ignore = "daily"]
 fn client_completion_reads_published_resources_without_world_access() {
     use crate::game::native_entity_refs::tests::with_client_game;
-    use mod_api::__private::{ModPhase, PhaseOwner};
-    use mod_api::{ClientHost, ClientResourcesReloadedEvent, Hooks, ModEntry};
-    use std::{
-        panic::{AssertUnwindSafe, catch_unwind},
-        sync::Mutex,
+    use mod_api::{
+        AddClientReloadListenersEvent, ClientReloadHost, ClientReloadListenerContext,
+        ClientResourcesReloadedEvent, Hooks, ModEntry,
     };
+    use std::sync::Mutex;
 
     struct Probe(Arc<Mutex<Vec<u64>>>);
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
+        fn add_client_reload_listeners(
+            &self,
+            context: &dyn ClientReloadListenerContext,
+            _: &mut AddClientReloadListenersEvent<'_>,
+        ) {
+            let published = context
+                .published()
+                .expect("later reloads expose published client assets");
+            assert!(
+                published.block_sprites(&[published.block_state_id("minecraft:stone").unwrap()])[0]
+                    .is_some()
+            );
+            self.0
+                .lock()
+                .unwrap()
+                .push(published.block_sprites_version());
+        }
         fn client_resources_reloaded(
             &self,
-            host: &mut dyn ClientHost,
+            context: &dyn ClientReloadHost,
             _: &mut ClientResourcesReloadedEvent,
         ) {
             assert!(
-                host.block_sprites(&[host.block_state_id("minecraft:stone").unwrap()])[0].is_some()
+                context.block_sprites(&[context.block_state_id("minecraft:stone").unwrap()])[0]
+                    .is_some()
             );
-            assert!(host.texture_sprites(&["minecraft:block/stone"])[0].is_some());
-            let version = host.block_sprites_version();
-            let refused =
-                catch_unwind(AssertUnwindSafe(|| host.level("minecraft:overworld"))).unwrap_err();
-            assert_eq!(
-                refused
-                    .downcast_ref::<mod_api::__private::PhaseRefusal>()
-                    .map(|refusal| refusal.phase),
-                Some(ModPhase::Reloading)
-            );
+            assert!(context.texture_sprites(&["minecraft:block/stone"])[0].is_some());
+            let version = context.block_sprites_version();
             self.0.lock().unwrap().push(version);
         }
     }
@@ -1274,12 +1313,10 @@ fn client_completion_reads_published_resources_without_world_access() {
     mod_platform::testing::with_mods(mods, || {
         with_client_game(|game| {
             let version = game.block_sprites_version();
-            for entering in [ModPhase::Setup, ModPhase::World] {
-                game.mod_phase = PhaseOwner::new(entering);
-                game.native_client_resources_reloaded();
-                assert_eq!(mod_api::__private::current_phase(), entering);
-            }
-            assert_eq!(*seen.lock().unwrap(), [version, version]);
+            let _ = game.register_client_reload_listeners();
+            game.native_client_resources_reloaded();
+            game.native_client_resources_reloaded();
+            assert_eq!(*seen.lock().unwrap(), [version, version, version]);
         })
     });
 }
@@ -1295,17 +1332,21 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
             use crate::game::{
                 Audio, UiResources, native_entity_refs::tests::with_client_game, start_game,
             };
-            use mod_api::__private::{ModPhase, PhaseOwner};
             use mod_api::{
-                ClientHost, ClientSetupEvent, ClientTickPreEvent, ConfigLoadingEvent, Hooks,
-                HostSide, ModEntry, RegisterConfigsEvent, ScreenOpening, ScreenOpeningEvent,
+                ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
+                ConfigContext, ConfigLoadingEvent, Hooks, ModEntry, RegisterConfigsEvent,
+                ScreenOpening, ScreenOpeningEvent,
             };
             use std::{sync::Mutex, time::Instant};
 
             struct Probe(Arc<Mutex<Vec<String>>>);
             #[mod_api::__subscriptions]
             impl Hooks for Probe {
-                fn register_configs(&self, _: HostSide<'_>, event: &mut RegisterConfigsEvent<'_>) {
+                fn register_configs(
+                    &self,
+                    _: &dyn ConfigContext,
+                    event: &mut RegisterConfigsEvent<'_>,
+                ) {
                     event.configs.push(mod_api::Config::new(
                         "startup_phase",
                         mod_api::ConfigKind::Client,
@@ -1317,12 +1358,14 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         "enabled = true\n",
                     ));
                 }
-                fn client_setup(&self, _: &mut dyn ClientHost, _: &mut ClientSetupEvent) {
-                    assert_eq!(mod_api::__private::current_phase(), ModPhase::Setup);
+                fn client_setup(&self, _: &mut dyn ClientSetupContext, _: &mut ClientSetupEvent) {
                     self.0.lock().unwrap().push("setup".into());
                 }
-                fn config_loading(&self, _: HostSide<'_>, event: &mut ConfigLoadingEvent<'_>) {
-                    assert_eq!(mod_api::__private::current_phase(), ModPhase::Config);
+                fn config_loading(
+                    &self,
+                    _: &dyn ConfigContext,
+                    event: &mut ConfigLoadingEvent<'_>,
+                ) {
                     self.0
                         .lock()
                         .unwrap()
@@ -1334,14 +1377,12 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                     _: &mut ScreenOpeningEvent<'_>,
                 ) -> Option<ScreenOpening> {
                     assert!(host.level("minecraft:overworld").is_none());
-                    assert_eq!(mod_api::__private::current_phase(), ModPhase::World);
                     self.0.lock().unwrap().push("screen".into());
                     None
                 }
                 fn client_tick_pre(&self, host: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
                     assert!(host.level("minecraft:overworld").is_none());
                     assert!(host.entity(1).is_none());
-                    assert_eq!(mod_api::__private::current_phase(), ModPhase::World);
                     self.0.lock().unwrap().push("tick".into());
                 }
             }
@@ -1365,7 +1406,6 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             ),
                         )
                         .unwrap();
-                        let _setup = PhaseOwner::scope(ModPhase::Setup);
                         let mut started = start_game(
                             &resources,
                             game.pack.clone(),

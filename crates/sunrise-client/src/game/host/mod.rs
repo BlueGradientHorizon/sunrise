@@ -9,6 +9,7 @@ use mod_api::__private::game::*;
 use mod_api::*;
 
 pub(crate) mod draw;
+mod phase_contexts;
 pub(crate) mod services;
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 
