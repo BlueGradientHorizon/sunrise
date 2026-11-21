@@ -686,6 +686,7 @@ impl Game<'_> {
                 if !self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
                     return;
                 }
+                let original = self.retain_original_player(conn, None);
                 // The first exit from the End keeps only `PlayerPersisted` of a mod's saved
                 // compound, as a death respawn does; later exits keep all of it.
                 self.keep_only_player_persisted(conn);
@@ -698,13 +699,11 @@ impl Game<'_> {
                 }
                 // PlayerList.respawn(keepAllPlayerData = true), CHANGED_DIMENSION:
                 // PlayerEvent.Clone with `wasDeath` false.
-                if let Some(g) = host.hub.guest(conn) {
-                    let (uuid, name) = (g.uuid, g.name.clone());
-                    if let Some(original) = self.capture_original_player(conn) {
-                        self.with_original_player(original, |game, original| {
-                            game.native_player_clone(uuid, &name, false, original);
-                        });
-                    }
+                let identity = host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()));
+                if let Some((uuid, name)) = identity
+                    && let Some(original) = original
+                {
+                    self.dispatch_player_clone_with_original(original, uuid, &name, false);
                 }
                 self.start_server_trip(conn, target, None, true);
                 self.trip_respawn(conn, respawn);

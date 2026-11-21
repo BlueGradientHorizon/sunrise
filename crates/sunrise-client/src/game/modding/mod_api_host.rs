@@ -134,9 +134,6 @@ impl Game<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
-            return self.attachment_slot(holder, access);
-        }
         if self.client_attachment_entity_exists(holder) {
             self.initialize_entity_on_access(holder);
         }
@@ -160,9 +157,6 @@ impl Game<'_> {
         holder: mod_api::Holder,
         access: AttachmentAccess,
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
-        if matches!(holder, mod_api::Holder::OriginalPlayer(_)) {
-            return self.attachment_slot(holder, access);
-        }
         if !self.native_authoritative() {
             return Err(mod_api::AttachmentError::MissingHolder);
         }
@@ -295,22 +289,8 @@ impl Game<'_> {
             }
             return Ok(self.entity_attachments.entry(id).or_default());
         }
-        if let mod_api::Holder::OriginalPlayer(token) = holder {
-            return self
-                .player_state
-                .originals
-                .iter_mut()
-                .rev()
-                .find(|snapshot| snapshot.token() == token)
-                .map(|snapshot| &mut snapshot.attachments)
-                .ok_or(AttachmentError::MissingHolder);
-        }
         if let mod_api::Holder::Player(uuid) = holder {
-            let cloning = self
-                .player_state
-                .originals
-                .iter()
-                .any(|snapshot| snapshot.uuid() == uuid);
+            let cloning = self.player_state.cloning_players.contains(&uuid);
             if self.entity_initialization.active != Some(holder)
                 && !cloning
                 && self.lan_acting_uuid != Some(uuid)

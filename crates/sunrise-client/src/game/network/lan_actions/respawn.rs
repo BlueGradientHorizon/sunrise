@@ -15,16 +15,19 @@ impl Game<'_> {
             return;
         }
         let (uuid, entity_id) = (host.hub.guests[i].uuid, host.hub.guests[i].entity_id);
-        let original = self.capture_original_player(conn);
-        // PlayerList.respawn replaces the player, retaining only opted-in data.
-        if let Some(attachments) = self
+        // PlayerList.respawn replaces the player, retaining only opted-in data; move the
+        // detached previous attachments straight into the retained original when listened.
+        let previous = self
             .lan
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
-            && let Ok(copy) = attachments.copy_on_death()
-        {
-            attachments.replace_contents(copy);
-        }
+            .and_then(|attachments| {
+                attachments
+                    .copy_on_death()
+                    .ok()
+                    .map(|copy| attachments.swap_contents(copy))
+            });
+        let original = self.retain_original_player(conn, previous);
         // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
         self.keep_only_player_persisted(conn);
         self.reinitialize_server_player(uuid, conn);
@@ -158,9 +161,7 @@ impl Game<'_> {
             (g.uuid, g.name.clone())
         });
         if let Some(original) = original {
-            self.with_original_player(original, |game, original| {
-                game.native_player_clone(cloned, &name, true, original);
-            });
+            self.dispatch_player_clone_with_original(original, cloned, &name, true);
         }
         let clock_rate = self.network_clock_rate();
         let ctx = TickCtx {

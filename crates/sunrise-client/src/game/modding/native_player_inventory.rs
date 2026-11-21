@@ -45,6 +45,28 @@ impl From<PlayerWriteRefusal> for PlayerDataRefusal {
     }
 }
 
+/// Lend `Inventory.getItem` over a player's 43 vanilla inventory slots.
+pub(super) fn lend_inventory_view(
+    inventory: &[Option<ItemStack>],
+    armor: &[Option<ItemStack>; 4],
+    offhand: &Option<ItemStack>,
+    equipment: &sunrise_items::equipment::Equipment,
+    read: &mut dyn for<'a> FnMut(InventoryView<'a>),
+) {
+    let stack_at = |slot| match inventory_slot(slot)? {
+        Slot::Inv(i) => inventory.get(i)?.as_ref(),
+        Slot::Armor(i) => armor[i].as_ref(),
+        Slot::Offhand => offhand.as_ref(),
+        Slot::Equipment(i) => equipment.get(i),
+        _ => None,
+    };
+    read(InventoryView::new(
+        0..SLOTS,
+        &|slot| stack_read_metadata(stack_at(slot)?).ok(),
+        &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
+    ));
+}
+
 impl Game<'_> {
     /// Lend `Inventory.getItem` over the resident slots.
     pub(super) fn player_inventory_slots(
@@ -58,18 +80,7 @@ impl Game<'_> {
             }
             PlayerRead::Guest(g) => (&g.inventory, &g.armor, &g.offhand, &g.equipment),
         };
-        let stack_at = |slot| match inventory_slot(slot)? {
-            Slot::Inv(i) => inventory.get(i)?.as_ref(),
-            Slot::Armor(i) => armor[i].as_ref(),
-            Slot::Offhand => offhand.as_ref(),
-            Slot::Equipment(i) => equipment.get(i),
-            _ => None,
-        };
-        read(InventoryView::new(
-            0..SLOTS,
-            &|slot| stack_read_metadata(stack_at(slot)?).ok(),
-            &|slot, metadata| project_stack(stack_at(slot)?, metadata).ok(),
-        ));
+        lend_inventory_view(inventory, armor, offhand, equipment, read);
         Some(())
     }
 

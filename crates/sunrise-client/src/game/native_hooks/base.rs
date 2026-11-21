@@ -3568,7 +3568,7 @@ impl Game<'_> {
         player: u128,
         name: &str,
         was_death: bool,
-        original: mod_api::OriginalPlayerRef,
+        original: mod_api::OriginalPlayer<'_>,
     ) {
         self.fire_player_clone(player, name, was_death, original);
     }
