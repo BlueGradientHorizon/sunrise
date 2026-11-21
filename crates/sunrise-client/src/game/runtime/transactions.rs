@@ -237,9 +237,10 @@ pub(super) struct Level {
     dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
     block_entities: HashMap<Pos, Kept>,
-    /// The block entities this transaction removed (`journal_remove_block_entity`): an abort
-    /// puts them back as `block_entities` keeps them.
-    removed_block_entities: std::collections::HashSet<Pos>,
+    /// Rows moved out of storage when their block was tentatively replaced. Commit replays
+    /// removal with the row as it was then; abort uses the first write in `block_entities`.
+    /// A removal without a resident row still marks the position for abort.
+    removed_block_entities: HashMap<Pos, Option<(BlockEntity, u64)>>,
     /// Each item slot (block entity, slot) a slot-only write changed, as it was before this
     /// transaction first wrote it, for a block entity not kept whole in `block_entities`: a
     /// move through a container keeps the slot it touches, not the entity's whole saved data.
@@ -837,9 +838,12 @@ impl Game<'_> {
                 for (pos, kept) in level.block_entities {
                     outer.block_entities.entry(pos).or_insert(kept);
                 }
-                outer
-                    .removed_block_entities
-                    .extend(level.removed_block_entities);
+                for (pos, removed) in level.removed_block_entities {
+                    let first = outer.removed_block_entities.entry(pos).or_default();
+                    if first.is_none() {
+                        *first = removed;
+                    }
+                }
                 for (pos, block) in level.blocks {
                     outer
                         .blocks
@@ -1068,32 +1072,30 @@ impl Game<'_> {
             .entry(pos)
             .or_insert_with(|| Kept::capture(&self.world, &self.hoppers, pos));
     }
-    /// Puts back the block entity at `pos` that a transaction removed, as `kept` holds it, with
-    /// its generation, where none stands there now.
-    fn restore_removed_block_entity(&mut self, pos: Pos, kept: &Kept) {
-        let Some(entity) = &kept.entity else {
-            return;
-        };
-        if self.world.block_entities.get(&pos).is_some() {
-            return;
-        }
-        self.world.block_entities.insert(pos, entity.clone());
-        if let Some(generation) = kept.generation {
-            self.world
-                .block_entities
-                .restore_generation(pos, generation);
-            self.world.block_entities.reattach_retired(pos, generation);
+    /// Puts back a removed block entity and its generation where none stands there now.
+    fn restore_removed_block_entity(&mut self, pos: Pos, entity: BlockEntity, generation: u64) {
+        let entities = &mut self.world.block_entities;
+        if entities.get(&pos).is_none() {
+            entities.insert(pos, entity);
+            entities.restore_generation(pos, generation);
+            entities.reattach_retired(pos, generation);
         }
     }
-    /// Removes the block entity at `pos`, kept whole by the open transaction, which puts it back
-    /// if it aborts: a block write in the transaction that drops it, so later reads in it see
-    /// none. Outside a transaction, it just goes.
+    /// Hides the block entity from tentative reads. The first-write journal can undo all edits;
+    /// the removed row itself still contains the edits that matter to removal at commit.
     pub(super) fn journal_remove_block_entity(&mut self, pos: Pos) {
         self.journal_block_entity(pos);
-        if let Some(level) = self.transactions.last_mut() {
-            level.removed_block_entities.insert(pos);
+        let entities = &mut self.world.block_entities;
+        let Some(level) = self.transactions.last_mut() else {
+            entities.remove(&pos);
+            return;
+        };
+        let generation = entities.generation(&pos);
+        let removed = entities.remove(&pos).zip(generation);
+        let first = level.removed_block_entities.entry(pos).or_default();
+        if first.is_none() {
+            *first = removed;
         }
-        self.world.block_entities.remove(&pos);
     }
     /// How many block entities the open transactions keep whole, and how many single slots:
     /// what a test reads to tell a slot journal from a whole capture without timing it.
@@ -1740,7 +1742,7 @@ impl Game<'_> {
         }
     }
 
-    fn root_commit(&mut self, level: Level) {
+    fn root_commit(&mut self, mut level: Level) {
         // Storage is final. Publish save marks before any callback can unwind or start a save.
         for (dim, chunk) in level.save_chunks {
             let world = if dim == self.dim {
@@ -1763,7 +1765,7 @@ impl Game<'_> {
         }
         self.commit_menu_data(level.menu_data);
         // A menu callback removed its detached block entity. Its accepted remainder is
-        // spilled separately; replaying removal with the rollback copy would duplicate items.
+        // spilled separately and must not be replayed here.
         let detached: std::collections::HashSet<_> = level
             .after
             .iter()
@@ -1789,15 +1791,16 @@ impl Game<'_> {
                         level_host,
                         replay_removal,
                     } = level.blocks[&pos];
-                    // Restore an entity that the real write must remove with its side effects,
-                    // or that survives because a later write returned it to the old block kind.
+                    // LevelChunk.setBlockState runs preRemoveSideEffects on the resident row
+                    // before removeBlockEntity and neighbor effects. Replay with the row as it
+                    // stood at removal, or leave it in place if the old block kind survived.
                     let b = self.res.behaviours();
-                    if level.removed_block_entities.contains(&pos)
-                        && !detached.contains(&pos)
+                    if !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
-                        && let Some(kept) = level.block_entities.get(&pos)
+                        && let Some((entity, generation)) =
+                            level.removed_block_entities.remove(&pos).flatten()
                     {
-                        self.restore_removed_block_entity(pos, kept);
+                        self.restore_removed_block_entity(pos, entity, generation);
                     }
                     if now != was {
                         // The stored state back, so the one real write sees the change.
@@ -1894,7 +1897,7 @@ impl Game<'_> {
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
         for (pos, kept) in level.block_entities {
-            match (&kept.entity, self.world.block_entities.get_mut(&pos)) {
+            match (kept.entity, self.world.block_entities.get_mut(&pos)) {
                 (Some(entity), Some(now)) => {
                     fn shapes(
                         entity: &BlockEntity,
@@ -1904,17 +1907,17 @@ impl Game<'_> {
                             _ => None,
                         }
                     }
-                    if shapes(now) != shapes(entity) {
+                    if shapes(now) != shapes(&entity) {
                         reshaped.push(pos);
                     }
-                    *now = entity.clone();
+                    *now = entity;
                     self.world
                         .block_entities
                         .restore_generation(pos, kept.generation.unwrap());
                 }
                 // One this transaction removed comes back.
-                (Some(_), None) if level.removed_block_entities.contains(&pos) => {
-                    self.restore_removed_block_entity(pos, &kept);
+                (Some(entity), None) if level.removed_block_entities.contains_key(&pos) => {
+                    self.restore_removed_block_entity(pos, entity, kept.generation.unwrap());
                 }
                 _ => {}
             }

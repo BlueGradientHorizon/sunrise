@@ -1,13 +1,22 @@
 use super::*;
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game, with_game_at};
+use crate::game::native_entity_refs::tests::{
+    bind_local_player, run_fresh_cases, with_game, with_game_at,
+};
 use mod_api::{
-    BlockEntityPart, BlockEntityTickEvent, BlockPart, Hooks, HostTransaction, ModEntry, Registrar,
+    BlockEntityPart, BlockEntityTickEvent, BlockPart, BlockUpdateFlags, Hooks, HostTransaction,
+    ModEntry, Registrar,
 };
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},
 };
-use sunrise_client::{chunk::Chunk, containers::ModBlockEntityFields};
+use sunrise_client::{
+    chunk::Chunk,
+    containers::{ModBlockEntityFields, ModContainer},
+    items::ItemStack,
+    motion::PlayerMotion,
+};
+use sunrise_core::geometry::Vec3;
 
 const POS: Pos = (1, 64, 1);
 const CHUNK: (i32, i32) = (0, 0);
@@ -175,6 +184,102 @@ fn a_scope_transaction_aborts_subject_and_dropped_item_edits_together() {
             Some(count)
         );
     });
+}
+
+fn check_edit_then_replace(commit: bool) {
+    with_game(|game| {
+        let subject = place_subject(game, KIND);
+        let original = game.world.block(POS.0, POS.1, POS.2);
+        let replacement = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:glass")
+            .unwrap();
+        let replacement_state = replacement.try_into_api().unwrap();
+        game.world.block_entities.set_mod_containers(
+            [(
+                original.0,
+                Arc::new(ModContainer {
+                    slots: 2,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        let taken = ItemStack::new("minecraft:diamond", 1);
+        let left = ItemStack::new("minecraft:iron_ingot", 1);
+        let BlockEntity::Mod(row) = game.world.block_entities.get_mut(&POS).unwrap() else {
+            panic!("expected a mod container");
+        };
+        row.items = vec![Some(taken.clone()), Some(left.clone())];
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        bind_local_player(game, 20, 123);
+        let player = game.player(123).unwrap();
+        game.selected = 0;
+        assert!(game.inventory[0].is_none());
+
+        let mut access = access(game, subject);
+        let mut scope = BlockEntityTickScope::new(&mut access);
+        let result = scope.transaction(|scope, _| {
+            let (level, pos, stack) = scope
+                .with_view(|mut view| {
+                    let stack = view.item_slot(0).unwrap().to_owned().unwrap();
+                    assert_eq!(view.set_item_slot(0, None), Ok(true));
+                    (view.level(), view.position(), stack)
+                })
+                .unwrap();
+            let host = scope.host();
+            assert_eq!(player.give_stack(host, stack), Ok(None));
+            // The child keeps the row it removed; the parent has the earlier snapshot.
+            host.transaction(|host, _| {
+                assert_eq!(
+                    level.set_block(host, pos, replacement_state, BlockUpdateFlags::KNOWN_SHAPE),
+                    Ok(true)
+                );
+                Ok::<(), ()>(())
+            })?;
+            assert_eq!(scope.with_view(|_| ()), None);
+            if commit { Ok(()) } else { Err(()) }
+        });
+        assert_eq!(result, if commit { Ok(()) } else { Err(()) });
+        assert_eq!(
+            scope.with_view(|view| view.handle()),
+            (!commit).then_some(subject)
+        );
+        game.flush_spill();
+
+        if commit {
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), replacement);
+            assert!(game.world.block_entities.get(&POS).is_none());
+            assert_eq!(game.inventory[0], Some(taken));
+            let [drop] = game.dropped.as_slice() else {
+                panic!("expected exactly the item left in the replaced container");
+            };
+            assert_eq!(drop.stack, left);
+        } else {
+            assert_eq!(game.world.block(POS.0, POS.1, POS.2), original);
+            assert_eq!(
+                game.world.block_entities.get(&POS).unwrap().slots(),
+                [Some(taken), Some(left)]
+            );
+            assert!(game.inventory[0].is_none());
+            assert!(game.dropped.is_empty());
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn edit_then_replace_commit_spills_only_the_remaining_contents() {
+    check_edit_then_replace(true);
+}
+
+#[test]
+#[ignore = "daily"]
+fn edit_then_replace_abort_restores_the_original_contents() {
+    check_edit_then_replace(false);
 }
 
 struct Tick;

@@ -123,14 +123,17 @@ pub trait Notes {
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
   `block_entity_tick`): made when the block is placed, ticked on the server and saved with the chunk.
-  `entity.id()` reads its type identity, fixed at construction; mutable events give a `ModBlockEntityView` whose
-  payload contains `nbt`, `items` and `data`. A mod cannot replace the view or access its private entity handle.
+  `block_entity_tick` receives `&mut BlockEntityTickEvent<'_>` without a separate Host.
+  `event.subject.with_view` lends the resident type ID, saved data, and slots; it returns `None`
+  if the subject is no longer available. To edit Part state, get the handle with
+  `event.subject.with_view(|view| view.handle())`, then use `event.subject.host()` for `edit_state`.
+  To commit edits to the subject and other objects together, use `event.subject.transaction`.
 
 - Item slots for those block entities (`r.block_container(&block, container)`): hoppers, comparators and breaking the
-  block use them as they use vanilla's containers, and `block_entity_tick` also gets the slots.
+  block use them as they use vanilla's containers, and the tick's resident view lends the slots.
 
-- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used,
-  and `block_entity_tick` takes the whole block entity, with the data slots the menu shows.
+- Menus for mod containers: the container names one of vanilla's slot-grid or furnace menus, which opens when the block is used.
+  The tick's resident view lends the data slots the menu shows.
 
 - A machine reaches neighbouring storage through the block's Parts and capabilities, not a raw mutable
   block-entity callback. `block_entity.data_slots(host)` reads a mod entity's menu data on the server or

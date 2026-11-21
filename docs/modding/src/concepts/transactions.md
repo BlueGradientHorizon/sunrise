@@ -59,14 +59,44 @@ replaced block see it as it was, and a cancelled drop keeps the replacement.
 
 `LevelRef::set_block` and `LevelRef::remove_block` expose the tentative block state
 right away; block updates and replacement effects wait for the outermost commit.
-`LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
-running loot, experience or break effects.
+Removal uses the block entity as it stood at replacement, including any edits made
+before the replacement. On abort, the journal restores the original entity and
+undoes those edits. `LevelRef::destroy_block` returns `Ok(None)` while a transaction
+is open, before running loot, experience or break effects.
 
-Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
-effect immediately, even inside a transaction. Equipment sounds and equip/unequip
-events from `LivingRef::set_equipment` also happen immediately. An abort does not
-undo these writes or effects. Use journaled capability handlers when you need rollback.
+`ItemEntityRef::set_stack` writes the replacement stack immediately and joins the
+ambient transaction, if one is open. An abort restores the old stack. A block-entity
+tick does not open a transaction for you. Use `event.subject.transaction` to make
+a subject edit and a dropped-item write atomic:
+
+```rust,ignore
+use mod_api::{BlockEntityTickScope, ItemEntityRef, ItemStack};
+
+fn update(
+    tick: &mut BlockEntityTickScope<'_>,
+    item: ItemEntityRef,
+    replacement: ItemStack,
+    progress: i32,
+) -> Result<(), &'static str> {
+    tick.transaction(|tick, _| {
+        if !item.set_stack(tick.host(), replacement).map_err(|_| "invalid stack")? {
+            return Err("dropped-item write was refused");
+        }
+        let changed = tick.with_view(|mut view| view.set_data_slot(0, progress))
+            .ok_or("subject is unavailable")?;
+        if !changed {
+            return Err("progress was not updated");
+        }
+        Ok(())
+    })
+}
+```
+
+Other direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
+`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds
+and equip/unequip events from `LivingRef::set_equipment` also happen immediately.
+An abort does not undo these writes or effects. Use journaled capability handlers
+when you need rollback.
 
 ## Spawning and removing entities
 

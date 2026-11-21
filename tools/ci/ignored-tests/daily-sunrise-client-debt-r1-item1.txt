@@ -1,0 +1,2 @@
+sunrise-client game::native_hooks::block_entity_tick::tests::edit_then_replace_abort_restores_the_original_contents lib daily resources
+sunrise-client game::native_hooks::block_entity_tick::tests::edit_then_replace_commit_spills_only_the_remaining_contents lib daily resources

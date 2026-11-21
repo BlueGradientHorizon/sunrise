@@ -102,14 +102,21 @@ impl BlockEntityPartState for Press {
     const DATA: &'static AttachmentType<u32> = &PROGRESS;
 }
 r.block_entity_part_with_state(&press, Press)?;
+```
 
-// In its tick, where the block entity is out of the world and `block_entity` finds nothing:
-let level = host.level(host.dimension()).unwrap();
-let entity = host.block_entity_identity(level, event.pos).unwrap();
-let done = Press::edit_state(host, entity, |_, progress| {
-    *progress += 1;
-    *progress >= 200
-})?;
+In `BlockEntityPart::block_entity_tick`, take the handle from the subject, then borrow the Host
+for the Part-state edit. If an earlier Part replaced the subject, the view is unavailable:
+
+```rust,ignore
+fn block_entity_tick(&self, event: &mut BlockEntityTickEvent<'_>) {
+    let Some(entity) = event.subject.with_view(|view| view.handle()) else {
+        return;
+    };
+    let host = event.subject.host();
+    if let Err(err) = Press::edit_state(host, entity, |_, progress| *progress += 1) {
+        eprintln!("press progress edit failed: {err}");
+    }
+}
 ```
 
 - `Press::state(host, entity)` and `state_existing` read a snapshot through `&dyn Host` and never
