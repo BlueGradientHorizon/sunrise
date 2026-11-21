@@ -117,11 +117,8 @@ fn submissions<'a>(
             }
             let name = descriptor_name(&entry.id, &version.version, &row.sunrise);
             let invalid = || at(format!("binaries must be a GitHub release URL for {name}"));
-            let (parent, asset) = row.binaries.rsplit_once('/').ok_or_else(invalid)?;
-            let (repo, tag) = parent
-                .strip_prefix("https://github.com/")
-                .and_then(|path| path.split_once("/releases/download/"))
-                .ok_or_else(invalid)?;
+            let (repo, tag, asset) =
+                super::github_release_asset(&row.binaries).ok_or_else(invalid)?;
             if asset != name
                 || !super::super::plain_name(&name)
                 || !valid_repo(repo)
@@ -134,7 +131,7 @@ fn submissions<'a>(
                 version,
                 row,
                 key,
-                parent,
+                parent: &row.binaries[..row.binaries.len() - asset.len() - 1],
                 name,
             })
         })

@@ -1157,6 +1157,15 @@ fn github_repo(source: &str) -> Option<String> {
     (!owner.is_empty() && !repo.is_empty()).then(|| format!("{owner}/{repo}"))
 }
 
+/// The repository, tag and asset of a GitHub release download URL.
+fn github_release_asset(url: &str) -> Option<(&str, &str, &str)> {
+    let (repo, rest) = url
+        .strip_prefix("https://github.com/")?
+        .split_once("/releases/download/")?;
+    let (tag, asset) = rest.rsplit_once('/')?;
+    Some((repo, tag, asset))
+}
+
 /// Projects and collections use the same ownership test in registry review.
 fn owned_by(owners: &[String], author: &str) -> bool {
     owners
