@@ -214,17 +214,20 @@ impl Game<'_> {
         };
         if !gate.skipped() {
             body.record_move(
-                f.position,
-                sunrise_client::falling_block::bounds(f.position),
-                wanted,
-                movement,
-                !self.options.execution_role.is_client(),
-                context,
-                Some(collisions::PowderSnowSubject {
-                    fall_distance: f.fall_distance,
-                    falling_block: true,
-                    ..Default::default()
-                }),
+                sunrise_client::motion::BodyCollision {
+                    footprint: (
+                        f.position,
+                        sunrise_client::falling_block::bounds(f.position),
+                    ),
+                    movement: (wanted, movement),
+                    authoritative: !self.options.execution_role.is_client(),
+                    context,
+                    subject: Some(collisions::PowderSnowSubject {
+                        fall_distance: f.fall_distance,
+                        falling_block: true,
+                        ..Default::default()
+                    }),
+                },
                 &mut f.ground,
             );
         }

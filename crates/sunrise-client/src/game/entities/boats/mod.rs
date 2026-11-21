@@ -503,6 +503,10 @@ impl Boat {
     pub(super) fn entity_type_name(&self) -> &str {
         &self.type_names[usize::from(self.chest)]
     }
+
+    pub(super) fn shared_type_name(&self) -> Arc<str> {
+        Arc::clone(&self.type_names[usize::from(self.chest)])
+    }
 }
 /// The wood of a boat or chest boat item or entity type, and whether it
 /// carries a chest.
@@ -1071,13 +1075,15 @@ impl Game<'_> {
             };
             if !gate.skipped() {
                 motion.record_move(
-                    b.position,
-                    b.bounds(),
-                    movement,
-                    moved,
-                    true,
-                    sunrise_client::motion::BodyMotion::entity_context(b.id, b.position),
-                    None,
+                    sunrise_client::motion::BodyCollision {
+                        footprint: (b.position, b.bounds()),
+                        movement: (movement, moved),
+                        authoritative: true,
+                        context: sunrise_client::motion::BodyMotion::entity_context(
+                            b.id, b.position,
+                        ),
+                        subject: None,
+                    },
                     &mut b.ground,
                 );
             }
