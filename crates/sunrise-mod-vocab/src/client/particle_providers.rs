@@ -221,6 +221,7 @@ pub trait ParticleProvider<T = ()>: Send + Sync + 'static {
 /// The particle provider registry `register_particle_providers` hands out: NeoForge's
 /// `RegisterParticleProvidersEvent`.
 pub trait ParticleProviders {
+    // hidden: the typed registration wrapper erases the provider for storage.
     #[doc(hidden)]
     fn add_sprite_set(&mut self, key: ParticleKey, provider: Arc<dyn BoundParticleProvider>);
 }
@@ -238,6 +239,7 @@ impl dyn ParticleProviders + '_ {
     }
 }
 
+// hidden: the renderer stores one type-erased provider per bound type.
 #[doc(hidden)]
 pub trait BoundParticleProvider: Send + Sync {
     fn create_particle(
@@ -284,6 +286,7 @@ impl<T: 'static> BoundParticleProvider for BoundProvider<T> {
     }
 }
 
+// hidden: the renderer binds the typed provider to its erased dispatch.
 #[doc(hidden)]
 pub fn bind_particle_provider<T: 'static>(
     provider: Arc<dyn ParticleProvider<T>>,

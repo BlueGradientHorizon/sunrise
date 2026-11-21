@@ -6,6 +6,7 @@ use sunrise_mod_runtime::registry_keys::Names;
 
 /// The load-stable identity of a registered particle type and its Rust options type.
 // no wire: only the type's identifier and declared stream value travel.
+// exhaustive: only common registration creates the typed handle.
 pub struct ParticleType<T> {
     key: ParticleKey,
     value: PhantomData<fn() -> T>,
@@ -38,6 +39,7 @@ impl<T: PartialEq + Send + Sync + 'static> ParticleType<T> {
 /// Read-only registry lookups available to a particle codec. Use names in encoded
 /// data; key slots are local to the installed game and can differ at the other end.
 // no wire: a borrowed view of the frozen registries used by the codec.
+// exhaustive: only the game constructs the borrowed registry view.
 pub struct ParticleRegistryView<'a> {
     particles: Option<&'a Names>,
     items: Option<&'a Names>,
@@ -90,6 +92,7 @@ type MapEncode<T> = fn(&T, &ParticleRegistryView<'_>) -> Result<Compound, String
 /// A registered type's options in commands and structured data (`ParticleType.codec`).
 /// The engine dispatches on `type`; the codec reads and writes only that type's fields.
 // no wire: process-local codec functions.
+// exhaustive: mods construct it with new, not fields.
 pub struct ParticleMapCodec<T> {
     decode: MapDecode<T>,
     encode: MapEncode<T>,
@@ -113,6 +116,7 @@ type StreamEncode<T> =
 /// A registered type's play-stream codec (`ParticleType.streamCodec`). The transmitted
 /// value has an explicit [`Wire`] form and carries identifiers, not local key slots.
 // no wire: only the declared value crosses, never the codec itself.
+// exhaustive: mods construct it with wire or mapped, not fields.
 pub struct ParticleStreamCodec<T> {
     decode: Box<StreamDecode<T>>,
     encode: Box<StreamEncode<T>>,
@@ -171,8 +175,10 @@ impl<T: PartialEq + Send + Sync + 'static> Value for T {
 
 /// An owned particle value shared by a whole spawn request. Only its registered
 /// codec and the type's provider interpret it.
+// hidden: the engine shares a decoded value across a spawn request.
 #[doc(hidden)]
 #[derive(Clone)]
+// exhaustive: only registration and the codecs create the owned value.
 pub struct TypedParticleOptions {
     key: ParticleKey,
     value: Arc<dyn Value>,
@@ -204,6 +210,7 @@ impl fmt::Debug for TypedParticleOptions {
     }
 }
 
+// hidden: the registration table stores each type's erased codecs.
 #[doc(hidden)]
 pub trait ParticleCodec: Send + Sync {
     fn decode_map(

@@ -4,6 +4,7 @@ pub trait ParticlesRegistrar {
     /// Unknown IDs are reported with the requesting mod when the content registry loads.
     fn particle_key(&mut self, id: &str) -> crate::ParticleKey;
 
+    // hidden: the typed registration wrapper inserts its erased codec through this method.
     #[doc(hidden)]
     fn add_particle_type(
         &mut self,
