@@ -1456,10 +1456,9 @@ impl Renderer {
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
         }
-        // Complete the engine sky pass before giving mods the buffer-prepare boundary. The main
-        // world pass loads that colour and starts its own depth as usual. A classic pack that
-        // replaces the sky instead draws it after the engine world import in PackPost; there
-        // is no early engine sky pass to observe on that route.
+        // Complete the separate engine sky pass before buffer preparation. The main world pass
+        // loads that colour and starts its own depth as usual. A classic pack's replacement
+        // sky draws and notifies after the engine world import in PackPost instead.
         let separate_sky =
             live_hooks && sky_visible && (frame.skybox || frame.end_sky) && !pack_draws_sky;
         if separate_sky {
@@ -2539,6 +2538,15 @@ impl Renderer {
                     pack_draws_celestial,
                     hdr_gain,
                 );
+                // A classic sky program doesn't replace the visible End skybox. That sky
+                // stays at the start of the engine world pass; don't lend the pass to mods.
+                if live_hooks
+                    && sky_visible
+                    && frame.end_sky
+                    && let Some(hooks) = hooks.as_deref_mut()
+                {
+                    hooks.on_after_sky(&self.visible_renderable_sections, hook_oit);
+                }
             }
             // Keep the cursor for engine-supplied test batches. Mod stage callbacks draw only
             // explicitly selected prepared ranges at their real boundaries.

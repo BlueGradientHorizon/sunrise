@@ -276,10 +276,11 @@ draw.terrain_model(self.belt, options)?;
   submissions in that view are ignored. Culling uses the composed pose.
 - `group.destroy(host)` retires the handle and releases capacity and CPU caches.
   Copies already accepted for a view remain drawn; subsequent calls return `Stale`.
-- `Hooks::prepare_render_buffers` runs once per world view, after `RenderLevelStage::AfterSky`
-  when that stage runs, and before any pass-bearing render stage. It lends `&WorldRenderView<'_>` (camera, world
-  partial tick, game time, improved-transparency state, and visible `RenderableSection`s) and
-  `&dyn ClientHost` so mods can update retained `InstanceGroups` before the render passes execute.
+- `Hooks::prepare_render_buffers` runs once per world view before any pass-bearing render stage.
+  With a classic pack's replacement sky, `RenderLevelStage::AfterSky` fires later. Preparation
+  lends `&WorldRenderView<'_>` (camera, world partial tick, game time, improved-transparency state,
+  and visible `RenderableSection`s) and `&dyn ClientHost` so mods can update retained
+  `InstanceGroups` before the render passes execute.
   Its preparation context is also where to submit lines and quads that must draw at a
   [specific stage](render-pipelines.md#what-a-pipeline-draws-and-when).
 

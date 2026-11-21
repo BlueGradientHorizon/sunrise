@@ -193,11 +193,16 @@ For an exact stage, prepare the geometry before the pass:
 `event.context.lines(stage, &lines)` and `event.context.quads(stage, &quads)`, but not pipeline
 quads because OIT writes different attachments. The renderer pages uploads at its device's
 buffer limits rather than capping the number of mod quads. A stage skipped by the render route
-is not replayed later. In particular, a classic shader pack which replaces the engine sky draws
-its sky after reading the engine world, so there is no early engine `AfterSky` on that route.
-`AfterLevel` runs when the level is finished, before pack composition and the engine's hand
-overlay. If the pack draws its own hand, it stays inside the pack's world passes so that
-`depthtex1` contains the opaque hand and `depthtex2` does not.
+is not replayed later.
+
+With a classic shader pack, `AfterSky` and `AfterLevel` observe the equivalent pack boundaries.
+`AfterSky` fires immediately after the sky that actually draws. If the pack keeps the engine sky,
+that is the engine's sky boundary. If it replaces the sky, that is after the pack imports the engine
+world, so `prepare_render_buffers` has already run. Use preparation, not `AfterSky`, for work that
+needs to precede the main world passes. No sky draw means no `AfterSky`.
+`AfterLevel` runs after the pack finishes drawing the world and before pack composition and the
+engine's hand overlay. If the pack draws its own hand, it stays inside the pack's world passes
+so that `depthtex1` contains the opaque hand and `depthtex2` does not.
 
 ## Sampling a texture
 

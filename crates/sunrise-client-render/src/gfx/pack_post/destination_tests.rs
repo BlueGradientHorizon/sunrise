@@ -284,7 +284,7 @@ impl Fixture {
             size,
             &[],
             terrain,
-            || {},
+            |_| {},
             &std::sync::atomic::AtomicBool::new(false),
         )
         .unwrap();

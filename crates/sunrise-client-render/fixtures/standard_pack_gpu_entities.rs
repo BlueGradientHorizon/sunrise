@@ -490,9 +490,22 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
         pixels.iter().any(|pixel| pixel[..3] == [0, 255, 255]),
         "pack-owned hand only in depthtex1"
     );
+    assert_eq!(classic.prepared_after_sky, Some(false));
+    assert_eq!(
+        classic
+            .stages
+            .iter()
+            .filter(|&&stage| stage == Stage::AfterSky)
+            .count(),
+        1,
+        "the pack's red sky must have exactly one AfterSky notification"
+    );
     assert!(
-        !classic.stages.contains(&Stage::AfterSky) || classic.prepared_after_sky == Some(true),
-        "AfterSky must not be emitted after preparation"
+        classic
+            .stages
+            .ends_with(&[Stage::AfterSky, Stage::AfterLevel]),
+        "the pack sky follows the engine world stages and precedes the end of the pack world: {:?}",
+        classic.stages
     );
     assert_eq!(
         classic
@@ -502,7 +515,14 @@ fn fixture(window: Arc<Window>, out: &Path) -> Result<(), Box<dyn std::error::Er
             .count(),
         1
     );
-    assert_eq!(classic.stages.last(), Some(&Stage::AfterLevel));
+    frame.sky_blocked = true;
+    let mut blocked_sky = WorldStageProbe::default();
+    renderer.render(&frame, Some(&mut blocked_sky))?;
+    assert!(
+        !blocked_sky.stages.contains(&Stage::AfterSky),
+        "loading a sky program is not enough: it must draw this frame"
+    );
+    frame.sky_blocked = false;
     frame.hand = &[];
 
     pack(&mut renderer, &out.join("failed-pack"), false, false);

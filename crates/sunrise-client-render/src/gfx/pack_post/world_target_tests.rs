@@ -351,7 +351,7 @@ fn render(
         window,
         &[],
         &mut |_, _, _, _| {},
-        || {},
+        |_| {},
         &std::sync::atomic::AtomicBool::new(false),
     )
     .unwrap();

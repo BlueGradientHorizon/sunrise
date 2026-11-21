@@ -1177,6 +1177,12 @@ fn attach(
     })
 }
 
+/// The no-pass render hook boundaries the classic pack can supply.
+pub(super) enum WorldBoundary {
+    AfterSky,
+    AfterLevel,
+}
+
 /// Which of the frame's terrain draws: the camera's solid or translucent ones, or the shadow
 /// camera's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3967,7 +3973,7 @@ impl PackPost {
     }
 
     /// The sky's parts in vanilla's order, each with the program that draws it; one render pass
-    /// while consecutive programs write the same buffers.
+    /// while consecutive programs write the same buffers. Returns whether any part drew.
     fn draw_sky(
         &mut self,
         device: &wgpu::Device,
@@ -3975,9 +3981,9 @@ impl PackPost {
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
         frame: &super::Frame,
-    ) {
+    ) -> bool {
         let Some(mut sky) = self.sky.take() else {
-            return;
+            return false;
         };
         let parts = sky
             .geometry
@@ -4034,8 +4040,10 @@ impl PackPost {
             }
             rp.draw(part.range, 0..1);
         }
+        let drew = open.is_some();
         drop(open);
         self.sky = Some(sky);
+        drew
     }
 
     /// Entities, block entities, translucent entity parts and particles with the pack's
@@ -4331,6 +4339,7 @@ impl PackPost {
     }
 
     /// The sky, when it shows, then terrain, entities and block entities.
+    #[allow(clippy::too_many_arguments)]
     fn draw_opaque(
         &mut self,
         device: &wgpu::Device,
@@ -4339,9 +4348,14 @@ impl PackPost {
         size: [u32; 2],
         frame: &super::Frame,
         terrain: &mut TerrainDraw<'_>,
+        boundary: &mut impl FnMut(WorldBoundary),
     ) {
-        if super::sky_visible(frame) || super::end_fog_sky(frame) {
-            self.draw_sky(device, queue, encoder, size, frame);
+        if (super::sky_visible(frame) || super::end_fog_sky(frame))
+            && self.draw_sky(device, queue, encoder, size, frame)
+            && self.hides_sky
+        {
+            // A pack can draw just the sun and moon; the engine still owns that sky boundary.
+            boundary(WorldBoundary::AfterSky);
         }
         self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
         self.draw_entities(device, queue, encoder, size, false);
@@ -5208,10 +5222,11 @@ impl PackPost {
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`. Calls `after_level` after the last pack world pass and before
-    /// composition. A pack's hand is still part of its world passes for the depth snapshots.
+    /// the result onto `screen`. Notifies after the pack's replacement sky pass, if drawn, and
+    /// after the last pack world pass, before composition. A pack's hand is still part of its
+    /// world passes for the depth snapshots.
     #[allow(clippy::too_many_arguments)]
-    pub fn run(
+    pub(super) fn run(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -5225,7 +5240,7 @@ impl PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
-        after_level: impl FnOnce(),
+        mut boundary: impl FnMut(WorldBoundary),
         lost: &std::sync::atomic::AtomicBool,
     ) -> Result<(), String> {
         self.resize(device, size, lost)?;
@@ -5539,7 +5554,7 @@ impl PackPost {
         });
         let mut water_drawn = self.water.is_none() && self.weather.is_none() && !late_entities;
         let mut shadow_drawn = false;
-        let mut after_level = Some(after_level);
+        let mut world_finished = false;
         for pass in &mut passes {
             if pass.group == Group::Setup && !self.setup_pending {
                 continue;
@@ -5551,20 +5566,19 @@ impl PackPost {
             }
             if !terrain_drawn && !early && pass.group != Group::Prepare {
                 terrain_drawn = true;
-                self.draw_opaque(device, queue, encoder, size, frame, terrain);
+                self.draw_opaque(device, queue, encoder, size, frame, terrain, &mut boundary);
             }
             // As if the pack didn't have it: no compute stages, flips or stage changes.
             if self.sizes_differ(pass) {
                 continue;
             }
-            if matches!(pass.group, Group::Composite | Group::Final) {
+            if !world_finished && matches!(pass.group, Group::Composite | Group::Final) {
                 if !water_drawn {
                     water_drawn = true;
                     self.draw_translucent(device, queue, encoder, size, terrain);
                 }
-                if let Some(after_level) = after_level.take() {
-                    after_level();
-                }
+                boundary(WorldBoundary::AfterLevel);
+                world_finished = true;
             }
             if pass.group == Group::Deferred && !seen.0 {
                 seen.0 = true;
@@ -5657,13 +5671,13 @@ impl PackPost {
             self.run_shadow(device, queue, encoder, terrain, frame);
         }
         if !terrain_drawn {
-            self.draw_opaque(device, queue, encoder, size, frame, terrain);
+            self.draw_opaque(device, queue, encoder, size, frame, terrain, &mut boundary);
         }
         if !water_drawn {
             self.draw_translucent(device, queue, encoder, size, terrain);
         }
-        if let Some(after_level) = after_level {
-            after_level();
+        if !world_finished {
+            boundary(WorldBoundary::AfterLevel);
         }
         let targets = self.targets.as_ref().expect("resized");
         // depthtex0 as the frame leaves it, for next frames' `centerDepthSmooth`.

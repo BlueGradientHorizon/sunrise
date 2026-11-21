@@ -55,7 +55,7 @@ impl Renderer {
         &mut self,
         mut encoder: wgpu::CommandEncoder,
         args: PostPassArgs<'_>,
-        hooks: Option<&mut dyn world_primitives::FrameHooks>,
+        mut hooks: Option<&mut dyn world_primitives::FrameHooks>,
     ) -> std::result::Result<(wgpu::CommandEncoder, PostPassResult), String> {
         let PostPassArgs {
             frame,
@@ -224,9 +224,14 @@ impl Renderer {
                 [self.config.width, self.config.height],
                 pages,
                 &mut terrain,
-                || {
-                    if let Some(hooks) = hooks {
-                        hooks.on_after_level(&self.visible_renderable_sections, false);
+                |boundary| {
+                    use pack_post::WorldBoundary;
+                    if let Some(hooks) = hooks.as_deref_mut() {
+                        let sections = &self.visible_renderable_sections;
+                        match boundary {
+                            WorldBoundary::AfterSky => hooks.on_after_sky(sections, false),
+                            WorldBoundary::AfterLevel => hooks.on_after_level(sections, false),
+                        }
                     }
                 },
                 &self.device_lost,

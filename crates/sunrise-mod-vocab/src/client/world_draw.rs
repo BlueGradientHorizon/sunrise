@@ -174,14 +174,13 @@ pub enum OitStage {
 }
 
 /// Where in the world's frame a stage runs: all 9 NeoForge 26.3
-/// `RenderLevelStageEvent` stages, in frame order.
+/// `RenderLevelStageEvent` stages, listed in engine order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum RenderLevelStage {
-    /// After the early engine sky pass, before `prepare_render_buffers` and before any
-    /// main world render pass (`RenderLevelStageEvent.AfterSky`). Absent if no engine sky
-    /// pass runs, including when a classic shader pack replaces that pass with its own
-    /// sky after importing the world. Provides no active render pass.
+    /// Immediately after the sky draws (`RenderLevelStageEvent.AfterSky`). A classic shader
+    /// pack's replacement sky finishes after it imports the engine world. Absent if no sky
+    /// draws. Provides no active render pass.
     AfterSky,
     /// After solid and cutout chunk geometry, before opaque entities and block entities
     /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).
@@ -206,13 +205,14 @@ pub enum RenderLevelStage {
     /// (`RenderLevelStageEvent.OitTranslucent`).
     OitTranslucent(OitStage),
     /// After the level finishes rendering, before the engine's first-person hand overlay
-    /// (`RenderLevelStageEvent.AfterLevel`). A classic pack's own hand is part of its world
-    /// passes; this stage runs before pack composition. Provides no active render pass.
+    /// (`RenderLevelStageEvent.AfterLevel`). With a classic shader pack this follows the pack's
+    /// world passes (including its own hand), before pack composition. Provides no active
+    /// render pass.
     AfterLevel,
 }
 impl RenderLevelStage {
-    /// The stages fired in frame order when classic transparency is active
-    /// (`!view.improved_transparency`).
+    /// The engine's stage order when classic transparency is active (`!view.improved_transparency`).
+    /// A classic shader pack can skip engine stages or replace the sky boundary.
     pub const CLASSIC_ORDER: &[Self] = &[
         Self::AfterSky,
         Self::AfterOpaqueBlocks,
@@ -236,7 +236,8 @@ impl RenderLevelStage {
         Self::AfterLevel,
     ];
 
-    /// The stages fired in frame order for the active transparency mode.
+    /// The engine's stage order for the active transparency mode. Classic shader packs can
+    /// skip stages and can draw their replacement sky after the engine's main world pass.
     pub const fn frame_order(improved_transparency: bool) -> &'static [Self] {
         if improved_transparency {
             Self::OIT_ORDER

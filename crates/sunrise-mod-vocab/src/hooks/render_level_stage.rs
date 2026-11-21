@@ -9,16 +9,17 @@ pub trait DrawContexts {
 }
 
 pub trait Hooks {
-    /// Observe or draw world geometry at one stage of a world view (NeoForge 26.3's
-    /// `RenderLevelStageEvent`), asked for each active stage of `RenderLevelStage::frame_order`
-    /// in frame order. `context` exposes the active stage capability: `StagePass::None` for
-    /// no-pass stages (`AfterSky`, `AfterLevel`), `StagePass::World` for standard pass stages,
-    /// and `StagePass::Oit` for `OitTranslucent` sub-passes. Client-only, noncancellable.
+    /// Observe or draw world geometry at an active stage of a world view (NeoForge 26.3's
+    /// `RenderLevelStageEvent`). With a classic shader pack, `AfterSky` follows the sky that
+    /// actually draws (engine or pack), and `AfterLevel` follows the pack's world passes, before
+    /// composition and the engine hand overlay. `context` exposes `StagePass::None` for those
+    /// two stages, `StagePass::World` for standard pass stages, and `StagePass::Oit` for
+    /// `OitTranslucent` sub-passes. Client-only, noncancellable.
     #[notes = r#"## World render stages
 
 `Hooks::render_level_stage` is the client counterpart of NeoForge 26.3's
 `RenderLevelStageEvent`, covering all 9 stages as one hook with a `RenderLevelStage`:
-- `AfterSky` (no active render pass, before `prepare_render_buffers`)
+- `AfterSky` (no active render pass, immediately after the engine or pack sky draws)
 - `AfterOpaqueBlocks` (after solid and cutout chunk geometry, before opaque features)
 - `AfterOpaqueFeatures` (after opaque entities, block entities and particles)
 - When classic transparency is active (`!view.improved_transparency`):
@@ -34,13 +35,14 @@ pub trait Hooks {
 
 Each frame asks `Hooks::submit_custom_geometry` and registered debug renderers first (with
 `WorldDrawContext`, for `name_tag`, `draw_model_instances`, `draw_instance_group`, and custom
-world primitives drawn at the end of the world pass), then `AfterSky` (when the sky pass runs),
-then `Hooks::prepare_render_buffers` (before primitive, entity, prepared-instance, and glyph
-uploads so group updates apply to this frame), then each active pass-bearing stage in
-`RenderLevelStage::frame_order` at its real render-pass boundary, and finally `AfterLevel` after
-the world pass finishes and before the engine's first-person hand overlay. A classic shader pack's
-own hand must stay in its world passes for the pack's depth snapshots; `AfterLevel` runs before
-pack composition, not before that hand. Never fires on title or connect screens.
+world primitives drawn at the end of the world pass). `Hooks::prepare_render_buffers` comes before
+primitive, entity, prepared-instance, and glyph uploads so group updates apply to this frame.
+`AfterSky` fires as soon as the sky draws. If a classic pack replaces the sky, that happens
+later, after the pack imports the engine world. No sky draw means no `AfterSky`. Each active
+pass-bearing stage fires at its own render-pass boundary. `AfterLevel` follows the world and
+precedes the engine's first-person hand and other overlays. A classic pack's own hand remains
+inside its world passes for the pack's depth snapshots; `AfterLevel` runs before pack composition,
+not before that hand. These hooks never fire on title or connect screens.
 
 `event.context` is a `RenderLevelStageContext`: `AfterSky` and `AfterLevel` return
 `StagePass::None` (`has_render_pass() == false`); standard pass stages return
@@ -50,10 +52,8 @@ pack composition, not before that hand. Never fires on title or connect screens.
 stage. Draws follow call order. Both pass kinds take prepared lines and quads; pipeline quads
 are standard-only because mod pipelines write to the world colour format, not OIT float targets.
 
-Stages that do not run on the active route are not synthesized or relocated. For example, a
-classic shader pack can replace the engine sky with a late draw using the imported world;
-that route skips `AfterSky` rather than sending it after buffer preparation. Classic packs
-can also replace engine terrain, water, and weather passes.
+Stages that do not run on the active route are not synthesized. Classic packs can replace engine
+terrain, water, and weather passes.
 
 A panic disables that mod's listener for this hook for the session, with an error log and toast.
 Draws already accepted are not rolled back."#]
@@ -64,7 +64,7 @@ Draws already accepted are not rolled back."#]
         contract = "listen",
         neoforge = "RenderLevelStageEvent",
         cancellable = false,
-        version = 2
+        version = 3
     )]
     fn render_level_stage(
         stage: mod_api::RenderLevelStage,
