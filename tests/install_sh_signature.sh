@@ -198,9 +198,24 @@ run "$d" "$P" --version stable; verdict "--version stable: the newest published 
 d=$W/stable-short; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin" "$d/page-2.json"; with_key "$d"
 run "$d" "$P" --version stable; verdict "--version stable: a failed page stops the install" 1 "could not list the releases on GitHub (page 2)" "$d"
 [ ! -e "$d/inst/current" ] || { echo "FAIL installed from a short list"; fails=$((fails+1)); }
-d=$W/stable-cut; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
-head -c 60 "$W/stable/page-2.json" > "$d/page-2.json"
-run "$d" "$P" --version stable; verdict "--version stable: a page cut short stops the install" 1 "could not read the releases GitHub listed (page 2)" "$d"
+# A page that isn't a list of releases (cut short, `[null]`, `[,]`, a bare release object) stops it too, and an
+# install already there stays on the release it had.
+for bad in cut null comma object; do
+  d=$W/stable-$bad; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+  case $bad in
+    cut) head -c 60 "$W/stable/page-2.json" > "$d/page-2.json" ;;
+    null) printf '[null]\n' > "$d/page-2.json" ;;
+    comma) printf '[,]\n' > "$d/page-2.json" ;;
+    object) printf '{"tag_name":"26.3-9.0.0","prerelease":false,"draft":false}\n' > "$d/page-2.json" ;;
+  esac
+  mkdir -p "$d/inst/releases/26.3-0.1.0"; ln -s "$d/inst/releases/26.3-0.1.0" "$d/inst/current"
+  run "$d" "$P" --version stable; verdict "--version stable: a page that isn't a list ($bad) stops the install" 1 "could not read the releases GitHub listed (page 2)" "$d"
+  [ "$(readlink "$d/inst/current")" = "$d/inst/releases/26.3-0.1.0" ] || { echo "FAIL the active install moved ($bad)"; fails=$((fails+1)); }
+done
+# The release sent for the chosen tag must be one release object, not a list holding it.
+d=$W/stable-wrapped; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"
+{ printf '['; cat "$d/release.json"; printf ']\n'; } > "$d/tag-26.3-0.1.1000000000.json"
+run "$d" "$P" --version stable; verdict "--version stable: a list sent as one release refused" 1 "could not read the release GitHub sent" "$d"
 
 # 10c. The release served for the chosen tag names another one, or is no longer published: refused before any download.
 d=$W/stable-swap; cp -r "$W/stable" "$d"; rm -rf "$d/inst" "$d/bin"; with_key "$d"

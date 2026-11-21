@@ -58,25 +58,40 @@ function Test-Published($Release) {
 # empty list ends it: a short list could pick an older stable release.
 function Get-StableTags {
     $Stable = @()
-    for ($Page = 1; ; $Page++) {
-        # Not wrapped in @(): Windows PowerShell 5.1 writes the whole JSON array as one object.
-        $List = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$Page" `
-            -Headers @{ Accept = "application/vnd.github+json" }
-        if ($null -eq $List) { throw "Could not read the releases GitHub listed (page $Page)" }
-        $Items = @($List | ForEach-Object { $_ })
-        if ($Items.Count -eq 0) { break }
-        foreach ($Item in $Items) {
-            if (-not ($Item.tag_name -is [string])) { throw "Could not read the releases GitHub listed (page $Page)" }
-            if (-not (Test-Published $Item)) { continue }
-            if (-not ($Item.tag_name -cmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')) { continue }
-            $Third = if ($Matches[3]) { [bigint]::Parse($Matches[3]) } else { [bigint]::MinusOne }
-            $Stable += [pscustomobject]@{
-                Tag = $Item.tag_name
-                G1 = [bigint]::Parse($Matches[1]); G2 = [bigint]::Parse($Matches[2]); G3 = $Third
-                V1 = [bigint]::Parse($Matches[4]); V2 = [bigint]::Parse($Matches[5]); V3 = [bigint]::Parse($Matches[6])
+    $File = [IO.Path]::GetTempFileName()
+    try {
+        for ($Page = 1; ; $Page++) {
+            # The page as GitHub sent it, decoded here so its shape stays: Invoke-RestMethod unrolls an array, and a
+            # one-release list would then look like a bare release. PowerShell 7 unrolls in ConvertFrom-Json too unless
+            # told not to, and its parser takes a document cut short, so .NET's strict JSON reader checks it first;
+            # Windows PowerShell 5.1's parser is strict and never unrolls.
+            Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/$Repo/releases?per_page=100&page=$Page" `
+                -Headers @{ Accept = "application/vnd.github+json" } -OutFile $File
+            $Text = [IO.File]::ReadAllText($File)
+            $Items = $null
+            try {
+                $Items = if ($PSVersionTable.PSVersion.Major -ge 7) {
+                    [System.Text.Json.JsonDocument]::Parse($Text).Dispose()
+                    ConvertFrom-Json -InputObject $Text -NoEnumerate
+                } else { ConvertFrom-Json -InputObject $Text }
+            } catch { }
+            if (-not ($Items -is [array])) { throw "Could not read the releases GitHub listed (page $Page)" }
+            if ($Items.Count -eq 0) { break }
+            foreach ($Item in $Items) {
+                if (-not ($Item -is [System.Management.Automation.PSCustomObject]) -or -not ($Item.tag_name -is [string])) {
+                    throw "Could not read the releases GitHub listed (page $Page)"
+                }
+                if (-not (Test-Published $Item)) { continue }
+                if (-not ($Item.tag_name -cmatch '^(\d+)\.(\d+)(?:\.(\d+))?-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')) { continue }
+                $Third = if ($Matches[3]) { [bigint]::Parse($Matches[3]) } else { [bigint]::MinusOne }
+                $Stable += [pscustomobject]@{
+                    Tag = $Item.tag_name
+                    G1 = [bigint]::Parse($Matches[1]); G2 = [bigint]::Parse($Matches[2]); G3 = $Third
+                    V1 = [bigint]::Parse($Matches[4]); V2 = [bigint]::Parse($Matches[5]); V3 = [bigint]::Parse($Matches[6])
+                }
             }
         }
-    }
+    } finally { Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue }
     $Stable | Sort-Object -Descending G1, G2, G3, V1, V2, V3 | ForEach-Object { $_.Tag }
 }
 if ($Version -eq "latest") {

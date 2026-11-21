@@ -47,20 +47,21 @@ public static class FakeEnvironment {
 "@
 
 # The fakes: the API answers with the case's release, any download with the case's file of that name.
-# A case may also serve the release list page by page (Pages[n]; a page it lacks fails as GitHub's error would) and
-# other releases by tag (Tags[tag]).
+# A case may also serve other releases by tag (Tags[tag]), and the release list page by page as GitHub's JSON text
+# (Pages[n]; a page it lacks fails as GitHub's error would).
 function Invoke-RestMethod {
     param($Uri, $Headers)
     $Case = $global:SunriseTestRel
-    if ($Uri -match 'releases\?per_page=100&page=(\d+)$') {
-        if (-not $Case.Pages.ContainsKey([int]$Matches[1])) { throw "404 $Uri" }
-        return ,$Case.Pages[[int]$Matches[1]]
-    }
     if ($Uri -match '/releases/tags/(.+)$' -and $Case.Tags.ContainsKey($Matches[1])) { return $Case.Tags[$Matches[1]] }
     $Case.Release
 }
 function Invoke-WebRequest {
-    param($Uri, $OutFile, [switch]$UseBasicParsing)
+    param($Uri, $OutFile, $Headers, [switch]$UseBasicParsing)
+    if ($Uri -match 'releases\?per_page=100&page=(\d+)$') {
+        $Pages = $global:SunriseTestRel.Pages
+        if (-not $Pages.ContainsKey([int]$Matches[1])) { throw "404 $Uri" }
+        return Write-Ascii $OutFile $Pages[[int]$Matches[1]]
+    }
     $Source = Join-Path $global:SunriseTestRel.Files ($Uri -split "/")[-1]
     if (-not (Test-Path -LiteralPath $Source)) { throw "404 $Uri" }
     Copy-Item -LiteralPath $Source -Destination $OutFile
@@ -232,11 +233,12 @@ try {
     # a pre-release, a draft or a release whose flags are missing or null.
     $Win = "26.3-0.1.1000000000"
     $StablePages = @{
-        1 = @((Get-Listed "26.3-0.1.999999999"), (Get-Listed "nightly" $true))
-        2 = @((Get-Listed $Win), (Get-Listed "26.3-0.9.0" $true), (Get-Listed "26.3-0.8.0" $false $true),
-              [pscustomobject]@{ tag_name = "26.3-0.7.0"; prerelease = $false }, (Get-Listed "26.3-0.6.0" $false $null),
-              (Get-Listed "26.3-0.2.0-rc.1"), (Get-Listed "26.3-01.0.0"))
-        3 = @()
+        1 = '[{"tag_name":"26.3-0.1.999999999","prerelease":false,"draft":false},{"tag_name":"nightly","prerelease":true,"draft":false}]'
+        2 = '[{"tag_name":"26.3-0.1.1000000000","assets":[{"draft":true}],"prerelease":false,"draft":false},
+              {"tag_name":"26.3-0.9.0","prerelease":true,"draft":false},{"tag_name":"26.3-0.8.0","prerelease":false,"draft":true},
+              {"tag_name":"26.3-0.7.0","prerelease":false},{"tag_name":"26.3-0.6.0","prerelease":false,"draft":null},
+              {"tag_name":"26.3-0.2.0-rc.1","prerelease":false,"draft":false},{"tag_name":"26.3-01.0.0","prerelease":false,"draft":false}]'
+        3 = '[]'
     }
     $d = Join-Path $W "stable"; New-Release $d $Win; $script:Pages[$d] = $StablePages
     $r = Invoke-Case $d $P @{ Version = "stable" }
@@ -246,9 +248,13 @@ try {
     $d = Join-Path $W "stable-short"; New-Release $d $Win; $script:Pages[$d] = @{ 1 = $StablePages[1] }
     $r = Invoke-Case $d $P @{ Version = "stable" }; Test-Case "-Version stable: a failed page stops the install" $false "404" $r
     Test-That "installed from a short list" (-not (Test-Path (Join-Path $d "inst\current")))
-    $d = Join-Path $W "stable-bad"; New-Release $d $Win
-    $script:Pages[$d] = @{ 1 = $StablePages[1]; 2 = @([pscustomobject]@{ message = "rate limited" }); 3 = @() }
-    $r = Invoke-Case $d $P @{ Version = "stable" }; Test-Case "-Version stable: an unreadable page stops the install" $false "Could not read the releases" $r
+    # A page that isn't a list of releases (`[null]`, cut short, a bare release object) stops it too.
+    foreach ($Bad in '[null]', '[{"tag_name":"26.3-9.0.0"', '{"tag_name":"26.3-9.0.0","prerelease":false,"draft":false}') {
+        $d = Join-Path $W ("stable-bad-" + [Guid]::NewGuid()); New-Release $d $Win
+        $script:Pages[$d] = @{ 1 = $StablePages[1]; 2 = $Bad; 3 = '[]' }
+        $r = Invoke-Case $d $P @{ Version = "stable" }
+        Test-Case "-Version stable: a page that isn't a list ($Bad) stops the install" $false "Could not read the releases" $r
+    }
 
     # 10c. The release served for the chosen tag names another one, or its draft flag is null: refused.
     $d = Join-Path $W "stable-swap"; New-Release $d $Win; $script:Pages[$d] = $StablePages

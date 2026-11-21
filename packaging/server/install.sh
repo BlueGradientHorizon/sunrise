@@ -77,32 +77,56 @@ else
 
   api() { curl -fsSL -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/releases/$1"; }
   # GitHub's JSON decoded, whatever its layout: one token per line (sed splits after each string, punctuation mark or
-  # bare word, left to right), then awk walks them. For a release list (an array) or one release (an object), one
-  # line per release, `<tag_name>\t<prerelease>\t<draft>` (a field it lacks is empty; a value that is not a string or
-  # a literal is `?`), then `ok` once the whole document was read. Nothing is trusted without that `ok`.
+  # bare word, left to right), then awk checks the whole document against JSON's grammar and the shape asked for:
+  # `list` (an array of release objects) or `one` (one release object). It prints one line per release,
+  # `<tag_name>\t<prerelease>\t<draft>` (a field it lacks is empty; a value that is not a plain string or a boolean
+  # is `?`), then `ok` once the whole document was read and was that shape. Nothing is trusted without that `ok`.
   releases() {
     sed -E 's/("([^"\\]|\\.)*"|[][{}:,]|[^][{}:,[:space:]]+)/&\
-/g' | sed -E 's/^[[:space:]]+//; /^$/d' | awk '
-      function value(t) { return t ~ /^"/ ? substr(t, 2, length(t) - 2) : t }
-      NR == 1 { at = $0 == "[" ? 2 : $0 == "{" ? 1 : 0; if (!at) bad = 1 }
+/g' | sed -E 's/^[[:space:]]+//; /^$/d' | awk -v shape="$1" '
+      function unquote(t) { return substr(t, 2, length(t) - 2) }
+      # A value where one may stand: at the top before anything, after `[`, `,` in an array, or `:`.
+      function value_here() { return depth ? state[depth] == "value" || state[depth] == "value|end" : !started }
+      # The value just ended: its container now wants a comma or its end; at the top, the document is done.
+      function ended() { if (depth) state[depth] = "comma|end"; else done = 1 }
+      BEGIN { at = shape == "list" ? 2 : 1 }
+      bad { next }
+      done { bad = 1; next }
       $0 == "{" || $0 == "[" {
-        kind[++depth] = $0
-        if (depth == at) { tag = pre = draft = ""; if ($0 != "{") bad = 1 }
-        last = $0; next
+        if (!value_here()) { bad = 1; next }
+        started = 1
+        # The shape: a list is an array of objects; one release is an object.
+        if (depth + 1 == 1 && $0 != (shape == "list" ? "[" : "{")) bad = 1
+        if (depth + 1 == at && $0 != "{") bad = 1
+        kind[++depth] = $0; state[depth] = $0 == "{" ? "key|end" : "value|end"
+        if (depth == at) tag = pre = draft = ""
+        next
       }
       $0 == "}" || $0 == "]" {
-        if (!depth || ($0 == "}") != (kind[depth] == "{")) bad = 1
-        if (depth == at && !bad) printf "%s\t%s\t%s\n", tag, pre, draft
-        depth--; last = $0; if (!depth) done++; next
+        want = $0 == "}" ? "{" : "["
+        if (!depth || kind[depth] != want || (state[depth] != "comma|end" && state[depth] != (want == "{" ? "key|end" : "value|end"))) { bad = 1; next }
+        if (depth == at) printf "%s\t%s\t%s\n", tag, pre, draft
+        depth--; ended(); next
       }
-      depth == at && ($0 ~ /^"/) && (last == "{" || last == ",") { key = value($0); last = "key"; next }
-      depth == at && last == ":" {
-        if (key == "tag_name") tag = $0 ~ /^"[^"\\]*"$/ ? value($0) : "?"
-        if (key == "prerelease") pre = $0 ~ /^(true|false)$/ ? $0 : "?"
-        if (key == "draft") draft = $0 ~ /^(true|false)$/ ? $0 : "?"
+      $0 == ":" { if (!depth || state[depth] != "colon") bad = 1; else state[depth] = "value"; next }
+      $0 == "," {
+        if (!depth || state[depth] != "comma|end") bad = 1; else state[depth] = kind[depth] == "{" ? "key" : "value"
+        next
       }
-      { last = $0 }
-      END { if (!bad && done == 1 && !depth) print "ok" }'
+      $0 !~ /^"([^"\\]|\\.)*"$/ && $0 !~ /^(true|false|null|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)$/ { bad = 1; next }
+      depth && kind[depth] == "{" && (state[depth] == "key|end" || state[depth] == "key") {
+        if ($0 !~ /^"/) { bad = 1; next }
+        key[depth] = unquote($0); state[depth] = "colon"; next
+      }
+      {
+        if (!value_here() || depth + 1 == at) { bad = 1; next }
+        started = 1
+        if (depth == at && key[depth] == "tag_name") tag = $0 ~ /^"[^"\\]*"$/ ? unquote($0) : "?"
+        if (depth == at && key[depth] == "prerelease") pre = $0 ~ /^(true|false)$/ ? $0 : "?"
+        if (depth == at && key[depth] == "draft") draft = $0 ~ /^(true|false)$/ ? $0 : "?"
+        ended()
+      }
+      END { if (!bad && done) print "ok" }'
   }
   # Every published (not pre-release, not draft) release's tag, from every page of the release list. A page that
   # fails or can't be read stops the install, and only an empty list ends it: a short list could pick an older
@@ -113,7 +137,7 @@ else
       LIST=$(curl -fsSL -H "Accept: application/vnd.github+json" \
         "https://api.github.com/repos/$REPO/releases?per_page=100&page=$PAGE") \
         || die "could not list the releases on GitHub (page $PAGE)"
-      LIST=$(printf '%s\n' "$LIST" | releases)
+      LIST=$(printf '%s\n' "$LIST" | releases list)
       [ "$(printf '%s\n' "$LIST" | tail -n 1)" = ok ] || die "could not read the releases GitHub listed (page $PAGE)"
       [ "$LIST" != ok ] || break
       printf '%s\n' "$LIST" | awk -F'\t' '$2 == "false" && $3 == "false" { print $1 }'
@@ -142,7 +166,7 @@ else
 
   # The release's tag, decoded: the one its signature is checked for and it installs under. A stable release must be
   # the one chosen, and still published.
-  RELEASE=$(printf '%s\n' "$JSON" | releases)
+  RELEASE=$(printf '%s\n' "$JSON" | releases one)
   [ "$(printf '%s\n' "$RELEASE" | sed -n 2p)" = ok ] || die "could not read the release GitHub sent"
   TAG=$(printf '%s\n' "$RELEASE" | head -n 1 | cut -f1)
   case "$TAG" in ''|'?') die "could not read the release's tag" ;; esac
