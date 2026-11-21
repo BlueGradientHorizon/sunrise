@@ -7,10 +7,10 @@ use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{
     __private::{ModPhase, PhaseOwner, game::RegistrationContextNew},
     ClientHost, ClientTooltipComponent, DrawContext, Flow, Hooks, Identifier, ItemPart,
-    ItemResource, ModEntry, Mods, PreparedTooltipComponent,
-    RegisterClientTooltipComponentFactoriesEvent, Registrar, RegistrationContext,
-    RenderTooltipGatherComponentsEvent, RenderTooltipPreEvent, RenderTooltipTextureEvent,
-    TooltipComponent, TooltipComponentData, TooltipElement, TooltipFont, TooltipImageEvent,
+    ItemResource, ModEntry, Mods, RegisterClientTooltipComponentFactoriesEvent, Registrar,
+    RegistrationContext, RenderTooltipGatherComponentsEvent, RenderTooltipPreEvent,
+    RenderTooltipTextureEvent, TooltipComponent, TooltipComponentData, TooltipElement, TooltipFont,
+    TooltipImageEvent,
 };
 use std::sync::{
     Arc, Mutex,
@@ -44,14 +44,10 @@ fn populated_bundle() -> ItemStack {
     stack
 }
 
-fn text_lines(components: &[PreparedTooltipComponent]) -> Vec<String> {
+fn text_lines(components: &[PreparedTooltipItem]) -> Vec<String> {
     components
         .iter()
-        .filter_map(|component| {
-            let (api_text, _) = component.as_text()?;
-            let engine: sunrise_client::text::Text = api_text.try_into_engine(&()).ok()?;
-            Some(engine.plain())
-        })
+        .filter_map(|component| component.as_text().map(|(text, _)| text.plain()))
         .collect()
 }
 
@@ -122,7 +118,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
             event.max_width = self.0.max_width.load(Ordering::Relaxed);
             match self.0.mode.load(Ordering::Relaxed) {
                 1 => {
-                    // Fixtures I & J: empty line + custom component + bundle + unregistered + tail.
+                    // Fixtures I & J: empty line + custom component + bundle + tail.
                     let bundle_stack = self.0.bundle.lock().unwrap().clone().unwrap();
                     event
                         .elements
@@ -136,11 +132,6 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                         .elements
                         .push(TooltipElement::Component(TooltipComponent::bundle(
                             bundle_stack,
-                        )));
-                    event
-                        .elements
-                        .push(TooltipElement::Component(TooltipComponent::custom(
-                            UnregisteredData,
                         )));
                     event.elements.push(TooltipElement::Text(
                         mod_api::Text::literal("tail"),
@@ -159,6 +150,14 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                         .elements
                         .push(TooltipElement::Component(TooltipComponent::bundle(
                             bundle_stack,
+                        )));
+                }
+                3 => {
+                    // Unregistered custom component aborts preparation with MissingFactory.
+                    event
+                        .elements
+                        .push(TooltipElement::Component(TooltipComponent::custom(
+                            UnregisteredData,
                         )));
                 }
                 _ => {}
@@ -205,7 +204,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                     mouse_x,
                     (320.0, 240.0),
                 )
-                .unwrap();
+                .unwrap_ready();
             assert_eq!(text_lines(&gathered), ["alpha beta"]);
         }
 
@@ -217,7 +216,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 180,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&right_wrap), split_plain(160));
 
         // Fixture D: left-half narrow screen wrap (mouse_x < screen_width / 2 -> 320 - 16 - 100 = 204).
@@ -228,7 +227,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 100,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&left_wrap), split_plain(204));
 
         // Fixture E: exact midpoint (mouse_x == screen_width / 2 -> 320 - 16 - 160 = 144).
@@ -239,7 +238,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 160,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&mid_wrap), split_plain(144));
 
         // Fixture F: explicit max_width wraps a tooltip that otherwise fits.
@@ -251,7 +250,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 10,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&max_wrap), split_plain(50));
 
         // Fixture G: max_width tighter than screen wrap (80 < 160) wins.
@@ -263,7 +262,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 180,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&tighter), split_plain(80));
 
         // Fixture H: max_width wider than screen wrap (200 > 160) keeps screen wrap width.
@@ -275,10 +274,10 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 180,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(text_lines(&wider), split_plain(160));
 
-        // Fixtures I & J: empty line preserved, custom override wins, bundle kept, unregistered omitted.
+        // Fixtures I & J: empty line preserved, custom override wins, bundle kept.
         config.max_width.store(60, Ordering::Relaxed);
         config.mode.store(1, Ordering::Relaxed);
         let mixed = game
@@ -288,7 +287,7 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 10,
                 (320.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         let expected_wrapped = split_plain(60);
         let n = expected_wrapped.len();
         assert!(n > 1);
@@ -306,13 +305,10 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
             .expect("override factory should prepare WideClient");
         assert_eq!((wide.0, wide.1), (500, 12));
         assert_eq!(
-            (
-                mixed[n + 1].width(&tooltip_font),
-                mixed[n + 1].height(&tooltip_font)
-            ),
+            game.measure_prepared_item(&mixed[n + 1], &tooltip_font, sunrise_client::font::DEFAULT),
             (500, 12)
         );
-        // Bundle component kept in order; UnregisteredData omitted without panic.
+        // Bundle component kept in order.
         assert!(mixed[n + 2].as_bundle().is_some());
         assert_eq!(text_lines(&mixed[n + 3..]), ["tail"]);
 
@@ -326,11 +322,26 @@ fn gather_wrapping_fixtures_preserve_empty_lines_and_exclude_components() {
                 10,
                 (100.0, 240.0),
             )
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(excluded.len(), 3);
         assert_eq!(text_lines(&excluded[..1]), ["short"]);
         assert!(excluded[1].downcast_ref::<WideClient>().is_some());
         assert!(excluded[2].as_bundle().is_some());
+
+        // Unregistered custom component aborts preparation with MissingFactory.
+        config.mode.store(3, Ordering::Relaxed);
+        assert!(matches!(
+            game.gather_tooltip_components(
+                &stick,
+                vec![(sunrise_client::text::Text::literal("short"), u32::MAX)],
+                10,
+                (320.0, 240.0),
+            ),
+            GatheredTooltip::PrepareError(TooltipComponentPrepareError::MissingFactory {
+                owner: Some("gather_mod"),
+                ..
+            })
+        ));
     });
 }
 
@@ -439,8 +450,11 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
     .into();
 
     with_mod_factories(mods, |game| {
-        let components = vec![
-            PreparedTooltipComponent::__text(mod_api::Text::literal("A"), u32::MAX),
+        let mut components = vec![
+            PreparedTooltipItem::Text {
+                text: sunrise_client::text::Text::literal("A"),
+                color: u32::MAX,
+            },
             game.prepare_tooltip_component(&TooltipComponent::custom(ZeroWidthData))
                 .unwrap(),
             game.prepare_tooltip_component(&TooltipComponent::custom(ZeroHeightData))
@@ -449,7 +463,14 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
                 .unwrap(),
         ];
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect = game.draw_prepared_tooltip(&mut batch, None, &components, (10.0, 20.0), true);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            None,
+            &mut components,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
+            true,
+        );
         // x = 10 + 12 = 22, y = 20 - 12 = 8, w = 80, h = 0 + 10 + 6 + 0 + 16 = 32.
         assert_eq!(rect, Some([22.0, 8.0, 80.0, 32.0]));
         assert_eq!(
@@ -465,13 +486,19 @@ fn two_pass_draw_order_geometry_and_zero_sized_components() {
         );
 
         // Single-component tooltip: height starts at -2 (16 - 2 = 14) with no +2 gap.
-        let single = vec![
+        let mut single = vec![
             game.prepare_tooltip_component(&TooltipComponent::custom(SingleData))
                 .unwrap(),
         ];
         let mut single_batch = HudBatch::scratch([320, 240]);
-        let single_rect =
-            game.draw_prepared_tooltip(&mut single_batch, None, &single, (10.0, 20.0), true);
+        let single_rect = game.draw_prepared_tooltip(
+            &mut single_batch,
+            None,
+            &mut single,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
+            true,
+        );
         assert_eq!(single_rect, Some([22.0, 8.0, 40.0, 14.0]));
         assert_eq!(
             std::mem::take(&mut *log.lock().unwrap()),
@@ -635,15 +662,21 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
         let wrapped_count = expected_wrapped.len();
         assert!(wrapped_count > 1);
 
-        let prepared = game
+        let mut prepared = game
             .gather_tooltip_components(&stick, vec![(line, u32::MAX)], 10, (320.0, 240.0))
-            .unwrap();
+            .unwrap_ready();
         assert_eq!(prepared.len(), wrapped_count + 2);
 
         // Mode 1: move place and switch font to minecraft:alt without rewrapping.
         let mut batch = HudBatch::scratch([320, 240]);
-        let rect =
-            game.draw_prepared_tooltip(&mut batch, Some(&stick), &prepared, (10.0, 20.0), true);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            Some(&stick),
+            &mut prepared,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
+            true,
+        );
         let expected_h = (wrapped_count as i32) * 10 + 45 + 12;
         assert_eq!(rect, Some([52.0, 38.0, 130.0, expected_h as f32]));
         assert_eq!(
@@ -675,8 +708,9 @@ fn render_tooltip_pre_observes_components_replaces_font_without_rewrap_and_cance
         let cancelled = game.draw_prepared_tooltip(
             &mut cancelled_batch,
             Some(&stick),
-            &prepared,
-            (10.0, 20.0),
+            &mut prepared,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
             true,
         );
         assert_eq!(cancelled, None);
@@ -955,20 +989,21 @@ fn audit_88_no_listener_fast_path_and_invalid_text_skipped_individually() {
         let unconvertible = ItemStack::new("missing:unregistered_item", 1);
         assert!(unconvertible.try_into_api().is_err());
         let lines = vec![(sunrise_client::text::Text::literal("Plain"), u32::MAX)];
-        let gathered = game
+        let mut gathered = game
             .gather_tooltip_components(&unconvertible, lines.clone(), 10, (320.0, 240.0))
-            .expect("no-listener fast path must not cancel on unconvertible stack");
+            .unwrap_ready();
         assert_eq!(text_lines(&gathered), ["Plain"]);
 
         let mut batch = HudBatch::scratch([320, 240]);
         let pre = game.tooltip_pre_components(
             &mut batch,
             Some(&unconvertible),
-            &gathered,
-            (10.0, 20.0),
+            &mut gathered,
+            [10, 20],
             (320.0, 240.0),
+            DEFAULT_FONT_ID.clone(),
         );
-        assert_eq!(pre, Some(((10.0, 20.0), DEFAULT_FONT_ID.clone())));
+        assert_eq!(pre, Some(([10, 20], DEFAULT_FONT_ID.clone())));
         game.draw_stack_tooltip_lines(&mut batch, &unconvertible, lines, 10.0, 20.0);
         assert!(!batch.vertices.is_empty());
     });
@@ -1049,19 +1084,20 @@ fn audit_88_no_listener_fast_path_and_invalid_text_skipped_individually() {
 
     with_mod_factories(mods, |game| {
         let unconvertible = ItemStack::new("missing:unregistered_item", 1);
-        let one_line = vec![PreparedTooltipComponent::__text(
-            mod_api::Text::literal("Keep"),
-            u32::MAX,
-        )];
+        let mut one_line = vec![PreparedTooltipItem::Text {
+            text: sunrise_client::text::Text::literal("Keep"),
+            color: u32::MAX,
+        }];
         let mut pre_batch = HudBatch::scratch([320, 240]);
         let pre = game.tooltip_pre_components(
             &mut pre_batch,
             Some(&unconvertible),
-            &one_line,
-            (10.0, 20.0),
+            &mut one_line,
+            [10, 20],
             (320.0, 240.0),
+            DEFAULT_FONT_ID.clone(),
         );
-        assert_eq!(pre, Some(((10.0, 20.0), DEFAULT_FONT_ID.clone())));
+        assert_eq!(pre, Some(([10, 20], DEFAULT_FONT_ID.clone())));
         assert_eq!(
             pre_calls.load(Ordering::Relaxed),
             0,
@@ -1069,14 +1105,14 @@ fn audit_88_no_listener_fast_path_and_invalid_text_skipped_individually() {
         );
 
         let stick = ItemStack::new("minecraft:stick", 1);
-        let gathered = game
+        let mut gathered = game
             .gather_tooltip_components(
                 &stick,
                 vec![(sunrise_client::text::Text::literal("Seed"), u32::MAX)],
                 10,
                 (320.0, 240.0),
             )
-            .expect("invalid individual text element must not cancel tooltip");
+            .unwrap_ready();
         assert_eq!(gathered.len(), 3);
         assert_eq!(text_lines(&gathered), ["Before", "After"]);
         assert!(gathered[1].downcast_ref::<SiblingClient>().is_some());
@@ -1086,8 +1122,9 @@ fn audit_88_no_listener_fast_path_and_invalid_text_skipped_individually() {
             game.draw_prepared_tooltip(
                 &mut draw_batch,
                 Some(&stick),
-                &gathered,
-                (10.0, 20.0),
+                &mut gathered,
+                [10, 20],
+                DEFAULT_FONT_ID.clone(),
                 true
             )
             .is_some()
@@ -1381,53 +1418,58 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         };
 
         // 1. Factory creation panic: caught and disabled on subsequent tooltips.
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(CreatePanicData))
-                .is_none()
-        );
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(CreatePanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
         assert_eq!(create_calls.load(Ordering::Relaxed), 1);
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(CreatePanicData))
-                .is_none()
-        );
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(CreatePanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
         assert_eq!(create_calls.load(Ordering::Relaxed), 1);
 
         // 2. width panic: caught, returns 0, disables factory for subsequent tooltips.
         let width_comp = game
             .prepare_tooltip_component(&TooltipComponent::custom(WidthPanicData))
             .unwrap();
-        assert_eq!(width_comp.width(&font), 0);
+        assert_eq!(width_comp.as_custom().unwrap().width(&font), 0);
         assert_eq!(width_calls.load(Ordering::Relaxed), 1);
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(WidthPanicData))
-                .is_none()
-        );
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(WidthPanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
 
         // 3. height panic: caught, returns 0, disables factory for subsequent tooltips.
         let height_comp = game
             .prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData))
             .unwrap();
-        assert_eq!(height_comp.height(&font), 0);
+        assert_eq!(height_comp.as_custom().unwrap().height(&font), 0);
         assert_eq!(height_calls.load(Ordering::Relaxed), 1);
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData))
-                .is_none()
-        );
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(HeightPanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
 
         // 4. show_tooltip_with_item_in_hand panic: caught, returns false, disables factory.
         let hand_comp = game
             .prepare_tooltip_component(&TooltipComponent::custom(HandPanicData))
             .unwrap();
-        assert!(!hand_comp.show_tooltip_with_item_in_hand());
-        assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
         assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(HandPanicData))
-                .is_none()
+            !hand_comp
+                .as_custom()
+                .unwrap()
+                .show_tooltip_with_item_in_hand()
         );
+        assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(HandPanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
 
         // 5 & 6. draw_text and draw_image panics: partial HudBatch vertices rolled back via
         // paint_checkpoint().discard(batch), failing registrations disabled, sibling still draws.
-        let components = vec![
+        let mut components = vec![
             game.prepare_tooltip_component(&TooltipComponent::custom(DrawTextPanicData))
                 .unwrap(),
             game.prepare_tooltip_component(&TooltipComponent::custom(DrawImagePanicData))
@@ -1437,8 +1479,15 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
         ];
         let mut batch = HudBatch::scratch([320, 240]);
         assert!(
-            game.draw_prepared_tooltip(&mut batch, None, &components, (10.0, 20.0), true)
-                .is_some()
+            game.draw_prepared_tooltip(
+                &mut batch,
+                None,
+                &mut components,
+                [10, 20],
+                DEFAULT_FONT_ID.clone(),
+                true
+            )
+            .is_some()
         );
         assert_eq!(text_calls.load(Ordering::Relaxed), 1);
         assert_eq!(image_calls.load(Ordering::Relaxed), 1);
@@ -1467,25 +1516,779 @@ fn panic_containment_rolls_back_partial_paint_and_disables_only_failing_factory(
 
         // Subsequent tooltips skip disabled factories and never re-run panicking callbacks, while
         // the healthy sibling keeps preparing and drawing normally.
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(DrawTextPanicData))
-                .is_none()
-        );
-        assert!(
-            game.prepare_tooltip_component(&TooltipComponent::custom(DrawImagePanicData))
-                .is_none()
-        );
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(DrawTextPanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
+        assert!(matches!(
+            game.prepare_tooltip_component(&TooltipComponent::custom(DrawImagePanicData)),
+            Err(TooltipComponentPrepareError::FactoryFailed { .. })
+        ));
         let mut second_batch = HudBatch::scratch([320, 240]);
         assert!(
-            game.draw_prepared_tooltip(&mut second_batch, None, &components, (10.0, 20.0), true)
-                .is_some()
+            game.draw_prepared_tooltip(
+                &mut second_batch,
+                None,
+                &mut components,
+                [10, 20],
+                DEFAULT_FONT_ID.clone(),
+                true
+            )
+            .is_some()
         );
         assert_eq!(text_calls.load(Ordering::Relaxed), 1);
         assert_eq!(image_calls.load(Ordering::Relaxed), 1);
         assert_eq!(sibling_calls.load(Ordering::Relaxed), 2);
         assert!(
             game.prepare_tooltip_component(&TooltipComponent::custom(SiblingData))
-                .is_some()
+                .is_ok()
+        );
+    });
+}
+
+/// Finding 1: original engine tooltip text and vanilla bundles that cannot convert across the
+/// mod-API boundary are preserved end-to-end (both with and without listeners, and for both item
+/// and non-item tooltips) without dropping lines or bundles.
+#[test]
+#[ignore = "daily"]
+fn unconvertible_engine_text_and_bundle_preserved_without_api_roundtrip() {
+    let pre_calls = Arc::new(AtomicUsize::new(0));
+    let gather_calls = Arc::new(AtomicUsize::new(0));
+
+    struct ObserverMod {
+        gather_calls: Arc<AtomicUsize>,
+        pre_calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ObserverMod {
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            self.gather_calls.fetch_add(1, Ordering::Relaxed);
+            Flow::Continue
+        }
+        fn render_tooltip_pre(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut RenderTooltipPreEvent<'_>,
+        ) -> Flow {
+            self.pre_calls.fetch_add(1, Ordering::Relaxed);
+            Flow::Continue
+        }
+    }
+
+    let make_unconvertible_text = || {
+        let text = sunrise_client::text::Text::from(serde_json::json!({
+            "text": "Visible",
+            "extra": [{"text": []}]
+        }));
+        assert_eq!(text.plain(), "Visible");
+        assert!(text.try_into_api().is_err());
+        text
+    };
+    let make_unconvertible_bundle = || {
+        let mut bundle = ItemStack::new("minecraft:bundle", 1);
+        bundle.data_mut().bundle_contents =
+            vec![ItemStack::new("missing:unregistered_inside_bundle", 1)];
+        assert!(bundle.try_into_api().is_err());
+        bundle
+    };
+
+    // Without listeners: unconvertible text & unconvertible bundle both survive Gather & draw.
+    let empty_mods: Mods = Vec::<ModEntry>::new().into();
+    with_mod_factories(empty_mods, |game| {
+        let stick = ItemStack::new("minecraft:stick", 1);
+        let text = make_unconvertible_text();
+        let gathered = game
+            .gather_tooltip_components(&stick, vec![(text.clone(), u32::MAX)], 10, (320.0, 240.0))
+            .unwrap_ready();
+        assert_eq!(text_lines(&gathered), ["Visible"]);
+        let mut batch = HudBatch::scratch([320, 240]);
+        let rect = game.draw_tooltip_lines(&mut batch, &[(text.clone(), u32::MAX)], 10.0, 20.0);
+        assert!(rect.is_some());
+        assert!(!batch.vertices.is_empty());
+
+        let bundle = make_unconvertible_bundle();
+        let gathered_bundle = game
+            .gather_tooltip_components(&bundle, vec![(text, u32::MAX)], 10, (320.0, 240.0))
+            .unwrap_ready();
+        assert_eq!(gathered_bundle.len(), 2);
+        assert_eq!(text_lines(&gathered_bundle[..1]), ["Visible"]);
+        assert!(gathered_bundle[1].as_bundle().is_some());
+    });
+
+    // With Gather + Pre listeners attached: unconvertible engine text skips Gather and Pre
+    // cleanly without dropping the original text or bundle.
+    let mods: Mods = vec![ModEntry::new(
+        "observer_mod",
+        Box::new(ObserverMod {
+            gather_calls: gather_calls.clone(),
+            pre_calls: pre_calls.clone(),
+        }),
+    )]
+    .into();
+    with_mod_factories(mods, |game| {
+        let stick = ItemStack::new("minecraft:stick", 1);
+        let text = make_unconvertible_text();
+        let mut gathered = game
+            .gather_tooltip_components(&stick, vec![(text.clone(), u32::MAX)], 10, (320.0, 240.0))
+            .unwrap_ready();
+        assert_eq!(text_lines(&gathered), ["Visible"]);
+        assert_eq!(gather_calls.load(Ordering::Relaxed), 0);
+
+        let mut item_batch = HudBatch::scratch([320, 240]);
+        let rect = game.draw_prepared_tooltip(
+            &mut item_batch,
+            Some(&stick),
+            &mut gathered,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
+            true,
+        );
+        assert!(rect.is_some());
+        assert!(!item_batch.vertices.is_empty());
+        assert_eq!(pre_calls.load(Ordering::Relaxed), 0);
+
+        let mut non_item_batch = HudBatch::scratch([320, 240]);
+        let non_item_rect =
+            game.draw_tooltip_lines(&mut non_item_batch, &[(text.clone(), u32::MAX)], 10.0, 20.0);
+        assert!(non_item_rect.is_some());
+        assert!(!non_item_batch.vertices.is_empty());
+        assert_eq!(pre_calls.load(Ordering::Relaxed), 0);
+
+        let bundle = make_unconvertible_bundle();
+        let mut gathered_bundle = game
+            .gather_tooltip_components(
+                &bundle,
+                vec![(sunrise_client::text::Text::literal("Bundle"), u32::MAX)],
+                10,
+                (320.0, 240.0),
+            )
+            .unwrap_ready();
+        assert_eq!(gathered_bundle.len(), 2);
+        assert!(gathered_bundle[1].as_bundle().is_some());
+        let mut bundle_batch = HudBatch::scratch([320, 240]);
+        assert!(
+            game.draw_prepared_tooltip(
+                &mut bundle_batch,
+                Some(&bundle),
+                &mut gathered_bundle,
+                [10, 20],
+                DEFAULT_FONT_ID.clone(),
+                true,
+            )
+            .is_some()
+        );
+        assert_eq!(pre_calls.load(Ordering::Relaxed), 0);
+    });
+}
+
+/// Finding 2: unregistered custom tooltip component aborts tooltip preparation with
+/// `MissingFactory` before `render_tooltip_pre`, `render_tooltip_texture`, or painting — without
+/// reporting cancellation or latching so the next ordinary tooltip still renders cleanly.
+#[test]
+#[ignore = "daily"]
+fn unregistered_custom_component_aborts_before_pre_texture_and_paint_without_latching() {
+    struct UnregisteredPayload;
+    impl TooltipComponentData for UnregisteredPayload {}
+
+    struct ProbeState {
+        inject_unregistered: AtomicBool,
+        pre_calls: AtomicUsize,
+        texture_calls: AtomicUsize,
+    }
+    struct ProbeMod(Arc<ProbeState>);
+    #[mod_api::__subscriptions]
+    impl Hooks for ProbeMod {
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            if self.0.inject_unregistered.load(Ordering::Relaxed) {
+                event
+                    .elements
+                    .push(TooltipElement::Component(TooltipComponent::custom(
+                        UnregisteredPayload,
+                    )));
+            }
+            Flow::Continue
+        }
+        fn render_tooltip_pre(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut RenderTooltipPreEvent<'_>,
+        ) -> Flow {
+            self.0.pre_calls.fetch_add(1, Ordering::Relaxed);
+            Flow::Continue
+        }
+        fn render_tooltip_texture(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut RenderTooltipTextureEvent<'_>,
+        ) {
+            self.0.texture_calls.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    let state = Arc::new(ProbeState {
+        inject_unregistered: AtomicBool::new(true),
+        pre_calls: AtomicUsize::new(0),
+        texture_calls: AtomicUsize::new(0),
+    });
+    let mods: Mods = vec![ModEntry::new(
+        "probe_mod",
+        Box::new(ProbeMod(state.clone())),
+    )]
+    .into();
+
+    with_mod_factories(mods, |game| {
+        let stick = ItemStack::new("minecraft:stick", 1);
+        let lines = vec![(sunrise_client::text::Text::literal("Stick"), u32::MAX)];
+        assert!(matches!(
+            game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0)),
+            GatheredTooltip::PrepareError(TooltipComponentPrepareError::MissingFactory {
+                owner: Some("probe_mod"),
+                ..
+            })
+        ));
+
+        let mut aborted_batch = HudBatch::scratch([320, 240]);
+        game.draw_stack_tooltip_lines(&mut aborted_batch, &stick, lines.clone(), 10.0, 20.0);
+        assert!(
+            aborted_batch.vertices.is_empty(),
+            "missing factory must abort before painting"
+        );
+        assert_eq!(state.pre_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(state.texture_calls.load(Ordering::Relaxed), 0);
+
+        // Non-latching: the next ordinary tooltip renders normally through Pre & Texture.
+        state.inject_unregistered.store(false, Ordering::Relaxed);
+        let mut next_batch = HudBatch::scratch([320, 240]);
+        game.draw_stack_tooltip_lines(&mut next_batch, &stick, lines, 10.0, 20.0);
+        assert!(!next_batch.vertices.is_empty());
+        assert_eq!(state.pre_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(state.texture_calls.load(Ordering::Relaxed), 1);
+    });
+}
+
+/// Finding 3: a panicking `Drop` on custom `TooltipComponentData` dropped after Gather (on
+/// normal preparation, Gather cancellation, or removal by another mod) is contained and
+/// attributed to the payload's producer without aborting the client or affecting sibling mods.
+#[test]
+#[ignore = "daily"]
+fn panicking_tooltip_payload_drop_contained_across_prepare_cancel_and_removal() {
+    struct PanicDropPayload(Arc<AtomicUsize>);
+    impl TooltipComponentData for PanicDropPayload {}
+    impl Drop for PanicDropPayload {
+        fn drop(&mut self) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            panic!("custom payload drop boom");
+        }
+    }
+
+    struct HealthyPayload;
+    impl TooltipComponentData for HealthyPayload {}
+
+    struct SimpleClient;
+    impl ClientTooltipComponent for SimpleClient {
+        fn height(&self, _: &dyn TooltipFont) -> i32 {
+            10
+        }
+        fn width(&self, _: &dyn TooltipFont) -> i32 {
+            20
+        }
+    }
+
+    struct ProducerMod {
+        drops: Arc<AtomicUsize>,
+        enabled: Arc<AtomicBool>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for ProducerMod {
+        fn register_client_tooltip_component_factories(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+        ) {
+            event
+                .factories
+                .register::<PanicDropPayload, SimpleClient>(|_| SimpleClient);
+            event
+                .factories
+                .register::<HealthyPayload, SimpleClient>(|_| SimpleClient);
+        }
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            if self.enabled.load(Ordering::Relaxed) {
+                event
+                    .elements
+                    .push(TooltipElement::Component(TooltipComponent::custom(
+                        PanicDropPayload(self.drops.clone()),
+                    )));
+            }
+            Flow::Continue
+        }
+    }
+
+    struct SiblingMod {
+        mode: Arc<AtomicU8>,
+        healthy_seen: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for SiblingMod {
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            match self.mode.load(Ordering::Relaxed) {
+                1 => return Flow::Cancel,
+                2 => {
+                    event.elements.retain(|e| {
+                        !matches!(e, TooltipElement::Component(c) if c.downcast_ref::<PanicDropPayload>().is_some())
+                    });
+                }
+                3 => {
+                    self.healthy_seen.fetch_add(1, Ordering::Relaxed);
+                    event
+                        .elements
+                        .push(TooltipElement::Component(TooltipComponent::custom(
+                            HealthyPayload,
+                        )));
+                }
+                _ => {}
+            }
+            Flow::Continue
+        }
+    }
+
+    let drops = Arc::new(AtomicUsize::new(0));
+    let producer_enabled = Arc::new(AtomicBool::new(true));
+    let sibling_mode = Arc::new(AtomicU8::new(0));
+    let healthy_seen = Arc::new(AtomicUsize::new(0));
+    let mods: Mods = vec![
+        ModEntry::new(
+            "drop_producer",
+            Box::new(ProducerMod {
+                drops: drops.clone(),
+                enabled: producer_enabled.clone(),
+            }),
+        ),
+        ModEntry::new(
+            "drop_sibling",
+            Box::new(SiblingMod {
+                mode: sibling_mode.clone(),
+                healthy_seen: healthy_seen.clone(),
+            }),
+        ),
+    ]
+    .into();
+
+    with_mod_factories(mods, |game| {
+        let _ = mod_api::__private::game::take_callback_panic_notices();
+        let stick = ItemStack::new("minecraft:stick", 1);
+        let lines = vec![(sunrise_client::text::Text::literal("Item"), u32::MAX)];
+
+        // 1. Normal prepare: payload dropped after Gather/prepare completes.
+        let prepared = game
+            .gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0))
+            .unwrap_ready();
+        assert_eq!(prepared.len(), 2);
+        assert_eq!(drops.load(Ordering::Relaxed), 1);
+
+        // 2. Cancelled Gather: payload dropped during unwind/teardown of Gather elements.
+        sibling_mode.store(1, Ordering::Relaxed);
+        assert!(matches!(
+            game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0)),
+            GatheredTooltip::Cancelled
+        ));
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+
+        // 3. Removed by another mod inside Gather: payload dropped inside sibling's retain().
+        sibling_mode.store(2, Ordering::Relaxed);
+        let kept = game
+            .gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0))
+            .unwrap_ready();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(drops.load(Ordering::Relaxed), 3);
+
+        let notices = mod_api::__private::game::take_callback_panic_notices();
+        assert!(
+            notices.iter().any(|n| n.mod_id == "drop_producer"
+                && n.kind == "tooltip_component"
+                && n.operation == "data_drop"),
+            "panicking payload drop must be attributed to drop_producer"
+        );
+
+        // Sibling mod and next tooltip remain completely healthy.
+        producer_enabled.store(false, Ordering::Relaxed);
+        sibling_mode.store(3, Ordering::Relaxed);
+        let mut batch = HudBatch::scratch([320, 240]);
+        game.draw_stack_tooltip_lines(&mut batch, &stick, lines, 10.0, 20.0);
+        assert!(!batch.vertices.is_empty());
+        assert_eq!(healthy_seen.load(Ordering::Relaxed), 1);
+    });
+}
+
+/// Findings 4 & 5: item-owned tooltip font (`ClientItemExtensions::tooltip_font`) drives Gather's
+/// wrapping and seeds `render_tooltip_pre`'s `font`, while a replacement font chosen in Pre is
+/// used only for measurement and drawing without rewrapping; fractional cursor coordinates are
+/// quantized once so Pre editing only `y` preserves the quantized `x`.
+#[test]
+#[ignore = "daily"]
+fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quantizes_once() {
+    struct ItemFontProvider(Identifier);
+    impl mod_api::ClientItemExtensions for ItemFontProvider {
+        fn tooltip_font(&self, _: &dyn ClientHost, _: &mod_api::ItemStack) -> Option<Identifier> {
+            Some(self.0.clone())
+        }
+    }
+
+    struct FontFlowState {
+        item_font: Identifier,
+        pre_font: Identifier,
+        seen_pre_font: Mutex<Option<Identifier>>,
+        seen_pre_place: Mutex<Option<(i32, i32)>>,
+        override_pre_font: AtomicBool,
+        edit_only_y: AtomicBool,
+    }
+    struct FontFlowMod(Arc<FontFlowState>);
+    #[mod_api::__subscriptions]
+    impl Hooks for FontFlowMod {
+        fn register_client_item_extensions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
+        ) {
+            let stick_key = mod_api::__private::item_key("minecraft:stick").unwrap();
+            event
+                .extensions
+                .client_item_extensions(
+                    stick_key,
+                    Arc::new(ItemFontProvider(self.0.item_font.clone())),
+                )
+                .unwrap();
+        }
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            // 25px fits "aa aa" in default (14px), wraps to 2 lines in item_font (36px).
+            event.max_width = 25;
+            Flow::Continue
+        }
+        fn render_tooltip_pre(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut RenderTooltipPreEvent<'_>,
+        ) -> Flow {
+            *self.0.seen_pre_font.lock().unwrap() = Some(event.font.clone());
+            *self.0.seen_pre_place.lock().unwrap() = Some((event.place.x, event.place.y));
+            if self.0.override_pre_font.load(Ordering::Relaxed) {
+                *event.font = self.0.pre_font.clone();
+            }
+            if self.0.edit_only_y.load(Ordering::Relaxed) {
+                event.place.y = 40;
+            }
+            Flow::Continue
+        }
+    }
+
+    let item_font = Identifier::parse("minecraft:item_wide").unwrap();
+    let pre_font = Identifier::parse("minecraft:pre_wider").unwrap();
+    let state = Arc::new(FontFlowState {
+        item_font: item_font.clone(),
+        pre_font: pre_font.clone(),
+        seen_pre_font: Mutex::new(None),
+        seen_pre_place: Mutex::new(None),
+        override_pre_font: AtomicBool::new(true),
+        edit_only_y: AtomicBool::new(true),
+    });
+    let mods: Mods = vec![ModEntry::new(
+        "font_flow_mod",
+        Box::new(FontFlowMod(state.clone())),
+    )]
+    .into();
+
+    with_mod_factories(mods, |game| {
+        // Install three distinct space-advance fonts so Gather wrapping vs Pre measurement have
+        // unambiguous pixel widths:
+        // - default:    'a'=3, ' '=2  -> "aa aa" = 14px (1 line at max_width=25)
+        // - item_wide:  'a'=8, ' '=4  -> "aa aa" = 36px -> splits at max_width=25 into ["aa", "aa"] (each 16px)
+        // - pre_wider:  'a'=15,' '=4  -> each split "aa" measures 30px (no rewrap to 4 lines!)
+        let default_json = r#"{"providers":[{"type":"space","advances":{" ":2,"a":3}}]}"#;
+        let item_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":8}}]}"#;
+        let pre_json = r#"{"providers":[{"type":"space","advances":{" ":4,"a":15}}]}"#;
+        let source = sunrise_client::resource_source::ResourceSource::indexed(
+            std::collections::BTreeMap::from([
+                (
+                    "assets/minecraft/font/default.json".into(),
+                    sunrise_client::resource_source::Resource::bytes(
+                        default_json.as_bytes().to_vec(),
+                    ),
+                ),
+                (
+                    "assets/minecraft/font/item_wide.json".into(),
+                    sunrise_client::resource_source::Resource::bytes(item_json.as_bytes().to_vec()),
+                ),
+                (
+                    "assets/minecraft/font/pre_wider.json".into(),
+                    sunrise_client::resource_source::Resource::bytes(pre_json.as_bytes().to_vec()),
+                ),
+            ]),
+        );
+        game.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
+        game.resolve_client_item_extensions().unwrap();
+
+        let stick = ItemStack::new("minecraft:stick", 1);
+        let text = sunrise_client::text::Text::literal("aa aa");
+        let anchor = quantize_tooltip_anchor((10.75, 20.25));
+        assert_eq!(anchor, [11, 20]);
+
+        let GatheredTooltip::Ready {
+            mut components,
+            font,
+        } = game.gather_tooltip_components(
+            &stick,
+            vec![(text, u32::MAX)],
+            anchor[0],
+            (320.0, 240.0),
+        )
+        else {
+            panic!("expected GatheredTooltip::Ready");
+        };
+        assert_eq!(font, item_font);
+        // Wrapped using item_wide (36px > 25px -> 2 lines of "aa"), NOT default (14px -> 1 line).
+        assert_eq!(text_lines(&components), ["aa", "aa"]);
+
+        // Pre receives item_font and quantized [11, 20], replaces font with pre_wider, and edits
+        // only y -> 40. Final rect must use quantized x = 11 (+12 = 23), edited y = 40 (-12 = 28),
+        // pre_wider width of "aa" = 30, and 2 lines height = 20 (never rewrapped in pre_wider).
+        let mut batch = HudBatch::scratch([320, 240]);
+        let rect = game.draw_prepared_tooltip(
+            &mut batch,
+            Some(&stick),
+            &mut components,
+            anchor,
+            font,
+            true,
+        );
+        assert_eq!(*state.seen_pre_font.lock().unwrap(), Some(item_font));
+        assert_eq!(*state.seen_pre_place.lock().unwrap(), Some((11, 20)));
+        assert_eq!(rect, Some([23.0, 28.0, 30.0, 20.0]));
+    });
+}
+
+/// Finding 6: station screen hovered-slot tooltip evaluates `show_tooltip_with_item_in_hand`
+/// exactly once before Gather/render, so a stateful component that returns `true` only on its
+/// first query still draws its tooltip.
+#[test]
+#[ignore = "daily"]
+fn station_hovered_slot_checks_show_tooltip_with_item_in_hand_once() {
+    struct OnceHandData;
+    impl TooltipComponentData for OnceHandData {}
+
+    struct OnceHandClient(Arc<AtomicUsize>);
+    impl ClientTooltipComponent for OnceHandClient {
+        fn height(&self, _: &dyn TooltipFont) -> i32 {
+            10
+        }
+        fn width(&self, _: &dyn TooltipFont) -> i32 {
+            24
+        }
+        fn show_tooltip_with_item_in_hand(&self) -> bool {
+            self.0.fetch_add(1, Ordering::Relaxed) == 0
+        }
+    }
+
+    #[derive(Clone)]
+    struct OnceImage;
+    #[mod_api::sunrise_part]
+    impl ItemPart for OnceImage {
+        fn tooltip_image(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut TooltipImageEvent<'_>,
+        ) -> Option<TooltipComponent> {
+            Some(TooltipComponent::custom(OnceHandData))
+        }
+    }
+
+    struct StationHandMod {
+        hand_calls: Arc<AtomicUsize>,
+        gather_calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for StationHandMod {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            let stick = r.item_key("minecraft:stick");
+            r.item_part(stick, OnceImage);
+        }
+        fn register_client_tooltip_component_factories(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+        ) {
+            let calls = self.hand_calls.clone();
+            event
+                .factories
+                .register::<OnceHandData, OnceHandClient>(move |_| OnceHandClient(calls.clone()));
+        }
+        fn render_tooltip_gather_components(
+            &self,
+            _: &dyn ClientHost,
+            _: &mut RenderTooltipGatherComponentsEvent<'_>,
+        ) -> Flow {
+            self.gather_calls.fetch_add(1, Ordering::Relaxed);
+            Flow::Continue
+        }
+    }
+
+    let hand_calls = Arc::new(AtomicUsize::new(0));
+    let gather_calls = Arc::new(AtomicUsize::new(0));
+    let mods: Mods = vec![ModEntry::new(
+        "station_hand_mod",
+        Box::new(StationHandMod {
+            hand_calls: hand_calls.clone(),
+            gather_calls: gather_calls.clone(),
+        }),
+    )]
+    .into();
+
+    with_mod_factories(mods, |game| {
+        assert!(game.open_station([0, 64, 0], "minecraft:crafting_table"));
+        game.inventory[9] = Some(ItemStack::new("minecraft:stick", 1));
+        game.carried = Some(ItemStack::new("minecraft:stone", 1));
+
+        let mut batch = HudBatch::scratch([512, 512]);
+        let (ox, oy) = game.inventory_origin(&batch);
+        // Find the inventory slot holding our stick in the station's slot table.
+        let slot = (0..46)
+            .find(|&i| {
+                game.slot_view(i)
+                    .as_ref()
+                    .is_some_and(|s| s.item == "minecraft:stick")
+            })
+            .expect("stick should be visible in station player inventory");
+        let (sx, sy) = game.slot_position_any(slot).unwrap();
+        game.cursor = (ox + sx + 8.0, oy + sy + 8.0);
+        assert_eq!(
+            game.slot_at(&batch, game.cursor.0, game.cursor.1),
+            Some(slot)
+        );
+
+        assert!(game.draw_station(&mut batch));
+        assert_eq!(
+            hand_calls.load(Ordering::Relaxed),
+            1,
+            "station draw must check show_tooltip_with_item_in_hand once per hovered slot"
+        );
+        assert_eq!(
+            gather_calls.load(Ordering::Relaxed),
+            1,
+            "tooltip must render on first true show_tooltip_with_item_in_hand answer"
+        );
+    });
+}
+
+/// Finding 8: tooltip height accumulation and per-component `local_y` advance wrap as Java
+/// signed 32-bit `int` rather than saturating.
+#[test]
+#[ignore = "daily"]
+fn tooltip_height_and_local_y_use_wrapping_signed_i32_arithmetic() {
+    struct WrapData {
+        tag: &'static str,
+        height: i32,
+    }
+    impl TooltipComponentData for WrapData {}
+
+    struct WrapClient {
+        tag: &'static str,
+        height: i32,
+        seen: Arc<Mutex<Vec<(&'static str, i32, i32)>>>,
+    }
+    impl ClientTooltipComponent for WrapClient {
+        fn height(&self, _: &dyn TooltipFont) -> i32 {
+            self.height
+        }
+        fn width(&self, _: &dyn TooltipFont) -> i32 {
+            20
+        }
+        fn draw_image(
+            &self,
+            _: &dyn TooltipFont,
+            _: i32,
+            y: i32,
+            _: i32,
+            total_height: i32,
+            _: &mut dyn DrawContext,
+        ) {
+            self.seen.lock().unwrap().push((self.tag, y, total_height));
+        }
+    }
+
+    struct WrapMod(Arc<Mutex<Vec<(&'static str, i32, i32)>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for WrapMod {
+        fn register_client_tooltip_component_factories(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterClientTooltipComponentFactoriesEvent<'_>,
+        ) {
+            let seen = self.0.clone();
+            event
+                .factories
+                .register::<WrapData, WrapClient>(move |d| WrapClient {
+                    tag: d.tag,
+                    height: d.height,
+                    seen: seen.clone(),
+                });
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mods: Mods = vec![ModEntry::new("wrap_mod", Box::new(WrapMod(seen.clone())))].into();
+
+    with_mod_factories(mods, |game| {
+        let mut components = vec![
+            game.prepare_tooltip_component(&TooltipComponent::custom(WrapData {
+                tag: "first",
+                height: i32::MAX,
+            }))
+            .unwrap(),
+            game.prepare_tooltip_component(&TooltipComponent::custom(WrapData {
+                tag: "second",
+                height: 10,
+            }))
+            .unwrap(),
+        ];
+        let mut batch = HudBatch::scratch([320, 240]);
+        let _ = game.draw_prepared_tooltip(
+            &mut batch,
+            None,
+            &mut components,
+            [10, 20],
+            DEFAULT_FONT_ID.clone(),
+            true,
+        );
+        // Total height wraps: 0_i32.wrapping_add(i32::MAX).wrapping_add(10) == i32::MIN + 9.
+        let expected_h = 0_i32.wrapping_add(i32::MAX).wrapping_add(10);
+        // DefaultTooltipPositioner keeps y = 20 - 12 = 8 (since 8 + expected_h + 6 < 240).
+        // Pass 2 local_y after index 0: 8_i32.wrapping_add(i32::MAX).wrapping_add(2) == i32::MIN + 9.
+        let expected_second_y = 8_i32.wrapping_add(i32::MAX).wrapping_add(2);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![
+                ("first", 8, expected_h),
+                ("second", expected_second_y, expected_h)
+            ]
         );
     });
 }

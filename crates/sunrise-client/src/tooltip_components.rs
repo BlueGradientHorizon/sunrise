@@ -76,16 +76,80 @@ pub fn with_test_factories<R>(factories: TooltipComponentFactories, f: impl FnOn
     f()
 }
 
+/// Why preparing a [`TooltipComponent`] failed before tooltip rendering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TooltipComponentPrepareError {
+    /// No client tooltip component factory was registered for this custom data type
+    /// (vanilla `ClientTooltipComponent.create` throws `IllegalArgumentException`).
+    MissingFactory {
+        type_name: &'static str,
+        owner: Option<&'static str>,
+    },
+    /// A registered factory panicked or was already disabled for its owning mod.
+    FactoryFailed {
+        type_name: &'static str,
+        owner: Option<&'static str>,
+    },
+    /// A bundle tooltip component carried a stack that is not a valid bundle.
+    InvalidBundle { owner: Option<&'static str> },
+}
+
+impl std::fmt::Display for TooltipComponentPrepareError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingFactory { type_name, owner } => match owner {
+                Some(id) => write!(
+                    f,
+                    "no client tooltip component factory registered for {type_name} (from mod {id})"
+                ),
+                None => write!(
+                    f,
+                    "no client tooltip component factory registered for {type_name}"
+                ),
+            },
+            Self::FactoryFailed { type_name, owner } => match owner {
+                Some(id) => write!(
+                    f,
+                    "tooltip component factory for {type_name} failed or is disabled (mod {id})"
+                ),
+                None => write!(
+                    f,
+                    "tooltip component factory for {type_name} failed or is disabled"
+                ),
+            },
+            Self::InvalidBundle { owner } => match owner {
+                Some(id) => write!(
+                    f,
+                    "bundle tooltip component stack is not a bundle (from mod {id})"
+                ),
+                None => write!(f, "bundle tooltip component stack is not a bundle"),
+            },
+        }
+    }
+}
+
+impl std::error::Error for TooltipComponentPrepareError {}
+
 /// Prepare a custom [`TooltipComponent`] using the registered client factory for its data type.
 ///
-/// Built-in bundle components return `None` here (the tooltip pipeline prepares them directly
-/// with `Items`). Unregistered custom types log a warning and return `None` without panicking.
-pub fn create(component: &TooltipComponent) -> Option<PreparedTooltipComponent> {
+/// Built-in bundle components return `Err(InvalidBundle)` here (the tooltip pipeline prepares
+/// them directly with `Items`). Unregistered custom types return `Err(MissingFactory)` instead of
+/// panicking, matching vanilla `ClientTooltipComponent.create`'s `IllegalArgumentException`
+/// semantics without crashing the client.
+pub fn create(
+    component: &TooltipComponent,
+) -> Result<PreparedTooltipComponent, TooltipComponentPrepareError> {
     if component.as_bundle().is_some() {
-        return None;
+        return Err(TooltipComponentPrepareError::InvalidBundle {
+            owner: component.__owner_id(),
+        });
     }
+    let type_name = component.type_name().unwrap_or("<unknown>");
     let (Some(type_id), Some(data)) = (component.type_id(), component.__as_any()) else {
-        return None;
+        return Err(TooltipComponentPrepareError::MissingFactory {
+            type_name,
+            owner: component.__owner_id(),
+        });
     };
     #[cfg(any(test, feature = "test-tooltip-factories"))]
     if let Some(found) = TEST_FACTORIES.with(|slot| {
@@ -94,27 +158,37 @@ pub fn create(component: &TooltipComponent) -> Option<PreparedTooltipComponent> 
             .map(|frozen| frozen.factories.get(&type_id).cloned())
     }) {
         return match found {
-            Some(entry) => entry.factory.__create(data, entry.owner),
-            None => {
-                log::warn!(
-                    "no client tooltip component factory registered for {}",
-                    component.type_name().unwrap_or("<unknown>")
-                );
-                None
+            Some(entry) => {
+                let factory_owner = entry.owner.as_ref().map(CallbackOwner::id);
+                entry.factory.__create(data, entry.owner).ok_or(
+                    TooltipComponentPrepareError::FactoryFailed {
+                        type_name,
+                        owner: factory_owner.or_else(|| component.__owner_id()),
+                    },
+                )
             }
+            None => Err(TooltipComponentPrepareError::MissingFactory {
+                type_name,
+                owner: component.__owner_id(),
+            }),
         };
     }
     let Some(entry) = FACTORIES
         .get()
         .and_then(|frozen| frozen.factories.get(&type_id))
     else {
-        log::warn!(
-            "no client tooltip component factory registered for {}",
-            component.type_name().unwrap_or("<unknown>")
-        );
-        return None;
+        return Err(TooltipComponentPrepareError::MissingFactory {
+            type_name,
+            owner: component.__owner_id(),
+        });
     };
-    entry.factory.__create(data, entry.owner.clone())
+    let factory_owner = entry.owner.as_ref().map(CallbackOwner::id);
+    entry.factory.__create(data, entry.owner.clone()).ok_or(
+        TooltipComponentPrepareError::FactoryFailed {
+            type_name,
+            owner: factory_owner.or_else(|| component.__owner_id()),
+        },
+    )
 }
 
 /// Whether any custom tooltip component factory is registered in the active table.
@@ -175,14 +249,17 @@ mod tests {
     }
 
     #[test]
-    fn factories_create_replace_warn_unregistered_and_restore_on_unwind() {
+    fn factories_create_replace_error_unregistered_and_restore_on_unwind() {
         let font = StubFont(Identifier::parse("minecraft:default").unwrap());
         let data = TooltipComponent::custom(MetricData(12));
         let unknown = TooltipComponent::custom(UnregisteredData);
 
         with_test_factories(TooltipComponentFactories::default(), || {
             assert!(!has_factories());
-            assert!(create(&data).is_none());
+            assert!(matches!(
+                create(&data),
+                Err(TooltipComponentPrepareError::MissingFactory { .. })
+            ));
 
             let mut factories = TooltipComponentFactories::default();
             let registrar: &mut dyn ClientTooltipComponentFactoriesRegistrar = &mut factories;
@@ -201,12 +278,18 @@ mod tests {
                 let prepared = create(&data).expect("registered factory should prepare component");
                 assert_eq!(prepared.width(&font), 36);
                 assert_eq!(prepared.height(&font), 20);
-                assert!(create(&unknown).is_none());
+                assert!(matches!(
+                    create(&unknown),
+                    Err(TooltipComponentPrepareError::MissingFactory { .. })
+                ));
             });
 
             // Inner scope restored outer empty table.
             assert!(!has_factories());
-            assert!(create(&data).is_none());
+            assert!(matches!(
+                create(&data),
+                Err(TooltipComponentPrepareError::MissingFactory { .. })
+            ));
 
             // Unwind safety: a panic inside with_test_factories still restores the prior table.
             let mut inner = TooltipComponentFactories::default();
@@ -343,10 +426,22 @@ mod tests {
         let font = StubFont(Identifier::parse("minecraft:default").unwrap());
         with_test_factories(factories, || {
             let panic_create = TooltipComponent::custom(PanicCreateData);
-            assert!(create(&panic_create).is_none());
+            assert!(matches!(
+                create(&panic_create),
+                Err(TooltipComponentPrepareError::FactoryFailed {
+                    owner: Some("panic_create_mod"),
+                    ..
+                })
+            ));
             assert_eq!(create_calls.load(Ordering::Relaxed), 1);
             // Disabled after first panic: subsequent create skips invoking the factory.
-            assert!(create(&panic_create).is_none());
+            assert!(matches!(
+                create(&panic_create),
+                Err(TooltipComponentPrepareError::FactoryFailed {
+                    owner: Some("panic_create_mod"),
+                    ..
+                })
+            ));
             assert_eq!(create_calls.load(Ordering::Relaxed), 1);
 
             let panic_width = TooltipComponent::custom(PanicWidthData);
@@ -355,7 +450,13 @@ mod tests {
             assert_eq!(width_calls.load(Ordering::Relaxed), 1);
             assert_eq!(prepared.width(&font), 0);
             assert_eq!(width_calls.load(Ordering::Relaxed), 1);
-            assert!(create(&panic_width).is_none());
+            assert!(matches!(
+                create(&panic_width),
+                Err(TooltipComponentPrepareError::FactoryFailed {
+                    owner: Some("panic_width_mod"),
+                    ..
+                })
+            ));
 
             let panic_height = TooltipComponent::custom(PanicHeightData);
             let prepared = create(&panic_height).expect("factory succeeds before height panics");
@@ -363,7 +464,13 @@ mod tests {
             assert_eq!(height_calls.load(Ordering::Relaxed), 1);
             assert_eq!(prepared.height(&font), 0);
             assert_eq!(height_calls.load(Ordering::Relaxed), 1);
-            assert!(create(&panic_height).is_none());
+            assert!(matches!(
+                create(&panic_height),
+                Err(TooltipComponentPrepareError::FactoryFailed {
+                    owner: Some("panic_height_mod"),
+                    ..
+                })
+            ));
 
             let panic_hand = TooltipComponent::custom(PanicHandData);
             let prepared = create(&panic_hand).expect("factory succeeds before hand check panics");
@@ -371,7 +478,13 @@ mod tests {
             assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
             assert!(!prepared.show_tooltip_with_item_in_hand());
             assert_eq!(hand_calls.load(Ordering::Relaxed), 1);
-            assert!(create(&panic_hand).is_none());
+            assert!(matches!(
+                create(&panic_hand),
+                Err(TooltipComponentPrepareError::FactoryFailed {
+                    owner: Some("panic_hand_mod"),
+                    ..
+                })
+            ));
 
             // Sibling mod factory remains completely unaffected.
             let healthy = TooltipComponent::custom(HealthyData(48));

@@ -105,7 +105,7 @@ fn bundle_no_listener_order_and_draw_position() {
         ];
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
-            .unwrap();
+            .unwrap_ready();
         let font = crate::game::host::draw::EngineTooltipFont {
             font: &game.gui.atlas.font,
             id: &DEFAULT_FONT_ID,
@@ -114,7 +114,7 @@ fn bundle_no_listener_order_and_draw_position() {
         assert!(elements[0].as_text().is_some());
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
-            (elements[1].width(&font), elements[1].height(&font)),
+            game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
             (96, 45)
         );
         assert!(elements[2].as_text().is_some());
@@ -166,7 +166,7 @@ fn bundle_empty_text_gathers_image_at_zero() {
     run(None, |game| {
         let elements = game
             .gather_tooltip_components(&bundle(), vec![], 10, (320.0, 240.0))
-            .unwrap();
+            .unwrap_ready();
         let font = crate::game::host::draw::EngineTooltipFont {
             font: &game.gui.atlas.font,
             id: &DEFAULT_FONT_ID,
@@ -174,7 +174,7 @@ fn bundle_empty_text_gathers_image_at_zero() {
         assert_eq!(elements.len(), 1);
         assert!(elements[0].as_bundle().is_some());
         assert_eq!(
-            (elements[0].width(&font), elements[0].height(&font)),
+            game.measure_prepared_item(&elements[0], &font, sunrise_client::font::DEFAULT),
             (96, 45)
         );
     });
@@ -188,7 +188,7 @@ fn bundle_empty_contents_keeps_image() {
         let lines = vec![(sunrise_client::text::Text::literal("Name"), u32::MAX)];
         let elements = game
             .gather_tooltip_components(&stack, lines, 10, (320.0, 240.0))
-            .unwrap();
+            .unwrap_ready();
         let font = crate::game::host::draw::EngineTooltipFont {
             font: &game.gui.atlas.font,
             id: &DEFAULT_FONT_ID,
@@ -199,7 +199,7 @@ fn bundle_empty_contents_keeps_image() {
         assert!(elements[0].as_text().is_some());
         assert!(elements[1].as_bundle().is_some());
         assert_eq!(
-            (elements[1].width(&font), elements[1].height(&font)),
+            game.measure_prepared_item(&elements[1], &font, sunrise_client::font::DEFAULT),
             (96, 39)
         );
         let batch = draw(game, &stack);

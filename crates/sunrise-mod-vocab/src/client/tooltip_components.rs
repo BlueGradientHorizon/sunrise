@@ -19,13 +19,31 @@ use std::{
 /// matching client factory in `register_client_tooltip_component_factories`.
 pub trait TooltipComponentData: Any + Send + Sync + 'static {}
 
+struct OwnedTooltipData {
+    data: Option<Box<dyn Any + Send + Sync>>,
+    owner: Option<CallbackOwner>,
+}
+
+impl Drop for OwnedTooltipData {
+    fn drop(&mut self) {
+        if let Some(data) = self.data.take() {
+            match self.owner.as_ref() {
+                Some(owner) => owner.dispose("tooltip_component", "data_drop", data),
+                None => {
+                    let _ = contain_unwind(move || drop(data));
+                }
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 enum Repr {
     Bundle(ItemStack),
     Custom {
         type_id: TypeId,
         type_name: &'static str,
-        data: Arc<dyn Any + Send + Sync>,
+        data: Arc<OwnedTooltipData>,
     },
 }
 
@@ -48,11 +66,15 @@ impl TooltipComponent {
     /// Wrap mod-defined [`TooltipComponentData`] for resolution by a factory registered in
     /// `register_client_tooltip_component_factories`.
     pub fn custom<T: TooltipComponentData>(data: T) -> Self {
+        let owner = crate::content::crash::current_native_mod().map(CallbackOwner::for_mod);
         Self {
             repr: Repr::Custom {
                 type_id: TypeId::of::<T>(),
                 type_name: std::any::type_name::<T>(),
-                data: Arc::new(data),
+                data: Arc::new(OwnedTooltipData {
+                    data: Some(Box::new(data)),
+                    owner,
+                }),
             },
         }
     }
@@ -68,7 +90,7 @@ impl TooltipComponent {
     /// Downcast a custom tooltip component payload to its concrete [`TooltipComponentData`] type.
     pub fn downcast_ref<T: TooltipComponentData>(&self) -> Option<&T> {
         match &self.repr {
-            Repr::Custom { data, .. } => data.downcast_ref::<T>(),
+            Repr::Custom { data, .. } => data.data.as_deref().and_then(|d| d.downcast_ref::<T>()),
             Repr::Bundle(_) => None,
         }
     }
@@ -94,7 +116,17 @@ impl TooltipComponent {
     #[doc(hidden)]
     pub fn __as_any(&self) -> Option<&(dyn Any + Send + Sync)> {
         match &self.repr {
-            Repr::Custom { data, .. } => Some(&**data),
+            Repr::Custom { data, .. } => data.data.as_deref(),
+            Repr::Bundle(_) => None,
+        }
+    }
+
+    /// The owning mod that created this custom payload, if constructed inside native mod dispatch.
+    // hidden: engine diagnostics attribute preparation errors to the payload producer.
+    #[doc(hidden)]
+    pub fn __owner_id(&self) -> Option<&'static str> {
+        match &self.repr {
+            Repr::Custom { data, .. } => data.owner.as_ref().map(CallbackOwner::id),
             Repr::Bundle(_) => None,
         }
     }
@@ -386,7 +418,7 @@ enum PreparedRepr {
     },
     Bundle {
         stack: ItemStack,
-        grid_rows: i32,
+        non_empty_height: Option<i32>,
     },
     Custom {
         component: Option<Box<dyn AnyClientTooltipComponent>>,
@@ -455,19 +487,20 @@ impl PreparedTooltipComponent {
     pub fn height(&self, font: &dyn TooltipFont) -> i32 {
         match &self.repr {
             PreparedRepr::Text { .. } => 10,
-            PreparedRepr::Bundle { grid_rows, .. } => {
-                if *grid_rows == 0 {
+            PreparedRepr::Bundle {
+                non_empty_height, ..
+            } => match *non_empty_height {
+                Some(height) => height,
+                None => {
                     let desc =
                         Text::translate("item.minecraft.bundle.empty.description", Vec::new());
                     font.split(&desc, 96)
                         .map_or(0, |lines| {
-                            (lines.len() as i32).saturating_mul(font.line_height())
+                            (lines.len() as i32).wrapping_mul(font.line_height())
                         })
-                        .saturating_add(21)
-                } else {
-                    grid_rows.saturating_mul(24).saturating_add(21)
+                        .wrapping_add(21)
                 }
-            }
+            },
             PreparedRepr::Custom { .. } => {
                 self.call_custom("height", |c| c.height(font)).unwrap_or(0)
             }
@@ -524,12 +557,15 @@ impl PreparedTooltipComponent {
         }
     }
 
-    /// Build a prepared built-in bundle tooltip component (`grid_rows == 0` when empty).
+    /// Build a prepared built-in bundle tooltip component (`non_empty_height` is `None` when empty).
     // hidden: engine tooltip preparation constructs built-in bundle components.
     #[doc(hidden)]
-    pub fn __bundle(stack: ItemStack, grid_rows: i32) -> Self {
+    pub fn __bundle(stack: ItemStack, non_empty_height: Option<i32>) -> Self {
         Self {
-            repr: PreparedRepr::Bundle { stack, grid_rows },
+            repr: PreparedRepr::Bundle {
+                stack,
+                non_empty_height,
+            },
         }
     }
 
@@ -584,10 +620,13 @@ impl fmt::Debug for PreparedTooltipComponent {
                 .field("text", text)
                 .field("color", color)
                 .finish(),
-            PreparedRepr::Bundle { stack, grid_rows } => f
+            PreparedRepr::Bundle {
+                stack,
+                non_empty_height,
+            } => f
                 .debug_struct("PreparedTooltipComponent::Bundle")
                 .field("stack", stack)
-                .field("grid_rows", grid_rows)
+                .field("non_empty_height", non_empty_height)
                 .finish(),
             PreparedRepr::Custom { owner, .. } => f
                 .debug_struct("PreparedTooltipComponent::Custom")
@@ -724,5 +763,48 @@ mod tests {
         assert_eq!(prepared.height(&font), 0);
         assert!(!panicking_owner.is_enabled());
         assert_eq!(prepared.width(&font), 0);
+    }
+
+    #[test]
+    fn panicking_payload_drop_is_contained_on_last_release() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct PanicDrop(Arc<AtomicUsize>);
+        impl TooltipComponentData for PanicDrop {}
+        impl Drop for PanicDrop {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                panic!("payload drop boom");
+            }
+        }
+
+        let drops = Arc::new(AtomicUsize::new(0));
+        let owner = CallbackOwner::for_mod("test_payload_drop_owner");
+        let component = TooltipComponent {
+            repr: Repr::Custom {
+                type_id: TypeId::of::<PanicDrop>(),
+                type_name: std::any::type_name::<PanicDrop>(),
+                data: Arc::new(OwnedTooltipData {
+                    data: Some(Box::new(PanicDrop(drops.clone()))),
+                    owner: Some(owner.clone()),
+                }),
+            },
+        };
+        let clone = component.clone();
+        drop(clone);
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        assert!(owner.is_enabled());
+
+        // Last Arc release runs OwnedTooltipData::drop through CallbackOwner::dispose.
+        drop(component);
+        assert_eq!(drops.load(Ordering::Relaxed), 1);
+        assert!(!owner.is_enabled());
+        let notices = crate::callback_owner::take_callback_panic_notices();
+        assert!(
+            notices.iter().any(|n| n.mod_id == "test_payload_drop_owner"
+                && n.kind == "tooltip_component"
+                && n.operation == "data_drop"),
+            "panicking payload drop must be attributed to its producer"
+        );
     }
 }

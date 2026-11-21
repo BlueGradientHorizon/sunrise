@@ -2139,15 +2139,19 @@ impl Game<'_> {
         if lines.is_empty() {
             return None;
         }
-        let components: Vec<mod_api::PreparedTooltipComponent> = Self::resolved(lines)
+        let mut components: Vec<tooltip::PreparedTooltipItem> = Self::resolved(lines)
             .into_iter()
-            .filter_map(|(text, color)| {
-                text.try_into_api()
-                    .ok()
-                    .map(|api| mod_api::PreparedTooltipComponent::__text(api, color))
-            })
+            .map(|(text, color)| tooltip::PreparedTooltipItem::Text { text, color })
             .collect();
-        self.draw_prepared_tooltip(batch, None, &components, (x, y), true)
+        self.draw_prepared_tooltip(
+            batch,
+            None,
+            &mut components,
+            tooltip::quantize_tooltip_anchor((x, y)),
+            mod_api::Identifier::from_parts("minecraft", "default")
+                .expect("minecraft:default is a valid identifier"),
+            true,
+        )
     }
     /// A tooltip's lines with their legacy codes resolved and their colours.
     fn resolved<T: Clone + Into<sunrise_client::text::Text>>(
@@ -2371,9 +2375,7 @@ impl Game<'_> {
         if self.carried.is_none() {
             return true;
         }
-        self.resolve_item_tooltip_image(stack)
-            .and_then(|component| self.prepare_tooltip_component(&component))
-            .is_some_and(|prepared| prepared.show_tooltip_with_item_in_hand())
+        self.tooltip_image_shows_with_carried(stack)
     }
     /// Hovered-slot tooltip on the plain inventory, crafting and container screens.
     pub(super) fn draw_slot_tooltip(&mut self, batch: &mut HudBatch) {
@@ -3168,6 +3170,8 @@ mod tests {
                             1,
                             TooltipElement::Component(TooltipComponent::custom(KnownData(16, 8))),
                         );
+                    }
+                    4 => {
                         event
                             .elements
                             .push(TooltipElement::Component(TooltipComponent::custom(
@@ -3208,18 +3212,14 @@ mod tests {
                         game.gather_tooltip_components(&stick, lines.clone(), 10, (320.0, 240.0))
                     };
                     MODE.store(0, Ordering::Relaxed);
-                    let plain = gather(game).unwrap();
+                    let plain = gather(game).unwrap_ready();
                     assert_eq!(plain.len(), 1);
                     assert!(plain[0].as_text().is_some());
                     MODE.store(1, Ordering::Relaxed);
-                    let elements = gather(game).unwrap();
+                    let elements = gather(game).unwrap_ready();
                     let wrapped: Vec<_> = elements
                         .iter()
-                        .filter_map(|e| {
-                            let (text, color) = e.as_text()?;
-                            let engine: Text = text.try_into_engine(&()).ok()?;
-                            Some((engine, color))
-                        })
+                        .filter_map(|e| e.as_text().map(|(text, color)| (text.clone(), color)))
                         .collect();
                     let custom: Vec<_> = elements
                         .iter()
@@ -3233,7 +3233,6 @@ mod tests {
                         expected.iter().map(Text::plain).collect::<Vec<_>>()
                     );
                     assert!(wrapped.iter().all(|(t, _)| font.width_text(t) <= 40.0));
-                    // The unregistered custom component is dropped, the registered one stays.
                     assert_eq!(custom.len(), 1);
                     assert_eq!((custom[0].0, custom[0].1), (16, 8));
                     // Wrapping expands text in place, never moving the component behind later text.
@@ -3243,15 +3242,29 @@ mod tests {
                             .and_then(|e| e.downcast_ref::<KnownClient>())
                             .is_some()
                     );
+                    // Unregistered custom component aborts preparation with MissingFactory.
+                    MODE.store(4, Ordering::Relaxed);
+                    assert!(matches!(
+                        gather(game),
+                        super::tooltip::GatheredTooltip::PrepareError(
+                            sunrise_client::tooltip_components::TooltipComponentPrepareError::MissingFactory {
+                                owner: Some("gather"),
+                                ..
+                            }
+                        )
+                    ));
                     MODE.store(3, Ordering::Relaxed);
-                    let mixed = gather(game).unwrap();
+                    let mixed = gather(game).unwrap_ready();
                     assert_eq!(mixed.len(), 4);
                     assert!(mixed[0].as_text().is_some());
                     assert!(mixed[1].downcast_ref::<KnownClient>().is_some());
                     assert!(mixed[2].as_text().is_some());
                     assert!(mixed[3].as_text().is_some());
                     MODE.store(2, Ordering::Relaxed);
-                    assert!(gather(game).is_none());
+                    assert!(matches!(
+                        gather(game),
+                        super::tooltip::GatheredTooltip::Cancelled
+                    ));
                 });
             });
         });
@@ -3422,10 +3435,7 @@ mod cycling_tests {
     #[test]
     #[ignore = "daily"]
     fn a_tooltip_pre_answer_moves_or_cancels_the_tooltip() {
-        use mod_api::{
-            self, ClientHost, Hooks, Identifier, ModEntry, Mods, PreparedTooltipComponent,
-            RenderTooltipPreEvent,
-        };
+        use mod_api::{self, ClientHost, Hooks, Identifier, ModEntry, Mods, RenderTooltipPreEvent};
         use std::sync::atomic::{AtomicU8, Ordering};
 
         static MODE: AtomicU8 = AtomicU8::new(0);
@@ -3441,7 +3451,7 @@ mod cycling_tests {
                 assert!(
                     matches!(event.components[0].as_text(), Some((t, _)) if *t == mod_api::Text::literal("Tip"))
                 );
-                assert_eq!((event.place.x, event.place.y), (10, 20));
+                assert_eq!((event.place.x, event.place.y), (11, 20));
                 assert_eq!(event.screen, [320.0, 240.0]);
                 assert_eq!(*event.font, Identifier::parse("minecraft:default").unwrap());
                 assert_eq!(
@@ -3450,7 +3460,7 @@ mod cycling_tests {
                         [event.place.x, event.place.y],
                         [60, 20]
                     ),
-                    [22, 8]
+                    [23, 8]
                 );
                 match MODE.load(Ordering::Relaxed) {
                     1 => {
@@ -3479,30 +3489,31 @@ mod cycling_tests {
         }
         let default_font = Identifier::parse("minecraft:default").unwrap();
         let alt_font = Identifier::parse("minecraft:alt").unwrap();
-        let components = vec![PreparedTooltipComponent::__text(
-            mod_api::Text::literal("Tip"),
-            u32::MAX,
-        )];
+        let mut components = vec![super::tooltip::PreparedTooltipItem::Text {
+            text: Text::literal("Tip"),
+            color: u32::MAX,
+        }];
         let mods: Mods = vec![ModEntry::new("pre", Box::new(Mod))].into();
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut batch = HudBatch::scratch([320, 240]);
+                let anchor = super::tooltip::quantize_tooltip_anchor((10.6, 20.4));
                 let mut pre = |game: &super::Game<'_>| {
                     game.tooltip_pre_components(
                         &mut batch,
                         None,
-                        &components,
-                        (10.6, 20.4),
+                        &mut components,
+                        anchor,
                         (320.0, 240.0),
+                        default_font.clone(),
                     )
                 };
                 MODE.store(0, Ordering::Relaxed);
-                // Unmoved, the cursor's own fractional point stays.
-                assert_eq!(pre(game), Some(((10.6, 20.4), default_font.clone())));
+                assert_eq!(pre(game), Some(([11, 20], default_font.clone())));
                 MODE.store(1, Ordering::Relaxed);
-                assert_eq!(pre(game), Some(((50.0, 60.0), default_font.clone())));
+                assert_eq!(pre(game), Some(([50, 60], default_font.clone())));
                 MODE.store(3, Ordering::Relaxed);
-                assert_eq!(pre(game), Some(((10.6, 20.4), alt_font.clone())));
+                assert_eq!(pre(game), Some(([11, 20], alt_font.clone())));
                 MODE.store(2, Ordering::Relaxed);
                 assert_eq!(pre(game), None);
                 assert!(

@@ -583,7 +583,6 @@ impl Game<'_> {
             && tooltip.is_none()
             && tooltip_stack.is_none()
             && let Some(stack) = self.slot_mut(slot).clone()
-            && self.tooltip_with_carried(&stack)
         {
             tooltip_stack = Some(stack);
         }

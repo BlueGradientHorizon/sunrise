@@ -15,6 +15,7 @@ use sunrise_client::{
 
 pub(super) struct ItemExtensionsPart {
     pub attached: mod_api::Attached<dyn ClientItemExtensions>,
+    pub callback_owner: mod_api::__private::game::CallbackOwner,
     pub failed: AtomicBool,
     pub reported_stale: AtomicBool,
 }
@@ -129,10 +130,13 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                     previous.attached.mod_id()
                 ));
             }
+            let callback_owner =
+                mod_api::__private::game::CallbackOwner::for_mod(attached.mod_id());
             self.state.items.insert(
                 item,
                 ItemExtensionsPart {
                     attached,
+                    callback_owner,
                     failed: AtomicBool::new(false),
                     reported_stale: AtomicBool::new(false),
                 },
@@ -249,6 +253,41 @@ fn hide_other_slots(part: &mut Part, slot: super::equipment_piece::ArmorSlot) {
 }
 
 impl Game<'_> {
+    /// Item-owned tooltip font (`ClientHooks.getTooltipFont` -> `IClientItemExtensions.getFont`).
+    ///
+    /// Returns `minecraft:default` when no extension is registered, the provider returns `None`,
+    /// the stack cannot cross the API boundary, or the provider panics.
+    pub(super) fn item_tooltip_font(
+        &self,
+        stack: &sunrise_client::items::ItemStack,
+    ) -> mod_api::Identifier {
+        use super::api_values::TryIntoApi;
+        let default = || mod_api::Identifier::parse("minecraft:default").unwrap();
+        let state = &self.armor_stand_assets.extensions;
+        if state.items.is_empty() {
+            return default();
+        }
+        let Some(item) = mod_api::__private::item_key(&stack.item) else {
+            return default();
+        };
+        let Some(part) = state.items.get(&item) else {
+            return default();
+        };
+        if !part.attached.enabled() || part.failed.load(Ordering::Relaxed) {
+            return default();
+        }
+        let Ok(api_stack) = stack.try_into_api() else {
+            return default();
+        };
+        let provider = &**part.attached.part();
+        part.callback_owner
+            .call("client_item_extensions", "tooltip_font", || {
+                provider.tooltip_font(self, &api_stack)
+            })
+            .flatten()
+            .unwrap_or_else(default)
+    }
+
     pub(super) fn extended_equipment_materials<'a>(
         &'a self,
         piece: &super::equipment_piece::EquipmentPiece<'_>,

@@ -157,10 +157,12 @@ fn render_tooltip_pre(
 
 Every prepared component — including zero-width or zero-height components — participates in
 the two-pass draw order (`draw_text` for every component, then `draw_image` for every
-component, matching `GuiGraphicsExtractor.tooltip`). An unregistered custom payload logs a
-warning and is skipped. If a mod's factory, measurement, draw or drop panics, that mod's
-tooltip component callbacks are disabled for the session with a log entry and error toast,
-and any partial paint from the panicking draw pass is discarded.
+component, matching `GuiGraphicsExtractor.tooltip`). An unregistered custom payload aborts
+that tooltip before `render_tooltip_pre`, `render_tooltip_texture`, or painting with an error
+log (without affecting later tooltips). If a mod's factory, measurement, draw, or
+payload/component drop panics, that mod's tooltip component callbacks are disabled for the
+session with a log entry and error toast, and any partial paint from the panicking draw pass is
+discarded.
 
 ## Drawing a second world camera
 
