@@ -279,7 +279,13 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                         assert_owner(id);
                         log(id);
                         assert!(!broken, "broken wrapper");
-                        ctx.draw_previous();
+                        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            ctx.draw_previous();
+                        }))
+                        .is_err()
+                        {
+                            log(format!("caught by {id}"));
+                        }
                         assert_owner(id);
                     }),
                 ));
@@ -310,7 +316,10 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
             }))
             .unwrap_err();
             assert_eq!(panic.downcast_ref::<&str>(), Some(&"vanilla paint failed"));
-            assert_eq!(take(), ["outer", "inner"]);
+            assert_eq!(
+                take(),
+                ["outer", "inner", "caught by inner", "caught by outer"]
+            );
             assert_eq!(current_native_mod(), None);
 
             game.gui_layer(VanillaGuiLayer::Hotbar, &mut batch, &mut |_, _| {

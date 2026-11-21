@@ -19,7 +19,9 @@ static TASK_OWNERS: LazyLock<Mutex<TaskOwners>> = LazyLock::new(Mutex::default);
 /// same instance while it waits. Callbacks run as the registering mod. A disabled
 /// implementation is skipped; a panic during registration, start or tick closes that
 /// peer and disables the task implementation for that mod for the session, without
-/// disabling other mods' tasks.
+/// disabling other mods' tasks. Dropping a task also runs as the registering mod;
+/// a destructor panic is reported and disables the implementation, even if the
+/// task was rejected or skipped.
 pub trait ConfigurationTask: Send + 'static {
     /// The namespaced task type, read once as the registering mod. It must be
     /// nonempty and unique among all tasks registered for this connection. A phase
@@ -68,8 +70,10 @@ impl RegisterConfigurationTasksEvent<'_> {
     /// Append a task to this connection's queue. An invalid or duplicate type, or a
     /// panic while reading it, aborts the registration transaction and admission even
     /// if the listener ignores this result. The first error supplies the diagnostic.
-    /// A disabled implementation is not queued. If the listener or `task_type` hits
-    /// a phase refusal, discard this listener's staged tasks and diagnostic.
+    /// A disabled implementation is not queued and its instance is dropped without
+    /// calling `task_type`. A destructor panic does not replace the first diagnostic.
+    /// If the listener or `task_type` hits a phase refusal, discard this listener's
+    /// staged tasks and diagnostic.
     pub fn register(
         &mut self,
         task: impl ConfigurationTask,
@@ -82,40 +86,58 @@ impl RegisterConfigurationTasksEvent<'_> {
                 .or_insert_with(|| CallbackOwner::for_mod(mod_id))
                 .clone()
         });
-        let binding = match owner {
-            Some(owner) if !owner.is_enabled() => return Ok(()),
-            Some(owner) => owner
-                .call_in_listener("configuration task", "ConfigurationTask::task_type", || {
-                    task.task_type()
-                })
-                .map(|id| (owner, id))
-                .map_err(ConfigurationTaskRegistrationError::CallbackFailed),
-            None => Err(ConfigurationTaskRegistrationError::CallbackFailed(
+        let refusal = match owner {
+            Some(owner) => {
+                if !owner.is_enabled() {
+                    dispose_task(&owner, task);
+                    return Ok(());
+                }
+                // A phase refusal escapes the retained callback to the listener's checkpoint.
+                // Keep the task alive across that unwind so its destructor can run separately.
+                let binding = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    owner.call_in_listener(
+                        "configuration task",
+                        "ConfigurationTask::task_type",
+                        || task.task_type(),
+                    )
+                }));
+                let refusal = match binding {
+                    Err(payload) => {
+                        dispose_task(&owner, task);
+                        std::panic::resume_unwind(payload);
+                    }
+                    Ok(Err(reason)) => ConfigurationTaskRegistrationError::CallbackFailed(reason),
+                    Ok(Ok(id)) if id.namespace().is_empty() || id.path().is_empty() => {
+                        ConfigurationTaskRegistrationError::EmptyType
+                    }
+                    Ok(Ok(id)) if !self.registration.types.insert(id.clone()) => {
+                        ConfigurationTaskRegistrationError::DuplicateType(id.clone())
+                    }
+                    Ok(Ok(id)) => {
+                        self.registration.tasks.push(RegisteredConfigurationTask {
+                            kind: id.clone(),
+                            task: Some(Box::new(task)),
+                            owner,
+                        });
+                        return Ok(());
+                    }
+                };
+                dispose_task(&owner, task);
+                refusal
+            }
+            None => ConfigurationTaskRegistrationError::CallbackFailed(
                 "Configuration task registration has no owning mod".into(),
-            )),
-        };
-        let refusal = match binding {
-            Err(error) => error,
-            Ok((_, id)) if id.namespace().is_empty() || id.path().is_empty() => {
-                ConfigurationTaskRegistrationError::EmptyType
-            }
-            Ok((_, id)) if !self.registration.types.insert(id.clone()) => {
-                ConfigurationTaskRegistrationError::DuplicateType(id.clone())
-            }
-            Ok((owner, id)) => {
-                self.registration.tasks.push(RegisteredConfigurationTask {
-                    kind: id.clone(),
-                    task: Box::new(task),
-                    owner,
-                });
-                return Ok(());
-            }
+            ),
         };
         self.registration
             .refusal
             .get_or_insert_with(|| refusal.clone());
         Err(refusal)
     }
+}
+
+fn dispose_task<T>(owner: &CallbackOwner, task: T) {
+    owner.dispose("configuration task", "ConfigurationTask::drop", task);
 }
 
 /// Engine staging for one registration transaction.
@@ -163,10 +185,26 @@ impl ConfigurationTaskRegistration {
 #[non_exhaustive]
 pub struct RegisteredConfigurationTask {
     kind: Identifier,
-    /// The connection-owned instance.
-    pub task: Box<dyn ConfigurationTask>,
+    task: Option<Box<dyn ConfigurationTask>>,
     /// The registering mod, for Host calls that depend on the caller's identity.
     pub owner: CallbackOwner,
+}
+impl RegisteredConfigurationTask {
+    /// Invoke the live connection-owned instance as its registering mod.
+    pub fn call<T>(
+        &mut self,
+        operation: &'static str,
+        invoke: impl FnOnce(&mut dyn ConfigurationTask) -> T,
+    ) -> Result<T, String> {
+        let task = self.task.as_deref_mut().expect("live configuration task");
+        self.owner
+            .call("configuration task", operation, || invoke(task))
+    }
+}
+impl Drop for RegisteredConfigurationTask {
+    fn drop(&mut self) {
+        dispose_task(&self.owner, self.task.take());
+    }
 }
 
 /// One configuring connection, available while registering its tasks.

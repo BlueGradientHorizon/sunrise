@@ -50,6 +50,7 @@ impl Game<'_> {
         let blend_end = batch.blends.last().map(|(range, _)| range.end);
         let pictures = batch.pictures.len();
         let profiles = batch.inline_profiles.len();
+        let blur_requested = self.screen_blur_requested.get();
         if screen
             .owner
             .call(
@@ -77,6 +78,7 @@ impl Game<'_> {
         }
         batch.pictures.truncate(pictures);
         batch.inline_profiles.truncate(profiles);
+        self.screen_blur_requested.set(blur_requested);
         false
     }
     /// `LevelLoadingScreen.extractBackground`.

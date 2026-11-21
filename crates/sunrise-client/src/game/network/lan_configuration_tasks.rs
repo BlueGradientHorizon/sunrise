@@ -146,11 +146,11 @@ impl Game<'_> {
                             configuration_task_ref(connection, turn.ordinal),
                             &mut outcome,
                         );
-                        task.owner.call("configuration task", call, || {
+                        task.call(call, |task| {
                             if turn.start {
-                                task.task.start(game, &mut context);
+                                task.start(game, &mut context);
                             } else {
-                                task.task.tick(game, &mut context);
+                                task.tick(game, &mut context);
                             }
                         })?;
                         match outcome {

@@ -70,9 +70,9 @@ pub trait DimensionTransitionPresentation: Send + Sync + 'static {
     /// Draw under the registering mod's identity using this frame's reason and optional
     /// smoothed integrated-server progress. The tracker, not the presentation, decides when
     /// the screen closes. The reason can change while the same presentation remains active.
-    /// A disabled or refused draw leaves the vanilla loading screen without the mod's paint.
-    /// A panic discards the failed draw too, and disables only that registration's draw
-    /// callback for the session.
+    /// A disabled or refused draw leaves the vanilla loading screen without the mod's paint
+    /// or blur request. A panic also discards that output and disables only the registration's
+    /// draw callback for the session.
     fn draw(
         &self,
         host: &dyn ClientHost,

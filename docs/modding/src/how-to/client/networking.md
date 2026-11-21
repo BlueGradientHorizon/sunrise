@@ -43,7 +43,10 @@ it must be nonempty and unique across all listeners for that connection. `regist
 returns `EmptyType` or `DuplicateType(id)` for an invalid type and `CallbackFailed(reason)`
 if reading the type panics. The first error refuses admission and supplies the disconnect
 diagnostic even if the listener ignores it. A phase refusal in the listener or in `task_type`
-instead discards only that listener's staged tasks, reservations and diagnostic.
+instead discards only that listener's staged tasks, reservations and diagnostic. Rejected task
+instances are dropped under the registering mod's panic policy, including when the implementation
+was already disabled and `task_type` was skipped. Keep `Drop` non-panicking: a destructor panic
+is logged and shown in an error toast with the mod's name; it does not replace the first diagnostic.
 
 Implement `start` and, if needed, `tick`, both with `&mut self`, `host: &mut dyn ServerHost`
 and `context: &mut ConfigurationTaskContext<'_>`. Keep per-connection state in the task

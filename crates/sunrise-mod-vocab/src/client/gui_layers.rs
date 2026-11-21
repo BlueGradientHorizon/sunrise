@@ -26,7 +26,8 @@ pub trait GuiLayerWrapContext {
 
     /// Paint the previous body at this point in the same batch without firing layer hooks again.
     /// The previous mod body runs as its own mod; a previous vanilla body runs as the engine.
-    /// Omit it to skip the previous body for this draw.
+    /// A vanilla paint panic still escapes the layer as an engine fault, even if the wrapper
+    /// catches its unwind. Omit this call to skip the previous body for this draw.
     fn draw_previous(&mut self);
 }
 

@@ -357,10 +357,29 @@ mod tests {
             content::crash::current_native_call,
         };
 
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static BROKEN_LOOKUPS: AtomicUsize = AtomicUsize::new(0);
+        static BROKEN_DISPOSALS_IN_SCOPE: AtomicUsize = AtomicUsize::new(0);
+
         struct Task {
             owner: &'static str,
             kind: Identifier,
             panic: bool,
+        }
+        impl Drop for Task {
+            fn drop(&mut self) {
+                if self.panic {
+                    if mod_api::__private::game::retained_callback_active()
+                        && current_native_call().is_some_and(|call| {
+                            (call.id, call.hook) == (self.owner, "ConfigurationTask::drop")
+                        })
+                    {
+                        BROKEN_DISPOSALS_IN_SCOPE.fetch_add(1, Ordering::Relaxed);
+                    }
+                    panic!("test task destructor panic");
+                }
+            }
         }
         impl ConfigurationTask for Task {
             fn task_type(&self) -> &Identifier {
@@ -370,7 +389,10 @@ mod tests {
                     (self.owner, "ConfigurationTask::task_type")
                 );
                 assert!(mod_api::__private::game::retained_callback_active());
-                assert!(!self.panic, "test task type panic");
+                if self.panic {
+                    BROKEN_LOOKUPS.fetch_add(1, Ordering::Relaxed);
+                    panic!("test task type panic");
+                }
                 &self.kind
             }
 
@@ -427,6 +449,21 @@ mod tests {
                     assert_eq!(tasks.len(), 1);
                     assert_eq!(tasks[0].owner.id(), HEALTHY);
                 }
+                assert_eq!(BROKEN_LOOKUPS.load(Ordering::Relaxed), 1);
+                assert_eq!(BROKEN_DISPOSALS_IN_SCOPE.load(Ordering::Relaxed), 2);
+                let notices = mod_api::__private::game::take_callback_panic_notices()
+                    .into_iter()
+                    .filter(|notice| notice.mod_id == BROKEN)
+                    .map(|notice| notice.operation)
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    notices,
+                    [
+                        "ConfigurationTask::task_type",
+                        "ConfigurationTask::drop",
+                        "ConfigurationTask::drop",
+                    ]
+                );
             },
         );
     }

@@ -5,7 +5,10 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::{any::Any, cell::Cell};
+use std::{
+    any::Any,
+    cell::{Cell, RefCell},
+};
 
 /// A retained mod callback panicked and was disabled for the rest of this session.
 // no wire: in-process notification drained by the client's error toast queue.
@@ -26,6 +29,9 @@ static PANIC_NOTICES: Mutex<VecDeque<CallbackPanicNotice>> = Mutex::new(VecDeque
 
 thread_local! {
     static RETAINED_CALLBACK: Cell<bool> = const { Cell::new(false) };
+    // Keep the original fatal payload in the engine-owned invocation, not in the
+    // unwind a wrapper is free to catch. It is taken on exit from the outermost wrapper.
+    static DELEGATED_ENGINE_PANIC: RefCell<Option<Box<dyn Any + Send>>> = const { RefCell::new(None) };
 }
 
 /// Whether the current panic will be reported and contained by the retained callback owner.
@@ -33,9 +39,29 @@ pub fn retained_callback_active() -> bool {
     RETAINED_CALLBACK.try_with(Cell::get).unwrap_or(false)
 }
 
-// A delegated engine panic has already reached the fatal panic hook. Pass it through
-// nested wrappers without turning it into a mod failure or reporting it a second time.
-struct EnginePanic(Box<dyn Any + Send>);
+// Interrupt wrapper code without invoking the panic hook a second time.
+fn unwind_through_wrapper() -> ! {
+    struct DelegatedEnginePanic;
+    std::panic::resume_unwind(Box::new(DelegatedEnginePanic))
+}
+
+fn engine_panic_pending() -> bool {
+    DELEGATED_ENGINE_PANIC.with(|panic| panic.borrow().is_some())
+}
+
+fn drop_contained<T>(value: T) {
+    if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(value))) {
+        // A panic payload can itself have a panicking destructor.
+        std::mem::forget(payload);
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum Invocation {
+    Isolated,
+    Listener,
+    Dispose,
+}
 
 struct RetainedCallbackScope(bool);
 impl Drop for RetainedCallbackScope {
@@ -131,7 +157,7 @@ impl CallbackOwner {
             &self.poisoned,
             kind,
             operation,
-            false,
+            Invocation::Isolated,
             invoke,
         )
         .map_err(|why| format!("mod {}: {why}", self.id))
@@ -151,10 +177,23 @@ impl CallbackOwner {
             &self.poisoned,
             kind,
             operation,
-            true,
+            Invocation::Listener,
             invoke,
         )
         .map_err(|why| format!("mod {}: {why}", self.id))
+    }
+
+    /// Dispose of an owned mod value under its panic policy, even if ordinary calls are disabled.
+    pub(crate) fn dispose<T>(&self, kind: &'static str, operation: &'static str, value: T) {
+        let _ = call_opt(
+            self.id,
+            self.index,
+            &self.poisoned,
+            kind,
+            operation,
+            Invocation::Dispose,
+            || drop(value),
+        );
     }
 
     /// Execute the engine body delegated by a retained wrapper, outside all mod scopes.
@@ -162,12 +201,18 @@ impl CallbackOwner {
         if !retained_callback_active() {
             return invoke();
         }
+        if engine_panic_pending() {
+            unwind_through_wrapper();
+        }
         let _contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(false));
         let _guard = crate::dispatch_scope::ModGuard::unattributed();
         let outer = phase_refusal::suspend_scope();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(invoke));
         let _ = phase_refusal::leave_scope(outer);
-        result.unwrap_or_else(|payload| std::panic::resume_unwind(Box::new(EnginePanic(payload))))
+        result.unwrap_or_else(|payload| {
+            DELEGATED_ENGINE_PANIC.set(Some(payload));
+            unwind_through_wrapper();
+        })
     }
 }
 
@@ -187,7 +232,15 @@ pub(crate) fn call<T>(
     operation: &'static str,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    call_opt(owner, Some(index), poisoned, kind, operation, false, invoke)
+    call_opt(
+        owner,
+        Some(index),
+        poisoned,
+        kind,
+        operation,
+        Invocation::Isolated,
+        invoke,
+    )
 }
 
 fn call_opt<T>(
@@ -196,46 +249,49 @@ fn call_opt<T>(
     poisoned: &AtomicBool,
     kind: &'static str,
     operation: &'static str,
-    in_listener: bool,
+    invocation: Invocation,
     invoke: impl FnOnce() -> T,
 ) -> Result<T, String> {
-    if !enabled_opt(index, poisoned) {
+    if invocation != Invocation::Dispose && !enabled_opt(index, poisoned) {
         return Err(format!("{kind} owner is disabled"));
     }
     let _guard = crate::mark_mod(owner, operation);
     let contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(true));
     // A refusal by the phase gate refuses this call and nothing more; a real panic disables
     // this callback for the session, logs loudly and notifies the client error toast queue.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if in_listener {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if invocation == Invocation::Listener {
             Ok(invoke())
         } else {
             phase_refusal::contain_refusal(owner, invoke)
         }
-    })) {
+    }));
+    if engine_panic_pending() {
+        // Ignore the wrapper's outcome, even if it caught the unwind and returned normally.
+        drop_contained(result);
+        if contained.0 {
+            unwind_through_wrapper();
+        }
+        let payload = DELEGATED_ENGINE_PANIC.take().expect("pending engine panic");
+        std::panic::resume_unwind(payload);
+    }
+    match result {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(refusal)) => {
             refusal.report_each();
             Err(format!("{kind} callback refused: {refusal}"))
         }
         Err(payload) => {
-            let payload = match payload.downcast::<EnginePanic>() {
-                Ok(engine) if !contained.0 => std::panic::resume_unwind(engine.0),
-                Ok(engine) => std::panic::resume_unwind(engine),
-                Err(payload) => payload,
-            };
-            if in_listener && payload.is::<PhaseRefusal>() {
+            if invocation == Invocation::Listener && payload.is::<PhaseRefusal>() {
                 // The enclosing listener's scope already latched this refusal.
                 std::panic::resume_unwind(payload);
             }
             let first = !poisoned.swap(true, Ordering::AcqRel);
             let msg = panic_message(payload.as_ref());
-            if let Err(payload) =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
-            {
-                std::mem::forget(payload);
-            }
-            if !first {
+            drop_contained(payload);
+            // Disposal is mandatory. Each instance's destructor is run at most once,
+            // but even an already disabled implementation can panic again while dropping.
+            if !first && invocation != Invocation::Dispose {
                 return Err(format!("{kind} callback panicked; it is disabled"));
             }
             log::error!(
