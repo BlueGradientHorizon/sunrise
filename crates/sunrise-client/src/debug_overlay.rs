@@ -626,8 +626,7 @@ mod tests {
             depth: 0.0,
             glint_uv: [0.0; 2],
             text: 1,
-            repeat: [0; 4],
-            repeat_y: [0; 3],
+            repeat: [0; 3],
         };
         let layout = ([1920, 1080], 2.0f32.to_bits(), 5, true);
         let start = Instant::now();

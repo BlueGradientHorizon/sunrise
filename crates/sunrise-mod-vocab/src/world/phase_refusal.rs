@@ -33,8 +33,12 @@ impl std::fmt::Display for PhaseRefusal {
 }
 
 impl PhaseRefusal {
-    /// Logs the first refusal of this operation for this mod.
+    /// Logs the first refusal of this operation for this mod, or each refusal in a GUI callback.
     pub fn report(&self) {
+        if crate::runtime::contain_gui_panics() {
+            self.report_each();
+            return;
+        }
         static LOGGED: OnceLock<Mutex<HashSet<(&'static str, &'static str)>>> = OnceLock::new();
         let first = LOGGED
             .get_or_init(Mutex::default)
@@ -42,14 +46,18 @@ impl PhaseRefusal {
             .unwrap_or_else(|error| error.into_inner())
             .insert((self.mod_id, self.operation));
         if first {
-            log::warn!(
-                "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
-                self.mod_id,
-                crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
-                self.operation,
-                self.phase
-            );
+            self.report_each();
         }
+    }
+
+    fn report_each(&self) {
+        log::warn!(
+            "native refusal: {} hook {}: mod API {} is unavailable during {:?}",
+            self.mod_id,
+            crate::content::crash::current_native_call().map_or("unknown", |call| call.hook),
+            self.operation,
+            self.phase
+        );
     }
 }
 

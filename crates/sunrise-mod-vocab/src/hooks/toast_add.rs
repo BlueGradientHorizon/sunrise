@@ -8,7 +8,8 @@ pub trait Hooks {
     /// For advancements the title is the frame label and the description is
     /// the advancement name. Existing recipe/system toasts updated in place
     /// do not fire another add event. Client-lib and title producers prepare
-    /// candidates for the game to admit with a `ClientHost` before applying.
+    /// candidates for the game to admit with a `ClientHost` before applying. Diagnostics that
+    /// name a mod's panicking callback are not candidates and cannot be edited or canceled.
     #[hook(
         receiver = "read",
         dispatch = "flat",
@@ -16,6 +17,7 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "ToastAddEvent",
+        version = 2,
         cancellable = true
     )]
     fn toast_add(

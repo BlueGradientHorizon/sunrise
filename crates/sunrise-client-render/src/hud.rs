@@ -2146,10 +2146,15 @@ pub struct HudVertex {
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
-    /// X repeat phase and one-based index into the batch's repeats (0 for an ordinary vertex).
-    /// The renderer fills phase coefficients when uploading for the current device scale.
-    pub repeat: [u32; 4],
-    pub repeat_y: [u32; 3],
+    /// One-based repeat index (0 for an ordinary vertex), then its device-pixel map origin.
+    /// The renderer sets the origin for the active target scale when uploading the vertex.
+    pub repeat: [u32; 3],
+}
+impl HudVertex {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+        0 => Float32x2, 1 => Float32x2, 2 => Unorm8x4, 3 => Float32, 4 => Float32x2,
+        5 => Uint32, 6 => Uint32x3
+    ];
 }
 /// Sutherland-Hodgman against one half plane, interpolating every attribute.
 fn clip_polygon(poly: &[HudVertex], axis: usize, limit: f32, keep_below: bool) -> Vec<HudVertex> {
@@ -2398,8 +2403,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat: [0; 4],
-                repeat_y: [0; 3],
+                repeat: [0; 3],
             });
         }
     }
@@ -2420,8 +2424,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: glint_uv[i],
                 text: 0,
-                repeat: [0; 4],
-                repeat_y: [0; 3],
+                repeat: [0; 3],
             });
         }
     }
@@ -2434,8 +2437,7 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat: [0; 4],
-                repeat_y: [0; 3],
+                repeat: [0; 3],
             });
         }
     }
@@ -2460,8 +2462,7 @@ impl HudBatch {
                 depth: p[i][2],
                 glint_uv: glint_uv[i],
                 text: 0,
-                repeat: [0; 4],
-                repeat_y: [0; 3],
+                repeat: [0; 3],
             });
         }
     }
@@ -2602,6 +2603,51 @@ impl HudBatch {
         if let Some((last, _)) = self.blends.last_mut() {
             last.end = last.end.min(start);
         }
+    }
+
+    /// Discard a failed wrapper's draws, keeping only the ordered ranges emitted by its
+    /// completed previous-body calls. Blend ranges follow their surviving vertices.
+    pub fn retain_draws_since(&mut self, start: usize, previous: &[std::ops::Range<usize>]) {
+        if previous.is_empty() {
+            self.discard_since(start);
+            return;
+        }
+        let mut end = start;
+        for range in previous {
+            self.vertices.copy_within(range.clone(), end);
+            end += range.len();
+        }
+        self.vertices.truncate(end);
+
+        let mut previous = previous.iter().peekable();
+        let mut end = start;
+        let mut remap = |index: u32| {
+            let index = index as usize;
+            if index <= start {
+                return index as u32;
+            }
+            while let Some(range) = previous.peek() {
+                if index < range.end {
+                    return (end + index.saturating_sub(range.start)) as u32;
+                }
+                end += range.len();
+                previous.next();
+            }
+            end as u32
+        };
+        let first = self
+            .blends
+            .partition_point(|(range, _)| range.end <= start as u32);
+        let mut out = first;
+        for i in first..self.blends.len() {
+            let (range, blend) = &self.blends[i];
+            let range = remap(range.start)..remap(range.end);
+            if !range.is_empty() {
+                self.blends[out] = (range, *blend);
+                out += 1;
+            }
+        }
+        self.blends.truncate(out);
     }
 
     /// Clip only when a primitive really crosses the screen-space scissor.
@@ -2764,8 +2810,7 @@ impl HudBatch {
                 depth: 0.0,
                 glint_uv: [0.0, 0.0],
                 text: 0,
-                repeat: [0; 4],
-                repeat_y: [0; 3],
+                repeat: [0; 3],
             });
         }
     }
@@ -3248,6 +3293,7 @@ pub struct HudRenderer {
     /// The layout of `group`, which the CIT glint pipelines share.
     layout: wgpu::BindGroupLayout,
     group: wgpu::BindGroup,
+    repeats: sprite_repeat::RepeatMaps,
     /// The pack's CIT enchantment glints, when it has any.
     cit_glint: Option<cit_glint::CitGlintPass>,
     uniform: wgpu::Buffer,
@@ -3389,12 +3435,12 @@ impl HudRenderer {
                 },
             ],
         });
+        let repeats = sprite_repeat::RepeatMaps::new(device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("HUD layout"),
-            bind_group_layouts: &[Some(&layout)],
+            bind_group_layouts: &[Some(&layout), Some(&repeats.layout)],
             ..Default::default()
         });
-        let attributes = wgpu::vertex_attr_array![0=>Float32x2,1=>Float32x2,2=>Unorm8x4,3=>Float32,4=>Float32x2,5=>Uint32,6=>Uint32x4,7=>Uint32x3];
         // `depth`: the model's depth test, and whether the run writes depth.
         let create = |label, blend, fragment_entry, depth: Option<bool>| {
             let desc = wgpu::RenderPipelineDescriptor {
@@ -3407,7 +3453,7 @@ impl HudRenderer {
                     buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<HudVertex>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &attributes,
+                        attributes: &HudVertex::ATTRIBUTES,
                     })],
                 },
                 primitive: Default::default(),
@@ -3532,6 +3578,7 @@ impl HudRenderer {
             end_portal_pipeline,
             layout,
             group,
+            repeats,
             cit_glint: None,
             uniform,
             buffer,
@@ -3625,6 +3672,17 @@ impl HudRenderer {
     ) {
         self.prepare_pictures(device, uploads, encoder, batch);
         self.upload_patches(uploads, encoder, batch);
+        let device_scale = batch.scale * self.zoom;
+        let atlas = self.atlas_view.texture().size();
+        self.repeats.prepare(
+            device,
+            uploads,
+            encoder,
+            batch,
+            size,
+            [atlas.width, atlas.height],
+            device_scale,
+        );
         if batch.vertices.is_empty() || size.contains(&0) {
             return;
         }
@@ -3638,25 +3696,19 @@ impl HudRenderer {
                 mapped_at_creation: false,
             });
         }
-        let device_scale = batch.scale * self.zoom;
         let vertices = bytemuck::cast_slice(&batch.vertices);
         if batch.sprite_repeats.is_empty() {
             uploads.buffer(encoder, &self.buffer, 0, vertices);
         } else {
-            let phases: Vec<_> = batch
-                .sprite_repeats
-                .iter()
-                .map(|repeat| repeat.device_phase(device_scale))
-                .collect();
             uploads.buffer_with(encoder, &self.buffer, 0, vertices.len(), |mut dst| {
                 dst.slice(..).copy_from_slice(vertices);
                 for (i, vertex) in batch.vertices.iter().enumerate() {
-                    let repeat = vertex.repeat[3];
-                    if repeat != 0 {
-                        let [x, y] = phases[repeat as usize - 1];
+                    let repeat = vertex.repeat[0];
+                    if repeat != 0
+                        && let Some([x, y]) = self.repeats.origin(repeat)
+                    {
                         let mut vertex = *vertex;
-                        vertex.repeat[..3].copy_from_slice(&x);
-                        vertex.repeat_y = y;
+                        vertex.repeat = [repeat, x, y];
                         let bytes = bytemuck::bytes_of(&vertex);
                         let start = i * bytes.len();
                         dst.slice(start..start + bytes.len()).copy_from_slice(bytes);
@@ -3785,6 +3837,7 @@ impl HudRenderer {
             for (range, blend) in &runs[at..end] {
                 let pipeline = match blend {
                     Blend::Picture(id) => {
+                        pass.set_bind_group(1, &self.repeats.ordinary, &[]);
                         self.draw_picture(&mut pass, *id, range.clone(), coverage.is_some());
                         continue;
                     }
@@ -3811,13 +3864,13 @@ impl HudRenderer {
                                 pass.set_bind_group(0, &self.group, &[]);
                             } else {
                                 pass.set_pipeline(pipeline);
-                                pass.draw(part, 0..1);
+                                self.repeats.draw(&mut pass, &batch.vertices, part);
                             }
                         }
                     }
                     _ => {
                         pass.set_pipeline(pipeline);
-                        pass.draw(range.clone(), 0..1);
+                        self.repeats.draw(&mut pass, &batch.vertices, range.clone());
                     }
                 }
             }

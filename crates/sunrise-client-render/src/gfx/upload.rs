@@ -40,7 +40,7 @@ impl Uploads {
         };
         self.belt.allocate(size, alignment)
     }
-    /// Copy tightly packed RGBA8 `pixels` (`width` by `height`) into one mip
+    /// Copy tightly packed `pixels` (four bytes per texel, `width` by `height`) into one mip
     /// level of one array layer, padding rows to the copy alignment.
     pub fn texture(
         &mut self,

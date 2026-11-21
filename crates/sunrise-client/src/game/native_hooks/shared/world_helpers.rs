@@ -4,7 +4,7 @@ use mod_api::{
     ClientHost, DrawContext, GuiLayerWrapContext,
     content::crash::{ModCall, enter_native_mod},
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{ops::Range, sync::atomic::Ordering};
 use sunrise_client::gui_layers::{self, GuiLayerBody, VanillaGuiLayer};
 
 #[allow(dead_code)]
@@ -172,6 +172,7 @@ struct GuiLayerWrapFrame<'a, 'p, 'g> {
     batch: &'a mut HudBatch,
     previous: &'a GuiLayerBody,
     vanilla: Option<&'a mut VanillaGuiDraw<'p, 'g>>,
+    completed: &'a mut Vec<Range<usize>>,
 }
 
 impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
@@ -184,8 +185,13 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
     }
 
     fn draw_previous(&mut self) {
+        let start = self.batch.vertices.len();
         self.game
             .draw_gui_layer_body(self.batch, self.previous, self.vanilla.as_deref_mut());
+        let end = self.batch.vertices.len();
+        if start < end {
+            self.completed.push(start..end);
+        }
     }
 }
 
@@ -267,65 +273,80 @@ impl<'g> Game<'g> {
                 owner,
                 panicked,
                 draw,
-            } => self.run_gui_callback(
-                batch,
-                *owner,
-                panicked,
-                "gui_layer_callback",
-                |game, batch| {
-                    draw(game, &mut GameDrawContext::new(game, batch));
-                },
-            ),
+            } => {
+                if !panicked.load(Ordering::Relaxed) {
+                    let hook = "gui_layer_callback";
+                    self.run_gui_callback(
+                        batch,
+                        *owner,
+                        hook,
+                        |game, batch, _| draw(game, &mut GameDrawContext::new(game, batch)),
+                        |id| {
+                            panicked.store(true, Ordering::Relaxed);
+                            mod_api::__private::queue_callback_panic(id, hook);
+                        },
+                    );
+                }
+            }
             GuiLayerBody::Wrapped {
                 owner,
                 panicked,
                 wrap,
                 previous,
-            } => self.run_gui_callback(
-                batch,
-                *owner,
-                panicked,
-                "gui_layer_wrapper",
-                |game, batch| {
-                    wrap(&mut GuiLayerWrapFrame {
-                        game,
+            } => {
+                if !panicked.load(Ordering::Relaxed) {
+                    let hook = "gui_layer_wrapper";
+                    self.run_gui_callback(
                         batch,
-                        previous,
-                        vanilla,
-                    });
-                },
-            ),
+                        *owner,
+                        hook,
+                        |game, batch, completed| {
+                            wrap(&mut GuiLayerWrapFrame {
+                                game,
+                                batch,
+                                previous,
+                                vanilla,
+                                completed,
+                            });
+                        },
+                        |id| {
+                            panicked.store(true, Ordering::Relaxed);
+                            mod_api::__private::queue_callback_panic(id, hook);
+                        },
+                    );
+                }
+            }
         }
     }
 
-    fn run_gui_callback(
+    /// Run a retained HUD callback with its owning mod's attribution. On panic discard the
+    /// callback's own draws, not completed previous bodies whose effects have already occurred.
+    pub(in crate::game) fn run_gui_callback(
         &mut self,
         batch: &mut HudBatch,
         owner: Option<&'static str>,
-        panicked: &AtomicBool,
         hook: &'static str,
-        call: impl FnOnce(&mut Self, &mut HudBatch),
+        call: impl FnOnce(&mut Self, &mut HudBatch, &mut Vec<Range<usize>>),
+        on_panic: impl FnOnce(&'static str),
     ) {
+        let mut completed = Vec::new();
         let Some(id) = owner else {
-            call(self, batch);
+            call(self, batch, &mut completed);
             return;
         };
-        if panicked.load(Ordering::Relaxed) {
-            return;
-        }
         let start = batch.vertices.len();
+        let _scope = mod_api::__private::contain_gui_callbacks();
         let _guard = enter_native_mod(ModCall {
             id,
             hook,
             part: None,
         });
-        match mod_api::__private::catch_gui_callback(true, || call(self, batch)) {
+        match mod_api::__private::catch_gui_callback(true, || call(self, batch, &mut completed)) {
             Ok(Some(())) => {}
             Err(refusal) => refusal.report(),
             Ok(None) => {
-                panicked.store(true, Ordering::Relaxed);
-                batch.discard_since(start);
-                mod_api::__private::queue_callback_panic(id, hook);
+                batch.retain_draws_since(start, &completed);
+                on_panic(id);
             }
         }
     }

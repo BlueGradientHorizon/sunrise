@@ -7691,57 +7691,37 @@ impl Game<'_> {
         )
         .with_title_color(rgba(255, 85, 85, 255))
         .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME);
-        if let Some(toast) = self.add_system_toast(toast) {
-            self.mod_error_toasts.push(toast);
-        }
+        // This is a callback failure diagnostic, not a mod-editable toast candidate.
+        self.mod_error_toasts.push(toast);
     }
 
-    /// Run a mod's chosen `health_hud` replacement directly on the `minecraft:player_health`
-    /// layer, containing phase refusals and panics at the hook boundary without rolling back
-    /// prior draws or falling back to vanilla health hearts.
+    /// Run the chosen renderer on the player-health layer. Refusals and drawing errors are
+    /// reported without undoing draws; a panic discards that invocation's draws and disables
+    /// the offending callback. None of these paths draws fallback hearts this frame.
     pub(in crate::game) fn invoke_health_hud_replacement(
         &mut self,
         batch: &mut HudBatch,
         inputs: &hud_layout::HealthInputs,
         chosen: mod_api::Answered<mod_api::HealthHudReplacement>,
     ) {
-        use mod_api::__private::contain_outside_world;
         use mod_api::DrawContext as _;
-        use mod_api::content::crash::{ModCall, enter_native_mod};
-        use std::panic::{AssertUnwindSafe, catch_unwind};
 
         let mod_id = chosen.mod_id;
-        let outcome = {
-            let _guard = enter_native_mod(ModCall {
-                id: mod_id,
-                hook: "health_hud",
-                part: None,
-            });
-            let game: &Game<'_> = &*self;
-            let mut draw = crate::game::host::draw::GameDrawContext::new(game, batch);
-            let outcome = catch_unwind(AssertUnwindSafe(|| {
-                contain_outside_world(|| {
+        let hook = "health_hud";
+        self.run_gui_callback(
+            batch,
+            Some(mod_id),
+            hook,
+            |game, batch, _| {
+                let mut draw = crate::game::host::draw::GameDrawContext::new(game, batch);
+                if let Err(err) =
                     draw.draw_gui(&mut |canvas| chosen.answer.invoke(game, inputs, canvas))
-                })
-            }));
-            if let Ok(Err(refusal)) = &outcome {
-                refusal.report();
-            }
-            outcome
-        };
-        match outcome {
-            Ok(Ok(Ok(()))) | Ok(Err(_)) => {}
-            Ok(Ok(Err(err))) => {
-                log::warn!("mod {mod_id} health_hud draw failed: {err}");
-            }
-            Err(_) => {
-                mod_api::__private::record_callback_panic(
-                    mod_api::HookId::HealthHud,
-                    mod_id,
-                    "health_hud",
-                );
-            }
-        }
+                {
+                    log::warn!("mod {mod_id} health_hud draw failed: {err}");
+                }
+            },
+            |id| mod_api::__private::record_callback_panic(mod_api::HookId::HealthHud, id, hook),
+        );
         self.flush_mod_callback_panics();
     }
 

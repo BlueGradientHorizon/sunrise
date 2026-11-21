@@ -9,9 +9,11 @@ pub trait Hooks {
     /// invokes it directly on the `minecraft:player_health` layer while armor, food, vehicle
     /// health and air stay on their own layers (`minecraft:armor_level`, `minecraft:food_level`,
     /// `minecraft:vehicle_health`, `minecraft:air_level`). Returning an error reports the failure
-    /// without rolling back prior draws or falling back to vanilla hearts. A successful empty
-    /// draw replaces vanilla hearts. No replacement reserves vanilla heart height. If no listener answers, the vanilla body
-    /// fires `player_heart_type` and draws the hearts.
+    /// without rolling back its draws. A panic discards that renderer's draws, names the owning
+    /// mod in the log and error toast, and disables that mod's `health_hud` for the session.
+    /// Neither outcome draws fallback hearts this frame. A successful empty draw replaces
+    /// vanilla hearts. No replacement reserves vanilla heart height. If no listener answers,
+    /// the vanilla body fires `player_heart_type` and draws the hearts.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_health_hud",
         receiver = "read",
@@ -20,7 +22,7 @@ pub trait Hooks {
         contract = "replace",
         out = "replacement",
         answered_by = "mod",
-        version = 3,
+        version = 4,
         neoforge = "RenderGuiLayerEvent.Pre"
     )]
     fn health_hud(

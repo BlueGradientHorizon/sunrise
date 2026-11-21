@@ -193,15 +193,16 @@ fn tile(
         || (lo_x + periods[0]) as f32 == lo_x as f32
         || (lo_y + periods[1]) as f32 == lo_y as f32;
     if subpixel {
-        // A device sample crosses a tile in one step. Emit the destination once; the fragment
-        // shader samples exactly that atlas subrect, with a phase relative to the original origin.
+        // A device sample crosses a tile in one step. Emit the destination once; the
+        // renderer resolves the atlas texels at the active target's pixel centers.
+        let uv = sub(r, size, [sx, sy, sw, sh]);
         batch.sprite_repeats.push(SpriteRepeat {
             pose: viewport.pose,
             origin: [dx, dy],
             period: [sw, sh],
+            uv,
         });
         let repeat = batch.sprite_repeats.len() as u32;
-        let uv = sub(r, size, [sx, sy, sw, sh]);
         let start = batch.vertices.len();
         batch.quad(
             [[dx, dy], [dx + dw, dy], [dx + dw, dy + dh], [dx, dy + dh]],
@@ -209,8 +210,7 @@ fn tile(
             color,
         );
         for vertex in &mut batch.vertices[start..] {
-            vertex.glint_uv = [uv.u1, uv.v1];
-            vertex.repeat[3] = repeat;
+            vertex.repeat[0] = repeat;
         }
         return;
     }
@@ -351,7 +351,7 @@ pub fn blit_gui_sprite(
         batch.scissor_since(start, clip);
     } else if batch.vertices[start..]
         .iter()
-        .any(|vertex| vertex.repeat[3] != 0)
+        .any(|vertex| vertex.repeat[0] != 0)
     {
         // Bound the submitted rectangle as well as the repeat work. With an enormous
         // finite extent the projected geometry must not overflow before raster clipping.

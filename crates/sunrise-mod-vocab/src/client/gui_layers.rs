@@ -12,8 +12,9 @@ pub type GuiLayerDraw = dyn Fn(&dyn ClientHost, &mut dyn DrawContext) + Send + S
 
 // no wire: the wrapper and its captures are kept in the client process.
 /// Draws around the previous body of a layer, or omits that body for this draw.
-/// The client owns this callback for its lifetime. A panic discards this invocation's drawing,
-/// logs and toasts the owning mod, and disables the wrapper for the session.
+/// A panic discards the wrapper's own drawing, logs and toasts the owning mod, and disables
+/// the wrapper for the session. A previous body that already completed keeps its drawing and
+/// effects; it is not run again.
 pub type GuiLayerWrapper = dyn Fn(&mut dyn GuiLayerWrapContext) + Send + Sync + 'static;
 
 // no wire: lends the current client and the HUD batch only while a wrapper runs.
@@ -26,7 +27,8 @@ pub trait GuiLayerWrapContext {
     fn with_draw(&mut self, draw: &mut dyn FnMut(&mut dyn DrawContext));
 
     /// Paint the previous body at this point in the same batch without firing layer hooks again.
-    /// This can call another wrapper. Omit it to skip the previous body for this draw.
+    /// This can call another wrapper. Omit it to skip the previous body for this draw. A
+    /// completed draw of the previous body stays in the frame if this wrapper later panics.
     fn draw_previous(&mut self);
 }
 
@@ -38,6 +40,7 @@ pub trait GuiLayerRegistrar {
     /// Returns false and logs a warning if the ID is malformed, in the `minecraft` namespace,
     /// already registered, or relative to a layer that is not registered yet. A rejected
     /// registration does not reserve the ID; use `replace_layer` or `wrap_layer` to edit one.
+    /// An installed draw follows the failure rules of [`GuiLayerDraw`].
     fn register(
         &mut self,
         id: String,
@@ -47,12 +50,14 @@ pub trait GuiLayerRegistrar {
 
     /// Replace an already registered layer (including a vanilla layer) with `draw`.
     /// Discards the entire previous body, including its visibility conditions and any wrappers;
-    /// keeps the layer's ID and position.
+    /// keeps the layer's ID and position. A panicking [`GuiLayerDraw`] is disabled, not
+    /// replaced with the earlier body.
     /// Returns false and logs a warning if `id` is not registered.
     fn replace_layer(&mut self, id: &str, draw: Box<GuiLayerDraw>) -> bool;
 
     /// Wrap an already registered layer in place. The previous body retains its own visibility conditions.
     /// The newest wrapper runs first and can draw the previous body through its context.
+    /// If the wrapper panics, completed previous-body calls keep their output and effects.
     /// Returns false and logs a warning if `id` is not registered.
     fn wrap_layer(&mut self, id: &str, wrap: Box<GuiLayerWrapper>) -> bool;
 }

@@ -8,11 +8,10 @@ impl Game<'_> {
         &mut self,
         gui_width: i32,
         gui_height: i32,
-        focused: bool,
         x: &mut i32,
         y: &mut i32,
     ) {
-        self.fire_customize_chat_overlay(gui_width, gui_height, focused, x, y);
+        self.fire_customize_chat_overlay(gui_width, gui_height, x, y);
     }
 }
 
@@ -24,7 +23,7 @@ mod customize_chat_overlay_tests {
     use sunrise_client::hud::HudBatch;
     use sunrise_client::text::Text;
 
-    type Seen = Arc<Mutex<Vec<(i32, i32, bool, i32, i32)>>>;
+    type Seen = Arc<Mutex<Vec<(i32, i32, i32, i32)>>>;
 
     /// Lifts the chat 100 GUI pixels, logging what it was told.
     struct Lift(Seen);
@@ -39,7 +38,7 @@ mod customize_chat_overlay_tests {
             self.0
                 .lock()
                 .unwrap()
-                .push((e.gui_width, e.gui_height, e.focused, e.x, e.y));
+                .push((e.gui_width, e.gui_height, e.x, e.y));
             event.y -= 100;
         }
     }
@@ -53,8 +52,8 @@ mod customize_chat_overlay_tests {
     }
 
     /// `CustomizeGuiOverlayEvent.Chat`: the mod gets vanilla's place (0, GUI height - 40) and the
-    /// GUI size, focused or not, and the chat is drawn where it moved it. With the chat hidden
-    /// (F1, chat closed) nothing is asked.
+    /// GUI size and moves background chat only. F1 hides background chat, and the chat
+    /// screen paints independently at its original position.
     #[test]
     #[ignore = "daily"]
     fn a_client_mod_moves_the_chat() {
@@ -83,17 +82,15 @@ mod customize_chat_overlay_tests {
                     let b = HudBatch::scratch([1280, 720]);
                     (b.width as i32, b.height as i32)
                 };
-                assert_eq!(*seen.lock().unwrap(), [(w, h, false, 0, h - 40)]);
+                assert_eq!(*seen.lock().unwrap(), [(w, h, 0, h - 40)]);
                 // Hidden: F1 with the chat closed asks nothing.
                 game.ui.hide_gui = true;
                 chat_top(game);
                 assert_eq!(seen.lock().unwrap().len(), 1);
-                // Focused, the chat shows under F1 and is asked again.
+                // Focused chat draws even under F1, but never asks the background listener.
                 game.screen = super::Screen::Chat;
-                chat_top(game);
-                let seen = seen.lock().unwrap();
-                assert_eq!(seen.len(), 2);
-                assert!(seen[1].2, "focused");
+                assert!(chat_top(game).0.is_some());
+                assert_eq!(*seen.lock().unwrap(), [(w, h, 0, h - 40)]);
             });
         });
     }

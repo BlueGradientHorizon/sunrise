@@ -576,9 +576,8 @@ mod tests {
             .unwrap();
             assert_eq!(batch.vertices.len(), if visible { 6 } else { 0 });
             if let Some(v) = batch.vertices.first() {
-                // This quad repeats this atlas subrect; the renderer supplies the phase at upload.
-                assert_eq!(v.repeat[3], 1);
-                assert_eq!((v.uv, v.glint_uv), ([0.25; 2], [0.75; 2]));
+                // A visible repeat is submitted as one quad, even at this tile count.
+                assert_eq!(v.repeat[0], 1);
             }
         }
     }

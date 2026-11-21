@@ -515,6 +515,12 @@ fn panicking_health_hud_disables_only_that_hook_and_queues_error_toast() {
                 panic!("boom inside health_hud replacement");
             }))
         }
+        fn gui_layer_pre(&self, _: &dyn ClientHost, event: &mut GuiLayerPreEvent<'_>) -> Flow {
+            if event.layer == PLAYER_HEALTH {
+                event.draw.fill([8.0, 8.0, 2.0, 2.0], 0xFF55_3377);
+            }
+            Flow::Continue
+        }
         fn gui_layer_post(&self, _: &dyn ClientHost, event: &mut GuiLayerPostEvent<'_>) {
             if event.layer == PLAYER_HEALTH {
                 self.1.fetch_add(1, Ordering::Relaxed);
@@ -563,8 +569,12 @@ fn panicking_health_hud_disables_only_that_hook_and_queues_error_toast() {
             assert_eq!(backup_ran.load(Ordering::Relaxed), 0);
             assert_eq!(panicker_post.load(Ordering::Relaxed), 1);
             assert!(
-                frame1.vertices.iter().any(|v| v.color == abgr(0xFFAA_0000)),
-                "draws emitted before the panic remain in the batch"
+                frame1.vertices.iter().all(|v| v.color != abgr(0xFFAA_0000)),
+                "the failed renderer's partial quad must not survive"
+            );
+            assert!(
+                frame1.vertices.iter().any(|v| v.color == abgr(0xFF55_3377)),
+                "the unrelated layer Pre draw must survive"
             );
             assert_eq!(game.mod_error_toasts.len(), 1);
             let toast = &game.mod_error_toasts[0];
@@ -626,8 +636,8 @@ fn panicking_health_hud_disables_only_that_hook_and_queues_error_toast() {
             assert_eq!(solo_post.load(Ordering::Relaxed), 2);
             assert_eq!(
                 frame2.vertices.len(),
-                vanilla_len,
-                "vanilla health rows must draw on the next frame once the sole listener is poisoned"
+                vanilla_len + 6,
+                "vanilla hearts and the layer Pre quad must draw after the sole renderer is disabled"
             );
         });
     });

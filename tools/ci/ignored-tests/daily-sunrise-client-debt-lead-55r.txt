@@ -1,3 +1,5 @@
 # Frozen HUD registration and a client fixture in isolated processes.
 sunrise-client game::gui_layer_tests::focused_chat_is_separate_from_its_hud_slot_even_when_hud_is_canceled lib daily child-process
 sunrise-client game::gui_layer_tests::a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_owner lib daily child-process
+sunrise-client game::gui_layer_tests::a_panicking_wrapper_keeps_completed_hearts_with_their_armor_offset lib daily child-process
+sunrise-client game::gui_layer_tests::a_retained_gui_callback_reports_two_refusals_without_being_disabled lib daily child-process

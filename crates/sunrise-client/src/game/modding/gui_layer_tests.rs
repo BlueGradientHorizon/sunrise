@@ -5,8 +5,9 @@ use super::{
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{
-    ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
-    RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent, RenderGuiPreEvent,
+    ClientHost, CustomizeChatOverlayEvent, Flow, GuiLayerPlacement, GuiLayerPostEvent,
+    GuiLayerPreEvent, Hooks, ModEntry, PlayerHeartTypeEvent, RegisterGuiLayersEvent,
+    RegistrationContext, RenderGuiPostEvent, RenderGuiPreEvent, ToastAddEvent,
     content::crash::current_native_mod,
 };
 use std::sync::{
@@ -280,6 +281,14 @@ fn focused_chat_is_separate_from_its_hud_slot_even_when_hud_is_canceled() {
     struct ChatLayer;
     #[mod_api::__subscriptions]
     impl Hooks for ChatLayer {
+        fn customize_chat_overlay(
+            &self,
+            _: &mut dyn ClientHost,
+            _: &mut CustomizeChatOverlayEvent,
+        ) {
+            log("customize background chat");
+        }
+
         fn register_gui_layers(
             &self,
             _: &RegistrationContext,
@@ -378,6 +387,15 @@ fn a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_own
     struct HiddenLayer(bool);
     #[mod_api::__subscriptions]
     impl Hooks for HiddenLayer {
+        fn toast_add(&self, _: &dyn ClientHost, event: &mut ToastAddEvent<'_>) -> Flow {
+            if event.title.plain().contains("hidden_layer") {
+                log("diagnostic was offered to a toast listener");
+                Flow::Cancel
+            } else {
+                Flow::Continue
+            }
+        }
+
         fn register_gui_layers(
             &self,
             _: &RegistrationContext,
@@ -423,7 +441,10 @@ fn a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_own
         game.title = None;
         game.screen = super::Screen::Playing;
         game.ui.hide_gui = true;
-        for expected in [&["panic", "healthy"][..], &["healthy"][..]] {
+        for (i, expected) in [&["panic", "healthy"][..], &["healthy"][..]]
+            .into_iter()
+            .enumerate()
+        {
             let frame = game.hud_layers([640, 480]);
             assert_eq!(take().as_slice(), expected);
             assert!(
@@ -458,6 +479,173 @@ fn a_hidden_retained_layer_panic_discards_only_that_callback_and_reports_its_own
                     .plain()
                     .contains(hook)
             );
+            if i == 0 {
+                // Keep F1 on and advance the same toast past its slide-in without sleeping.
+                game.mod_error_toasts[0].slide.origin =
+                    Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+            } else {
+                assert!(
+                    frame.vertices.iter().any(|v| {
+                        v.color == sunrise_client::hud::rgba(255, 85, 85, 255)
+                            && v.pos[0] >= 0.0
+                            && v.pos[0] < frame.width
+                            && v.pos[1] >= 0.0
+                            && v.pos[1] < frame.height
+                    }),
+                    "F1 must not hide the diagnostic's red title"
+                );
+            }
+        }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_wrapper_keeps_completed_hearts_with_their_armor_offset() {
+    if run_fresh_cases(
+        "game::gui_layer_tests::a_panicking_wrapper_keeps_completed_hearts_with_their_armor_offset",
+        "SUNRISE_WRAPPED_HEARTS_PANIC_FIXTURE",
+        &["run"],
+    ) {
+        return;
+    }
+    const FAILED: u32 = 0xFF86_1254;
+    struct WrapHearts;
+    #[mod_api::__subscriptions]
+    impl Hooks for WrapHearts {
+        fn player_heart_type(&self, _: &mut dyn ClientHost, _: &mut PlayerHeartTypeEvent) {
+            log("original hearts body");
+        }
+
+        fn register_gui_layers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterGuiLayersEvent<'_>,
+        ) {
+            assert!(event.layers.wrap_layer(
+                "minecraft:player_health",
+                Box::new(|ctx| {
+                    let paint = &mut |draw: &mut dyn mod_api::DrawContext| {
+                        draw.fill([0.0, 0.0, 4.0, 4.0], FAILED);
+                    };
+                    ctx.with_draw(paint);
+                    ctx.draw_previous();
+                    ctx.with_draw(paint);
+                    panic!("wrapper panicked after vanilla hearts drew");
+                })
+            ));
+        }
+    }
+    with_client_game(|game| {
+        mod_platform::__private::install(
+            vec![ModEntry::new("wrap_hearts", Box::new(WrapHearts))].into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        game.ui.hide_gui = false;
+        game.creative = false;
+        let mut player = sunrise_client::motion::PlayerMotion::new(
+            game.motion,
+            sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5),
+        )
+        .unwrap();
+        let key = player.attributes.key("minecraft:armor").unwrap();
+        let armor = player.attributes.get_instance(Some(key)).unwrap().unwrap();
+        player
+            .attributes
+            .edit(&armor, |a, o| a.set_base_value(20.0, o))
+            .unwrap();
+        game.player = Some(player);
+        let corner = |sprite| {
+            let rect = game.gui.atlas.gui_draw_rect(sprite).unwrap();
+            [rect.u0, rect.v0]
+        };
+        let hearts = corner("hud/heart/container");
+        let armor = corner("hud/armor_full");
+        let frame = game.hud_layers([640, 480]);
+        let has = |frame: &HudBatch, uv, from_bottom| {
+            frame
+                .vertices
+                .iter()
+                .any(|v| v.uv == uv && v.pos[1] == frame.height - from_bottom)
+        };
+        assert_eq!(take(), ["original hearts body"]);
+        assert!(has(&frame, hearts, 39.0));
+        assert!(has(&frame, armor, 49.0));
+        assert!(
+            frame
+                .vertices
+                .iter()
+                .all(|v| v.color != sunrise_client::hud_layout::abgr(FAILED))
+        );
+        let next = game.hud_layers([640, 480]);
+        assert!(take().is_empty());
+        assert!(!has(&next, hearts, 39.0));
+        assert!(has(&next, armor, 39.0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_retained_gui_callback_reports_two_refusals_without_being_disabled() {
+    if run_fresh_cases(
+        "game::gui_layer_tests::a_retained_gui_callback_reports_two_refusals_without_being_disabled",
+        "SUNRISE_RETAINED_GUI_REFUSAL_FIXTURE",
+        &["run"],
+    ) {
+        return;
+    }
+    struct Warnings;
+    impl log::Log for Warnings {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record<'_>) {
+            if record.level() == log::Level::Warn {
+                let message = record.args().to_string();
+                if message.contains("refusing_layer hook gui_layer_callback") {
+                    log(message);
+                }
+            }
+        }
+        fn flush(&self) {}
+    }
+    log::set_logger(&Warnings).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+
+    struct Refusing;
+    #[mod_api::__subscriptions]
+    impl Hooks for Refusing {
+        fn register_gui_layers(
+            &self,
+            _: &RegistrationContext,
+            event: &mut RegisterGuiLayersEvent<'_>,
+        ) {
+            assert!(event.layers.replace_layer(
+                "minecraft:player_health",
+                Box::new(|_, _| {
+                    mod_api::__private::refuse(
+                        "gui_test_read",
+                        mod_api::__private::current_phase(),
+                    );
+                })
+            ));
+        }
+    }
+    with_client_game(|game| {
+        mod_platform::__private::install(
+            vec![ModEntry::new("refusing_layer", Box::new(Refusing))].into(),
+        );
+        mods::register_gui_layers(ExecutionRole::Client);
+        game.title = None;
+        game.screen = super::Screen::Playing;
+        for _ in 0..2 {
+            game.hud_layers([640, 480]);
+            let warnings = take();
+            assert_eq!(warnings.len(), 1);
+            assert!(warnings[0].contains("mod API gui_test_read is unavailable"));
+            assert!(game.mod_error_toasts.is_empty());
         }
     });
 }

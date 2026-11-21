@@ -99,9 +99,10 @@ impl HealthHudReplacement {
     /// Share a renderer that draws the `minecraft:player_health` HUD layer (player hearts).
     /// The selected renderer runs directly on the `minecraft:player_health` layer in the
     /// answering mod's scope while armour, food, vehicle health and air remain on their own
-    /// layers. Returning an error reports the failure without rolling back prior draws or falling
-    /// back to vanilla hearts; `Ok(())` replaces vanilla even if nothing was drawn. Neither
-    /// case reserves height for the vanilla hearts that did not run.
+    /// layers. A returned error is logged and keeps any completed draws. A panic discards this
+    /// renderer's draws, leaves earlier work alone, names the mod in the log and error toast,
+    /// and disables its health renderer for the session. Neither outcome falls back to vanilla
+    /// this frame. `Ok(())` replaces vanilla even if nothing was drawn.
     pub fn new(
         draw: impl Fn(&dyn ClientHost, &HealthInputs, &mut dyn GuiCanvas) -> Result<(), GuiDrawError>
         + Send
@@ -114,7 +115,8 @@ impl HealthHudReplacement {
     }
 
     /// Run this renderer with the current client's host, inputs and canvas. The game invokes it
-    /// in the answering mod's scope on the `minecraft:player_health` layer.
+    /// in the answering mod's scope on the `minecraft:player_health` layer, with the failure
+    /// handling described by [`Self::new`].
     pub fn invoke(
         &self,
         host: &dyn ClientHost,

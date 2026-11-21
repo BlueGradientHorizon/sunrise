@@ -22,7 +22,8 @@ any state the layer needs in the closure, and use the current `ClientHost` and `
 passed on each draw. The callback runs for its own layer, even under F1, unless `render_gui_pre`
 cancels the HUD pass or `gui_layer_pre` cancels that layer. A panic discards that callback's
 partial drawing, logs and shows an error toast naming the mod, and disables only that callback
-for the session. Other slots and hooks keep running.
+for the session. The error toast is visible even under F1. Phase refusals are logged on each
+invocation and don't disable the callback. Other slots and hooks keep running.
 A vanilla anchor that doesn't draw that frame still determines the layer's position. The player
 health, armor, food, vehicle health, air and contextual bar anchors follow NeoForge's paint order
 (`player_health`, `armor_level`, `food_level`, `vehicle_health`, `air_level`,
@@ -39,7 +40,9 @@ its place in the HUD. F1 affects the original vanilla body, not a replacement or
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
 The latest wrapper runs first. Don't call `draw_previous()` if you want to skip the previous body
-for this draw without discarding it at registration.
+for this draw without discarding it at registration. If your wrapper panics, completed calls to
+`draw_previous()` keep both their drawing and their effects (such as reserving space for the
+hearts). Only the wrapper's own drawing is removed.
 
 ```rust,ignore
 event.layers.wrap_layer("minecraft:hotbar", Box::new(|ctx| {
@@ -58,7 +61,14 @@ runs. A skipped status body reserves no height. Only the original hearts body fi
 vehicle health and air on their own slots. `render_gui_post` runs after the final HUD layer and
 before screen drawing, including under F1. `minecraft:chat` is the HUD slot for background chat:
 the chat screen draws focused chat separately without running that slot again, even if the HUD
-pass is canceled. For a foreground pass after screens, use `gui_render_post`.
+pass is canceled. `customize_chat_overlay` moves the original background chat only; it is not
+called for focused chat, whose position belongs to the chat screen. For a foreground pass after
+screens, use `gui_render_post`.
+
+`health_hud` can select a renderer for the original hearts body. A returned error leaves its
+completed draws in the frame and is logged each time. A panic removes that renderer's draws for
+this frame and disables that mod's `health_hud` callback for the session. Neither outcome draws
+fallback hearts that frame or removes the other status layers.
 
 ## Registering F3 text
 

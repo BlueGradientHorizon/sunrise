@@ -584,7 +584,8 @@ impl Game<'_> {
             if finished {
                 return false;
             }
-            if let (false, Some(slot)) = (hidden, toast.slot) {
+            // Callback diagnostics must be visible even when ordinary toasts are hidden.
+            if let Some(slot) = toast.slot {
                 toast.draw(atlas, batch, 32.0 * slot as f32);
             }
             true

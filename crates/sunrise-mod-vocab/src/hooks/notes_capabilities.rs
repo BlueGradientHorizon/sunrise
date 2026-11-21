@@ -204,11 +204,9 @@ pub trait Notes {
   `increment` below where this one came in. A cancelled bar is not drawn and its increment still applies. Bars stop
   once the next would start a third of the way down the screen. With no listener nothing is built per bar.
 
-- Where the in-game chat is drawn through `customize_chat_overlay` (NeoForge's `CustomizeGuiOverlayEvent.Chat`):
-  each frame the chat layer draws, `x` and `y` come in as the chat's bottom-left corner (0 and the GUI height minus 40)
-  with the GUI size and whether the chat screen is open, and the chat is drawn shifted to where a mod moved them. Not
-  asked while the chat is hidden (F1 with the chat closed). Only the drawing moves; the input box and clicks on
-  messages stay in vanilla's place, as with NeoForge.
+- `customize_chat_overlay` (NeoForge's `CustomizeGuiOverlayEvent.Chat`) moves the original background
+  chat drawing. `x` and `y` start at the chat's bottom-left corner (0 and the GUI height minus 40).
+  This is not asked when F1 hides the background chat or when the chat screen draws focused chat.
 
 - `entity_interact` and `ItemPart::item_interact_mob` run on both sides with native `HostSide`,
   version 2, answering `Option<InteractionResult>`; the latter includes the interaction hand.

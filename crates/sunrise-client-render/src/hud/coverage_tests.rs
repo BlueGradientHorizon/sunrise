@@ -93,11 +93,32 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
         h: 4,
     };
     let extreme = 3.0 * f32::from_bits(67 << 23); // 3 * 2^-60
-    for (y_scale, zoom, size, expected) in [
+    for (pose, dst, zoom, size, expected) in [
         // Extreme scale: the first centers hit phases 2/3, 0 and 1/3.
-        (extreme, 1.0, [4, 6], [BLUE, RED, GREEN, BLUE, RED, GREEN]),
+        (
+            [1.0, 0.0, 0.0, extreme, 0.0, 0.0],
+            [0.0, 0.0, 4.0, 6.0 / extreme],
+            1.0,
+            [4, 6],
+            [BLUE, RED, GREEN, BLUE, RED, GREEN],
+        ),
         // Ordinary subpixel pose, captured at 2x: 1/3, 0 and 2/3 instead.
-        (0.75, 2.0, [8, 12], [GREEN, RED, BLUE, GREEN, RED, BLUE]),
+        (
+            [1.0, 0.0, 0.0, 0.75, 0.0, 0.0],
+            [0.0, 0.0, 4.0, 8.0],
+            2.0,
+            [8, 12],
+            [GREEN, RED, BLUE, GREEN, RED, BLUE],
+        ),
+        // X is subpixel, while Y is huge. The first sample (y=0.5) is just before
+        // the seam at y=0.625, with exact phase 1 - 2^-35. The next one is after it.
+        (
+            [0.5, 0.0, 0.0, 4_294_967_296.0, 0.0, 0.625],
+            [0.0, -1.0, 8.0, 2.0],
+            1.0,
+            [4, 6],
+            [YELLOW, RED, RED, RED, RED, RED],
+        ),
     ] {
         let mut batch = HudBatch::scratch([4, 6]);
         assert!(blit_gui_sprite(
@@ -107,12 +128,12 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
             GuiSpriteBlit {
                 rect: atlas_rect,
                 scaling: Some(GuiSpriteScaling::Tile([1, 1])),
-                dst: [0.0, 0.0, 4.0, 6.0 / y_scale],
+                dst,
                 color: u32::MAX,
                 region: None,
                 blend: SpriteBlend::Textured,
             },
-            [1.0, 0.0, 0.0, y_scale, 0.0, 0.0],
+            pose,
             None,
         ));
         gpu.hud.zoom = zoom;
@@ -126,7 +147,7 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
         for (row, color) in rows.zip(expected) {
             assert!(
                 row.as_chunks::<4>().0.iter().all(|pixel| *pixel == color),
-                "y_scale={y_scale}, zoom={zoom}: {row:?}"
+                "pose={pose:?}, zoom={zoom}: {row:?}"
             );
         }
     }

@@ -25,4 +25,5 @@ a later, different hint is a new candidate. Title-screen backup/access failures,
 narrator notices, pack download/failure and chunk IO notices all use the same
 admission point. Candidates produced during the initial resource loading screen wait until
 the game can invoke the hook with a `ClientHost`. The pause screen's persistent song label
-is HUD content, not a queued toast, and is not filtered by this hook.
+is HUD content, not a queued toast, and is not filtered by this hook. A callback-panic diagnostic
+always names the owning mod and is shown even under F1; it bypasses this hook.

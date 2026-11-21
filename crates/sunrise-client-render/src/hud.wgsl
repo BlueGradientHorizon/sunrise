@@ -14,6 +14,7 @@ struct Hud {
 @group(0) @binding(5) var linear_sampler: sampler;
 // enchanted_glint_armor, the armour layers' GlintSampler (entity.wgsl's glint_armor_tex).
 @group(0) @binding(6) var glint_armor_tex: texture_2d<f32>;
+@group(1) @binding(5) var repeat_texels: texture_2d<u32>;
 struct Out {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -21,10 +22,9 @@ struct Out {
     // projection_from_position(gl_Position): the End portal's texProj0.
     @location(2) proj: vec4<f32>,
     @location(3) glint_uv: vec2<f32>,
-    @location(4) @interpolate(flat) repeat_x: vec4<u32>,
-    @location(5) @interpolate(flat) repeat_y: vec3<u32>,
+    @location(4) @interpolate(flat) repeat: vec3<u32>,
 }
-@vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @location(2) color: vec4<f32>, @location(3) depth: f32, @location(4) glint_uv: vec2<f32>, @location(6) repeat_x: vec4<u32>, @location(7) repeat_y: vec3<u32>) -> Out {
+@vertex fn vs_main(@location(0) pos: vec2<f32>, @location(1) uv: vec2<f32>, @location(2) color: vec4<f32>, @location(3) depth: f32, @location(4) glint_uv: vec2<f32>, @location(6) repeat: vec3<u32>) -> Out {
     let pixels = pos * hud.size.z;
     var out: Out;
     out.clip = vec4(pixels.x / hud.size.x * 2.0 - 1.0, 1.0 - pixels.y / hud.size.y * 2.0, depth, 1.0);
@@ -32,27 +32,24 @@ struct Out {
     out.color = color;
     out.proj = vec4(out.clip.xy * 0.5 + 0.5, out.clip.zw);
     out.glint_uv = glint_uv;
-    out.repeat_x = repeat_x;
-    out.repeat_y = repeat_y;
+    out.repeat = repeat;
     return out;
 }
-// Repeat the atlas rectangle, not the entire texture. Wrapping arithmetic keeps the
-// fractional phase even millions of tiles from the local origin.
-fn sprite_uv(in: Out) -> vec2<f32> {
-    if in.repeat_x.w == 0u {
-        return in.uv;
+// Nearest sampling in the selected atlas subrect, resolved at the active device scale.
+fn sprite_sample(in: Out) -> vec4<f32> {
+    let ordinary = textureSample(atlas, atlas_sampler, in.uv);
+    if in.repeat.x == 0u {
+        return ordinary;
     }
-    let pixel = vec2<u32>(floor(in.clip.xy));
-    let u = in.repeat_x.x * pixel.x + in.repeat_x.y * pixel.y + in.repeat_x.z;
-    let v = in.repeat_y.x * pixel.x + in.repeat_y.y * pixel.y + in.repeat_y.z;
-    let fraction = vec2<f32>(vec2(u, v) >> vec2(8u)) / 16777216.0;
-    return in.uv + (in.glint_uv - in.uv) * fraction;
+    let pixel = vec2<i32>(floor(in.clip.xy)) - vec2<i32>(in.repeat.yz);
+    let texel = textureLoad(repeat_texels, pixel, 0).xy;
+    return textureLoad(atlas, vec2<i32>(texel), 0);
 }
 @fragment fn fs_main(in: Out) -> @location(0) vec4<f32> {
     // u >= 2: the GLINT_TEXTURING sample over the item, masked by the item's
     // texture alpha (item.fsh's ALPHA_CUTOUT and GLINT path). u >= 4: the same
     // over a GUI model's armour, from enchanted_glint_armor (ARMOR_ENTITY_GLINT).
-    if in.repeat_x.w == 0u && in.uv.x >= 2.0 {
+    if in.repeat.x == 0u && in.uv.x >= 2.0 {
         let armor = in.uv.x >= 4.0;
         let offset = select(2.0, 4.0, armor);
         let mask = textureSample(atlas, atlas_sampler, in.uv - vec2(offset, 0.0)).a;
@@ -66,7 +63,7 @@ fn sprite_uv(in: Out) -> vec2<f32> {
         }
         return vec4(glint.rgb * glint.rgb, mask);
     }
-    let c = textureSample(atlas, atlas_sampler, sprite_uv(in)) * in.color;
+    let c = sprite_sample(in) * in.color;
     if c.a < 0.004 { discard; }
     return c;
 }
@@ -103,7 +100,7 @@ struct CitSlots {
     return t;
 }
 @fragment fn fs_crosshair(in: Out) -> @location(0) vec4<f32> {
-    let c = textureSample(atlas, atlas_sampler, sprite_uv(in)) * in.color;
+    let c = sprite_sample(in) * in.color;
     if c.a == 0.0 { discard; }
     return c;
 }

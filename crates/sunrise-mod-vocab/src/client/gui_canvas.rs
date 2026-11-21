@@ -145,7 +145,8 @@ pub trait GuiCanvas {
     /// (stretch, tile or nine-slice) and optional source region. A removed sprite is refused. Accepts
     /// `Blend::Textured` and `Blend::Crosshair`. Pack sprite modifiers are applied as in the HUD;
     /// non-finite resulting geometry is refused without affecting earlier draws. Tiled regions
-    /// repeat from their original origin, sampling at the actual render target's pixel centers.
+    /// repeat from their original origin. Each render-target pixel samples its own tile at
+    /// the pixel center; a sample just before a seam stays on the ending side.
     fn blit_sprite(
         &mut self,
         name: &str,
