@@ -341,7 +341,9 @@ must contain `Cargo.lock` and use the standalone `prebuilt-api` route: game edit
 dependencies do not produce an independent release library. Builds are optional. Each stable release
 gets at most one row, and published rows are append-only. `registry review` reports an owner's append as
 routine only after validation and only if the append is the submission's sole registry change. The JSON
-report lists these changes under `build_reviews`.
+report lists these changes under `build_reviews`. That classification covers registry data only. A workflow
+that uses it to classify a whole pull request must also check the changed paths and refuse the shortcut
+if any change falls outside the append, including changes to the workflow itself.
 
 The descriptor `<id>-<version>+<release>.binaries.json` names `id`, `version`, `build` (the SDK commit),
 `rust` (the SDK's Rust release), and `archives`. Every archive record has `target`, `name`, `size`,
