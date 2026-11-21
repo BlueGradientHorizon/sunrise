@@ -187,7 +187,7 @@ CreativeModeTabs.generateInstrumentTypes	skip:data		creative contents come from 
 CreativeModeTabs.generateOminousBottles	skip:data		creative contents come from the data file
 CreativeModeTabs.generatePotionEffectTypes	skip:data		creative contents come from the data file
 CreativeModeTabs.generatePresetPaintings	skip:data		creative contents come from the data file
-CreativeModeTabs.generateSuspiciousStews	skip:data		creative contents come from the data file
+CreativeModeTabs.generateSuspiciousStews	port	crates/sunrise-items/src/creative_catalog.rs::Catalog::generate	generates distinct stew variants in item registry order
 CreativeModeTabs.registerColoredItems	skip:data		creative contents come from the data file
 CreativeModeTabs.tryRebuildTabContents	port	crates/sunrise-client/src/creative.rs::Creative::items	contents rebuilt on demand
 DebugStickItem	home	crates/sunrise-client/src/game/blocks/debug_stick.rs

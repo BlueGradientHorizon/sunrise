@@ -5,15 +5,19 @@ import subprocess
 import tempfile
 import unittest
 
+from tools.ci import rust_tests
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMotionTests(unittest.TestCase):
     def test_mob_velocity_reaches_squid_animation(self):
-        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
-        start = source.index("    fn remote_motion(")
-        end = source.index("    fn apply_remote_health(", start)
+        source = (ROOT / "crates/sunrise-client/src/game/network/remote/motion.rs").read_text(encoding="utf-8")
+        code = rust_tests.blank(source)
+        start = code.index("fn remote_motion(")
+        opening = code.index("{", start)
+        method_source = source[start:rust_tests.matching_brace(code, opening)]
         fixture = r'''
 #![allow(dead_code)]
 use std::collections::HashMap;
@@ -106,7 +110,7 @@ fn main() {
     game.remote_motion(45, [0.1, 0.0, 0.0]);
     assert!(!game.tridents[0].in_ground);
 }
-'''.replace("METHOD", source[start:end])
+'''.replace("METHOD", method_source)
         with tempfile.TemporaryDirectory(prefix="remote-motion-") as directory:
             path = Path(directory)
             (path / "main.rs").write_text(fixture)

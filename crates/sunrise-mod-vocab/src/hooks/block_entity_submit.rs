@@ -20,6 +20,7 @@ pub trait Hooks {
     /// position to look up in the client level.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         scope = "block_entity",
         key = "block",
