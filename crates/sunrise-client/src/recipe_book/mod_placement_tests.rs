@@ -327,7 +327,7 @@ fn deep_native_declarations_are_stack_safe_across_index_compile_drop_and_send() 
             encode_borrowed_catalogue, encode_catalogue,
         },
     };
-    const DEPTH: usize = 4000;
+    const DEPTH: usize = 16_000;
     let wrap = |mut leaf: mod_api::Ingredient| {
         for _ in 0..DEPTH {
             let mut parent = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
@@ -344,6 +344,17 @@ fn deep_native_declarations_are_stack_safe_across_index_compile_drop_and_send() 
     let valid = wrap(mod_api::Ingredient::of(vec!["minecraft:stone".into()]));
     let index = ModBookIndex::build(valid, &Registry).unwrap();
     let category = index.category("demo:category").unwrap();
+    let root = category.displays[0].placement.as_ref().unwrap().cells[0]
+        .as_ref()
+        .unwrap();
+    let ingredient = super::convert(root);
+    let context = crate::test_resources::server_load()
+        .loop_context(sunrise_world::native_load_context::LoopSide::Server, []);
+    assert!(ingredient.test_in(
+        &context,
+        &crate::items::ItemStack::new("minecraft:stone", 1)
+    ));
+    assert!(!ingredient.test_in(&context, &crate::items::ItemStack::new("minecraft:dirt", 1)));
     let compiled = compile("demo", "demo:pot", &category.displays[0], &layout())
         .unwrap()
         .unwrap();
