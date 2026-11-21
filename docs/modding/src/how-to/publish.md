@@ -166,9 +166,12 @@ for the target commit under `sdk-data/<commit>/`.
    not the temporary build's package. Omit `--sunrise`, `--key`, and `--signature`: `publish` uses the source row's
    existing stable pin, key and signature and adds one build row without touching them.
    If staging fails, retry with a fresh `--out <dir>`. Use the output only after `publish` succeeds.
-4. Upload the staged archive files and descriptor to the author release at `--asset-base`. Attach the staged source
-   package for a new mod version only. Use the generated `PULL_REQUEST.md` and copy the entry to your fork as above;
-   do not commit the staged files. The tool verifies locally and does not upload them. See the
+4. Upload and verify every asset named in `PULL_REQUEST.md` on the author release at `--asset-base` before opening
+   the pull request. This includes each staged archive, the descriptor and its `.binaries.json.minisig`, and, for
+   a new mod version only, the source package and its `.smod.minisig`. The descriptor embeds the archive signatures,
+   so no separate archive signature uploads are needed. If an upload fails partway through, upload the missing
+   files from the same verified output rather than rebuilding or re-signing. The tool does not upload anything.
+   Then copy the entry to your fork as above; do not commit the staged assets. See the
    [registry format](../reference/registry-index.md#stable-native-builds) for offline verification and takedowns.
 
 ## A collection

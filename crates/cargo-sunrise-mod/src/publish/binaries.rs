@@ -19,7 +19,7 @@ pub(super) struct Asset {
 
 pub(super) struct Submission {
     pub build: BuildRow,
-    pub descriptor_name: String,
+    pub descriptor_signature_name: String,
     pub assets: Vec<Asset>,
     pub verified_files: tempfile::TempDir,
 }
@@ -72,7 +72,8 @@ impl Inputs<'_> {
             Symlinks::Refuse,
         )
         .map_err(|e| e.to_string())?;
-        let signature = release::signature(&self.dir.join(format!("{name}.minisig")))?;
+        let descriptor_signature_name = format!("{name}.minisig");
+        let signature = release::signature(&self.dir.join(&descriptor_signature_name))?;
         let hash = index::sha256(&bytes);
         let build = BuildRow {
             sunrise: release.tag.clone(),
@@ -138,7 +139,7 @@ impl Inputs<'_> {
         )?;
         Ok(Submission {
             build,
-            descriptor_name: name.clone(),
+            descriptor_signature_name,
             assets,
             verified_files: scratch,
         })

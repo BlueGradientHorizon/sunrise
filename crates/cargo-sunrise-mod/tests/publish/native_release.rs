@@ -162,6 +162,13 @@ impl Assets {
             assert_eq!(fs::read(out.join("files").join(hash)).unwrap(), original);
         };
         staged(DESCRIPTOR, &self.descriptor_hash);
+        let signature = format!("{DESCRIPTOR}.minisig");
+        assert_eq!(
+            fs::read(out.join(&signature)).unwrap(),
+            fs::read(root.join("assets").join(&signature)).unwrap()
+        );
+        let draft = fs::read_to_string(out.join("PULL_REQUEST.md")).unwrap();
+        assert!(draft.contains(&format!("{ASSET_BASE}/{signature}")));
         for Archive { name, sha256, .. } in &self.descriptor.archives {
             staged(name, sha256);
         }
@@ -218,6 +225,14 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
         fs::read(root.join("source.smod")).unwrap()
     );
 
+    let signature = format!("{SOURCE}.minisig");
+    assert_eq!(
+        fs::read(root.join("new").join(&signature)).unwrap(),
+        fs::read(root.join("source.smod.minisig")).unwrap()
+    );
+    let draft = fs::read_to_string(root.join("new/PULL_REQUEST.md")).unwrap();
+    assert!(draft.contains(&format!("{ASSET_BASE}/{signature}")));
+
     success(fixture.publish("reviewed", None, false));
     let original = fs::read(root.join("reviewed").join(ROW)).unwrap();
     // The working checkout targets the rebuild; the reviewed release stays signed at its old pin.
@@ -237,6 +252,8 @@ fn signed_binaries_stage_with_the_original_source_for_new_and_existing_versions(
     assert_eq!(restored, entry("reviewed"));
     assert_eq!(fs::read(root.join("reviewed").join(ROW)).unwrap(), original);
     assert!(!root.join("append").join(SOURCE).exists());
+    let draft = fs::read_to_string(root.join("append/PULL_REQUEST.md")).unwrap();
+    assert!(!draft.contains(&signature));
     assert!(
         !root
             .join("append/files")

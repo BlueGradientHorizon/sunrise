@@ -571,6 +571,11 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         entry.versions.insert(0, version.clone());
     }
     let file = &version.file;
+    let source_signature = version
+        .signature
+        .as_deref()
+        .filter(|_| !append && submission.is_some())
+        .map(|sig| (format!("{file}.minisig"), sig));
     let entry_text = entry.to_toml()?;
     let (title, mut body) = if append {
         let tag = &submission
@@ -590,7 +595,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     };
     if let Some(submission) = &submission {
         body.push_str(&format!(
-            "\nSigned native assets for Sunrise {} (attach them to the author's release):\n",
+            "\nSigned native assets for Sunrise {}. Upload and verify every file below on the author's release before opening the pull request:\n",
             submission.build.sunrise
         ));
         let asset_base = o
@@ -598,12 +603,21 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             .as_deref()
             .expect("validated asset base")
             .trim_end_matches('/');
+        if let Some((signature, _)) = &source_signature {
+            body.push_str(&format!(
+                "- `{file}`: `{asset_base}/{file}` — SHA-256 `{}`\n\
+                 - `{signature}`: `{asset_base}/{signature}`\n",
+                version.sha256
+            ));
+        }
         for asset in &submission.assets {
             body.push_str(&format!(
                 "- `{}`: `{asset_base}/{}` — SHA-256 `{}`\n",
                 asset.name, asset.name, asset.sha256
             ));
         }
+        let signature = &submission.descriptor_signature_name;
+        body.push_str(&format!("- `{signature}`: `{asset_base}/{signature}`\n"));
     }
     for dir in [Some(&mods), Some(&files), icons.as_ref()]
         .into_iter()
@@ -618,13 +632,9 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     if !append {
         write(files.join(&version.sha256), &package_bytes)?;
         write(out.join(file), &package_bytes)?;
-        if let Some(sig) = version
-            .signature
-            .as_deref()
-            .filter(|_| submission.is_some())
-        {
-            write(out.join(format!("{file}.minisig")), sig.as_bytes())?;
-        }
+    }
+    if let Some((name, sig)) = &source_signature {
+        write(out.join(name), sig.as_bytes())?;
     }
     if let Some(submission) = &submission {
         for asset in &submission.assets {
@@ -634,7 +644,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             write(out.join(&asset.name), &bytes)?;
         }
         write(
-            out.join(format!("{}.minisig", submission.descriptor_name)),
+            out.join(&submission.descriptor_signature_name),
             submission.build.signature.as_bytes(),
         )?;
     }
@@ -681,10 +691,17 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
             report.sha256
         );
     }
+    if let Some((name, _)) = &source_signature {
+        println!("  {name}   source signature");
+    }
     if let Some(submission) = &submission {
         for asset in &submission.assets {
             println!("  {}   signed release asset", asset.name);
         }
+        println!(
+            "  {}   descriptor signature",
+            submission.descriptor_signature_name
+        );
     }
     if first && icon.is_some() {
         println!("  icons/{}.png   your icon.png", entry.id);
