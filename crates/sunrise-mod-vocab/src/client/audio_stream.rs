@@ -22,9 +22,10 @@ pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 /// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
 /// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
 /// Muting or unplacing the stream does not pause demand. The worker drops an admitted source
-/// at EOF or after stop, without waiting for another device callback. Disabling the owning mod
-/// retires its remaining pull sources; streams whose sources already retired at EOF drain their
-/// queued PCM.
+/// at EOF or after stop, without waiting for another device callback. A source panic, including
+/// during destruction after rejected admission, wakes the worker to retire this mod's other live
+/// pull sources without waiting for output. Disabling the owning mod also retires its live
+/// sources. Streams whose sources already retired normally at EOF drain their queued PCM.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
@@ -90,9 +91,10 @@ pub enum AudioStreamState {
     Unplaced,
     /// Over: `stop` was called, the handle was dropped, or the game's sound output went away.
     /// A pull stream also stops after an invalid frame count, a source panic, or retirement of
-    /// its live source because the owning mod or its pull callbacks were disabled. If its source
-    /// retired normally at EOF, it stops once the queued PCM drains. A stopped stream never
-    /// plays again.
+    /// its live source because the owning mod or its pull callbacks were disabled. A source panic
+    /// wakes the worker to retire the mod's live pull jobs even without another device callback.
+    /// If this source retired normally at EOF, it stops once the queued PCM drains. A stopped
+    /// stream never plays again.
     #[default]
     Stopped,
 }

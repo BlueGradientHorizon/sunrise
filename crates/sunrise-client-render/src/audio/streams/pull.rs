@@ -107,6 +107,7 @@ impl Worker {
 
     pub(super) fn owner(&mut self, id: &'static str) -> Arc<PullOwner> {
         let panics = &self.panic_sender;
+        let wake = &self.wake;
         self.owners
             .entry(id)
             .or_insert_with(|| {
@@ -114,6 +115,7 @@ impl Worker {
                     id,
                     index: mod_index(id),
                     poisoned: AtomicBool::new(false),
+                    wake: wake.clone(),
                     panics: panics.clone(),
                 })
             })
@@ -159,6 +161,7 @@ pub(super) struct PullOwner {
     id: &'static str,
     index: Option<usize>,
     poisoned: AtomicBool,
+    wake: Wake,
     panics: Sender<&'static str>,
 }
 
@@ -195,6 +198,9 @@ impl PullOwner {
                     "mod {id}: {hook} panicked; audio stream reads are disabled for this session"
                 );
                 self.poisoned.store(true, Release);
+                // A rejected job can stop and wake the worker before its source panics on
+                // the opening thread. Wake again after publishing the poison for live siblings.
+                self.wake.signal();
                 // If the output has been destroyed, the log above still reports the panic.
                 let _ = self.panics.send(id);
             }
@@ -644,6 +650,88 @@ mod tests {
         );
         assert_eq!(pool.take_pull_panics(), ["mod", "mod"]);
         assert!(mixer.lock().unwrap().streams.is_empty());
+    }
+
+    #[test]
+    fn rejected_source_panic_retires_an_idle_sibling_without_more_output() {
+        struct Rejected {
+            demand: Arc<Demand>,
+            resume: Sender<()>,
+            reads: Receiver<()>,
+        }
+
+        impl AudioStream for Rejected {
+            fn read(&mut self, _: &mut [i16]) -> AudioRead {
+                AudioRead::Frames(0)
+            }
+        }
+
+        impl Drop for Rejected {
+            fn drop(&mut self) {
+                // The rejection has already stopped its job and signaled the worker. Queue
+                // one more sibling read without signaling, then let the first read return.
+                self.demand.frames.store(1, Release);
+                if self.resume.send(()).is_ok()
+                    && self.reads.recv_timeout(Duration::from_secs(1)).is_ok()
+                {
+                    // The same job could only read again after consuming the pending wake.
+                    // It is now out of demand and has already seen the owner as enabled.
+                    panic!("rejected source destructor");
+                }
+            }
+        }
+
+        mod_platform::__private::initialize().unwrap();
+        let pool = StreamPool::default();
+        let mixer = Mutex::new(Mixer::default());
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+        let (reading, reads) = mpsc::sync_channel(1);
+        let (resume, resumed) = mpsc::channel();
+        let (live, retired) = mpsc::channel::<()>();
+        let mut first = true;
+        let sibling = pool
+            .open(
+                &mixer,
+                "wake_regression",
+                &spec,
+                Some(Box::new(Source(move |_: &mut [i16]| {
+                    let _keep_alive = &live;
+                    let _ = reading.try_send(());
+                    if std::mem::take(&mut first) {
+                        let _ = resumed.recv();
+                    }
+                    AudioRead::Frames(0)
+                }))),
+            )
+            .unwrap();
+        let timeout = Duration::from_secs(1);
+        request_pull(&mixer.lock().unwrap().streams, 1, 48_000);
+        reads.recv_timeout(timeout).expect("sibling did not read");
+
+        // Force the next open to fail admission but keep the real worker's receiver connected.
+        let (reject, _rejecting) = mpsc::sync_channel(0);
+        let (demand, _live_sender) = {
+            let mut state = pool.state();
+            let demand = state.controls[0].pull.as_ref().unwrap().clone();
+            let worker = state.worker.as_mut().unwrap();
+            (demand, std::mem::replace(&mut worker.sender, reject))
+        };
+        let rejected = Rejected {
+            demand,
+            resume,
+            reads,
+        };
+        assert!(matches!(
+            pool.open(&mixer, "wake_regression", &spec, Some(Box::new(rejected))),
+            Err(AudioRefusal::WorkerUnavailable)
+        ));
+        assert_eq!(pool.take_pull_panics(), ["wake_regression"]);
+        assert_eq!(
+            retired.recv_timeout(timeout),
+            Err(mpsc::RecvTimeoutError::Disconnected),
+            "the idle sibling was not dropped without another output callback"
+        );
+        assert_eq!(sibling.state(), AudioStreamState::Stopped);
     }
 
     #[test]
