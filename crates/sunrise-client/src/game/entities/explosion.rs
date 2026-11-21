@@ -919,6 +919,7 @@ impl Game<'_> {
             let attack = self.current_attack();
             self.after_block(outcome, (None, false), source, &attack);
         }
+        self.finish_guest_damage();
         pushed
     }
 

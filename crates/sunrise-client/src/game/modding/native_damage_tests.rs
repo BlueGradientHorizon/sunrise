@@ -362,6 +362,7 @@ fn post_fires_once_for_a_killing_blow_on_a_mob() {
 struct DeathOrder {
     heard: Mutex<Vec<(&'static str, i64)>>,
     cancel: std::sync::atomic::AtomicBool,
+    revive: std::sync::atomic::AtomicBool,
 }
 
 struct DeathProbe(Arc<DeathOrder>);
@@ -416,12 +417,16 @@ impl Hooks for DeathProbe {
     }
     fn living_death(
         &self,
-        _: &mut dyn mod_api::ServerHost,
+        host: &mut dyn mod_api::ServerHost,
         event: &mut mod_api::LivingDeathEvent<'_>,
     ) -> mod_api::Flow {
         let entity = i64::from(event.entity);
         self.0.heard.lock().unwrap().push(("death", entity));
         if self.0.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            if self.0.revive.load(std::sync::atomic::Ordering::Relaxed) {
+                let entity = host.entity(event.entity).unwrap();
+                assert!(host.living(entity).unwrap().set_health(host, 5.0));
+            }
             mod_api::Flow::Cancel
         } else {
             mod_api::Flow::Continue
@@ -506,7 +511,10 @@ fn a_cancelled_deaths_post_fires_once_after_the_death_hooks() {
 #[ignore = "daily"]
 fn guest_strike_posts_before_returning_from_the_authoritative_death() {
     use crate::game::native_player_death::tests::add_guest;
+    use std::sync::atomic::Ordering::Relaxed;
     let trace = Arc::new(DeathOrder::default());
+    trace.cancel.store(true, Relaxed);
+    trace.revive.store(true, Relaxed);
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "death-order",
         Box::new(DeathProbe(trace.clone())),
@@ -522,13 +530,25 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
                 .guests
                 .update(0, |guest| guest.load_timeout = 0);
             let entity = i64::from(game.lan.as_ref().unwrap().hub.guests[0].entity_id);
-            assert!(
-                game.guest_struck_by(1, |game| {
-                    game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false)
-                })
-                .unwrap()
-            );
-            assert!(game.lan.as_ref().unwrap().hub.guests[0].dead);
+            game.guest_struck_by(1, |game| {
+                assert!(game.hurt_player_from(100.0, None, "minecraft:generic", Some(None), false));
+                assert_eq!(game.player.as_ref().unwrap().health.health(), 5.0);
+                assert_eq!(
+                    *trace.heard.lock().unwrap(),
+                    [
+                        ("incoming", entity),
+                        ("pre", entity),
+                        ("death", entity),
+                        ("post", entity)
+                    ]
+                );
+                trace.cancel.store(false, Relaxed);
+                // A stronger hit in the same turn can kill the now-living body.
+                assert!(game.hurt_player_from(200.0, None, "minecraft:generic", Some(None), false));
+                assert!(game.lan.as_ref().unwrap().hub.guests[0].dead);
+                assert_eq!(trace.heard.lock().unwrap().last(), Some(&("post", entity)));
+            })
+            .unwrap();
             game.guest_die(0, 1);
             assert_eq!(
                 *trace.heard.lock().unwrap(),
@@ -536,8 +556,12 @@ fn guest_strike_posts_before_returning_from_the_authoritative_death() {
                     ("incoming", entity),
                     ("pre", entity),
                     ("death", entity),
+                    ("post", entity),
+                    ("incoming", entity),
+                    ("pre", entity),
+                    ("death", entity),
                     ("death-tail", entity),
-                    ("post", entity)
+                    ("post", entity),
                 ]
             );
         });

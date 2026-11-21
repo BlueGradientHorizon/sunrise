@@ -3318,6 +3318,7 @@ impl Game<'_> {
             }
             p.health.sync_velocity |= marked;
         }
+        self.finish_guest_damage();
         if !sitting
             && !hurt_lately
             && let Some(id) = self.dragon.as_ref().map(|d| d.id)

@@ -139,19 +139,65 @@ impl Game<'_> {
             ..body
         })
     }
-    /// Finish a guest's protected hit while the guest and the hit's level are still in place.
-    pub(in crate::game) fn finish_guest_damage_totem(&mut self) {
-        let Some(entity) = self
-            .lan_acting
-            .and_then(|_| self.player.as_ref().map(|p| p.entity_id))
-        else {
+    /// Finish a hit before its caller can hurt the acting player again. Protection and
+    /// `ServerPlayer.die` both run on the current body, not its between-turn projection.
+    pub(in crate::game) fn finish_guest_damage(&mut self) {
+        let (Some(conn), Some(player)) = (self.lan_acting, self.player.as_mut()) else {
             return;
         };
-        let Some(body) = self.apply_totem() else {
+        let entity = player.entity_id;
+        if player.health.totem_used {
+            if let Some(body) = self.apply_totem()
+                && self.serving.is_none()
+                && !self.is_dedicated_server()
+            {
+                self.totem_event(TrackingTarget::Entity(entity), body);
+            }
+            return;
+        }
+        if !player.health.dead || player.health.health() > 0.0 {
+            return;
+        }
+        let post = player.health.pending_damage_post.take();
+        let Some(index) = self.guest_index(conn) else {
             return;
         };
-        if self.serving.is_none() && !self.is_dedicated_server() {
-            self.totem_event(TrackingTarget::Entity(entity), body);
+        if self
+            .lan
+            .as_ref()
+            .is_some_and(|host| host.hub.guests[index].dead)
+        {
+            return;
+        }
+        // The killing blow and its weapon must reach the combat tracker before die reads it.
+        // Packet and motion events still belong to the normal turn drain.
+        use sunrise_client::{health::HealthEvent, motion::MotionEvent};
+        let events: Vec<_> = self
+            .player
+            .as_mut()
+            .into_iter()
+            .flat_map(|body| {
+                body.events.extract_if(.., |event| {
+                    matches!(
+                        event,
+                        MotionEvent::Health(
+                            HealthEvent::ArmorHurt { .. }
+                                | HealthEvent::Criterion { .. }
+                                | HealthEvent::MobHurt
+                                | HealthEvent::RecordedDamage { .. }
+                                | HealthEvent::Statistic { .. }
+                        )
+                    )
+                })
+            })
+            .collect();
+        if !events.is_empty() {
+            self.record_combat(&events);
+            self.wear_armor(&events);
+        }
+        self.guest_die(index, conn);
+        if let Some(post) = post {
+            self.finish_damage_post(entity, "minecraft:player", &post);
         }
     }
 

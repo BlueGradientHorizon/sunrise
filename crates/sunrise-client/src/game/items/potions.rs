@@ -1171,6 +1171,7 @@ impl Game<'_> {
                 }
 
                 self.combat.forget_noted(canceled);
+                self.finish_guest_damage();
             }
             EffectAction::Poison => {
                 if p.health.health() > 1.0
@@ -1188,6 +1189,7 @@ impl Game<'_> {
                         id,
                         1.0,
                     );
+                    self.finish_guest_damage();
                 }
             }
             EffectAction::Exhaust(amount) => {

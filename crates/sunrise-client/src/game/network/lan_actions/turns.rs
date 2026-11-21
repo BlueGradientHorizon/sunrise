@@ -1044,6 +1044,8 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             unreachable!("LanHost dropped inside a guest turn; closes are deferred");
         };
+        let ended_digging = host.hub.guests[i].dead
+            && (play.digging.is_some() || play.delayed.is_some() || play.destroy_pos.is_some());
         host.play.insert(conn, play);
         let finished = self.lan_guest_swaps.pop();
         debug_assert_eq!(finished, Some(conn));
@@ -1062,6 +1064,9 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
         self.bind_current_hook_residency();
+        if ended_digging {
+            self.guest_forget_digging(conn);
+        }
         for event in turn_events {
             match event {
                 MotionEvent::Health(sunrise_client::health::HealthEvent::DamageBroadcast {

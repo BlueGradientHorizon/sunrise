@@ -4391,18 +4391,6 @@ impl Game<'_> {
                 };
                 default_push = Some(([xd, zd], source));
             }
-            // The thorns hurt the entity that caused the hit, if there is one.
-            // Thorns' own hit is no attack, so nothing answers it
-            // (`doPostAttackEffects` runs from the attacks, not `hurtServer`).
-            let killed = self.player.as_ref().is_some_and(|p| {
-                super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
-            });
-            if let Some(a) = attacker.or(owner)
-                && !(post_attack_if_alive && killed)
-                && damage_type != "minecraft:thorns"
-            {
-                self.thorns(a);
-            }
         }
         // LivingEntity.playSecondaryHurtSound: a thorns hit that landed whole
         // sounds where the player stands, for everyone around.
@@ -4485,7 +4473,18 @@ impl Game<'_> {
                 r.knockback = Some([p.velocity.x, p.velocity.y, p.velocity.z]);
             }
         }
-        self.finish_guest_damage_totem();
+        self.finish_guest_damage();
+        // The attack runs `EnchantmentHelper.doPostAttackEffects` after `hurtServer` returns.
+        let killed = self.player.as_ref().is_some_and(|p| {
+            super::wither::killed(true, p.health.dead_or_dying(), p.health.totem_used)
+        });
+        if outcome.hurt
+            && let Some(a) = attacker.or(owner)
+            && !(post_attack_if_alive && killed)
+            && damage_type != "minecraft:thorns"
+        {
+            self.thorns(a);
+        }
         outcome.hurt
     }
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
@@ -4527,7 +4526,7 @@ impl Game<'_> {
             canceled = o.canceled;
         }
         self.combat.forget_noted(canceled);
-        self.finish_guest_damage_totem();
+        self.finish_guest_damage();
     }
     /// `Player.aiStep` touching arrows in its box grown by (1, 0.5, 1):
     /// `AbstractArrow.playerTouch`, then `Player.take`'s pickup sound at the

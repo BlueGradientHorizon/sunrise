@@ -415,8 +415,8 @@ The three damage hooks (`living_incoming_damage`, `living_damage_pre`, and
 `DamageContainer` setters return `Result<(), DamageWriteRefusal>`: negative or NaN damage
 and negative cooldown ticks are refused without changing the hit. Use `event.container.as_view()`
 to borrow a read-only view. Pre's damage edits don't change the amount remembered for the
-cooldown. Post fires after death processing or totem protection, even when a death is vetoed
-or the hit took no health. `inflicted()` reads what Pre left before absorption, while
+cooldown. Post follows that hit's death processing or totem protection. A vetoed death
+still reaches Post, as does a hit that took no health. `inflicted()` reads what Pre left before absorption, while
 `health_damage()` reads what the hit applied to health.
 Use `add_reduction_modifier(Reduction::..., |view, amount| ...)` in `living_incoming_damage`
 or `living_damage_pre` to install an owned native reduction closure on the live hit.

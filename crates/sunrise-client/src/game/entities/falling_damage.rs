@@ -258,6 +258,7 @@ impl Game<'_> {
                 blocked: false,
             });
         }
+        self.finish_guest_damage();
     }
 }
 

@@ -71,7 +71,9 @@ Following `DamageContainer.setNewDamage` and `setPostAttackInvulnerabilityTicks`
 `LivingEntity.getDamageAfterMagicAbsorb` changes the live damage only at a reduction site that ran, and \
 `Witch.getDamageAfterMagicAbsorb` uses its separate local result for innate resistance. \
 `Wolf.actuallyHurt` uses the outer cooldown difference for armor wear, without replacing the live reduction. \
-Post follows the death or totem continuation. \
+Post follows the death or totem continuation, as at NeoForge's `LivingEntity.hurtServer` tail. \
+An authoritative player hit settles `ServerPlayer.die` on the acting body; a second hit in the same \
+player turn does not share the first hit's continuation. \
 Matching NeoForge's `DamageContainer` and `actuallyHurt` semantics, modified reductions are \
 recorded verbatim without clamping to `[0, limit]` or replacing `NaN` (only resulting damage \
 floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, records the modified \
