@@ -55,6 +55,7 @@ impl Game<'_> {
             sunrise_client::block_entity_render::diffuse_lights(self.dim == Dim::Nether),
             std::mem::take(out),
         )
+        .track_normal_pose()
         .animated(self.animation_time());
         let mut canceled = false;
         self.native_render_hand(

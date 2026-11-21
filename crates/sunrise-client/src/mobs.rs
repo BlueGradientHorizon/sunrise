@@ -178,8 +178,7 @@ use sunrise_world::block_collision::BlockCollisionRegistry;
 use sunrise_world::native_load_context::LoopContext;
 
 mod model;
-use model::ModelNormals;
-pub use model::{Part, Polygon};
+pub use model::{ModelNormals, Part, Polygon};
 
 /// Kept for callers of the earlier simple AI; species now select behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5064,29 +5063,28 @@ pub fn render_model(
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    render_model_filtered(part, base, &|p| Some(pose_for(p)), uv, light, overlay, out);
+    render_model_filtered(
+        part,
+        (base, ModelNormals::new(base)),
+        &|p| Some(pose_for(p)),
+        uv,
+        light,
+        overlay,
+        out,
+    );
 }
 
 /// Draw a posed model, skipping a part and its descendants when its pose is `None`.
 pub fn render_model_filtered(
     part: &Part,
-    base: glam::Mat4,
+    base: (glam::Mat4, ModelNormals),
     pose_for: &impl Fn(&Part) -> Option<[f32; 9]>,
     uv: [f32; 4],
     light: u32,
     overlay: u32,
     out: &mut Vec<Vertex>,
 ) {
-    visit(
-        part,
-        base,
-        ModelNormals::new(base),
-        pose_for,
-        uv,
-        light,
-        overlay,
-        out,
-    );
+    visit(part, base.0, base.1, pose_for, uv, light, overlay, out);
     fn visit(
         part: &Part,
         parent: glam::Mat4,

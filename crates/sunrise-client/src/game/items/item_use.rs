@@ -1070,6 +1070,7 @@ mod tests {
         let slim = std::env::var("SUNRISE_HAND_ARM_CASE").unwrap() == "slim";
         const MOVES: [[f32; 3]; 2] = [[0.75, -0.5, -1.0], [-0.25, 0.5, -2.0]];
         const LIGHT: [u32; 2] = [0x30a0, 0x60b0];
+        const SCALE: [f32; 3] = [5e-7, 1e-8, 1e-8];
         #[derive(Default)]
         struct State {
             mode: AtomicU8,
@@ -1091,6 +1092,10 @@ mod tests {
                 for (i, arm) in [MainHand::Left, MainHand::Right].into_iter().enumerate() {
                     event.draw.push();
                     event.draw.translate(MOVES[i]);
+                    if mode == 3 && i == 0 {
+                        event.draw.scale(SCALE);
+                        event.draw.rotate_about([0.0, 0.0, 1.0], 90.0, [0.0; 3]);
+                    }
                     event.draw.set_light(LIGHT[i]);
                     event.draw.render_arm(arm);
                     event.draw.pop();
@@ -1219,6 +1224,43 @@ mod tests {
                         bytemuck::cast_slice::<_, u8>(&replaced[submitted..]),
                         bytemuck::cast_slice::<_, u8>(&vanilla[offhand_at as usize..])
                     );
+
+                    state.mode.store(3, Relaxed);
+                    let (scaled, _) = game.hand_geometry(0.0);
+                    // ModelPart.Cube's first polygon faces DOWN. The left arm's
+                    // -0.1 roll followed by the listener's quarter turn sends -Y
+                    // toward +X and -Y. Scale normals by the reciprocal axes.
+                    let normal = view
+                        .transform_vector3(Vec3::new(
+                            sunrise_core::jmath::cos(0.1) as f32 / SCALE[0],
+                            -(sunrise_core::jmath::sin(0.1) as f32) / SCALE[1],
+                            0.0,
+                        ))
+                        .normalize();
+                    let packed = normal.to_array().map(|n| (n * 127.0) as i8);
+                    assert!(scaled[..4].iter().all(|v| v.normal[..3] == packed));
+                    assert_eq!(
+                        bytemuck::cast_slice::<_, u8>(&scaled[arm_vertices..submitted]),
+                        bytemuck::cast_slice::<_, u8>(&added[arm_vertices..submitted]),
+                        "pop restores the unscaled normal pose for the second arm"
+                    );
+
+                    game.gui.atlas.sprites.remove("arms:fixture_skin");
+                    for missing_avatar in [false, true] {
+                        if missing_avatar {
+                            game.player_model = None;
+                        }
+                        state.mode.store(0, Relaxed);
+                        let (items, item_runs) = game.hand_geometry(0.0);
+                        state.mode.store(1, Relaxed);
+                        let (drawn, drawn_runs) = game.hand_geometry(0.0);
+                        assert_eq!(drawn_runs, item_runs);
+                        assert_eq!(
+                            bytemuck::cast_slice::<_, u8>(&drawn),
+                            bytemuck::cast_slice::<_, u8>(&items),
+                            "no arm without the selected sprite or the avatar state"
+                        );
+                    }
                 });
             },
         );

@@ -377,12 +377,14 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
 }
 impl HandDrawContext for GameBlockEntityDrawContext<'_, '_> {
     fn render_arm(&mut self, arm: MainHand) {
-        self.game.submit_first_person_arm(
-            arm == MainHand::Left,
-            self.surface.pose(),
-            self.surface.light(),
-            self.surface.vertices_mut(),
-        );
+        if let Some(normals) = self.surface.normal_pose() {
+            self.game.submit_first_person_arm(
+                arm == MainHand::Left,
+                (self.surface.pose(), normals),
+                self.surface.light(),
+                self.surface.vertices_mut(),
+            );
+        }
     }
 }
 

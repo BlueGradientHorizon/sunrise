@@ -2,7 +2,7 @@
 //! moon and stars (`celestial_geometry`), the first-person hand and arm (`hand_geometry`,
 //! `first_person_arm`) and the rain and snow around the camera (`weather_geometry`).
 use super::*;
-use sunrise_client::gfx::CelestialBody;
+use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
 impl Game<'_> {
     /// Stored local and remote display positions, keeping the furthest stage on each cell.
@@ -120,30 +120,26 @@ impl Game<'_> {
                 return;
             }
         }
-        self.submit_first_person_arm(left, m, light, out);
+        self.submit_first_person_arm(left, (m, ModelNormals::new(m)), light, out);
     }
 
     /// `AvatarRenderer.renderHand`: submit the posed avatar arm without posting another hook.
     pub(in crate::game) fn submit_first_person_arm(
         &self,
         left: bool,
-        m: glam::Mat4,
+        base: (glam::Mat4, ModelNormals),
         light: u32,
         out: &mut Vec<Vertex>,
     ) {
-        let avatar = self.player_model.as_ref();
-        let slim = avatar.is_some_and(|m| m.slim);
-        let Some(arm) = self.res.player_arm(slim, left).as_ref() else {
+        let Some(avatar) = self.player_model.as_ref() else {
             return;
         };
-        // The player's own skin, as the inventory's model shows it.
+        let Some(arm) = self.res.player_arm(avatar.slim, left).as_ref() else {
+            return;
+        };
+        // Selection resolves a texture and model as a pair before submission.
         let sprites = &self.gui.atlas.sprites;
-        let Some(r) = avatar
-            .and_then(|m| m.skin.as_deref())
-            .and_then(|skin| sprites.get(skin))
-            .or_else(|| sprites.get("entity/player/wide/steve"))
-            .copied()
-        else {
+        let Some(r) = avatar.skin.as_deref().and_then(|skin| sprites.get(skin)) else {
             return;
         };
         let (sleeve, bit, z_rot) = if left {
@@ -151,7 +147,7 @@ impl Game<'_> {
         } else {
             ("right_sleeve", 3, 0.1)
         };
-        let hide_sleeve = avatar.is_some_and(|a| a.extra.hidden_model_parts & (1 << bit) != 0);
+        let hide_sleeve = avatar.extra.hidden_model_parts & (1 << bit) != 0;
         let pose = |p: &sunrise_client::mobs::Part| {
             if hide_sleeve && p.name == sleeve {
                 return None;
@@ -164,7 +160,7 @@ impl Game<'_> {
         };
         sunrise_client::mobs::render_model_filtered(
             arm,
-            m,
+            base,
             &pose,
             [r.u0, r.v0, r.u1, r.v1],
             light,
