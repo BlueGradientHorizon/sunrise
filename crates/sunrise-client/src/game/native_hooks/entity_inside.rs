@@ -5,11 +5,9 @@ impl HitLevel<'_> {
     /// `Block.entityInside`: an entity's sweep crossed a block with a part for it
     /// (`precise` is `Entity.checkInsideBlocks`' flag), told mid-sweep, on the level
     /// host a hit or a landing uses. The part draws the level's random in vanilla's
-    /// order and queues its writes on the event: the typed entity writes and effects
-    /// apply to the swept entity inside its own tick, and the level writes land at the
-    /// touched block at the batch end, guarded on the state. Generated dispatch stages
-    /// every requested API `InsideWrite` before committing; an invalid state refuses
-    /// the whole callback's output.
+    /// order and queues effects and owned callbacks on `event.apply`, `event.run_before`,
+    /// and `event.run_after`, which flush at the end of the sweep via
+    /// `InsideEffects::apply_and_clear` with live entity and level access.
     pub(in crate::game) fn native_entity_inside(
         &mut self,
         call: super::fire::EntityInsideCall<'_>,
@@ -146,37 +144,22 @@ mod sweep_tests {
                 panic!("an entity_inside part panics");
             }
             if self.kill_after.is_some_and(|after| seen > after) {
-                event.run_after(
-                    mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::Hurt {
-                        source: None,
-                        amount: 1000.0,
-                    },
-                );
+                event.run_after(mod_api::InsideEffect::Freeze, |view| {
+                    view.hurt("minecraft:generic", 1000.0);
+                });
             }
-            event.run_after(
-                mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Push([0.5, 0.0, 0.0]),
-            );
+            event.run_after(mod_api::InsideEffect::Freeze, |view| {
+                view.push([0.5, 0.0, 0.0]);
+            });
             if let Some(wither) = *self.wither.lock().unwrap() {
-                event.run_after(
-                    mod_api::InsideEffect::Freeze,
-                    mod_api::EntityWrite::AddEffect {
-                        effect: wither,
-                        duration: 40,
-                        amplifier: 0,
-                    },
-                );
+                event.run_after(mod_api::InsideEffect::Freeze, move |view| {
+                    view.add_effect(wither, 40, 0);
+                });
             }
             if let Some(speed) = *self.speed.lock().unwrap() {
-                event.run_after(
-                    mod_api::InsideEffect::Extinguish,
-                    mod_api::EntityWrite::AddEffect {
-                        effect: speed,
-                        duration: 20,
-                        amplifier: 0,
-                    },
-                );
+                event.run_after(mod_api::InsideEffect::Extinguish, move |view| {
+                    view.add_effect(speed, 20, 0);
+                });
             }
         }
     }
@@ -355,14 +338,12 @@ mod sweep_tests {
         });
     }
 
-    /// A part that panics on its second contact: the panic is contained, the walk
-    /// and the player's tick go on, and the panicking callback's writes are refused
-    /// with it.
+    /// A part that panics on its first contact: the panic is contained, the mod's
+    /// `entity_inside` callback is disabled for the session with a loud notice, the
+    /// walk and the player's tick go on, and no staged callbacks apply.
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_players_tick_restored() {
-        // The panic lands on every contact: each one is caught in the staged fire,
-        // and the mod keeps receiving the walk's contacts.
         let part = InsidePart {
             panic_after: Some(0),
             ..InsidePart::default()
@@ -371,12 +352,22 @@ mod sweep_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = mod_api::__private::take_callback_panics();
                 let (before, after, dead) = sweep_game_player(game);
                 assert!(!dead);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
+                );
+                let notices = mod_api::__private::take_callback_panics();
+                assert!(
+                    notices.iter().any(|n| {
+                        n.mod_id == "inside-panic"
+                            && n.hook == "entity_inside"
+                            && n.detail.contains("an entity_inside part panics")
+                    }),
+                    "callback panic notice naming the mod was queued: {notices:?}"
                 );
                 assert!(
                     (after - before).abs() < 1e-9,
@@ -687,9 +678,10 @@ mod sweep_tests {
         });
     }
 
-    /// A panicking part inside the item batch: the staged fire contains it, the
-    /// lent level goes back, and the lifted row the batch holds returns to the
-    /// level's list (#2194's and #2213's carrier discipline).
+    /// A panicking part inside the item batch: generated dispatch contains it and
+    /// disables the mod's `entity_inside` callback for the session, the lent level
+    /// goes back, and the lifted row the batch holds returns to the level's list
+    /// (#2194's and #2213's carrier discipline).
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_item_batch_restored() {
@@ -701,6 +693,7 @@ mod sweep_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let _ = sunrise_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
+                let _ = mod_api::__private::take_callback_panics();
                 let item = item_at_blocks(game);
                 game.dropped.push(item);
                 let rows = game.dropped.len();
@@ -716,8 +709,15 @@ mod sweep_tests {
                 game.put_back_dropped(items);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
+                );
+                let notices = mod_api::__private::take_callback_panics();
+                assert!(
+                    notices
+                        .iter()
+                        .any(|n| { n.mod_id == "inside-item-panic" && n.hook == "entity_inside" }),
+                    "callback panic notice naming the mod was queued: {notices:?}"
                 );
                 assert_eq!(game.dropped.len(), rows, "the lifted row returned");
                 let item = game.dropped.first().unwrap();
@@ -947,9 +947,10 @@ mod sweep_tests {
         });
     }
 
-    /// A panicking part inside the arrow batch: the listener's panic is contained
-    /// in the staged fire, the lifted projectile row returns to the level's list
-    /// exactly once, and the arrow keeps its state.
+    /// A panicking part inside the arrow batch: generated dispatch contains it and
+    /// disables the mod's `entity_inside` callback for the session, the lifted
+    /// projectile row returns to the level's list exactly once, and the arrow keeps
+    /// its state.
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_arrow_list_whole() {
@@ -961,6 +962,7 @@ mod sweep_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let _ = sunrise_client::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
+                let _ = mod_api::__private::take_callback_panics();
                 let stone = game
                     .pack
                     .assets
@@ -994,8 +996,15 @@ mod sweep_tests {
                 );
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
-                    2,
-                    "both contacts reached the part; each panic was contained"
+                    1,
+                    "contact #1 panicked and disabled this mod's entity_inside callback for the session"
+                );
+                let notices = mod_api::__private::take_callback_panics();
+                assert!(
+                    notices
+                        .iter()
+                        .any(|n| { n.mod_id == "inside-arrow-panic" && n.hook == "entity_inside" }),
+                    "callback panic notice naming the mod was queued: {notices:?}"
                 );
                 assert_eq!(
                     game.creatures.projectiles.len(),

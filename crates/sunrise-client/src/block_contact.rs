@@ -5,10 +5,7 @@ use std::{
     sync::OnceLock,
 };
 use sunrise_core::position::BlockPos;
-use sunrise_world::{
-    level::{InsideWrite, LandingWrite},
-    registry::BlockStateId,
-};
+use sunrise_world::{level::LandingWrite, registry::BlockStateId};
 
 /// `getEntityInsideCollisionShape` as the shared walk sees it: the whole block, boxes
 /// to sweep the move against, or nothing. This is the one point #1011 adds the Part's
@@ -315,9 +312,8 @@ pub struct Hooks {
     /// `Block.bounceOn`: change `movement`, the movement the bounce leaves the entity.
     pub bounce_on:
         fn(&str, &mut DamageLevel<'_>, Contact<'_>, f64, &mut sunrise_core::geometry::Vec3),
-    /// `Block.entityInside` told mid-walk: the part's own contact on the level
-    /// host, its whole callback staged into the fresh collector and write list,
-    /// so only an answering callback's writes reach the walk.
+    /// `Block.entityInside` told mid-walk: generated dispatch isolates each
+    /// part into a staged collector and absorbs it on return.
     pub inside_fire: fn(
         &mut DamageLevel<'_>,
         &'static str,
@@ -327,11 +323,24 @@ pub struct Hooks {
         BlockPos,
         bool,
         &mut mod_api::InsideEffects,
-        &mut Vec<InsideWrite>,
     ),
+    /// Convert an engine block state id to the mod API's `BlockState`.
+    pub state_to_api: fn(BlockStateId) -> Option<mod_api::BlockState>,
+    /// Convert a mod API `BlockState` to an engine block state id.
+    pub state_to_engine: fn(mod_api::BlockState) -> Option<BlockStateId>,
 }
 
 pub static HOOKS: OnceLock<Hooks> = OnceLock::new();
+
+/// Convert an engine block state id to a mod API `BlockState` through the installed hooks.
+pub fn state_to_api(id: BlockStateId) -> Option<mod_api::BlockState> {
+    HOOKS.get().and_then(|hooks| (hooks.state_to_api)(id))
+}
+
+/// Convert a mod API `BlockState` to an engine block state id through the installed hooks.
+pub fn state_to_engine(state: mod_api::BlockState) -> Option<BlockStateId> {
+    HOOKS.get().and_then(|hooks| (hooks.state_to_engine)(state))
+}
 
 /// Where `IBlockExtension.getBounceRestitution` is answered, on both sides: the game says
 /// which block states have a part for it and binds the part's answer.
@@ -344,24 +353,12 @@ pub struct RestitutionHooks {
 pub static RESTITUTION_HOOKS: OnceLock<RestitutionHooks> = OnceLock::new();
 
 /// What a contact asked to keep until the entity's batch ends, delivered in
-/// the order it happened: the parts' `entity_inside` contacts themselves fire
-/// mid-walk now, on the shared inside sweep, so what stays here is the level
-/// writes they and the landings asked for, and the minecart passes.
+/// the order it happened: landing writes (`Block.fallOn`) and minecart passes.
+/// `entity_inside` callbacks now apply their level writes directly at flush.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Pending {
     Landed(Landed),
     MinecartPass(MinecartPass),
-    /// Level writes a mid-walk `entity_inside` part asked for, at the block it
-    /// touched: applied at the batch end, guarded on the touched state.
-    InsideWritten(InsideWritten),
-}
-
-/// The level writes an `entity_inside` part asked for at one block.
-#[derive(Clone, Debug, PartialEq)]
-pub struct InsideWritten {
-    pub state: BlockStateId,
-    pub position: BlockPos,
-    pub writes: Vec<InsideWrite>,
 }
 
 /// An entity that landed on a block whose Part asked for writes (`Block.fallOn`).
@@ -547,20 +544,6 @@ pub fn landed(state: BlockStateId, position: BlockPos, writes: Vec<LandingWrite>
     if !writes.is_empty() {
         PENDING.with_borrow_mut(|pending| {
             pending.push(Pending::Landed(Landed {
-                state,
-                position,
-                writes,
-            }));
-        });
-    }
-}
-
-/// Keep the level writes a mid-walk `entity_inside` contact asked for until the
-/// entity's batch ends; nothing is kept when none were asked.
-pub fn inside_written(state: BlockStateId, position: BlockPos, writes: Vec<InsideWrite>) {
-    if !writes.is_empty() {
-        PENDING.with_borrow_mut(|pending| {
-            pending.push(Pending::InsideWritten(InsideWritten {
                 state,
                 position,
                 writes,

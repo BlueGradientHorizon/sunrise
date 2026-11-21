@@ -448,13 +448,15 @@ pub(super) fn emit<'a>(
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
-            // Owned configuration tasks cannot be snapshotted. The connection's
-            // registration transaction owns the entire staging sink.
+            // Owned configuration tasks and inside-block callback collectors cannot be
+            // snapshotted. Their staging sinks isolate each listener directly.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
+            let inside_effects = event_type == "EntityInsideEvent" && name == "effects";
             if scalar {
                 rollback.push((name.clone(), false));
             } else if !task_registration
+                && !inside_effects
                 && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
@@ -479,6 +481,7 @@ pub(super) fn emit<'a>(
                 Some((RegistrationAppend::Register, _)) => "",
                 Some((RegistrationAppend::Custom, _)) => "pub(super)",
                 None if task_registration
+                    || inside_effects
                     || matches!(
                         (event_type.as_str(), name.as_str()),
                         ("ApplyEffectTickEvent", "changes")
@@ -870,7 +873,7 @@ pub(super) fn emit<'a>(
         if declaration_only {
             continue;
         }
-        let build = if declaration.is_some() {
+        let build = if declaration.is_some() || name == "entity_inside" {
             String::new()
         } else {
             format!(
@@ -1231,6 +1234,11 @@ pub(super) fn emit<'a>(
                         "'dispatch_parts: {{ for {part_item} in super::entered_parts(&{part_list}[..{inert_owner}.unwrap_or({part_list}.len())], \"{name}\") {{ {} }} if {inert_owner}.is_some() {{ {inert} }} }}",
                         call(&part_item, "break 'dispatch_parts"),
                     )
+                } else if name == "entity_inside" {
+                    let host_arg = &host.as_ref().unwrap().0;
+                    format!(
+                        "for (__mod_id, {part_item}) in super::entered_parts_with_id({part_list}, HookId::{hook_id}, \"{name}\") {{ let mut __staged = InsideEffects::default(); let mut {event} = {event_type} {{ dimension, entity, kind, state, pos, precise, effects: &mut __staged }}; match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {part_item}.{name}(&mut *{host_arg}, &mut {event})))) {{ Ok(Ok(())) => {{ effects.absorb_step(__staged); }} Ok(Err(refusal)) => {{ refusal.report(); }} Err(__unwound) => {{ super::runtime::record_callback_panic(HookId::{hook_id}, __mod_id, \"{name}\", super::runtime::panic_summary(__unwound.as_ref())); }} }} }}"
+                    )
                 } else {
                     format!(
                         "for {part_item} in super::entered_parts({part_list}, \"{name}\") {{ {} }}",
@@ -1331,8 +1339,6 @@ fn engine_types(ty: &mut Type, carrier: bool) {
                 }
             } else if path.path.is_ident("LandingWrite") {
                 syn::parse_quote!(sunrise_world::level::LandingWrite)
-            } else if path.path.is_ident("InsideWrite") {
-                syn::parse_quote!(sunrise_world::level::InsideWrite)
             } else {
                 return syn::visit_mut::visit_type_mut(self, ty);
             };
@@ -1386,7 +1392,7 @@ fn stack_crossing_routed(
         "LootContext",
         "ParticleOptions",
     ];
-    const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite", "InsideWrite"];
+    const BLOCK_VALUES: &[&str] = &["BlockState", "LandingWrite"];
     const INFALLIBLE_VALUES: &[&str] = &["GuiDraw", "Text"];
     let parameters = args.iter().chain(output).collect::<Vec<_>>();
     if !parameters.iter().any(|(_, ty)| {

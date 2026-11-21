@@ -165,6 +165,16 @@ mod root {
         pub(super) fn poison(hook: super::HookId, id: &'static str) {
             POISONED.with(|poisoned| poisoned.borrow_mut().insert((hook as usize, id)));
         }
+        pub(super) fn record_callback_panic(
+            _: super::HookId,
+            _: &'static str,
+            _: &'static str,
+            _: String,
+        ) {
+        }
+        pub(super) fn panic_summary(_: &(dyn std::any::Any + Send)) -> String {
+            String::new()
+        }
         pub(super) fn poisoned(hook: super::HookId, id: &str) -> bool {
             POISONED.with(|poisoned| {
                 poisoned

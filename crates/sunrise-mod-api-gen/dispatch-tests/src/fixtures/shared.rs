@@ -374,6 +374,18 @@ fn entered_parts<'a, P: ?Sized>(
         .copied()
         .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
 }
+fn entered_parts_with_id<'a, P: ?Sized>(
+    parts: &'a [&'a P],
+    _: HookId,
+    _: &'static str,
+) -> impl Iterator<Item = (&'static str, &'a P)> {
+    let disabled = DISABLED_BLOCK_PART.get();
+    parts
+        .iter()
+        .copied()
+        .filter(move |part| disabled != Some(std::ptr::from_ref(*part).cast()))
+        .map(|part| ("fixture", part))
+}
 
 #[test]
 fn a_disabled_owner_answers_only_at_its_dispatch_position() {

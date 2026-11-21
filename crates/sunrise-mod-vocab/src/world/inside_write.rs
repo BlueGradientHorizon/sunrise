@@ -1,11 +1,10 @@
-//! The typed inside-block effects and writes an `entity_inside` part asks for.
+//! The typed inside-block effects and callbacks an `entity_inside` part queues.
 //!
-//! Vanilla's `Block.entityInside` runs mid-walk and queues only its five
+//! Vanilla's `Block.entityInside` runs mid-walk and queues its five
 //! `InsideBlockEffectType`s and the `runBefore`/`runAfter` callbacks around them
-//! (`InsideBlockEffectApplier.StepBasedCollector`); everything else it writes on the
-//! entity directly. A part here names those writes as [`EntityWrite`] values on the
-//! same collector, and its level writes as [`InsideWrite`] requests, so the walk's
-//! order and the entity's own tick are kept.
+//! (`InsideBlockEffectApplier.StepBasedCollector`). Callbacks run when the collector
+//! flushes (`apply_and_clear`), each lent an [`InsideEntityView`] over the swept entity
+//! and its live level, stopping as soon as the entity dies.
 use crate::{BlockState, EffectKey, EntityRef};
 
 /// Exclusive loan of the swept entity and its live level, lent to queued `run_before`
@@ -196,133 +195,61 @@ const EFFECT_ORDER: [InsideEffect; 5] = [
     InsideEffect::Extinguish,
 ];
 
-/// A typed write to the entity the sweep is inside, as vanilla's `entityInside` blocks
-/// make them. Each applies inside the entity's own tick when the collector flushes, in
-/// the step and type order vanilla's `StepBasedCollector` uses, and the rest stop when
-/// the entity dies.
-///
-/// These are the writes vanilla blocks make: the bubble columns' push and fall reset,
-/// the honey slide's movement, the cobweb's and berry bush's `makeStuckInBlock`, the
-/// cactus's, campfire's and fire's `hurt`, the fire ticks fire and lava leave, and the
-/// mob effects a wither rose and an eyeblossom add. A portal is not a write a part
-/// makes: it stays the game's own.
-// exhaustive: the closed serialized write vocabulary and case order are a link contract.
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-pub enum EntityWrite {
-    /// Add to the entity's movement (`entity.push`), as a bubble column does.
-    Push([f64; 3]),
-    /// Replace the entity's movement (`setDeltaMovement`), as the honey slide does.
-    SetMovement([f64; 3]),
-    /// `makeStuckInBlock`: scale the entity's movement by these factors until it leaves.
-    /// Resets its fall distance, as every stuck block does.
-    StuckIn([f64; 3]),
-    /// `hurt(source, amount)`. `source` is the id of the entity the damage came from,
-    /// resolved through the game's one entity table when the write applies: a table that
-    /// answers [`EntityLookup::Taken`] (its list is lifted out of the game that moment,
-    /// ) refuses the write with [`HurtSourceError::Taken`] instead of retrying or
-    /// panicking, and the refusal refuses the callback's sibling queued writes too, as an
-    /// invalid landing write does.
-    Hurt {
-        /// The damaging entity's id, or none for the block itself.
-        source: Option<u32>,
-        /// The damage dealt.
-        amount: f32,
-    },
-    /// `resetFallDistance`.
-    ResetFallDistance,
-    /// `setRemainingFireTicks`: fire's and lava's ignition, or water's extinguish (a
-    /// negative or zero value).
-    SetFireTicks(i32),
-    /// `LivingEntity.addEffect(MobEffectInstance(effect, duration, amplifier))`, as a
-    /// wither rose's wither (40 ticks) or an eyeblossom's bee poison (25) does. Applies
-    /// when the swept entity is living; a kind that takes no effects skips it.
-    AddEffect {
-        /// The effect to add, a key requested once at registration.
-        effect: EffectKey,
-        /// How long the effect lasts, in ticks.
-        duration: i32,
-        /// The effect's amplifier, 0 for the plain effect.
-        amplifier: u8,
-    },
+struct QueuedCallback {
+    owner: Option<&'static str>,
+    callback: Box<dyn FnOnce(&mut InsideEntityView<'_>)>,
 }
 
-/// The answer of the game's one entity table for an id a [`EntityWrite::Hurt`] names:
-/// the same lookup other entity operations use, never a second one.
-// exhaustive: a closed set the game matches without a wildcard
-// no wire: the game's own answer to an entity-table lookup; it is matched in the game and never sent to a mod.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntityLookup {
-    /// The entity's row is in the table.
-    Found,
-    /// The entity exists, but its list is lifted out of the game this moment: its row
-    /// cannot be read or written now.
-    Taken,
-    /// No entity with this id.
-    Missing,
-}
-
-/// Why an [`EntityWrite::Hurt`] was refused: its source went through the entity table
-/// and the table could not hand out a row. Reported to the part as a typed value, not a
-/// retry and not a panic.
-// exhaustive: a closed set the game matches without a wildcard
-// no wire: a refusal the game reports to the part as a typed value inside the game; it is never encoded.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum HurtSourceError {
-    /// The source's list is lifted out of the game this moment, so its row
-    /// cannot be read: the write and its sibling queued writes from the same callback
-    /// are refused.
-    Taken(u32),
-    /// No entity with this id: the write is refused the same way.
-    Missing(u32),
-}
-
-/// A write at the block an entity is inside, asked for when the part is told and applied
-/// once the entity's batch has ticked, in the order asked, if the block is still the
-/// state the entity touched. The same contract as a landing write: the complete
-/// requested batch is checked before queuing, and an invalid state refuses all writes
-/// and sibling outputs from that callback.
-// exhaustive: the closed serialized write vocabulary and case order are a link contract.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-pub enum InsideWrite {
-    /// `Level.setBlockAndUpdate(pos, state)`, notifying neighbors and clients.
-    SetBlock(BlockState),
-    /// `Level.destroyBlock(pos, drop)`, with or without resource drops.
-    DestroyBlock {
-        /// Whether the destroyed block drops its resources.
-        drop: bool,
-    },
-}
-
-/// One planned item of the flush: an effect, or an entity write that runs before or
-/// after one.
-// exhaustive: the closed serialized plan vocabulary and case order are a link contract.
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-pub enum PlannedInside {
-    /// An [`InsideEffect`] applied to the swept entity.
+enum PlannedAction {
     Effect(InsideEffect),
-    /// An [`EntityWrite`] applied to the swept entity.
-    Write(EntityWrite),
+    Callback(QueuedCallback),
 }
 
-/// `InsideBlockEffectApplier.StepBasedCollector`: the effects and entity writes of one
+/// `InsideBlockEffectApplier.StepBasedCollector`: the effects and owned callbacks of one
 /// block sweep. The walk advances a step per block it reaches; a step's effects flush
-/// once each, in [`InsideEffect`] order, with the writes asked `run_before` an effect
-/// before it and those asked `run_after` after it. Steps flush in the order the walk
-/// reached them, and [`InsideEffects::take_planned`] hands the whole ordered plan to the
-/// entity's own tick, which stops applying at the first item after the entity dies.
+/// once each, in [`InsideEffect`] order, with the callbacks queued via `run_before`
+/// before their effect and those queued via `run_after` after it. Steps flush in the
+/// order the walk reached them, and `apply_and_clear` runs the ordered plan while the
+/// swept entity remains alive, with per-callback panic isolation.
+// no wire: holds owned Rust callbacks queued for the current sweep's flush; not a serializable payload.
 // exhaustive: the collector's state is private to the crate; a part only calls its methods.
-#[derive(Clone, Debug, Default, PartialEq, sunrise_mod_api_macros::Wire)]
 pub struct InsideEffects {
     /// `lastStep`: the step the walk last advanced, `-1` before the first.
-    pub(crate) last_step: i32,
+    last_step: i32,
     /// `effectsInStep`: the effect types queued for the current step.
-    pub(crate) in_step: [bool; 5],
-    /// `beforeEffectsInStep`: the writes asked before each effect this step.
-    pub(crate) before: [Vec<EntityWrite>; 5],
-    /// `afterEffectsInStep`: the writes asked after each effect this step.
-    pub(crate) after: [Vec<EntityWrite>; 5],
+    in_step: [bool; 5],
+    /// `beforeEffectsInStep`: the callbacks asked before each effect this step.
+    before: [Vec<QueuedCallback>; 5],
+    /// `afterEffectsInStep`: the callbacks asked after each effect this step.
+    after: [Vec<QueuedCallback>; 5],
     /// `finalEffects`: the flushed plan, steps in the order they were reached.
-    pub(crate) planned: Vec<PlannedInside>,
+    planned: Vec<PlannedAction>,
+}
+
+impl Default for InsideEffects {
+    fn default() -> Self {
+        Self {
+            last_step: -1,
+            in_step: [false; 5],
+            before: std::array::from_fn(|_| Vec::new()),
+            after: std::array::from_fn(|_| Vec::new()),
+            planned: Vec::new(),
+        }
+    }
+}
+
+impl std::fmt::Debug for InsideEffects {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let before: usize = self.before.iter().map(Vec::len).sum();
+        let after: usize = self.after.iter().map(Vec::len).sum();
+        f.debug_struct("InsideEffects")
+            .field("last_step", &self.last_step)
+            .field("in_step", &self.in_step)
+            .field("before_count", &before)
+            .field("after_count", &after)
+            .field("planned_count", &self.planned.len())
+            .finish()
+    }
 }
 
 impl InsideEffects {
@@ -334,33 +261,44 @@ impl InsideEffects {
             self.flush_step();
         }
     }
+
     /// `apply`: queue an effect for the current step. A type queued twice in one step
     /// still applies once.
     pub fn apply(&mut self, effect: InsideEffect) {
         self.in_step[effect as usize] = true;
     }
-    /// `runBefore`: a write that applies just before `effect` in the flush order. It
-    /// runs even when nothing queued `effect` itself that step, as vanilla's do.
-    pub fn run_before(&mut self, effect: InsideEffect, write: EntityWrite) {
-        self.before[effect as usize].push(write);
+
+    /// `runBefore`: queue a callback that runs just before `effect` in the flush order.
+    /// It runs even when nothing queued `effect` itself that step, as vanilla's do.
+    pub fn run_before(
+        &mut self,
+        effect: InsideEffect,
+        callback: impl FnOnce(&mut InsideEntityView<'_>) + 'static,
+    ) {
+        self.before[effect as usize].push(QueuedCallback {
+            owner: crate::content::crash::current_native_mod(),
+            callback: Box::new(callback),
+        });
     }
-    /// `runAfter`: a write that applies just after `effect` in the flush order.
-    pub fn run_after(&mut self, effect: InsideEffect, write: EntityWrite) {
-        self.after[effect as usize].push(write);
+
+    /// `runAfter`: queue a callback that runs just after `effect` in the flush order.
+    pub fn run_after(
+        &mut self,
+        effect: InsideEffect,
+        callback: impl FnOnce(&mut InsideEntityView<'_>) + 'static,
+    ) {
+        self.after[effect as usize].push(QueuedCallback {
+            owner: crate::content::crash::current_native_mod(),
+            callback: Box::new(callback),
+        });
     }
-    /// `applyAndClear`: flush the last step and take the whole plan, in order. The
-    /// caller applies the writes to the swept entity inside its own tick and stops at
-    /// the first item after it dies.
-    pub fn take_planned(&mut self) -> Vec<PlannedInside> {
-        self.flush_step();
-        self.last_step = -1;
-        std::mem::take(&mut self.planned)
-    }
+
     /// Commit another collector's current step into this one: a staged callback
     /// answered, so what it queued joins this step. The staged collector must not
     /// have flushed (its plan stays empty); a panicking callback is never absorbed.
-    pub fn absorb_step(&mut self, staged: Self) {
-        let mut staged = staged;
+    // hidden: engine-internal step commit from a completed part dispatch.
+    #[doc(hidden)]
+    pub fn absorb_step(&mut self, mut staged: Self) {
         for index in 0..5 {
             self.in_step[index] |= staged.in_step[index];
             let before = std::mem::take(&mut staged.before[index]);
@@ -377,18 +315,67 @@ impl InsideEffects {
             && self.before.iter().all(Vec::is_empty)
             && self.after.iter().all(Vec::is_empty)
     }
-    /// `flushStep`: this step's writes and effects into the plan, in `InsideEffect`
-    /// order, before the effect, the effect itself, then after it.
+
+    /// `applyAndClear`: flush the last step and run every queued effect and callback in
+    /// order while the swept entity remains alive, isolating panics per callback owner.
+    // hidden: engine sweep flush matching vanilla StepBasedCollector.applyAndClear.
+    #[doc(hidden)]
+    pub fn apply_and_clear(&mut self, access: &mut dyn InsideEntityAccess) {
+        self.flush_step();
+        self.last_step = -1;
+        let planned = std::mem::take(&mut self.planned);
+        let mut panicked_owners: Vec<&'static str> = Vec::new();
+        for action in planned {
+            if !access.is_alive() {
+                break;
+            }
+            match action {
+                PlannedAction::Effect(effect) => access.apply_effect(effect),
+                PlannedAction::Callback(QueuedCallback { owner, callback }) => {
+                    if owner.is_some_and(|id| {
+                        crate::runtime::poisoned(crate::HookId::EntityInside, id)
+                            || panicked_owners.contains(&id)
+                    }) {
+                        continue;
+                    }
+                    let _guard = owner.map(|id| crate::runtime::mark_mod(id, "entity_inside"));
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::world::phase_refusal::contain_refusal(
+                            owner.unwrap_or("unknown"),
+                            || callback(&mut InsideEntityView::new(access)),
+                        )
+                    })) {
+                        Ok(Ok(())) => {}
+                        Ok(Err(refusal)) => refusal.report(),
+                        Err(payload) => {
+                            crate::runtime::record_callback_panic(
+                                crate::HookId::EntityInside,
+                                owner.unwrap_or("unknown"),
+                                "entity_inside",
+                                crate::runtime::panic_summary(payload.as_ref()),
+                            );
+                            if let Some(id) = owner {
+                                panicked_owners.push(id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// `flushStep`: move this step's callbacks and effects into the plan, in `InsideEffect`
+    /// order: before the effect, the effect itself, then after it.
     fn flush_step(&mut self) {
         for (index, effect) in EFFECT_ORDER.into_iter().enumerate() {
-            for write in self.before[index].drain(..) {
-                self.planned.push(PlannedInside::Write(write));
+            for callback in self.before[index].drain(..) {
+                self.planned.push(PlannedAction::Callback(callback));
             }
             if std::mem::take(&mut self.in_step[index]) {
-                self.planned.push(PlannedInside::Effect(effect));
+                self.planned.push(PlannedAction::Effect(effect));
             }
-            for write in self.after[index].drain(..) {
-                self.planned.push(PlannedInside::Write(write));
+            for callback in self.after[index].drain(..) {
+                self.planned.push(PlannedAction::Callback(callback));
             }
         }
     }
@@ -398,51 +385,136 @@ impl InsideEffects {
 mod tests {
     use super::*;
 
+    struct RecordingAccess {
+        alive: bool,
+        log: Vec<String>,
+    }
+
+    impl RecordingAccess {
+        fn new() -> Self {
+            Self {
+                alive: true,
+                log: Vec::new(),
+            }
+        }
+    }
+
+    impl InsideEntityAccess for RecordingAccess {
+        fn id(&self) -> u32 {
+            7
+        }
+        fn kind(&self) -> &str {
+            "minecraft:zombie"
+        }
+        fn is_alive(&self) -> bool {
+            self.alive
+        }
+        fn position(&self) -> [f64; 3] {
+            [0.0, 64.0, 0.0]
+        }
+        fn velocity(&self) -> [f64; 3] {
+            [0.0, 0.0, 0.0]
+        }
+        fn fire_ticks(&self) -> i32 {
+            0
+        }
+        fn fall_distance(&self) -> f64 {
+            0.0
+        }
+        fn block_state(&self, _: [i32; 3]) -> Option<BlockState> {
+            None
+        }
+        fn push(&mut self, delta: [f64; 3]) -> bool {
+            self.log.push(format!("push:{}", delta[0]));
+            true
+        }
+        fn set_velocity(&mut self, _: [f64; 3]) -> bool {
+            true
+        }
+        fn make_stuck_in_block(&mut self, _: [f64; 3]) -> bool {
+            self.log.push("stuck".to_owned());
+            true
+        }
+        fn reset_fall_distance(&mut self) {
+            self.log.push("reset_fall".to_owned());
+        }
+        fn set_remaining_fire_ticks(&mut self, ticks: i32) {
+            self.log.push(format!("fire:{ticks}"));
+        }
+        fn add_effect(&mut self, _: EffectKey, duration: i32, amplifier: u8) -> bool {
+            self.log.push(format!("effect:{duration}:{amplifier}"));
+            true
+        }
+        fn hurt_with_source(
+            &mut self,
+            damage_type: &str,
+            amount: f32,
+            _: Option<EntityRef>,
+            _: Option<EntityRef>,
+        ) -> bool {
+            self.log.push(format!("hurt:{damage_type}:{amount}"));
+            if amount >= 100.0 {
+                self.alive = false;
+            }
+            true
+        }
+        fn set_block(&mut self, _: [i32; 3], _: BlockState) -> bool {
+            true
+        }
+        fn destroy_block(&mut self, _: [i32; 3], _: bool) -> bool {
+            true
+        }
+        fn apply_effect(&mut self, effect: InsideEffect) {
+            self.log.push(format!("builtin:{effect:?}"));
+        }
+    }
+
     /// `StepBasedCollector` flushes each step once, in `InsideBlockEffectType` order,
-    /// with the `run_before` writes before their effect and the `run_after` writes
-    /// after it, and a type queued twice in one step still applies once.
+    /// with `run_before` callbacks before their effect and `run_after` callbacks after it,
+    /// and a type queued twice in one step still applies once.
     #[test]
     fn steps_flush_in_vanilla_order() {
         let mut effects = InsideEffects::default();
-        let stuck = EntityWrite::StuckIn([0.25, 0.05, 0.25]);
-        let fire = EntityWrite::Hurt {
-            source: Some(7),
-            amount: 1.0,
-        };
-        // Step 0: a berry bush (Freeze queued by powder snow elsewhere, and the
-        // bush's stuck) then a fire block (FireIgnite with its hurt after it).
         effects.advance_step(0);
         effects.apply(InsideEffect::Freeze);
-        effects.run_after(InsideEffect::Freeze, stuck);
+        effects.run_after(InsideEffect::Freeze, |view| {
+            view.make_stuck_in_block([0.25, 0.05, 0.25]);
+        });
         effects.apply(InsideEffect::FireIgnite);
-        effects.run_after(InsideEffect::FireIgnite, fire);
-        // Step 2 (the walk skipped 1): water, which extinguishes.
+        effects.run_after(InsideEffect::FireIgnite, |view| {
+            view.hurt("minecraft:in_fire", 1.0);
+        });
         effects.advance_step(2);
         effects.apply(InsideEffect::Extinguish);
-        // A repeat in the same step changes nothing.
         effects.apply(InsideEffect::Extinguish);
+
+        let mut access = RecordingAccess::new();
+        effects.apply_and_clear(&mut access);
         assert_eq!(
-            effects.take_planned(),
+            access.log,
             vec![
-                PlannedInside::Effect(InsideEffect::Freeze),
-                PlannedInside::Write(stuck),
-                PlannedInside::Effect(InsideEffect::FireIgnite),
-                PlannedInside::Write(fire),
-                PlannedInside::Effect(InsideEffect::Extinguish),
+                "builtin:Freeze",
+                "stuck",
+                "builtin:FireIgnite",
+                "hurt:minecraft:in_fire:1",
+                "builtin:Extinguish",
             ]
         );
         assert!(effects.is_empty(), "applyAndClear empties the collector");
     }
 
-    /// A `run_before` write runs even when its effect was not queued that step, as
+    /// A `run_before` callback runs even when its effect was not queued that step, as
     /// vanilla's before-callbacks do.
     #[test]
-    fn a_before_write_runs_without_its_effect() {
+    fn a_before_callback_runs_without_its_effect() {
         let mut effects = InsideEffects::default();
         effects.advance_step(3);
-        let reset = EntityWrite::ResetFallDistance;
-        effects.run_before(InsideEffect::LavaIgnite, reset);
-        assert_eq!(effects.take_planned(), vec![PlannedInside::Write(reset)]);
+        effects.run_before(InsideEffect::LavaIgnite, |view| {
+            view.reset_fall_distance();
+        });
+        let mut access = RecordingAccess::new();
+        effects.apply_and_clear(&mut access);
+        assert_eq!(access.log, vec!["reset_fall"]);
     }
 
     /// Two steps queue the same type twice: once each, in step order.
@@ -453,29 +525,86 @@ mod tests {
         effects.apply(InsideEffect::ClearFreeze);
         effects.advance_step(1);
         effects.apply(InsideEffect::ClearFreeze);
+        let mut access = RecordingAccess::new();
+        effects.apply_and_clear(&mut access);
         assert_eq!(
-            effects.take_planned(),
-            vec![
-                PlannedInside::Effect(InsideEffect::ClearFreeze),
-                PlannedInside::Effect(InsideEffect::ClearFreeze),
-            ]
+            access.log,
+            vec!["builtin:ClearFreeze", "builtin:ClearFreeze"]
         );
     }
 
-    /// A wither rose's `addEffect` is a typed write like the others: it queues around
-    /// an effect and flushes in step order.
+    /// Once an action kills the swept entity, later queued effects and callbacks stop.
     #[test]
-    fn an_added_effect_is_a_write_in_the_plan() {
-        crate::content::registry_keys::resolve_effects(["minecraft:wither"], |_| Some(0)).unwrap();
-        let wither = crate::content::registry_keys::effect_key("minecraft:wither").unwrap();
+    fn apply_and_clear_stops_when_entity_dies() {
         let mut effects = InsideEffects::default();
-        effects.advance_step(1);
-        let rose = EntityWrite::AddEffect {
-            effect: wither,
-            duration: 40,
-            amplifier: 0,
-        };
-        effects.run_after(InsideEffect::Freeze, rose);
-        assert_eq!(effects.take_planned(), vec![PlannedInside::Write(rose)]);
+        effects.advance_step(0);
+        effects.run_before(InsideEffect::Freeze, |view| {
+            view.hurt("minecraft:generic", 100.0);
+        });
+        effects.apply(InsideEffect::Freeze);
+        effects.run_after(InsideEffect::Freeze, |view| {
+            view.push([1.0, 0.0, 0.0]);
+        });
+        let mut access = RecordingAccess::new();
+        effects.apply_and_clear(&mut access);
+        assert_eq!(access.log, vec!["hurt:minecraft:generic:100"]);
+    }
+
+    /// A panicking callback poisons only its owner for `entity_inside`, preserves prior
+    /// writes, and lets other mods' queued callbacks and built-in effects continue.
+    #[test]
+    fn a_panicking_callback_poisons_only_its_owner_and_preserves_prior_writes() {
+        struct Quiet;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for Quiet {}
+        crate::testing::with_dispatch(
+            vec![
+                crate::ModEntry::new("bad-cb", Box::new(Quiet)),
+                crate::ModEntry::new("good-cb", Box::new(Quiet)),
+            ]
+            .into(),
+            || {
+                let _ = crate::runtime::take_callback_panics();
+                let mut effects = InsideEffects::default();
+                effects.advance_step(0);
+                {
+                    let _g = crate::runtime::mark_mod("bad-cb", "entity_inside");
+                    effects.run_before(InsideEffect::Freeze, |view| {
+                        view.push([1.0, 0.0, 0.0]);
+                        panic!("callback boom");
+                    });
+                    effects.run_after(InsideEffect::Freeze, |view| {
+                        view.push([2.0, 0.0, 0.0]);
+                    });
+                }
+                {
+                    let _g = crate::runtime::mark_mod("good-cb", "entity_inside");
+                    effects.run_after(InsideEffect::Freeze, |view| {
+                        view.push([3.0, 0.0, 0.0]);
+                    });
+                }
+                effects.apply(InsideEffect::Freeze);
+
+                let mut access = RecordingAccess::new();
+                effects.apply_and_clear(&mut access);
+                assert_eq!(
+                    access.log,
+                    vec!["push:1", "builtin:Freeze", "push:3"],
+                    "prior write stays, second bad-cb callback is skipped, built-in and good-cb continue"
+                );
+                assert!(crate::runtime::poisoned(
+                    crate::HookId::EntityInside,
+                    "bad-cb"
+                ));
+                assert!(!crate::runtime::poisoned(
+                    crate::HookId::EntityInside,
+                    "good-cb"
+                ));
+                let notices = crate::runtime::take_callback_panics();
+                assert!(notices.iter().any(|n| {
+                    n.mod_id == "bad-cb" && n.hook == "entity_inside" && n.detail == "callback boom"
+                }));
+            },
+        );
     }
 }
