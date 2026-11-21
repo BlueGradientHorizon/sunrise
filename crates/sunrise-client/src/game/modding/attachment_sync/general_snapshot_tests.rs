@@ -144,3 +144,74 @@ fn remote_attachment_sync_ignores_unknown_entity() {
         );
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
+    use sunrise_mod_runtime::attachments::AttachmentSync;
+    use sunrise_protocol::{
+        attachment_sync::{Message, encode},
+        packets::play::{AddEntity, Clientbound, RemoveEntities},
+    };
+
+    crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
+        let (id, uuid) = (77, 0x1234);
+        let player_kind = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:player")
+            .unwrap();
+        let holder = Holder::Player(uuid);
+        let payload = encode(&Message {
+            holder,
+            replace: true,
+            changes: vec![AttachmentSync {
+                namespace: "sync_route".into(),
+                name: "value".into(),
+                value: Some([("n".into(), Tag::Int(99))].into()),
+            }],
+        })
+        .unwrap();
+        let mirrored = |game: &super::Game<'_>| {
+            game.remote
+                .as_ref()
+                .unwrap()
+                .attachments
+                .contains_key(&holder)
+        };
+
+        game.remote_attachment_sync(&payload);
+        assert!(
+            !mirrored(game),
+            "sync before pairing must not create a mirror"
+        );
+        game.handle_packet(Clientbound::AddEntity(AddEntity {
+            id,
+            uuid,
+            kind: player_kind,
+            position: [0.5, 64.0, 0.5],
+            velocity: [0.0; 3],
+            pitch: 0,
+            yaw: 0,
+            head_yaw: 0,
+            data: 0,
+        }))
+        .unwrap();
+        game.remote_attachment_sync(&payload);
+        assert!(mirrored(game), "the paired player receives attachment sync");
+        game.handle_packet(Clientbound::RemoveEntities(RemoveEntities {
+            ids: vec![id],
+        }))
+        .unwrap();
+        assert!(!mirrored(game), "the departing player loses its mirror");
+        game.remote_attachment_sync(&payload);
+        assert!(
+            !mirrored(game),
+            "sync after removal must not recreate a mirror"
+        );
+    });
+}
