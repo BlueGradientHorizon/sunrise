@@ -21,16 +21,19 @@ fn inventory_label_default_follows_image_height_not_inventory_slots() {
                     mod_type: None,
                     data: Vec::new(),
                 },
-                owner: "test",
                 layout_revision: 0,
                 slot_moves: Default::default(),
                 shown: true,
-                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-                    width: 176.0,
-                    height: 166.0,
-                    own_background: true,
-                    ..Default::default()
-                }),
+                screen: mod_api::__private::OwnedMenuScreen::new(
+                    "test",
+                    0,
+                    mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                        width: 176.0,
+                        height: 166.0,
+                        own_background: true,
+                        ..Default::default()
+                    }),
+                ),
             });
             let (ox, oy) = (17.0, 23.0);
             for (height, inventory_y, label_y) in [

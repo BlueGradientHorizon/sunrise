@@ -333,7 +333,7 @@ impl Parts {
     fn menu<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn MenuPart] {
         &self.menus
     }
-    fn menu_screen(&self, _: &str, _: Option<&str>) -> &[&'static dyn MenuPart] {
+    fn menu_for_opener(&self, _: &str, _: Option<&str>) -> &[&'static dyn MenuPart] {
         &self.menus
     }
     fn fluid<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn FluidPart] {

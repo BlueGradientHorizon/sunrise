@@ -312,26 +312,29 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                     data: Vec::new(),
                 },
                 slot_moves: Default::default(),
-                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-                    width: 176.0,
-                    height: 166.0,
-                    slots: vec![Some(mod_api::ScreenSlot {
-                        position: [8.0, 18.0],
-                        ..Default::default()
-                    })],
-                    inventory_y: 84.0,
-                    inventory_x: 8.0,
-                    title_label: None,
-                    inventory_label: None,
-                    own_labels: false,
-                    own_background: false,
-                    recipe_book: Some(key.clone()),
-                    recipe_book_toggle: None,
-                    recipe_book_big_result: false,
-                }),
+                screen: mod_api::__private::OwnedMenuScreen::new(
+                    "geometry",
+                    0,
+                    mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                        width: 176.0,
+                        height: 166.0,
+                        slots: vec![Some(mod_api::ScreenSlot {
+                            position: [8.0, 18.0],
+                            ..Default::default()
+                        })],
+                        inventory_y: 84.0,
+                        inventory_x: 8.0,
+                        title_label: None,
+                        inventory_label: None,
+                        own_labels: false,
+                        own_background: false,
+                        recipe_book: Some(key.clone()),
+                        recipe_book_toggle: None,
+                        recipe_book_big_result: false,
+                    }),
+                ),
             });
             // A snapshot may precede the first draw. The build itself must
             // collect declarations, not wait for the render refresh path.
@@ -499,27 +502,30 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                     data: Vec::new(),
                 },
                 slot_moves: Default::default(),
-                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-                    width: 176.0,
-                    height: 166.0,
-                    slots: vec![
-                        Some(mod_api::ScreenSlot {
-                            position: [8.0, 18.0],
-                            ..Default::default()
-                        }),
-                        Some(mod_api::ScreenSlot {
-                            position: [26.0, 18.0],
-                            ..Default::default()
-                        }),
-                        None,
-                    ],
-                    inventory_y: 84.0,
-                    inventory_x: 8.0,
-                    ..Default::default()
-                }),
+                screen: mod_api::__private::OwnedMenuScreen::new(
+                    "geometry",
+                    0,
+                    mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                        width: 176.0,
+                        height: 166.0,
+                        slots: vec![
+                            Some(mod_api::ScreenSlot {
+                                position: [8.0, 18.0],
+                                ..Default::default()
+                            }),
+                            Some(mod_api::ScreenSlot {
+                                position: [26.0, 18.0],
+                                ..Default::default()
+                            }),
+                            None,
+                        ],
+                        inventory_y: 84.0,
+                        inventory_x: 8.0,
+                        ..Default::default()
+                    }),
+                ),
             });
             game.build_screen();
             let before = geometry(game);
@@ -619,27 +625,30 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                     data: Vec::new(),
                 },
                 slot_moves: Default::default(),
-                owner: "geometry",
                 layout_revision: 0,
                 shown: true,
-                screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
-                    width: 176.0,
-                    height: 166.0,
-                    slots: vec![
-                        Some(mod_api::ScreenSlot {
-                            position: [8.0, 18.0],
-                            ..Default::default()
-                        }),
-                        Some(mod_api::ScreenSlot {
-                            position: [26.0, 18.0],
-                            ..Default::default()
-                        }),
-                        None,
-                    ],
-                    inventory_y: 84.0,
-                    inventory_x: 8.0,
-                    ..Default::default()
-                }),
+                screen: mod_api::__private::OwnedMenuScreen::new(
+                    "geometry",
+                    0,
+                    mod_api::MenuScreen::new(mod_api::MenuScreenLayout {
+                        width: 176.0,
+                        height: 166.0,
+                        slots: vec![
+                            Some(mod_api::ScreenSlot {
+                                position: [8.0, 18.0],
+                                ..Default::default()
+                            }),
+                            Some(mod_api::ScreenSlot {
+                                position: [26.0, 18.0],
+                                ..Default::default()
+                            }),
+                            None,
+                        ],
+                        inventory_y: 84.0,
+                        inventory_x: 8.0,
+                        ..Default::default()
+                    }),
+                ),
             });
             game.build_screen();
             let batch =

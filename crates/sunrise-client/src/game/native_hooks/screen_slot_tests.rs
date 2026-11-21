@@ -14,10 +14,13 @@ fn mod_screen_data_is_its_windows_only() {
             mod_type: None,
             data: Vec::new(),
         },
-        owner: "gtmod",
         slot_moves: Default::default(),
         layout_revision: 0,
-        screen: mod_api::MenuScreen::new(mod_api::MenuScreenLayout::default()),
+        screen: mod_api::__private::OwnedMenuScreen::new(
+            "gtmod",
+            0,
+            mod_api::MenuScreen::new(mod_api::MenuScreenLayout::default()),
+        ),
         shown: true,
     };
     assert!(s.set_data(4, 1, 7));

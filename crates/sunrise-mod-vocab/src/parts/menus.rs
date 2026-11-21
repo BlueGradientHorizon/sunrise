@@ -67,7 +67,11 @@ impl HookParts {
     /// The menu's owner lookup: only the part whose package owns the menu type, or the block
     /// opening a vanilla menu, receives callbacks. A bound recipe book keeps ownership with
     /// its declaring mod.
-    pub(crate) fn menu_screen(&self, menu: &str, block: Option<&str>) -> &[Attached<dyn MenuPart>] {
+    pub(crate) fn menu_for_opener(
+        &self,
+        menu: &str,
+        block: Option<&str>,
+    ) -> &[Attached<dyn MenuPart>] {
         let parts = attached(&self.menus, || Some(menu));
         let owner = crate::RecipeBookLayout::declaring_mod(menu);
         let namespace = match owner {
