@@ -342,9 +342,12 @@ fn registered_select_property_picks_the_case_the_mod_answers_per_stack() {
                 3 => "unlisted",
                 _ => return None,
             };
-            Iterator::find_map(keys, |(i, key)| {
-                (key.downcast_ref::<String>().unwrap() == chosen).then_some(i)
-            })
+            for (i, key) in keys {
+                if key.downcast_ref::<String>().unwrap() == chosen {
+                    return Some(i);
+                }
+            }
+            None
         }
     }
     let load_select = |kind: &str,
