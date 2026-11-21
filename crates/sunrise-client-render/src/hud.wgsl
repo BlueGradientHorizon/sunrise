@@ -35,14 +35,124 @@ struct Out {
     out.repeat = repeat;
     return out;
 }
+// Exact affine repeat coefficients, serialized by TexelAxis::affine_words. A finite f32
+// in 2^-149 units takes at most 277 bits. The phase denominator is twice a two-product
+// determinant times tile size and scale (1110 bits). The texel transform adds at most
+// a source coordinate, an atlas UV times the atlas extent, and carry bits (< 1728 total).
+// Only the occupied limbs are loaded and used, usually one word per coefficient.
+alias RepeatInt = array<u32, 54>;
+fn repeat_coefficient(row: i32, column: u32, words: u32) -> RepeatInt {
+    var value: RepeatInt;
+    for (var i = 0u; i < words; i++) {
+        value[i] = textureLoad(repeat_texels, vec2(i32(column + i), row), 0).x;
+    }
+    return value;
+}
+fn repeat_at_least(a: ptr<function, RepeatInt>, b: ptr<function, RepeatInt>, words: u32) -> bool {
+    for (var i = words; i > 0u; i--) {
+        let j = i - 1u;
+        if (*a)[j] != (*b)[j] { return (*a)[j] > (*b)[j]; }
+    }
+    return true;
+}
+fn repeat_add(a: ptr<function, RepeatInt>, b: ptr<function, RepeatInt>, words: u32) {
+    var carry = 0u;
+    for (var i = 0u; i < words; i++) {
+        let x = (*a)[i];
+        let sum = x + (*b)[i];
+        let result = sum + carry;
+        (*a)[i] = result;
+        carry = select(0u, 1u, sum < x || result < sum);
+    }
+}
+fn repeat_sub(a: ptr<function, RepeatInt>, b: ptr<function, RepeatInt>, words: u32) {
+    var borrow = 0u;
+    for (var i = 0u; i < words; i++) {
+        let x = (*a)[i];
+        let difference = x - (*b)[i];
+        let result = difference - borrow;
+        (*a)[i] = result;
+        borrow = select(0u, 1u, difference > x || result > difference);
+    }
+}
+fn repeat_mod_add(a: ptr<function, RepeatInt>, b: ptr<function, RepeatInt>,
+                  period: ptr<function, RepeatInt>, words: u32) {
+    repeat_add(a, b, words);
+    if repeat_at_least(a, period, words) { repeat_sub(a, period, words); }
+}
+fn repeat_advance(phase: ptr<function, RepeatInt>, coefficient: RepeatInt, distance: u32,
+                  period: ptr<function, RepeatInt>, words: u32) {
+    var step = coefficient;
+    var remaining = distance;
+    while remaining != 0u {
+        if (remaining & 1u) != 0u { repeat_mod_add(phase, &step, period, words); }
+        remaining >>= 1u;
+        if remaining == 0u { break; }
+        // Double modulo the period in place.
+        var carry = 0u;
+        for (var i = 0u; i < words; i++) {
+            let value = step[i];
+            step[i] = (value << 1u) | carry;
+            carry = value >> 31u;
+        }
+        if repeat_at_least(&step, period, words) { repeat_sub(&step, period, words); }
+    }
+}
+fn repeat_affine_texel(pixel: vec2<u32>, row: i32, limit: u32) -> u32 {
+    let words = textureLoad(repeat_texels, vec2(0, row), 0).x;
+    let offset_field = textureLoad(repeat_texels, vec2(1, row), 0).x;
+    if words == 0u { return offset_field; } // Constant atlas index.
+    var bit = textureLoad(repeat_texels, vec2(2, row), 0).x;
+    var phase = repeat_coefficient(row, 3u, words);
+    var period = repeat_coefficient(row, 3u + 3u * words, words);
+    repeat_advance(&phase, repeat_coefficient(row, 3u + words, words), pixel.x, &period, words);
+    repeat_advance(&phase, repeat_coefficient(row, 3u + 2u * words, words), pixel.y, &period, words);
+    var offset = repeat_coefficient(row, 3u + 4u * words, words);
+    if offset_field == 0u {
+        repeat_add(&phase, &offset, words);
+    } else {
+        if !repeat_at_least(&phase, &offset, words) { return 0u; }
+        repeat_sub(&phase, &offset, words);
+    }
+    // Divide exactly, testing only the quotient bits that could fit in the atlas.
+    // A quotient larger than that range saturates before the final clamp.
+    var divisor = repeat_coefficient(row, 3u + 5u * words, words);
+    var texel = 0u;
+    while bit != 0u {
+        if repeat_at_least(&phase, &divisor, words) {
+            repeat_sub(&phase, &divisor, words);
+            texel |= bit;
+        }
+        bit >>= 1u;
+        var carry = 0u;
+        for (var i = words; i > 0u; i--) {
+            let j = i - 1u;
+            let low = divisor[j] & 1u;
+            divisor[j] = (divisor[j] >> 1u) | carry;
+            carry = low << 31u;
+        }
+    }
+    return min(texel, limit);
+}
+
 // Nearest sampling in the selected atlas subrect, resolved at the active device scale.
 fn sprite_sample(in: Out) -> vec4<f32> {
     let ordinary = textureSample(atlas, atlas_sampler, in.uv);
     if in.repeat.x == 0u {
         return ordinary;
     }
-    let pixel = vec2<i32>(floor(in.clip.xy)) - vec2<i32>(in.repeat.yz);
-    let texel = textureLoad(repeat_texels, pixel, 0).xy;
+    let pixel = vec2<u32>(floor(in.clip.xy)) - in.repeat.yz;
+    var texel: vec2<u32>;
+    if in.repeat.x == 8u {
+        let limits = textureDimensions(atlas, 0) - vec2(1u);
+        texel = vec2(repeat_affine_texel(pixel, 0, limits.x),
+                     repeat_affine_texel(pixel, 1, limits.y));
+    } else {
+        let u = select(pixel.x, pixel.y, (in.repeat.x & 2u) != 0u);
+        let v = select(pixel.x, pixel.y, (in.repeat.x & 4u) != 0u);
+        texel = vec2(textureLoad(repeat_texels, vec2(i32(u), 0), 0).x & 0xffffu,
+                     textureLoad(repeat_texels, vec2(i32(v), 0), 0).x >> 16u);
+    }
     return textureLoad(atlas, vec2<i32>(texel), 0);
 }
 @fragment fn fs_main(in: Out) -> @location(0) vec4<f32> {

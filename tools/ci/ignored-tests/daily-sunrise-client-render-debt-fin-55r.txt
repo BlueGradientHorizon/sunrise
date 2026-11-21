@@ -1,0 +1,1 @@
+sunrise-client-render hud::coverage_tests::overlapping_affine_repeats_sample_both_device_axes_in_draw_order lib daily slow

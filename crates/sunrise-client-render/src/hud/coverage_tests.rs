@@ -165,6 +165,79 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
     }
 }
 
+#[test]
+#[ignore = "daily"]
+fn overlapping_affine_repeats_sample_both_device_axes_in_draw_order() {
+    use crate::{
+        hud_layout::Blend as SpriteBlend,
+        ui::{GuiSpriteBlit, GuiSpriteScaling, blit_gui_sprite},
+    };
+
+    const RED: [u8; 4] = [255, 0, 0, 255];
+    const BLUE: [u8; 4] = [0, 0, 255, 255];
+    let _gpu = crate::gfx::test_gpu::lock();
+    let mut atlas = HudAtlas::boot();
+    (atlas.width, atlas.height) = (1, 8);
+    atlas.pixels = [BLUE, BLUE, BLUE, BLUE, [0; 4], [0; 4], [0; 4], RED].concat();
+    let Some(mut gpu) = Gpu::with_atlas([atlas.width, atlas.height], &atlas.pixels) else {
+        return;
+    };
+    let size = [4, 3];
+    let mut batch = HudBatch::scratch(size);
+    let tall = f32::from_bits(167 << 23); // 2^40 needs more than one coefficient word.
+    for (row, pose, dst) in [
+        (
+            0.0,
+            [0.75, 0.25, 0.0, 0.75, 0.0, -1.0],
+            [0.0, 0.0, 6.0, 10.0],
+        ),
+        (
+            4.0,
+            [0.5, 0.25, 0.0, tall, 0.0, 0.625],
+            [0.0, -1.0, 8.0, 2.0],
+        ),
+    ] {
+        assert!(blit_gui_sprite(
+            &mut batch,
+            &atlas,
+            "test:phase",
+            GuiSpriteBlit {
+                rect: Rect {
+                    u0: 0.0,
+                    v0: row / 8.0,
+                    u1: 1.0,
+                    v1: (row + 4.0) / 8.0,
+                    w: 1,
+                    h: 4,
+                },
+                scaling: Some(GuiSpriteScaling::Tile([1, 1])),
+                dst,
+                color: u32::MAX,
+                region: None,
+                blend: SpriteBlend::Textured,
+            },
+            pose,
+            None,
+        ));
+    }
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    let mut uploads = crate::gfx::upload::Uploads::new(&gpu.device);
+    gpu.hud
+        .prepare(&gpu.device, &mut uploads, &mut encoder, &batch, size);
+    uploads.finish(&encoder);
+    let (pixels, _) = gpu.read_draw(encoder, &batch, size, [0.0, 0.0], false);
+    // The top repeat's local Y is (Y - X/2 - 5/8) / 2^40. Just below the
+    // seam it hits the last (red) texel; above it the transparent first texel
+    // lets the underlying blue repeat show. The rows straddle a diagonal.
+    assert_eq!(
+        pixels,
+        [
+            RED, RED, RED, RED, BLUE, BLUE, RED, RED, BLUE, BLUE, BLUE, BLUE
+        ]
+        .concat()
+    );
+}
+
 pub(super) struct Gpu {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,

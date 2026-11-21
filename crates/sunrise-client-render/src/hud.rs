@@ -2146,8 +2146,8 @@ pub struct HudVertex {
     /// 1 for the GUI's text (`RenderPipelines.GUI_TEXT`), which a resource
     /// pack's text shader draws when it has one.
     pub text: u32,
-    /// One-based repeat index (0 for an ordinary vertex), then its device-pixel map origin.
-    /// The renderer sets the origin for the active target scale when uploading the vertex.
+    /// One-based repeat index (0 for an ordinary vertex). At upload the renderer replaces it
+    /// with the sampling mode and device-pixel origin for the active target scale.
     pub repeat: [u32; 3],
 }
 impl HudVertex {
@@ -3705,10 +3705,10 @@ impl HudRenderer {
                 for (i, vertex) in batch.vertices.iter().enumerate() {
                     let repeat = vertex.repeat[0];
                     if repeat != 0
-                        && let Some([x, y]) = self.repeats.origin(repeat)
+                        && let Some(sampling) = self.repeats.vertex(repeat)
                     {
                         let mut vertex = *vertex;
-                        vertex.repeat = [repeat, x, y];
+                        vertex.repeat = sampling;
                         let bytes = bytemuck::bytes_of(&vertex);
                         let start = i * bytes.len();
                         dst.slice(start..start + bytes.len()).copy_from_slice(bytes);

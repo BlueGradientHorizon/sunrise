@@ -1,6 +1,6 @@
-//! A subpixel repeat needs only the texels hit by device pixel centers, not a quad per tile.
-//! Resolve those texels with the active render target's scale, then let the HUD rasterize the
-//! original geometry (including its scissor and blend) against that map.
+//! Draw a subpixel repeat as one quad, resolving texels at device pixel centers. Separable
+//! repeats upload the two axes' sample strips; affine repeats upload only exact coefficients,
+//! so overlapping draws never need separate render-target-sized maps or staging slices.
 
 use super::{HudBatch, HudVertex};
 use crate::{gfx::upload::Uploads, hud_layout::Pose};
@@ -82,16 +82,76 @@ impl TexelAxis {
             *phase -= &self.period;
         }
     }
+
+    // One row of the affine record (hud.wgsl): [limb count, offset sign, highest quotient bit],
+    // then phase origin, X step, Y step, period, offset magnitude and shifted divisor, all
+    // in little-endian limbs. Multiply the phase terms by the texel slope up front so the
+    // shader needs only modular additions and comparisons/subtractions.
+    fn affine_words(self) -> Vec<u32> {
+        if self.extent == 1
+            || self.uv_step.sign() == Sign::NoSign
+            || (self.dx.sign() == Sign::NoSign && self.dy.sign() == Sign::NoSign)
+        {
+            return vec![0, u32::from(self.sample(&self.start)), 0];
+        }
+        let (phase, dx, dy, offset, step) = if self.uv_step.sign() == Sign::Minus {
+            // Reversing the integer phase order makes a mirrored UV slope positive.
+            let last = &self.period - 1u32;
+            let negate_mod = |step: BigInt| {
+                if step.sign() == Sign::NoSign {
+                    step
+                } else {
+                    &self.period - step
+                }
+            };
+            (
+                &last - self.start,
+                negate_mod(self.dx),
+                negate_mod(self.dy),
+                self.uv_start + &last * &self.uv_step,
+                -self.uv_step,
+            )
+        } else {
+            (self.start, self.dx, self.dy, self.uv_start, self.uv_step)
+        };
+        let high_shift = (self.extent - 1).ilog2();
+        let negative_offset = offset.sign() == Sign::Minus;
+        let terms = [
+            phase * &step,
+            dx * &step,
+            dy * &step,
+            self.period * &step,
+            offset,
+            self.uv_divisor << high_shift,
+        ];
+        // One extra bit holds a sum of two reduced phases, or a phase plus the offset.
+        let words = (terms.iter().map(BigInt::bits).max().unwrap_or(0) + 1).div_ceil(32) as usize;
+        let mut data = Vec::with_capacity(3 + terms.len() * words);
+        data.extend([words as u32, u32::from(negative_offset), 1 << high_shift]);
+        for term in terms {
+            let end = data.len() + words;
+            data.extend(term.iter_u32_digits());
+            data.resize(end, 0);
+        }
+        data
+    }
+}
+
+struct RepeatSamples {
+    // In hud.wgsl: 1 marks strips, bits 1 and 2 select a device axis per strip, 8 marks affine.
+    mode: u32,
+    size: [u32; 2],
+    data: Vec<u32>,
 }
 
 impl SpriteRepeat {
-    fn texels(
+    fn samples(
         &self,
         scale: f32,
         atlas: [u32; 2],
         [left, top]: [u32; 2],
-        [width, height]: [u32; 2],
-    ) -> Vec<[u16; 2]> {
+        size: [u32; 2],
+    ) -> RepeatSamples {
         let [a, b, c, d, tx, ty] = self.pose.map(units);
         let determinant = &a * &d - &b * &c;
         let scale = units(scale);
@@ -160,47 +220,45 @@ impl SpriteRepeat {
                 extent,
             }
         });
-        // Axis-aligned (including quarter-turned) sprites only need exact arithmetic
-        // once per column or row. A shear/rotation can depend on both device axes.
-        let columns = std::array::from_fn::<_, 2, _>(|i| {
-            let axis = &axes[i];
-            (axis.dy.sign() == Sign::NoSign).then(|| {
-                let mut phase = axis.start.clone();
-                (0..width)
-                    .map(|_| {
-                        let texel = axis.sample(&phase);
-                        axis.advance(&mut phase, &axis.dx);
-                        texel
-                    })
-                    .collect::<Vec<_>>()
-            })
-        });
-        let mut row = axes.each_ref().map(|axis| axis.start.clone());
-        let mut texels = Vec::with_capacity(width as usize * height as usize);
-        for _ in 0..height {
-            let fixed = std::array::from_fn::<_, 2, _>(|i| {
-                (axes[i].dx.sign() == Sign::NoSign).then(|| axes[i].sample(&row[i]))
-            });
-            let mut phase = row.clone();
-            for x in 0..width as usize {
-                texels.push(std::array::from_fn(|i| {
-                    if let Some(col) = &columns[i] {
-                        col[x]
-                    } else if let Some(texel) = fixed[i] {
-                        texel
-                    } else {
-                        let axis = &axes[i];
-                        let texel = axis.sample(&phase[i]);
-                        axis.advance(&mut phase[i], &axis.dx);
-                        texel
-                    }
-                }));
+        // Quarter-turns and reflections can exchange the axes. Pack the two strips into
+        // the low and high halves of a row: each atlas index fits in 16 bits.
+        let directions = axes.each_ref().map(|axis| {
+            if axis.dy.sign() == Sign::NoSign {
+                Some(0)
+            } else if axis.dx.sign() == Sign::NoSign {
+                Some(1)
+            } else {
+                None
             }
-            for (phase, axis) in row.iter_mut().zip(&axes) {
-                axis.advance(phase, &axis.dy);
+        });
+        if let [Some(u), Some(v)] = directions {
+            let width = size[u].max(size[v]);
+            let mut data = vec![0; width as usize];
+            for (i, (axis, direction)) in axes.iter().zip([u, v]).enumerate() {
+                let mut phase = axis.start.clone();
+                let stride = [&axis.dx, &axis.dy][direction];
+                for entry in &mut data[..size[direction] as usize] {
+                    *entry |= u32::from(axis.sample(&phase)) << (16 * i);
+                    axis.advance(&mut phase, stride);
+                }
+            }
+            RepeatSamples {
+                mode: 1 | ((u as u32) << 1) | ((v as u32) << 2),
+                size: [width, 1],
+                data,
+            }
+        } else {
+            let [mut data, v] = axes.map(TexelAxis::affine_words);
+            let width = data.len().max(v.len());
+            data.resize(width, 0);
+            data.extend(v);
+            data.resize(width * 2, 0);
+            RepeatSamples {
+                mode: 8,
+                size: [width as u32, 2],
+                data,
             }
         }
-        texels
     }
 }
 
@@ -211,12 +269,11 @@ pub(super) struct RepeatMaps {
 }
 
 struct Map {
-    origin: [u32; 2],
+    vertex: [u32; 3],
     group: wgpu::BindGroup,
 }
 
-// Use Rg16Uint: one 4-byte upload texel contains two indices into the HUD atlas
-// (each dimension of the atlas is at most MAX_ATLAS_SIZE).
+// A word is either a packed pair of 16-bit atlas indices or one affine coefficient limb.
 fn map_texture(device: &wgpu::Device, [width, height]: [u32; 2]) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("HUD repeat texels"),
@@ -228,7 +285,7 @@ fn map_texture(device: &wgpu::Device, [width, height]: [u32; 2]) -> wgpu::Textur
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rg16Uint,
+        format: wgpu::TextureFormat::R32Uint,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     })
@@ -328,27 +385,27 @@ impl RepeatMaps {
                         return None;
                     }
                     let size = [end[0] - origin[0], end[1] - origin[1]];
-                    let texels = repeat.texels(scale, atlas, origin, size);
-                    let texture = map_texture(device, size);
+                    let samples = repeat.samples(scale, atlas, origin, size);
+                    let texture = map_texture(device, samples.size);
                     uploads.texture(
                         encoder,
                         texture.as_image_copy(),
-                        size[0],
-                        size[1],
-                        bytemuck::cast_slice(&texels),
+                        samples.size[0],
+                        samples.size[1],
+                        bytemuck::cast_slice(&samples.data),
                     );
                     Some(Map {
-                        origin,
+                        vertex: [samples.mode, origin[0], origin[1]],
                         group: Self::bind(device, &self.layout, &texture),
                     })
                 }),
         );
     }
 
-    pub(super) fn origin(&self, repeat: u32) -> Option<[u32; 2]> {
+    pub(super) fn vertex(&self, repeat: u32) -> Option<[u32; 3]> {
         self.maps[repeat as usize - 1]
             .as_ref()
-            .map(|map| map.origin)
+            .map(|map| map.vertex)
     }
 
     pub(super) fn draw(
@@ -378,5 +435,41 @@ impl RepeatMaps {
             }
             start = end;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repeat_uploads_do_not_store_a_device_pixel_grid() {
+        let source = SpriteTexelRegion {
+            edges: [SpriteTexelEdge::Packed(5), SpriteTexelEdge::Packed(9)],
+            offset: 0.0,
+            size: 1.0,
+        };
+        let repeat = SpriteRepeat {
+            pose: [0.75, 0.0, 0.0, 2.0, 0.0, 0.0],
+            origin: [0.0; 2],
+            period: [1.0; 2],
+            source: [source; 2],
+        };
+        let target = [3840, 2160];
+        let atlas = [4096, 5120];
+        let strips = repeat.samples(1.0, atlas, [0, 0], target);
+        assert_eq!(strips.size, [3840, 1]);
+        assert_eq!(strips.data.len(), 3840);
+
+        let shear = SpriteRepeat {
+            pose: [0.75, 0.25, 0.0, 2.0, 0.0, 0.0],
+            ..repeat
+        };
+        let large = shear.samples(1.0, atlas, [0, 0], target);
+        let small = shear.samples(1.0, atlas, [0, 0], [4, 6]);
+        // The same affine record covers either draw, not a map of its bounding box.
+        assert_eq!(large.size, small.size);
+        assert_eq!(large.data, small.data);
+        assert!(large.data.len() < 64);
     }
 }
