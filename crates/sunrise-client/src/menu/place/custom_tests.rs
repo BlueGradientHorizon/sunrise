@@ -8,9 +8,13 @@ use mod_api::RecipeBookLayout;
 fn kind() -> Kind {
     Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
         id: "test:custom",
+        owner: "test",
         slots: 10,
+        player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![8, 9],
+        inputs: Vec::new(),
         crafting: None,
         links: None,
     })))

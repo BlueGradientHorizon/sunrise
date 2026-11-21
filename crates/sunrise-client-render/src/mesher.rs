@@ -15,6 +15,12 @@ pub mod part_tables;
 #[cfg(test)]
 mod part_tables_tests;
 mod sides;
+mod visibility_plan;
+pub(crate) use visibility_plan::MAX_RESIDENT_VISIBILITY_BYTES;
+pub use visibility_plan::{
+    ANSWER_BYTES, Lease, PLAN_BYTES, SectionAnswer, SectionPlanBuilder, SectionVisibilityPlan,
+    capture_input, plan_section,
+};
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]
 mod source_tests;
@@ -1434,10 +1440,15 @@ impl Padded {
     #[cfg(test)]
     fn new(region: &[[Option<&Chunk>; 3]; 3], sy: i32) -> Self {
         let mut pad = Self::default();
-        pad.fill(region, sy, &mut Box::new([0; 4096]));
+        pad.fill::<false>(region, sy, &mut Box::new([0; 4096]));
         pad
     }
-    fn fill(&mut self, region: &[[Option<&Chunk>; 3]; 3], sy: i32, own: &mut [u32; 4096]) {
+    fn fill<const MISSING_AS_AIR: bool>(
+        &mut self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        sy: i32,
+        own: &mut [u32; 4096],
+    ) {
         self.blocks.resize(P * P * P, 0);
         self.light.resize(P * P * P, 0);
         let (blocks, light) = (&mut self.blocks, &mut self.light);
@@ -1456,10 +1467,12 @@ impl Padded {
             // Where each chunk column's cells of this layer come from, found once.
             let sources: [[Source; 3]; 3] = std::array::from_fn(|rz| {
                 std::array::from_fn(|rx| match region[rz][rx] {
+                    None if MISSING_AS_AIR => Source::Outside(0),
                     None => Source::Missing,
                     Some(c) => match c.section_at(wy) {
                         Ok(section) => Source::Section(section),
-                        Err(light) => Source::Outside(light),
+                        Err(crate::chunk::Outside::Row(section)) => Source::Row(section),
+                        Err(crate::chunk::Outside::Uniform(light)) => Source::Outside(light),
                     },
                 })
             });
@@ -1488,6 +1501,8 @@ enum Source<'a> {
     Missing,
     /// Above or below the column's sections: air with this light.
     Outside(u8),
+    /// Above or below the column's sections: air lit by the sky light of this section's bottom row.
+    Row(&'a crate::chunk::Section),
     Section(&'a crate::chunk::Section),
 }
 /// Fills one run of a padded row, `blocks.len()` cells from x = `x0`, starting
@@ -1513,6 +1528,11 @@ fn fill_run(
         Source::Outside(v) => {
             blocks.fill(0);
             light.fill(*v);
+        }
+        Source::Row(section) => {
+            blocks.fill(0);
+            section.light.copy_run(at & 255, light);
+            light.iter_mut().for_each(|l| *l &= 0xF0);
         }
         // A neighbour not loaded continues this chunk's edge column. As lit
         // air, the outermost chunks' water drew a wall toward it (fluids show
@@ -2152,8 +2172,50 @@ impl Mesher<'_> {
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
+        out: SectionMesh,
+        scratch: &mut MeshScratch,
+    ) -> SectionMesh {
+        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
+    }
+    /// Mesh a section prepared for `section_visibility`. The raw snapshot's missing neighbours
+    /// are nonoccluding air, whether the listeners returned a mask or abstained. `visibility_bytes`
+    /// is this section's preparation charge against its shared section-geometry ceiling.
+    pub fn mesh_planned(
+        &mut self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        sy: i32,
+        out: SectionMesh,
+        scratch: &mut MeshScratch,
+        plan: Option<&SectionVisibilityPlan>,
+        visibility_bytes: usize,
+    ) -> SectionMesh {
+        match plan {
+            None => self.mesh_masked::<_, true>(
+                region,
+                sy,
+                out,
+                scratch,
+                &visibility_plan::NoMasks,
+                visibility_bytes,
+            ),
+            Some(plan) if plan.hides_terrain() => {
+                visibility_plan::hidden_terrain(self, region, sy, out)
+            }
+            Some(plan) => {
+                self.mesh_masked::<_, true>(region, sy, out, scratch, plan, visibility_bytes)
+            }
+        }
+    }
+    /// The mesher's one body: `M` is `NoMasks` on the no-mod path, a constant that compiles
+    /// every visibility step out of it.
+    fn mesh_masked<M: visibility_plan::CellMasks, const MISSING_AS_AIR: bool>(
+        &mut self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        sy: i32,
         mut out: SectionMesh,
         scratch: &mut MeshScratch,
+        masks: &M,
+        visibility_bytes: usize,
     ) -> SectionMesh {
         out.clear();
         let center = region[1][1].expect("centre chunk");
@@ -2168,13 +2230,13 @@ impl Mesher<'_> {
                     self.blend_radius,
                     [center.x, center.z, base_y],
                 );
-                mod_geometry::add(self, &mut tints, &mut out);
+                mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
                 out.finish_sprite_layers();
             }
             return out;
         }
         let own = scratch.own.get_or_insert_with(|| Box::new([0; 4096]));
-        scratch.padded.fill(region, sy, own);
+        scratch.padded.fill::<MISSING_AS_AIR>(region, sy, own);
         if !self.hidden_states.is_empty() {
             for id in &mut scratch.padded.blocks {
                 if self.hidden_states[*id as usize] {
@@ -2184,6 +2246,9 @@ impl Mesher<'_> {
         }
         let pad = &scratch.padded;
         solid_rows(pad, &self.tables.solid, &mut scratch.solid_rows);
+        if M::ACTIVE {
+            visibility_plan::open_masked(masks, &mut scratch.solid_rows);
+        }
         let opaque = &scratch.solid_rows;
         let (open, hidden) = row_masks(opaque);
         out.visibility = visibility_rows(&open);
@@ -2227,7 +2292,9 @@ impl Mesher<'_> {
                     if hidden[(y * 16 + z) as usize] >> x & 1 != 0 {
                         continue;
                     }
-                    if state.fluid.kind() != FluidKind::Empty {
+                    let kept = masks.at(cell);
+                    if state.fluid.kind() != FluidKind::Empty && kept & visibility_plan::FLUID != 0
+                    {
                         let start = [out.solid.len(), out.translucent.len()];
                         let water = tints.water(x, y, z);
                         let shade = (
@@ -2244,6 +2311,7 @@ impl Mesher<'_> {
                             water,
                             &mut out,
                             [x, y, z],
+                            masks,
                         );
                         if self.shader_pack {
                             out.record_source(
@@ -2252,7 +2320,7 @@ impl Mesher<'_> {
                             );
                         }
                     }
-                    if !state.model {
+                    if !state.model || kept & visibility_plan::MODEL == 0 {
                         continue;
                     }
                     let world = BlockPos::new(center.x * 16 + x, base_y + y, center.z * 16 + z);
@@ -2281,7 +2349,13 @@ impl Mesher<'_> {
                         && self.leaf_culling.is_interior()
                         && scratch.leaf.interior(self.leaf_culling, x, y, z);
                     for (d, [dx, dy, dz], opposite) in DIRECTIONS {
-                        let neighbor = pad.blocks[(cell as isize + OFFSETS[d as usize]) as usize];
+                        let next = (cell as isize + OFFSETS[d as usize]) as usize;
+                        let neighbor = pad.blocks[next];
+                        // A neighbour a mod took this face's occluder from hides nothing here.
+                        if M::ACTIVE && !visibility_plan::occludes(masks.at(next), opposite) {
+                            visible[d as usize] = true;
+                            continue;
+                        }
                         // `should_render_face`'s first test, without its lookups: a
                         // full occlusion face toward this block hides the face.
                         if full_faces[neighbor as usize] >> opposite & 1 != 0 {
@@ -2321,6 +2395,9 @@ impl Mesher<'_> {
                                     true,
                                 )
                                 .unwrap_or(true);
+                    }
+                    if M::ACTIVE {
+                        visibility_plan::keep_faces(kept, &mut visible);
                     }
                     let connected = &self.render.connected;
                     let start = [out.solid.len(), out.translucent.len()];
@@ -2377,7 +2454,7 @@ impl Mesher<'_> {
             }
         }
         if !self.tables.section_geometry.is_empty() {
-            mod_geometry::add(self, &mut tints, &mut out);
+            mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
         }
         out.finish_sprite_layers();
         out

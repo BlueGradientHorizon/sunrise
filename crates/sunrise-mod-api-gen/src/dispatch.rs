@@ -272,6 +272,7 @@ pub(super) fn emit<'a>(
         let contract = hook.contract;
         let out = hook.out.as_deref();
         let answered = hook.answered_by_mod;
+        let isolated_collect = answered && hook.isolate && contract == Contract::Collect;
         let output = if let Some(out) = out {
             let index = args
                 .iter()
@@ -310,7 +311,21 @@ pub(super) fn emit<'a>(
                     format!(" -> Option<{}>", answer.to_token_stream())
                 }
                 Contract::Replace => format!(" -> {}", reference.elem.to_token_stream()),
-                Contract::Collect if answered && answered_batch(&reference.elem).is_none() => {
+                Contract::Collect if isolated_collect => {
+                    let answer = answered_sink(&reference.elem)
+                        .filter(|(_, output)| matches!(output, syn::ReturnType::Default))
+                        .map(|(answer, _)| answer)
+                        .ok_or_else(|| {
+                            format!("{name}: output must be &mut dyn FnMut(Answered<T>)")
+                        })?;
+                    format!(" -> Option<{}>", answer.to_token_stream())
+                }
+                Contract::Collect
+                    if answered
+                        && answered_batch(&reference.elem).is_none()
+                        && !(matches!(name, "blocks" | "items")
+                            && answered_sink(&reference.elem).is_some()) =>
+                {
                     return Err(format!("{name}: output must be Vec<Answered<T>>"));
                 }
                 Contract::Collect => String::new(),
@@ -336,6 +351,17 @@ pub(super) fn emit<'a>(
                     param,
                 )
             });
+        if isolated_collect
+            && (hook.context.is_some()
+                || host.as_ref().is_some_and(|(_, host)| {
+                    host.ty.starts_with("&mut ")
+                        || matches!(host.ty.as_str(), "HostSide" | "LevelSide")
+                }))
+        {
+            return Err(format!(
+                "{name}: an isolated collector needs a read-only world Host"
+            ));
+        }
         // A block notice may identify a watching block entity. Its Parts receive
         // the source payload without changing the declared source key.
         let observer_routed = hook
@@ -442,6 +468,15 @@ pub(super) fn emit<'a>(
         let event = fresh_name("event", &mut used);
         let event_type = format!("{}Event", hook_id(name));
         let hook_id = event_type.strip_suffix("Event").unwrap();
+        // The checked declaration view replaces the old plain collect output.
+        // Surface export reads the input tree's types, including older trees.
+        let declaration = match (name, output.as_ref()) {
+            ("blocks" | "items", Some((_, Type::Reference(output)))) => answered_sink(&output.elem)
+                .map(|(entry, _)| entry)
+                .or_else(|| answered_batch(&output.elem))
+                .map(ToTokens::to_token_stream),
+            _ => None,
+        };
         if !is_render {
             hook_ids.push_str(&format!("{hook_id},\n"));
             hook_constants.push_str(&format!(
@@ -509,7 +544,9 @@ pub(super) fn emit<'a>(
         let stack_after = stack_outputs.iter().map(|(output, _)| format!(
             "if *{event}.{output} != __previous_{output} {{ match __validate_{output}({event}.{output}) {{ Ok(()) => __previous_{output} = {event}.{output}.clone(), Err(error) => {{ *{event}.{output} = __previous_{output}.clone(); log::warn!(\"mod {{}} hook {name} output {output} refused: {{error:?}}\", super::content::crash::current_native_mod().unwrap_or(\"unknown\")); }} }} }}\n"
         )).collect::<String>();
-        let collected = output.as_ref().filter(|_| contract == Contract::Collect);
+        let collected = output
+            .as_ref()
+            .filter(|_| contract == Contract::Collect && !isolated_collect);
         // A draw surface reaches mods as its context's trait object, which the native call
         // builds from `Game` and the surface.
         let mut surface_calls = std::collections::HashMap::new();
@@ -548,8 +585,33 @@ pub(super) fn emit<'a>(
             }
             syn::visit_mut::VisitMut::visit_type_mut(&mut OwnedLootContext, &mut owned_ty);
             let ty = &owned_ty;
+            if isolated_collect {
+                struct MutableBorrow(bool);
+                impl<'ast> syn::visit::Visit<'ast> for MutableBorrow {
+                    fn visit_type_reference(&mut self, reference: &'ast syn::TypeReference) {
+                        self.0 |= reference.mutability.is_some();
+                        syn::visit::visit_type_reference(self, reference);
+                    }
+                }
+                let mut mutable = MutableBorrow(false);
+                syn::visit::Visit::visit_type(&mut mutable, ty);
+                if mutable.0 {
+                    return Err(format!(
+                        "{}: an isolated collector cannot also write to {name}",
+                        hook.name
+                    ));
+                }
+            }
             dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             if collect_cancel && name == "cancel" {
+                continue;
+            }
+            if declaration.is_some() && Some(name.as_str()) == out {
+                lifetimes.a = true;
+                fields.push_str(&format!(
+                    "mod_id: &'static str,\ncontext: &'a RegistrationContext,\n{name}: {},\n",
+                    lifetimes.field(ty).0.to_token_stream()
+                ));
                 continue;
             }
             let ty_tokens = ty.to_token_stream().to_string();
@@ -582,7 +644,7 @@ pub(super) fn emit<'a>(
                 {
                     surfaces.push(name.clone());
                 }
-                if hook.isolate && !rollback_pointee_is_copy(&field_ty) {
+                if hook.isolate && batch_entry.is_none() && !rollback_pointee_is_copy(&field_ty) {
                     return Err(format!(
                         "{}: isolate rolls a listener's writes back to the requested values; \
                          its mutable argument {name} must be a Copy primitive or a fixed array \
@@ -631,7 +693,10 @@ pub(super) fn emit<'a>(
             fields.push_str("/// Whether the event is cancelled: by the game or an earlier listener, or by this one\n/// setting it. Only a listener that receives cancelled events (`#[listener(receive_cancelled)]`)\n/// sees `true`, and setting it back to `false` lets the game's behaviour run.\npub cancelled: bool,\n");
             inits.push(format!("cancelled: *{}", cancel_out.unwrap()));
         }
-        if let Some((name, ty)) = output.as_ref().filter(|_| contract != Contract::Collect) {
+        if let Some((name, ty)) = output
+            .as_ref()
+            .filter(|_| contract != Contract::Collect || isolated_collect)
+        {
             dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
         }
         if !declared.is_empty() && (!declaration_only || name == "apply_effect_tick") {
@@ -664,15 +729,11 @@ pub(super) fn emit<'a>(
         } else {
             "// no wire: borrowed event crosses as call arguments."
         };
-        let non_exhaustive = if hook.non_exhaustive {
-            "#[non_exhaustive]\n"
-        } else {
-            ""
-        };
+        let event_struct = format!(
+            "/// Built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+        );
         if is_render {
-            render_dispatch.push_str(&format!(
-                "{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
-            ));
+            render_dispatch.push_str(&event_struct);
             continue;
         }
         trait_params.push(format!("{event}: &mut {event_type}{elided}"));
@@ -685,10 +746,15 @@ pub(super) fn emit<'a>(
             _ if collect_cancel => "Flow::Continue",
             Contract::Cancel => "Flow::Continue",
             Contract::Replace => "None",
+            Contract::Collect if isolated_collect => "None",
             _ => "",
         };
-        // Reuse the exact host and drawing conversions for generated game-side calls.
-        if in_game && !declaration_only {
+        // A call site that dispatches directly owns its conversion. Emit the game-side adapter
+        // only for placeholders and call sites that delegate to it.
+        if in_game
+            && !declaration_only
+            && (fill || super::has_call(&method.block, &format!("fire_{name}")))
+        {
             // A scoped read hook can run against either the game or a borrowed
             // tick view. Its native receiver carries the selected host.
             let scoped_read_host = target.contains("::NativeHookHost<");
@@ -862,6 +928,10 @@ pub(super) fn emit<'a>(
                         crossing.before, crossing.after
                     )
                 }
+            } else if name == "add_pack_finders" {
+                format!(
+                    "let mods = self.mods.clone(); mod_api::dispatch_{name}_for({passed}, |id| mods.code_owner_enabled(id));"
+                )
             } else {
                 format!("mod_api::{call}({passed});")
             };
@@ -893,6 +963,8 @@ pub(super) fn emit<'a>(
             && host
                 .as_ref()
                 .is_some_and(|(_, param)| param.ty == "&mut dyn LevelWriteHost");
+        let filtered_subscribers = name == "add_pack_finders";
+        let allow_subscriber = fresh_name("allow", &mut used);
         let invoke_part = fresh_name("invoke_part", &mut used);
         let invoke = call_args.join(", ");
         let trait_params = trait_params.join(", ");
@@ -914,6 +986,9 @@ pub(super) fn emit<'a>(
         // A scoped hook is its part's method alone: a global moment beside it is its own hook.
         let callee = if scoped.is_some() { "part" } else { "mod" };
         match (contract, out) {
+            (Contract::Cancel, Some(out)) if mod_cancel && hook.output_validator.is_some() => method_source.push_str(&format!(
+                "///\n/// Return `Flow::Cancel` to propose setting `{out}`. Once accepted, a cancellation cannot be\n/// cleared; only mods registered with `#[listener(receive_cancelled)]` still run.\n"
+            )),
             (Contract::Cancel, Some(out)) if mod_cancel => method_source.push_str(&format!(
                 "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later mods are skipped unless they\n/// listen with `#[listener(receive_cancelled)]`; those see `{event}.cancelled` and may set it back to\n/// `false`.\n"
             )),
@@ -923,9 +998,10 @@ pub(super) fn emit<'a>(
             (Contract::Replace, Some(out)) => method_source.push_str(&format!(
                 "///\n/// Return `Some` to set `{out}`; the first {callee} returning `Some` wins.\n"
             )),
-            (Contract::Collect, Some(out)) if matches!(name, "blocks" | "items") => method_source.push_str(&format!(
-                "///\n/// Each mod receives its own empty `{event}.{out}` batch. A bare name, in an identifier or\n/// in `block_item`, `pick_item`, `wall_block`, `base_block`, `crafting_remainder` or `Item::block`,\n/// is that mod's own; declared identifiers must belong to\n/// that mod's manifest-owned namespaces, and unowned identifiers refuse registration.\n"
-            )),
+            (Contract::Collect, _) if declaration.is_some() => (),
+            (Contract::Collect, Some(_)) if isolated_collect => method_source.push_str(
+                "///\n/// Return `Some` to give one answer, or `None` to abstain. The game collects each mod's answer in order.\n"
+            ),
             (Contract::Collect, Some(out)) if answered => method_source.push_str(&format!(
                 "///\n/// Each mod receives its own empty `{event}.{out}` batch; every entry it adds is recorded\n/// as that mod's.\n"
             )),
@@ -948,25 +1024,37 @@ pub(super) fn emit<'a>(
             .as_ref()
             .map_or(trait_name, |(part_trait, _)| part_trait);
         dispatch.push_str(&format!(
-            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n///\n{event_struct}"
         ));
+        if let Some(entry) = &declaration {
+            let out = out.unwrap();
+            dispatch.push_str(&format!(
+                "impl {event_type}<'_> {{\n\
+                 /// Submit a declaration in a manifest-owned namespace. A bare name or reference\n\
+                 /// uses the mod's ID as its namespace. A locally invalid declaration returns\n\
+                 /// a [`DeclarationError`] and is also reported at startup if ignored. Collisions\n\
+                 /// and checks needing other declarations or resources run after collection.\n\
+                 pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
+                     super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
+                 }}\n}}\n"
+            ));
+        }
         if declaration_only {
             continue;
         }
-        let build = format!(
-            "{stack_snapshots}{}let {}{event} = {event_type} {{ {} }};",
-            if answered && contract == Contract::Collect {
-                format!("let mut {batch} = Vec::new(); ")
-            } else {
-                String::new()
-            },
-            if matches!(name, "blocks" | "items") {
-                ""
-            } else {
-                "mut "
-            },
-            inits.join(", "),
-        );
+        let build = if declaration.is_some() {
+            String::new()
+        } else {
+            format!(
+                "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
+                if answered && contract == Contract::Collect && !isolated_collect {
+                    format!("let mut {batch} = Vec::new(); ")
+                } else {
+                    String::new()
+                },
+                inits.join(", "),
+            )
+        };
         let write_back = if name == "block_entity_tick" {
             format!(
                 "*{event}.reply = if tick_changed {{ BlockEntityTickReply::Changed }} else {{ BlockEntityTickReply::Unchanged }}; {write_back}"
@@ -977,11 +1065,13 @@ pub(super) fn emit<'a>(
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
-        let (build, local_event) = if hook.event_per_listener {
+        let (build, local_event) = if hook.event_per_listener || isolated_collect {
             // A replace answer is returned outside the event. A regular collect
             // output borrows one slot, reborrowed for each listener above. Answered
-            // collect batches and cancellation do not use this mode.
-            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace);
+            // collect batches and cancellation do not use this mode. An isolated collector's
+            // one return value is outside the event too; each mod gets the original inputs.
+            let reply_outside_event =
+                matches!(contract, Contract::Listen | Contract::Replace) || isolated_collect;
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (!reply_outside_event && !shared_collect_output)
                 || (!write_back.is_empty() && name == "block_entity_tick")
@@ -1012,13 +1102,17 @@ pub(super) fn emit<'a>(
         // A trait mod's call is marked with the mod for a panic to name.
         let each = match &hook.owner {
             Some(owner) => format!("super::entered_owned(HookId::{hook_id}, \"{name}\", {owner})"),
+            None if filtered_subscribers => {
+                format!(
+                    "super::runtime::entered_matching(HookId::{hook_id}, \"{name}\", {allow_subscriber})"
+                )
+            }
             None if answered || hook.collect_validator.is_some() => {
                 format!("super::entered_with_id(HookId::{hook_id}, \"{name}\")")
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
         };
-        // A listener refused by the phase gate (#3123) answers what a refused wasm call answers
-        // (`wire::refusal_value`), and the event fields it may have written are put back from a
+        // A listener refused by the phase gate restores event fields from a
         // snapshot taken before its call. Outside `World` only (`contained`); in `World` the
         // call is the plain one.
         let snapshot = fresh_name("snapshot", &mut used);
@@ -1026,7 +1120,7 @@ pub(super) fn emit<'a>(
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
         // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
-        // effects of a refused wasm listener's earlier calls do, and it has no value to copy.
+        // surface has no whole value to copy.
         for (field, by_reference) in rollback
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
@@ -1072,11 +1166,11 @@ pub(super) fn emit<'a>(
                 restores.join(" ")
             )
         };
-        let refused_value = crate::wire::refusal_value(
-            result.trim() == "-> Flow",
-            "Flow::Continue",
-            "Default::default()",
-        );
+        let refused_value = if result.trim() == "-> Flow" {
+            "Flow::Continue"
+        } else {
+            "Default::default()"
+        };
         let run = |expression: &str| {
             format!(
                 "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}refusal.report(); {refused_value} }} }}"
@@ -1133,7 +1227,7 @@ pub(super) fn emit<'a>(
         // The #2414 ruling an isolated cancel hook carries: a listener that unwinds keeps the
         // **requested** outputs — not one an earlier listener had proposed — is skipped by this
         // hook for the session, and no later listener runs on this invocation.
-        let (isolate_snapshot, isolate_restore) = if hook.isolate {
+        let (isolate_snapshot, isolate_restore) = if mod_cancel && hook.isolate {
             let snapshot = rollback
                 .iter()
                 .map(|(name, by_reference)| {
@@ -1175,12 +1269,67 @@ pub(super) fn emit<'a>(
                 format!("{cancel}; {stack_after}")
             }
         };
-        let inert_owner = fresh_name("disabled_owner", &mut used);
-        let (lookup, calls) = match &scoped {
-            None if matches!(name, "blocks" | "items") => (
+        // A hook with an `output_validator` checks each listener's outputs as that listener
+        // returns: a refused set is rolled back to the last accepted one (the requested values
+        // before any listener), the refusal names the mod and the field, and later listeners
+        // run on the accepted values.
+        let (validated_start, validated_arms) = match &hook.output_validator {
+            Some(validator) if hook.isolate => {
+                let accepted = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "let mut __accepted_{name} = {}{event}.{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                let arguments = rollback
+                    .iter()
+                    .map(|(name, _)| format!("&__accepted_{name}"))
+                    .chain(rollback.iter().map(|(name, by_reference)| {
+                        format!("&{}{event}.{name}", if *by_reference { "*" } else { "" })
+                    }))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let keep = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "__accepted_{name} = {}{event}.{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                let undo = rollback
+                    .iter()
+                    .map(|(name, by_reference)| {
+                        format!(
+                            "{}{event}.{name} = __accepted_{name}; ",
+                            if *by_reference { "*" } else { "" }
+                        )
+                    })
+                    .collect::<String>();
+                (
+                    format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
+                    format!(
+                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
+                    ),
+                )
+            }
+            _ => (
                 String::new(),
                 format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut local = Vec::new(); {{ let mut {event} = {event_type} {{ {name}: &mut local }}; {mod_item}.{name}(context, &mut {event}); }} for declaration in &mut local {{ if let Err(reason) = super::parts::own_declaration(mod_id, declaration) {{ context.refuse_declaration(reason); }} }} {event}.{name}.extend(local); }}"
+                    "Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} "
+                ),
+            ),
+        };
+        let inert_owner = fresh_name("disabled_owner", &mut used);
+        let (lookup, calls) = match &scoped {
+            None if declaration.is_some() => (
+                String::new(),
+                format!(
+                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id, context, {name} }}; {mod_item}.{name}(context, &mut {event}); }}"
                 ),
             ),
             None if hook.context == Some(PhaseContext::ChunkDisk) => (
@@ -1207,10 +1356,19 @@ pub(super) fn emit<'a>(
                     owner = hook.owner.as_deref().unwrap(),
                 ),
             ),
+            None if isolated_collect => (
+                // The callback receives only completed answers. Containment covers the mod's call
+                // and the panic payload destructor, not the engine's answer callback.
+                String::new(),
+                format!(
+                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ let mod_id = {mod_entry}.id; if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); {local_event} match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(Some(answer))) => {o}(Answered {{ answer, mod_id }}), Ok(Ok(None)) => {{}}, Ok(Err(refusal)) => refusal.report(), Err(payload) => {{ if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))) {{ std::mem::forget(payload); }} super::runtime::poison(HookId::{hook_id}, mod_id); }} }} }} }}",
+                    o = out.unwrap()
+                ),
+            ),
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(
-                    "{{ {isolate_snapshot} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ Ok(Ok(Flow::Cancel)) => {{ {event}.cancelled = true; }} Ok(Ok(_)) => {{}} Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
+                    "{{ {isolate_snapshot} {validated_start} let mut {entered} = super::runtime::ListenerScope::new(); for ({receives}, {mod_entry}) in super::listening(HookId::{hook_id}) {{ if super::runtime::poisoned(HookId::{hook_id}, {mod_entry}.id) || ({event}.cancelled && !{receives}) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| super::runtime::refusable(contained, || {mod_item}.{name}({invoke})))) {{ {validated_arms}Ok(Err(refusal)) => {{ refusal.report(); {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} Err(_unwound) => {{ {isolate_restore} super::runtime::poison(HookId::{hook_id}, {mod_entry}.id); *{o} = {event}.cancelled; return; }} }} }} }} *{o} = {event}.cancelled;",
                     o = out.unwrap()
                 ),
             ),
@@ -1313,6 +1471,24 @@ pub(super) fn emit<'a>(
             dispatch.push_str(&format!(
                 "#[doc(hidden)] pub fn dispatch_{name}({dispatch_signature}) {{ dispatch_{name}_with({args}, |part, event| part.{name}(&mut *{host}, event)); }}\n\
                  #[doc(hidden)] pub fn dispatch_{name}_with({params}, mut {invoke_part}: impl FnMut(&dyn {part_trait}, &mut {event_type}{elided}){result}) {{ {unpack}{early_return}\n{body} }}\n"
+            ));
+        } else if filtered_subscribers {
+            let wrapper_params = dispatch_params
+                .iter()
+                .map(|param| param.trim().strip_prefix("mut ").unwrap_or(param.trim()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let args = dispatch_params
+                .iter()
+                .map(|param| {
+                    let binding = param.split_once(':').unwrap().0.trim();
+                    binding.strip_prefix("mut ").unwrap_or(binding)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            dispatch.push_str(&format!(
+                "#[doc(hidden)] pub fn dispatch_{name}({wrapper_params}) {{ dispatch_{name}_for({args}, |_| true); }}\n\
+                 #[doc(hidden)] pub fn dispatch_{name}_for({dispatch_signature}, {allow_subscriber}: impl FnMut(&str) -> bool) {{ {unpack}{early_return}\n{body} }}\n"
             ));
         } else {
             dispatch.push_str(&format!(
@@ -2305,6 +2481,24 @@ fn answered_batch(ty: &Type) -> Option<&Type> {
     generic_of(generic_of(ty, "Vec")?, "Answered")
 }
 
+/// The payload and return type of an engine-only `dyn FnMut(Answered<T>)` sink.
+fn answered_sink(ty: &Type) -> Option<(&Type, &syn::ReturnType)> {
+    let Type::TraitObject(object) = ty else {
+        return None;
+    };
+    let syn::TypeParamBound::Trait(bound) = object.bounds.first()? else {
+        return None;
+    };
+    let segment = bound.path.segments.last().filter(|s| s.ident == "FnMut")?;
+    let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
+        return None;
+    };
+    if args.inputs.len() != 1 {
+        return None;
+    }
+    Some((generic_of(args.inputs.first()?, "Answered")?, &args.output))
+}
+
 /// `T` of a `name<T>` type.
 fn generic_of<'a>(ty: &'a Type, name: &str) -> Option<&'a Type> {
     let Type::Path(path) = ty else { return None };
@@ -2692,6 +2886,42 @@ fn main() {{
             refused.as_deref(),
             Some("gather: output must be Vec<Answered<T>>")
         );
+    }
+
+    #[test]
+    fn an_isolated_collect_only_allows_its_single_answer_sink() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let hook = Hook {
+            name: "gather".into(),
+            contract: Contract::Collect,
+            out: Some("answers".into()),
+            answered_by_mod: true,
+            isolate: true,
+            ..Hook::sample(
+                "sunrise_client::game::native_hooks::gather::Game<'_>::native_gather",
+                Side::Client,
+            )
+        };
+        let emit_method = |receiver: &str, extra: &str, sink: &str| {
+            let method = syn::parse_str(&format!(
+                "fn native_gather({receiver}, {extra} answers: {sink}) {{ mod_api::dispatch_gather(self, answers); }}"
+            )).unwrap();
+            emit(&root, [&hook].into_iter(), &[method], &[])
+        };
+        let sink = "&mut dyn FnMut(Answered<u32>)";
+        if let Err(error) = emit_method("&self", "input: &u32,", sink) {
+            panic!("a read-only collector with one answer sink must generate: {error}");
+        }
+        for extra in ["extra: &mut u32,", "extra: Option<&mut u32>,"] {
+            assert!(emit_method("&self", extra, sink).is_err());
+        }
+        for invalid_sink in [
+            "&mut Vec<Answered<u32>>",
+            "&mut dyn FnMut(Answered<u32>) -> Result<(), DeclarationError>",
+        ] {
+            assert!(emit_method("&self", "", invalid_sink).is_err());
+        }
+        assert!(emit_method("&mut self", "input: &u32,", sink).is_err());
     }
 
     #[test]

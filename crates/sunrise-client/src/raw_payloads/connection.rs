@@ -9,7 +9,6 @@ use std::sync::{
     Arc, Condvar, Mutex,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::{Duration, Instant};
 use sunrise_mod_runtime::byte_channel;
 use sunrise_protocol::payload_negotiation::{Entry, Phase};
 
@@ -100,16 +99,6 @@ struct Current {
 pub struct IngressLease {
     _permit: byte_channel::Permit<()>,
     pub(super) owned_bytes: usize,
-    received: Instant,
-}
-pub(super) const PAYLOAD_DEADLINE: Duration =
-    Duration::from_millis(2 * sunrise_mod_runtime::MAX_GUEST_CALL_BUDGET_MILLIS);
-impl IngressLease {
-    /// A retained payload may wait longer than the VM's largest (30 s) load call,
-    /// but never extend its deadline by moving between receiving queues.
-    pub(super) fn expired(&self, now: Instant) -> bool {
-        now.saturating_duration_since(self.received) >= PAYLOAD_DEADLINE
-    }
 }
 // Four slots cover Vec's initial growth and later geometric staging. Provider
 // queue storage is separately charged by the typed ingress channel. This charge
@@ -205,7 +194,6 @@ impl Connection {
             .map(|permit| IngressLease {
                 _permit: permit,
                 owned_bytes,
-                received: Instant::now(),
             })
             .map_err(|e| match e {
                 byte_channel::ReserveError::Full => PayloadSendError::Backpressure,

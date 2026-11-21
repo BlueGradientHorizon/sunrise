@@ -135,14 +135,15 @@ mod tests {
         fn items(&self, _: &RegistrationContext, e: &mut ItemsEvent<'_>) {
             let mut item = Item::new("test:box_shulker_box", "minecraft:purple_shulker_box");
             item.block = Some("test:box_shulker_box".into());
-            e.items.push(item);
+            e.register(item).unwrap();
         }
         fn blocks(&self, _: &RegistrationContext, e: &mut BlocksEvent<'_>) {
             // Its item is the shulker box item above, not a block item of its own.
-            e.blocks
-                .push(Block::new("test:box_shulker_box", "minecraft:barrel").with_item(false));
-            e.blocks
-                .extend(["test:a", "test:b"].map(|id| Block::new(id, "minecraft:white_banner")));
+            e.register(Block::new("test:box_shulker_box", "minecraft:barrel").with_item(false))
+                .unwrap();
+            for block in ["test:a", "test:b"].map(|id| Block::new(id, "minecraft:white_banner")) {
+                e.register(block).unwrap();
+            }
         }
     }
     fn with_fixture(replace: bool, f: impl FnOnce(&mut Game<'_>, Log, Arc<AtomicBool>)) {

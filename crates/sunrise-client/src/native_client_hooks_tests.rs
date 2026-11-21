@@ -113,7 +113,7 @@ pub(crate) fn install() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
         let installed = super::install(NativeClientHooks {
-            menu_still_valid: |context, player, menu, pos, eye, valid| {
+            menu_still_valid: |context, player, menu, pos, eye, _, valid| {
                 STILL_VALID_ASKED.set(STILL_VALID_ASKED.get() + 1);
                 STILL_VALID_POS.set(pos);
                 if menu == "test:rules" && player == 2 && eye[2] == 0.0 {
@@ -130,9 +130,6 @@ pub(crate) fn install() {
                 }
             },
             living_breathe_heard: || false,
-            farmland_trample: |context, _, _, _, _, cancel| {
-                *cancel = context.setting("rules_mod", "stack").is_some();
-            },
             has_mods: || false,
             player_name_format: |context, _, displayname| {
                 if let Some(value) = context.setting("rules_mod", "stack") {

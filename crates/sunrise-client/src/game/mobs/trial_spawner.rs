@@ -292,23 +292,15 @@ impl Game<'_> {
                 }
                 TrialEvent::TrialOmen(uuid) => self.bad_omen_to_trial_omen(uuid),
                 TrialEvent::Discard(uuid) => {
-                    let (at, dropped) = {
-                        let id = self.persist.uuids.iter().find(|(_, u)| **u == uuid);
-                        if let Some((id, _)) = id
-                            && let Some(m) = self.mobs.iter_mut().find(|m| m.id == *id)
-                        {
-                            let at = m.position;
-                            let dropped = sunrise_client::mobs::drops::drop_preserved_equipment(m);
-                            m.removed = true;
-                            (Some(at), dropped)
-                        } else {
-                            (None, Vec::new())
-                        }
-                    };
-                    if let Some(at) = at {
-                        for stack in dropped {
+                    if let Some((&id, _)) = self.persist.uuids.iter().find(|(_, u)| **u == uuid)
+                        && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+                    {
+                        let at = m.position;
+                        let drops = sunrise_client::mobs::drops::drop_preserved_equipment(m);
+                        for stack in drops {
                             self.spawn_at_location(at, 0.0, stack);
                         }
+                        self.remove_mob_now(id, false);
                     }
                 }
                 TrialEvent::SoundAt(name, at, pitch) => self.audio.play(

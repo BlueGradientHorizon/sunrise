@@ -86,7 +86,7 @@ every OS), the dedicated loop answers `server-status` with TPS, MSPT (average, P
 clock `/tick query` uses), players (name, UUID, address, ping, position), loaded chunks and uptime. It answers
 `console <line>` with the command's output. `server-mods` reads the canonical `LoadedMods` package
 inventory on this same server thread and answers `{"mods":[{"id":"example","version":"1"}]}`.
-It includes native, wasm and content packages installed in that inventory, in inventory order; an empty
+It includes native and content packages installed in that inventory, in inventory order; an empty
 inventory is `{"mods":[]}`. The supervisor's `GET /api/v1/mods` uses this query, never a build-record fallback.
 
 **A proxy moving a player between two servers** uses more requests on this endpoint (`lan/arrivals.rs`,
@@ -466,7 +466,7 @@ comes out of the headless-engine work.
 **One-command install** (`packaging/server/`):
 
 - Linux and macOS:
-  `curl -fsSL https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.sh | sh`
+  `curl -fsSL https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.sh | sh`
   The script picks the release archive for the OS and architecture (on Linux x86_64 the server archive,
   on macOS arm64 the game's), downloads it from GitHub Releases, and checks it against the release's signed
   `SHA256SUMS` when OpenSSL 3 is installed, else against the SHA-256 GitHub publishes for each asset
@@ -479,7 +479,7 @@ comes out of the headless-engine work.
   any that are missing, `init` warns, and `run` stops at once with what to install, rather than restarting
   a game that can't load.
 - Windows:
-  `irm https://raw.githubusercontent.com/horizon-rust/horizon/main/packaging/server/install.ps1 | iex`
+  `irm https://raw.githubusercontent.com/sunrise-org/sunrise/main/packaging/server/install.ps1 | iex`
   The script does the same into `%LOCALAPPDATA%\Sunrise` (`-Version`, `-Dir`), with junctions instead of
   links (no admin rights), and adds `bin` to the user's PATH. It finds OpenSSL 3 on the PATH or in Git for
   Windows to check the signature.
@@ -531,16 +531,6 @@ The owner edits only `server.toml`. The supervisor writes `server.properties` fr
 start, so the engine stays exactly vanilla. The file is short: typed sections for what owners change, and
 a `[properties]` table that passes any other vanilla key through unchanged.
 
-For Unix wasm compilation, add `"wasm.compile_timeout_secs" = "120"` under
-`[properties]` to allow 120 seconds per uncached module. The engine reads this
-runtime setting from the dedicated game directory's `server.properties`; edit the
-TOML when using the supervisor. Zero or non-numeric values publish a refusal naming
-the setting and value, excluding the affected package's code and content. Unix cache
-trust/write failures and compiler failures refuse compilation rather than drop the
-deadline; restore a private writable `.sunrise-cache/wasm` and working executable.
-Removing the key restores the available-thread default; see the
-[wasm compilation settings](modding/src/how-to/wasm-mods.md#compilation-time-setting)
-for the exact formula and platform limitations.
 
 ```toml
 # Sunrise server settings (docs/server.md). The server writes them into server.properties before

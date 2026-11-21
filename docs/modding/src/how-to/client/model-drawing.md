@@ -28,7 +28,7 @@ an earlier answer alone or clear it with `*event.selection = None`. A missing,
 freed or wrongly sized texture keeps the original texture **and** model.
 The selection affects the third-person avatar and its skin layers, first-person
 arms, and inventory and creative previews. It does not change the cape, tab
-list, or anyone else's view. Native and wasm mods use the same hook.
+list, or anyone else's view.
 
 ## Third-person held items
 
@@ -118,16 +118,13 @@ Model and texture references are scoped to the resource load. A stale reference
 returned during drawing uses vanilla's model or the supplied default texture,
 with one diagnostic per provider until reload, never a panic. A failed callback
 discards all of the piece's custom layers, draws the piece with vanilla behaviour,
-and disables that provider until reload, with one diagnostic. This includes refused
-or trapped wasm callbacks, even after an earlier layer succeeded. Native and
-wasm use the same Part, methods and handler tokens. Only references and layer
-values cross Wire during a frame: no geometry, rebakes or native-only escape path.
+and disables that provider until reload, with one diagnostic. A failure discards the custom drawing even if an earlier layer succeeded.
+Callbacks work with references and layer values, not geometry or rebakes.
 
 ## Bake-time standalone forms
 
 `standalone_models` contract version 2 keeps `event.models: &mut Vec<String>` for plain
-file ids and adds `event.forms: &mut Vec<StandaloneModelForm>`. Both native and wasm
-listeners receive `RegistrationContext`, not a runtime `Host`. Forms are attributed
+file ids and adds `event.forms: &mut Vec<StandaloneModelForm>`. Listeners receive `RegistrationContext`, not a runtime `Host`. Forms are attributed
 to the registering mod by dispatch:
 
 ```rust,ignore
@@ -177,7 +174,7 @@ This API bakes quads only, not a mod-defined baked result type.
 A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
 A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
 material. Copies with a colour other than white, hidden faces, a model with translucent faces or a block state model are baked on the CPU
-instead of drawn as GPU instances; the 16,384-copy budget bounds that cost, and native and wasm are identical.
+instead of drawn as GPU instances; the 16,384-copy budget bounds that cost.
 `overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
 opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
 cull mask the caller supplies) are Sunrise's options for mod copies.
@@ -267,8 +264,7 @@ There is no simulation-tick work.
 Only the creating mod can access a group. A foreign handle returns `GroupError::Stale`,
 as does a destroyed group, a group after resource reload or world close, or a group
 whose mod was disabled. Re-enabling starts without groups: recreate them from the
-newly published model handles. Slot reuse never revives an old handle. Native and
-wasm use the same ownership, budgets, lifetime and rendering implementation.
+newly published model handles. Slot reuse never revives an old handle.
 
 ## Still fluids in a block entity
 
@@ -318,6 +314,13 @@ Each mob and player in view gets the render hook pair once a frame, NeoForge's
 4. `render_living_post(entity, parts, draw)`;
 5. `render_player_post(player, who, parts, draw)`, for a player only.
 
+This is the order within one entity. In the ordered body pass, the hooks run at each body's slot in
+level join order, interleaved with general entity renderer submissions. The local body is not
+submitted while the camera follows another entity (except in studio freecam). The `entity_outline`
+queries for mobs, players and dropped items also follow this pass's join order; projectiles are
+queried in a later pass. The ender dragon and end crystals draw at their slots without adding
+these hooks or outline queries.
+
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
 before the post (and queues the flames and the shadow after it): tracked in #3915. A type with a registered
@@ -365,11 +368,12 @@ return the styled advance rounded up, as vanilla `Font.width` does. Use half tha
 to centre a line. Kept text retains its glyphs, including obfuscated glyph choices,
 until it is drawn again. Resource reload invalidates kept geometry.
 
-Spinning parts use the client's animation clock: level-running texture ticks plus the
-level's partial tick, not the camera's partial tick or the server's day time. Pausing
-holds that clock; `/tick freeze` holds the level partial at 1 and stops texture ticks.
-Camera motion during a freeze does not spin a part backwards. Server time updates do
-not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
+Spinning parts use the client's animation clock: level-running texture ticks plus an
+animation phase, not the camera's partial tick or the server's day time. Pausing and
+`/tick freeze` hold the animation where it was and resume without a jump; `/tick step`
+advances it by whole ticks. The world's own render interpolation still uses 1 while
+frozen. Camera motion and server time updates do not reset animation. Held-arm, hand,
+mob and scene draws share this animation clock.
 
 Directional shading on `quad` and `cube` follows `spin`, but light stays fixed by default.
 To use the level's sky and block light, call `BlockEntityDrawContext::level_light` in a world

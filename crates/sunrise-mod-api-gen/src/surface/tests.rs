@@ -5,6 +5,14 @@ use std::collections::BTreeMap;
 /// The fixture: path below the root, and text.
 const FILES: &[(&str, &str)] = &[
     (
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"engine-fixture\"]\n",
+    ),
+    (
+        "engine-fixture/Cargo.toml",
+        "[package]\nname = \"engine-package\"\n[lib]\nname = \"engine_library\"\n",
+    ),
+    (
         "crates/sunrise-mod-api/src/lib.rs",
         "pub use mod_vocab::*;\n",
     ),
@@ -79,7 +87,7 @@ pub trait Host {
 pub trait ServerHost: Host {
     /// Saves.
     ///
-    /// Not on wasm: it writes
+    /// It writes
     /// files.
     fn save(&mut self, slot: u8);
     /// Sends a text.
@@ -236,7 +244,7 @@ impl EntityRef {
     }
     /// Its file.
     ///
-    /// Not on wasm: it reads a file.
+    /// It reads a file.
     pub fn path(self) -> crate::Outcome<String> {
         Ok(String::new())
     }
@@ -256,11 +264,20 @@ pub fn sunrise_mod(_: TokenStream, input: TokenStream) -> TokenStream { input }
 "#,
     ),
     (
+        "crates/sunrise-mod-vocab/extension-tags/items.json",
+        r#""crates/sunrise-mod-package/src/fixture.extension-tags.json""#,
+    ),
+    (
+        "crates/sunrise-mod-vocab/extension-tags/blocks.json",
+        r#"[{"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}]"#,
+    ),
+    (
+        "crates/unlisted/src/ignored.extension-tags.json",
+        "invalid JSON: the export must not read unrelated declarations",
+    ),
+    (
         "crates/sunrise-mod-package/src/fixture.extension-tags.json",
-        r#"[
-    {"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."},
-    {"registry": "block", "id": "sunrise:fixture", "doc": "Fixture blocks."}
-]"#,
+        r#"[{"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."}]"#,
     ),
     (
         "crates/sunrise-mod-package/src/manifest.rs",
@@ -304,11 +321,6 @@ fn boundary() -> Boundary {
     boundary.roles.push(("Host".into(), Role::Call));
     boundary.roles.push(("ServerHost".into(), Role::Call));
     boundary.sides.push(("ServerHost".into(), Side::Server));
-    boundary.unbound.push((
-        "ServerHost".into(),
-        "send".into(),
-        "Text does not cross".into(),
-    ));
     boundary
 }
 
@@ -317,6 +329,22 @@ const MOVE: &str = "<move>";
 
 /// The export of the fixture with `edits` (file, from, to) applied.
 fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
+    try_export_fixture(edits, hooks, &[]).unwrap()
+}
+
+fn export_fixture_with_includes(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Export {
+    try_export_fixture(edits, hooks, included).unwrap()
+}
+
+fn try_export_fixture(
+    edits: &[(&str, &str, &str)],
+    hooks: &str,
+    included: &[(&str, &str)],
+) -> Result<Export, String> {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (path, text) in FILES {
@@ -338,11 +366,41 @@ fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
         std::fs::write(path, text).unwrap();
     }
     let catalog = Catalog::parse(&[("hooks/ping.rs".into(), hooks.into())]).unwrap();
-    let mut index = crate::index::game(root, &[]);
-    build(root, &mut index, &catalog.hooks, &boundary()).unwrap()
+    let mut index = crate::index::game(root, included);
+    build(root, &mut index, &catalog.hooks, &boundary())
 }
 
 const LIB: &str = "crates/sunrise-mod-vocab/src/lib.rs";
+
+#[test]
+fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
+    let edited = "use engine_library::Secret as Imported;\npub fn leak() -> Imported { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the leak must fail the export");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
+    let edited = "pub use engine_library::Secret as Leaked;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the re-export must fail the export");
+    assert!(error.contains("mod_api::Leaked"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_wire_layout_cannot_hide_a_workspace_type_behind_private_storage() {
+    let edited = "#[derive(Wire)] struct Private(engine_library::Secret);\n#[derive(Wire)] pub struct Leaked(Private);\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS, &[])
+        .err()
+        .expect("the embedded type must fail the export");
+    assert!(error.contains("mod_api::Private"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
 
 fn hashes(export: &Export) -> BTreeMap<String, String> {
     export
@@ -438,6 +496,44 @@ fn macro_calls_are_expanded_or_noted_and_ids_ignore_routes() {
         .unwrap();
     assert_eq!(thing.id, "type:shared::Thing");
     assert!(thing.paths.contains(&"s1::Thing".to_owned()));
+}
+
+#[test]
+fn a_generated_impl_on_a_glob_reexported_handle_is_recorded() {
+    let export = export_fixture_with_includes(
+        &[(
+            LIB,
+            "pub mod entity;",
+            r#"
+pub mod entity;
+pub use loan_views::*;
+pub use loan_handles::*;
+mod loan_views {
+    use crate::LoanRef;
+    pub fn loan_exists(_: LoanRef) -> bool { true }
+}
+mod loan_handles {
+    pub struct LoanRef(u32);
+}
+mod generated_handles {
+    use super::*;
+    include!(concat!(env!("OUT_DIR"), "/fixture_generated_handles.rs"));
+}
+"#,
+        )],
+        HOOKS,
+        &[(
+            "fixture_generated_handles.rs",
+            "impl LoanRef { pub fn serial(self) -> u32 { 23 } }",
+        )],
+    );
+    let exported = export
+        .surface
+        .handles
+        .iter()
+        .find(|handle| handle.id == "handle:LoanRef::serial")
+        .map(|handle| handle.contract.signature.as_str());
+    assert_eq!(exported, Some("fn serial(self) -> u32"));
 }
 
 #[test]
@@ -626,8 +722,8 @@ fn each_declaration_aspect_changes_exactly_its_records_hash() {
             "trait methods reordered",
             &[(
                 LIB,
-                "    /// Saves.\n    ///\n    /// Not on wasm: it writes\n    /// files.\n    fn save(&mut self, slot: u8);\n    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;",
-                "    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;\n    /// Saves.\n    ///\n    /// Not on wasm: it writes\n    /// files.\n    fn save(&mut self, slot: u8);",
+                "    /// Saves.\n    ///\n    /// It writes\n    /// files.\n    fn save(&mut self, slot: u8);\n    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;",
+                "    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;\n    /// Saves.\n    ///\n    /// It writes\n    /// files.\n    fn save(&mut self, slot: u8);",
             )],
             HOOKS,
             &[],
@@ -653,11 +749,11 @@ fn each_declaration_aspect_changes_exactly_its_records_hash() {
             &[],
         ),
         (
-            "a not-on-wasm reason reworded",
+            "a method doc reworded",
             &[(
                 LIB,
-                "/// Not on wasm: it writes\n    /// files.",
-                "/// Not on wasm: it writes to the disk.",
+                "/// It writes\n    /// files.",
+                "/// It writes to the disk.",
             )],
             HOOKS,
             &[],
@@ -851,6 +947,15 @@ fn the_real_tree_exports() {
         );
     }
     assert!(read.traits.iter().any(|t| t.id == "trait:Hooks"));
+    for event in read.types.iter().filter(|ty| {
+        ty.id.ends_with("Event")
+            && matches!(
+                ty.contract.kind,
+                TypeKind::Struct | TypeKind::UnitStruct | TypeKind::TupleStruct
+            )
+    }) {
+        assert!(!event.contract.constructible, "{}", event.id);
+    }
 }
 
 #[test]
@@ -1030,33 +1135,13 @@ fn a_hidden_type_named_only_by_an_impl_gets_its_record() {
     );
 }
 
-/// `surface.json` lists, for each hook and trait method that crosses, the name a built wasm mod
-/// uses for it, and no two records share one.
-#[test]
-#[ignore = "daily"]
-fn every_crossing_method_lists_one_distinct_call_name() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let export = export(&root).unwrap();
-    let mut owners: std::collections::BTreeMap<&String, Vec<&str>> = Default::default();
-    for item in &export.surface.traits {
-        for method in &item.methods {
-            if let Some(call) = &method.call {
-                owners.entry(call).or_default().push(&method.id);
-            }
-        }
-    }
-    assert!(owners.len() > 1000, "{} calls", owners.len());
-    owners.retain(|_, ids| ids.len() > 1);
-    assert!(owners.is_empty(), "records sharing a call name: {owners:?}");
-}
-
 /// `placement_sync::PROTOCOL` stands for the shapes the placement frames carry, which nothing
 /// else reads: `Frame` and the catalogue body's `RecipeBookCategory`. When this fails, the
 /// frames changed: bump `PROTOCOL` there, then update the pinned hash here.
 #[test]
 #[ignore = "daily"]
 fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
-    const PINNED: &str = "25629ca0c672c9560cbfcb15491f60ff";
+    const PINNED: &str = "2a820c6483512899fd944f85a2669524";
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let generated = crate::sources(&root, crate::FillMode::Require).unwrap();
     let providers = crate::capability_providers::generate(&root, &[]).unwrap().0;
@@ -1068,12 +1153,15 @@ fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
     ];
     let mut index = crate::index::game(&root, &included);
     index.add_crate("sunrise_client", "crates/sunrise-client/src");
-    let (forms, ids) = (HashMap::new(), HashMap::new());
-    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires {
-        forms: &forms,
-        ids: &ids,
-    });
-    layouts.fields_without_form = true;
+    let modules = walk::Walker::new(&mut index)
+        .all_modules("mod_api")
+        .unwrap();
+    // Hash the declared encoding, not private Rust storage (e.g. Compound's hash table).
+    // Some Wire impls are generated by the vocabulary's own macros (e.g. ItemKey).
+    expand::expand_modules(&mut index, &modules);
+    let forms = wire_forms::wire_forms(&mut index, &modules);
+    let ids = HashMap::new();
+    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires::new(&forms, &ids, None));
     let mut keys = Vec::new();
     for (krate, module, name) in [
         (
@@ -1092,60 +1180,9 @@ fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
     layouts.finish(&mut index);
     let mut shapes = Shapes::new(&layouts.table);
     let text: Vec<String> = keys.iter().map(|key| shapes.shape(key).unwrap()).collect();
-    let hash = mod_call::digest(&text.join(","));
+    let hash = mod_surface::digest(&text.join(","));
     assert_eq!(
         hash, PINNED,
         "the placement frames' shapes changed (now {hash}): bump placement_sync PROTOCOL"
     );
-}
-
-/// The names `surface.json` lists as `call` are the names the game's table serves and exports,
-/// both written by the one generator from one source tree: offline, two builds' exports say
-/// whether a built mod loads.
-#[test]
-#[ignore = "daily"]
-fn the_surface_export_names_the_calls_the_games_table_holds() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let host = std::thread::Builder::new()
-        .stack_size(64 << 20)
-        .spawn({
-            let root = root.clone();
-            move || crate::generate_wire_host(&root)
-        })
-        .unwrap()
-        .join()
-        .unwrap()
-        .unwrap();
-    let export = export(&root).unwrap();
-    let calls: Vec<&String> = export
-        .surface
-        .hooks
-        .iter()
-        .filter_map(|hook| hook.call.as_ref())
-        .chain(
-            export
-                .surface
-                .traits
-                .iter()
-                .flat_map(|item| &item.methods)
-                .filter_map(|method| method.call.as_ref()),
-        )
-        .collect();
-    assert!(calls.len() > 1000, "{} calls", calls.len());
-    for call in &calls {
-        assert!(
-            host.contains(&format!("\"{call}\"")),
-            "{call} is not in the game's table"
-        );
-    }
-    let mut owners: std::collections::BTreeMap<&String, Vec<&str>> = Default::default();
-    for item in &export.surface.traits {
-        for method in &item.methods {
-            if let Some(call) = &method.call {
-                owners.entry(call).or_default().push(&method.id);
-            }
-        }
-    }
-    owners.retain(|_, ids| ids.len() > 1);
-    assert!(owners.is_empty(), "records sharing a call name: {owners:?}");
 }

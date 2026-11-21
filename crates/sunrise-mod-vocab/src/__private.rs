@@ -20,29 +20,10 @@ pub mod native {
     pub struct NativeMod {
         /// Hook factories owned by this library.
         pub entries: fn() -> Vec<crate::ModEntry>,
-        /// Compiled API point listeners owned by this library.
-        pub slots: fn() -> Vec<super::points::SlotListener>,
         /// Manifest identities (empty for the patch library).
         pub built: &'static [BuiltMod],
         /// Install patch copies and return their verification rows.
         pub installs: fn() -> Vec<(&'static str, &'static [&'static str], bool)>,
-    }
-
-    impl NativeMod {
-        /// The library's registration, as its generated entry module builds it.
-        pub fn new(
-            entries: fn() -> Vec<crate::ModEntry>,
-            slots: fn() -> Vec<super::points::SlotListener>,
-            built: &'static [BuiltMod],
-            installs: fn() -> Vec<(&'static str, &'static [&'static str], bool)>,
-        ) -> Self {
-            Self {
-                entries,
-                slots,
-                built,
-                installs,
-            }
-        }
     }
 
     /// One native mod supplied by a library, with its manifest's `side`.
@@ -116,9 +97,22 @@ pub fn mods_switched() -> u64 {
     crate::runtime::mods_switched()
 }
 
+/// Start a new tick's output diagnostics on the authoritative game thread.
+pub fn reset_output_refusals() {
+    if let Some(backend) = crate::dispatch_scope::backend() {
+        (backend.diagnostics.reset_output_refusals)();
+    }
+}
+
 /// Whether an installed mod subscribes to `hook`.
 pub fn listened(hook: HookId) -> bool {
     crate::listened(hook)
+}
+
+/// How many listeners of `hook` are switched off for the session by an isolated dispatch after
+/// they unwound.
+pub fn poisoned_listeners(hook: HookId) -> usize {
+    crate::runtime::poisoned_count(hook)
 }
 
 /// Whether at least one enabled mod subscribes to `hook`, visiting only its subscribers.
@@ -738,12 +732,45 @@ pub fn fluid_state(
 
 #[path = "__private/ingredient_parser.rs"]
 pub mod ingredient_parser;
-#[path = "__private/points.rs"]
-pub mod points;
+#[path = "__private/platform.rs"]
+pub mod platform;
+
+/// Side- and override-filtered ordinary dependency rows, in their original direction.
+/// Host-only: this is not the author-facing package inventory.
+// no wire: the host keeps this resolved graph for package and Part admission; it never crosses.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct EffectiveDependencies(
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, crate::DependencyKind>>,
+);
+
+impl EffectiveDependencies {
+    /// Record a required or optional row from the resolver.
+    pub fn insert(&mut self, dependent: &str, target: &str, optional: bool) {
+        self.0.entry(dependent.into()).or_default().insert(
+            target.into(),
+            if optional {
+                crate::DependencyKind::Optional
+            } else {
+                crate::DependencyKind::Required
+            },
+        );
+    }
+
+    /// The surviving direct dependency, including an absent optional target.
+    pub fn kind(&self, dependent: &str, target: &str) -> Option<crate::DependencyKind> {
+        self.0.get(dependent)?.get(target).copied()
+    }
+
+    /// A Part's own package or a surviving direct dependency may own its key.
+    pub fn permits(&self, dependent: &str, owner: &str) -> bool {
+        dependent == owner || self.kind(dependent, owner).is_some()
+    }
+}
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private.rs"));
 
-/// How many listeners this thread has entered, wasm and native alike. A scoped
+/// How many listeners this thread has entered. A scoped
 /// resource that must not outlive one listener compares it between operations.
 pub fn listener_serial() -> u64 {
     crate::runtime::listener_serial()

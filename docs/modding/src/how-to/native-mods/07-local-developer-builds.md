@@ -7,8 +7,7 @@ reads a signed `sdk-<commit>` folder on your machine instead of looking for a re
 
 Commit the game changes you want the mod to use. Every SDK input comes from a temporary checkout
 of `HEAD`, so local edits and untracked files are left out. Use the Rust version
-in `tools/ci/rust-version` with the `wasm32-unknown-unknown` target installed, even for a native mod:
-the SDK builder checks the API source on both targets. For this Linux example you also need Bash,
+in `tools/ci/rust-version`. For this Linux example you also need Bash,
 Python 3.11 or later, OpenSSL with Ed25519 support, and the ALSA and udev development headers
 (`libasound2-dev` and `libudev-dev` on Debian and Ubuntu). No Minecraft files are needed to build the SDK.
 

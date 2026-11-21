@@ -11,7 +11,6 @@ fn function(path: &str) -> Function {
         FunctionContract {
             signature: format!("fn {path}()"),
             impl_generics: String::new(),
-            wasm: true,
             refs: vec![],
         },
     )
@@ -70,6 +69,25 @@ fn run(dir: &Path, extra: &[&str]) -> (i32, String, String) {
         String::from_utf8(stdout).unwrap(),
         String::from_utf8(stderr).unwrap(),
     )
+}
+
+#[test]
+#[ignore = "daily"]
+fn stable_release_gates_the_real_surface_verdict() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = std::process::Command::new("python3")
+        .current_dir(root)
+        .env("SUNRISE_STAGE_TOOL", env!("CARGO_BIN_EXE_sunrise-stage"))
+        .env("PYTHONPATH", ".")
+        .arg("tests/stable_mod_api_integration.py")
+        .output()
+        .expect("run the stable release integration test");
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -290,8 +308,8 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     note(
         dir.path(),
         "changes",
-        "point.toml",
-        "ids = [\"point:game::old_tick\"]\nwhy = \"Tick moved.\"\n",
+        "internal.toml",
+        "ids = [\"internal:fn:game::old_tick\"]\nwhy = \"Tick moved.\"\n",
     );
     note(
         dir.path(),
@@ -322,7 +340,11 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let (code, _, err) = run(dir.path(), &notes);
     assert_eq!(code, 1);
     for refused in [
-        ["point.toml", "point:game::old_tick", "which did not change"],
+        [
+            "internal.toml",
+            "internal:fn:game::old_tick",
+            "which did not change",
+        ],
         ["mixed.toml", "loop:old.tick", "which did not change"],
     ] {
         assert!(
@@ -336,7 +358,7 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
         dir.path(),
         "changes",
         "api-stale.toml",
-        "ids = [\"point:game::new_tick\", \"fn:keep\"]\nwhy = \"No API change.\"\n",
+        "ids = [\"internal:fn:game::new_tick\", \"fn:keep\"]\nwhy = \"No API change.\"\n",
     );
     let (code, _, err) = run(dir.path(), &publish);
     assert_eq!(code, 1);
@@ -347,7 +369,7 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
             && err.contains("which did not change"),
         "{err}"
     );
-    assert!(!err.contains("point:game::new_tick"), "{err}");
+    assert!(!err.contains("internal:fn:game::new_tick"), "{err}");
 }
 
 #[test]

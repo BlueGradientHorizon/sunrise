@@ -80,6 +80,7 @@ fn uses_registered_payload_codec(channel: &str, play: bool, clientbound: bool) -
         | crate::collider_sync::CHANNEL
         | crate::general_entity::CHANNEL
         | crate::anvil_cost::CHANNEL
+        | crate::menu_extra::DATA_CHANNEL
         | crate::passage_sync::CHANNEL
         | "sunrise:recipe_content"
         | "sunrise:selector_tokens" => play && clientbound,
@@ -234,6 +235,7 @@ mod tests {
             ("sunrise:mod_list", [true, false, false, false]),
             ("sunrise:attachment_sync", [false, false, false, true]),
             ("sunrise:menu_extra", [true, true, false, true]),
+            ("sunrise:menu_data", [false, false, false, true]),
             ("sunrise:anvil_cost", [false, false, false, true]),
             ("sunrise:passage_sync", [false, false, false, true]),
             ("sunrise:passage_cross", [false, false, true, false]),

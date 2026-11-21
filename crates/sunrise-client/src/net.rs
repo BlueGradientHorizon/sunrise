@@ -369,7 +369,7 @@ impl Session {
         let recorder = Arc::new(Mutex::new(None));
         let thread_recorder = recorder.clone();
         let (address_owned, name_owned) = (address.to_owned(), name.to_owned());
-        // Payload handlers of wasm mods run on this thread (the client's network root).
+        // Mod payload handlers run on this thread (the client's network root).
         let thread = sunrise_guest_stack::spawn("sunrise-net".into(), move || {
             sunrise_threads::favour_current();
             let result = captured_payloads.map_err(Reason::plain).and_then(|_| {
@@ -1356,8 +1356,10 @@ fn configure(
                 reply(crate::viewed_levels_net::answer(&p.data).map_err(Reason::plain)?)?
             }
             cfg::Clientbound::CustomPayload(p) if crate::menu_extra_net::asked(&p) => {
-                reply(crate::menu_extra_net::answer(&p.data).map_err(Reason::plain)?)?;
-                registries.menu_extra_revision = sunrise_protocol::menu_extra::REVISION;
+                let (revision, answer) =
+                    crate::menu_extra_net::answer(&p.data).map_err(Reason::plain)?;
+                reply(answer)?;
+                registries.menu_extra_revision = revision;
             }
             cfg::Clientbound::CustomPayload(p) if p.channel == crate::datapack_net::CHANNEL => {
                 crate::datapack_net::accept_chunk(&p.data).map_err(Reason::plain)?;
@@ -2657,7 +2659,7 @@ mod tests {
         for expected in [
             cfg::Serverbound::CustomPayload(cfg::CustomPayload {
                 channel: "sunrise:menu_extra".into(),
-                data: sunrise_protocol::menu_extra::answer(),
+                data: sunrise_protocol::menu_extra::answer(sunrise_protocol::menu_extra::REVISION),
             }),
             cfg::Serverbound::FinishConfiguration(Empty),
         ] {

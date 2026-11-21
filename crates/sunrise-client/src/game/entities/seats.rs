@@ -160,6 +160,7 @@ impl Game<'_> {
             player.velocity = Vec3::ZERO;
             player.fall_distance = 0.0;
             player.teleported = true;
+            player.teleported_delta = [true; 3];
         }
         self.previous_position = at;
         self.start_riding(id);
