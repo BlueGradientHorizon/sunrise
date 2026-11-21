@@ -80,15 +80,19 @@ pub struct UnjudgedBuild {
     pub reason: String,
 }
 
-/// A canonical stable Sunrise tag: dotted Minecraft version and a full Sunrise SemVer
-/// with neither prerelease nor build metadata. Returns the game version and Sunrise major.
+/// A canonical stable Sunrise tag: a Minecraft version of two or three numbers without leading
+/// zeros, and a full Sunrise SemVer with neither prerelease nor build metadata. Returns the game
+/// version and Sunrise major.
 pub fn stable_tag(tag: &str) -> Option<(&str, u64)> {
     let (game, release) = tag.split_once('-')?;
     let version = semver::Version::parse(release).ok()?;
-    (game.contains('.')
-        && game
-            .split('.')
-            .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    let parts: Vec<_> = game.split('.').collect();
+    ((2..=3).contains(&parts.len())
+        && parts.iter().all(|n| {
+            !n.is_empty()
+                && n.bytes().all(|b| b.is_ascii_digit())
+                && (*n == "0" || !n.starts_with('0'))
+        })
         && version.pre.is_empty()
         && version.build.is_empty())
     .then_some((game, version.major))

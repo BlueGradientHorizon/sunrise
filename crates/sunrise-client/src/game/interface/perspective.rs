@@ -514,6 +514,10 @@ impl Game<'_> {
             };
             let mut m = Mob::new(0, kind, p.position, self.yaw);
             m.head_pitch = self.pitch;
+            // The render state starts with the profile's paired default skin and model.
+            let skin = sunrise_client::tab_list::default_skin(self.own_uuid());
+            m.skin = Some(skin.into());
+            m.slim = skin.contains("/slim/");
             self.player_model = Some(m);
         }
         let pose = p.pose;

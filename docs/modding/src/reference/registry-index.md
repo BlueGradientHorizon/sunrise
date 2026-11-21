@@ -436,8 +436,11 @@ all listed files to plan installations.
 For new or changed native mod versions, `registry review --files <dir>` compares the package's Cargo
 requirements, including those of packaged path dependencies, with `<sdk-data>/<commit>/Cargo.lock` from
 `--sdk-data <sdk-data>`. It warns when a crates.io requirement excludes every version the pinned game build
-uses but overlaps the Cargo caret range of one of those versions. For example, `>=2, <3` does not overlap
-`^3.1.0`, and `0.0.2` does not overlap `^0.0.1`. Loosen the requirement if your mod does not need the other
+uses but accepts another version on the same version line as one of them: the same nonzero major, the
+same `0.minor` with a nonzero minor, or the same `0.0.patch`. The build refuses to move the game's pin to
+another version on that line. This warning does not rule out a version on a different line that also
+satisfies the requirement. For example, `3.0.10` and `=3.0.5` both warn against the game's `3.0.6`; `>=2, <3` does not warn
+against `3.1.0`, and `0.0.2` does not warn against `0.0.1`. Loosen the requirement if your mod does not need the other
 version. If the game's lock is unavailable, review notes that it skipped
 the comparison. A different pin in the mod's own lockfile does not trigger a warning.
 
@@ -458,7 +461,7 @@ Run these commands in your native mod’s project folder.
 | --- | --- |
 | `cargo sunrise-mod internals sync` | Checks a trusted native mod's library against an isolated copy of its pinned game source with the Rust version named by its signed SDK. Replaces top-level `internals` with compiler-discovered paths, kinds and hashes, including uses inside globs and macros. Removes unused declarations, preserves retained entries and prints additions/removals. Skips discovery when the mod neither depends on `sunrise-internals` nor declares `internals`. Never runs automatically on build. |
 | `cargo sunrise-mod internals add <path>…` | Adds each declared internal and its tool-written hash to top-level `internals` in your mod's `sunrise-mod.toml`. Reads `internals.json` from the pinned SDK, or discovers a catalog with the mod's `[[native.module]]` tables applied. Unknown paths, shape-only entries and paths available only under a `cfg` are refused before the manifest is changed. Existing declarations are refreshed, not duplicated. |
-| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: `nightly-<date>` or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [the pin](sdk/03-in-a-project.md#the-pin). |
+| `cargo sunrise-mod update [--sunrise <build>]` | Moves the mod's pin to the current Nightly's build (or the build given: a release tag such as `nightly-<date>`, `26.3-0.1.0` or `dev-<date>-<short sha>`, or a sha); the next command fetches its SDK into `.sunrise/sdk/`. A native mod's pins are `[native] sunrise` and `[native] mixins`: `update` fetches the destination SDK's `sdk.json` (into `.sunrise/cache/<build>/`), writes its `mixins.rev` beside the new build, and changes nothing when that file is refused; `Cargo.toml` names the SDK by path, so it does not change. For a native mod's every declared internal, prints `missing`, `changed` (old signature → new signature), or `unchanged`, then refreshes the available hashes. Missing or gated declarations keep their old hash and must be removed or replaced before building. Build names: [build names](sdk/03-in-a-project.md#build-names). |
 
 The native-mod commands run in the mod's project folder and preserve the manifest's comments and
 layout. `sync` performs a metadata-only `cargo check` on the current host, using default features;
