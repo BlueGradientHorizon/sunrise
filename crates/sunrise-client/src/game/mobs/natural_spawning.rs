@@ -2928,7 +2928,7 @@ mod tests {
                 panic!("primary admission stopped");
             }
             let entity = host.entity(id).unwrap();
-            assert!(host.entity_add_tag(entity, "after-admission"));
+            assert!(entity.add_tag(host, "after-admission"));
             JOINED_CANDIDATE.store(id, std::sync::atomic::Ordering::Relaxed);
             match std::env::var(SPAWN_CLUSTER_CASE).unwrap().as_str() {
                 "move" => {
