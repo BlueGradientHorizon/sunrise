@@ -2623,7 +2623,7 @@ pub enum MobEvent {
         at: [f64; 3],
         radius: f64,
     },
-    /// A creaking bound to the heart at `home` was hurt (`creakingHurt` when a player did it).
+    /// A tick's Creaking hit, delivered after the borrowed mob pass.
     CreakingHurt {
         home: [i32; 3],
         by_player: bool,
