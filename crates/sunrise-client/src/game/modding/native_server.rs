@@ -27,7 +27,9 @@ use argument_kinds::{
     positional_value, resource_parser,
 };
 use mod_api::__private::game::*;
-pub(super) use registered_commands::NativeCommandState;
+pub(super) use registered_commands::{
+    NativeClientCommandState, NativeCommandState, RegisteredClientExecutor,
+};
 // Their old home, for mixin code that names them here.
 use mod_api::LevelRef;
 use mod_api::{
@@ -73,6 +75,7 @@ const LEVELS: [&str; 5] = ["", "moderators", "gamemasters", "admins", "owners"];
 fn usage_nodes(
     usage: &str,
     custom: &CommandArguments,
+    client: bool,
 ) -> Result<Vec<(String, Value, bool)>, String> {
     let mut out = Vec::new();
     let mut optional_seen = false;
@@ -98,6 +101,16 @@ fn usage_nodes(
         let Some((name, kind)) = inner.and_then(|w| w.split_once(':')) else {
             return Err(format!("`{usage}`: `{word}` is not `<name:kind>`"));
         };
+        if client
+            && matches!(
+                kind,
+                "player" | "players" | "entity" | "entities" | "dimension"
+            )
+        {
+            return Err(format!(
+                "`{usage}`: `{kind}` is a server-only argument kind and cannot be used in a client command"
+            ));
+        }
         if optional_seen && !optional {
             return Err(format!("`{usage}`: `{word}` follows an optional argument"));
         }
@@ -165,33 +178,35 @@ pub(super) fn command_tree(
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, None)
+    command_tree_for(commands, vanilla, custom, false, None)
 }
 
-/// Build the display tree for the client's own commands, using the same argument grammar and
-/// custom argument types as the server.
+/// Build the display tree and executor slots for the client's own commands, using the same
+/// argument grammar and custom argument types as the server (excluding server-only handle kinds).
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
+    executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, None)
+    command_tree_for(commands, vanilla, custom, true, executors)
 }
 
 // Executable paths (including argument names) mapped to the input registration slot.
-type CommandExecutorSlots = HashMap<Vec<String>, usize>;
+pub(super) type CommandExecutorSlots = HashMap<Vec<String>, usize>;
 
 fn command_tree_for(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
+    client: bool,
     mut executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
     let mut root: Map<String, Value> = Map::new();
     let mut levels: HashMap<String, u8> = HashMap::new();
     let mut problems = Vec::new();
     for (slot, command) in commands.iter().enumerate() {
-        let nodes = match usage_nodes(&command.usage, custom) {
+        let nodes = match usage_nodes(&command.usage, custom, client) {
             Ok(n) => n,
             Err(e) => {
                 problems.push(e);
@@ -318,9 +333,9 @@ pub(super) fn register_dispatcher(
     register_command_nodes(dispatcher, tree, handler, arguments, None);
 }
 
-/// Add the report's nodes with the same grammar on both sides. The authoritative
-/// server also associates each runnable node ID with its registration path.
-fn register_command_nodes(
+/// Add the report's nodes with the same grammar on both sides. When `executors` is provided,
+/// associates each runnable node ID with its registration path in a fresh dispatcher generation.
+pub(super) fn register_command_nodes(
     dispatcher: &mut Dispatcher,
     tree: &Value,
     handler: &'static str,
@@ -2261,6 +2276,170 @@ impl Game<'_> {
             .flatten()
     }
 
+    /// Resolve argument kinds shared by server and client native commands.
+    fn resolve_client_safe_argument(
+        &self,
+        ty: Option<&ArgType>,
+        value: Arg,
+        coords_position: impl FnOnce(&sunrise_client::command::args::Coordinates) -> [f64; 3],
+        rotation: [f32; 2],
+    ) -> Result<mod_api::CommandArgumentValue, sunrise_client::command::CommandError> {
+        use super::commands::err;
+        use mod_api::CommandArgumentValue as Value;
+        Ok(match value {
+            Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
+            Arg::Str(value) => Value::String(value),
+            Arg::Int(value) => Value::Integer(value),
+            Arg::Double(value) => Value::Number(value),
+            Arg::Bool(value) => Value::Boolean(value),
+            Arg::Coords(coordinates) => {
+                positional_value(ty, &coordinates, coords_position(&coordinates), rotation)
+            }
+            Arg::Item(input) => Value::Item(
+                self.command_item_stack(&input, 1)?
+                    .try_into_api()
+                    .expect("command item validation resolves registered items"),
+            ),
+            Arg::Resource(id) => {
+                Value::Id(mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?)
+            }
+            Arg::Custom { kind, value } => custom_value(&kind, value),
+            _ => unreachable!("the native tree contains only registered native argument kinds"),
+        })
+    }
+
+    fn client_command_position(&self) -> [f64; 3] {
+        match &self.player {
+            Some(p) => [p.position.x, p.position.y, p.position.z],
+            None => self.server_position(),
+        }
+    }
+
+    fn resolve_client_native_command(
+        &self,
+        context: Context,
+    ) -> Result<mod_api::CommandInvocation, sunrise_client::command::CommandError> {
+        use mod_api::CommandArgument;
+        let position = self.client_command_position();
+        let rotation = [self.yaw, self.pitch];
+        let mut arguments = Vec::with_capacity(context.args.len());
+        for argument in context.args {
+            let ty = parsed_type(
+                &self.native_client_commands.dispatcher,
+                &context.nodes,
+                argument.range,
+            );
+            let value = self.resolve_client_safe_argument(
+                ty,
+                argument.value,
+                |coordinates| coordinates.position(position, rotation),
+                rotation,
+            )?;
+            arguments.push(CommandArgument::new(argument.name, value));
+        }
+        Ok(mod_api::CommandInvocation::new(
+            context.literals,
+            arguments,
+            self.native_level_key(),
+            position,
+        ))
+    }
+
+    fn client_command_failure(&mut self, message: Text) {
+        self.chat_line(
+            Text::empty()
+                .append(message)
+                .with_color(sunrise_client::text::RED),
+        );
+    }
+
+    fn client_syntax_failure(
+        &mut self,
+        error: &sunrise_client::command::CommandError,
+        command: &str,
+    ) {
+        self.client_command_failure(error.message.clone());
+        let Some(window) = error.context_window() else {
+            return;
+        };
+        let suggest = sunrise_client::text::Style {
+            click: Some(sunrise_client::text::ClickEvent::SuggestCommand(format!(
+                "/{command}"
+            ))),
+            ..sunrise_client::text::Style::default()
+        };
+        let mut context = Text::empty();
+        if window.ellipsis {
+            context.push("...");
+        }
+        context.push(window.before.as_str());
+        if !window.after.is_empty() {
+            context.push(
+                Text::literal(window.after)
+                    .with_color(sunrise_client::text::RED)
+                    .underlined(),
+            );
+        }
+        context.push(
+            Text::translate("command.context.here", &[])
+                .with_color(sunrise_client::text::RED)
+                .italic(),
+        );
+        self.client_command_failure(
+            context
+                .with_color(sunrise_client::text::GRAY)
+                .with_style(&suggest),
+        );
+    }
+
+    /// `ClientCommandHandler.runCommand`: parse and execute a client-registered native command
+    /// directly against the current client dispatcher generation. Returns `false` when the root
+    /// literal is not registered on the client so the command proceeds to the server / vanilla
+    /// handler, and `true` when the client owns the root literal (handled, errored locally, or
+    /// disabled).
+    pub(in crate::game) fn run_client_native_command(&mut self, line: &str) -> bool {
+        if self.lan_acting.is_some() {
+            return false;
+        }
+        let root = line.split(' ').next().unwrap_or_default();
+        if self.native_client_commands.dispatcher.find(root).is_none() {
+            return false;
+        }
+        let parse = self
+            .native_client_commands
+            .dispatcher
+            .parse(line, &self.ui.registries);
+        let context = match parse.executable() {
+            Ok((context, _)) => context.clone(),
+            Err(error) => {
+                self.client_syntax_failure(&error, line);
+                return true;
+            }
+        };
+        let Some(executor) = context
+            .executor
+            .filter(|&key| self.native_client_commands.dispatcher.owns_executor(key))
+            .and_then(|key| self.native_client_commands.executors.get(key.slot()))
+            .filter(|executor| executor.owner.is_enabled())
+        else {
+            return true;
+        };
+        let owner = executor.owner.clone();
+        let call = Arc::clone(&executor.call);
+        let invocation = match self.resolve_client_native_command(context) {
+            Ok(invocation) => invocation,
+            Err(error) => {
+                self.client_syntax_failure(&error, line);
+                return true;
+            }
+        };
+        if let Err(why) = owner.call("client_command", "execute", || call(self, &invocation)) {
+            log::warn!("client command failed: {why}");
+            self.client_command_failure(Text::translate("command.failed", &[]));
+        }
+        true
+    }
+
     /// `EntityArgument.getEntity` / `getEntities` / `getPlayer` / `getPlayers`:
     /// convert validated arguments through the shared source-aware selector resolver.
     fn resolve_native_command(
@@ -2273,11 +2452,6 @@ impl Game<'_> {
         for argument in context.args {
             let ty = parsed_type(&self.ui.dispatcher.0, &context.nodes, argument.range);
             let value = match argument.value {
-                Arg::Str(text) if matches!(ty, Some(ArgType::Nbt)) => nbt_value(&text)?,
-                Arg::Str(value) => Value::String(value),
-                Arg::Int(value) => Value::Integer(value),
-                Arg::Double(value) => Value::Number(value),
-                Arg::Bool(value) => Value::Boolean(value),
                 Arg::Entity(selector) => {
                     // The parsed node, not its name, determines cardinality: usages may
                     // repeat an argument name or use different kinds on separate branches.
@@ -2340,25 +2514,15 @@ impl Game<'_> {
                         Value::Entities(selected)
                     }
                 }
-                Arg::Coords(coordinates) => positional_value(
-                    ty,
-                    &coordinates,
-                    self.resolve_coords(&coordinates),
-                    self.source_rotation(),
-                ),
-                Arg::Item(input) => Value::Item(
-                    self.command_item_stack(&input, 1)?
-                        .try_into_api()
-                        .expect("command item validation resolves registered items"),
-                ),
                 Arg::Resource(id) if matches!(ty, Some(ArgType::Dimension)) => {
                     dimension_value(&id, |dimension| self.level(dimension))?
                 }
-                Arg::Resource(id) => Value::Id(
-                    mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?,
-                ),
-                Arg::Custom { kind, value } => custom_value(&kind, value),
-                _ => unreachable!("the native tree contains only registered native argument kinds"),
+                other => self.resolve_client_safe_argument(
+                    ty,
+                    other,
+                    |coordinates| self.resolve_coords(coordinates),
+                    self.source_rotation(),
+                )?,
             };
             arguments.push(CommandArgument::new(argument.name, value));
         }
@@ -4417,8 +4581,13 @@ mod tests {
             ]);
             let arguments = HashMap::new();
             let mut executors = HashMap::new();
-            let (tree, _, problems) =
-                command_tree_for(&commands, |_| false, &arguments, Some(&mut executors));
+            let (tree, _, problems) = command_tree_for(
+                &commands,
+                |_| false,
+                &arguments,
+                false,
+                Some(&mut executors),
+            );
             assert_eq!(problems.len(), 1, "{problems:?}");
             let mut dispatcher = Dispatcher::new();
             register_command_nodes(
@@ -6241,6 +6410,252 @@ pub(super) mod fake_action_tests {
                 game.as_guest(real_conn, |g| g.native_may_board(99)),
                 Some(true)
             );
+        });
+    }
+
+    #[test]
+    fn client_command_tree_refuses_server_only_handle_kinds_and_binds_slots() {
+        let arguments = command_arguments();
+        let server_only = [
+            mod_api::Command::new("c_player <target:player>"),
+            mod_api::Command::new("c_players <targets:players>"),
+            mod_api::Command::new("c_entity <target:entity>"),
+            mod_api::Command::new("c_entities <targets:entities>"),
+            mod_api::Command::new("c_dim <dim:dimension>"),
+        ];
+        let (refused_tree, _, refused_problems) =
+            client_command_tree(&server_only, |_| false, &arguments, None);
+        assert_eq!(
+            refused_problems.len(),
+            server_only.len(),
+            "{refused_problems:?}"
+        );
+        for root in ["c_player", "c_players", "c_entity", "c_entities", "c_dim"] {
+            assert!(
+                refused_tree["children"].get(root).is_none(),
+                "{root} should be refused on the client"
+            );
+        }
+
+        let client_safe = [
+            mod_api::Command::new("c_word <w:word>"),
+            mod_api::Command::new("c_text <t:text>"),
+            mod_api::Command::new("c_int <n:integer>"),
+            mod_api::Command::new("c_num <x:number>"),
+            mod_api::Command::new("c_bool <b:boolean>"),
+            mod_api::Command::new("c_item <i:item>"),
+            mod_api::Command::new("c_bpos <p:block_pos>"),
+            mod_api::Command::new("c_vec <v:vec3>"),
+            mod_api::Command::new("c_vecu <v:vec3_uncentered>"),
+            mod_api::Command::new("c_col <c:column_pos>"),
+            mod_api::Command::new("c_rot <r:rotation>"),
+            mod_api::Command::new("c_nbt <n:nbt>"),
+            mod_api::Command::new("c_id <id:id>"),
+            mod_api::Command::new("c_mod <m:mod_id>"),
+            mod_api::Command::new("c_res <r:resource:minecraft:item>"),
+        ];
+        let mut slots = CommandExecutorSlots::new();
+        let (tree, _, problems) =
+            client_command_tree(&client_safe, |_| false, &arguments, Some(&mut slots));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(slots.len(), client_safe.len());
+
+        let mut dispatcher = Dispatcher::new();
+        register_command_nodes(
+            &mut dispatcher,
+            &tree,
+            sunrise_client::command::MOD_COMMAND,
+            &arguments,
+            Some(&slots),
+        );
+        let reg = sunrise_client::command::Registries::default();
+        let (ctx, _) = dispatcher.parse("c_int 42", &reg).executable().unwrap();
+        let key = ctx
+            .executor
+            .expect("client command node binds an executor key");
+        assert_eq!(key.slot(), 2);
+        assert!(dispatcher.owns_executor(key));
+
+        // Rebuilding the client dispatcher invalidates keys from the previous generation.
+        let mut rebuilt = Dispatcher::new();
+        register_command_nodes(
+            &mut rebuilt,
+            &tree,
+            sunrise_client::command::MOD_COMMAND,
+            &arguments,
+            Some(&slots),
+        );
+        assert!(!rebuilt.owns_executor(key));
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn client_commands_execute_bound_typed_invocations_contain_panics_and_reject_stale_generations()
+    {
+        struct ClientCommandsMod {
+            heard: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
+            sibling: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ClientCommandsMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_command_argument("machine", MachineArgument);
+            }
+
+            fn register_client_commands(
+                &self,
+                _: &mut dyn mod_api::ClientHost,
+                event: &mut mod_api::RegisterClientCommandsEvent<'_>,
+            ) {
+                let heard = self.heard.clone();
+                event.commands.push(
+                    mod_api::Command::new(
+                        "cmach <machine:client_cmd_fixture:machine> <pos:block_pos> [count:integer]",
+                    )
+                    .executes_client(move |_, invocation| {
+                        heard.lock().unwrap().push(invocation.clone());
+                        Some(1)
+                    }),
+                );
+                event.commands.push(
+                    mod_api::Command::new("cpanic")
+                        .executes_client(|_, _| panic!("client command panic fixture")),
+                );
+                let sibling = self.sibling.clone();
+                event.commands.push(
+                    mod_api::Command::new("csibling <word:word>").executes_client(
+                        move |_, invocation| {
+                            sibling.lock().unwrap().push(invocation.clone());
+                            Some(1)
+                        },
+                    ),
+                );
+                event
+                    .commands
+                    .push(mod_api::Command::op("cop", 2).executes_client(|_, _| Some(1)));
+                event.commands.push(
+                    mod_api::Command::new("cserver <target:player>")
+                        .executes_client(|_, _| Some(1)),
+                );
+            }
+        }
+
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let sibling = Arc::new(Mutex::new(Vec::new()));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "client_cmd_fixture",
+            Box::new(ClientCommandsMod {
+                heard: heard.clone(),
+                sibling: sibling.clone(),
+            }),
+        )]
+        .into();
+
+        let _ = mod_api::testing::rebuild_parts(|| -> Result<(), ()> {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            mod_platform::testing::with_mods(mods, || {
+                super::super::native_entity_refs::tests::with_game(|game| {
+                    let _ = mod_api::__private::game::take_callback_panic_notices();
+                    let chat_tree = game.chat_tree_for(None);
+                    assert!(chat_tree.find("cmach").is_some());
+                    assert!(chat_tree.find("cpanic").is_some());
+                    assert!(chat_tree.find("csibling").is_some());
+                    assert!(chat_tree.find("cop").is_none());
+                    assert!(chat_tree.find("cserver").is_none());
+                    let tp = chat_tree.find("tp").expect("tp redirect preserved");
+                    let teleport = chat_tree.find("teleport").expect("teleport root preserved");
+                    assert_eq!(chat_tree.nodes[tp].redirect, Some(teleport));
+                    assert_eq!(chat_tree.nodes[tp].permission, 2);
+
+                    // Unregistered or rejected roots return false so they proceed to the server.
+                    assert!(!game.run_client_native_command("unknown_root foo"));
+                    assert!(!game.run_client_native_command("cop"));
+                    assert!(!game.run_client_native_command("cserver @a"));
+
+                    // Typed client invocation parses custom arguments, coordinates and optionals.
+                    assert!(game.run_client_native_command("cmach press 1 2 3 7"));
+                    {
+                        let heard = heard.lock().unwrap();
+                        assert_eq!(heard.len(), 1);
+                        assert_eq!(heard[0].literals, ["cmach"]);
+                        assert_eq!(
+                            heard[0].argument("machine"),
+                            Some(&mod_api::CommandArgumentValue::Custom {
+                                kind: "client_cmd_fixture:machine".into(),
+                                value: "press".into(),
+                            })
+                        );
+                        assert_eq!(
+                            heard[0].argument("pos"),
+                            Some(&mod_api::CommandArgumentValue::BlockPos([1, 2, 3]))
+                        );
+                        assert_eq!(
+                            heard[0].argument("count"),
+                            Some(&mod_api::CommandArgumentValue::Integer(7))
+                        );
+                    }
+
+                    // A syntax error on a registered client root reports locally and never calls the executor.
+                    let before_err = game.ui.chat.recent_lines(50).len();
+                    assert!(game.run_client_native_command("cmach nope 1 2 3"));
+                    assert_eq!(heard.lock().unwrap().len(), 1);
+                    assert!(game.ui.chat.recent_lines(50).len() > before_err);
+
+                    // A panicking client executor disables only itself, emits a notice, and leaves siblings working.
+                    let before_panic = game.ui.chat.recent_lines(50).len();
+                    assert!(game.run_client_native_command("cpanic"));
+                    assert!(game.ui.chat.recent_lines(50).len() > before_panic);
+                    let notices: Vec<_> = mod_api::__private::game::take_callback_panic_notices()
+                        .into_iter()
+                        .filter(|notice| notice.mod_id == "client_cmd_fixture")
+                        .collect();
+                    assert_eq!(notices.len(), 1);
+                    assert_eq!(notices[0].kind, "client_command");
+                    assert_eq!(notices[0].operation, "execute");
+
+                    // Disabled executor is not invoked again, and sibling commands still run.
+                    assert!(game.run_client_native_command("cpanic"));
+                    assert!(
+                        mod_api::__private::game::take_callback_panic_notices()
+                            .into_iter()
+                            .all(|notice| notice.mod_id != "client_cmd_fixture")
+                    );
+                    assert!(game.run_client_native_command("csibling ok"));
+                    {
+                        let sibling = sibling.lock().unwrap();
+                        assert_eq!(sibling.len(), 1);
+                        assert_eq!(
+                            sibling[0].argument("word"),
+                            Some(&mod_api::CommandArgumentValue::String("ok".into()))
+                        );
+                    }
+
+                    // Rebuilding the client tree invalidates parsed executor keys from the previous generation.
+                    let old_key = game
+                        .native_client_commands
+                        .dispatcher
+                        .parse("cmach press 1 2 3", &game.ui.registries)
+                        .executable()
+                        .unwrap()
+                        .0
+                        .executor
+                        .expect("client command binds an executor key");
+                    assert!(
+                        game.native_client_commands
+                            .dispatcher
+                            .owns_executor(old_key)
+                    );
+                    let _ = game.chat_tree_for(None);
+                    assert!(
+                        !game
+                            .native_client_commands
+                            .dispatcher
+                            .owns_executor(old_key)
+                    );
+                });
+            });
+            Ok(())
         });
     }
 }

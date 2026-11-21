@@ -7,9 +7,49 @@ use super::{
     CommandArguments, CommandExecutorSlots, Game, command_arguments, command_tree_for,
     register_command_nodes,
 };
-use mod_api::__private::{CommandExecutor, mod_index, split_command_registration};
+use mod_api::__private::{
+    ClientCommandExecutor, CommandExecutor, game::CallbackOwner, mod_index,
+    split_command_registration,
+};
 use serde_json::Value;
 use std::{collections::HashMap, sync::Arc};
+
+pub(in crate::game) struct RegisteredClientExecutor {
+    pub(super) owner: CallbackOwner,
+    pub(super) call: Arc<ClientCommandExecutor>,
+}
+
+impl RegisteredClientExecutor {
+    pub(in crate::game) fn new(owner: CallbackOwner, call: Arc<ClientCommandExecutor>) -> Self {
+        Self { owner, call }
+    }
+}
+
+/// The client's own native mod commands, bound to the current client dispatcher generation.
+pub(in crate::game) struct NativeClientCommandState {
+    pub(in crate::game) dispatcher: sunrise_client::command::Dispatcher,
+    pub(super) executors: Vec<RegisteredClientExecutor>,
+}
+
+impl Default for NativeClientCommandState {
+    fn default() -> Self {
+        Self {
+            dispatcher: sunrise_client::command::Dispatcher::new(),
+            executors: Vec::new(),
+        }
+    }
+}
+
+impl NativeClientCommandState {
+    pub(in crate::game) fn install(
+        &mut self,
+        dispatcher: sunrise_client::command::Dispatcher,
+        executors: Vec<RegisteredClientExecutor>,
+    ) {
+        self.dispatcher = dispatcher;
+        self.executors = executors;
+    }
+}
 
 pub(super) struct RegisteredExecutor {
     pub(super) owner: &'static str,
@@ -90,6 +130,7 @@ impl Game<'_> {
             &usages,
             |name| hub.is_some_and(|hub| hub.vanilla_command(name)) || vanilla.find(name).is_some(),
             &arguments,
+            false,
             Some(&mut slots),
         );
         for p in problems {

@@ -1800,7 +1800,7 @@ impl Game<'_> {
                 }
                 // A native mod's command first, as typed chat does; the
                 // server's console cannot run a client mod's command.
-                if self.client_mod_command(text) {
+                if self.run_client_native_command(text) {
                     return ok(json!({ "ok": true, "chat": self.ui.chat.recent_lines(5) }));
                 }
                 let command = format!("/{text}");

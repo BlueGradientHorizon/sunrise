@@ -295,7 +295,9 @@ suggestions.
 The namespaced id is in the registering mod's namespace; an id registered twice, a
 name in another namespace or an empty name refuses the mods at startup, naming the
 mod. A client mod registers client command argument types the same way; they are
-available to `register_client_commands`.
+available to `register_client_commands`, where each client usage binds its executor
+with `Command::executes_client(|host, command| { /* ... */ Some(1) })` and server-only
+handle argument kinds (`player`, `players`, `entity`, `entities`, `dimension`) are refused.
 
 ### Completing one token of a greedy text
 
