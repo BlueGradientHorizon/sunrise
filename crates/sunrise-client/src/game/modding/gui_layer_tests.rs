@@ -18,6 +18,7 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
+#[path = "gui_layer_tests/hidden_panic.rs"]
 mod hidden_panic;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
