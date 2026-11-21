@@ -49,9 +49,10 @@ let _ = r.register_spawn_placement(
 ```
 
 If the type has no vanilla spawn placement, its first registration must supply both metadata
-fields: the placement checks where the type can stand, and the heightmap is how natural spawning
-and chunk generation find the surface. The first predicate becomes the original, whatever
-operation you give it. For an existing entry, only `Replace` can set either field; `None` keeps
+fields: the placement checks where the type can stand, and the heightmap selects the surface
+for chunk-generation spawns. The natural spawn pass starts from `WorldSurface` regardless of the
+type. The first predicate becomes the original, whatever operation you give it. For an existing
+entry, only `Replace` can set either field; `None` keeps
 that field's current value, including any change by an earlier replacement.
 
 If an existing entry was replaced, only the last replacement runs, even after later `Or` or
@@ -68,7 +69,9 @@ Level reads never load chunks or write to the world. Use namespaced block and bi
 `ctx.level().is_bright_enough_to_spawn(pos)` in place of the darkness test. To allow any light
 level, omit the light test. Draw any additional randomness from `ctx.random()`. The darkness
 helper also draws from that stream. Short-circuited predicates don't draw, and draws that did
-happen are not rolled back if the spawn is later refused.
+happen are not rolled back if the spawn is later refused. Registered predicates run only where
+vanilla uses `SpawnPlacements.checkSpawnRules`; patrols and village sieges call their built-in
+predicates directly instead.
 
 An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
 refusal, so ignoring the returned error does not hide it. A type missing at resource load or
@@ -204,20 +207,27 @@ you need a list after the call, collect the handles you need in your visitor.
 
 `mob_spawn_placement_check` and `mob_spawn_position_check` both get the `level` the mob would join (a `LevelRef`, so a
 listener can read the blocks around `pos` through the host) and the `spawner` that asked: `Spawner::Block { pos }` for a
-spawner block, `Spawner::Trial { pos }` for a trial spawner, and `None` for natural spawning, chunk generation, patrols,
-sieges, reinforcements and a spawner minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to override that
+spawner block, `Spawner::Trial { pos }` for a trial spawner, and `None` when no block asked, including a spawner
+minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to override that
 check; `Default` keeps the check's own answer.
 
 In `mob_spawn_placement_check` version 2, `event.default_result` is the effective predicate result. It can differ
-from vanilla even for a vanilla type, because registrations can add to or replace its predicate. The hook fires at
-the same point: the predicates have run and made their live random draws before listeners answer. An override does
-not undo those draws or decide later spawn checks. Ordinary spawners with custom spawn rules bypass this placement
-check; trial spawners check their custom rules afterward. Commands and spawn eggs still don't run it.
+from vanilla even for a vanilla type, because registrations can add to or replace its predicate. The hook fires
+after the predicates at `SpawnPlacements.checkSpawnRules`. For a probabilistic decision, draw from `event.random`,
+the caller's live `&mut dyn RandomSource` lent to each listener in turn. Reassigning `event.random` only changes that
+listener's local reference; draws from the caller's stream and writes through `event.result` carry to the next
+listener. Keeping `Default` or refusing a spawn does not undo any draws, and this hook does not decide later checks.
+Ordinary spawners with custom spawn rules bypass this placement check; trial spawners check their custom rules
+afterward. Patrols and village sieges bypass it too, and commands and spawn eggs still don't run it.
 
 ```rust,ignore
 fn mob_spawn_placement_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>) {
-    // spawner blocks work as usual; nothing else spawns zombies here
-    if event.kind == "minecraft:zombie" && event.spawner.is_none() {
+    // Veto half of the natural zombie placements that the predicate accepted.
+    if event.kind == "minecraft:zombie"
+        && event.reason == mod_api::SpawnReason::Natural
+        && event.default_result
+        && event.random.next_boolean()
+    {
         *event.result = mod_api::SpawnCheck::Fail;
     }
 }

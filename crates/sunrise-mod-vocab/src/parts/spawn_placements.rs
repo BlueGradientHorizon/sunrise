@@ -19,7 +19,7 @@ pub struct SpawnPlacementDeclaration {
     pub mod_id: &'static str,
     /// Where the type stands, if the registration sets it.
     pub placement: Option<SpawnPlacementType>,
-    /// Which surface the spawner finds, if the registration sets it.
+    /// The surface used to place mobs during chunk generation, if set.
     pub heightmap: Option<Heightmap>,
     /// The native predicate to run for the type.
     pub predicate: Arc<dyn SpawnPlacementPredicate>,
@@ -41,8 +41,9 @@ pub trait SpawnPlacementsRegistrar {
     /// with the full registry id, such as `mymod:ghoul` or `minecraft:zombie`.
     ///
     /// If the type has no vanilla entry, its first registration needs both `placement`
-    /// (where it may stand) and `heightmap` (how natural spawning and chunk generation
-    /// find the surface). Its predicate becomes the original regardless of `operation`.
+    /// (where it may stand) and `heightmap` (how chunk generation finds the surface).
+    /// Natural spawning starts from `WorldSurface` instead. The first predicate becomes
+    /// the original regardless of `operation`.
     /// For an existing entry, only [`SpawnPlacementOperation::Replace`] may supply either
     /// field; `None` keeps that field's current value, including earlier changes.
     ///
@@ -50,8 +51,10 @@ pub trait SpawnPlacementsRegistrar {
     /// later registrations add `Or` or `And` predicates. Otherwise the original runs
     /// first, then `Or` predicates until one passes. If the original or any `Or` passed,
     /// `And` predicates run until one fails. Each list runs in registration order.
-    /// Predicates share the caller's live random stream. Where `mob_spawn_placement_check`
-    /// fires, it sees the effective answer after those predicates and their draws.
+    /// The predicates run at `SpawnPlacements.checkSpawnRules`, not at direct vanilla
+    /// predicate calls such as patrols and village sieges. They share the caller's live
+    /// random stream. Where `mob_spawn_placement_check` fires, it gets the effective
+    /// answer and the same stream after the predicates' draws.
     ///
     /// An unavailable key returns [`SpawnPlacementError::InvalidEntityType`] and records
     /// a registration refusal. Unloaded types, invalid combinations of metadata, and

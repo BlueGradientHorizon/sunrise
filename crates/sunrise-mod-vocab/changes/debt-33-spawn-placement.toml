@@ -13,7 +13,8 @@ why = """
 Register a native predicate for an entity type instead of sending a fixed ground, biome and light rule. \
 Mods can extend or replace each type's predicate, including vanilla types, using the checked level and its live random stream. \
 Placement types and registration errors now stay in-process; they no longer implement Wire. \
-The placement hook is version 2 because its default result can now differ from vanilla even for a vanilla type."""
+The placement hook is version 2 because its default result can now differ from vanilla even for a vanilla type. It follows NeoForge's `SpawnPlacementCheck` at vanilla `SpawnPlacements.checkSpawnRules`. \
+As in vanilla `NaturalSpawner.getTopNonCollidingPos`, the type's heightmap is used for chunk generation; `NaturalSpawner.getRandomPosWithin` starts natural spawning from `WorldSurface` independently of the type."""
 migrate = """
 Replace `r.declare_spawn_placement(path, SpawnPlacementRule { placement, heightmap, spawnable_on, light, biome_tag })` \
 with `let key = r.entity_type_key("your_mod:path"); r.register_spawn_placement(key, Some(placement), Some(heightmap), Arc::new(predicate), SpawnPlacementOperation::Replace)`. \
@@ -27,6 +28,8 @@ To extend an existing entry, pass `None` for both metadata fields and use `Or` o
 Without a replacement, the engine evaluates `(original or any Or) and all And`, short-circuiting each list in registration order. Only the last replacement of an existing entry runs if there is one. \
 Remove matches on `SpawnPlacementError::{InvalidId, InvalidTag, Duplicate}`. `InvalidEntityType` reports an unavailable key and records a startup refusal even if the return value is ignored. \
 An unloaded type or invalid metadata refuses resource loading with the mod and entity type named. Do not Wire-encode `SpawnPlacementType` or `SpawnPlacementError`; use them directly in native registration. \
-Rebuild listeners for `mob_spawn_placement_check` version 2; the callback signature and timing are unchanged. \
-Treat `default_result` as the effective predicate result, not necessarily vanilla's, even for a vanilla type. \
-`Default` keeps it; `Succeed` or `Fail` overrides it for that check without undoing any of the predicates' random draws."""
+Re-prepare the game's resources with the updated `sunrise-prepare --prepare --server-jar <server.jar> --output <resources>` before loading a mod that registers predicates. Older `mob-data.json` files lack vanilla spawn placement membership. \
+Rebuild listeners for `mob_spawn_placement_check` version 2; the callback still takes `&dyn Host` and `&mut MobSpawnPlacementCheckEvent<'_>`. \
+Treat `event.default_result` as the effective predicate result, not necessarily vanilla's, even for a vanilla type. \
+`Default` keeps it; `Succeed` or `Fail` overrides it for that check without undoing draws. \
+Draw from `event.random` if needed; it borrows the caller's live stream after the predicates have run. Patrol and village-siege checks bypass registered predicates and this hook."""

@@ -4,8 +4,9 @@ use super::*;
 impl Game<'_> {
     /// `MobSpawnEvent.SpawnPlacementCheck`: after `SpawnPlacements.checkSpawnRules`,
     /// `default_result` is the effective predicate result, including native registrations
-    /// even for vanilla types. `spawner` is the block that asked, if any. `Default` keeps
-    /// that result; `Succeed` and `Fail` override it without undoing any draws. Server-side.
+    /// even for vanilla types. `spawner` is the block that asked, if any. `random` is the
+    /// same live stream the predicate used, lent only for the call. `Default` keeps the
+    /// predicate result; `Succeed` and `Fail` override it without undoing draws. Server-side.
     pub(in crate::game) fn native_mob_spawn_placement_check(
         &self,
         call: mod_api::__private::MobSpawnPlacementCheckCall<'_>,
