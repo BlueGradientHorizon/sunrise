@@ -3973,7 +3973,8 @@ pub(crate) mod tests {
                 );
                 assert_eq!(menu.carried, None);
 
-                // PickAll pulling from slots 0 and 1 yields after each slot is emptied.
+                // PickAll uses Slot.safeTake: each emptied slot notifies through
+                // removeItem, twice through setByPlayer, and again through onTake.
                 menu.carried = Some(enchanted(1));
                 let mut pick_seen = Vec::new();
                 let mut rest = menu.start_click(env, 3, 0, Input::PickupAll).unwrap();
@@ -3998,6 +3999,8 @@ pub(crate) mod tests {
                         (None, Some(1)),
                         (None, Some(1)),
                         (None, Some(1)),
+                        (None, Some(1)),
+                        (None, None),
                         (None, None),
                         (None, None),
                         (None, None),
@@ -4006,7 +4009,7 @@ pub(crate) mod tests {
                 assert_eq!(menu.carried.as_ref().map(|s| s.count), Some(3));
             }
 
-            // Grindstone equal-stack swap still marks grindstone_created() for live hook delivery.
+            // A full matching pickup still calls Slot.setChanged even when nothing moves.
             let mut grind = Menu::new(Kind::Grindstone);
             grind.set_slot(env, 0, Some(enchanted(64)));
             let _ = grind.grindstone_created();

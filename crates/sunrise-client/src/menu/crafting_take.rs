@@ -45,8 +45,11 @@ impl Menu {
             self.take_sound("minecraft:ui.stonecutter.take_result");
             return;
         }
-        if self.state.slots[s].role == Role::GrindInput {
-            // The repair inputs use Slot.onTake, which calls setChanged on the repair container.
+        if matches!(self.state.kind, Kind::Anvil | Kind::Grindstone)
+            && self.state.slots[s].container == MAIN
+        {
+            // GrindstoneMenu and ItemCombinerMenu's input slots inherit Slot.onTake:
+            // the repair container's setChanged recomputes the result again.
             self.slot_changed(env, s);
             return;
         }
