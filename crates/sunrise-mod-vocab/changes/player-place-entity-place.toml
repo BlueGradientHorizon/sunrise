@@ -1,0 +1,3 @@
+ids = ["handle:PlayerRef::place_block", "type:PlayerWorldRefusal"]
+why = "A chosen-state placement attributed to a player now runs the cancellable entity_place hook before committing the primary block."
+migrate = "Pass the placement face before update_neighbour_shapes. Handle Canceled when a listener vetoes the placement and PlacementChanged when the hook invalidates its destination or supporting state. No item is consumed."

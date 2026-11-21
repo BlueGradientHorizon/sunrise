@@ -147,7 +147,13 @@ pub trait PlayerInteractionBackendMut {
     /// (`NEIGHBORS | CLIENTS`, plus `KNOWN_SHAPE` when `update_neighbour_shapes` is false; without
     /// it the neighbours' shapes update, so fences, walls and stairs connect), so the block entity
     /// follows that write's rules, and then `Block.setPlacedBy` of the block that stands there, run in
-    /// the player's turn (a bed places its head, a door its upper half). Nothing else of vanilla's `BlockItem.place`
+    /// the player's turn (a bed places its head, a door its upper half). Before commit,
+    /// `entity_place` sees the tentative primary state, this player as `placer`, and the state
+    /// adjacent to `pos` in the direction opposite `face`. Cancel returns `Canceled` and
+    /// discards the tentative write and journalled listener writes. If the destination or
+    /// its against state changes during the hook, the placement refuses rather than choosing
+    /// again. An enclosing transaction also owns the placement; `setPlacedBy` runs at commit.
+    /// Nothing else of vanilla's `BlockItem.place`
     /// or `useOn` runs: no check that the block may be placed there (survival, entity
     /// obstruction, build permission, spawn protection), no `placed_block` advancement trigger or
     /// statistic, generic item placement sound or game event, or item use or consumption.
@@ -168,6 +174,7 @@ pub trait PlayerInteractionBackendMut {
         level: LevelRef,
         pos: [i32; 3],
         state: BlockState,
+        face: BlockFace,
         update_neighbour_shapes: bool,
     ) -> Result<(), PlayerWorldRefusal>;
 }

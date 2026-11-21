@@ -48,6 +48,10 @@ pub enum PlayerWorldRefusal {
     Fenced,
     /// This placement completes a wither pattern and cannot run inside a Host transaction.
     InTransaction,
+    /// An `entity_place` listener vetoed `place_block`.
+    Canceled,
+    /// The destination or the block it was placed against changed during `entity_place`.
+    PlacementChanged,
 }
 
 /// A wrong-phase call refuses as `Stale`: no player is in reach there.

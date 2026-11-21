@@ -319,6 +319,12 @@ The veto's placement neighbour and the post-placement notice use the resolved fa
 and the notice uses the resolved click location. Neither changes the sides of the block placement or
 survival hooks.
 
+`PlayerRef::place_block` offers a mod's chosen placement to the same veto without simulating an item
+use. It reports the supplied player, tentative primary block (`Placement::Single`), and state
+opposite the supplied face. Its `Block.setPlacedBy` follow-up runs only after acceptance, at the
+outer commit if an enclosing transaction is open. A raw `LevelRef::set_block` and a playerless
+`LevelRef::place_block` do not fire this hook.
+
 `level.state_for_placement(host, block, &context)` takes `&mut dyn ServerHost` and queries only
 the level in play. It runs the block's `Block.getStateForPlacement`, including its
 `state_for_placement` parts, without resolving the click again or placing anything. The caller

@@ -457,6 +457,13 @@ pub(super) enum After {
     ConnectionGroup(Dim, Pos, Option<u64>),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
+    /// A player-attributed chosen placement's `Block.setPlacedBy`, after its write is accepted.
+    PlayerPlacedBlock(
+        mod_api::PlayerRef,
+        mod_api::LevelRef,
+        [i32; 3],
+        BlockStateId,
+    ),
     BlockGameEvent(
         &'static str,
         [i32; 3],
@@ -1464,6 +1471,9 @@ impl Game<'_> {
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
+            After::PlayerPlacedBlock(player, level, pos, state) => {
+                self.finish_player_placement(player, level, pos, state);
+            }
             After::BlockGameEvent(id, pos, who, state) => {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }

@@ -26,8 +26,12 @@ let fitted = level.update_from_neighbour_shapes(host, pos, door)?;
 level.place_block(host, pos, fitted, true)?;
 ```
 
-`place_block` is `player.place_block` without a player: `setPlacedBy` gets no placer and no item. Nothing
-else of `BlockItem.place` runs: no survival or obstruction check, item placement sound, placement
+`level.place_block` is playerless: it does not fire `entity_place`, and `setPlacedBy` gets no placer or
+item. Use `player.place_block(host, level, pos, state, face, update_neighbour_shapes)` to let placement
+listeners veto a chosen state attributed to a real player. The face tells the hook which adjacent block
+it was placed against. The block callback still gets no placer or item.
+
+Neither handle runs an item use. Nothing else of `BlockItem.place` runs: no survival or obstruction check, item placement sound, placement
 game event or advancement. `place_block` and `update_from_neighbour_shapes` refuse with `LevelWriteError`:
 `Stale` for a dead handle, `Unavailable` on a client or for a level that is not the one in place, and
 `InvalidState` for a state the world lacks.

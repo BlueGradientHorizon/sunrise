@@ -2807,7 +2807,8 @@ registration path.
   (`BlockItem.place`), an enderman putting its block down or a snow golem's trail, before it is written, and may cancel it:
   nothing is placed and the stack is kept. For a player, `placed_against` is the state next to the primary placed
   block opposite the clicked face, even when the clicked block is replaceable; for mobs it is the state below.
-  A bed, door or tall plant arrives as one `Placement::Multi`. Silverfish
+  `PlayerRef::place_block` hears the same veto for its tentative primary block alone, attributed to that player,
+  with no item use. In the item path a bed, door or tall plant arrives as one `Placement::Multi`. Silverfish
   infesting, turtle eggs and falling blocks are not placements yet.
 
 - Block entities for a mod's blocks (`block_entity`, `block_entity_ticks`,
