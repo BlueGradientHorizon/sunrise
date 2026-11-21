@@ -15,7 +15,6 @@ except ImportError:
     import test_rust_parity as base
     from integration_env import game_environment
 
-PARITY_RUST_SCOPE = 'game'
 LIVE_TEST = ('game::commands::world_cmds::registered_damage_tests::'
              'live_damage_and_blast_creaking_reactions_and_timed_player_credit')
 

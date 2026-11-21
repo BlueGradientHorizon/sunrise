@@ -68,10 +68,15 @@ final class VanillaCreakingHitOrderOracle {
             @Override public void write(ChannelHandlerContext ctx, Object packet, ChannelPromise promise) throws Exception {
                 if (packet instanceof ClientboundEntityEventPacket event && event.getEntity(level) == creaking && event.getEventId() == 66) {
                     flashes[0]++;
-                } else if (packet instanceof ClientboundSoundEntityPacket sound) {
-                    sounds.add(sound.getSound().value().location().toString());
-                } else if (packet instanceof ClientboundSoundPacket sound) {
-                    sounds.add(sound.getSound().value().location().toString());
+                } else {
+                    var event = packet instanceof ClientboundSoundEntityPacket sound ? sound.getSound()
+                            : packet instanceof ClientboundSoundPacket sound ? sound.getSound() : null;
+                    if (event != null) {
+                        String id = event.value().location().toString();
+                        if (id.equals("minecraft:entity.creaking.sway") || id.equals("minecraft:entity.arrow.hit")) {
+                            sounds.add(id);
+                        }
+                    }
                 }
                 super.write(ctx, packet, promise);
             }

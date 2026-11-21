@@ -779,6 +779,15 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         game.lan_entity_events.clear();
         TEST_POSTED_EVENT_ORDER.with(|order| *order.borrow_mut() = Some(Vec::new()));
         let reaction = |game: &Game<'_>| {
+            let sounds = game.audio.capture.as_ref().unwrap();
+            let is_hit_sound = |event: &str| {
+                matches!(
+                    event,
+                    "minecraft:entity.creaking.sway" | "minecraft:entity.arrow.hit"
+                )
+            };
+            let flashes = game.lan_entity_events.as_slice();
+            let is_flash = |event: &(i32, u8)| *event == (creaking_id as i32, 66);
             let action = TEST_POSTED_EVENT_ORDER.with(|order| {
                 order
                     .borrow()
@@ -789,13 +798,24 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                         *event == "minecraft:entity_action"
                             && *source == Some(Who::Mob(creaking_id))
                     })
-                    .map(|(_, _, flashes, sounds)| [*flashes, *sounds])
+                    .map(|(_, _, flash_cursor, sound_cursor)| {
+                        [
+                            flashes[..*flash_cursor]
+                                .iter()
+                                .filter(|e| is_flash(e))
+                                .count(),
+                            sounds[..*sound_cursor]
+                                .iter()
+                                .filter(|s| is_hit_sound(&s.event))
+                                .count(),
+                        ]
+                    })
                     .collect::<Vec<_>>()
             });
             serde_json::json!({
                 "action": action,
-                "flashes": game.lan_entity_events.iter().filter(|e| **e == (creaking_id as i32, 66)).count(),
-                "sounds": game.audio.capture.as_ref().unwrap().iter().map(|s| &s.event).collect::<Vec<_>>(),
+                "flashes": flashes.iter().filter(|e| is_flash(e)).count(),
+                "sounds": sounds.iter().filter(|s| is_hit_sound(&s.event)).map(|s| &s.event).collect::<Vec<_>>(),
                 "emitter": heart_emitter(game),
                 "animation": creaking_state(game).1,
             })
