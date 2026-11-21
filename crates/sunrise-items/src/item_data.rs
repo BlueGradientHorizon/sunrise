@@ -809,6 +809,7 @@ impl StackData {
                 "minecraft:potion_contents" => replace_fields!(potion, potion_extra),
                 "minecraft:death_protection" => replace_fields!(death_protection),
                 "minecraft:consumable" => replace_fields!(consumable),
+                "minecraft:villager_food" => replace_fields!(villager_food),
                 "minecraft:kinetic_weapon" => replace_fields!(kinetic_weapon),
                 "minecraft:map_id" => replace_fields!(map_id),
                 "minecraft:banner_patterns" => {
@@ -1026,13 +1027,14 @@ impl ItemStack {
     pub fn data_mut(&mut self) -> &mut StackData {
         self.extra.get_or_insert_with(Box::default)
     }
-    /// Copy only the named component overrides from a decoded snapshot of this same item.
-    /// The other fields stay live: copying an unchanged serialized component can lose
-    /// runtime data, including in nested stacks. The caller supplies the changed names
-    /// (without the removal prefix) and owns item/count validation.
-    pub fn copy_changed_components_from(&mut self, snapshot: ItemStack, changed: &[String]) {
-        let names = changed.iter().map(String::as_str);
-        let mut snapshot = snapshot;
+    /// Apply only the named component fields from a decoded snapshot of this same item.
+    /// Unchanged fields keep their runtime data, including in nested stacks. The engine
+    /// caller supplies unique names without the removal prefix and owns item/count validation.
+    pub fn apply_component_fields_from<'a>(
+        &mut self,
+        mut snapshot: ItemStack,
+        names: impl Iterator<Item = &'a str> + Clone,
+    ) {
         if (self.data().is_some_and(|d| d.ominous_banner)
             || snapshot.data().is_some_and(|d| d.ominous_banner))
             && names.clone().any(is_ominous_component)
@@ -1049,8 +1051,13 @@ impl ItemStack {
         if names.clone().any(|id| id == "minecraft:damage") {
             self.damage = snapshot.damage;
         }
-        self.data_mut()
-            .apply_component_changes(snapshot.extra, names);
+        if let Some(data) = self.extra.as_deref_mut() {
+            data.apply_component_changes(snapshot.extra, names);
+        } else if let Some(extra) = snapshot.extra {
+            let mut data = StackData::default();
+            data.apply_component_changes(Some(extra), names);
+            self.extra = (!data.is_empty()).then(|| Box::new(data));
+        }
         self.tidy();
     }
     /// Canonicalizes the component representation and drops an all-default box.

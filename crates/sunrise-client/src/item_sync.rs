@@ -2758,7 +2758,7 @@ mod tests {
             extra,
             ..edited.clone()
         };
-        edited.copy_changed_components_from(snapshot, &["minecraft:item_name".to_owned()]);
+        edited.apply_component_fields_from(snapshot, std::iter::once("minecraft:item_name"));
         assert!(!edited.data().unwrap().ominous_banner);
         let (received, _) = round_trip(edited.clone());
         assert_eq!(

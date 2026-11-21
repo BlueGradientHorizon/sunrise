@@ -195,18 +195,57 @@ impl Game<'_> {
         if !self.places_simulated() || !self.transaction_holds(tx) {
             return Err(ItemPlaceEditError::Unavailable);
         }
+        let mut names = changed.iter().map(String::as_str);
         if let ItemPlace::Equipment { entity, slot } = *place {
-            let mut held = self
-                .equipment_stack(entity, slot)
-                .flatten()
-                .ok_or(ItemPlaceEditError::NotHeld)?;
-            held.copy_changed_components_from(stack, changed);
-            self.journal_equipment(entity);
-            if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == entity && !m.removed) {
-                mob.set_equipment_stack(slot as usize, Some(held));
+            let (equipment, mob_gear) =
+                if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == entity && !m.removed) {
+                    (&mut mob.extra.equipment, Some(&mut mob.extra.gear))
+                } else if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == entity) {
+                    (&mut stand.equipment, None)
+                } else {
+                    return Err(ItemPlaceEditError::NotHeld);
+                };
+            let slot = slot as usize;
+            if equipment[slot].is_none() {
+                return Err(ItemPlaceEditError::NotHeld);
+            }
+            if let Some(level) = self.transactions.last_mut() {
+                level.keep_equipment(entity, equipment, mob_gear.as_deref());
+            }
+            let held = equipment[slot].as_mut().expect("occupied equipment slot");
+            held.apply_component_fields_from(stack, names.clone());
+            if let Some(overlay) = mob_gear {
+                // Only hands and armor have a separate gear overlay. An edit
+                // to one of its components must not rewrite the other one.
+                if slot <= finalize::HEAD {
+                    let enchantments = names
+                        .clone()
+                        .any(|id| id == "minecraft:enchantments")
+                        .then(|| held.enchantments());
+                    let trim = names
+                        .any(|id| id == "minecraft:trim")
+                        .then(|| held.data().and_then(|data| data.trim.as_ref()));
+                    if enchantments.is_some_and(|levels| !levels.is_empty())
+                        || trim.flatten().is_some()
+                    {
+                        overlay.get_or_insert_with(Box::default);
+                    }
+                    if (enchantments.is_some() || trim.is_some())
+                        && let Some(gear) = overlay.as_deref_mut()
+                    {
+                        let index = finalize::gear_slot(slot);
+                        if let Some(levels) = enchantments {
+                            levels.clone_into(&mut gear.slots[index]);
+                        }
+                        if let Some(trim) = trim {
+                            gear.trims[index] = trim.cloned();
+                        }
+                        if gear.is_empty() {
+                            *overlay = None;
+                        }
+                    }
+                }
                 self.after_commit(After::EquipmentSync(entity));
-            } else if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == entity) {
-                stand.equipment.set(slot as usize, Some(held));
             }
         } else {
             let player = self
@@ -216,7 +255,7 @@ impl Game<'_> {
             self.native_as_player(player, |game| {
                 game.journal_player(player);
                 if let Some(held) = game.player_place(place).and_then(Option::as_mut) {
-                    held.copy_changed_components_from(stack, changed);
+                    held.apply_component_fields_from(stack, names);
                     written = true;
                 }
             });
@@ -1097,8 +1136,8 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn worn_component_edit_is_quiet_and_reaches_tracking() {
-        use mod_api::EquipmentSlot;
-        use sunrise_client::lan::Out;
+        use mod_api::{EquipmentSlot, Tag};
+        use sunrise_client::{item_data::trim, lan::Out, mobs::gear};
         use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
 
         with_game(|game| {
@@ -1125,8 +1164,17 @@ pub(super) mod tests {
             let id = zombie(game);
             let living = game.living(game.entity(id).unwrap()).unwrap();
             let slot = EquipmentSlot::Chest;
-            let armor = ItemStack::new("minecraft:diamond_chestplate", 1);
+            let mut armor = ItemStack::new("minecraft:diamond_chestplate", 1);
+            armor
+                .data_mut()
+                .enchantments
+                .push(("minecraft:protection".into(), 1));
+            armor.data_mut().trim = Some(("minecraft:iron".into(), "minecraft:coast".into()));
             assert!(game.living_set_equipment(living, slot, Some(armor)));
+            // The separate gear data can differ from the resident stack.
+            let worn = game.mobs[0].extra.gear.as_deref_mut().unwrap();
+            worn.slots[gear::CHEST][0].1 = 3;
+            worn.trims[gear::CHEST] = Some(("minecraft:gold".into(), "minecraft:sentry".into()));
             game.mobs[0].first_tick = false;
             // Track once to pair, again to cache a full idle state, then confirm it can go bare.
             for _ in 0..3 {
@@ -1152,37 +1200,82 @@ pub(super) mod tests {
             assert!(game.audio.capture.as_ref().unwrap().is_empty());
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
-            game.level_pass.packets_drained = true;
-            game.tick_lan(false);
-            let hub = &game.lan.as_ref().unwrap().hub;
-            let received = rx
-                .try_iter()
-                .flat_map(|message| match message {
-                    Out::Packet(body) => vec![body],
-                    Out::Packets(bodies) => bodies,
-                    Out::Disconnect(reason) => panic!("tracking viewer disconnected: {reason:?}"),
-                })
-                .find_map(|body| {
-                    let mut reader = Reader::new(&body);
-                    let packet = reader.varint().ok()?;
-                    let Clientbound::SetEquipment(equipment) =
-                        Clientbound::decode(packet, reader.rest()).ok()?
-                    else {
-                        return None;
-                    };
-                    if equipment.id != id as i32 {
-                        return None;
-                    }
-                    let (_, stack) = equipment
-                        .slots
-                        .into_iter()
-                        .find(|(at, _)| *at == slot as u8)?;
-                    Some(hub.stack_from_network(&stack?))
-                })
-                .expect("the existing viewer receives the idle mob's equipment edit");
+            let tracked = |game: &mut super::Game<'_>| {
+                game.level_pass.packets_drained = true;
+                game.tick_lan(false);
+                let hub = &game.lan.as_ref().unwrap().hub;
+                rx.try_iter()
+                    .flat_map(|message| match message {
+                        Out::Packet(body) => vec![body],
+                        Out::Packets(bodies) => bodies,
+                        Out::Disconnect(reason) => {
+                            panic!("tracking viewer disconnected: {reason:?}")
+                        }
+                    })
+                    .find_map(|body| {
+                        let mut reader = Reader::new(&body);
+                        let packet = reader.varint().ok()?;
+                        let Clientbound::SetEquipment(equipment) =
+                            Clientbound::decode(packet, reader.rest()).ok()?
+                        else {
+                            return None;
+                        };
+                        if equipment.id != id as i32 {
+                            return None;
+                        }
+                        let (_, stack) = equipment
+                            .slots
+                            .into_iter()
+                            .find(|(at, _)| *at == slot as u8)?;
+                        Some(hub.stack_from_network(&stack?))
+                    })
+                    .expect("the existing viewer receives the idle mob's equipment edit")
+            };
+            let received = tracked(game);
             assert_eq!(received.item.as_ref(), "minecraft:diamond_chestplate");
             assert_eq!(received.count, 1);
             assert_eq!(received.damage, 7);
+            assert_eq!(received.tag_enchantment_level("minecraft:protection"), 3);
+            assert_eq!(
+                received.data().unwrap().trim.as_ref().and_then(trim::named),
+                Some(("minecraft:gold", "minecraft:sentry"))
+            );
+            let resident = game.mobs[0].extra.equipment.get(slot as usize).unwrap();
+            assert_eq!(resident.tag_enchantment_level("minecraft:protection"), 1);
+            assert_eq!(
+                resident.data().unwrap().trim.as_ref().and_then(trim::named),
+                Some(("minecraft:iron", "minecraft:coast"))
+            );
+
+            game.transaction(|host, tx| {
+                place.edit(host, tx, |stack| {
+                    stack
+                        .apply_components(
+                            &[(
+                                "!minecraft:enchantments".into(),
+                                Tag::Compound(Default::default()),
+                            )]
+                            .into(),
+                        )
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            let resident = game.mobs[0].extra.equipment.get(slot as usize).unwrap();
+            assert!(
+                resident
+                    .data()
+                    .unwrap()
+                    .other("!minecraft:enchantments")
+                    .is_some()
+            );
+            let received = tracked(game);
+            assert_eq!(received.damage, 7);
+            assert!(received.enchantments().is_empty());
+            assert_eq!(
+                received.data().unwrap().trim.as_ref().and_then(trim::named),
+                Some(("minecraft:gold", "minecraft:sentry"))
+            );
         });
     }
 
@@ -1251,9 +1344,34 @@ pub(super) mod tests {
                 place.edit(host, tx, |stack| {
                     stack
                         .apply_components(
+                            &[
+                                (
+                                    "!minecraft:custom_name".into(),
+                                    Tag::Compound(Default::default()),
+                                ),
+                                (
+                                    "minecraft:villager_food".into(),
+                                    Tag::compound([("nutrition", Tag::Int(7))]),
+                                ),
+                            ]
+                            .into(),
+                        )
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            let bundle = game.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+                .as_ref()
+                .unwrap();
+            assert_eq!(bundle.villager_food(None), Some(7));
+
+            game.transaction(|host, tx| {
+                place.edit(host, tx, |stack| {
+                    stack
+                        .apply_components(
                             &[(
-                                "!minecraft:custom_name".into(),
-                                Tag::compound(Vec::<(&str, Tag)>::new()),
+                                "!minecraft:villager_food".into(),
+                                Tag::Compound(Default::default()),
                             )]
                             .into(),
                         )
@@ -1263,13 +1381,14 @@ pub(super) mod tests {
             .unwrap();
             let bundle = game.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                 .as_ref()
-                .unwrap()
-                .data()
                 .unwrap();
-            assert!(bundle.custom_name.is_none());
-            assert!(bundle.other("!minecraft:custom_name").is_some());
-            assert_eq!(bundle.bundle_selected.0, 0);
-            let map = bundle.bundle_contents[0].data().unwrap();
+            assert_eq!(bundle.villager_food(None), None);
+            let data = bundle.data().unwrap();
+            assert!(data.other("!minecraft:villager_food").is_some());
+            assert!(data.custom_name.is_none());
+            assert!(data.other("!minecraft:custom_name").is_some());
+            assert_eq!(data.bundle_selected.0, 0);
+            let map = data.bundle_contents[0].data().unwrap();
             assert_eq!(map.map_id, Some(27));
             assert_eq!(map.map_post_processing, Some(1));
         });
@@ -1377,6 +1496,7 @@ pub(super) mod tests {
     #[ignore = "daily"]
     fn nested_equipment_rollback_restores_the_live_modifiers_not_the_quiet_stack() {
         use mod_api::{EquipmentSlot, Tag};
+        use sunrise_client::mobs::gear;
 
         with_game(|game| {
             let id = zombie(game);
@@ -1388,6 +1508,8 @@ pub(super) mod tests {
                 slot,
                 Some(ItemStack::new("minecraft:diamond_chestplate", 1))
             ));
+            // A mob can have gear that the raw stack does not carry at all.
+            gear::upgrade(&mut game.mobs[0], gear::CHEST, "minecraft:protection", 2);
             let armor = |host: &dyn mod_api::ServerHost| {
                 living.attribute_value(host, "minecraft:armor").unwrap()
             };
@@ -1452,15 +1574,11 @@ pub(super) mod tests {
                     before,
                     "parent abort restores the original modifiers"
                 );
-                assert_eq!(
-                    game.mobs[0]
-                        .equipment_stacks()
-                        .get(slot as usize)
-                        .unwrap()
-                        .item
-                        .as_ref(),
-                    "minecraft:diamond_chestplate"
-                );
+                let mob = &game.mobs[0];
+                let stack = mob.extra.equipment.get(slot as usize).unwrap();
+                assert_eq!(stack.item.as_ref(), "minecraft:diamond_chestplate");
+                assert!(stack.data().is_none(), "rollback restores the raw stack");
+                assert_eq!(gear::level(mob, gear::CHEST, "minecraft:protection"), 2);
             }
         });
     }

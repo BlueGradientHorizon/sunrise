@@ -34,10 +34,11 @@ use sunrise_client::{
     effects::EffectInstance,
     items::ItemStack,
     living_attributes::ModifierChanges,
-    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo},
+    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::BlockEntityExtras,
 };
 use sunrise_core::position::BlockPos;
+use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_world::level::flags;
 
@@ -347,15 +348,18 @@ struct KeptPlayer {
     inventory: Vec<Option<ItemStack>>,
     armor: [Option<ItemStack>; 4],
     offhand: Option<ItemStack>,
-    equipment: sunrise_items::equipment::Equipment,
+    equipment: Equipment,
     carried: Option<ItemStack>,
 }
 
-/// A mob's or an armor stand's equipment as a transaction first wrote it
-/// (#932): the same eight slots, restored their own way.
+/// The raw slots before the first write, with a mob's separate gear overlay.
+/// Projecting the slots here would bake the overlay into the resident stacks.
 enum KeptEquipment {
-    Mob(Vec<Option<ItemStack>>),
-    Stand(Vec<Option<ItemStack>>),
+    Mob {
+        slots: Box<Equipment>,
+        gear: Option<Box<Gear>>,
+    },
+    Stand(Box<Equipment>),
 }
 
 #[derive(Clone)]
@@ -485,6 +489,26 @@ impl Level {
     /// this transaction hasn't yet.
     pub(super) fn keep_mob_length(&mut self, id: u32, len: usize) {
         self.mob_lengths.entry(id).or_insert(len);
+    }
+
+    /// Keep a resolved equipment row at its first write in this transaction.
+    /// `mob_gear` is absent for a stand; a mob's overlay may itself be absent.
+    pub(super) fn keep_equipment(
+        &mut self,
+        id: u32,
+        equipment: &Equipment,
+        mob_gear: Option<&Option<Box<Gear>>>,
+    ) {
+        self.equipment.entry(id).or_insert_with(|| {
+            let slots = Box::new(equipment.clone());
+            match mob_gear {
+                Some(gear) => KeptEquipment::Mob {
+                    slots,
+                    gear: gear.clone(),
+                },
+                None => KeptEquipment::Stand(slots),
+            }
+        });
     }
 }
 
@@ -1161,15 +1185,11 @@ impl Game<'_> {
         if level.equipment.contains_key(&id) {
             return;
         }
-        let mob = || self.mobs.iter().find(|m| m.id == id && !m.removed);
-        let kept = if let Some(mob) = mob() {
-            KeptEquipment::Mob(mob.equipment_stacks().iter().cloned().collect())
+        if let Some(mob) = self.mobs.iter().find(|m| m.id == id && !m.removed) {
+            level.keep_equipment(id, &mob.extra.equipment, Some(&mob.extra.gear));
         } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == id) {
-            KeptEquipment::Stand(stand.equipment.iter().cloned().collect())
-        } else {
-            return;
-        };
-        level.equipment.insert(id, kept);
+            level.keep_equipment(id, &stand.equipment, None);
+        }
     }
     /// `drop_plain` by the player whose state is in `Game` now, `uuid`: at once, or at the root
     /// commit inside a transaction.
@@ -1585,22 +1605,15 @@ impl Game<'_> {
         let equipment = std::mem::take(&mut level.equipment);
         for (id, kept) in equipment {
             match kept {
-                KeptEquipment::Mob(stacks) => {
-                    let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        mob.set_equipment_stack(slot, stack);
+                KeptEquipment::Mob { slots, gear } => {
+                    if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                        mob.extra.equipment = *slots;
+                        mob.extra.gear = gear;
                     }
                 }
-                // An armor stand keeps no live attribute map of its gear; the
-                // plain write puts its slots back as they were.
-                KeptEquipment::Stand(stacks) => {
-                    let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        stand.equipment.set(slot, stack);
+                KeptEquipment::Stand(slots) => {
+                    if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) {
+                        stand.equipment = *slots;
                     }
                 }
             }
