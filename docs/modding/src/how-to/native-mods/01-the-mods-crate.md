@@ -21,8 +21,8 @@ A build server writes the lock with the `native-lock` command of the
 
 Every build consumes this **registry dependency lock** during staging. Ordinary Cargo may not
 resolve the original pinned SDK declaration offline. Writing the lock creates an inert copy
-of the manifests, removes only SDK dependencies naming the exact pinned Sunrise repository and
-revision, and resolves registry metadata. It does not copy or execute mod sources, build scripts
+of the manifests, removes the SDK path dependencies, and resolves registry metadata. It does not
+copy or execute mod sources, build scripts
 or proc macros. It does not modify the original manifests or Cargo configuration. Existing pins
 are not replaced without `--update-lock`; a refused input leaves the existing lock untouched.
 A starter that uses only the SDK does not need registry pins until it adds a
@@ -57,10 +57,10 @@ none uses registry packages writes no such library. The package name `sunrise-re
 the crate name `sunrise_registry_shared` are reserved for it.
 
 `native-lock` starts from the game's `Cargo.lock`, which it downloads once from the pinned game
-commit. A package the game also locks takes the game's version where the mod's requirements allow
-it, so mods made for one game build agree on those packages; the mod's other packages take the newest
-version that fits. A requirement the game's version can't meet (`libc = "0.2.999"`) gives the mod
-its own version of that package.
+commit. A shared crates.io package keeps the game's version on the same semver line; other packages
+and semver lines take the newest version that fits. If a requirement excludes the game's version on
+that line, `native-lock` leaves the lock untouched. Relax the requirement or target a game build
+that locks a version the mod can use.
 
 A package the SDK builds from its own patched source (the `[patch]` table of the SDK's
 `engine/Cargo.toml`) is used in that form only: at the SDK's version a mod's graph gets the SDK's
