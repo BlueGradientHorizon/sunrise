@@ -335,8 +335,8 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 slot,
                 button: 0,
                 input: 0,
-                changed: vec![(slot, Some(Hashed::of(placed)))],
-                carried: Some(Hashed::of(left)),
+                changed: vec![(slot, Some(Hashed::of(placed).unwrap()))],
+                carried: Some(Hashed::of(left).unwrap()),
             })
         };
         let set_server_cursor = |game: &mut Game<'_>| {
@@ -371,7 +371,7 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 button: 0,
                 input: sunrise_client::lan::menu::input::QUICK_MOVE,
                 changed: Vec::new(),
-                carried: Some(Hashed::of(six)),
+                carried: Some(Hashed::of(six).unwrap()),
             }),
         );
         assert_eq!(
@@ -427,8 +427,8 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
                 slot: 1,
                 button: 0,
                 input: 0,
-                changed: vec![(1, Some(Hashed::of(one)))],
-                carried: Some(Hashed::of(seven)),
+                changed: vec![(1, Some(Hashed::of(one).unwrap()))],
+                carried: Some(Hashed::of(seven).unwrap()),
             }),
         );
         let component_correction = sent(&rx);
