@@ -338,17 +338,14 @@ impl LevelRef {
     }
     /// Borrow the named server level's live random stream (`Level.getRandom`) for `draw`
     /// only: `level.with_random(host, |rng| rng.next_int_bound(bound))`. The closure cannot
-    /// keep or reseed the stream. Draws advance that level's stream in vanilla's order,
-    /// even when the level is parked; this never switches or loads levels.
+    /// keep or reseed the stream. Draws advance that level's live stream directly in
+    /// vanilla's order, even when the level is parked; this never switches or loads levels.
     ///
     /// Returns `None` without calling `draw` if the host lacks server authority, the
     /// handle is stale, the level is not resident, or world access is unavailable.
     ///
-    /// If `draw` unwinds, the seed and cached Gaussian revert to their state before this
-    /// call. A later panic does not undo a completed, unjournaled draw. In a transaction,
-    /// abort restores each level's stream to its first snapshot in that frame; a child
-    /// commit keeps its draws and passes any first snapshots the parent doesn't yet have
-    /// to the parent for rollback.
+    /// Matching vanilla `Level.getRandom()`, draws are not rolled back if `draw` panics
+    /// and unwinds, or if an enclosing transaction aborts.
     pub fn with_random<T>(
         self,
         host: &mut dyn ServerHost,
@@ -1660,8 +1657,9 @@ pub trait LevelRandomHost: LevelHost {
     }
     /// Lend the level's live random stream to `draw` for this call by using
     /// [`RandomDraw::run`]. A host that cannot lend the stream declines by not running it,
-    /// as the default implementation does. Preserve completed draws on normal return and
-    /// restore the seed and cached Gaussian if the draw unwinds.
+    /// as the default implementation does. Draws advance the live stream directly and are
+    /// not rolled back on panic/unwind or transaction abort, matching vanilla
+    /// `Level.getRandom()`.
     ///
     /// Listeners request a draw with `host.with_random(|rng| rng.next_int_bound(bound))`.
     fn lend_random(&mut self, _draw: RandomDraw<'_>) {}

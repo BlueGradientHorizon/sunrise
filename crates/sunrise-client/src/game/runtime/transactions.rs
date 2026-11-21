@@ -31,7 +31,7 @@ use super::{
     BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData,
     native_server::PlayerRead,
 };
-use mod_api::{LevelRef, Transaction, TransactionLifecycle, TransactionSeal};
+use mod_api::{Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
     effects::EffectInstance,
@@ -41,7 +41,7 @@ use sunrise_client::{
     mobs::{Mob, StoredEffect, finalize::EffectModifierUndo, gear::Gear},
     world::BlockEntityExtras,
 };
-use sunrise_core::{position::BlockPos, random::LegacyRandom};
+use sunrise_core::position::BlockPos;
 use sunrise_items::equipment::Equipment;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_world::level::flags;
@@ -246,10 +246,6 @@ pub(super) struct Level {
     slots: HashMap<(Pos, usize), KeptSlot>,
     /// Each block's original state and the combined update flags of its writes.
     blocks: HashMap<Pos, KeptBlock>,
-    /// Level.random in this frame's own dimension before its first draw.
-    level_random: Option<LegacyRandom>,
-    /// Other levels drawn from at this depth. Only those draws allocate a map entry.
-    parked_level_randoms: HashMap<LevelRef, LegacyRandom>,
     /// Composter-local random streams before this depth first evaluated their layers.
     composter_randoms: ComposterRandoms,
     /// Each quart cell before this transaction first wrote it.
@@ -548,24 +544,6 @@ fn frame_token() -> u64 {
 }
 
 impl Level {
-    /// Keep the first snapshot for this stream. `None` names the frame's own level.
-    pub(super) fn keep_level_random(
-        &mut self,
-        owner: Option<LevelRef>,
-        before: impl FnOnce() -> LegacyRandom,
-    ) {
-        match owner {
-            Some(level) if self.dimension.map(super::Dim::key) != Some(level.dimension()) => {
-                self.parked_level_randoms
-                    .entry(level)
-                    .or_insert_with(before);
-            }
-            _ => {
-                self.level_random.get_or_insert_with(before);
-            }
-        }
-    }
-
     fn keep_player(
         &mut self,
         uuid: u128,
@@ -794,21 +772,6 @@ impl Game<'_> {
             Some(self.dim),
             "transaction closed in a different level"
         );
-        // A nested operation can briefly put another dimension in place. Its inline snapshot
-        // belongs to that stream, not to the parent's in-place slot.
-        let child_random_owner = if commit
-            && level.level_random.is_some()
-            && self
-                .transactions
-                .last()
-                .is_some_and(|outer| outer.dimension != level.dimension)
-        {
-            self.native_lifecycle
-                .epoch()
-                .map(|epoch| self.level_ref(epoch, self.dim.key()))
-        } else {
-            None
-        };
         let lifetimes = std::mem::take(&mut level.lifetimes);
         match (commit, self.transactions.last_mut()) {
             (true, Some(outer)) => {
@@ -838,16 +801,6 @@ impl Game<'_> {
                             kept.replay_removal |= block.replay_removal;
                         })
                         .or_insert(block);
-                }
-                if let Some(before) = level.level_random {
-                    if outer.dimension == level.dimension {
-                        outer.keep_level_random(None, || before);
-                    } else if let Some(owner) = child_random_owner {
-                        outer.keep_level_random(Some(owner), || before);
-                    }
-                }
-                for (owner, before) in level.parked_level_randoms {
-                    outer.keep_level_random(Some(owner), || before);
                 }
                 for (chunk, randoms) in level.composter_randoms {
                     let kept = outer.composter_randoms.entry(chunk).or_default();
@@ -1457,29 +1410,6 @@ impl Game<'_> {
             block.replay_removal = true;
         }
     }
-    pub(super) fn journal_level_random(&mut self) {
-        self.journal_active_level_random(LegacyRandom::clone);
-    }
-
-    /// Keep an engine or restricted-writer draw from the stream currently in place.
-    pub(super) fn journal_active_level_random(
-        &mut self,
-        before: impl FnOnce(&LegacyRandom) -> LegacyRandom,
-    ) {
-        let owner = match self.transactions.last() {
-            None => return,
-            Some(frame) if frame.dimension == Some(self.dim) => None,
-            Some(_) => {
-                let Some(epoch) = self.native_lifecycle.epoch() else {
-                    return;
-                };
-                Some(self.level_ref(epoch, self.dim.key()))
-            }
-        };
-        if let Some(frame) = self.transactions.last_mut() {
-            frame.keep_level_random(owner, || before(&self.world.random));
-        }
-    }
     pub(super) fn journal_orb_merge(
         &mut self,
         join: crate::join_seq::JoinSeq,
@@ -1939,14 +1869,6 @@ impl Game<'_> {
         }
         for (pos, block) in level.blocks {
             self.world.set_stored(pos.0, pos.1, pos.2, block.state);
-        }
-        if let Some(random) = level.level_random {
-            *self.world.random = random;
-        }
-        for (owner, before) in level.parked_level_randoms {
-            if let Some(random) = self.level_random_mut(owner) {
-                *random = before;
-            }
         }
         // The shapes are back: the neighbours that read them (a fluid beside it) are told, as
         // the publish told them.

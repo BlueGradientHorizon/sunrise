@@ -350,10 +350,7 @@ fn journal_level_host_stages_block_entity_random_and_effect_changes() {
             game.transaction_close(&seal, commit);
             assert_eq!(block(game), if commit { stone } else { skull });
             assert_eq!(game.world.block_entities.get(&key).is_none(), commit);
-            assert_eq!(
-                <(u64, Option<f64>)>::from(&*game.world.random) != before,
-                commit
-            );
+            assert_ne!(<(u64, Option<f64>)>::from(&*game.world.random), before);
             assert_eq!(game.block_ticks.fluids.has_scheduled(pos, water), commit);
             let lines = dispense_fixture::stop_recording();
             assert_eq!(lines.iter().any(|line| line == "L 1501 2,65,2 0"), commit);

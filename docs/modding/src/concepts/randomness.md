@@ -42,15 +42,9 @@ level that isn't resident or a phase without world access. A parked level is sti
 drawing from it neither loads a level nor switches which one the server is processing.
 The closure borrows the stream only while it runs. It cannot keep, replace or reseed it.
 
-If a panic unwinds out of the closure, the seed and cached Gaussian revert to their values
-before that call. A later panic, after the closure has returned, does not undo a completed
-draw that wasn't journaled.
-
-A `LevelRef` draw in an open transaction and a draw through a transactional `LevelWriteHost`
-are journaled. Aborting a nested transaction restores each level's stream to its first snapshot
-in that frame, leaving the parent's earlier draws intact. Committing the child keeps its draws;
-the parent keeps its earlier snapshots and takes the child's first snapshot for each stream
-it hasn't recorded yet. If the parent aborts, it restores those streams too.
+Draws advance the level's live stream directly in vanilla's order and are not rolled back if
+the closure panics and unwinds, or if an enclosing transaction aborts, matching vanilla's
+`Level.getRandom()`.
 
 ## Your own seeded stream
 

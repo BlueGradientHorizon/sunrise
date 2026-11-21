@@ -295,10 +295,8 @@ macro_rules! level_random_draws {
             /// `host.with_random(|rng| rng.next_int_bound(bound))`. Returns `None` without
             /// invoking `draw` if the host does not lend an authoritative level stream.
             ///
-            /// If `draw` unwinds, the seed and cached Gaussian revert to their state before
-            /// this call. Completed draws advance the live stream in vanilla's order. A
-            /// later panic does not undo an unjournaled draw; a transactional level writer
-            /// restores its first snapshot for that frame on abort.
+            /// Draws advance the live stream directly in vanilla's order and are not rolled
+            /// back on panic/unwind or transaction abort, matching vanilla `Level.getRandom()`.
             pub fn with_random<T>(&mut self, draw: impl FnOnce(&mut dyn RandomSource) -> T) -> Option<T> {
                 with_random_draw(draw, |draw| self.lend_random(draw))
             }

@@ -3,15 +3,12 @@ use mod_api::{LevelRef, RandomDraw};
 use sunrise_core::random::LegacyRandom;
 
 impl Game<'_> {
-    /// Lend the named level's live stream, then keep its before-image if a transaction is open.
+    /// Lend the named level's live stream directly.
     pub(in crate::game) fn with_level_random(&mut self, level: LevelRef, draw: RandomDraw<'_>) {
         let Some(random) = self.level_random_mut(level) else {
             return;
         };
-        let before = with_live_level_random(random, draw);
-        if let Some(frame) = self.transactions.last_mut() {
-            frame.keep_level_random(Some(level), || before);
-        }
+        with_live_level_random(random, draw);
     }
 
     /// Select a current, resident server level's stream without bringing the level into place.

@@ -972,7 +972,6 @@ impl Game<'_> {
     /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
     /// for everyone around.
     pub(super) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
-        self.journal_level_random();
         let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
         self.grindstone_award(pos, xp);
     }

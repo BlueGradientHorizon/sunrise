@@ -318,10 +318,9 @@ pub trait Notes {
   stream (`Level.getRandom()`), including levels parked while the server ticks another. In a restricted
   level hook use `host.with_random(|rng| rng.next_int_bound(bound))` to borrow the hook's level stream.
   The borrow ends with the closure. Without an authoritative, resident stream to lend, including for a
-  stale level handle, the call returns `None` and skips the closure. A panic inside the closure restores
-  the seed and cached Gaussian; a later panic does not undo completed, unjournaled draws. A transaction
-  abort restores each stream's first snapshot in that frame, including snapshots inherited from committed
-  children. A mod that sets its own seed uses a separate `LegacyRandomSource`.
+  stale level handle, the call returns `None` and skips the closure. Draws advance the live stream
+  directly and are not rolled back on panic/unwind or transaction abort, matching vanilla
+  `Level.getRandom()`. A mod that sets its own seed uses a separate `LegacyRandomSource`.
 
 - Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server.
   `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).
