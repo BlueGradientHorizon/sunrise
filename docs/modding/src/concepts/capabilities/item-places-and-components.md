@@ -123,8 +123,8 @@ copy. It never includes pending edits and returns `None` if projection is refuse
 `editor.set` stages a value; `editor.remove(&descriptor)` clears an override so the item
 inherits its default. To remove the component even if the item has a default, use a
 `!id` entry with `editor.apply_components(&patch)`, or `editor.clear_damage()` for damage.
-`apply_components` merges without dropping unrelated overrides and refuses a malformed or
-conflicting damage patch before staging any of it. `editor.copy_component_from(&other, id)`
+`apply_components` merges without dropping unrelated overrides and refuses a malformed
+damage patch before staging any of it. `editor.copy_component_from(&other, id)`
 copies the source stack's own value or removal; if the source inherits, the target inherits too.
 
 For a player's slot (including armour and off hand), hand, or a mob's or armour stand's

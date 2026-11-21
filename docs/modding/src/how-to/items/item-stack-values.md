@@ -27,21 +27,22 @@ The damage representation has three states:
 | No numeric override and `!minecraft:damage` in the patch | The component is explicitly removed, including an inherited default. `clear_damage` creates this state. |
 
 `damage()` returns the stored number or zero. `damage_component()` distinguishes an explicit
-zero from no numeric override. `set_damage(u32)` is infallible; the game validates its effective
-maximum when accepting a write. Adding only a maximum-damage override to an item does not
-invent a damage component: explicitly adding `Some(0)` is what makes that component present.
+zero from no numeric override. `set_damage(u32)` is infallible; the game validates that
+damage fits `0..=i32::MAX` when accepting a write. Adding only a maximum-damage override to
+an item does not invent a damage component: explicitly adding `Some(0)` is what makes that
+component present.
 
 All numeric damage lives in the optional field. Raw damage entries normalize out of the
-component patch; malformed numbers, conflicting numeric values, or a simultaneous value and
-removal refuse the entire replacement. Generic component setters and raw `set_components`
-therefore return `Result`. A refusal leaves the stack unchanged. Typed damage setters do not
-need an error path.
+component patch; `!minecraft:damage` clears any prior or incoming damage value, and malformed
+damage entries refuse the entire replacement. Generic component setters and raw
+`set_components` therefore return `Result`. A refusal leaves the stack unchanged. Typed damage
+setters do not need an error path.
 
 `apply_components(&patch)` merges over the existing patch rather than replacing it.
 Incoming values clear prior removals and incoming `!id` removals clear prior values;
-a removal wins if the same patch includes both, except that simultaneous damage and
-damage removal are refused. Damage values replace previous numeric overrides and are
-normalized just like `set_components`; malformed damage leaves the entire stack unchanged.
+a removal wins if the same patch includes both, including for damage. Damage values replace
+previous numeric overrides and are normalized just like `set_components`; malformed damage
+leaves the entire stack unchanged.
 `copy_component_from(&other, id)` copies only that component's own value or removal,
 including explicit zero damage. If `other` has no override, the target inherits too:
 no effective prototype value is materialized. `get` followed by `set` covers `update`.
@@ -69,9 +70,11 @@ The items host area owns metadata reads such as `max_stack_size(ItemKey)` and
 `max_damage(ItemKey)`. A stack does not take a host just to read a maximum, and an unavailable
 maximum never turns into a fabricated limit of 64.
 
-The game validates effective count and durability limits, including component overrides, when
-accepting a resident write. An effective `max_stack_size` must be in `1..=99`, and the
-presence of `max_damage` forbids a stack limit above one, even when the current count is one.
+The game validates effective count and durability component rules, including overrides, when
+accepting a resident write. An effective `max_stack_size` must be in `1..=99`, a carried
+`max_damage` must be positive (`1..=i32::MAX`), `damage` must be a non-negative integer
+(`0..=i32::MAX`, not capped by `max_damage`), and the presence of `max_damage` forbids a
+stack limit above one, even when the current count is one.
 Removing `max_stack_size` uses the absent limit of one. Invalid values produce typed errors,
 not clamped values. A transfer request is different: `ItemResource` plus a separate amount can request or
 return more than one resident stack's capacity. The resident writes it produces must

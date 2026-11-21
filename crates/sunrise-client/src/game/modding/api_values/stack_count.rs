@@ -99,11 +99,12 @@ pub(super) fn validate_stack_limits(
     if stack.count > maximum {
         return Err(StackWriteError::CountExceeded { maximum });
     }
-    let maximum = if stack.carries_component(Some(definition), "minecraft:max_damage") {
-        effective("minecraft:max_damage", definition.max_damage)?
-    } else {
-        0
-    };
+    if stack.carries_component(Some(definition), "minecraft:max_damage") {
+        let max_damage = effective("minecraft:max_damage", definition.max_damage)?;
+        if !(1..=i32::MAX as u32).contains(&max_damage) {
+            return Err(StackWriteError::InvalidMaximum);
+        }
+    }
     let damage = damage.map_or_else(
         || {
             u32::try_from(stack.effective_damage(Some(definition))).map_err(|_| {
@@ -114,9 +115,6 @@ pub(super) fn validate_stack_limits(
         },
         Ok,
     )?;
-    if damage > maximum {
-        return Err(StackWriteError::DamageExceeded { maximum });
-    }
     if i32::try_from(damage).is_err() {
         return Err(StackWriteError::InvalidComponents {
             reason: mod_api::StackError::InvalidDamage,
@@ -147,9 +145,22 @@ mod tests {
         );
         let mut sword = ApiStack::new(key("minecraft:iron_sword"), 100).unwrap();
         sword.set_damage(11);
+        let preserved = sword.try_into_engine_preserving_count(&items).unwrap();
+        assert_eq!((preserved.count, preserved.damage), (100, 11));
+        sword.set_damage(u32::MAX);
         assert_eq!(
             sword.try_into_engine_preserving_count(&items),
-            Err(StackWriteError::DamageExceeded { maximum: 10 })
+            Err(StackWriteError::InvalidComponents {
+                reason: mod_api::StackError::InvalidDamage,
+            })
+        );
+        let mut zero_max_damage = ApiStack::new(key("minecraft:iron_sword"), 100).unwrap();
+        zero_max_damage
+            .set_components([(JavaString::from("minecraft:max_damage"), Tag::Int(0))].into())
+            .unwrap();
+        assert_eq!(
+            zero_max_damage.try_into_engine_preserving_count(&items),
+            Err(StackWriteError::InvalidMaximum)
         );
         let mut malformed = oversized;
         malformed

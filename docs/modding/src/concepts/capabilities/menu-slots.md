@@ -340,7 +340,7 @@ tick's sync, as vanilla's `sendAllDataToRemote` does: the screen, the title and 
 `items` with empty slots and drops the ones past the menu's last. It returns `Result<(), MenuItemsRefusal>` and each
 refusal sends and changes nothing: `Client`, `NoPlayer` (no placed player has that UUID), `NotOpen` (`window` is not
 the player's open `open_menu` menu: another window, a closed menu, or a menu the game opened) and
-`Stack(StackWriteError)` (an item the world lacks, a count or damage the item does not allow). For one slot or a few,
+`Stack(StackWriteError)` (an item the world lacks, a count or component value the item does not allow). For one slot or a few,
 write them through `host.menu` as above: they cost one packet each and no replacement of the others.
 
 A title or a row count changes only with a new menu, as in vanilla: `open_menu` again, with a new window id, the

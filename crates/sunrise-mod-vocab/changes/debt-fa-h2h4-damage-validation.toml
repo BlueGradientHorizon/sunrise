@@ -1,0 +1,11 @@
+ids = [
+    "type:item::item_stack::StackError",
+    "type:item::item_stack::StackError.ConflictingDamage",
+    "type:item::item_stack::StackWriteError",
+    "type:item::item_stack::StackWriteError.DamageExceeded",
+]
+why = "Match vanilla 26.3 DataComponents (DAMAGE uses ExtraCodecs.NON_NEGATIVE_INT, MAX_DAMAGE uses ExtraCodecs.POSITIVE_INT, ItemStack.validateComponents does not cap damage by max_damage) and DataComponentPatch (explicit !minecraft:damage removal overrides minecraft:damage uniformly with every other component). Removes the invented StackWriteError::DamageExceeded and StackError::ConflictingDamage refusals."
+migrate = '''
+- Remove `StackError::ConflictingDamage` match arms. Setting `!minecraft:damage` or passing both `minecraft:damage` and `!minecraft:damage` in `ItemStack::set_components`, `ItemStack::apply_components`, `ItemStack::from_nbt`, `ItemStack::set`, or `ItemComponentEditor::{set, apply_components}` now clears damage uniformly with other `!id` removals instead of failing; malformed values for either still return `StackError::InvalidDamage`.
+- Remove `StackWriteError::DamageExceeded` match arms. Stack writes now accept any non-negative `damage` in `0..=i32::MAX` regardless of `minecraft:max_damage` (including when `max_damage` is absent or smaller), validate a carried `minecraft:max_damage` as `1..=i32::MAX` (`StackWriteError::InvalidMaximum` otherwise), and report out-of-range `damage > i32::MAX` (including in `build_creative_mode_tab_contents`) as `StackWriteError::InvalidComponents { reason: StackError::InvalidDamage }`.
+'''

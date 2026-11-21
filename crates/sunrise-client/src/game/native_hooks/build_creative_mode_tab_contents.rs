@@ -469,8 +469,8 @@ fn comparison_key(
     items: &Items,
 ) -> Result<ItemStack, mod_api::StackWriteError> {
     if i32::try_from(stack.damage).is_err() {
-        return Err(mod_api::StackWriteError::DamageExceeded {
-            maximum: i32::MAX as u32,
+        return Err(mod_api::StackWriteError::InvalidComponents {
+            reason: mod_api::StackError::InvalidDamage,
         });
     }
     normalize_components(&mut stack, items);
