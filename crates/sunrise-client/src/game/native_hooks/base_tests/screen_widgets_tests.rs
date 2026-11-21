@@ -1777,6 +1777,13 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             move_mouse(game, win_id, f64::from(x + width - 4.0), f64::from(y + 6.0));
             assert_eq!(take_log(&log), ["drag_pre:dialog"]);
             send_mouse_button(game, win_id, MouseButton::Left, false);
+            let release = take_log(&log);
+            assert_eq!(release.len(), 2, "{release:?}");
+            assert_eq!(release[0], "release_pre:dialog:0");
+            assert!(
+                release[1].starts_with("release_post:dialog:0:"),
+                "{release:?}"
+            );
 
             game.sync_mounted_focus(game.mounted_widget_targets()[0]);
             let original = game.screen_state.widgets.focused_id().unwrap();
