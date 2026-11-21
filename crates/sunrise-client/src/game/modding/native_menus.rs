@@ -2009,11 +2009,14 @@ mod tests {
                                 value: i32::MIN
                             }]
                         );
-                        let hub = &mut game.lan.as_mut().unwrap().hub;
-                        let state = hub.guests[0].menu.as_ref().unwrap().state;
-                        hub.inventory_clicked(
+                        let state = game.lan.as_ref().unwrap().hub.guests[0]
+                            .menu
+                            .as_ref()
+                            .unwrap()
+                            .state;
+                        game.lan_guest_packet(
                             1,
-                            &play::ContainerClick {
+                            S::ContainerClick(play::ContainerClick {
                                 container: window,
                                 state: (state - 1) & 0x7FFF,
                                 slot: -999,
@@ -2021,9 +2024,7 @@ mod tests {
                                 input: sunrise_client::lan::menu::input::PICKUP,
                                 changed: vec![],
                                 carried: None,
-                            },
-                            &game.world,
-                            &[],
+                            }),
                         );
                         let packets = sent(&rx);
                         assert!(matches!(packets.first(), Some(C::ContainerSetContent(p))
