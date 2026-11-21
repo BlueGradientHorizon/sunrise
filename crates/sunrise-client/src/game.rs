@@ -383,6 +383,8 @@ pub(crate) mod cushions;
 mod custom_arm_pose;
 #[path = "game/interface/custom_sky.rs"]
 mod custom_sky;
+#[path = "game/mobs/custom_spawner_level.rs"]
+mod custom_spawner_level;
 #[path = "game/mobs/custom_spawners.rs"]
 mod custom_spawners;
 #[cfg(test)]
@@ -587,8 +589,6 @@ mod focused_text_field;
 mod fov;
 #[path = "game/mobs/foxes.rs"]
 mod foxes;
-#[path = "game/runtime/frame_autotune.rs"]
-mod frame_autotune;
 #[path = "game/interface/frame_geometry.rs"]
 mod frame_geometry;
 #[path = "game/entities/frames.rs"]
@@ -710,8 +710,6 @@ mod integrated;
 #[cfg(test)]
 #[path = "game/entities/interaction_data_tests.rs"]
 mod interaction_data_tests;
-#[path = "game/items/interaction_shapes.rs"]
-mod interaction_shapes;
 #[path = "game/items/interactions.rs"]
 mod interactions;
 #[path = "game/interface/inventory_input.rs"]
@@ -730,8 +728,6 @@ mod item_abilities;
 mod item_abilities_tests;
 #[path = "game/items/item_actions.rs"]
 mod item_actions;
-#[path = "game/items/item_areas.rs"]
-mod item_areas;
 #[cfg(test)]
 #[path = "game/items/item_attack_tests.rs"]
 mod item_attack_tests;
@@ -821,8 +817,6 @@ mod lan_crafting;
 mod lan_entities;
 #[path = "game/network/lan_far.rs"]
 mod lan_far;
-#[path = "game/network/lan_idle.rs"]
-mod lan_idle;
 #[path = "game/network/lan_menus.rs"]
 mod lan_menus;
 #[cfg(test)]
@@ -950,11 +944,11 @@ mod mob_gear;
 #[cfg(test)]
 #[path = "game/world/mob_hurt_cooldown_tests.rs"]
 mod mob_hurt_cooldown_tests;
-#[path = "game/mobs/mob_index.rs"]
-mod mob_index;
 #[cfg(test)]
 #[path = "game/mobs/mob_landing_support_tests.rs"]
 mod mob_landing_support_tests;
+#[path = "game/mobs/mob_level.rs"]
+mod mob_level;
 #[path = "game/mobs/mob_light.rs"]
 mod mob_light;
 #[path = "game/mobs/mob_looting.rs"]
@@ -1737,8 +1731,6 @@ mod net_harness;
 mod nether_portal;
 #[path = "game/runtime/no_resources.rs"]
 mod no_resources;
-#[path = "game/interface/occlusion_culling/mod.rs"]
-mod occlusion_culling;
 #[path = "game/mobs/ominous_item_spawner/mod.rs"]
 mod ominous_item_spawner;
 #[path = "game/interface/options.rs"]
@@ -2216,8 +2208,6 @@ mod text_displays;
 mod text_expression_tests;
 #[path = "game/mobs/thrown_item_draw.rs"]
 mod thrown_item_draw;
-#[path = "game/world/tick_profile.rs"]
-mod tick_profile;
 #[path = "game/world/tick_script.rs"]
 mod tick_script;
 #[path = "game/interface/titles.rs"]
@@ -2347,6 +2337,10 @@ mod zombie_reinforcements;
 #[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
 pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+use sunrise_client_gameplay::frame_autotune;
+use sunrise_client_gameplay::occlusion_culling;
+use sunrise_gameplay::lan::idle as lan_idle;
+use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
 
 use event_loop::EventLoopCtl;
 use hand::interact_location;
@@ -3861,6 +3855,8 @@ struct Game<'a> {
     cart_models: minecarts::CartModels,
     /// The boat the player rides.
     riding: Option<u32>,
+    /// This window's player's place in `riding`'s passengers, as `Guest.vehicle_order` is a guest's.
+    riding_order: i64,
     /// Vehicles that gained a rider this tick whose `START_RIDING_TRIGGER` was
     /// not fired yet (`game/entities/boarding.rs`), for a guest's turn.
     started_riding: Vec<u32>,
@@ -3988,17 +3984,8 @@ struct Game<'a> {
     upload_pace: upload_pace::UploadPace,
     /// This frame's view frustum, for culling entities and block entities.
     view_frustum: Option<sunrise_client::gfx::JoinedFrusta>,
-    /// Whether the renderer's section-occlusion graph is active for this view.
-    entity_section_visibility_valid: bool,
-    /// The camera section in the current world layout.
-    entity_section_camera: Option<(i32, i32, i32)>,
-    sync_occlusion_culler: Option<sunrise_client::voxel_occlusion::Culler>,
-    async_occlusion_culler: Option<Box<occlusion_culling::AsyncOcclusionCuller>>,
-    async_occlusion_culling_failed: bool,
+    occlusion: entity_culling::EntityOcclusion,
     async_particle_culler: RefCell<particle_culling::ParticleAsyncState>,
-    /// `Renderer::pack_shadow_casters` for this frame's entities: (keep what the culler hides,
-    /// build the player's model in first person); (false, false) without a shader pack.
-    pack_shadow_casters: (bool, bool),
     /// A scripted flight from the control socket (`fly`).
     flight: Option<control::Flight>,
     /// The running agent action from the control socket (game/runtime/agent/mod.rs).
@@ -8059,7 +8046,7 @@ impl Game<'_> {
             // in the view or not (`Renderer::shadow_pass_block_entities`, #8464): those the
             // view leaves out go in hidden from the camera.
             let shadow_only: Vec<&([i32; 3], u32)> =
-                if self.pack_ids.is_some() && self.pack_shadow_casters.0 {
+                if self.pack_ids.is_some() && self.occlusion.shadow_casters.0 {
                     let listed: HashSet<[i32; 3]> = camera_list.iter().map(|b| b.0).collect();
                     r.shadow_pass_block_entities(camera)
                         .filter(|(pos, state)| {
@@ -8084,7 +8071,7 @@ impl Game<'_> {
                 }
                 let name = &*self.res.facts().get(BlockStateId(state)).name;
                 if self.settings.sunrise.entity_culling == EntityCullingMode::Off
-                    || self.pack_shadow_casters.0
+                    || self.occlusion.shadow_casters.0
                     || name == "minecraft:end_portal"
                     || name == "minecraft:end_gateway"
                     || hi.y - lo.y > 2.0
@@ -8942,7 +8929,7 @@ impl Game<'_> {
         self.spawn_spiral = Default::default();
         self.player_spawn = None;
         self.creatures.reset_trader();
-        self.creatures.cat_tick = 0;
+        self.creatures.cat = Default::default();
         self.creatures.custom_spawners.clear();
         self.portals = Default::default();
         self.experience = Experience {
@@ -13496,6 +13483,7 @@ impl<'a> Game<'a> {
             trim_slots: Default::default(),
             cart_models: prepared.cart_models,
             riding: None,
+            riding_order: 0,
             started_riding: Vec::new(),
             rotation_forced: false,
             posed_rider: None,
@@ -13553,13 +13541,8 @@ impl<'a> Game<'a> {
             tick_script: tick_script::TickScript::from_env(),
             agent: agent::Agent::default(),
             view_frustum: None,
-            entity_section_visibility_valid: false,
-            entity_section_camera: None,
-            sync_occlusion_culler: None,
-            async_occlusion_culler: None,
-            async_occlusion_culling_failed: false,
+            occlusion: Default::default(),
             async_particle_culler: RefCell::new(Default::default()),
-            pack_shadow_casters: (false, false),
             pending_uploads: Vec::new(),
             upload_pace: Default::default(),
             extras: Default::default(),

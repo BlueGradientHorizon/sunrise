@@ -545,6 +545,27 @@ class SdkAssetTests(unittest.TestCase):
             self.assertEqual((root / "fixture.tar.xz").read_bytes(), fixture.read_bytes())
 
 
+class ToolBuildTests(unittest.TestCase):
+    def built_with(self, environment: dict) -> dict:
+        calls = []
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {"CARGO_TARGET_DIR": directory}), \
+                patch.object(prebuilt_game, "rustc_host", return_value="x86_64-unknown-linux-gnu"), \
+                patch.object(prebuilt_game, "head", return_value=COMMIT), \
+                patch.object(prebuilt_game, "run", side_effect=lambda *args, **kwargs: calls.append(kwargs)):
+            os.environ.pop("SUNRISE_TOOL_COMMIT", None)
+            os.environ.update(environment)
+            release = Path(directory) / "release"
+            release.mkdir()
+            (release / prebuilt_game.TOOL_PROGRAM).write_bytes(b"tool")
+            prebuilt_game.tool("x86_64-unknown-linux-gnu")
+        return calls[0]["env"]
+
+    def test_the_tool_is_built_naming_the_sources_commit_unless_the_workflow_names_one(self):
+        self.assertEqual(self.built_with({})["SUNRISE_TOOL_COMMIT"], COMMIT)
+        self.assertEqual(self.built_with({"SUNRISE_TOOL_COMMIT": "d" * 40})["SUNRISE_TOOL_COMMIT"], "d" * 40)
+
+
 class TrackedBlobsTests(unittest.TestCase):
     def test_bytes_are_the_commits_whatever_the_line_ending_settings(self):
         # Git for Windows' default (core.autocrlf=true) made the Windows leg's function index differ from the others.

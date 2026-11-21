@@ -125,6 +125,8 @@ tracker-send-bench = []
 audio = ["sunrise-client-render/audio"]
 # Controllers: gilrs, and the DualSense's own output. Without it only `sunrise-ctl pad`'s virtual pad.
 controllers = ["dep:gilrs", "sunrise-client-input/controllers"]
+# The sensor_scan_tests mob-kind fixture for the gameplay crates' tests.
+test-mob-kind = []
 # Records the call sites of mob random draws (`mob_ai_probe` traces).
 rng-trace = ["sunrise-core/rng-trace"]
 # Opt-in Windows heap experiment; see docs/windows-allocators.md.
