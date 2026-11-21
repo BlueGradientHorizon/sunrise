@@ -601,6 +601,11 @@ impl Game<'_> {
             return self.begin_closing_save(false);
         }
         self.client_logging_out();
+        self.finish_leave_server(reason)
+    }
+
+    /// Tear down the client's server session after `client_logging_out` has already run.
+    pub(in crate::game) fn finish_leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         self.finish_perf();
         // The one boundary every network session passes when it closes here: the player leaving,
         // or this client ending it with a reason (a raw disconnect closed it already, with the
@@ -640,9 +645,6 @@ impl Game<'_> {
         }
         if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
             self.native_client_level_unload(&old);
-        }
-        if self.remote.is_some() {
-            self.native_client_disconnecting();
         }
         self.native_net.holds.borrow_mut().clear();
         if let Some(mut r) = self.remote.take() {

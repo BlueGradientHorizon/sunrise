@@ -169,12 +169,13 @@ impl Game<'_> {
                     if !server.stopped() {
                         return Ok(false);
                     }
-                    // Drop/join only after completion; leave_server's teardown
-                    // can then run without blocking on the server's writes.
+                    // Drop/join only after completion; finish_leave_server's teardown
+                    // can then run without blocking on the server's writes or firing
+                    // client_logging_out a second time.
                     if save.quit {
                         self.integrated.take().unwrap().stop()?;
                     } else {
-                        self.leave_server(None)?;
+                        self.finish_leave_server(None)?;
                     }
                     Ok(true)
                 }

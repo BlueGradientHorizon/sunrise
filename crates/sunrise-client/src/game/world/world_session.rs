@@ -230,7 +230,9 @@ impl Game<'_> {
             return Ok(());
         }
         // exitWorldAndClose disconnects the client from its world.
-        self.client_logging_out();
+        if self.integrated.is_some() || self.remote.is_some() {
+            self.client_logging_out();
+        }
         // Native application termination can bypass the close request, so make the same
         // client-side worker abort explicit before the game-owned streaming state is dropped.
         self.streaming.abort_generation();
