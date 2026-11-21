@@ -1,1 +1,1 @@
-sunrise-client game::native_item_places::tests::reading_a_cart_slot_keeps_pending_loot_and_resident_items lib daily resources
+sunrise-client game::native_item_places::tests::reading_and_writing_vehicle_slots_unpack_pending_loot lib daily resources

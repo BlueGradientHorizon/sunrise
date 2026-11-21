@@ -64,8 +64,10 @@ pub enum ItemPlace {
     },
     /// Slot `slot` of the inventory of entity `entity` in the level in place: a chest or hopper
     /// minecart's, a chest boat's, or a chested donkey's, mule's or llama's
-    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reads use resident slots,
-    /// including the live vehicle menu's slots while it is open, without unpacking loot.
+    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reading or writing a chest
+    /// vehicle's slot unpacks its pending loot table without a player
+    /// (`ContainerEntity.getChestVehicleItem` / `setChestVehicleItem`), and uses the live
+    /// vehicle menu's slots while it is open.
     EntitySlot {
         /// The entity's network id.
         entity: u32,
@@ -511,9 +513,10 @@ pub(crate) fn warn_broken(owner: Option<&'static str>, at: &dyn Debug) {
 impl ItemPlace {
     /// Lend the stack here to `read` and return its result, or return `None` without calling it
     /// if the place is empty or unavailable. Use [`ItemStackView::project`] to inspect components
-    /// or retain an owned stack. Native reads never load chunks, initialize a player, or unpack
-    /// pending loot. An item entity read sees live state, including earlier writes in
-    /// the same transaction.
+    /// or retain an owned stack. Native reads never load chunks or initialize a player; reading a
+    /// chest vehicle's [`EntitySlot`](Self::EntitySlot) unpacks its pending loot table without a
+    /// player (`ContainerEntity.getChestVehicleItem`). An item entity read sees live state,
+    /// including earlier writes in the same transaction.
     /// Handler-backed and decoded places lend a view of their provider's or decoder's value.
     /// An occupied place can still refuse projection. To check occupancy without projection,
     /// use [`Self::amount`] and compare it with zero.

@@ -1,0 +1,1 @@
+sunrise-client game::native_item_places::tests::player_cursor_read_ignores_guest_liveness lib daily resources

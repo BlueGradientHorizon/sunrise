@@ -124,10 +124,11 @@ impl Game<'_> {
         if self.carts.iter().any(container) {
             return self.edit_cart_slots(id, |slots| edit(slots, position));
         }
+        self.unpack_loot(super::container_loot::LootTarget::Boat(id), None);
+        let i = self.boats.iter().position(|b| b.id == id && b.chest)?;
         if let Some(super::BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
             return Some(edit(open, position));
         }
-        let i = self.boats.iter().position(|b| b.id == id)?;
         Some(self.boats.update(i, |b| edit(&mut b.items, position)))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
@@ -221,7 +222,9 @@ impl Game<'_> {
         let tag = sunrise_client::command::args::normalize(tag);
         self.res.mob_data().entity_has(&tag, entity_type)
     }
-    /// Lend a native place's stack without encoding components or initializing storage.
+    /// Lend a native place's stack without encoding components. Reading a chest vehicle's
+    /// `EntitySlot` unpacks its pending loot table without a player
+    /// (`ContainerEntity.getChestVehicleItem`).
     pub(super) fn game_stack(
         &mut self,
         place: &ItemPlace,
@@ -230,9 +233,10 @@ impl Game<'_> {
         super::native_living_refs::lend_equipment(self.game_stack_source(place)?, read)
     }
 
-    /// Borrow the stack in a native place without initializing a player or container.
-    /// Equipment overlays are only applied when the caller projects a complete stack.
-    fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
+    /// Borrow the stack in a native place without initializing a player. Reading a chest
+    /// vehicle's `EntitySlot` unpacks its pending loot table without a player; equipment
+    /// overlays are only applied when the caller projects a complete stack.
+    fn game_stack_source(&mut self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_held(*id).map(EquipmentRead::resident);
         }
@@ -248,6 +252,15 @@ impl Game<'_> {
                     .map(|entity| EquipmentRead::resident(&entity.stack));
             }
             ItemPlace::EntitySlot { entity, slot } => {
+                if self
+                    .carts
+                    .iter()
+                    .any(|c| c.id == *entity && c.kind.slots() > 0)
+                {
+                    self.unpack_loot(super::container_loot::LootTarget::Cart(*entity), None);
+                } else if self.boats.iter().any(|b| b.id == *entity && b.chest) {
+                    self.unpack_loot(super::container_loot::LootTarget::Boat(*entity), None);
+                }
                 let vehicle = self
                     .carts
                     .iter()
@@ -313,13 +326,11 @@ impl Game<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
                 if self.lan_acting == Some(guest.conn) {
-                    self.native_live_acting_body()?;
                     self.carried.as_ref()
-                } else if !guest.dead {
-                    guest.carried.as_ref()
                 } else {
-                    None
+                    guest.carried.as_ref()
                 }
+                .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
             }
             _ => None,
         }?;
@@ -3412,32 +3423,45 @@ pub(super) mod tests {
     }
     #[test]
     #[ignore = "daily"]
-    fn reading_a_cart_slot_keeps_pending_loot_and_resident_items() {
+    fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
+        use super::super::boats::Boat;
         use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_client::save::PendingContainerLoot;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         with_game(|game| {
+            game.load_server_loot();
+            let pos = Vec3::new(1.0, 65.0, 2.0);
             let pending = PendingContainerLoot {
                 table: Tag::String("minecraft:chests/simple_dungeon".into()),
-                seed: Some(Tag::Long(47)),
+                seed: Some(Tag::Long(42)),
             };
-            let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
-            let stone = ItemStack::new("minecraft:stone", 4);
-            cart.items[2] = Some(stone.clone());
-            cart.loot = Some(pending.clone());
-            let resident = cart.items.clone();
+            let mut cart = Minecart::new(600, CartKind::Chest, pos);
+            cart.loot = Some(pending);
             game.carts.push(cart);
-            let place = ItemPlace::EntitySlot {
-                entity: 600,
-                slot: 2,
-            };
-            assert_eq!(
-                place.with_stack(game, |stack| stack.project()).flatten(),
-                Some(stone.try_into_api().unwrap())
-            );
-            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
-            assert_eq!(game.carts[0].items, resident);
 
+            let _ = ItemPlace::EntitySlot {
+                entity: 600,
+                slot: 0,
+            }
+            .with_stack(game, |stack| stack.count());
+            assert!(game.carts[0].loot.is_none());
+            let (cart_slot, cart_rolled) = game.carts[0]
+                .items
+                .iter()
+                .enumerate()
+                .find_map(|(slot, item)| item.clone().map(|stack| (slot, stack)))
+                .expect("reading a chest minecart slot unpacks its pending loot table");
+            assert_eq!(
+                ItemPlace::EntitySlot {
+                    entity: 600,
+                    slot: cart_slot,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
+                Some(cart_rolled.try_into_api().unwrap())
+            );
+
+            // An open vehicle menu still owns the live slots over the resident copy.
             let sand = ItemStack::new("minecraft:sand", 7);
             let mut open = vec![None; 27];
             open[2] = Some(sand.clone());
@@ -3445,11 +3469,129 @@ pub(super) mod tests {
                 .block_entities
                 .insert((i32::MAX - 15, CART_KEY_Y, 600), BlockEntity::Chest(open));
             assert_eq!(
-                place.with_stack(game, |stack| stack.project()).flatten(),
+                ItemPlace::EntitySlot {
+                    entity: 600,
+                    slot: 2,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
                 Some(sand.try_into_api().unwrap())
             );
-            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
-            assert_eq!(game.carts[0].items, resident);
+
+            // Reading a chest boat slot unpacks its pending loot table and clears persist.raw tags.
+            let mut read_boat = Boat::new(601, Arc::from("oak"), pos, 0.0);
+            read_boat.chest = true;
+            read_boat.items = vec![None; 27];
+            game.boats.push(read_boat);
+            game.persist.raw.insert(
+                601,
+                Tag::compound([
+                    (
+                        "LootTable",
+                        Tag::String("minecraft:chests/simple_dungeon".into()),
+                    ),
+                    ("LootTableSeed", Tag::Long(42)),
+                ]),
+            );
+            let _ = ItemPlace::EntitySlot {
+                entity: 601,
+                slot: 0,
+            }
+            .with_stack(game, |stack| stack.count());
+            let read_raw = game.persist.raw.get(&601);
+            assert!(read_raw.and_then(|tag| tag.get("LootTable")).is_none());
+            assert!(read_raw.and_then(|tag| tag.get("LootTableSeed")).is_none());
+            let (boat_slot, boat_rolled) = game.boats[0]
+                .items
+                .iter()
+                .enumerate()
+                .find_map(|(slot, item)| item.clone().map(|stack| (slot, stack)))
+                .expect("reading a chest boat slot unpacks its pending loot table");
+            assert_eq!(
+                ItemPlace::EntitySlot {
+                    entity: 601,
+                    slot: boat_slot,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
+                Some(boat_rolled.try_into_api().unwrap())
+            );
+
+            // Writing via edit_entity_slots unpacks a chest boat's pending loot before running the edit.
+            let mut write_boat = Boat::new(602, Arc::from("oak"), pos, 0.0);
+            write_boat.chest = true;
+            write_boat.items = vec![None; 27];
+            game.boats.push(write_boat);
+            game.persist.raw.insert(
+                602,
+                Tag::compound([
+                    (
+                        "LootTable",
+                        Tag::String("minecraft:chests/simple_dungeon".into()),
+                    ),
+                    ("LootTableSeed", Tag::Long(42)),
+                ]),
+            );
+            let saw_loot_before_edit = game
+                .edit_entity_slots(602, |slots, _| slots.iter().any(Option::is_some))
+                .expect("chest boat slots exist");
+            assert!(saw_loot_before_edit);
+            let write_raw = game.persist.raw.get(&602);
+            assert!(write_raw.and_then(|tag| tag.get("LootTable")).is_none());
+            assert!(write_raw.and_then(|tag| tag.get("LootTableSeed")).is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_read_ignores_guest_liveness() {
+        with_game(|game| {
+            open_to_lan(game);
+            let mut player = guest(1);
+            let paper = ItemStack::new("minecraft:paper", 3);
+            player.dead = true;
+            player.health = 0.0;
+            player.carried = Some(paper.clone());
+            game.lan.as_mut().unwrap().hub.guests.push(player);
+
+            let menu = menu_of(game);
+            let cursor = ItemPlace::PlayerCursor { menu };
+            // Parked dead guest: cursor read still returns the carried stack.
+            assert_eq!(
+                cursor.with_stack(game, |stack| stack.project()).flatten(),
+                Some(paper.clone().try_into_api().unwrap())
+            );
+
+            // Acting dead guest: cursor read still returns the carried stack from Game::carried.
+            let acting_read = game
+                .as_guest(1, |game| {
+                    assert!(game.native_live_acting_body().is_none());
+                    cursor.with_stack(game, |stack| stack.project()).flatten()
+                })
+                .expect("guest turn ran");
+            assert_eq!(acting_read, Some(paper.try_into_api().unwrap()));
+
+            // Empty cursor and air stack both read as None.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| guest.carried = None);
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:air", 1))
+            });
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
+
+            // Closed/stale menu still reads as None even when the guest carries a stack.
+            let title = sunrise_core::nbt::Tag::String("new".into());
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.open_native_menu(1, 1, title, vec![]).unwrap();
+            hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:stick", 2))
+            });
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
         });
     }
 
