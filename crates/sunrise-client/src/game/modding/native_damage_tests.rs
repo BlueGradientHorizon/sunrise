@@ -941,6 +941,7 @@ enum MobLandingMoment {
     Post,
     Repath,
     NextGoal,
+    NextHit,
     TickFinished(Option<mod_api::Tag>),
 }
 
@@ -948,11 +949,23 @@ type MobLandingTrace = Arc<Mutex<Vec<MobLandingMoment>>>;
 
 struct MobLandingProbe {
     id: u32,
+    next_hit: Option<u32>,
     trace: MobLandingTrace,
 }
 
 #[mod_api::__subscriptions]
 impl Hooks for MobLandingProbe {
+    fn living_incoming_damage(
+        &self,
+        _: &mut dyn HitHost,
+        event: &mut LivingIncomingDamageEvent<'_>,
+    ) -> mod_api::Flow {
+        if Some(event.entity as u32) == self.next_hit {
+            self.trace.lock().unwrap().push(MobLandingMoment::NextHit);
+        }
+        mod_api::Flow::Continue
+    }
+
     fn farmland_trample(
         &self,
         _: &mut dyn mod_api::ServerHost,
@@ -1038,11 +1051,13 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
     }
     let farmland = std::env::var(CASE).unwrap() == "farmland";
     let id = 225047;
+    let next_hit = 225050;
     let trace = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![mod_api::ModEntry::new(
         "mob-landing-order",
         Box::new(MobLandingProbe {
             id,
+            next_hit: Some(next_hit),
             trace: Arc::clone(&trace),
         }),
     )]
@@ -1071,6 +1086,10 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
             pig.ai.targets = Default::default();
             game.mobs.push(pig);
             game.entity_section_joined(id, [1.5, 64.125, 1.5]);
+            let mut drying = mob(game, next_hit, "minecraft:axolotl");
+            drying.position = Vec3::new(3.5, 64.125, 1.5);
+            drying.air = -19;
+            game.mobs.push(drying);
 
             game.tick_creature_entities().unwrap();
 
@@ -1089,6 +1108,7 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
                     Some([0.0, -0.5, 0.0]),
                 ),
                 MobLandingMoment::Post,
+                MobLandingMoment::NextHit,
                 MobLandingMoment::TickFinished(Some(mod_api::Tag::Double(0))),
             ]);
             assert_eq!(*trace.lock().unwrap(), expected);
@@ -1172,6 +1192,7 @@ fn a_dolphin_follow_move_posts_before_the_next_goal() {
         "follow-landing-order",
         Box::new(MobLandingProbe {
             id,
+            next_hit: None,
             trace: Arc::clone(&trace),
         }),
     )]

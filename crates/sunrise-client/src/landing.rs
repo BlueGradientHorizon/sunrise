@@ -16,8 +16,8 @@ use sunrise_world::{
     block_entity_push::BlockPushWorld,
     block_landing::{
         BlockFall, BlockLandingRegistry, BlockLandingWorld, DamageSourceOwner, FallDamageCall,
-        FallDefinition, FarmlandTrample, LandingDamage, LandingDefinition, LandingEntityKind,
-        LandingEvent, LandingSound,
+        FallDamageTail, FallDefinition, FarmlandTrample, LandingDamage, LandingDefinition,
+        LandingEntityKind, LandingEvent, LandingSound,
     },
     entity_obstruction::EntityIdentity,
     fall_damage::FallDamageWorld,
@@ -401,7 +401,7 @@ pub enum PlayerLandingPause {
 /// The selected block reaction and ground-hit tail, with no borrow of the player or level.
 pub struct PlayerLandingTail {
     state: BlockStateId,
-    call: FallDamageCall,
+    tail: FallDamageTail,
     damaged: bool,
 }
 
@@ -455,15 +455,16 @@ impl MotionWorld<'_, '_, '_> {
         let damaged = call.apply(self);
         self.player.block_landing = previous;
         let damaged = damaged.map_err(|err| err.to_string())?;
+        let tail = call.tail();
         // Death still needs its owner when no mod listens to Post.
         if handoff && (self.hit_needs_owner() || (!was_dead && self.player.health.dead)) {
             return Ok(Some(PlayerLandingTail {
                 state,
-                call,
+                tail,
                 damaged,
             }));
         }
-        call.after_hurt(self, damaged)
+        tail.after_hurt(self, damaged)
             .map_err(|err| err.to_string())?;
         Ok(None)
     }
@@ -489,7 +490,7 @@ impl MotionWorld<'_, '_, '_> {
 
     /// Finish the selected block reaction and the ground hit after death or protection and Post.
     pub fn finish_guest_landing(&mut self, tail: PlayerLandingTail) -> Result<()> {
-        tail.call
+        tail.tail
             .after_hurt(self, tail.damaged)
             .map_err(|err| err.to_string())?;
         sunrise_world::living_landing::finish_living_landing(self, tail.state)

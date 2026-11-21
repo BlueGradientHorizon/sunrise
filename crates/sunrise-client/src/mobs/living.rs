@@ -14,7 +14,9 @@ use sunrise_core::{
 };
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 use sunrise_world::{
-    block_landing::{BlockFall, FallDamageCall, FarmlandTrample, LandingEntityKind},
+    block_landing::{
+        BlockFall, FallDamageCall, FallDamageTail, FarmlandTrample, LandingEntityKind,
+    },
     entity_fluid::{CurrentAccumulator, CurrentTarget},
     entity_move::MoverType,
     fluid::{FluidKind, FluidState},
@@ -557,7 +559,7 @@ enum FallPause {
 #[derive(Debug)]
 struct FallenOn {
     pos: [i32; 3],
-    call: Option<FallDamageCall>,
+    tail: FallDamageTail,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1577,7 +1579,8 @@ impl Mob {
             w,
             level,
             events,
-            FallenOn { pos, call },
+            pos,
+            call,
             distance,
             owner == LandingOwner::Borrowed,
         )
@@ -1588,7 +1591,8 @@ impl Mob {
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
-        block: FallenOn,
+        pos: [i32; 3],
+        call: Option<FallDamageCall>,
         distance: f64,
         handoff: bool,
     ) -> Option<FallPause> {
@@ -1597,20 +1601,21 @@ impl Mob {
             w,
             level,
             events,
-            pos: block.pos,
+            pos,
         };
-        let (distance, modifier, source) = landing.resolve_fall(block.call, distance);
+        let (distance, modifier, source) = landing.resolve_fall(call, distance);
+        let tail = call.map(FallDamageCall::tail).unwrap_or_default();
         let result = self.begin_fall_hurt(
             w.loop_context,
             level,
             distance,
             modifier,
             events,
-            Some((w, block.pos)),
+            Some((w, pos)),
             source,
             handoff,
         );
-        self.finish_block_fall(w, level, events, block, result)
+        self.finish_block_fall(w, level, events, FallenOn { pos, tail }, result)
     }
 
     fn finish_block_fall(
@@ -1624,18 +1629,16 @@ impl Mob {
         match result {
             Err(stop) => Some(FallPause::Hurt { block, stop }),
             Ok(damaged) => {
-                if let Some(call) = block.call {
-                    let _ = call.after_hurt(
-                        &mut super::landing::MobLanding {
-                            mob: self,
-                            w,
-                            level,
-                            events,
-                            pos: block.pos,
-                        },
-                        damaged,
-                    );
-                }
+                let _ = block.tail.after_hurt(
+                    &mut super::landing::MobLanding {
+                        mob: self,
+                        w,
+                        level,
+                        events,
+                        pos: block.pos,
+                    },
+                    damaged,
+                );
                 None
             }
         }
@@ -1652,11 +1655,15 @@ impl Mob {
         let next = match fall {
             FallPause::Trample(trample) => {
                 let p = trample.position;
-                let block = FallenOn {
-                    pos: [p.x, p.y, p.z],
-                    call: Some(trample.damage_call()),
-                };
-                self.start_block_fall(w, level, events, block, trample.distance, handoff)
+                self.start_block_fall(
+                    w,
+                    level,
+                    events,
+                    [p.x, p.y, p.z],
+                    Some(trample.damage_call()),
+                    trample.distance,
+                    handoff,
+                )
             }
             FallPause::Hurt { block, stop } => {
                 let contact = Some((w, block.pos));

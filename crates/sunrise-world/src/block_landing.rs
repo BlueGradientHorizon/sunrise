@@ -133,24 +133,35 @@ impl FallDamageCall {
             .map_err(LandingError::World)
     }
 
+    /// The block work that follows the selected hurt, without its damage operands.
+    pub fn tail(self) -> FallDamageTail {
+        FallDamageTail(self.honey_fall_sound)
+    }
+
+    fn finish<W: BlockLandingWorld>(self, world: &mut W) -> Result<(), LandingError<W::Error>> {
+        let damaged = self.apply(world)?;
+        self.tail().after_hurt(world, damaged)
+    }
+}
+
+/// The registered block's reaction after the selected hurt returns.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FallDamageTail(Option<(f32, f32)>);
+
+impl FallDamageTail {
     /// Finish the block's reaction once the owning hurt has returned.
     pub fn after_hurt<W: BlockLandingWorld>(
         self,
         world: &mut W,
         damaged: bool,
     ) -> Result<(), LandingError<W::Error>> {
-        if damaged && let Some((volume, pitch)) = self.honey_fall_sound {
+        if damaged && let Some((volume, pitch)) = self.0 {
             let sound = world.known_sound(LandingSound::HoneyFall);
             world
                 .entity_sound(sound, volume, pitch)
                 .map_err(LandingError::World)?;
         }
         Ok(())
-    }
-
-    fn finish<W: BlockLandingWorld>(self, world: &mut W) -> Result<(), LandingError<W::Error>> {
-        let damaged = self.apply(world)?;
-        self.after_hurt(world, damaged)
     }
 }
 
