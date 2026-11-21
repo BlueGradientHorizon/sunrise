@@ -246,6 +246,9 @@ impl Game<'_> {
                 }
             }
             Event::Cookie(task) => task.handle(),
+            Event::FinishConfiguration(resume) => {
+                let _ = resume.send(());
+            }
             Event::Reconfiguring(resume) => {
                 self.reset_book_view();
                 // handleConfigurationStart: the held-back chat shows, then

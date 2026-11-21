@@ -116,6 +116,8 @@ pub enum Event {
     Reconfiguring(Box<Reconfiguration>),
     /// A standalone cookie handler on its original common listener.
     Cookie(Box<CookieTask>),
+    /// Configuration finish waits behind queued common-listener actions.
+    FinishConfiguration(std::sync::mpsc::Sender<()>),
     /// The server sent us back to configuration and finished it again.
     Reconfigured(Arc<Dynamic>),
     /// ClientboundResourcePackPushPacket, in configuration or in play.
@@ -173,7 +175,11 @@ impl Event {
             Self::Bundle(bundle) => bundle.owned_bytes(),
             Self::Reconfiguring(_) => size_of::<Reconfiguration>(),
             Self::Cookie(task) => size_of::<CookieTask>() + task.cookie.owned_bytes(),
-            Self::QuietCommands | Self::CustomBooks | Self::ClearDialog | Self::PackPop(_) => 0,
+            Self::QuietCommands
+            | Self::CustomBooks
+            | Self::ClearDialog
+            | Self::PackPop(_)
+            | Self::FinishConfiguration(_) => 0,
             Self::FarTerrain(crate::lod_net::Offer {
                 distance: _,
                 in_flight: _,
@@ -342,7 +348,7 @@ impl Session {
         info: cfg::ClientInformation,
         lang: Arc<Language>,
         local: Option<sunrise_protocol::connection::Pipe>,
-        cookies: Option<Cookies>,
+        transfer_from: Option<Cookies>,
         resources: Arc<ItemData>,
         lan: bool,
     ) -> Self {
@@ -358,7 +364,6 @@ impl Session {
         let writer = Arc::new(Mutex::new(None));
         let configuring = Arc::new(AtomicBool::new(true));
         let counters = Arc::new(Mutex::new(None));
-        let transfer_from = cookies;
         let cookies = Cookies::default();
         let (thread_writer, thread_counters, thread_cookies) =
             (writer.clone(), counters.clone(), cookies.clone());
@@ -500,13 +505,6 @@ impl Session {
     /// `Connection.isConnected`: the connection is open (a replay's never is).
     pub fn connected(&self) -> bool {
         self.writer.lock().is_ok_and(|writer| writer.is_some())
-    }
-    pub fn accepts_packets(&self) -> bool {
-        self.writer
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_some_and(QueuedWriter::accepts_packets)
     }
     /// Stop output at a main-affine close but let preceding replies drain.
     pub fn close_after_pending(&self) {
@@ -1240,12 +1238,10 @@ impl CommonIo {
         self: &Arc<Self>,
         send: &ingress::Producer<Event>,
         cookie: Cookie,
-        replied: Option<std::sync::mpsc::Sender<()>>,
     ) -> Result<(), Reason> {
         send.send_wait(Event::Cookie(Box::new(CookieTask {
             io: self.clone(),
             cookie,
-            replied,
         })))
         .map_err(|error| Reason::plain(error.to_string()))
     }
@@ -1265,7 +1261,6 @@ impl CommonIo {
 pub struct CookieTask {
     io: Arc<CommonIo>,
     cookie: Cookie,
-    replied: Option<std::sync::mpsc::Sender<()>>,
 }
 
 impl CookieTask {
@@ -1277,9 +1272,6 @@ impl CookieTask {
                 && self.io.transferring.load(Ordering::Acquire))
         {
             self.io.handle_cookie(self.cookie);
-        }
-        if let Some(replied) = self.replied {
-            let _ = replied.send(());
         }
     }
 }
@@ -1440,10 +1432,10 @@ fn receive_play(
                 let _ = send.send_wait(Event::Reconfigured(Arc::new(registries)));
             }
             play::Clientbound::CookieRequest(q) => {
-                io.common.queue_cookie(send, Cookie::Request(q), None)?;
+                io.common.queue_cookie(send, Cookie::Request(q))?;
             }
             play::Clientbound::StoreCookie(p) => {
-                io.common.queue_cookie(send, Cookie::Store(p), None)?;
+                io.common.queue_cookie(send, Cookie::Store(p))?;
             }
             play::Clientbound::ServerLinks(p) => {
                 let _ = send.send_wait(Event::ServerLinks(p.links));
@@ -1525,7 +1517,7 @@ fn configure(
 ) -> Result<Dynamic, Reason> {
     use sunrise_protocol::payload_negotiation::Phase;
     let io = CommonIo::new(writer, cookies, Phase::Configuration);
-    let mut last_cookie_reply = None;
+    let mut ordered_common_actions = false;
     let mut registries = Dynamic::default();
     let mut dialog_snapshot = None;
     let mut content_verified = false;
@@ -1715,22 +1707,28 @@ fn configure(
                 let _ = send.send_wait(Event::ClearDialog);
             }
             cfg::Clientbound::CookieRequest(q) => {
-                let (replied, ready) = std::sync::mpsc::channel();
-                io.queue_cookie(send, Cookie::Request(q), Some(replied))?;
-                last_cookie_reply = Some(ready);
+                io.queue_cookie(send, Cookie::Request(q))?;
+                ordered_common_actions = true;
             }
             cfg::Clientbound::StoreCookie(p) => {
-                io.queue_cookie(send, Cookie::Store(p), None)?;
+                io.queue_cookie(send, Cookie::Store(p))?;
+                ordered_common_actions = true;
             }
             cfg::Clientbound::ServerLinks(p) => {
                 let _ = send.send_wait(Event::ServerLinks(p.links));
             }
-            cfg::Clientbound::Transfer(p) => io.queue_transfer(send, p)?,
+            cfg::Clientbound::Transfer(p) => {
+                io.queue_transfer(send, p)?;
+                ordered_common_actions = true;
+            }
             cfg::Clientbound::Disconnect(d) => return Err(Reason::tag(&d.reason, lang)),
             cfg::Clientbound::FinishConfiguration(_) => {
-                // Vanilla finishes on main, behind the cookies. Do not put a
-                // play transition on the writer before those replies.
-                if let Some(ready) = last_cookie_reply {
+                // Vanilla finishes on main, behind the common-listener tasks.
+                // Do not switch phase before their replies or after a handoff.
+                if ordered_common_actions {
+                    let (resume, ready) = std::sync::mpsc::channel();
+                    send.send_wait(Event::FinishConfiguration(resume))
+                        .map_err(|error| Reason::plain(error.to_string()))?;
                     ready.recv().map_err(|_| Reason::plain("Disconnected"))?;
                 }
                 negotiation
@@ -3390,6 +3388,11 @@ mod tests {
             };
             task.handle();
         }
+        let (event, _) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+        let Event::FinishConfiguration(resume) = event else {
+            panic!("missing configuration finish task")
+        };
+        resume.send(()).unwrap();
         let (id, body) = server.recv().unwrap();
         assert_eq!(
             cfg::Serverbound::decode(id, &body).unwrap(),
