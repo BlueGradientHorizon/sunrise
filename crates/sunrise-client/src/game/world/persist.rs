@@ -1369,7 +1369,7 @@ impl Game<'_> {
         kind: &str,
     ) -> Option<super::commands::OtherEntity> {
         let mut position = entity_nbt::position(tag)?;
-        let item_transformation = (kind == "minecraft:item_display")
+        let display = (kind == "minecraft:item_display")
             .then(|| ItemDisplayTransformation::from_tag(tag.get("transformation")))
             .flatten();
         let knot_check = (kind == "minecraft:leash_knot").then_some(0);
@@ -1390,7 +1390,7 @@ impl Game<'_> {
             position,
             yaw: rotation[0],
             pitch: rotation[1],
-            item_transformation,
+            display,
             interaction,
             knot_check,
             eye: (kind == "minecraft:eye_of_ender")

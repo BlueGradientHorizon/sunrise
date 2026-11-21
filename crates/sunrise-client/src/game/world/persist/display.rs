@@ -12,7 +12,7 @@ impl Game<'_> {
     /// `Display.addAdditionalSaveData`: save the settings as the codecs read
     /// them, including defaults. The raw start delay is only used by tracking.
     pub(super) fn write_display_nbt(&self, entity: &OtherEntity, tag: &mut Tag) {
-        let transformation = entity.item_transformation.unwrap_or_else(|| {
+        let transformation = entity.display.unwrap_or_else(|| {
             ItemDisplayTransformation::from_tag(tag.get("transformation")).unwrap()
         });
         let int = |key, default| tag.get(key).and_then(int_value).unwrap_or(default);

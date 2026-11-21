@@ -204,7 +204,7 @@ impl Game<'_> {
             .unwrap();
         self.others.update(index, |o| {
             if o.kind == "minecraft:item_display" {
-                o.item_transformation = Some(t.into());
+                o.display = Some(t.into());
             }
         });
         true
@@ -580,7 +580,7 @@ mod tests {
             knot_check: None,
             eye: None,
             join: Default::default(),
-            item_transformation: None,
+            display: None,
             interaction: None,
             id,
             kind: kind.into(),
@@ -608,7 +608,7 @@ mod tests {
                 knot_check: None,
                 eye: None,
                 join: Default::default(),
-                item_transformation: None,
+                display: None,
                 interaction: None,
                 id: 24,
                 kind: "minecraft:marker".into(),
