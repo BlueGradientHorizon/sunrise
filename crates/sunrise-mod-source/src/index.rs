@@ -147,11 +147,13 @@ pub enum Found {
     },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Namespace {
     Any,
     Type,
 }
+
+type ActiveLookups = Vec<(usize, String, Namespace)>;
 
 /// The indexed crates' modules, parsed as they are first reached.
 pub struct Index<'a> {
@@ -162,8 +164,6 @@ pub struct Index<'a> {
     included: &'a [(&'a str, &'a str)],
     pub modules: Vec<Module>,
     by_path: HashMap<(String, Vec<String>), usize>,
-    /// How deep `resolve` is in following imports.
-    depth: usize,
     /// Every source file read, for the build script to track.
     pub read: std::cell::RefCell<Vec<std::path::PathBuf>>,
     /// Rewrites a source file's text before it is parsed: the game's generated module lists.
@@ -225,7 +225,6 @@ impl<'a> Index<'a> {
             included,
             modules: Vec::new(),
             by_path: HashMap::new(),
-            depth: 0,
             read: Default::default(),
             extra: Vec::new(),
             root_files: HashMap::new(),
@@ -402,13 +401,13 @@ impl<'a> Index<'a> {
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import
     /// that provides it.
     pub fn resolve(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Any, module)
+        self.resolve_in_namespace(module, name, Namespace::Any, module, &mut Vec::new())
     }
 
     /// What type `name` means in `module`, following named and glob imports in the type namespace.
     /// A named import of a value does not hide a type provided by a glob import.
     pub fn resolve_type(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Type, module)
+        self.resolve_in_namespace(module, name, Namespace::Type, module, &mut Vec::new())
     }
 
     /// A type that `importer` can bring into scope by globbing `module`.
@@ -418,7 +417,7 @@ impl<'a> Index<'a> {
         name: &str,
         importer: usize,
     ) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Type, importer)
+        self.resolve_in_namespace(module, name, Namespace::Type, importer, &mut Vec::new())
     }
 
     fn resolve_in_namespace(
@@ -427,40 +426,46 @@ impl<'a> Index<'a> {
         name: &str,
         namespace: Namespace,
         importer: usize,
+        active: &mut ActiveLookups,
     ) -> Result<Found, String> {
-        self.depth += 1;
-        if self.depth > 64 {
-            self.depth = 0;
-            let m = &self.modules[module];
-            return Err(format!(
-                "{name} in {}::{} imports itself",
-                m.krate,
-                m.path.join("::")
-            ));
-        }
-        let found = self.lookup(
-            module,
-            name,
-            namespace,
-            &mut vec![importer],
-            &mut vec![module],
-        );
-        self.depth = self.depth.saturating_sub(1);
-        found?.ok_or_else(|| {
-            let m = &self.modules[module];
-            format!("{name} not found in {}::{}", m.krate, m.path.join("::"))
-        })
+        self.lookup(module, name, namespace, &mut vec![importer], active)?
+            .ok_or_else(|| {
+                let m = &self.modules[module];
+                format!("{name} not found in {}::{}", m.krate, m.path.join("::"))
+            })
     }
 
-    /// A glob imports only bindings visible to the original importer and every module
-    /// holding an intermediate glob. A hidden binding still shadows globs in its namespace.
     fn lookup(
         &mut self,
         module: usize,
         name: &str,
         namespace: Namespace,
         holders: &mut Vec<usize>,
-        seen: &mut Vec<usize>,
+        active: &mut ActiveLookups,
+    ) -> Result<Option<Found>, String> {
+        // Cut just this branch, leaving the other globs and all active callers intact.
+        if active.len() >= 64
+            || active
+                .iter()
+                .any(|(scope, binding, ns)| *scope == module && binding == name && *ns == namespace)
+        {
+            return Ok(None);
+        }
+        active.push((module, name.to_owned(), namespace));
+        let found = self.lookup_binding(module, name, namespace, holders, active);
+        active.pop();
+        found
+    }
+
+    /// A glob imports only bindings visible to the original importer and every module
+    /// holding an intermediate glob. A hidden binding still shadows globs in its namespace.
+    fn lookup_binding(
+        &mut self,
+        module: usize,
+        name: &str,
+        namespace: Namespace,
+        holders: &mut Vec<usize>,
+        active: &mut ActiveLookups,
     ) -> Result<Option<Found>, String> {
         let items = &self.modules[module].items;
         let reachable = |vis| {
@@ -504,7 +509,7 @@ impl<'a> Index<'a> {
             && let Some((path, rooted, open)) = named.first()
         {
             return if *open {
-                self.resolve_path_in_namespace(module, path, *rooted, Namespace::Any)
+                self.resolve_path_in_namespace(module, path, *rooted, Namespace::Any, active)
                     .map(Some)
             } else {
                 Ok(None)
@@ -512,7 +517,7 @@ impl<'a> Index<'a> {
         }
         let mut external_named = None;
         for (path, rooted, open) in named {
-            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type) {
+            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type, active) {
                 Ok(found @ Found::Item(_)) if open => return Ok(Some(found)),
                 Ok(found @ Found::External { .. }) if open => {
                     // An unindexed import's namespace is unknown. Preserve the external path
@@ -533,14 +538,9 @@ impl<'a> Index<'a> {
             let Some(target) = self.module_path(module, &glob, rooted, &mut Vec::new())? else {
                 continue;
             };
-            if seen.contains(&target) {
-                continue;
-            }
-            seen.push(target);
             holders.push(module);
-            let found = self.lookup(target, name, namespace, holders, seen);
+            let found = self.lookup(target, name, namespace, holders, active);
             holders.pop();
-            seen.pop();
             if let Some(found) = found? {
                 return Ok(Some(found));
             }
@@ -576,17 +576,17 @@ impl<'a> Index<'a> {
 
     /// What the path `path`, written in `module`, names.
     pub fn resolve_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, false, Namespace::Any)
+        self.resolve_path_in_namespace(module, path, false, Namespace::Any, &mut Vec::new())
     }
 
     /// What the signature type path `path`, written in `module`, names.
     pub fn resolve_type_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, false, Namespace::Type)
+        self.resolve_path_in_namespace(module, path, false, Namespace::Type, &mut Vec::new())
     }
 
     /// What a `::`-rooted import names, skipping local bindings of the crate name.
     pub fn resolve_rooted_path(&mut self, module: usize, path: &[String]) -> Result<Found, String> {
-        self.resolve_path_in_namespace(module, path, true, Namespace::Any)
+        self.resolve_path_in_namespace(module, path, true, Namespace::Any, &mut Vec::new())
     }
 
     fn resolve_path_in_namespace(
@@ -595,15 +595,16 @@ impl<'a> Index<'a> {
         path: &[String],
         rooted: bool,
         namespace: Namespace,
+        active: &mut ActiveLookups,
     ) -> Result<Found, String> {
         let (last, parent) = path.split_last().ok_or("an empty item path")?;
         if !rooted && parent.is_empty() {
-            return self.resolve_in_namespace(module, last, namespace, module);
+            return self.resolve_in_namespace(module, last, namespace, module, active);
         }
         if !parent.is_empty()
             && let Some(target) = self.module_path(module, parent, rooted, &mut Vec::new())?
         {
-            return self.resolve_in_namespace(target, last, namespace, target);
+            return self.resolve_in_namespace(target, last, namespace, target, active);
         }
         // A non-module path prefix can still be an external crate/type alias.
         if !rooted
@@ -611,7 +612,7 @@ impl<'a> Index<'a> {
                 module,
                 path: mut prefix,
                 rooted,
-            }) = self.resolve_in_namespace(module, &path[0], namespace, module)
+            }) = self.resolve_in_namespace(module, &path[0], namespace, module, active)
             && (rooted || prefix.len() > 1)
         {
             prefix.extend(path[1..].iter().cloned());
@@ -978,6 +979,34 @@ mod index_tests {
         };
         assert_eq!(index.modules[id.module].krate, "consumer");
         assert!(matches!(index.item(id), Item::Struct(item) if item.ident == "Explicit"));
+    }
+
+    #[test]
+    fn mixed_named_and_glob_cycles_leave_later_globs_available() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("k/src")).unwrap();
+        fs::write(
+            dir.path().join("k/src/lib.rs"),
+            "mod left { pub use crate::middle::{Name, Shown}; }
+             mod right { pub use crate::middle::{Name, Shown}; }
+             mod middle { pub use crate::left::*; pub use crate::right::*; pub use crate::later::*; }
+             mod later { pub struct Shown; }",
+        )
+        .unwrap();
+        let mut index = Index::new(dir.path(), &[], &[("k", "k/src")]);
+        let root = index.module("k", &[]).unwrap();
+        assert!(
+            index
+                .resolve_type_path(root, &["middle".into(), "Name".into()])
+                .is_err()
+        );
+        let Found::Item(id) = index
+            .resolve_type_path(root, &["middle".into(), "Shown".into()])
+            .unwrap()
+        else {
+            panic!("the later glob should supply Shown");
+        };
+        assert_eq!(index.modules[id.module].path, ["later"]);
     }
 
     #[test]
