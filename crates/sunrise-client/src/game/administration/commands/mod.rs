@@ -841,8 +841,10 @@ impl Game<'_> {
             }
             // A client's own copy of a row its server shows it.
             _ => self
-                .shown_remote_general(id as i32)
-                .map(|_| Target::General(id)),
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.general.rows.contains_key(&(id as i32)))
+                .then_some(Target::General(id)),
         }
     }
     /// `ServerLevel.getEntityOrPart` for a part: the `EnderDragonPart` of the

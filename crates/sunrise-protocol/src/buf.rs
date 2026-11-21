@@ -178,12 +178,15 @@ impl<'a> Reader<'a> {
     /// Utf8String.read: VarInt byte length, UTF-8, at most `max` chars of Java's
     /// String (UTF-16 units: a character outside the BMP counts twice).
     pub fn string(&mut self, max: usize) -> Result<String> {
+        self.string_field(max).map(|(text, _)| text)
+    }
+    pub(crate) fn string_field(&mut self, max: usize) -> Result<(String, usize)> {
         let len = self.count(max.saturating_mul(3))?;
         let s = java_utf8(self.bytes(len)?);
         if s.encode_utf16().count() > max {
             return Err(Error::new(format!("string longer than {max} chars")));
         }
-        Ok(s)
+        Ok((s, len))
     }
     pub fn byte_array(&mut self, max: usize) -> Result<Vec<u8>> {
         let len = self.count(max)?;
@@ -202,6 +205,13 @@ impl<'a> Reader<'a> {
             .map_err(|e| Error::new(format!("NBT: {e}")))?;
         self.pos += used;
         Ok(tag)
+    }
+    /// The same NBT decoder, writing a tape of its values into a copy of the body.
+    pub(crate) fn stage_nbt(&mut self, limits: nbt::Limits, copy: &mut [u8]) -> Result<u8> {
+        let (id, used) = nbt::pack_network(&self.data[self.pos..], &mut copy[self.pos..], limits)
+            .map_err(|e| Error::new(format!("NBT: {e}")))?;
+        self.pos += used;
+        Ok(id)
     }
     pub fn long_array(&mut self) -> Result<Vec<i64>> {
         let n = self.count(self.remaining() / 8)?;

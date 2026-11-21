@@ -53,7 +53,8 @@ while the engine retained the normal item draw state. The recipes used Wire for 
 guest boundary; they did not need disk or network transport. `685572c8626` retained the stack
 cache and added a frame policy for answers that depend on display or time. Direct submission
 replaces both policies: each draw extracts a fresh argument and submits baked geometry under the
-actual context. There is no recipe-part cap; the separate nested stack expansion budget remains.
+actual context. Neither recipe-part nor nested-stack count caps apply; only `(stack, display)`
+recursion cycles are refused.
 
 ## Reference and boundary
 

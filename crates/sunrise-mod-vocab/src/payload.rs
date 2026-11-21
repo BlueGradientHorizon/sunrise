@@ -245,7 +245,7 @@ pub enum PayloadWorkStatus {
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: native callback failure.
 pub enum PayloadHandleError {
-    /// Application decoding, callback execution, or owner availability failed.
+    /// The mod refuses this delivery, such as when application decoding fails.
     Failed(String),
 }
 
@@ -255,7 +255,10 @@ pub enum PayloadHandleError {
 /// channel (`PayloadRegistrar::play_raw`) a failure logs the owner and the
 /// channel, drops only that delivery and rolls back its staged effects (a staged disconnect
 /// included); the other owners' copies still run. A successful handler's explicit disconnect
-/// and a main-queue refusal disconnect either way.
+/// and a main-queue refusal disconnect either way. A panic is not `Failed`: it disables this
+/// callback for the session, reports the owning mod, and discards the current journal or staged
+/// sends without disconnecting or skipping other handlers. Later packets for this callback
+/// still undergo framing and channel checks but do not reserve callback queue capacity.
 pub trait IPayloadHandler: Send + Sync + 'static {
     /// Handle exact application bytes using connection-derived context.
     fn handle(
@@ -265,7 +268,10 @@ pub trait IPayloadHandler: Send + Sync + 'static {
     ) -> Result<(), PayloadHandleError>;
 }
 
-/// Work scheduled on the logical receiving main thread.
+/// Work scheduled on the logical receiving main thread. It retains the handler's owner and
+/// disablement guard: a panic aborts the work's transaction and disables that receiving callback
+/// for the session, without disconnecting the peer. Later deliveries to that callback
+/// follow the same rules as a panic in [`IPayloadHandler::handle`].
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;

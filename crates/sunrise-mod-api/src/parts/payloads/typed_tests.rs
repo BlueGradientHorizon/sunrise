@@ -1,4 +1,5 @@
 use super::*;
+use crate::__private::game::CallbackFailure;
 use crate::{
     IPayloadContext, PayloadAccepted, PayloadBytes, PayloadContextError, PayloadHandleError,
     PayloadSendError, PayloadToken, PayloadWork, PayloadWorkStatus, PlayerRef, Text, Wire,
@@ -249,9 +250,12 @@ fn valid_and_malformed_wire_bodies_are_handled_in_both_directions() {
             [valid.as_slice(), &[0xaa]].concat(),
             valid[..5].to_vec(),
         ] {
-            let PayloadHandleError::Failed(refused) = receiver
+            let CallbackFailure::Refused(refused) = receiver
                 .handle(PayloadBytes(body), &mut Unreached)
-                .unwrap_err();
+                .unwrap_err()
+            else {
+                panic!("malformed typed payload did not produce a codec refusal");
+            };
             assert!(refused.contains("test:labelled"), "{refused}");
         }
         assert!(seen.lock().unwrap().is_empty());
@@ -379,20 +383,17 @@ fn a_callback_that_panicked_is_never_invoked_again() {
     };
     let first = receiver();
     assert!(first.enabled());
-    let error = first
-        .handle(PayloadBytes(vec![7]), &mut Unreached)
-        .unwrap_err();
-    let PayloadHandleError::Failed(error) = error;
-    assert!(error.contains("panicked"), "{error}");
+    assert!(matches!(
+        first.handle(PayloadBytes(vec![7]), &mut Unreached),
+        Err(CallbackFailure::Panicked)
+    ));
     // Disabled for this connection and for one that resolves the callback later.
     for receiver in [first, receiver()] {
         assert!(!receiver.enabled());
-        assert_eq!(
+        assert!(matches!(
             receiver.handle(PayloadBytes(vec![7]), &mut Unreached),
-            Err(PayloadHandleError::Failed(
-                "payload owner is disabled".into()
-            ))
-        );
+            Err(CallbackFailure::Poisoned)
+        ));
     }
     assert_eq!(*CALLS.lock().unwrap(), 1);
 }

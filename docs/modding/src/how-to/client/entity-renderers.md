@@ -45,7 +45,7 @@ impl EntityRenderer for Bolt {
 | `orb_value` | An experience orb's value (`ExperienceOrb.DATA_VALUE`); none for any other entity. |
 | `painting` | A painting's own frame (`PaintingRenderState`, below); none for any other entity. |
 | `item_frame` | An item frame or glow item frame's own frame (`ItemFrameRenderState`, below); none for any other entity. |
-| `attachments` | A general entity's last published generation of synced attachments (below); none for other families. |
+| `attachments` | A general entity's frozen synced attachments (below); none for other entity families. |
 
 The pose stack starts at the entity's interpolated position, in blocks, and is not turned. `draw`
 also has the partial tick, the game time and the entity's light. What `submit` draws replaces the
@@ -82,14 +82,22 @@ impl EntityRenderer for Missile {
 }
 ```
 
-A general entity is eligible for extraction after its first whole attachment generation is
-published, even if that generation is empty. The engine publishes at spawn or sync, and a frame
-keeps its captured generation regardless of later updates. If the full generation is over the
-render budget, the client logs the refusal and keeps the last published generation, if there is
-one. If there is none, the entity does not draw until a later sync yields a whole generation
-that fits. Use a draw default when `get` returns `Ok(None)` for a missing key.
-The first typed read can allocate to decode the value. Two snapshots compare by key and canonical
-NBT value, not by their identity, compound iteration order, or decode cache.
+A row is eligible for extraction immediately upon spawn (starting with an empty attachment
+snapshot when the entity has no synced attachments). When the entity has synced attachments at
+pairing time, the server bundles the initial attachment sync atomically with the entity spawn
+packet (`ServerEntity.addPairing` / `ClientPacketListener.handleBundlePacket`, matching NeoForge
+`AttachmentSync`), so the first rendered frame already sees them. This includes negotiated
+clients held during a proxy handoff, which can see the level but are not yet visible to others.
+Once paired, held viewers receive changes and removals for tracked entities and other players
+without waiting for placement. The packet decoder validates the attachment message before
+publishing the bundle; a malformed message discards the bundle without applying any of it.
+Sync for an unknown entity, including an untracked foreign player, is logged and ignored, not
+stored for a future spawn. The engine publishes a new generation at spawn and on each attachment
+sync, and a frame keeps that generation even if a later update replaces or removes values.
+Use a draw default when `get` returns `Ok(None)` for a
+missing key. The first typed read of an undecoded binding can allocate to decode the value;
+already-decoded bindings are shared directly without re-running the codec. Two snapshots compare
+by key and canonical NBT value, not by their identity, compound iteration order, or decode cache.
 
 `EntityRenderState`, its family-specific state types, and `EntityRenderAttachments` are native
 render input, not `Wire` payloads. The attachment's save and sync codecs still apply. `yaw`,

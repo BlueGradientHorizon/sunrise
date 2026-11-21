@@ -968,7 +968,7 @@ impl Game<'_> {
         entity: EntityRef,
     ) -> Option<&super::remote::RemoteGeneral> {
         let (remote, id) = self.native_client_entity_context(entity)?;
-        remote.general.shown(id)
+        remote.general.rows.get(&id)
     }
     /// The entity's type (`Entity.getType`): `minecraft:zombie`. API
     /// 373.

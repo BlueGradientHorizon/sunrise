@@ -38,9 +38,8 @@ pub struct EntityRenderState {
     /// An item frame or glow item frame's own frame ([`ItemFrameRenderState`]); none for any
     /// other entity.
     pub item_frame: Option<ItemFrameRenderState>,
-    /// A general entity's last published immutable generation of synced fields, even if empty.
-    /// An over-budget generation leaves the previous one in place. The general entity does not
-    /// draw until its first generation is published. `None` for other entity families.
+    /// A general entity's immutable synced fields, including changes and removals received
+    /// since pairing. The snapshot stays fixed for this frame. `None` for other families.
     pub attachments: Option<crate::EntityRenderAttachments>,
 }
 

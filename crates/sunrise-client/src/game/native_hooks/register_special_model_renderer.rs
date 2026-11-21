@@ -66,7 +66,7 @@ mod tests {
         ) {
             for &(kind, marker) in self.rows {
                 event.renderers.register(
-                    kind.into(),
+                    mod_api::Identifier::parse(kind).unwrap(),
                     SpecialModelFactory::new(move |_| Err(marker.into()), |(), _| Ok(NoDraw)),
                 );
             }
@@ -117,18 +117,18 @@ mod tests {
                     &RegistrationContext::new(),
                     &mut registry,
                 );
+                let shield = mod_api::Identifier::parse("minecraft:shield").unwrap();
+                let pan = mod_api::Identifier::parse("test:pan").unwrap();
                 assert_eq!(
                     registry.initial_owners().collect::<Vec<_>>(),
-                    [
-                        ("minecraft:shield", Some("first")),
-                        ("test:pan", Some("winner"))
-                    ],
+                    [(&shield, Some("first")), (&pan, Some("winner"))],
                 );
                 let (factories, reports) = registry.into_renderers();
                 assert_eq!(factories.len(), 2);
                 let fields = mod_api::serde_json::Map::new();
                 assert_eq!(
-                    factories["minecraft:shield"]
+                    factories[&shield]
+                        .1
                         .bake(SpecialModelConfig::new(&fields), &NoGeometry)
                         .err()
                         .as_deref(),
@@ -137,11 +137,11 @@ mod tests {
                 assert_eq!(
                     reports
                         .iter()
-                        .map(|entry| (entry.kind.as_str(), entry.earlier, entry.later))
+                        .map(|entry| (entry.kind.clone(), entry.earlier, entry.later))
                         .collect::<Vec<_>>(),
                     [
-                        ("minecraft:shield", Some("first"), Some("winner")),
-                        ("minecraft:shield", Some("winner"), Some("winner")),
+                        (shield.clone(), Some("first"), Some("winner")),
+                        (shield, Some("winner"), Some("winner")),
                     ],
                 );
             },

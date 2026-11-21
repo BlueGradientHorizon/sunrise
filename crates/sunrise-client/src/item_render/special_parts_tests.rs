@@ -178,6 +178,16 @@ impl SpecialModelRenderer for Pan {
                 })?;
                 collector.submit_geometry(&self.a, SpecialModelTints::Untinted)
             }
+            26 => {
+                if context.display == ItemDisplayContext::Fixed {
+                    collector.submit_stack(
+                        &ItemStack::new(item_key(0), 26).unwrap(),
+                        ItemDisplayContext::Gui,
+                    )
+                } else {
+                    geometry(collector, &self.a)
+                }
+            }
             30 => {
                 let lease = if context.display == ItemDisplayContext::Ground
                     && context.game_time == Some(41)
@@ -190,6 +200,10 @@ impl SpecialModelRenderer for Pan {
                     SpecialModelTints::Uniform(tint as u32)
                 });
                 collector.submit_geometry(lease, tints)
+            }
+            1000.. => {
+                geometry(collector, &self.a)?;
+                stack(collector, 0, count + 1)
             }
             _ => geometry(collector, &self.b),
         }
@@ -208,7 +222,7 @@ impl ItemDrawEnv for PanEnv {
         let item = match stack.item.as_str() {
             "spt:pan" => 0,
             "spt:composite" => 3,
-            "spt:fault" | "spt:alias" => 4,
+            "spt:fault" | "spt:alias" | "spt:bare" | "spt:empty_path" => 4,
             "spt:bundle" => 5,
             _ => return None,
         };
@@ -232,7 +246,9 @@ impl ItemDrawEnv for PanEnv {
         inner: &ItemStack,
         display: ItemDisplayContext,
     ) -> Option<(StackView, DisplayContext)> {
-        assert_eq!(display, ItemDisplayContext::Gui);
+        let display = DisplayContext::ALL
+            .into_iter()
+            .find(|value| value.name() == display.name())?;
         let (item, glint) = match inner.item() {
             key if key == item_key(0) => ("spt:pan", false),
             key if key == item_key(1) => ("spt:cube", false),
@@ -248,7 +264,7 @@ impl ItemDrawEnv for PanEnv {
                 Some(serde_json::json!(true)),
             );
         }
-        Some((stack, DisplayContext::Gui))
+        Some((stack, display))
     }
 }
 
@@ -264,7 +280,7 @@ fn owned_factory<C: 'static, R: SpecialModelRenderer>(
 
 fn pan_factories(on_bake: impl Fn(u8) + Send + Sync + 'static) -> SpecialModelFactories {
     BTreeMap::from([(
-        "spt:pan".into(),
+        mod_api::Identifier::parse("spt:pan").unwrap(),
         owned_factory(
             |config| config.decode::<PanConfig>(),
             move |config, bake| {
@@ -489,7 +505,6 @@ fn a_refused_special_draw_is_reported_each_time_without_disabling_the_renderer()
         "minecraft:item_model".into(),
         Some(serde_json::json!("spt:composite")),
     );
-
     crate::test_log::install();
     for bad in [
         stack("spt:composite", 4), // Err after submitting geometry, twice on the same baked node.
@@ -521,7 +536,7 @@ fn a_panicking_special_draw_disables_only_its_registration_across_reload() {
     }
     let mut factories = pan_factories(|_| {});
     factories.insert(
-        "spt:fault".into(),
+        mod_api::Identifier::parse("spt:fault").unwrap(),
         owned_factory(|config| config.decode::<PanConfig>(), Pan::bake),
     );
     let env = PanEnv(FakeHost::new());
@@ -557,6 +572,65 @@ fn a_panicking_special_draw_disables_only_its_registration_across_reload() {
         assert_refused_special_between_siblings(generation, &draw(generation, "spt:composite", 15));
         assert_eq!(special_draw_reports(log::Level::Error), 1);
     }
+}
+
+#[test]
+fn nested_stacks_allow_over_64_and_key_cycles_by_stack_and_display() {
+    let root = tempfile::tempdir().unwrap();
+    let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+    let env = PanEnv(FakeHost::new());
+    let resolve =
+        |count, display| renderer.resolve(&stack("spt:pan", count), display, None, None, 0, &env);
+    let missing = renderer.bake(MISSING_MODEL);
+    let is_missing = |state: &ItemRenderState| {
+        matches!(
+            state.layers.as_slice(),
+            [layer] if matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing))
+        )
+    };
+
+    // Over 64 nested stack expansions succeed both flat and across nesting levels.
+    assert_eq!(
+        quads(&renderer, &resolve(21, DisplayContext::Gui)).len(),
+        65 * 6
+    );
+    assert_eq!(
+        quads(&renderer, &resolve(22, DisplayContext::Gui)).len(),
+        12 + 64 * 6
+    );
+
+    // The same stack in the same display context is a cycle and falls back to the missing model.
+    assert!(is_missing(&resolve(9, DisplayContext::Gui)));
+
+    // Delegating the exact same stack under a different display context succeeds.
+    let delegated = resolve(26, DisplayContext::Fixed);
+    assert_eq!(quads(&renderer, &delegated).len(), 6);
+    assert_eq!(delegated.layers[0].display, DisplayContext::Gui);
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+fn nonrepeating_nested_stacks_refuse_only_the_recursive_draw() {
+    std::thread::Builder::new()
+        .stack_size(512 * 1024)
+        .spawn(|| {
+            let root = tempfile::tempdir().unwrap();
+            let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+            let env = PanEnv(FakeHost::new());
+            let resolve = |count| {
+                renderer.resolve(&stack("spt:pan", count), DisplayContext::Gui, None, None, 0, &env)
+            };
+            let failed = resolve(1000);
+            let missing = renderer.bake(MISSING_MODEL);
+            assert!(matches!(
+                failed.layers.as_slice(),
+                [layer] if matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing))
+            ));
+            assert_eq!(quads(&renderer, &resolve(1)).len(), 6);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 fn sprites() -> HashMap<String, Rect> {
@@ -617,14 +691,14 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     let mut factories = pan_factories(|_| {});
     factories.extend([
         (
-            "spt:decode-panic".into(),
+            mod_api::Identifier::parse("spt:decode-panic").unwrap(),
             owned_factory(
                 |_| -> Result<Pan, String> { panic!("decoder panicked") },
                 |pan, _| Ok(pan),
             ),
         ),
         (
-            "spt:bake-panic".into(),
+            mod_api::Identifier::parse("spt:bake-panic").unwrap(),
             owned_factory(
                 |_| Ok(()),
                 |(), _| -> Result<Pan, String> { panic!("baker panicked") },
@@ -745,13 +819,18 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
             quad.force_translucent = true;
             let resource = context.bake_model("spt:item/b")?;
             let custom = context.bake_geometry(&[quad.clone()])?;
-            let invalid: [(&str, fn(&mut SpecialModelQuad)); 6] = [
-                ("non-finite", |q| q.positions[0][0] = f32::NAN),
-                ("facing", |q| q.positions = [[0.0; 3]; 4]),
-                ("UV", |q| q.uv[0][0] = -1.0),
+            let mut degenerate = quad.clone();
+            degenerate.positions = [[0.0; 3]; 4];
+            let mut outside_uv = quad.clone();
+            outside_uv.uv = [[-1.0, 2.5], [1.5, -0.25], [2.0, 3.0], [-0.5, 1.25]];
+            let mut missing_sprite = quad.clone();
+            missing_sprite.sprite = "spt:item/not-present".into();
+            let fallbacks = context.bake_geometry(&[degenerate, outside_uv, missing_sprite])?;
+            let invalid: [(&str, fn(&mut SpecialModelQuad)); 4] = [
+                ("non-finite position", |q| q.positions[0][0] = f32::NAN),
+                ("non-finite UV", |q| q.uv[0][0] = f32::INFINITY),
                 ("light", |q| q.light_emission = 16),
                 ("tint", |q| q.tint_index = Some(u32::MAX)),
-                ("missing", |q| q.sprite = "spt:item/not-present".into()),
             ];
             for (message, invalidate) in invalid {
                 let mut invalid_quad = quad.clone();
@@ -761,7 +840,7 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
                     _ => return Err(format!("did not reject invalid {message}")),
                 }
             }
-            *leases.lock().unwrap() = Some((resource, custom.clone()));
+            *leases.lock().unwrap() = Some((resource, custom.clone(), fallbacks));
             Ok(Pan {
                 b: custom,
                 ..Pan::bake(pan, context)?
@@ -769,12 +848,12 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
         }
     };
     let factories = BTreeMap::from([(
-        "spt:pan".into(),
+        mod_api::Identifier::parse("spt:pan").unwrap(),
         owned_factory(|config| config.decode::<PanConfig>(), bake),
     )]);
     let renderer = renderer(temp.path(), 2, 2, &factories);
     assert!(renderer.models.definitions.contains_key("spt:pan"));
-    let (resource, custom) = leases.lock().unwrap().take().unwrap();
+    let (resource, custom, fallbacks) = leases.lock().unwrap().take().unwrap();
     let resource = resource.downcast_ref::<BakedSpecialGeometry>().unwrap();
     assert_eq!(resource.model.quads.len(), 12);
     let custom = custom.downcast_ref::<BakedSpecialGeometry>().unwrap();
@@ -790,6 +869,21 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
     assert!(quad.material.force_translucent);
     assert_eq!(quad.tint_index, 2);
     assert_eq!(quad.light_emission, 12);
+
+    let fallbacks = fallbacks.downcast_ref::<BakedSpecialGeometry>().unwrap();
+    let [degenerate, outside_uv, missing_sprite] = fallbacks.model.quads.as_slice() else {
+        panic!("expected three fallback quads");
+    };
+    assert_eq!(degenerate.facing, Direction::Up);
+    assert_eq!(
+        outside_uv.uv,
+        [[-1.0, 2.5], [1.5, -0.25], [2.0, 3.0], [-0.5, 1.25]]
+    );
+    assert_eq!(
+        missing_sprite.material.sprite,
+        sunrise_assets::item_bake::MISSING_SPRITE
+    );
+    assert!(missing_sprite.material.force_translucent);
 
     let mut stack = stack("spt:pan", 2);
     stack.patch.insert(
@@ -905,7 +999,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     );
     let mut factories = pan_factories(|_| {});
     factories.insert(
-        "spt:fault".into(),
+        mod_api::Identifier::parse("spt:fault").unwrap(),
         owned_factory(|config| config.decode::<PanConfig>(), Pan::bake),
     );
     let renderer = renderer(&root, 2, 2, &factories);
@@ -988,7 +1082,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     assert!(nested.animated);
     assert!(is_missing(&resolve("spt:pan", 9, DisplayContext::Gui)));
     // A refusal below a first level refuses the answers above it whole, their valid sibling
-    // models too; the expansion budget is 64 for the whole draw, below the first level as well.
+    // models too; there is no nested-stack count cap, and only `(stack, display)` cycles refuse.
     assert!(is_missing(&resolve("spt:pan", 10, DisplayContext::Gui)));
     assert!(is_missing(&resolve("spt:pan", 11, DisplayContext::Gui)));
     let composite = resolve("spt:composite", 12, DisplayContext::Gui);
@@ -1006,12 +1100,19 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     );
     assert!(is_missing(&resolve("spt:pan", 14, DisplayContext::Gui)));
     // A nested refusal aborts only the current layer; the same type can draw a later item.
-    assert!(!is_missing(&resolve("spt:fault", 1, DisplayContext::Gui)));
+    assert_eq!(
+        quads(&renderer, &resolve("spt:fault", 1, DisplayContext::Gui)).len(),
+        6
+    );
     let quads_of = |count| quads(&renderer, &resolve("spt:pan", count, DisplayContext::Gui)).len();
     assert_eq!(quads_of(20), 64 * 6);
-    assert!(is_missing(&resolve("spt:pan", 21, DisplayContext::Gui)));
-    assert!(is_missing(&resolve("spt:pan", 22, DisplayContext::Gui)));
+    assert_eq!(quads_of(21), 65 * 6);
+    assert_eq!(quads_of(22), 12 + 64 * 6);
     assert_eq!(quads_of(23), 12 + 63 * 6);
+    assert_eq!(
+        quads(&renderer, &resolve("spt:pan", 26, DisplayContext::Fixed)).len(),
+        6
+    );
     assert!(!is_missing(&resolve("spt:pan", 1, DisplayContext::Gui)));
     assert_eq!(
         quads(&renderer, &resolve("spt:cube", 1, DisplayContext::Gui)).len(),
@@ -1110,4 +1211,32 @@ fn a_parts_tint_reaches_the_vertices_as_a_vanilla_tint_does() {
         assert_eq!(part, vec![argb as u32; 6], "{vanilla}");
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+/// Registration and resource lookup both use `Identifier::parse`: bare paths default to
+/// `minecraft:` and a valid empty path (`example:`) reaches its registered factory.
+#[test]
+fn special_model_lookup_accepts_bare_path_and_empty_path() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "assets/spt/items/bare.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"skillet","handle":1}}}"#,
+    );
+    write(
+        root.path(),
+        "assets/spt/items/empty_path.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"example:","handle":2}}}"#,
+    );
+    let factory = || SpecialModelFactory::new(|config| config.decode::<PanConfig>(), Pan::bake);
+    let factories = BTreeMap::from([
+        (mod_api::Identifier::parse("skillet").unwrap(), factory()),
+        (mod_api::Identifier::parse("example:").unwrap(), factory()),
+    ]);
+    let renderer = renderer(root.path(), 2, 2, &factories);
+    let env = PanEnv(FakeHost::new());
+    for item in ["spt:bare", "spt:empty_path"] {
+        let state = renderer.resolve(&stack(item, 1), DisplayContext::Gui, None, None, 0, &env);
+        assert_eq!(quads(&renderer, &state).len(), 6, "{item}");
+    }
 }

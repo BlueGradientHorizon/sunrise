@@ -4,7 +4,7 @@ use crate::{
     lan::NetEvent,
     net::{
         Event,
-        ingress::{Prepared, Producer, Refusal, Refused},
+        ingress::{Prepared, Producer, ReceiveLease, Refusal, Refused},
     },
 };
 use mod_api::PayloadContextError;
@@ -40,14 +40,22 @@ impl FailedMain {
     }
 }
 impl MainQueue {
-    pub(crate) fn prepare(&self, incoming: Incoming) -> Result<PreparedMain, PayloadContextError> {
+    pub(crate) fn prepare(
+        &self,
+        incoming: Incoming,
+        credit: Option<ReceiveLease<Event>>,
+    ) -> Result<PreparedMain, PayloadContextError> {
         let refusal = |reason| match reason {
             Refusal::Pressure => PayloadContextError::Backpressure,
             Refusal::Closed => PayloadContextError::Disconnected,
         };
         match self {
-            Self::Client(events) => events
-                .prepare(Event::RawPayload(Box::new(incoming)))
+            Self::Client(events) => {
+                let event = Event::RawPayload(Box::new(incoming));
+                match credit {
+                    Some(credit) => events.prepare_replacing(event, credit),
+                    None => events.prepare(event),
+                }
                 .map(PreparedMain::Client)
                 .map_err(|error| refusal(error.reason)),
             Self::ClientBundle(work) => {

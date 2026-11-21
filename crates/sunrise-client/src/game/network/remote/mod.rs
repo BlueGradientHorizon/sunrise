@@ -998,10 +998,6 @@ impl Game<'_> {
             {
                 self.remote_book_settings(&p.data);
             }
-            // The synced attachments of a holder the server shows the window.
-            C::CustomPayload(p) if p.channel == sunrise_protocol::attachment_sync::CHANNEL => {
-                self.remote_attachment_sync(&p.data);
-            }
             // A native mod's general row the server starts showing the window.
             C::CustomPayload(p) if p.channel == sunrise_protocol::general_entity::CHANNEL => {
                 self.remote_general_entity(&p.data);
@@ -2086,6 +2082,7 @@ impl ClientMenu {
     }
 }
 
+
 fn object_skin_changed(published: &HashMap<String, String>, key: &str, skin: &str) -> bool {
     published.get(key).is_none_or(|previous| previous != skin)
 }
@@ -2460,7 +2457,7 @@ pub(crate) mod tests {
         connect_play_test(game, |_, _| {})
     }
 
-    fn connect_play_test(
+    pub(super) fn connect_play_test(
         game: &mut super::Game<'_>,
         configure: impl FnOnce(
             &mut sunrise_protocol::connection::ConnReader,
@@ -2529,7 +2526,7 @@ pub(crate) mod tests {
     }
 
     /// Spawns the connected client in the overworld as entity 7, profile 42.
-    fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
+    pub(super) fn spawn_menu_test(game: &mut super::Game<'_>) -> sunrise_protocol::packets::play::SpawnInfo {
         use crate::game::remote::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;

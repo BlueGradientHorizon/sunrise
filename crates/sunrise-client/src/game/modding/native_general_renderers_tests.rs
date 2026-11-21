@@ -315,9 +315,8 @@ fn in_scene(test: &str, check: impl FnOnce(&mut Game<'_>, &Scene)) {
             for (id, key) in [(5, "test:missile"), (6, "test:bomb"), (7, "test:plain")] {
                 game.handle_packet(spawn(id, key, [0.0, 321.0, 0.0]))
                     .unwrap();
-                game.handle_packet(snapshot(id as u32, (id == 5).then_some(7)))
-                    .unwrap();
             }
+            game.handle_packet(snapshot(5, Some(7))).unwrap();
             let row = game
                 .remote
                 .as_mut()
@@ -673,8 +672,8 @@ fn integrated_scene(test: &str, place: fn(&mut Game<'_>, [f64; 3]) -> u32) {
                         .as_ref()
                         .unwrap()
                         .general
-                        .shown(id as i32)
-                        .is_some()
+                        .rows
+                        .contains_key(&(id as i32))
                 };
                 poll_until(game, ready);
                 let check_quad = |g: &mut Game<'_>| {

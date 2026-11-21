@@ -7,6 +7,9 @@
 //! (crate::auth): the login joins the server through the session service and
 //! encrypts the connection (ClientHandshakePacketListenerImpl.handleHello).
 use crate::auth::AuthSession;
+#[cfg(test)]
+#[path = "net/bundle_tests.rs"]
+mod bundle_tests;
 mod configuration;
 pub use configuration::ConfigurationTask;
 use configuration::{Action as ConfigurationAction, Configuration};
@@ -15,7 +18,7 @@ pub mod ingress;
 mod known_packs;
 mod play_bundle;
 use known_packs::{fill_known_entries, select_known_packs};
-pub use play_bundle::{BundleStep, CompletedBundle};
+pub use play_bundle::{BundleMember, BundleStep, CompletedBundle};
 #[cfg(test)]
 #[path = "net/mod_packet_tests.rs"]
 mod mod_packet_tests;
@@ -29,6 +32,7 @@ use std::{
     sync::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU32, Ordering},
+        mpsc::{Receiver, SyncSender, sync_channel},
     },
     thread::JoinHandle,
     time::{Duration, Instant},
@@ -119,9 +123,11 @@ pub enum Event {
     ObservePacket(Box<play::Clientbound>),
     /// A completed vanilla bundle, charged as one ingress record.
     Bundle(Box<CompletedBundle>),
+    /// Attachment sync decoded at ingress, with the original bytes for `client_packet`.
+    AttachmentSync(Box<sunrise_protocol::attachment_sync::StagedMessage>),
     /// An application payload or scheduled work, to run in a main transaction.
     RawPayload(Box<crate::raw_payloads::Incoming>),
-    /// A packet that failed to decode (skipped, like vanilla's skippable packets).
+    /// A standalone play packet that failed to decode and was skipped.
     DecodeError(String),
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
     /// the game shows `ServerReconfigScreen` until the server logs it in again.
@@ -178,6 +184,7 @@ impl Event {
         match self {
             Self::Packet(_)
             | Self::ObservePacket(_)
+            | Self::AttachmentSync(_)
             | Self::RawPayload(_)
             | Self::Brand(_)
             | Self::PackPush(_)
@@ -202,6 +209,12 @@ impl Event {
             | Self::DecodeError(_)
             | Self::Disconnected { .. } => false,
         }
+    }
+
+    /// Decode the engine payload at the play ingress boundary, before applying it.
+    pub fn decode_attachment_sync(payload: cfg::CustomPayload) -> sunrise_protocol::Result<Self> {
+        let message = sunrise_protocol::attachment_sync::decode_staged(payload)?;
+        Ok(Self::AttachmentSync(Box::new(message)))
     }
 
     // Layout-derived allowance for a frozen receiving vector, actor backlog,
@@ -244,6 +257,9 @@ impl Event {
             }
             Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
                 .saturating_add(incoming.owned_heap_bytes()),
+            Self::AttachmentSync(message) => {
+                size_of_val(&**message).saturating_add(message.owned_heap_bytes())
+            }
             Self::PackPush(packet) => packet.owned_heap_bytes(),
             Self::ShowDialog { dialog, registries } => dialog
                 .owned_heap_bytes()
@@ -1533,13 +1549,38 @@ fn receive_play(
         {
             rec.received(&packet, id, &payload);
         }
-        let turn = bundle.accept(packet).map_err(|error| {
+        let member = match packet {
+            play::Clientbound::CustomPayload(payload)
+                if payload.channel == sunrise_protocol::attachment_sync::CHANNEL =>
+            {
+                use crate::raw_payloads::{Classified, Incoming};
+                let Classified::Other(payload) = Incoming::classify(payloads, Phase::Play, payload)
+                    .map_err(|error| Reason::plain(error.to_string()))?
+                else {
+                    unreachable!("attachment sync is an engine declaration");
+                };
+                let staged = sunrise_protocol::attachment_sync::decode_staged(payload)
+                    .map_err(|error| Reason::plain(format!("attachment sync in play: {error}")))?;
+                BundleMember::AttachmentSync(Box::new(staged))
+            }
+            packet => BundleMember::Packet(packet),
+        };
+        let turn = bundle.accept(member).map_err(|error| {
             log::warn!("Sunrise: play bundle refused: {error:?}");
             Reason::keyed("multiplayer.disconnect.invalid_packet", lang)
         })?;
         let packet = match turn {
             None => continue,
-            Some(PlayTurn::Single(packet)) => packet,
+            Some(PlayTurn::Single(BundleMember::AttachmentSync(staged))) => {
+                if !io.common.accepts_packets() {
+                    continue;
+                }
+                if send.send_wait(Event::AttachmentSync(staged)).is_err() {
+                    return Ok(Reason::plain("Disconnected"));
+                }
+                continue;
+            }
+            Some(PlayTurn::Single(BundleMember::Packet(packet))) => packet,
             Some(PlayTurn::Bundle(packets)) => {
                 if io.accepts_bundle() {
                     send.send_wait(Event::Bundle(Box::new(CompletedBundle {
@@ -1667,8 +1708,9 @@ fn receive_application(
             );
             Ok(None)
         }
-        // Raw channels are server-side: a client's table has none.
-        crate::raw_payloads::Classified::Raw(_) => Ok(None),
+        crate::raw_payloads::Classified::Skipped | crate::raw_payloads::Classified::Raw(_) => {
+            Ok(None)
+        }
     }
 }
 
@@ -2151,7 +2193,7 @@ mod tests {
     use super::*;
     use sunrise_world::native_load_context::DataLoadOrigin;
 
-    fn empty_item_data(name: &str) -> (PathBuf, Arc<ItemData>) {
+    pub(super) fn empty_item_data(name: &str) -> (PathBuf, Arc<ItemData>) {
         let root =
             std::env::temp_dir().join(format!("sunrise-net-data-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
@@ -3470,7 +3512,7 @@ mod tests {
         let members = 64;
         let one = Event::INGRESS_RECORD_OVERHEAD
             + std::mem::size_of::<CompletedBundle>()
-            + members * std::mem::size_of::<C>()
+            + members * std::mem::size_of::<BundleMember>()
             + sunrise_mod_runtime::byte_channel::message_overhead::<Event>();
         let capacity = one * 2;
         let (root, mut server, session, thread) = bundle_pipe("bundle-aggregate", capacity);
@@ -3499,7 +3541,7 @@ mod tests {
                 bundle
                     .packets
                     .iter()
-                    .all(|packet| *packet == C::Ping(cfg::Ping { id }))
+                    .all(|packet| matches!(packet, BundleMember::Packet(p) if *p == C::Ping(cfg::Ping { id })))
             );
             lease
         };

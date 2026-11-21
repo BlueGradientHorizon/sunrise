@@ -8,7 +8,7 @@
 //! stacks through a [`SpecialModelCollector`]. The game owns the surrounding draw state.
 use crate::generated::HookId;
 use crate::runtime::discard_registration;
-use crate::{ClientHost, Component, ItemDisplayContext, ItemKey, ItemStack};
+use crate::{ClientHost, Component, Identifier, ItemDisplayContext, ItemKey, ItemStack};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 use std::{any::Any, collections::BTreeMap, num::NonZeroU32, sync::Arc};
@@ -98,8 +98,11 @@ pub trait SpecialModelBakeContext {
     /// and GUI light. Bake new leases on reload rather than reusing an old one.
     fn bake_model(&self, model: &str) -> Result<SpecialModelGeometry, String>;
 
-    /// Bake custom quads against the selected packs' item and block atlas sprites. A missing
-    /// sprite, non-finite coordinate, invalid facing, tint index or light level rejects the bake.
+    /// Bake custom quads against the selected packs' item and block atlas sprites. Matching
+    /// vanilla's `FaceBakery` and `MaterialBaker`, degenerate quads default to `Up` facing, any
+    /// finite UV is accepted, and an unknown sprite falls back to the missing texture sprite while
+    /// preserving `force_translucent`. Non-finite coordinates or UVs, an invalid sprite
+    /// identifier, or an out-of-range tint index or light emission reject the bake.
     fn bake_geometry(&self, quads: &[SpecialModelQuad]) -> Result<SpecialModelGeometry, String>;
 }
 
@@ -109,11 +112,12 @@ pub trait SpecialModelBakeContext {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SpecialModelQuad {
     /// Corners in block units, relative to the model's corner. The first three determine facing
-    /// by their winding and must not be collinear.
+    /// by their winding, falling back to `Up` for degenerate quads as in vanilla's `FaceBakery`.
     pub positions: [[f32; 3]; 4],
-    /// Sprite-local UVs for the same four corners, in `[0, 1]`.
+    /// Finite sprite-local UVs for the same four corners.
     pub uv: [[f32; 2]; 4],
-    /// The sprite's resource ID in an item or block atlas.
+    /// The sprite's resource ID in an item or block atlas; unknown sprites fall back to the
+    /// missing texture sprite.
     pub sprite: String,
     /// Index into the submission's indexed palette, if any.
     pub tint_index: Option<u32>,
@@ -220,10 +224,6 @@ pub enum SpecialModelTints {
     Indexed(Arc<[u32]>),
 }
 
-/// The most nested stacks one item draw may expand, counting all special layers and their
-/// descendants. A cycle or an exhausted budget refuses the enclosing special layer.
-pub const MAX_NESTED_STACK_PARTS: usize = 64;
-
 // no wire: timing and display state for a single local draw callback.
 /// The actual display context and frame time for this draw, even when the stack has not changed.
 #[derive(Clone, Debug, PartialEq)]
@@ -297,9 +297,10 @@ impl<'a> SpecialModelCollector<'a> {
     }
 
     /// Draw another stack under the current pose, which places its centre. The nested item
-    /// uses its own display transform, tints and foil. A nested refusal (including unreadable
-    /// input, cycles and the shared [`MAX_NESTED_STACK_PARTS`] budget) discards the whole layer
-    /// even if the returned error is ignored.
+    /// uses its own display transform, tints and foil. There is no expansion count limit.
+    /// A nested refusal, such as unreadable input, a `(stack, display)` cycle or insufficient
+    /// native stack space to resolve another child, discards the whole layer even if the
+    /// returned error is ignored.
     pub fn submit_stack(
         &mut self,
         stack: &ItemStack,
@@ -400,8 +401,7 @@ pub trait SpecialModelRenderers {
     /// each special model node of type `kind` (`mymod:skillet`). The last registration wins,
     /// including replacements for builtins; the game logs both owners. A failed or disabled
     /// winning factory refuses the definition instead of exposing an earlier decoder.
-    /// An id that is not `<namespace>:<path>` is logged and skipped.
-    fn register(&mut self, kind: String, factory: SpecialModelFactory);
+    fn register(&mut self, kind: Identifier, factory: SpecialModelFactory);
 }
 
 // no wire: a report the game logs at registration; it holds `&'static` mod ids.
@@ -410,7 +410,7 @@ pub trait SpecialModelRenderers {
 #[non_exhaustive]
 pub struct ReplacedSpecialModelRenderer {
     /// The type.
-    pub kind: String,
+    pub kind: Identifier,
     /// The mod whose registration was replaced, when a mod's dispatch made it.
     pub earlier: Option<&'static str>,
     /// The mod whose registration stays.
@@ -424,9 +424,9 @@ type SpecialModelRegistration = (Option<&'static str>, SpecialModelFactory);
 #[derive(Default)]
 // exhaustive: its fields are private; the game builds it
 pub struct SpecialModelRendererRegistry {
-    factories: BTreeMap<String, SpecialModelRegistration>,
+    factories: BTreeMap<Identifier, SpecialModelRegistration>,
     replaced: Vec<ReplacedSpecialModelRenderer>,
-    initial: Vec<(String, Option<&'static str>)>,
+    initial: Vec<(Identifier, Option<&'static str>)>,
 }
 
 const REGISTRATION: (HookId, &str) = (
@@ -435,16 +435,16 @@ const REGISTRATION: (HookId, &str) = (
 );
 
 #[derive(Default)]
-struct RendererEdits(Vec<(String, SpecialModelFactory)>);
+struct RendererEdits(Vec<(Identifier, SpecialModelFactory)>);
 
 impl SpecialModelRenderers for RendererEdits {
-    fn register(&mut self, kind: String, factory: SpecialModelFactory) {
+    fn register(&mut self, kind: Identifier, factory: SpecialModelFactory) {
         self.0.push((kind, factory));
     }
 }
 
 impl SpecialModelRenderers for SpecialModelRendererRegistry {
-    fn register(&mut self, kind: String, factory: SpecialModelFactory) {
+    fn register(&mut self, kind: Identifier, factory: SpecialModelFactory) {
         self.publish([(kind, factory)]);
     }
 }
@@ -467,7 +467,7 @@ impl SpecialModelRendererRegistry {
         }
     }
 
-    fn publish(&mut self, edits: impl IntoIterator<Item = (String, SpecialModelFactory)>) {
+    fn publish(&mut self, edits: impl IntoIterator<Item = (Identifier, SpecialModelFactory)>) {
         let later = crate::content::crash::current_native_mod();
         let mut retired = Vec::new();
         for (kind, factory) in edits {
@@ -490,10 +490,8 @@ impl SpecialModelRendererRegistry {
 
     /// The first published mod registration of each type. The engine uses its own builtin decoder
     /// to distinguish replacement of a game type from a new type, irrespective of namespace.
-    pub fn initial_owners(&self) -> impl Iterator<Item = (&str, Option<&'static str>)> {
-        self.initial
-            .iter()
-            .map(|(kind, owner)| (kind.as_str(), *owner))
+    pub fn initial_owners(&self) -> impl Iterator<Item = (&Identifier, Option<&'static str>)> {
+        self.initial.iter().map(|(kind, owner)| (kind, *owner))
     }
 
     /// Consume the registry into its winning `(Option<&'static str>, SpecialModelFactory)`
@@ -502,7 +500,7 @@ impl SpecialModelRendererRegistry {
     pub fn into_renderers(
         self,
     ) -> (
-        BTreeMap<String, SpecialModelRegistration>,
+        BTreeMap<Identifier, SpecialModelRegistration>,
         Vec<ReplacedSpecialModelRenderer>,
     ) {
         (self.factories, self.replaced)
@@ -535,18 +533,20 @@ mod tests {
     fn the_last_registration_of_a_type_wins() {
         let factory = || SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Nothing));
         let last = factory();
+        let pan = Identifier::parse("a:pan").unwrap();
+        let shield = Identifier::parse("minecraft:shield").unwrap();
         let mut registry = SpecialModelRendererRegistry::default();
-        registry.register("a:pan".into(), factory());
-        registry.register("a:pan".into(), last.clone());
-        registry.register("minecraft:shield".into(), factory());
+        registry.register(pan.clone(), factory());
+        registry.register(pan.clone(), last.clone());
+        registry.register(shield.clone(), factory());
         assert_eq!(
             registry.initial_owners().collect::<Vec<_>>(),
-            vec![("a:pan", None), ("minecraft:shield", None)]
+            vec![(&pan, None), (&shield, None)]
         );
         let (renderers, replaced) = registry.into_renderers();
         assert_eq!(renderers.len(), 2);
-        assert!(Arc::ptr_eq(&renderers["a:pan"].1.0, &last.0));
+        assert!(Arc::ptr_eq(&renderers[&pan].1.0, &last.0));
         assert_eq!(replaced.len(), 1);
-        assert_eq!(replaced[0].kind, "a:pan");
+        assert_eq!(replaced[0].kind, pan);
     }
 }

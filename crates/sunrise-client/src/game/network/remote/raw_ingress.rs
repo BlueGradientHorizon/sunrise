@@ -18,7 +18,8 @@ struct ListenerTurn {
 impl Remote {
     pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
         // Chunk packets start decoding now; the frame that reaches one in
-        // order inserts its column.
+        // order inserts its column. Packets inside a delimited bundle stay
+        // inline so the entire bundle dispatches atomically in one turn.
         for receipt in self.session.poll() {
             let (event, credit) = receipt.into_parts();
             events.push_back(match event {
@@ -218,7 +219,7 @@ impl Game<'_> {
         bundle: sunrise_client::net::CompletedBundle,
         turn: &mut ListenerTurn,
     ) -> Result<()> {
-        use sunrise_client::net::BundleStep;
+        use sunrise_client::net::{BundleMember, BundleStep};
         use sunrise_client::raw_payloads::{Classified, Incoming, dispatch_bundle};
         use sunrise_protocol::{connection_groups, payload_negotiation::Phase};
         let sunrise_client::net::CompletedBundle { packets, io } = bundle;
@@ -235,7 +236,25 @@ impl Game<'_> {
                     .peer
                     .engine_receives(Phase::Play, connection_groups::CHANNEL)
         });
-        if self.route_connection_group_bundle(&packets, negotiated)? {
+        if packets.iter().any(|member| {
+            matches!(
+                member,
+                BundleMember::Packet(C::CustomPayload(p))
+                    if p.channel == connection_groups::CHANNEL
+            )
+        }) {
+            let group_packets: Vec<C> = packets
+                .into_iter()
+                .map(|member| match member {
+                    BundleMember::Packet(packet) => packet,
+                    BundleMember::AttachmentSync(staged) => {
+                        C::CustomPayload(staged.into_message().1)
+                    }
+                })
+                .collect();
+            if self.route_connection_group_bundle(&group_packets, negotiated)? {
+                return Ok(());
+            }
             return Ok(());
         }
         for packet in packets {
@@ -256,7 +275,7 @@ impl Game<'_> {
                                 turn,
                             )?;
                         }
-                        Ok(Classified::Raw(_)) => {}
+                        Ok(Classified::Skipped | Classified::Raw(_)) => {}
                         Err(error) => {
                             log::warn!("Sunrise: bundle payload refused: {error}");
                             if let Some(remote) = &self.remote {
@@ -452,6 +471,11 @@ impl Game<'_> {
                 }
             }
             Event::ObservePacket(packet) => self.observe_client_packet(&packet),
+            Event::AttachmentSync(staged) => {
+                let (message, payload) = staged.into_message();
+                self.observe_client_packet(&C::CustomPayload(payload));
+                self.remote_attachment_sync(message);
+            }
             Event::Packet(packet) => match *packet {
                 C::CustomPayload(p) if p.channel == sunrise_client::perf_net::CHANNEL => {
                     self.remote_perf_reply(&p.data)

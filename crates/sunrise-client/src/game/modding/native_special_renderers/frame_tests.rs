@@ -179,7 +179,7 @@ fn install_stick_with(
     + 'static,
 ) {
     let factories = BTreeMap::from([(
-        "test:stick".into(),
+        mod_api::Identifier::parse("test:stick").unwrap(),
         OwnedSpecialModelFactory::new(
             "test",
             SpecialModelFactory::new(|_| Ok(()), move |(), bake| bake_geometry(bake).map(Stick)),

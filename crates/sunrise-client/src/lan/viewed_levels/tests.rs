@@ -179,7 +179,7 @@ fn in_ctx<R>(world: &mut World, f: impl FnOnce(&mut TickCtx) -> R) -> R {
 /// One level pass of the level in place.
 fn run_level(hub: &mut Hub, world: &mut World) {
     in_ctx(world, |ctx| {
-        let _ = hub.tick_level(ctx);
+        let _ = hub.tick_level(ctx, None);
     });
 }
 

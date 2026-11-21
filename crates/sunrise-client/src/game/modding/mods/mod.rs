@@ -688,7 +688,7 @@ fn register_special_model_renderers() {
     let mut registry = mod_api::SpecialModelRendererRegistry::default();
     Game::native_register_special_model_renderer(&RegistrationContext::new(), &mut registry);
     for (kind, owner) in registry.initial_owners() {
-        if sunrise_assets::item_model::SpecialModel::is_builtin_type(kind) {
+        if sunrise_assets::item_model::SpecialModel::is_builtin_type(&kind.to_string()) {
             log::warn!(
                 "Sunrise: special model type {kind} registered by the game is replaced by {}'s registration",
                 owner.unwrap_or("the game")

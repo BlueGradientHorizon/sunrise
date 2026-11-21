@@ -250,7 +250,7 @@ fn handler_error_or_epoch_cancellation_publishes_no_staged_work_or_replies() {
             assert_eq!(probe.events.stats().reserved_bytes, 0);
             assert_eq!(probe.events.stats().queued_items, 0);
             assert_eq!(reply_count(&*out), 0);
-            if matches!(mode, Mode::Error | Mode::Panic) {
+            if mode == Mode::Error {
                 // The player is told which mod's handler failed, never its reason.
                 let sent = out();
                 let has = |text: &[u8]| {
@@ -259,6 +259,27 @@ fn handler_error_or_epoch_cancellation_publishes_no_staged_work_or_replies() {
                 };
                 assert!(has(b"a mod's network handler failed (executor_probe)"));
                 assert!(!has(b"deliberate handler error"));
+            } else if mode == Mode::Panic {
+                let transport = endpoint.transport();
+                assert!(!transport.closed());
+                assert!(out().is_empty());
+                let _pressure = transport.reserve_ingress(15 << 20).unwrap();
+                let data = vec![0; 1 << 20];
+                assert!(matches!(
+                    transport.reserve_ingress(data.capacity()),
+                    Err(PayloadSendError::Backpressure)
+                ));
+                assert!(matches!(
+                    Incoming::classify(
+                        transport,
+                        negotiation::Phase::Play,
+                        sunrise_protocol::packets::custom_payload::CustomPayload {
+                            channel: CHANNEL.into(),
+                            data,
+                        },
+                    ),
+                    Ok(Classified::Skipped)
+                ));
             }
         });
     }

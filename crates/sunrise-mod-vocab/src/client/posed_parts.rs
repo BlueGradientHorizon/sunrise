@@ -176,12 +176,11 @@ pub trait HumanoidPose {
     /// jacket and pants return `None`.
     fn get(&self, part: HumanoidPart) -> Option<[[f32; 3]; 2]>;
 
-    /// Writes local position components in texels. Non-finite components retain
-    /// their previous values. Returns false for a missing or noneditable part,
-    /// or if any component was refused.
+    /// Writes local position components in texels directly, matching `HumanoidModel.setupAnim`
+    /// without filtering component values. Returns `false` only for a missing or noneditable part.
     fn set_position(&mut self, part: HumanoidPart, position: [f32; 3]) -> bool;
 
-    /// Writes local rotation components in radians, with the same refusals as
-    /// [`Self::set_position`]. Finite angles are not clamped.
+    /// Writes local rotation components in radians directly, without clamping or filtering
+    /// component values. Returns `false` only for a missing or noneditable part.
     fn set_rotation(&mut self, part: HumanoidPart, rotation: [f32; 3]) -> bool;
 }

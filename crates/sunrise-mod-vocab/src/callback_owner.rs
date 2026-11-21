@@ -394,6 +394,54 @@ pub(crate) fn call<T>(
     .map_err(CallFailure::into_message)
 }
 
+/// Failure of a retained callback, distinct from the result returned by the mod itself.
+// no wire: an in-process dispatch outcome; never sent to the peer.
+// exhaustive: engine-only dispatch result.
+#[derive(Debug)]
+pub enum CallbackFailure {
+    /// A refusal, not a panic.
+    Refused(String),
+    /// The callback just panicked and the shared boundary reported it.
+    Panicked,
+    /// A previous panic disabled the callback; it did not run.
+    Poisoned,
+}
+
+pub(crate) fn call_typed<T>(
+    owner: &'static str,
+    index: usize,
+    poisoned: &AtomicBool,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, CallbackFailure> {
+    if poisoned.load(Ordering::Acquire) {
+        let _guard = crate::mark_mod(owner, operation);
+        let _ = contain_unwind(|| drop(invoke));
+        return Err(CallbackFailure::Poisoned);
+    }
+    if !crate::mod_index_on(index) {
+        let _guard = crate::mark_mod(owner, operation);
+        let _ = contain_unwind(|| drop(invoke));
+        return Err(CallbackFailure::Refused(format!(
+            "{kind} owner is disabled"
+        )));
+    }
+    call_opt(
+        owner,
+        Some(index),
+        poisoned,
+        kind,
+        operation,
+        Invocation::Isolated,
+        invoke,
+    )
+    .map_err(|failure| match failure {
+        CallFailure::Unavailable(reason) => CallbackFailure::Refused(reason),
+        CallFailure::Panicked(_) => CallbackFailure::Panicked,
+    })
+}
+
 enum ScheduledFailure {
     Disabled,
     Panicked(String),

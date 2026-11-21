@@ -225,8 +225,7 @@ impl Game<'_> {
         if let Some(remote) = &self.remote {
             let catalog = crate::game::general::general_type_catalog();
             for (&id, row) in &remote.general.rows {
-                if row.is_shown()
-                    && catalog.pickable(row.type_slot)
+                if catalog.pickable(row.type_slot)
                     && let Ok(entity) = u32::try_from(id)
                     && let Some(distance) = ray_box(eye, dir, reach, row.bounds())
                     && pick.consider(self, entity, distance)
