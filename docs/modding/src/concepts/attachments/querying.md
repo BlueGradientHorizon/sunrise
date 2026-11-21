@@ -80,12 +80,14 @@ fn increment(host: &mut dyn ServerHost) -> Result<(), AttachmentRowError> {
 
 - Writes take effect through the ordinary attachment write path. Captured rows
   retain their original values; use a fresh query to observe a write.
-- Each write validates the captured residency against the supplied host's current
-  dimension. Unloaded, replaced or missing holders produce
-  `AttachmentRowError::StaleHolder`. A host for another dimension does not
-  retarget the row, and a refused write does not revive the holder. Use `set`
-  and `remove` with the captured row; there is no byte encoding that can
-  restore its write token.
+- `set` and `remove` validate the row's write token through
+  `host.attachment_validate_write(token)`. Outside the world phase it returns
+  `AttachmentRowError::Unavailable`. In the world phase an expired capture
+  returns `OutsideTransaction` before residency is checked, even if the
+  current dimension has no index. Unloaded, replaced or missing holders
+  produce `StaleHolder`. A host for another dimension does not retarget the
+  row, and a refused write does not revive the holder. There is no byte
+  encoding that can restore its write token.
 - Removing only the attachment value does not invalidate a loaded holder. A
   retained row can set a replacement value on that holder.
 - Writes join your existing transaction. For an all-or-nothing loop, import

@@ -189,6 +189,13 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
         assert_eq!(read_row.with_value(scope, |value| *value), Ok(11));
         assert_eq!(write_row.with_value(scope, |value| *value), Ok(11));
         assert_eq!(reader.get(scope, scoped_holder), Ok(Some(11)));
+        assert_eq!(
+            reader.get(
+                mod_api::__private::game::attachment_read_scope(&foreign),
+                scoped_holder,
+            ),
+            Err(OutsideTransaction)
+        );
         let child = game.transaction_open();
         assert_eq!(
             read_row.with_value(game.attachment_frame_borrow(), |value| *value),

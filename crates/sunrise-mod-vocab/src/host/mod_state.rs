@@ -35,8 +35,10 @@ pub trait ModStateServerHost {
     /// Side: server.
     /// Validate the capture's transaction, if any, and residency in the current dimension
     /// immediately before an ordinary journaled attachment write. The token comes from a
-    /// captured row, not from disk or the network. An expired frame is reported even
-    /// if the current dimension has no index. This does not open a transaction.
+    /// captured row, not from disk or the network. Returns `Unavailable` outside the
+    /// world phase. In the world phase, `OutsideTransaction` for an expired frame takes
+    /// precedence over `StaleHolder` for missing or mismatched residency. This does not
+    /// open a transaction.
     #[access(WorldOnly)]
     fn attachment_validate_write(
         &self,
