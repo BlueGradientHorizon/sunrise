@@ -595,9 +595,10 @@ pub(in crate::game) mod tests {
         let fixed = api_number_format(&sb::NumberFormat::Fixed(deep)).unwrap();
         assert_eq!(engine_number_format(&fixed), Err(TextFormError::TooDeep));
         assert_eq!(
-            api_text(&comp_text(
-                &serde_json::json!({"text": "x", "test:meta": [null]})
-            )),
+            api_text(
+                &EngineText::empty()
+                    .with_component(serde_json::json!({"text": "x", "test:meta": [null]}))
+            ),
             Err(TextFormError::NestedNull)
         );
         assert!(api_text(&comp_text(&literal("x"))).is_ok());

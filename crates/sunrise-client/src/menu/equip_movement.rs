@@ -172,38 +172,6 @@ impl Menu {
                 (stack.count > 0).then(|| stack.clone());
         }
     }
-    pub(super) fn safe_insert_with_placement(
-        &mut self,
-        env: &Env,
-        s: usize,
-        input: &mut Option<ItemStack>,
-        amount: u32,
-        allowed: bool,
-        max: u32,
-    ) {
-        let Some(stack) = input.as_mut() else { return };
-        if !allowed {
-            return;
-        }
-        let have = self.slot(s).map_or(0, |c| c.count);
-        let transferable = amount.min(stack.count).min(max.saturating_sub(have));
-        if transferable == 0 {
-            return;
-        }
-        match self.slot(s).cloned() {
-            None => {
-                let part = split(stack, transferable);
-                self.set_by_player(env, s, Some(part));
-            }
-            Some(mut current) if current.same_item_same_components(stack) => {
-                stack.count -= transferable;
-                current.count += transferable;
-                self.set_by_player(env, s, Some(current));
-            }
-            Some(_) => {}
-        }
-        tidy(input);
-    }
 }
 
 #[cfg(test)]

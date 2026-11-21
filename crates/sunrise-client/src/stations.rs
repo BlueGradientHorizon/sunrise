@@ -2584,10 +2584,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert!(error.contains("data/test/recipe/invalid.json"), "{error}");
-            assert!(
-                error.contains("invalid ingredients or required fields"),
-                "{error}"
-            );
+            assert!(error.contains("invalid ingredient: null"), "{error}");
         }
         fs::remove_dir_all(root).unwrap();
     }

@@ -845,11 +845,10 @@ impl OpenNativeScreen {
         if window != self.menu.window {
             return false;
         }
-        if self
-            .menu
-            .mod_type
-            .is_none_or(|kind| index < kind.data_slots)
-        {
+        if self.menu.mod_type.map_or(
+            index < usize::from(sunrise_mod_package::content::MAX_SIGNED_DATA_SLOTS),
+            |kind| index < kind.data_slots,
+        ) {
             if self.menu.data.len() <= index {
                 self.menu.data.resize(index + 1, 0);
             }

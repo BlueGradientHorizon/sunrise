@@ -792,6 +792,17 @@ mod tests {
         mix_pieces(&mut mixer.lock().unwrap(), &mut out, 2, OUTPUT_RATE);
         assert_eq!(out, [0.0; 16]);
         assert_eq!(consumed.recv_timeout(Duration::from_secs(1)).unwrap(), END);
+        // Source::drop signals before the worker publishes EOF. Wait for publication
+        // without mixing again, so all PCM remains queued for the assertions below.
+        let control = pool.state().controls[0].clone();
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while !control.pull.eof.load(Acquire) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "worker did not publish EOF"
+            );
+            thread::yield_now();
+        }
         assert_eq!(stream.state(), AudioStreamState::Playing);
 
         let mut first = [0.0; 4];

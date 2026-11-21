@@ -2254,7 +2254,7 @@ mod iterative_tests {
         let resolved = local.engine().resolved();
         let rebuilt = local.text_to_api(&resolved);
         assert_eq!(rebuilt.children.len(), 4);
-        assert_eq!(rebuilt.children[0].style.color.as_deref(), Some("gold"));
+        assert_eq!(rebuilt.children[0].style.color.as_deref(), Some("#FFAA00"));
         assert_eq!(
             rebuilt.children[0].style.click,
             Some(TextClick::ShowDialog(opaque_dialog.clone()))
@@ -2274,7 +2274,7 @@ mod iterative_tests {
             rebuilt.children[2].style.click,
             Some(TextClick::ShowDialog(opaque_dialog.clone()))
         );
-        assert_eq!(rebuilt.children[3].style.color.as_deref(), Some("gold"));
+        assert_eq!(rebuilt.children[3].style.color.as_deref(), Some("#FFAA00"));
         assert_eq!(
             rebuilt.children[3].style.click,
             Some(TextClick::ShowDialog(opaque_dialog))

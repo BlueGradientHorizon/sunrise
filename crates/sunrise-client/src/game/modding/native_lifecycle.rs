@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use super::{
     Game,
     execution_role::ExecutionRole,
-    scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, run_all},
+    scheduled_tasks::{ScheduledTasks, ServerTask, dispose_pending_task, report_failure, run_all},
 };
 use mod_api::{ScheduleError, TaskId};
 // Their old home, for mixin code that names them here.
@@ -314,9 +314,7 @@ impl Game<'_> {
                 if let Err(panic) =
                     CallbackOwner::call_scheduled_task(mod_id, game, |game| task(game))
                 {
-                    log::error!(
-                        "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
-                    );
+                    report_failure(mod_id, &panic);
                     if let Some(serving) = &game.serving {
                         serving.reports().report_scheduled_task_failure(mod_id);
                     }

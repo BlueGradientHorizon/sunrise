@@ -2220,9 +2220,29 @@ impl Menu {
     /// `Slot.safeInsert`: puts up to `amount` of `input` into the slot.
     fn safe_insert(&mut self, env: &Env, s: usize, input: &mut Option<ItemStack>, amount: u32) {
         self.touch();
-        let Some(stack) = input.as_ref() else { return };
-        let (allowed, max) = self.placement_rules(env, s, stack);
-        self.safe_insert_with_placement(env, s, input, amount, allowed, max);
+        let Some(stack) = input.as_mut() else { return };
+        if !self.may_place(env, s, stack) {
+            return;
+        }
+        let max = self.slot_max(env, s, stack);
+        let have = self.slot(s).map_or(0, |c| c.count);
+        let transferable = amount.min(stack.count).min(max.saturating_sub(have));
+        if transferable == 0 {
+            return;
+        }
+        match self.slot(s).cloned() {
+            None => {
+                let part = split(stack, transferable);
+                self.set_by_player(env, s, Some(part));
+            }
+            Some(mut current) if current.same_item_same_components(stack) => {
+                stack.count -= transferable;
+                current.count += transferable;
+                self.set_by_player(env, s, Some(current));
+            }
+            Some(_) => {}
+        }
+        tidy(input);
     }
 
     // ---- Inventory ----

@@ -583,15 +583,14 @@ impl Menu {
                     }
                 }
                 Some(carried) => {
-                    let (allowed, max) = self.placement_rules(env, s, &carried);
-                    if allowed {
+                    if self.may_place(env, s, &carried) {
                         if clicked.same_item_same_components(&carried) {
                             let amount = if primary { carried.count } else { 1 };
                             let mut input = Some(carried);
-                            self.safe_insert_with_placement(env, s, &mut input, amount, true, max);
+                            self.safe_insert(env, s, &mut input, amount);
                             self.state.carried = input;
                             tidy(&mut self.state.carried);
-                        } else if carried.count <= max {
+                        } else if carried.count <= self.slot_max(env, s, &carried) {
                             self.state.carried = Some(clicked);
                             self.set_by_player(env, s, Some(carried));
                         } else {

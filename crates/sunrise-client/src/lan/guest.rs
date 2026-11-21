@@ -2282,19 +2282,23 @@ fn network_stack_projecting(
         };
         let mut encode_saved = |name: &str, value: &sunrise_core::nbt::Tag| {
             let key = name.strip_prefix('!').unwrap_or(name);
-            let Some(kind) = persistent::component_id(key) else {
+            let kind = persistent::component_id(key);
+            if key != name {
+                // The peer registry can name a removal even when we have no value codec.
+                let peer_kind = synced_id("minecraft:data_component_type", key)
+                    .or_else(|| kind.filter(|&id| id < persistent::BUILTIN_COMPONENT_COUNT as i32));
+                if let Some(id) = peer_kind
+                    && !stack.removed.contains(&id)
+                {
+                    stack.removed.push(id);
+                }
                 return;
-            };
+            }
+            let Some(kind) = kind else { return };
             if kind >= persistent::BUILTIN_COMPONENT_COUNT as i32
                 && synced_id("minecraft:data_component_type", key) != Some(kind)
             {
                 // The peer did not negotiate this native component.
-                return;
-            }
-            if key != name {
-                if !stack.removed.contains(&kind) {
-                    stack.removed.push(kind);
-                }
                 return;
             }
             let encoded = if crate::item_data::StackData::CONSUME_EFFECT_COMPONENTS.contains(&key) {

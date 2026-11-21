@@ -174,13 +174,18 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
     }
     hub.finish_captured_sounds();
     let mut order = Vec::new();
-    while let Ok(crate::lan::Out::Packet(bytes)) = rx.try_recv() {
-        let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
-        let id = reader.varint().unwrap();
-        match C::decode(id, reader.rest()).unwrap() {
-            C::SoundEntity(p) if p.id == 37 => order.push("sound"),
-            C::RemoveEntities(p) if p.ids.contains(&37) => order.push("remove"),
-            _ => {}
+    while let Ok(message) = rx.try_recv() {
+        let packets = match message {
+            crate::lan::Out::Packet(body) => vec![body],
+            crate::lan::Out::Packets(batch) => batch,
+            _ => panic!("unexpected disconnect"),
+        };
+        for body in packets {
+            match decode_packet(&body) {
+                C::SoundEntity(p) if p.id == 37 => order.push("sound"),
+                C::RemoveEntities(p) if p.ids.contains(&37) => order.push("remove"),
+                _ => {}
+            }
         }
     }
     assert_eq!(

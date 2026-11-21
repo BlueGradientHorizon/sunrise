@@ -497,6 +497,8 @@ fn run_config_finish_case(
         )]
         .into(),
         || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
             let transport = Transport::capture(Side::Server).unwrap();
             transport
                 .accept(transport.local.manifest.entries())

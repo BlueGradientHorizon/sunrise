@@ -1837,11 +1837,30 @@ mod tests {
     #[test]
     fn server_patch_makes_any_item_consumable() {
         let items = crate::items::Items::for_tests(Default::default());
-        let with_patch = |patch: &[u8]| {
-            let mut stack = ItemStack::new("minecraft:stick", 1);
-            stack.data_mut().wire =
-                crate::item_data::Wire::new(stack.clone(), Arc::from(patch.to_vec()));
-            stack
+        let mut names = vec![String::new(); component::CONSUMABLE as usize + 1];
+        names[component::CONSUMABLE as usize] = "minecraft:consumable".into();
+        let direct = Builtin {
+            registries: [
+                (
+                    "minecraft:data_component_type".into(),
+                    sunrise_protocol::registry::Ids::from_names(names),
+                ),
+                (
+                    "minecraft:item".into(),
+                    sunrise_protocol::registry::Ids::from_names(vec!["minecraft:stick".into()]),
+                ),
+            ]
+            .into(),
+        };
+        let synced = Dynamic::default();
+        let from_wire = |stack: Stack| {
+            use sunrise_core::vanilla_bytes::Writer;
+            let mut writer = Writer::new();
+            sunrise_protocol::item::Slot::write(&Some(stack), &mut writer);
+            let decoded = sunrise_protocol::item::Slot::read(&mut Reader::new(&writer.data))
+                .unwrap()
+                .unwrap();
+            from_network(&decoded, &direct, &synced)
         };
 
         let mut r = ::sunrise_core::vanilla_bytes::Writer::new();
@@ -1852,17 +1871,10 @@ mod tests {
         r.bool(false); // No fixed sound range
         r.bool(true); // particles
         r.varint(0); // 0 effects
-        let consumable_bytes = r.data;
-
-        let mut adds = vec![
-            1, // 1 added
-            0, // 0 removed
-            component::CONSUMABLE as u8,
-        ];
-        adds.push(consumable_bytes.len() as u8);
-        adds.extend(consumable_bytes);
-
-        let stack = with_patch(&adds);
+        let mut adds = Stack::new(0, 1);
+        adds.added
+            .push((component::CONSUMABLE, Component::Raw(r.data)));
+        let stack = from_wire(adds);
         let c = consumable(&stack, &items).expect("wire patch consumable");
         assert_eq!(c.seconds, 2.0);
         assert_eq!(c.animation, UseAnimation::Drink);
@@ -1870,8 +1882,16 @@ mod tests {
         assert!(c.particles);
 
         // Removal
-        let removes = [0, 1, component::CONSUMABLE as u8];
-        let stack_removed = with_patch(&removes);
+        let mut removes = Stack::new(0, 1);
+        removes.removed.push(component::CONSUMABLE);
+        let stack_removed = from_wire(removes);
+        assert!(
+            stack_removed
+                .data()
+                .unwrap()
+                .other("!minecraft:consumable")
+                .is_some()
+        );
         assert!(consumable(&stack_removed, &items).is_none());
 
         // Wire patch with on_consume_effects and registered sound holder

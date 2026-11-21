@@ -690,10 +690,17 @@ mod tests {
             links: None,
             crafting: None,
         };
-        // Game slot 500 is past the vanilla container range: the mod's own slot 200.
-        assert_eq!(mod_menu_role(&menu, 500), Some(Role::Result));
-        assert_eq!(mod_menu_role(&menu, 300), Some(Role::Storage));
-        assert_eq!(mod_menu_role(&menu, 501), None);
+        use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
+        assert_eq!(
+            mod_menu_role(&menu, MOD_MENU_SLOT_BASE + 200),
+            Some(Role::Result)
+        );
+        assert_eq!(
+            mod_menu_role(&menu, MOD_MENU_SLOT_BASE),
+            Some(Role::Storage)
+        );
+        assert_eq!(mod_menu_role(&menu, MOD_MENU_SLOT_BASE + 201), None);
+        assert_eq!(mod_menu_role(&menu, 500), None);
         assert_eq!(mod_menu_role(&menu, 9), None);
     }
 

@@ -236,7 +236,7 @@ pub(crate) fn install_client_hooks() {
         living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
         has_mods: || !mod_api::__private::mods().is_empty(),
         player_name_format: |context, username, displayname| {
-            use game::api_values::{TryIntoApi, TryIntoEngine};
+            use game::api_values::TryIntoApi;
             if !mod_api::__private::listened(mod_api::HookId::PlayerNameFormat) {
                 return;
             }
@@ -249,12 +249,12 @@ pub(crate) fn install_client_hooks() {
                 return;
             };
             mod_api::dispatch_player_name_format(&context, &username, &mut converted);
-            if let Ok(converted) = converted.try_into_engine(&()) {
+            if let Ok(converted) = sunrise_client_lib::api_text::to_serialized_engine(&converted) {
                 *displayname = converted;
             }
         },
         player_tab_list_name_format: |context, player, name, display_name| {
-            use game::api_values::{TryIntoApi, TryIntoEngine};
+            use game::api_values::TryIntoApi;
             if !mod_api::__private::listened(mod_api::HookId::PlayerTabListNameFormat) {
                 return;
             }
@@ -264,7 +264,11 @@ pub(crate) fn install_client_hooks() {
                 return;
             };
             mod_api::dispatch_player_tab_list_name_format(&context, player, name, &mut converted);
-            if let Ok(converted) = converted.try_into_engine(&()) {
+            if let Ok(converted) = converted
+                .as_ref()
+                .map(sunrise_client_lib::api_text::to_serialized_engine)
+                .transpose()
+            {
                 *display_name = converted;
             }
         },

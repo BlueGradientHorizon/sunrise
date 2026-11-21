@@ -45,6 +45,13 @@ pub(super) fn run_all<S, T>(
     panic
 }
 
+// Keep formatting macros out of the function-replacement lifecycle source.
+pub(super) fn report_failure(mod_id: &str, panic: &str) {
+    log::error!(
+        "mod `{mod_id}` panicked in a scheduled task; its tasks are disabled for this session: {panic}"
+    );
+}
+
 #[derive(Default)]
 pub(super) struct ScheduledTasks {
     /// Ticks advanced since the world opened.
