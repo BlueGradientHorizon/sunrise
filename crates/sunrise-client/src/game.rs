@@ -3059,6 +3059,8 @@ pub struct PackResources {
     additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
     mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
     assets: Arc<Assets>,
+    /// `Blocks.WATER.defaultBlockState()` for screen-effect extraction.
+    water_overlay_state: mod_api::BlockState,
     block_registries: Arc<sunrise_client::command::args::Registries>,
     render: Arc<RenderAssets>,
     context: Arc<WorkerContext>,

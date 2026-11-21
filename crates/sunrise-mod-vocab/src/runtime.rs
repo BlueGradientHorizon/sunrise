@@ -71,6 +71,11 @@ pub(crate) struct Installed {
     pub(crate) disabled: Box<[std::sync::atomic::AtomicBool]>,
     /// One installed owner per mod for delayed tasks, independent of its other callbacks.
     pub(crate) scheduled_tasks: Box<[crate::callback_owner::CallbackOwner]>,
+    /// Retained submission owners are installed once per subscribed mod, one per overlay.
+    pub(crate) overlay_owners: std::collections::HashMap<
+        &'static str,
+        [crate::callback_owner::CallbackOwner; BlockScreenEffect::COUNT],
+    >,
     mod_id_owners: std::collections::HashMap<&'static str, usize>,
     content_owners: OnceLock<std::collections::HashMap<Box<str>, Option<usize>>>,
     disabled_count: std::sync::atomic::AtomicUsize,
@@ -112,6 +117,18 @@ impl Installed {
             mods.len(),
             subscriptions,
         );
+        let overlay_owners = subscribers
+            .indices(HookId::ExtractBlockScreenEffect as usize)
+            .map(|index| {
+                let id = mods[index].id;
+                (
+                    id,
+                    std::array::from_fn(|_| {
+                        crate::callback_owner::CallbackOwner::for_index(id, index)
+                    }),
+                )
+            })
+            .collect();
         let disabled = (0..mods.len())
             .map(|_| std::sync::atomic::AtomicBool::new(false))
             .collect();
@@ -135,6 +152,7 @@ impl Installed {
             subscribers,
             disabled,
             scheduled_tasks,
+            overlay_owners,
             mod_id_owners,
             content_owners: OnceLock::new(),
             disabled_count: std::sync::atomic::AtomicUsize::new(0),

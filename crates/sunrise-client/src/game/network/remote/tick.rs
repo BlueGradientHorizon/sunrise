@@ -921,11 +921,6 @@ impl Game<'_> {
         );
         let was_flying = player.flying;
         self.sync_player_body();
-        // LivingEntity.tickDeath: the local player counts its deathTime once
-        // per client tick while dead (the camera's death roll and zoom).
-        if self.screen == Screen::Dead {
-            self.ui.death_time = self.ui.death_time.saturating_add(1);
-        }
         let sleeping = self.sleeping;
         if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
             && let Some(player) = self.player.as_mut()
@@ -986,35 +981,43 @@ impl Game<'_> {
             // player too (controlled_simulation_tick does it otherwise): left
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
+            let side = game_side!(self);
+            player.client_side = true;
+            let mut motion = MotionWorld {
+                side: &side,
+                entities: &entity_collisions,
+                player: &mut *player,
+                scene: &mut self.world,
+                assets: &self.pack.assets,
+                collision_binding: self.collision,
+                resources: self.motion,
+                health: &self.health_resources,
+                loop_context: &self.loop_context,
+                damage_hooks: &self.damage_hooks,
+                tag_items: None,
+                block_registries: None,
+            };
             if riding && !dead {
-                let side = game_side!(self);
                 let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
-                player.client_side = true;
-                let mut passenger = MotionWorld {
-                    side: &side,
-                    entities: &entity_collisions,
-                    player: &mut *player,
-                    scene: &mut self.world,
-                    assets: &self.pack.assets,
-                    collision_binding: self.collision,
-                    resources: self.motion,
-                    health: &self.health_resources,
-                    loop_context: &self.loop_context,
-                    damage_hooks: &self.damage_hooks,
-                    tag_items: None,
-                    block_registries: None,
-                };
                 // The rider moves from its old seat; the new one is its place after.
-                let seat = passenger.player.position;
+                let seat = motion.player.position;
                 if let Some(from) = old_seat {
-                    passenger.player.position = from;
+                    motion.player.position = from;
                 }
-                passenger.rider_tick(keys.direction())?;
-                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
+                motion.rider_tick(keys.direction())?;
+                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut motion, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).
-                passenger.passenger_block_effects_tick()?;
+                motion.passenger_block_effects_tick()?;
+            } else {
+                // Entity.baseTick samples fluids even if movement is skipped by death.
+                motion.fluid_base_tick()?;
             }
+        }
+        // LivingEntity.baseTick reaches LocalPlayer.tickDeath after the fluid update.
+        // The last sample is therefore the one taken on death tick 20.
+        if dead {
+            self.ui.death_time = self.ui.death_time.saturating_add(1);
         }
         // The server decides fire the window cannot predict (blaze fireballs,
         // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
@@ -1282,11 +1285,9 @@ impl Game<'_> {
     /// The local player's `LocalPlayer.tick`, once the client has loaded. The
     /// input `sendChanges` sends after the block entities ticked, if it runs.
     pub(super) fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
-        let entity_collisions = self.entity_collisions(Mover::Player);
-        // Those added before it tick before it: their pushes reach this move.
-        let pushed = self.remote_pushes(true);
-        let sprint_window = self.settings.sprint_window;
-        if self.player.is_none() {
+        // ClientLevel.tickEntities skips a removed entity. Keep the last player state
+        // for LevelExtractor.extractPlayerState, which still sees it on the death screen.
+        if self.player.is_none() || self.local_player_removed_by_death() {
             return Ok(None);
         }
         // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
@@ -1295,9 +1296,11 @@ impl Game<'_> {
         if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
             return Ok(None);
         }
-        // LocalPlayer.tick reaches Player.tick only once the client has loaded; its
-        // endpoints bracket that work alone, also on the death screen, not the level
-        // pass before it.
+        let entity_collisions = self.entity_collisions(Mover::Player);
+        // Those added before it tick before it: their pushes reach this move.
+        let pushed = self.remote_pushes(true);
+        let sprint_window = self.settings.sprint_window;
+        // The hook endpoints bracket Player.tick only, not the level pass before it.
         let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
         .then(|| self.local_player())

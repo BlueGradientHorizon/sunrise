@@ -146,12 +146,28 @@ Block, water and fire overlays draw in camera space, after the level and hand an
 `extract_block_screen_effect`, call `event.set_custom_renderer(&MY_RENDERER)` to choose a static
 `BlockScreenEffectRenderer` for just that overlay. The last eligible listener that sets a renderer wins.
 After cancellation, only `#[listener(receive_cancelled)]` listeners can change the choice; the selected
-renderer still submits even if the overlay remains canceled.
+renderer still submits even if the overlay remains canceled. A failed listener leaves the previous
+renderer and cancellation in place for later eligible listeners. To replace an earlier listener's renderer
+without adding quads or suppressing vanilla drawing, select a renderer that submits no quads and returns
+`false`.
 
-`submit` receives a read-only `ClientHost`, the original extraction inputs and a `CameraDrawContext`.
-Return `false` to prepend your quads to the vanilla overlay, or `true` to skip just that overlay's vanilla
-quads. Returning `false` does not restore a canceled overlay. Submission runs in block, water, fire order;
-HUD camera overlays such as the vignette still draw above them.
+Water and fire are extracted only in first person. Water starts with the player's tick-sampled eye fluid,
+which [`camera_submersion`](camera-and-collision-reads.md#the-fluid-the-camera-is-in) can override. The
+sample updates through death tick 20, when the local player is removed from the level. Extraction keeps
+using that last sample until respawn. The water event provides the default water state at the player's
+eye block, even if that block is waterlogged.
+`event.partial_tick` is world interpolation; `event.player_partial_tick` is local-player interpolation,
+which keeps advancing while the level is frozen.
+
+`submit` receives a read-only `ClientHost`, the effect, state, position, world partial tick, HUD visibility
+and a `CameraDrawContext`. Return `false` to prepend your quads to the vanilla overlay, or `true` to skip
+just that overlay's vanilla quads. Returning `false` does not restore canceled block or water quads. Fire
+is different: canceling with no renderer suppresses vanilla fire, but with a selected renderer that returns
+`false`, vanilla fire still follows. A failed submission drops its quads without changing the
+vanilla drawing decision. A panic names the mod in the log and client error toast. It disables the
+panicking extraction listener or that mod's submission for that overlay kind, respectively, for the
+rest of the session; unrelated callbacks still run. Submission runs in block, water, fire order; HUD camera overlays such as the
+vignette still draw above them.
 
 ```rust,ignore
 use mod_api::{

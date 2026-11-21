@@ -99,16 +99,16 @@ pub fn install(mods: Mods) {
 
 // no wire: process-local diagnostic report, never crosses the wire.
 // exhaustive: internal two-field report for the game client's toast queue.
-/// One hook-listener panic queued for the game client's error toast.
+/// One mod callback panic queued for the game client's error toast.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HookPanicReport {
     /// The `[mod] id` of the panicking mod.
     pub mod_id: &'static str,
-    /// The hook name in which the mod panicked.
+    /// The hook or retained callback operation that panicked.
     pub hook: &'static str,
 }
 
-/// Drain queued hook-listener panic reports for the game client's error toast.
+/// Drain queued mod callback panic reports for the game client's error toast.
 pub fn take_hook_panics() -> Vec<HookPanicReport> {
     crate::runtime::take_hook_panics()
 }

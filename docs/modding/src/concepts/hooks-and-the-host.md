@@ -46,8 +46,10 @@ listeners can run after a panic or codec failure, but the failed job's changes c
 ## Player tick hooks
 
 `player_tick_pre` and `player_tick_post` bracket the player's body tick on both
-logical sides. On the server, neither hook fires for a spectator whose bounds
-touch an unloaded chunk: that player's body tick is skipped. Connection and
+logical sides. On the client, both fire through death tick 20, but neither fires
+for the removed local player while the death screen remains open. On the server,
+neither hook fires for a spectator whose bounds touch an unloaded chunk: that
+player's body tick is skipped. Connection and
 level upkeep and outgoing state updates still run. The server resolves whether
 the body runs before the pre hook; a listener changing the player's position
 does not change that decision for the current tick.
