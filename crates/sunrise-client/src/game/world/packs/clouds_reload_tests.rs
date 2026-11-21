@@ -110,10 +110,10 @@ fn a_startup_load_fails_back_to_the_games_resources() {
     use crate::game::*;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let selected = ["file/past".to_owned()];
-    let resolved = super::startup_root(&root, &selected, &[], &Default::default()).unwrap();
-    assert!(sunrise_client::clouds::load(resolved.source()).is_err());
+    let roots = super::startup_root(&root, &selected, &[], &Default::default()).unwrap();
+    assert!(sunrise_client::clouds::load(roots.selected.as_ref().unwrap().source()).is_err());
     let loaded = load_resources(
-        resolved,
+        roots,
         Vec::new(),
         None,
         &root,
@@ -137,4 +137,80 @@ fn a_startup_load_fails_back_to_the_games_resources() {
         *loaded.pack.clouds,
         sunrise_client::clouds::load(&vanilla).unwrap()
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn content_entity_stays_registered_after_startup_pack_rollback() {
+    use crate::game::*;
+
+    if run_fresh_cases(
+        "game::packs::clouds_reload_tests::content_entity_stays_registered_after_startup_pack_rollback",
+        "SUNRISE_CONTENT_ENTITY_PACK_ROLLBACK_CASE",
+        &["startup"],
+    ) {
+        return;
+    }
+    mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
+    const ENTITY: &str = "rollback_entity:moss_zombie";
+    let game_dir = std::env::current_dir().unwrap();
+    let mod_dir = game_dir.join(sunrise_mod_package::mod_list::DIR);
+    std::fs::create_dir(&mod_dir).unwrap();
+    let package = sunrise_mod_package::Package::write_files(
+        "id = 'rollback_entity'\nname = 'Rollback entity'\nversion = '1'\napi = '0.2'\ncapabilities = ['registries']\n",
+        &[(
+            "data/rollback_entity/sunrise/entity_type/moss_zombie.json",
+            br#"{"template":"minecraft:zombie"}"#,
+        )],
+    )
+    .unwrap();
+    std::fs::write(mod_dir.join("rollback_entity.smod"), package).unwrap();
+    let mut sources = mods::ModsState::default();
+    sources.select(&game_dir, &["rollback_entity".to_owned()].into());
+    write_pack("past", PAST);
+
+    let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let load = |selected: &[String]| {
+        let roots = super::startup_root(&vanilla, selected, &[], &sources).unwrap();
+        load_resources_for_mods(
+            roots,
+            Vec::new(),
+            None,
+            &vanilla,
+            &Settings::default(),
+            std::time::Instant::now(),
+            false,
+            execution_role::ExecutionRole::Client,
+            &Progress::new(),
+            &mut |_, _| unreachable!(),
+            &sources,
+        )
+        .expect("selecting or removing client packs must not change the entity registry")
+    };
+    let rolled_back = load(&["file/past".into()]);
+    assert!(
+        rolled_back
+            .pack_error
+            .as_deref()
+            .unwrap()
+            .contains("clouds.png")
+    );
+    let first_key = mod_api::__private::resolved_entity_type_key(ENTITY);
+    let first_spawn_type = rolled_back
+        .resources
+        .rest()
+        .spawner_types
+        .contains_key(ENTITY);
+    drop(rolled_back);
+
+    std::fs::remove_dir_all(super::packs_dir().join("past")).unwrap();
+    let reloaded = load(&[]);
+    assert!(reloaded.pack_error.is_none());
+    let key = mod_api::__private::resolved_entity_type_key(ENTITY).expect("content entity API key");
+    assert_eq!(first_key, Some(key));
+    assert!(
+        first_spawn_type,
+        "spawners must see the registered entity after rollback"
+    );
+    assert!(reloaded.resources.rest().spawner_types.contains_key(ENTITY));
 }

@@ -80,7 +80,7 @@ fn startup_recipe_uses_registered_condition() {
         .into(),
         || {
             let loaded = crate::game::load_resources_for_mods(
-                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+                sunrise_assets::resource_source::ResourceRoot::directory(root.clone()).into(),
                 Vec::new(),
                 None,
                 &root,

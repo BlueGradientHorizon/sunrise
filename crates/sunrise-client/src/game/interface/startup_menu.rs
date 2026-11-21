@@ -407,38 +407,25 @@ pub(super) fn spawn_loader(
         .stack_size(sunrise_threads::GAME_THREAD_STACK_BYTES)
         .name("resource-loader".into())
         .spawn(move || {
-            let mut pack_error = None;
-            let root =
+            let result =
                 packs::startup_root(&vanilla_root, &settings.resource_packs, &[], &mod_sources)
-                    .or_else(|error| {
-                        if error.is::<mods::DeclarationFailures>() {
-                            return Err(error);
-                        }
-                        pack_error = Some(error.to_string());
-                        mods::content_root(&vanilla_root, &mod_sources)
+                    .and_then(|roots| {
+                        load_resources_for_mods(
+                            roots,
+                            super::pack_finders::data_packs(&mod_sources),
+                            world.as_deref(),
+                            &vanilla_root,
+                            &settings,
+                            started,
+                            true,
+                            load_role,
+                            &progress,
+                            &mut |gui, root| {
+                                let _ = sender.send(LoaderMsg::Ui(gui, root.to_path_buf()));
+                            },
+                            &mod_sources,
+                        )
                     });
-            let result = root
-                .and_then(|root| {
-                    load_resources_for_mods(
-                        root,
-                        super::pack_finders::data_packs(&mod_sources),
-                        world.as_deref(),
-                        &vanilla_root,
-                        &settings,
-                        started,
-                        true,
-                        load_role,
-                        &progress,
-                        &mut |gui, root| {
-                            let _ = sender.send(LoaderMsg::Ui(gui, root.to_path_buf()));
-                        },
-                        &mod_sources,
-                    )
-                })
-                .map(|mut loaded| {
-                    loaded.pack_error = loaded.pack_error.or(pack_error);
-                    loaded
-                });
             let _ = sender.send(LoaderMsg::done(result));
         })?;
     Ok((receiver, handle))

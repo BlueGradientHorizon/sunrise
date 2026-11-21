@@ -540,7 +540,7 @@ pub(super) fn take_modified_attribute_rows(
 #[allow(clippy::too_many_arguments)]
 #[cfg(test)]
 pub(super) fn load_resources(
-    resolved: sunrise_assets::resource_source::ResourceRoot,
+    roots: impl Into<packs::PackRoots>,
     additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
@@ -552,7 +552,7 @@ pub(super) fn load_resources(
     publish: &mut dyn FnMut(UiResources, &std::path::Path),
 ) -> Result<Loaded> {
     load_resources_for_mods(
-        resolved,
+        roots.into(),
         additional_data,
         launch_world,
         vanilla_root,
@@ -574,7 +574,7 @@ pub(super) fn load_resources(
 /// content roots and reload data.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn load_resources_for_mods(
-    mut resolved: sunrise_assets::resource_source::ResourceRoot,
+    roots: packs::PackRoots,
     additional_data: Vec<Arc<sunrise_client::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
@@ -588,14 +588,31 @@ pub(super) fn load_resources_for_mods(
 ) -> Result<Loaded> {
     let load_role: mods::LoadRole = role.into();
     let role = load_role.execution;
-    let mut root = resolved.prepared().to_path_buf();
+    let packs::PackRoots {
+        base,
+        selected,
+        cleared,
+    } = roots;
+    let (resolved, mut rollback, mut pack_error) = match (selected, cleared) {
+        (Ok(selected), cleared) => (selected, cleared, None),
+        (Err(error), Some(required)) => {
+            log::warn!("Sunrise: resource packs not applied: {error}");
+            (
+                packs::layer_client_packs(&base, &required)?,
+                None,
+                Some(error.to_string()),
+            )
+        }
+        (Err(error), None) => return Err(error.into()),
+    };
+    let root = base.prepared().to_path_buf();
     let headless = !role.is_client();
     let texture_atlases = if headless {
         Vec::new()
     } else {
         client_reload::collect_texture_atlases()
     };
-    resolved = client_reload::stage_texture_atlases(resolved, &texture_atlases);
+    let mut resolved = client_reload::stage_texture_atlases(resolved, &texture_atlases);
     let threads = settings.sunrise.worker_threads();
     // One pool of workers for every level's streaming, the client's and the
     // server thread's (sunrise_threads::jobs), sized before any world opens.
@@ -605,7 +622,6 @@ pub(super) fn load_resources_for_mods(
     // Stage A: the menu bundle (atlas and panorama). With a loading screen it is
     // published at once so the title screen can appear while the world bundle
     // loads; the synchronous launch instead carries it in `Loaded`.
-    let mut pack_error = None;
     // A dedicated server builds only the font (UiResources::server), as the
     // integrated server's game does: the full atlas and panorama are 144 MB.
     let load_ui = |source: &sunrise_assets::resource_source::ResourceSource| {
@@ -623,9 +639,9 @@ pub(super) fn load_resources_for_mods(
         }
     };
     // The menu bundle loads on this thread while workers build the world
-    // bundle's core tables from the same root (`load_core`). A pack failure
-    // in either starts both again with the game's own resources
-    // (Minecraft.rollbackResourcePacks).
+    // bundle's core tables from the same root (`load_core`). A pack failure in
+    // either clears the client selection, not required mod resources (NeoForge's
+    // `Minecraft.rollbackResourcePacks`).
     let parallel = threads > 1;
     let mut offer = |ui: UiResources, root: &std::path::Path| {
         if menu {
@@ -639,15 +655,12 @@ pub(super) fn load_resources_for_mods(
             Some(ui)
         }
     };
-    let mut can_rollback = true;
-    let (core, loaded_gui, resolved, conditions) = loop {
-        let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
-        let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+    let inventory = sunrise_mod_package::enabled::EnabledMods::read(&root)?;
+    let conditions = super::load_conditions::conditions_for_mods(mod_sources, &inventory)?;
+    let (core, loaded_gui) = loop {
         let (ui, core) = std::thread::scope(|scope| {
             let core = Step::spawn(scope, parallel, "core", || {
-                // A failed pack starts core again from the game's own
-                // resources, which the world's preload must read: with packs
-                // it waits for the core that loaded.
+                // Early world preload only uses the vanilla gameplay root.
                 let early = launch_world.filter(|_| root == vanilla_root);
                 startup::time("core", || {
                     load_core(
@@ -672,35 +685,33 @@ pub(super) fn load_resources_for_mods(
             false => sunrise_client::clouds::load(resolved.source()).map(drop),
         };
         // Core data is provisional: a selected world pack may replace an entry.
-        let failure = match (ui, core, clouds) {
-            (Ok(gui), Ok(Ok(core)), Ok(())) => break (core, gui, resolved, conditions),
-            (Err(e), _, _) if can_rollback => e.to_string(),
-            (_, Ok(Err(e)), _) if can_rollback => e,
-            (_, _, Err(e)) if can_rollback => e.to_string(),
-            (_, Ok(Err(e)), _) => {
+        let (failure, required) = match (ui, core, clouds, rollback.take()) {
+            (Ok(gui), Ok(Ok(core)), Ok(()), _) => break (core, gui),
+            (Err(e), _, _, Some(required)) => (e.to_string(), required),
+            (_, Ok(Err(e)), _, Some(required)) => (e, required),
+            (_, _, Err(e), Some(required)) => (e.to_string(), required),
+            (_, Ok(Err(e)), _, None) => {
                 return Err(format!(
                     "{e}\nPrepare resources with the launcher, or: sunrise-prepare --prepare"
                 )
                 .into());
             }
-            (_, Err(e), _) => return Err(e.into()),
-            (Err(e), Ok(Ok(_)), _) => return Err(e),
-            (Ok(_), Ok(Ok(_)), Err(e)) => return Err(e.into()),
+            (_, Err(e), _, _) => return Err(e.into()),
+            (Err(e), Ok(Ok(_)), _, None) => return Err(e),
+            (Ok(_), Ok(Ok(_)), Err(e), None) => return Err(e.into()),
         };
         log::warn!(
-            "Sunrise: resource packs failed to load ({failure}); using the default resources"
+            "Sunrise: resource packs failed to load ({failure}); clearing the client selection"
         );
         pack_error = Some(failure);
-        can_rollback = false;
-        root = vanilla_root.to_path_buf();
         resolved = client_reload::stage_texture_atlases(
-            sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+            packs::layer_client_packs(&base, &required)?,
             &texture_atlases,
         );
     };
-    // Publish only the accepted generation, not the staged content root that
-    // this load may have discarded during resource-pack rollback.
-    let spawner_types = mods::register_iterated_registries(resolved.prepared())?;
+    // The same prepared gameplay root supplies entity keys and spawner facts,
+    // regardless of which client resource layers loaded successfully.
+    let spawner_types = mods::register_iterated_registries(&root)?;
     log::info!("load core tables: {:.2}s", started.elapsed().as_secs_f32());
     let CoreTables {
         item_data,

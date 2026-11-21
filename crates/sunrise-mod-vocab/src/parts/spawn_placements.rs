@@ -66,6 +66,7 @@ pub trait SpawnPlacementsRegistrar {
     /// a registration refusal. Unloaded types, invalid combinations of metadata, and
     /// missing vanilla spawn placement data refuse resource loading, naming the mod and type.
     /// The accepted gameplay resources supply both the registry keys and their spawn facts.
+    /// Recovery from a failed client pack load clears optional packs, not mod entity types.
     /// Missing or malformed facts (category or dimensions) refuse resource loading and name
     /// the affected entity type. Both spawners use those same resolved types.
     fn register_spawn_placement(

@@ -10,6 +10,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use sunrise_assets::resource_source::ResourceRoot;
 use sunrise_client::{
     assets::Assets,
     datapack::DataPack,
@@ -47,32 +48,65 @@ pub fn open_uri(uri: &str) {
         log::warn!("Sunrise: could not open URI {uri}: {error}");
     }
 }
-/// The resource root to load from: the selection and a server's packs, which go on top
-/// (`Pack.Position.TOP`, fixed), laid over `base`. `base` is the mods' content root
-/// ([`super::mods::content_root`] of `vanilla`), so mod resources sit below the player's packs
-/// as in vanilla, and a pack change leaves the content root's cache alone (#12403). Built-in
-/// packs are found in `vanilla`.
-pub fn startup_root(
+/// The accepted content root and the result of layering selected client packs over it.
+/// Recovery keeps the required packs and uses the same content root.
+pub(super) struct PackRoots {
+    pub(super) base: ResourceRoot,
+    pub(super) selected: std::io::Result<ResourceRoot>,
+    pub(super) cleared: Option<Vec<Pack>>,
+}
+
+impl From<ResourceRoot> for PackRoots {
+    fn from(base: ResourceRoot) -> Self {
+        Self {
+            selected: Ok(base.clone()),
+            base,
+            cleared: None,
+        }
+    }
+}
+
+/// The selection and a server's packs (fixed at the top, `Pack.Position.TOP`) are laid over
+/// [`super::mods::content_root`], so required mod resources sit below the player's packs.
+/// Built-in packs are found in `vanilla`.
+pub(super) fn startup_root(
     vanilla: &Path,
     selected: &[String],
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
-) -> sunrise_client::Result<sunrise_assets::resource_source::ResourceRoot> {
+) -> sunrise_client::Result<PackRoots> {
     let mut all = packs::discover(vanilla, &packs_dir());
     all.extend(super::pack_finders::discover(
         mod_api::PackType::ClientResources,
         mod_sources,
     ));
     let mut enabled = packs::enabled(&all, selected);
+    // NeoForge's rollbackResourcePacks only clears the selection if it contains an optional pack.
+    let cleared = enabled
+        .iter()
+        .any(|pack| !pack.selection.as_ref().is_some_and(|info| info.required))
+        .then(|| packs::enabled(&all, &[]));
     enabled.extend_from_slice(server);
     let base = super::mods::content_root(vanilla, mod_sources)?;
-    let source = packs::resources(base.source().clone(), &enabled)?;
-    Ok(sunrise_assets::resource_source::ResourceRoot::new(
-        base.prepared().to_path_buf(),
-        cache_dir(),
-        source,
+    let selected = layer_client_packs(&base, &enabled);
+    Ok(PackRoots {
+        base,
+        selected,
+        cleared,
+    })
+}
+
+/// Client packs overlay assets only, never the prepared tables or passive server data.
+pub(super) fn layer_client_packs(
+    base: &ResourceRoot,
+    enabled: &[Pack],
+) -> std::io::Result<ResourceRoot> {
+    let source = packs::resources(base.source().clone(), enabled)?;
+    Ok(
+        ResourceRoot::new(base.prepared().to_path_buf(), cache_dir(), source)
+            .with_data(base.data().clone(), base.data_changes().clone())
+            .with_mod_layers(base.mod_layers().clone()),
     )
-    .with_data(base.data().clone(), base.data_changes().clone()))
 }
 fn info(p: &Pack) -> PackInfo {
     if let Some(info) = &p.selection {
@@ -694,7 +728,7 @@ pub(super) fn stage_pack(
     japanese: bool,
     progress: &super::Progress,
 ) -> sunrise_client::Result<StagedPack> {
-    let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?;
+    let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?.selected?;
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
     let source = resource_root.source().clone();
@@ -1109,11 +1143,17 @@ mod tests {
             ..Default::default()
         };
         sources.select(&std::env::current_dir().unwrap(), &Default::default());
-        let without_pack = startup_root(&vanilla, &[], &[], &sources).unwrap();
+        let without_pack = startup_root(&vanilla, &[], &[], &sources)
+            .unwrap()
+            .selected
+            .unwrap();
         assert_eq!(without_pack.source().read(asset).unwrap(), b"mod");
         let pack = packs::folder(&dir.join("packs"), packs::RESOURCE_FORMAT);
         assert_eq!(pack.len(), 1);
-        let with_pack = startup_root(&vanilla, &[], &pack, &sources).unwrap();
+        let with_pack = startup_root(&vanilla, &[], &pack, &sources)
+            .unwrap()
+            .selected
+            .unwrap();
         assert_eq!(with_pack.source().read(asset).unwrap(), b"pack");
         // The selected archive changes resource lookup without materializing
         // its override beside generated tables.
