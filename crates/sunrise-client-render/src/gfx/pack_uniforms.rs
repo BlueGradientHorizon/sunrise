@@ -179,12 +179,14 @@ impl Value {
 
     /// Whether a program that declares the built-in `name` as `ty` reads this value. Iris 1.11.7
     /// disables a built-in declared with another GLSL type than the one it gives ("Wrong uniform
-    /// type ... Disabling that uniform"), and the program reads 0. Our probe packs saw it for a
+    /// type ... Disabling that uniform"), so it keeps its initial value (zero unless the shader
+    /// specifies an initializer). Our probe packs saw it for a
     /// float declared `int` or `vec2`, an int `float`, an `ivec2` `vec2`, `int` or `ivec3`, a
     /// `vec3` `vec2` or `vec4`, a `mat4` `mat3`, and any `uint`; an int or a bool built-in
     /// declared `bool` or `int` was kept. A scalar float declared `bool` is left as it was: Iris
     /// warned, but our probe read true. A float vector or matrix declared `bool` (a `vec4` such as
-    /// `lightningBoltPosition`) is a mismatch like any other and reads 0, not its first component.
+    /// `lightningBoltPosition`) is a mismatch like any other and keeps its initial value, not the
+    /// first component.
     pub fn read_as(&self, name: &str, ty: &str) -> bool {
         let int = matches!(self, Value::I(_));
         let name = name.strip_prefix("gbuffers.").unwrap_or(name);
