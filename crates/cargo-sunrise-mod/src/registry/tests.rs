@@ -278,6 +278,87 @@ fn a_nightly_only_project_publishes_its_source_and_supplied_metadata() {
 }
 
 #[test]
+fn a_takedown_of_the_whole_project_stops_listing_its_nightly_source() {
+    let r = Registry::new();
+    let hash = r.add("example", "1.0.0", "26.3", "");
+    r.edit("example", |t| {
+        t.replacen(
+            "\n[[versions]]",
+            "\n[nightly]\nrepo='author/example'\n\n[[versions]]",
+            1,
+        )
+    });
+    std::fs::write(
+        r.0.path().join("head/mods/source_only.toml"),
+        format!(
+            "{}\n[nightly]\nrepo='author/source'\n",
+            PROJECT_PAGE.replace("'example'", "'source_only'")
+        ),
+    )
+    .unwrap();
+    let takedowns = |rows: &[(&str, Option<&str>)]| {
+        let text: String = rows
+            .iter()
+            .map(|(id, hash)| {
+                let hash = hash.map(|h| format!("sha256='{h}'\n")).unwrap_or_default();
+                format!("[[revoked]]\nid='{id}'\n{hash}reason='Withdrawn test project.'\n")
+            })
+            .collect();
+        std::fs::write(r.0.path().join("head/revoked.toml"), text).unwrap();
+        r.build(&[]).unwrap()
+    };
+
+    // By hash: the named package alone.
+    let index = takedowns(&[("example", Some(&hash))]);
+    let example = index.project("example").unwrap();
+    assert!(example.nightly.is_some() && example.versions.len() == 1);
+    assert!(index.project("source_only").unwrap().nightly.is_some());
+
+    // By id: the source goes too, and a project left with nothing is not listed.
+    let index = takedowns(&[("example", None), ("source_only", None)]);
+    let example = index.project("example").unwrap();
+    assert!(example.nightly.is_none() && example.versions.len() == 1);
+    assert!(index.project("source_only").is_none() && index.left_out.is_empty());
+}
+
+#[test]
+fn a_nightly_only_project_keeps_its_images_in_the_registry() {
+    let r = Registry::new();
+    let write = |images: &str| {
+        std::fs::write(
+            r.0.path().join("head/mods/example.toml"),
+            format!("{PROJECT_PAGE}{images}\n[nightly]\nrepo='author/example'\n"),
+        )
+        .unwrap();
+    };
+    for (images, problem) in [
+        ("icon='https://example.test/icon.png'", "its icon"),
+        (
+            "screenshots=['https://example.test/one.png']",
+            "screenshot \"https://example.test/one.png\" must be kept in the registry",
+        ),
+    ] {
+        write(images);
+        for result in [
+            r.run("check", &["base", "head"], &[]),
+            r.build(&[]).map(drop),
+        ] {
+            let err = result.unwrap_err();
+            assert!(err.contains(problem), "{err}");
+        }
+    }
+
+    let icon = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x80\0\0\0\x80\x08\x06\0\0\0";
+    std::fs::write(r.0.path().join("head/icons/example.png"), icon).unwrap();
+    r.screenshot("example", SHOT);
+    write("icon='icons/example.png'\nscreenshots=['screenshots/example/one.png']");
+    assert_eq!(r.run("check", &["base", "head"], &[]), Ok(()));
+    let index = r.build(&[]).unwrap();
+    let project = index.project("example").unwrap();
+    assert!(project.icon.is_some() && project.screenshots.len() == 1);
+}
+
+#[test]
 fn a_project_waiting_to_publish_keeps_its_id_out_of_the_index() {
     let r = Registry::new();
     std::fs::write(r.0.path().join("head/mods/example.toml"), PROJECT_PAGE).unwrap();
@@ -302,6 +383,16 @@ fn a_project_waiting_to_publish_keeps_its_id_out_of_the_index() {
             "example",
             format!("{PROJECT_PAGE}owner_ids=[1, 2]\n"),
             "owner_ids",
+        ),
+        (
+            "example",
+            PROJECT_PAGE.replace("'author'", "' '"),
+            "an owner is blank",
+        ),
+        (
+            "example",
+            PROJECT_PAGE.replace("'author'", "'TODO(publish) your login'"),
+            "the owner is still the TODO(publish)",
         ),
     ] {
         let path = r.0.path().join(format!("head/mods/{id}.toml"));
