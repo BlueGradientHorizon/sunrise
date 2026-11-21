@@ -2372,6 +2372,9 @@ pub(crate) mod tests {
     mod client_camera_tests {
         include!("client_camera_tests.rs");
     }
+    mod camera_parity_red_tests {
+        include!("camera_parity_red_tests.rs");
+    }
     mod set_camera_kinds_tests {
         include!("set_camera_kinds_tests.rs");
     }

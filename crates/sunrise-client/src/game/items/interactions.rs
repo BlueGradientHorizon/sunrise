@@ -136,6 +136,74 @@ mod tests {
             ([11.5, 65.5, -3.5], [12.5, 66.5, -2.5])
         );
     }
+
+    const PARITY_WITNESS: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/camera_parity/witness.json"
+    ));
+
+    fn hex_f64(v: &serde_json::Value) -> u64 {
+        u64::from_str_radix(v.as_str().unwrap(), 16).unwrap()
+    }
+
+    #[test]
+    fn interaction_unsynced_default_sync_and_pose_sync_seat_height_26_3() {
+        let witness: serde_json::Value = serde_json::from_str(PARITY_WITNESS).unwrap();
+        let life = &witness["interaction_lifecycle"];
+
+        let mut i = RemoteInteraction::new([0.5, 300.0, 0.5]);
+        assert_eq!(
+            i.seat_height().to_bits(),
+            hex_f64(&life["unsynced_spawn"]["seat_height_bits"]),
+            "unsynced interaction seat height"
+        );
+
+        // Explicit default (1.0, 1.0) triggers refreshDimensions() in vanilla 26.3.
+        i.metadata(&[(8, 3, Value::Float(1.0)), (9, 3, Value::Float(1.0))]);
+        assert_eq!(
+            i.seat_height().to_bits(),
+            hex_f64(&life["sync_default_1x1"]["seat_height_bits"]),
+            "explicit 1x1 sync must refresh seat height to 1.0"
+        );
+
+        // DATA_POSE (6) alone also triggers refreshDimensions() on an unsynced Interaction.
+        let mut pose_only = RemoteInteraction::new([0.5, 300.0, 0.5]);
+        pose_only.metadata(&[(6, 21, Value::Id(0))]);
+        assert_eq!(
+            pose_only.seat_height().to_bits(),
+            hex_f64(&life["sync_pose_only"]["seat_height_bits"]),
+            "DATA_POSE sync must refresh seat height to 1.0"
+        );
+    }
+
+    #[test]
+    fn interaction_negative_height_bounds_invert_downward_26_3() {
+        let witness: serde_json::Value = serde_json::from_str(PARITY_WITNESS).unwrap();
+        let life = &witness["interaction_lifecycle"];
+        for (case_name, width, height) in [
+            ("sync_negative_height", 0.5f32, -1.5f32),
+            ("sync_negative_width_and_height", -0.4f32, -2.0f32),
+        ] {
+            let mut i = RemoteInteraction::new([10.0, 64.0, -3.0]);
+            i.metadata(&[(8, 3, Value::Float(width)), (9, 3, Value::Float(height))]);
+            let b = i.bounds();
+            let got = [
+                b.min_position().x.to_bits(),
+                b.min_position().y.to_bits(),
+                b.min_position().z.to_bits(),
+                b.max_position().x.to_bits(),
+                b.max_position().y.to_bits(),
+                b.max_position().z.to_bits(),
+            ];
+            let want: Vec<u64> = life[case_name]["aabb_bits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(hex_f64)
+                .collect();
+            assert_eq!(got.as_slice(), want.as_slice(), "{case_name}");
+        }
+    }
 }
 
 /// Whether an entity id names `minecraft:interaction`.

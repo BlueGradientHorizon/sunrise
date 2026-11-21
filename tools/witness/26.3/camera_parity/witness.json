@@ -1,0 +1,1640 @@
+{
+  "meta": {
+    "minecraft": "26.3",
+    "client_jar_sha256": "4508d006323f24fa02876310c192d739af56516eb259000ac50f0909a68c9a2d",
+    "java_version": "openjdk 25.0.5.1 2026-11-17 LTS",
+    "command": "python3 tools/record_camera_parity_witness.py",
+    "oracle": "mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaCameraParityOracle.java"
+  },
+  "entity_cameras": {
+    "records": [
+      {
+        "label": "minecraft:interaction",
+        "type": "minecraft:interaction",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:text_display",
+        "type": "minecraft:text_display",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:block_display",
+        "type": "minecraft:block_display",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:item_display",
+        "type": "minecraft:item_display",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:marker",
+        "type": "minecraft:marker",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:minecart",
+        "type": "minecraft:minecart",
+        "synced_genpvp": false,
+        "eye_height_bits": "3f1851ec",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051b30a3d800000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051c6147b000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:chest_minecart",
+        "type": "minecraft:chest_minecart",
+        "synced_genpvp": false,
+        "eye_height_bits": "3f1851ec",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051b30a3d800000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051c6147b000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:end_crystal",
+        "type": "minecraft:end_crystal",
+        "synced_genpvp": false,
+        "eye_height_bits": "3fd9999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051d66666800000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "40520ccccd000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:area_effect_cloud",
+        "type": "minecraft:area_effect_cloud",
+        "synced_genpvp": false,
+        "eye_height_bits": "3ed9999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051ad9999a00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051bb3333400000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:arrow",
+        "type": "minecraft:arrow",
+        "synced_genpvp": false,
+        "eye_height_bits": "3e051eb8",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a428f5c00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a851eb800000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:experience_orb",
+        "type": "minecraft:experience_orb",
+        "synced_genpvp": false,
+        "eye_height_bits": "3ed9999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051ad9999a00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051bb3333400000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:item",
+        "type": "minecraft:item",
+        "synced_genpvp": false,
+        "eye_height_bits": "3e59999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a6ccccd00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051ad9999a00000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:falling_block",
+        "type": "minecraft:falling_block",
+        "synced_genpvp": false,
+        "eye_height_bits": "3f553f7e",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051baa7efc00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051d54fdf800000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:snowball",
+        "type": "minecraft:snowball",
+        "synced_genpvp": false,
+        "eye_height_bits": "3e59999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a6ccccd00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051ad9999a00000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:firework_rocket",
+        "type": "minecraft:firework_rocket",
+        "synced_genpvp": false,
+        "eye_height_bits": "3e59999a",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a6ccccd00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051ad9999a00000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:lightning_bolt",
+        "type": "minecraft:lightning_bolt",
+        "synced_genpvp": false,
+        "eye_height_bits": "00000000",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051a00000000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:creeper",
+        "type": "minecraft:creeper",
+        "synced_genpvp": false,
+        "eye_height_bits": "3fb8f5c3",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051ce3d70c00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": true,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "4051fc7ae1000000",
+          "c013000000000000"
+        ]
+      },
+      {
+        "label": "minecraft:interaction_synced",
+        "type": "minecraft:interaction",
+        "synced_genpvp": true,
+        "eye_height_bits": "3fcf5ca7",
+        "entity_yRot_bits": "42340000",
+        "entity_xRot_bits": "41610000",
+        "camera_pos_after_1_tick_bits": [
+          "4028800000000000",
+          "4051d3d729c00000",
+          "c013000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000",
+        "camera_forwards_bits": [
+          "bf2f982d",
+          "be78cfcb",
+          "3f2f982a"
+        ],
+        "camera_rotation_bits": [
+          "bd3fe010",
+          "3f6abc06",
+          "3de79d26",
+          "3ec275df"
+        ],
+        "is_living": false,
+        "is_player": false,
+        "is_sleeping": false,
+        "does_mob_effect_block_sky": false,
+        "camera_pos_settled_bits": [
+          "4028800000000000",
+          "405207ae53000000",
+          "c013000000000000"
+        ]
+      }
+    ]
+  },
+  "interaction_lifecycle": {
+    "unsynced_spawn": {
+      "pos_bits": [
+        "3fe0000000000000",
+        "4072c00000000000",
+        "3fe0000000000000"
+      ],
+      "yRot_bits": "42b40000",
+      "xRot_bits": "41ec4000",
+      "yRotO_bits": "42b40000",
+      "xRotO_bits": "41ec4000",
+      "eye_height_bits": "00000000",
+      "aabb_bits": [
+        "0000000000000000",
+        "4072c00000000000",
+        "0000000000000000",
+        "3ff0000000000000",
+        "4072d00000000000",
+        "3ff0000000000000"
+      ],
+      "seat_height_bits": "0000000000000000",
+      "dims_width_bits": "00000000",
+      "dims_height_bits": "00000000",
+      "dims_eye_height_bits": "00000000",
+      "get_dims_seat_y_bits": "3ff0000000000000"
+    },
+    "sync_default_1x1": {
+      "pos_bits": [
+        "3fe0000000000000",
+        "4072c00000000000",
+        "3fe0000000000000"
+      ],
+      "yRot_bits": "42b40000",
+      "xRot_bits": "41ec4000",
+      "yRotO_bits": "42b40000",
+      "xRotO_bits": "41ec4000",
+      "eye_height_bits": "3f59999a",
+      "aabb_bits": [
+        "0000000000000000",
+        "4072c00000000000",
+        "0000000000000000",
+        "3ff0000000000000",
+        "4072d00000000000",
+        "3ff0000000000000"
+      ],
+      "seat_height_bits": "3ff0000000000000",
+      "dims_width_bits": "3f800000",
+      "dims_height_bits": "3f800000",
+      "dims_eye_height_bits": "3f59999a",
+      "get_dims_seat_y_bits": "3ff0000000000000"
+    },
+    "sync_pose_only": {
+      "pos_bits": [
+        "3fe0000000000000",
+        "4072c00000000000",
+        "3fe0000000000000"
+      ],
+      "yRot_bits": "00000000",
+      "xRot_bits": "00000000",
+      "yRotO_bits": "00000000",
+      "xRotO_bits": "00000000",
+      "eye_height_bits": "3f59999a",
+      "aabb_bits": [
+        "0000000000000000",
+        "4072c00000000000",
+        "0000000000000000",
+        "3ff0000000000000",
+        "4072d00000000000",
+        "3ff0000000000000"
+      ],
+      "seat_height_bits": "3ff0000000000000",
+      "dims_width_bits": "3f800000",
+      "dims_height_bits": "3f800000",
+      "dims_eye_height_bits": "3f59999a",
+      "get_dims_seat_y_bits": "3ff0000000000000"
+    },
+    "sync_genpvp": {
+      "pos_bits": [
+        "3fe0000000000000",
+        "4072c00000000000",
+        "3fe0000000000000"
+      ],
+      "yRot_bits": "00000000",
+      "xRot_bits": "00000000",
+      "yRotO_bits": "00000000",
+      "xRotO_bits": "00000000",
+      "eye_height_bits": "3fcf5ca7",
+      "aabb_bits": [
+        "3fdccccccc000000",
+        "4072c00000000000",
+        "3fdccccccc000000",
+        "3fe199999a000000",
+        "4072de7e91000000",
+        "3fe199999a000000"
+      ],
+      "seat_height_bits": "3ffe7e9100000000",
+      "dims_width_bits": "3dcccccd",
+      "dims_height_bits": "3ff3f488",
+      "dims_eye_height_bits": "3fcf5ca7",
+      "get_dims_seat_y_bits": "3ffe7e9100000000"
+    },
+    "sync_negative_height": {
+      "pos_bits": [
+        "4024000000000000",
+        "4050000000000000",
+        "c008000000000000"
+      ],
+      "yRot_bits": "00000000",
+      "xRot_bits": "00000000",
+      "yRotO_bits": "00000000",
+      "xRotO_bits": "00000000",
+      "eye_height_bits": "bfa33334",
+      "aabb_bits": [
+        "4023800000000000",
+        "404f400000000000",
+        "c00a000000000000",
+        "4024800000000000",
+        "4050000000000000",
+        "c006000000000000"
+      ],
+      "seat_height_bits": "bff8000000000000",
+      "dims_width_bits": "3f000000",
+      "dims_height_bits": "bfc00000",
+      "dims_eye_height_bits": "bfa33334",
+      "get_dims_seat_y_bits": "bff8000000000000"
+    },
+    "sync_negative_width_and_height": {
+      "pos_bits": [
+        "4024000000000000",
+        "4050000000000000",
+        "c008000000000000"
+      ],
+      "yRot_bits": "00000000",
+      "xRot_bits": "00000000",
+      "yRotO_bits": "00000000",
+      "xRotO_bits": "00000000",
+      "eye_height_bits": "bfd9999a",
+      "aabb_bits": [
+        "4023999999800000",
+        "404f000000000000",
+        "c00999999a000000",
+        "4024666666800000",
+        "4050000000000000",
+        "c006666666000000"
+      ],
+      "seat_height_bits": "c000000000000000",
+      "dims_width_bits": "becccccd",
+      "dims_height_bits": "c0000000",
+      "dims_eye_height_bits": "bfd9999a",
+      "get_dims_seat_y_bits": "c000000000000000"
+    },
+    "clamp_pos_pitch": {
+      "pos_bits": [
+        "0000000000000000",
+        "4050000000000000",
+        "0000000000000000"
+      ],
+      "yRot_bits": "43ca8000",
+      "xRot_bits": "42b40000",
+      "yRotO_bits": "43ca8000",
+      "xRotO_bits": "42b40000",
+      "eye_height_bits": "00000000",
+      "aabb_bits": [
+        "bfe0000000000000",
+        "4050000000000000",
+        "bfe0000000000000",
+        "3fe0000000000000",
+        "4050400000000000",
+        "3fe0000000000000"
+      ],
+      "seat_height_bits": "0000000000000000",
+      "dims_width_bits": "00000000",
+      "dims_height_bits": "00000000",
+      "dims_eye_height_bits": "00000000",
+      "get_dims_seat_y_bits": "3ff0000000000000"
+    },
+    "clamp_neg_pitch": {
+      "pos_bits": [
+        "0000000000000000",
+        "4050000000000000",
+        "0000000000000000"
+      ],
+      "yRot_bits": "c3ca8000",
+      "xRot_bits": "c2b40000",
+      "yRotO_bits": "c3ca8000",
+      "xRotO_bits": "c2b40000",
+      "eye_height_bits": "00000000",
+      "aabb_bits": [
+        "bfe0000000000000",
+        "4050000000000000",
+        "bfe0000000000000",
+        "3fe0000000000000",
+        "4050400000000000",
+        "3fe0000000000000"
+      ],
+      "seat_height_bits": "0000000000000000",
+      "dims_width_bits": "00000000",
+      "dims_height_bits": "00000000",
+      "dims_eye_height_bits": "00000000",
+      "get_dims_seat_y_bits": "3ff0000000000000"
+    },
+    "after_move_pos_rot_frames": [
+      {
+        "partial_bits": "00000000",
+        "camera_pos_bits": [
+          "4024000000000000",
+          "405067ae53000000",
+          "c014000000000000"
+        ],
+        "camera_yRot_bits": "00000000",
+        "camera_xRot_bits": "00000000"
+      },
+      {
+        "partial_bits": "3e800000",
+        "camera_pos_bits": [
+          "4024800000000000",
+          "40506fae53000000",
+          "c014400000000000"
+        ],
+        "camera_yRot_bits": "41340000",
+        "camera_xRot_bits": "40610000"
+      },
+      {
+        "partial_bits": "3f000000",
+        "camera_pos_bits": [
+          "4025000000000000",
+          "405077ae53000000",
+          "c014800000000000"
+        ],
+        "camera_yRot_bits": "41b40000",
+        "camera_xRot_bits": "40e10000"
+      },
+      {
+        "partial_bits": "3f800000",
+        "camera_pos_bits": [
+          "4026000000000000",
+          "405087ae53000000",
+          "c015000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000"
+      }
+    ],
+    "after_relative_teleport_frames": [
+      {
+        "partial_bits": "00000000",
+        "camera_pos_bits": [
+          "4026000000000000",
+          "405087ae53000000",
+          "c015000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "41610000"
+      },
+      {
+        "partial_bits": "3f000000",
+        "camera_pos_bits": [
+          "4027000000000000",
+          "405097ae53000000",
+          "c012800000000000"
+        ],
+        "camera_yRot_bits": "42700000",
+        "camera_xRot_bits": "41110000"
+      },
+      {
+        "partial_bits": "3f800000",
+        "camera_pos_bits": [
+          "4028000000000000",
+          "4050a7ae53000000",
+          "c010000000000000"
+        ],
+        "camera_yRot_bits": "42960000",
+        "camera_xRot_bits": "40820000"
+      }
+    ],
+    "after_far_teleport_frames": [
+      {
+        "partial_bits": "00000000",
+        "camera_pos_bits": [
+          "4059000000000000",
+          "4050a7ae53000000",
+          "c010000000000000"
+        ],
+        "camera_yRot_bits": "43340000",
+        "camera_xRot_bits": "c1a00000"
+      },
+      {
+        "partial_bits": "3f000000",
+        "camera_pos_bits": [
+          "4059000000000000",
+          "4050a7ae53000000",
+          "c010000000000000"
+        ],
+        "camera_yRot_bits": "43340000",
+        "camera_xRot_bits": "c1a00000"
+      },
+      {
+        "partial_bits": "3f800000",
+        "camera_pos_bits": [
+          "4059000000000000",
+          "4050a7ae53000000",
+          "c010000000000000"
+        ],
+        "camera_yRot_bits": "43340000",
+        "camera_xRot_bits": "c1a00000"
+      }
+    ]
+  },
+  "camera_removal": {
+    "minecraft:interaction": {
+      "after_set_camera": {
+        "camera_id": 31,
+        "is_removed": false,
+        "is_controlled_camera": false,
+        "post_effect": null,
+        "camera_pos_bits": [
+          "4025000000000000",
+          "4072d9eb94c00000",
+          "4029000000000000"
+        ]
+      },
+      "after_remove_entities": {
+        "camera_id": 31,
+        "is_removed": true,
+        "in_level": false,
+        "is_controlled_camera": false,
+        "post_effect": null,
+        "camera_pos_bits": [
+          "4025000000000000",
+          "4072d9eb94c00000",
+          "4029000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "411d8000"
+      },
+      "after_set_camera_player": {
+        "camera_id": 7,
+        "is_removed": false,
+        "is_controlled_camera": true,
+        "post_effect": null
+      }
+    },
+    "minecraft:creeper": {
+      "after_set_camera": {
+        "camera_id": 31,
+        "is_removed": false,
+        "is_controlled_camera": false,
+        "post_effect": "minecraft:creeper",
+        "camera_pos_bits": [
+          "4025000000000000",
+          "4072d71eb8400000",
+          "4029000000000000"
+        ]
+      },
+      "after_remove_entities": {
+        "camera_id": 31,
+        "is_removed": true,
+        "in_level": false,
+        "is_controlled_camera": false,
+        "post_effect": "minecraft:creeper",
+        "camera_pos_bits": [
+          "4025000000000000",
+          "4072d71eb8400000",
+          "4029000000000000"
+        ],
+        "camera_yRot_bits": "42340000",
+        "camera_xRot_bits": "411d8000"
+      },
+      "after_set_camera_player": {
+        "camera_id": 7,
+        "is_removed": false,
+        "is_controlled_camera": true,
+        "post_effect": null
+      }
+    }
+  },
+  "camera_consumers": {
+    "bob": {
+      "local_player": {
+        "is_living": true,
+        "is_player": true,
+        "matrix_bits": [
+          "3f7fb860",
+          "bd3f6319",
+          "ba8ee9d6",
+          "00000000",
+          "3d3f5a59",
+          "3f7f5b2d",
+          "3d5a53ca",
+          "00000000",
+          "bab7e37b",
+          "bd5a4c1f",
+          "3f7fa2ca",
+          "00000000",
+          "3c9c8f67",
+          "bd319d43",
+          "bb09bf3a",
+          "3f800000"
+        ]
+      },
+      "interaction": {
+        "is_living": false,
+        "is_player": false,
+        "matrix_bits": [
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000"
+        ]
+      },
+      "creeper": {
+        "is_living": true,
+        "is_player": false,
+        "matrix_bits": [
+          "3f7f62d6",
+          "bd8dc001",
+          "00000000",
+          "00000000",
+          "3d8dc001",
+          "3f7f62d6",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000"
+        ]
+      }
+    },
+    "frozen_partial": {
+      "real_partial_bits": "3ec00000",
+      "local_player_partial_bits": "3ec00000",
+      "interaction_partial_bits": "3f800000",
+      "creeper_partial_bits": "3f800000",
+      "minecart_with_player_partial_bits": "3ec00000"
+    },
+    "block_outline": {
+      "local_player": true,
+      "interaction": false,
+      "creeper": false
+    },
+    "fog": {
+      "spectator_local_player": {
+        "lava_start_bits": "c1000000",
+        "lava_end_bits": "42800000",
+        "powder_snow_start_bits": "c1000000",
+        "powder_snow_end_bits": "42800000",
+        "water_start_bits": "c1000000",
+        "water_end_bits": "41c00000",
+        "blindness_applicable": true,
+        "does_mob_effect_block_sky": true
+      },
+      "interaction": {
+        "lava_start_bits": "3e800000",
+        "lava_end_bits": "3f800000",
+        "powder_snow_start_bits": "00000000",
+        "powder_snow_end_bits": "40000000",
+        "water_start_bits": "c1000000",
+        "water_end_bits": "42c00000",
+        "blindness_applicable": false,
+        "does_mob_effect_block_sky": false
+      },
+      "fire_resistance_local_player": {
+        "lava_start_bits": "00000000",
+        "lava_end_bits": "40a00000"
+      }
+    },
+    "dark_disc": {
+      "player_below_horizon_dry": true,
+      "player_below_horizon_underwater": false,
+      "player_above_horizon_dry": false
+    },
+    "vignette": {
+      "player_vignette_after_1_tick_bits": "00000000",
+      "interaction_vignette_after_1_tick_bits": "3c23d70a",
+      "player_border_dist_bits": "4058e00000000000",
+      "interaction_border_dist_bits": "4012000000000000"
+    }
+  },
+  "cull_frustum": {
+    "cases": [
+      {
+        "name": "zoomed_fov_30_opt_70",
+        "fov_bits": "41f00000",
+        "option_fov": 70,
+        "yaw_bits": "00000000",
+        "pitch_bits": "00000000",
+        "depth_far_bits": "44000000",
+        "width": 1280,
+        "height": 800,
+        "cull_proj_bits": [
+          "3f6480f0",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3fb6cd8e",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf800333",
+          "bf800000",
+          "00000000",
+          "00000000",
+          "bd4cd1ec",
+          "00000000"
+        ],
+        "view_rot_bits": [
+          "bf800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000"
+        ],
+        "near_plane_bounds_bits": [
+          "bf9cae9100000000",
+          "bf91ed1a80000000",
+          "3f9999eb80000000",
+          "3f9cae9100000000",
+          "3f91ed1a80000000",
+          "3f9999eb80000000"
+        ],
+        "boxes": [
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "4023000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4025000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "401e000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4021000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "402f000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4030800000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4038800000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4039800000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "c034800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "c033800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "4035000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4036000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4029666666666666",
+              "4033800000000000",
+              "3fe0000000000000",
+              "402b666666666666",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c027000000000000",
+              "4012cccccccccccd",
+              "402e99999999999a",
+              "c025000000000000",
+              "4016cccccccccccd",
+              "40304ccccccccccd"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c032000000000000",
+              "4012cccccccccccd",
+              "4028000000000000",
+              "c031000000000000",
+              "4016cccccccccccd",
+              "402a000000000000"
+            ],
+            "visible": false
+          }
+        ]
+      },
+      {
+        "name": "widened_fov_85_opt_70",
+        "fov_bits": "42aa0000",
+        "option_fov": 70,
+        "yaw_bits": "00000000",
+        "pitch_bits": "00000000",
+        "depth_far_bits": "44000000",
+        "width": 1280,
+        "height": 800,
+        "cull_proj_bits": [
+          "3f2e9c00",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f8bb000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf800333",
+          "bf800000",
+          "00000000",
+          "00000000",
+          "bd4cd1ec",
+          "00000000"
+        ],
+        "view_rot_bits": [
+          "bf800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf800000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000"
+        ],
+        "near_plane_bounds_bits": [
+          "bfa2c472e0000000",
+          "bf97758f80000000",
+          "3f9999eba0000000",
+          "3fa2c472e0000000",
+          "3f97758f80000000",
+          "3f9999eba0000000"
+        ],
+        "boxes": [
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "4023000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4025000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "401e000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4021000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "402f000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4030800000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4038800000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4039800000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "c034800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "c033800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "4035000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4036000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4029666666666666",
+              "4033800000000000",
+              "3fe0000000000000",
+              "402b666666666666",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c027000000000000",
+              "4012cccccccccccd",
+              "402e99999999999a",
+              "c025000000000000",
+              "4016cccccccccccd",
+              "40304ccccccccccd"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c032000000000000",
+              "4012cccccccccccd",
+              "4028000000000000",
+              "c031000000000000",
+              "4016cccccccccccd",
+              "402a000000000000"
+            ],
+            "visible": true
+          }
+        ]
+      },
+      {
+        "name": "spyglass_fov_10_opt_70_angled",
+        "fov_bits": "41200000",
+        "option_fov": 70,
+        "yaw_bits": "420c0000",
+        "pitch_bits": "c1700000",
+        "depth_far_bits": "44000000",
+        "width": 1280,
+        "height": 800,
+        "cull_proj_bits": [
+          "3f6480f0",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3fb6cd8e",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "bf800333",
+          "bf800000",
+          "00000000",
+          "00000000",
+          "bd4cd1ec",
+          "00000000"
+        ],
+        "view_rot_bits": [
+          "bf51b3f2",
+          "3e1803f1",
+          "3f0dd512",
+          "00000000",
+          "00000000",
+          "3f7746eb",
+          "be8483ef",
+          "00000000",
+          "bf12d5ea",
+          "be5919b7",
+          "bf4a8eb5",
+          "00000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "3f800000"
+        ],
+        "near_plane_bounds_bits": [
+          "bfa42b8360000000",
+          "bf8560e8e0000000",
+          "3ed40d0d00000000",
+          "3f87f1b760000000",
+          "3f97f10360000000",
+          "3fa4411900000000"
+        ],
+        "boxes": [
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "4023000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4025000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "401e000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4021000000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "402f000000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4030800000000000",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4038800000000000",
+              "4033800000000000",
+              "3fe0000000000000",
+              "4039800000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "bfe0000000000000",
+              "c034800000000000",
+              "3fe0000000000000",
+              "3fe0000000000000",
+              "c033800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "4035000000000000",
+              "bfe0000000000000",
+              "4033800000000000",
+              "4036000000000000",
+              "3fe0000000000000",
+              "4034800000000000"
+            ],
+            "visible": false
+          },
+          {
+            "aabb_bits": [
+              "bfe0000000000000",
+              "4029666666666666",
+              "4033800000000000",
+              "3fe0000000000000",
+              "402b666666666666",
+              "4034800000000000"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c027000000000000",
+              "4012cccccccccccd",
+              "402e99999999999a",
+              "c025000000000000",
+              "4016cccccccccccd",
+              "40304ccccccccccd"
+            ],
+            "visible": true
+          },
+          {
+            "aabb_bits": [
+              "c032000000000000",
+              "4012cccccccccccd",
+              "4028000000000000",
+              "c031000000000000",
+              "4016cccccccccccd",
+              "402a000000000000"
+            ],
+            "visible": true
+          }
+        ]
+      }
+    ]
+  }
+}
