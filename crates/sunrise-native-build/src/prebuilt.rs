@@ -540,12 +540,11 @@ fn rustc(rust: &dyn Toolchain, game: &Path, out: &Path, edition: &str) -> Comman
 
 /// Find runtime dependencies beside the dylib, not relative to the executable. On Linux keep
 /// DT_RPATH rather than DT_RUNPATH so the search path also applies to transitive dependencies.
-pub(super) fn dylib_rpath_args(os: &str) -> &'static [&'static str] {
-    match os {
-        "linux" => &["-Wl,--disable-new-dtags", "-Wl,-rpath,$ORIGIN"],
-        "macos" => &["-Wl,-rpath,@loader_path"],
-        _ => &[],
-    }
+/// The SDK release smoke build also reads this list.
+pub(super) fn dylib_rpath_args(os: &str) -> impl Iterator<Item = &'static str> + '_ {
+    include_str!("dylib-link-args.txt")
+        .lines()
+        .filter_map(move |line| line.strip_prefix(os)?.strip_prefix(' '))
 }
 
 /// rustc with the prebuilt game's settings and only `search` as dependency search paths.
@@ -1542,7 +1541,7 @@ mod tests {
             ("macos", &["-Wl,-rpath,@loader_path"][..]),
             ("windows", &[][..]),
         ] {
-            assert_eq!(dylib_rpath_args(os), expected, "{os}");
+            assert!(dylib_rpath_args(os).eq(expected.iter().copied()), "{os}");
             if os == std::env::consts::OS {
                 assert_eq!(link_args.as_slice(), expected, "{args:?}");
             }

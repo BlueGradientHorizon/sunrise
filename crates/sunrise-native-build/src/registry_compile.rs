@@ -114,8 +114,7 @@ pub fn compile(
     let mut wrapper_deps = toml::Table::new();
     let deps = game.join("deps");
     let link_args: Vec<_> = prebuilt::dylib_rpath_args(std::env::consts::OS)
-        .iter()
-        .map(|arg| (*arg).to_owned())
+        .map(str::to_owned)
         .collect();
     // Each mod's staged folder and library root, for the shared registry library.
     let mut mod_dirs = BTreeMap::new();

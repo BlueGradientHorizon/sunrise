@@ -4,9 +4,10 @@ ids = [
     "fn:sunrise_native_build::registry_compile::compile",
 ]
 why = """
-The Sunrise SDK uses one set of library search flags for direct and registry builds. On macOS, the
-registry patch library now finds dependencies beside itself instead of relative to the executable.
-On Linux, both routes use the library-relative search path for transitive dependencies. The registry
+The Sunrise SDK uses one set of library search flags for direct and registry builds, and the release
+smoke build uses that same list for its two mod libraries. On macOS, the registry patch and smoke
+libraries now find dependencies beside themselves instead of relative to the executable. On Linux,
+all three builds use the library-relative search path for transitive dependencies. The registry
 patch also reuses the SDK's existing mod_vocab binding. There is no vanilla or NeoForge counterpart
 for this SDK linker policy.
 """
