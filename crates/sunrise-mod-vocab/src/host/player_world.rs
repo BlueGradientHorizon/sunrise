@@ -129,6 +129,7 @@ pub trait PlayerWorldBackendMut {
 }
 
 /// The handles' client writes of the `player_world` area, reached through [`ClientBackendMut`].
+// hidden: a handle's backend, reached through `ClientBackendMut`; mods call the handle
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerWorldClientBackendMut {
