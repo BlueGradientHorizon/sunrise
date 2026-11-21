@@ -107,7 +107,7 @@ Each method receives the host; the handler holds no borrow of the game.
 | `amount` / `amount_int` | Amount held at an index; `amount_int` caps it at `i32::MAX`. |
 | `capacity` / `capacity_int` | Limit for `Some(&resource)`, or the general limit for `None`. An unknown general limit is `u32::MAX`; `capacity_int` caps the answer at `i32::MAX`. This is not free space or permission to insert. |
 | `is_valid` | Whether the resource is allowed at an index. The default checks for nonzero capacity; override it for separate acceptance rules and enforce those rules in `insert_at`. |
-| `insert_at` / `extract_at` | Move up to the requested amount at one index, using a `&Transaction`. Return the actual amount moved. Insertion can refuse even with nonzero capacity. |
+| `insert_at` / `extract_at` | Move up to the requested amount at one index, using the innermost `&TransactionContext`. Return the actual amount moved. Insertion can refuse even with nonzero capacity. |
 | `insert` / `extract` | Let the handler choose where to move the resource. The default visits indices in order. Prefer these unless you need to target a specific index. They return `Result<u32, Overanswered>`. |
 
 Keep handler state in transaction-managed storage such as block entity slots, saved compounds or
@@ -117,8 +117,8 @@ Use `resource_util::move_resources(host, &from, &to, filter, max, Some(tx))` to 
 resources, up to `max`, in source index order. The helper probes an extraction and rolls the probe
 back before asking the destination to insert. A step commits only if the source can then extract
 exactly what went in. An overanswer rolls back the entire helper call, even if you handle the error
-and commit the enclosing transaction. Use `Some(tx)` for the current transaction or `None` to open a
-root transaction; a token for a different transaction, or `None` while one is open, moves nothing.
+and commit the enclosing transaction. Use `Some(tx)` for the innermost transaction or `None` to open a
+root transaction. A foreign or ancestor context, or `None` while a transaction is open, panics.
 Pass capability references to keep their provider names in `Overanswered` errors. For a handler
 you compose directly, pass it as `&dyn ResourceHandler<R>`; the helper does not infer a provider.
 
@@ -133,7 +133,7 @@ zero and overfilled indices contribute at most one. `insert_stacking` tops up ma
 before filling empty ones; an overanswer rolls it back and returns `Overanswered`. `extract_first`
 takes the first extractable resource matching a filter. `find_extractable_resource` probes each
 candidate with its full int amount in a separate transaction that always rolls back. These three
-helpers also require the current transaction token, or `None` when opening a root.
+helpers follow the same rule for `Some(tx)` and `None`.
 
 Compose handlers from the same module: `CombinedResourceHandler` assigns indices in order and fixes
 its size at construction; `RangedResourceHandler::of` and `of_single_index` return `None` for

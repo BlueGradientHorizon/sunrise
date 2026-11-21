@@ -354,10 +354,10 @@ pub trait IPayloadContext {
 
 impl dyn IPayloadContext + '_ {
     /// Runs `f` in a scoped transaction on this payload context (server main thread only).
-    /// `Ok` commits into the surrounding transaction (or for good at the root); `Err` or an
-    /// unwind aborts and rolls back writes made inside `f`. Returns
-    /// [`TransactionError::Unavailable`] without calling `f` when this context cannot open a
-    /// transaction.
+    /// `Ok` commits into the surrounding transaction (or for good at the root). A closure error
+    /// becomes [`TransactionError::Aborted`] and, like an unwind, rolls back writes made inside
+    /// `f`. Returns [`TransactionError::Unavailable`] without calling `f` when this context
+    /// cannot open a transaction.
     pub fn transaction<T, E>(
         &mut self,
         f: impl for<'loan> FnOnce(

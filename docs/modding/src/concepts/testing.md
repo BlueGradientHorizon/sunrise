@@ -35,7 +35,7 @@ let into = level.capability(server, &ITEMS, [1, 64, 0], None).unwrap();
 let moved = server.transaction(|host, tx| {
     move_resources(host, &from, &into, |_: &ItemResource| true, 3, Some(tx))
 });
-assert_eq!(moved.ok(), Some(3));
+assert_eq!(moved, Ok(3));
 let into = host.level.block_entity_at([1, 64, 0]).unwrap().items.as_ref().unwrap();
 assert_eq!(into.count("minecraft:stone"), 3);
 ```
@@ -55,6 +55,9 @@ Existing kinds may be instantiated after resolution; inserting a new undeclared 
 fake setup boundary. Repeated resolution checks the frozen table rather than extending it. A new
 load requires a new part installation.
 
-An unsupported host method panics with its name, so an unexpected call fails
-loudly. You can write your own double for behavior the fakes do not model,
-implementing the services your hook calls; `testing::FakeJournal` gives such a host the same transaction journal over its own state.
+An unsupported host method usually panics with its name. A host without transaction support
+instead returns `TransactionError::Unavailable` without calling the closure. `FakeHost`
+checks that a write uses the innermost `TransactionContext`, just as the game does. For a
+custom double, implement `ServerHost::with_transaction_scope` with
+`testing::FakeJournal::with_scope` over your own state, and delegate
+`ServerHost::transaction_matches` to the journal's `matches` method.

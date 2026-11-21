@@ -65,8 +65,12 @@ you send the **original challenge**. Match the reply to that challenge and pass
 its saved instance to `cx.finish_configuration_task(instance)` in a server
 main-thread configuration payload handler. Never look up whichever task happens
 to be running when the reply arrives, and never send the instance over the wire.
-Use `cx.reply(&channel, bytes)` for a final reply on the same connection. For a
-network-thread handler, use `enqueue_work` and complete from the main-thread work.
+Use `cx.reply(&channel, bytes)` for a final reply on the same connection. Use
+`cx.transaction(|cx, tx| …)` on the server main thread to put the reply, completion
+request and any journaled world writes in the same nested transaction. An error
+from the closure aborts that scope and returns `TransactionError::Aborted(error)`;
+`TransactionError::Unavailable` means the closure never ran. For a network-thread
+handler, use `enqueue_work` and complete from the main-thread work.
 
 A different live connection's instance returns `WrongConnection`; an instance
 that is no longer the running one on this configuration returns `StaleTask`.

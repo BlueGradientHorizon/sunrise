@@ -570,7 +570,7 @@ impl crate::NoBackend for StackWriteError {
 pub enum CraftedByError {
     /// The place is not a menu slot or the carried stack, or it no longer holds a stack.
     NotHeld,
-    /// The host has no server game backend, or the transaction or place is no longer usable.
+    /// The host has no server game backend, or the place is no longer usable.
     Unavailable,
 }
 

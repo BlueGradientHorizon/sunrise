@@ -9,7 +9,8 @@ use crate::{
 use std::marker::PhantomData;
 
 /// A block's energy (NeoForge's `EnergyHandler`): stateless, given the host, and written only in
-/// a transaction, as a [`ResourceHandler`](crate::ResourceHandler) is.
+/// a transaction, as a [`ResourceHandler`](crate::ResourceHandler) is. Pass the context for the
+/// innermost open transaction to a write.
 pub trait EnergyHandler: Send + Sync {
     /// How much it holds.
     fn amount(&self, host: &mut dyn ServerHost) -> u32;

@@ -495,6 +495,8 @@ impl fmt::Debug for ItemResource {
 /// and its state is the game's (slots, a saved compound, attachments, a stack's components), so
 /// the transaction `tx` a write runs in puts it back on an abort. Amounts never exceed what was
 /// asked; a handler answering more is a mod bug, and the move it was part of is aborted.
+/// A write requires the innermost context on this host. Pass that context to delegated writes,
+/// or use the child context if you open a nested transaction.
 pub trait ResourceHandler<R> {
     /// Set the container limit transactionally, accepting 1..=99 (vanilla's upper bound).
     /// Existing oversized stacks remain extractable. The game persists this with block entity data.

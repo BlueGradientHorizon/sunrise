@@ -8,7 +8,8 @@ its other writes depend on the move succeeding.
   attribute a slot-less error. A direct handler or a raw indexed answer may leave it `None`.
   Capabilities still warn once, naming their provider, when an indexed answer exceeds the request.
 - Handlers must not move more than the amount passed to `insert_at`, `extract_at`, `insert`,
-  or `extract`. Journal their writes in the supplied transaction so an abort can undo them.
+  or `extract`. Journal their writes with the supplied `&TransactionContext` so an abort can undo
+  them. If you open a nested transaction, forward the new context inside it, not its parent's.
 - Partial acceptance is not an overanswer. The helper attempts to extract exactly the accepted
   amount. If the source cannot supply it exactly, the step rolls back.
 - The separate `move_energy` helper keeps its source-first order: partial acceptance rolls

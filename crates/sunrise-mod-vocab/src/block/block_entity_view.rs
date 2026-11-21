@@ -180,10 +180,10 @@ impl<'a> BlockEntityTickScope<'a> {
 
     /// Run an atomic operation spanning the subject and other world storage. The
     /// callback can alternate between view and Host, under one explicit transaction.
-    /// `Err` or unwind rolls back its journaled edits. Returns
-    /// [`TransactionError::Unavailable`] without calling `f` if a transaction cannot be
-    /// opened. Ordinary loans join an already open transaction and never open a savepoint
-    /// by themselves.
+    /// A closure error becomes [`TransactionError::Aborted`] and, like an unwind, rolls back
+    /// its journaled edits. Returns [`TransactionError::Unavailable`] without calling `f` if a
+    /// transaction cannot be opened. Ordinary loans join an already open transaction and never
+    /// open a savepoint by themselves.
     pub fn transaction<T, E>(
         &mut self,
         f: impl for<'loan> FnOnce(

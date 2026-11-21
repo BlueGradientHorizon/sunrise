@@ -8,7 +8,8 @@ A block's `ItemStorage` answers by kind, with `u64` amounts:
 
 - `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and the planning bound
   for that kind. The default handler decides offer-dependent admission on the actual insert, not in `space_for`.
-- `insert(host, tx, resource, amount)` and `extract(...)`: writes in the caller's transaction, never more than asked.
+- `insert(host, tx, resource, amount)` and `extract(...)`: write with the innermost
+  `&TransactionContext`, never moving more than asked.
 - `visit_entries(host, &mut visitor)`: calls `visitor(&kind, amount)` for each occupied entry, in provider order.
   For a container, this is the order of the slots exposed on the queried side, not necessarily physical slot order.
   Each slot has its own amount, even when several hold the same kind.

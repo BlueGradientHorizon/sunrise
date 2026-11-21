@@ -1,19 +1,36 @@
 # Transactions
 
-Use `HostTransaction` on a `ServerHost` to group capability writes. The closure's
-`Ok` commits; `Err` aborts. Pass the borrowed `&Transaction` to each handler or
-place write.
+Use `HostTransaction` on a `ServerHost` to group capability writes. Pass the
+borrowed `&TransactionContext` (`tx` below) and the host from the **same** closure
+to each handler or place write.
 
 ```rust,ignore
-use mod_api::{HostTransaction, ServerHost};
+use mod_api::{HostTransaction, ServerHost, TransactionError};
 
-fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
+fn update(host: &mut dyn ServerHost) -> Result<(), TransactionError<()>> {
     host.transaction(|host, tx| {
         // Pass host and tx to your capability writes.
         Ok(())
     })
 }
 ```
+
+The closure's `Ok(value)` commits and returns `Ok(value)`. Its `Err(error)`
+rolls back the transaction's journaled work and returns `TransactionError::Aborted(error)`.
+`TransactionError::Unavailable` means the host could not open the transaction and did not
+call the closure. Handle that separately from an error in your own work.
+
+Two other entry points use the same result type:
+
+- In `block_entity_tick`, use `event.subject.transaction(|tick, tx| …)` to group writes
+  through `tick.host()` and `tick.with_view(…)`. End each borrow before starting the next;
+  another view loan can refuse if the original block entity is gone. Return `Err` if a
+  required write or view does not succeed.
+- In a server main-thread payload handler, use `cx.transaction(|cx, tx| …)` on
+  `&mut dyn IPayloadContext` when you need the payload context and world writes in the
+  same savepoint. Call `cx.server_host()` for the host and use `tx` for its capability
+  writes. End the host borrow before calling `cx.reply` or `cx.finish_configuration_task`.
+  The client and the network thread cannot open this scope.
 
 ## Commit and rollback
 
@@ -28,8 +45,6 @@ fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
   including inside a transaction, and survive abort.
 - A panic unwinding out of the closure aborts its transaction. The parent remains
   open if you catch the panic inside the parent closure.
-- Closing a transaction aborts any transactions left open inside it before closing
-  the parent.
 
 The journal covers writes through capability handlers to these storages:
 
@@ -62,9 +77,8 @@ right away; block updates and replacement effects wait for the outermost commit.
 `LevelRef::destroy_block` returns `Ok(None)` while a transaction is open, before
 running loot, experience or break effects.
 
-Other direct writes are not journaled: direct item-entity stack writes,
-`LivingRef::set_equipment`, and the armor-stand `slot_set` paths take
-effect immediately, even inside a transaction. Equipment sounds and equip/unequip
+Some direct writes are not journaled: `LivingRef::set_equipment` and the armor-stand
+`slot_set` paths take effect immediately, even inside a transaction. Equipment sounds and equip/unequip
 events from `LivingRef::set_equipment` also happen immediately. An abort does not
 undo these writes or effects. Use journaled capability handlers when you need rollback.
 
@@ -100,15 +114,20 @@ Entities a transaction spawns or removes follow the same commit and rollback rul
 
 ## Transaction authority
 
-`Transaction` identifies an open transaction with a game-issued write token. It
-does not grant permission to close it. A write with a token that does not name an
-open transaction changes nothing, including a token retained past its closure.
+`TransactionContext` is a loan for one transaction on the current thread. It
+cannot be cloned, sent or shared across threads (`!Send` and `!Sync`), or encoded
+with `Wire`. It cannot outlive the closure, and only the scope ends the transaction.
 
-Closing requires a separate `TransactionSeal`. The `host.transaction` guard holds
-that seal; its closure receives only the write token. If you use the raw
-`transaction_open` method, you receive the seal and must close it with
-`transaction_close`. The game refuses a seal that does not match an open
-transaction and logs `Sunrise: refused to close a transaction the seal does not end`.
+Writes must use the context for the **innermost** open transaction on that host.
+An ancestor context (even from the same host), a context from another host, or a
+context passed to a host with no open transaction is a programming error: the
+operation panics rather than reporting that nothing moved, even for a zero-amount
+write. This follows NeoForge's `TransactionManager.validateCurrentTransaction`.
+When opening a nested transaction, use its new `tx` until that closure returns.
+
+Resource helpers that accept `Option<&TransactionContext>` require `Some(tx)` for
+that same innermost frame or `None` when opening a root transaction. They also panic
+on a mismatch, including `None` while a transaction is already open.
 
 ## Inspecting a transaction
 
@@ -116,9 +135,10 @@ These methods are server-only:
 
 | Method | Result |
 |---|---|
-| `host.transaction_current()` | Innermost open `Transaction`, or `None`; not a closing seal |
-| `host.transaction_depth(tx)` | `Some(0)` for the outermost transaction, increasing by one per nesting level; `None` if it is not open |
-| `host.transaction_lifecycle()` | `TransactionLifecycle` describing the open or closing phase |
+| `tx.depth()` | `0` for a root transaction, increasing by one per nesting level. Depth does not identify a transaction. |
+| `host.transaction_matches(Some(tx))` | Whether `tx` belongs to the innermost open transaction on this host. |
+| `host.transaction_matches(None)` | Whether there is no open transaction on this host. |
+| `host.transaction_lifecycle()` | A process-local `TransactionLifecycle` describing the open or closing phase. It does not implement `Wire`. |
 
 | `TransactionLifecycle` variant | Meaning |
 |---|---|

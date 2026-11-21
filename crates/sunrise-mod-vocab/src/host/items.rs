@@ -116,8 +116,8 @@ pub trait ItemsServerHost {
     /// Side: server.
     /// Holds `stack` outside the world, in the open transaction `tx` (`ItemAccess.forStack`):
     /// the [`ItemPlace::Scratch`] to run item capabilities against. It lives until the
-    /// outermost transaction closes, and an abort of the one that made it drops it. None
-    /// where `tx` is not open.
+    /// outermost transaction closes, and an abort of the one that made it drops it.
+    /// Panics unless `tx` is the innermost open transaction on this host.
     #[access(WorldOnly)]
     fn scratch_stack(
         &mut self,
@@ -126,14 +126,15 @@ pub trait ItemsServerHost {
     ) -> Result<Option<ItemPlace>, StackWriteError>;
     /// Side: server.
     /// Takes the stack out of scratch place `place`, in `tx`, ending the place: none where it
-    /// is empty, no longer held, or not a scratch place.
+    /// is empty, no longer held, or not a scratch place. Panics unless `tx` is the innermost
+    /// open transaction on this host.
     #[access(WorldOnly)]
     fn scratch_take(&mut self, tx: &TransactionContext, place: &ItemPlace) -> Option<ItemStack>;
     /// Side: server.
     /// Holds `stack` outside the world in a two-slot copy whose item may change, in the open
     /// transaction `tx`: the [`ItemPlace::ScratchSlots`] a dispensed fluid container runs in
     /// (`DispenseFluidContainer`), `stack` in its first slot. It lives as a
-    /// [`scratch_stack`](Self::scratch_stack) place does. None where `tx` is not open.
+    /// [`scratch_stack`](Self::scratch_stack) place does, and requires the same innermost context.
     #[access(WorldOnly)]
     fn scratch_slots(
         &mut self,
@@ -143,7 +144,7 @@ pub trait ItemsServerHost {
     /// Side: server.
     /// Takes both slots out of two-slot place `place`, in `tx`, ending the place: what the
     /// first holds and what the second caught. None where it is no longer held or not a
-    /// two-slot place.
+    /// two-slot place. Panics unless `tx` is the innermost open transaction on this host.
     #[access(WorldOnly)]
     fn scratch_take_slots(
         &mut self,

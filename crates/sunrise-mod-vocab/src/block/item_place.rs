@@ -284,8 +284,8 @@ pub enum ItemPlaceEditError {
     NotHeld,
     /// The place has no whole-stack edit (a cursor or a virtual transfer wrapper).
     UnsupportedPlace,
-    /// The backend, transaction or storage refused the write. For native player slots,
-    /// hands and equipment, a missing backend or a closed transaction refuses before the editor runs.
+    /// The backend or storage refused the write. For native player slots, hands and
+    /// equipment, a missing backend refuses before the editor runs.
     Unavailable,
     /// The component edits did not pass the game's write validation; none were applied.
     Stack(StackWriteError),
@@ -314,6 +314,7 @@ impl crate::AccessRefusal for ItemPlaceEditError {
 /// Like a handler, it holds no borrow: its stacks live where the mod keeps them (a player's
 /// attachments). While its mod is disabled, lookups refuse both reads and writes through its
 /// places; re-enabling the mod makes the same registrations available again.
+/// Write methods receive the innermost transaction context; pass it to delegated writes.
 pub trait PlaceProvider: Send + Sync + 'static {
     /// The stack at `key`, if any.
     fn stack(&self, host: &mut dyn ServerHost, key: u64) -> Option<ItemStack>;
@@ -678,9 +679,9 @@ impl ItemPlace {
     ///
     /// For a player slot (including armour and off hand), hand, or a mob's or armour stand's
     /// equipment, the game resolves the occupied slot before lending the editor. An unavailable
-    /// backend, a closed `tx`, or an empty or unreadable slot refuses before the callback runs.
-    /// The game validates the changed overrides together against the stack's effective limits
-    /// before writing any of them. Only those changes are applied, in place like `ItemStack.set`;
+    /// backend or an empty or unreadable slot refuses before the callback runs. A `tx` other
+    /// than the innermost open transaction panics. The game validates the changed overrides
+    /// together against the stack's effective limits before writing any of them. Only those changes are applied, in place like `ItemStack.set`;
     /// an unchanged batch needs no write. The result reaches clients through the usual menu,
     /// inventory or equipment sync, without replaying equip sounds, events or attribute effects.
     ///

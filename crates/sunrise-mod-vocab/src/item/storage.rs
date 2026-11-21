@@ -64,7 +64,8 @@ impl From<crate::Overanswered> for StorageError {
 
 /// A block's items by kind: how much of one kind it holds and has room for, and its writes, by
 /// kind and in transactions, as a [`ResourceHandler`] is written. Stateless and given the host,
-/// as every capability handler is. Amounts are 64-bit: a million items is one call.
+/// as every capability handler is. Writes require the innermost context on that host.
+/// Amounts are 64-bit: a million items is one call.
 pub trait ItemStorage {
     /// How much of `resource` it holds.
     fn amount(
