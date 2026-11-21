@@ -8,7 +8,7 @@ use mod_api::{
     TriggerCriterionError,
 };
 use serde_json::Value;
-use std::{cell::Cell, sync::Arc};
+use std::cell::Cell;
 use sunrise_client::advancements::{self as adv, EntityView};
 
 /// One open criterion of a mod's trigger, as the mod's test sees it.
@@ -58,7 +58,7 @@ impl Game<'_> {
         &mut self,
         player: PlayerRef,
         trigger: &Identifier,
-        test: Arc<dyn CriterionTest>,
+        test: &mut dyn CriterionTest,
     ) -> Result<(), TriggerCriterionError> {
         if trigger.namespace().is_empty()
             || trigger.path().is_empty()
@@ -77,7 +77,7 @@ impl Game<'_> {
         // that doesn't fit drops there. Reuse the existing player swap and
         // advancement trigger, not a second predicate or awarding path.
         self.for_player(target, |g| {
-            g.trigger_mod_criteria(&trigger.to_string(), test.as_ref())
+            g.trigger_mod_criteria(&trigger.to_string(), test)
         })
         .ok_or(TriggerCriterionError::PlayerUnavailable)?
     }
@@ -151,7 +151,7 @@ impl Game<'_> {
     fn trigger_mod_criteria(
         &mut self,
         trigger: &str,
-        test: &dyn CriterionTest,
+        test: &mut dyn CriterionTest,
     ) -> Result<(), TriggerCriterionError> {
         let me = self.player_entity_for(trigger);
         let refused = Cell::new(None);
@@ -180,7 +180,7 @@ fn passes(
     conditions: &Value,
     me: &EntityView,
     world: &dyn adv::World,
-    test: &dyn CriterionTest,
+    test: &mut dyn CriterionTest,
 ) -> Result<bool, CriterionTestError> {
     let player = adv::Entities {
         this: Some(me),
@@ -255,7 +255,7 @@ mod tests {
     }
 
     impl CriterionTest for ItemTest {
-        fn test(&self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+        fn test(&mut self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
             Ok(criterion.item(self.key, &self.stack))
         }
     }
@@ -287,9 +287,9 @@ mod tests {
             stack: stack.clone(),
         };
         let c = criterion();
-        assert_eq!(passes(&c, &burning, &Plains, &pipe(&copper)), Ok(true));
+        assert_eq!(passes(&c, &burning, &Plains, &mut pipe(&copper)), Ok(true));
         assert_eq!(
-            passes(&c, &calm, &Plains, &pipe(&copper)),
+            passes(&c, &calm, &Plains, &mut pipe(&copper)),
             Ok(false),
             "the player predicate"
         );
@@ -299,7 +299,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            passes(&c, &burning, &Plains, &pipe(&one)),
+            passes(&c, &burning, &Plains, &mut pipe(&one)),
             Ok(false),
             "the item's count"
         );
@@ -309,17 +309,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            passes(&c, &burning, &Plains, &pipe(&iron)),
+            passes(&c, &burning, &Plains, &mut pipe(&iron)),
             Ok(false),
             "the tag"
         );
         // A criterion without the key or any conditions passes the item test.
-        let any = ItemTest {
+        let mut any = ItemTest {
             key: "filter",
             stack: iron,
         };
-        assert_eq!(passes(&c, &burning, &Plains, &any), Ok(true));
-        assert_eq!(passes(&Value::Null, &calm, &Plains, &any), Ok(true));
+        assert_eq!(passes(&c, &burning, &Plains, &mut any), Ok(true));
+        assert_eq!(passes(&Value::Null, &calm, &Plains, &mut any), Ok(true));
         let context = NativeCriterion {
             conditions: &c,
             world: &Plains,
@@ -342,12 +342,12 @@ mod tests {
     fn an_unavailable_test_is_not_a_nonmatching_criterion() {
         struct Unavailable;
         impl CriterionTest for Unavailable {
-            fn test(&self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+            fn test(&mut self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
                 Err(CriterionTestError::Unavailable)
             }
         }
         assert_eq!(
-            passes(&criterion(), &EntityView::default(), &Plains, &Unavailable),
+            passes(&criterion(), &EntityView::default(), &Plains, &mut Unavailable),
             Err(CriterionTestError::Unavailable)
         );
     }

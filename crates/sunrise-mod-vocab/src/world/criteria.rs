@@ -29,7 +29,7 @@ pub trait CriterionContext {
 pub trait CriterionTest: Send + Sync + 'static {
     /// Whether the mod's part of this criterion passes. A callback that cannot run refuses
     /// with a typed error, rather than silently answering that the criterion did not match.
-    fn test(&self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError>;
+    fn test(&mut self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError>;
 }
 
 /// Why the mod's criterion test could not answer.
@@ -85,7 +85,6 @@ impl NoBackend for TriggerCriterionError {
 mod tests {
     use super::*;
     use crate::{EntityRef, Host, Identifier, PlayerRef, ServerHost, WorldEpoch};
-    use std::sync::Arc;
 
     #[test]
     fn a_trigger_without_a_game_refuses_without_testing() {
@@ -96,7 +95,7 @@ mod tests {
         mod_api::impl_server_host_areas!(TestHost);
         struct Never;
         impl CriterionTest for Never {
-            fn test(&self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+            fn test(&mut self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
                 panic!("a refused trigger must not call the mod's predicate")
             }
         }
@@ -108,7 +107,7 @@ mod tests {
             player.trigger_criterion(
                 &mut TestHost,
                 &Identifier::parse("test:probe").unwrap(),
-                Arc::new(Never),
+                &mut Never,
             ),
             Err(TriggerCriterionError::NoBackend)
         );

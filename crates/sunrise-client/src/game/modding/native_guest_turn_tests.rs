@@ -646,7 +646,7 @@ fn another_guests_services_work_during_a_turn() {
 
     struct Accept;
     impl CriterionTest for Accept {
-        fn test(&self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+        fn test(&mut self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
             assert_eq!(criterion.conditions_json(), "null");
             Ok(true)
         }
@@ -707,15 +707,15 @@ fn another_guests_services_work_during_a_turn() {
                 Some(stone.clone())
             );
             assert_eq!(
-                a.trigger_criterion(game, &vanilla_trigger, Arc::new(Accept)),
+                a.trigger_criterion(game, &vanilla_trigger, &mut Accept),
                 Err(TriggerCriterionError::InvalidTrigger)
             );
             assert_eq!(
-                b.trigger_criterion(game, &trigger, Arc::new(Accept)),
+                b.trigger_criterion(game, &trigger, &mut Accept),
                 Ok(())
             );
             assert_eq!(
-                a.trigger_criterion(game, &trigger, Arc::new(Accept)),
+                a.trigger_criterion(game, &trigger, &mut Accept),
                 Ok(())
             );
             assert!(game.native_run_command("give guest13 minecraft:diamond 2"));
@@ -732,7 +732,7 @@ fn another_guests_services_work_during_a_turn() {
                 assert!(game.native_inventory(12, Player).is_err());
                 assert!(game.native_inventory(13, Player).is_err());
                 assert_eq!(
-                    a.trigger_criterion(game, &trigger, Arc::new(Accept)),
+                    a.trigger_criterion(game, &trigger, &mut Accept),
                     Err(TriggerCriterionError::PlayerUnavailable)
                 );
                 assert!(!game.native_run_command("give guest12 minecraft:dirt 1"));

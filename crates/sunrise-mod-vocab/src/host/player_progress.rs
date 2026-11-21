@@ -41,7 +41,7 @@ pub trait PlayerProgressBackendMut {
         &mut self,
         player: PlayerRef,
         trigger: &Identifier,
-        test: Arc<dyn CriterionTest>,
+        test: &mut dyn CriterionTest,
     ) -> Result<(), TriggerCriterionError>;
     /// Side: server. Fires only `default_block_use`, without a tool.
     /// The engine fires `any_block_use` once when the enclosing block use consumes.

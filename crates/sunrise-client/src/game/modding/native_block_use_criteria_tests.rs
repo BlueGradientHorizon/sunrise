@@ -147,7 +147,7 @@ fn block_use_refusals_grant_nothing() {
         );
         struct Never;
         impl CriterionTest for Never {
-            fn test(&self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+            fn test(&mut self, _: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
                 panic!("vanilla guard must precede callback");
             }
         }
@@ -155,7 +155,7 @@ fn block_use_refusals_grant_nothing() {
             p.trigger_criterion(
                 g,
                 &Identifier::parse("minecraft:any_block_use").unwrap(),
-                Arc::new(Never)
+                &mut Never
             ),
             Err(TriggerCriterionError::InvalidTrigger)
         );
