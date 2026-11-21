@@ -239,6 +239,7 @@ impl Game<'_> {
                         &mut level,
                         &mut events,
                         from,
+                        &base.teams,
                         true,
                     );
                 }
@@ -799,6 +800,7 @@ impl Game<'_> {
                         &mut level,
                         &mut events,
                         from,
+                        &base.teams,
                         true,
                     );
                     cursor += 1;
@@ -920,7 +922,13 @@ impl Game<'_> {
                             .mob_index
                             .find(&self.mobs, sting.target)
                             .map(|i| &mut self.mobs[i]);
-                        let aftermath = sting.finish(victim).collect();
+                        let mut aftermath = sting.poison(victim);
+                        if let Some(sound) = self
+                            .mob_object(sting.fish)
+                            .and_then(|fish| sting.sound(fish))
+                        {
+                            aftermath.push(sound);
+                        }
                         let _ = self.handle_mob_events(aftermath);
                     } else {
                         events.truncate(brain_from);
@@ -1029,7 +1037,7 @@ impl Game<'_> {
             spare = guests.first().map(|g| g.1.clone());
             // A trample can lift other mobs without changing their slots. Rebuild
             // their views before the rest of this pass can read their old bounds.
-            if !unchanged || live_mob.is_some() {
+            if !unchanged || live_mob.is_some() || stinging {
                 let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {

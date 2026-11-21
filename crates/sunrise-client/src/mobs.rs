@@ -2167,15 +2167,11 @@ pub enum MobEvent {
         amount: f32,
         source: Damage,
     },
-    /// `Pufferfish.touch` on a mob (`Pufferfish.aiStep`): the hit, then, only
-    /// when `hurtServer` let it land, the fish's `entity.puffer_fish.sting`
-    /// and the poison it gives (`poison_ticks`, `60 * getPuffState()`).
+    /// A selected `Pufferfish.aiStep` candidate, before its own `touch`.
     PufferfishSting {
         mob: u32,
         target: u32,
-        amount: f32,
-        source: Damage,
-        poison_ticks: i32,
+        target_join: Option<crate::join_seq::JoinSeq>,
     },
     /// `LivingEntity.stabAttack`'s `target.stopRiding()`: a spear knocks the
     /// target off its mount.
@@ -3117,8 +3113,9 @@ pub fn apply_brain_events(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     from: usize,
+    teams: &Teams<'_>,
 ) {
-    apply_brain_events_until_hurt(mobs, level, events, from, false);
+    apply_brain_events_until_hurt(mobs, level, events, from, teams, false);
 }
 
 /// The part of `Pufferfish.touch` after `hurtServer` returns successfully.
@@ -3128,9 +3125,8 @@ pub struct PufferfishReaction {
     pub fish: u32,
     pub at: usize,
     target_join: crate::join_seq::JoinSeq,
-    fish_join: Option<crate::join_seq::JoinSeq>,
+    fish_join: crate::join_seq::JoinSeq,
     poison_ticks: i32,
-    sound: Option<MobEvent>,
 }
 
 impl PufferfishReaction {
@@ -3139,17 +3135,25 @@ impl PufferfishReaction {
     }
 
     pub fn same_fish(&self, mob: &Mob) -> bool {
-        mob.id == self.fish && Some(mob.join) == self.fish_join && !mob.removed
+        mob.id == self.fish && mob.join == self.fish_join && !mob.removed
     }
 
-    pub fn finish(self, target: Option<&mut Mob>) -> impl Iterator<Item = MobEvent> + use<> {
-        let raised = if let Some(target) = target.filter(|m| self.same_target(m)) {
+    pub fn poison(&self, target: Option<&mut Mob>) -> Vec<MobEvent> {
+        if let Some(target) = target.filter(|m| self.same_target(m)) {
             target.add_effect("minecraft:poison", self.poison_ticks, 0);
             std::mem::take(&mut target.outbox)
         } else {
             Vec::new()
-        };
-        self.sound.into_iter().chain(raised)
+        }
+    }
+
+    pub fn sound(&self, fish: &Mob) -> Option<MobEvent> {
+        (self.same_fish(fish) && !fish.silent).then_some(MobEvent::Sound(
+            "entity.puffer_fish.sting",
+            [fish.position.x, fish.position.y, fish.position.z],
+            1.0,
+            1.0,
+        ))
     }
 }
 
@@ -3158,6 +3162,7 @@ pub fn apply_brain_events_until_hurt(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     from: usize,
+    teams: &Teams<'_>,
     can_pause: bool,
 ) -> Option<PufferfishReaction> {
     let mut i = from;
@@ -3208,54 +3213,49 @@ pub fn apply_brain_events_until_hurt(
                 }
                 i += 1;
             }
-            // Pufferfish.touch: the poison and playSound sit inside the
-            // hurtServer branch, so only a hit that landed poisons and stings.
-            // In vanilla, this runs in Pufferfish.aiStep during the fish's tick,
-            // so mobs ticking later in the same level tick tick their effects.
+            // Pufferfish.aiStep calls touch once per selected, still-living mob.
+            // Each touch reads teams and puff state now, not when the fish selected its list.
             MobEvent::PufferfishSting {
                 mob,
                 target,
-                amount,
-                mut source,
-                poison_ticks,
+                target_join,
             } => {
-                let fish = mobs.iter().find(|m| m.id == mob);
-                let fish_join = fish.map(|m| m.join);
-                if source.attacker_species.is_none() {
-                    source.attacker_species = fish.map(Mob::species);
+                events.remove(i);
+                let Some(fish) = mobs.iter().find(|m| m.id == mob && !m.removed) else {
+                    continue;
+                };
+                if !crate::scoreboard::teams_allow_damage(
+                    teams.of(Who::Mob(mob)),
+                    teams.of(Who::Mob(target)),
+                ) {
+                    continue;
                 }
+                let fish_join = fish.join;
+                let size = fish.extra.size;
+                let pos = [fish.position.x, fish.position.y, fish.position.z];
+                let source = Damage::mob(mob, pos).with_species(fish.species());
                 let held = if crate::native_client_hooks::has_mods() {
-                    fish.and_then(|m| m.extra.main_hand_stack()).cloned()
+                    fish.extra.main_hand_stack().cloned()
                 } else {
                     None
                 };
                 let attack = crate::health::Attack {
                     attacker: mob as i32,
-                    // Pufferfish.touch uses DamageSources.sting: the fish, no projectile.
-                    projectile: None,
-                    direct: None,
                     held: [held, None],
-                    player_uuid: None,
                     ..Default::default()
                 };
-                let (aim, fish_pos, fish_silent) = fish
-                    .map(|m| {
-                        (
-                            Aim {
-                                eye: [m.position.x, m.eye_y(), m.position.z],
-                                look: m.look_angle(),
-                                feet: [m.position.x, m.position.y, m.position.z],
-                            },
-                            [m.position.x, m.position.y, m.position.z],
-                            m.silent,
-                        )
-                    })
-                    .map(|(aim, pos, silent)| (Some(aim), Some(pos), silent))
-                    .unwrap_or((None, None, true));
+                let aim = Aim {
+                    eye: [pos[0], fish.eye_y(), pos[2]],
+                    look: fish.look_angle(),
+                    feet: pos,
+                };
                 let mut hit_level = level.reborrow().attacked_by(&attack);
-                events.remove(i);
-                if let Some(t) = mobs.iter_mut().find(|m| m.id == target)
-                    && t.damage_aimed(&mut hit_level, amount, source, aim)
+                if let Some(t) = mobs.iter_mut().find(|m| {
+                    m.id == target
+                        && m.alive()
+                        && !m.removed
+                        && target_join.is_none_or(|join| m.join == join)
+                }) && t.damage_aimed(&mut hit_level, 1.0 + size as f32, source, Some(aim))
                 {
                     let tail = PufferfishReaction {
                         target,
@@ -3263,15 +3263,40 @@ pub fn apply_brain_events_until_hurt(
                         at: i,
                         target_join: t.join,
                         fish_join,
-                        poison_ticks,
-                        sound: fish_pos
-                            .filter(|_| !fish_silent)
-                            .map(|at| MobEvent::Sound("entity.puffer_fish.sting", at, 1.0, 1.0)),
+                        poison_ticks: 60 * size,
                     };
                     if can_pause && creaking::has_pending_hurt(t) {
+                        let mut position = 0;
+                        // The rest of this candidate list belongs to the same objects
+                        // even if the host removes one or inserts a new occupant of its id.
+                        events.retain_mut(|event| {
+                            let pending = position >= i;
+                            position += 1;
+                            if pending
+                                && let MobEvent::PufferfishSting {
+                                    mob: fish,
+                                    target,
+                                    target_join,
+                                } = event
+                                && *fish == mob
+                                && target_join.is_none()
+                            {
+                                *target_join = mobs
+                                    .iter()
+                                    .find(|m| m.id == *target && !m.removed)
+                                    .map(|m| m.join);
+                                return target_join.is_some();
+                            }
+                            true
+                        });
                         return Some(tail);
                     }
-                    for e in tail.finish(Some(t)) {
+                    let poison = tail.poison(Some(t));
+                    let sound = mobs
+                        .iter()
+                        .find(|m| m.id == mob)
+                        .and_then(|fish| tail.sound(fish));
+                    for e in poison.into_iter().chain(sound) {
                         events.insert(i, e);
                         i += 1;
                     }

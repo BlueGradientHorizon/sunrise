@@ -20,6 +20,7 @@ use sunrise_core::{
 };
 
 const HOME: [i32; 3] = [8, 64, 8];
+const FISH_AFTER_HURT: [f64; 3] = [12.5, 64.0, 4.5];
 
 #[derive(Clone, Copy)]
 struct Reaction {
@@ -31,6 +32,7 @@ struct Reaction {
 struct Heard {
     mob: u32,
     peer: Option<u32>,
+    sting_fish: Option<u32>,
     reactions: Vec<Reaction>,
 }
 
@@ -56,7 +58,7 @@ impl Hooks for Watch {
         if event.event != "minecraft:entity_action" {
             return Flow::Continue;
         }
-        let (mob, peer) = {
+        let (mob, peer, sting_fish) = {
             let mut heard = self.heard.lock().unwrap();
             if event.cause != Some(heard.mob) {
                 return Flow::Continue;
@@ -68,7 +70,7 @@ impl Hooks for Watch {
                 position: mob.position(host).unwrap(),
                 peer_velocity,
             });
-            (mob, peer)
+            (mob, peer, heard.sting_fish)
         };
         if let Some(edit) = self.effect_edit {
             let living = host.living(mob).unwrap();
@@ -87,6 +89,18 @@ impl Hooks for Watch {
         if let Some(peer) = peer {
             // Move the already-selected peer to the opposite side, out of range.
             assert!(peer.teleport_to(host, [3.5, 64.0, 4.5], None));
+        }
+        if let Some(fish) = sting_fish {
+            assert!(
+                host.entity(fish)
+                    .unwrap()
+                    .teleport_to(host, FISH_AFTER_HURT, None)
+            );
+            let mut commands = host.commands();
+            assert!(commands.run_command(
+                "data merge entity 00000056-0000-0000-0000-000000000002 {PuffState:1}"
+            ));
+            assert!(commands.run_command("team join sting 00000056-0000-0000-0000-000000000003"));
         }
         if self.replace_protector {
             let air = mod_api::__private::block_key("minecraft:air").unwrap();
@@ -120,6 +134,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             "cramming",
             "effect_shift",
             "effect_replaced",
+            "sting",
         ],
     ) {
         return;
@@ -143,6 +158,15 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             setup_live_damage_world(game);
+            if case == "sting" {
+                assert!(game.run_command("summon pufferfish 4.5 64 4.5 {UUID:[I;86,0,0,2],PuffState:2,NoAI:1b,NoGravity:1b}"));
+                let fish = game
+                    .mobs
+                    .iter()
+                    .find(|m| m.kind.id == "minecraft:pufferfish")
+                    .unwrap();
+                heard.lock().unwrap().sting_fish = Some(fish.id);
+            }
             for command in [
                 "forceload add 0 0",
                 "time set night",
@@ -226,6 +250,17 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 creaking.add_effect("minecraft:instant_damage", 1, 0);
                 creaking.add_effect("minecraft:fire_resistance", 40, 0);
                 None
+            } else if case == "sting" {
+                for command in [
+                    "summon pig 4.5 64 4.9 {UUID:[I;86,0,0,3],NoAI:1b,NoGravity:1b}",
+                    "summon pig 4.5 64 4.1 {UUID:[I;86,0,0,4],NoAI:1b,NoGravity:1b}",
+                    "team add sting",
+                    "team modify sting friendlyFire false",
+                    "team join sting 00000056-0000-0000-0000-000000000002",
+                ] {
+                    assert!(game.run_command(command), "{command}");
+                }
+                None
             } else {
                 let y = game.mob_object(mob).unwrap().eye_y().floor() as i32;
                 assert!(game.run_command(&format!("setblock 4 {y} 4 minecraft:stone")));
@@ -288,6 +323,42 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                     Some(40),
                     "the structurally changed pass stops after the current instance"
                 );
+            }
+            if case == "sting" {
+                let poison = |m: &sunrise_client::mobs::Mob| {
+                    m.extra
+                        .effects
+                        .iter()
+                        .find(|e| e.id == "minecraft:poison")
+                        .map(|e| e.duration)
+                };
+                assert_eq!(
+                    poison(creaking),
+                    Some(119),
+                    "the first accepted hit keeps its own puff state"
+                );
+                let pig = |uuid| {
+                    game.mob_object(game.mob_by_uuid([86, 0, 0, uuid]).unwrap())
+                        .unwrap()
+                };
+                assert_eq!(pig(3).health, 10.0, "the newly allied pig is not stung");
+                assert_eq!(poison(pig(3)), None);
+                assert_eq!(
+                    pig(4).health,
+                    8.0,
+                    "the later touch reads the new puff state"
+                );
+                assert_eq!(poison(pig(4)), Some(59));
+                let sounds: Vec<_> = game
+                    .audio
+                    .capture
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .filter(|s| s.event == "minecraft:entity.puffer_fish.sting")
+                    .map(|s| s.position)
+                    .collect();
+                assert_eq!(sounds, [FISH_AFTER_HURT, FISH_AFTER_HURT]);
             }
             let phase = if peer.is_some() { 8 } else { 7 };
             assert_eq!(creaking.extra.ints[0], if reacted != 0 { phase } else { 0 });
