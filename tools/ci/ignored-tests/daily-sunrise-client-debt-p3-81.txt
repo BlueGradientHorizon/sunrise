@@ -1,0 +1,2 @@
+sunrise-client game::native_block_use_criteria_tests::custom_trigger_borrows_conditions_and_uses_the_target_players_predicate lib daily resources
+sunrise-client game::native_block_use_criteria_tests::unloaded_block_use_only_fails_predicates_that_need_the_world lib daily resources

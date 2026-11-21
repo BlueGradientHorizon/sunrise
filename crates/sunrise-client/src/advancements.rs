@@ -4,7 +4,9 @@
 //! conditions advancements use).
 mod data;
 mod state_ranges;
+mod triggers;
 use data::parse;
+pub use triggers::is_builtin_trigger;
 
 use serde_json::Value;
 use std::{
@@ -36,8 +38,8 @@ pub struct Display {
 pub struct Criterion {
     pub name: String,
     pub trigger: String,
-    /// Read on first test: ~1,300 recipe advancements' criteria, most never
-    /// tested in a game, took ~4 MB as `Value`s.
+    /// Custom trigger conditions bind at load for the borrowed native matcher.
+    /// Built-in criteria parse lazily: most recipe criteria are never tested.
     pub conditions: LazyJson,
 }
 #[derive(Clone, Debug, Default)]
@@ -584,6 +586,8 @@ impl Progress {
 /// What predicates may ask about the world.
 pub trait World {
     fn dimension(&self) -> &str;
+    /// Whether a predicate can inspect the real block position in this level.
+    fn is_loaded(&self, pos: [i32; 3]) -> bool;
     /// Effective rain/thunder booleans, including the level's dimension rules.
     fn weather(&self) -> (bool, bool);
     fn biome(&self, pos: [i32; 3]) -> String;
@@ -957,6 +961,16 @@ pub fn location(v: &Value, p: [f64; 3], w: &dyn World) -> bool {
     {
         return false;
     }
+    // LocationPredicate and its Light/Block/Fluid predicates ask for a loaded
+    // position only when they read those world facts. A coordinate-only check
+    // and a match against the event's supplied block state do not require it.
+    if ["biomes", "structures", "smokey", "light", "block", "fluid"]
+        .iter()
+        .any(|&key| !v[key].is_null())
+        && !w.is_loaded(pos)
+    {
+        return false;
+    }
     if !v["biomes"].is_null() && !id_matches(&v["biomes"], "worldgen/biome", &w.biome(pos), w) {
         return false;
     }
@@ -968,11 +982,6 @@ pub fn location(v: &Value, p: [f64; 3], w: &dyn World) -> bool {
         {
             return false;
         }
-    }
-    if let Some(b) = v["can_see_sky"].as_bool()
-        && b != w.can_see_sky(pos)
-    {
-        return false;
     }
     if let Some(b) = v["smokey"].as_bool()
         && b != w.smokey(pos)
@@ -993,7 +1002,9 @@ pub fn location(v: &Value, p: [f64; 3], w: &dyn World) -> bool {
             return false;
         }
     }
-    true
+    v["can_see_sky"]
+        .as_bool()
+        .is_none_or(|b| b == w.can_see_sky(pos))
 }
 /// `DataComponentExactPredicate.test` on an entity: every expected
 /// component equals what the entity reports (absent ones never match).
@@ -2110,6 +2121,9 @@ mod tests {
     }
     struct Flat;
     impl World for Flat {
+        fn is_loaded(&self, _: [i32; 3]) -> bool {
+            true
+        }
         fn dimension(&self) -> &str {
             "minecraft:overworld"
         }
@@ -2160,6 +2174,9 @@ mod tests {
         /// An unpowered beacon: its saved data has `Levels:0`.
         struct Beacon;
         impl World for Beacon {
+            fn is_loaded(&self, _: [i32; 3]) -> bool {
+                true
+            }
             fn dimension(&self) -> &str {
                 Flat.dimension()
             }

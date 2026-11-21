@@ -191,3 +191,24 @@ even if the hook is refused afterwards. A native mod that calls a method in a ph
 another panic unwinds), the game logs the same line and panics, and a panic during an unwind aborts the process.
 Do not call the Host from a `Drop`. A native mod built with `panic = "abort"`, a library that brings its own
 `#[global_allocator]`, and a library that does not use the game's `libstd` are refused at load, by name.
+
+
+## Advancement triggers
+
+Name the custom trigger in an advancement criterion's `trigger` field. The engine binds the
+criterion's `conditions` when loading the advancement; `player` is the usual vanilla player
+predicate. On the server, call `player.trigger_criterion(host, &trigger, &mut predicate)`.
+Implement `CriterionTest::test(&mut self, criterion: &dyn CriterionContext)` on the predicate.
+It can borrow the triggering event's data and is not retained by the game.
+
+Read mod-specific fields through `criterion.conditions()`, a borrowed `mod_api::serde_json::Value`.
+Use `criterion.item("pipe", &stack)?` to test an item field using the target player's level and tags.
+A missing `conditions` value is null. The engine tests `player` after the mod predicate passes and
+awards matches through the normal advancement path.
+
+Use methods such as `trigger_consume_item`, `trigger_block_use` and `trigger_item_used_on_block`
+for those built-in triggers. Only exact built-in keys are reserved; the namespace alone does not
+reserve a key. A block-use trigger does not require a loaded position unless one of its predicates
+needs live world data. Return `CriterionTestError::Refused(message)` when a custom predicate cannot
+answer. This stops the current call and is reported without disabling the next call. A panic logs
+and shows an error toast naming the mod, and disables its predicate for that trigger for the session.

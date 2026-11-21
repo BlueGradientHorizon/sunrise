@@ -62,6 +62,9 @@ impl sunrise_client::beehive::SmokeLevel for LevelLocation<'_> {
 }
 
 impl World for LevelLocation<'_> {
+    fn is_loaded(&self, [x, y, z]: [i32; 3]) -> bool {
+        self.world.is_loaded_at(x, y, z)
+    }
     fn dimension(&self) -> &str {
         self.refs.dimension
     }

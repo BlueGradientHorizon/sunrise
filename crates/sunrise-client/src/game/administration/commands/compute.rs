@@ -595,6 +595,9 @@ mod tests {
     /// A world with nothing in it: the entity conditions under test read none of it.
     struct Void;
     impl adv::World for Void {
+        fn is_loaded(&self, _: [i32; 3]) -> bool {
+            false
+        }
         fn dimension(&self) -> &str {
             "minecraft:overworld"
         }

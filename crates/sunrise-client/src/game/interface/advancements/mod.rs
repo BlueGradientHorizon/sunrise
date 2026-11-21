@@ -163,6 +163,9 @@ impl AdvState {
 /// The game's world for predicates.
 struct View<'a, 'g>(&'a Game<'g>);
 impl adv::World for View<'_, '_> {
+    fn is_loaded(&self, [x, y, z]: [i32; 3]) -> bool {
+        self.0.world.is_loaded_at(x, y, z)
+    }
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.fns.store.predicates.get(id)
     }
@@ -861,7 +864,11 @@ impl Game<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub(super) fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
+    pub(super) fn trigger(
+        &mut self,
+        name: &str,
+        test: impl FnMut(&Value, &dyn adv::World) -> bool,
+    ) {
         if self.lan_acting_fake || self.remote.is_some() || self.no_player_here() {
             return;
         }
@@ -878,7 +885,7 @@ impl Game<'_> {
         &mut self,
         tree: &Tree,
         list: &[(usize, usize)],
-        test: impl Fn(&Value, &dyn adv::World) -> bool,
+        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
     ) {
         if self.lan_acting_fake {
             return;
@@ -2138,21 +2145,7 @@ impl Game<'_> {
     }
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(super) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        #[cfg(test)]
-        crate::game::block_use_completion_tests::record(name, Some(stack));
-        let me = self.player_entity_for(name);
-        let it = item_view(stack);
-        self.trigger(name, move |c, w| {
-            let ctx = adv::Entities {
-                this: Some(&me),
-                origin: me.position,
-                tool: Some(&it),
-                block_pos: Some(pos),
-                target: None,
-                interacting: None,
-            };
-            adv::conditions(&c["location"], &ctx, w)
-        });
+        self.trigger_block_use(name, pos, Some(stack));
     }
     /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
     /// the block's `BLOCK_USE` context at its centre, with no tool.
@@ -2186,8 +2179,8 @@ impl Game<'_> {
                 block_pos: Some(pos),
                 ..player
             };
-            adv::conditions(&c["player"], &player, w)
-                && adv::conditions(&c["location"], &location, w)
+            adv::conditions(&c["location"], &location, w)
+                && adv::conditions(&c["player"], &player, w)
         });
     }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did

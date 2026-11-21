@@ -1,0 +1,24 @@
+ids = [
+    "handle:PlayerRef::trigger_criterion",
+    "handle:PlayerRef::trigger_block_use",
+    "handle:PlayerRef::trigger_item_used_on_block",
+    "trait:CriterionTest",
+    "method:CriterionTest::test",
+    "method:CriterionContext::conditions_json",
+    "method:CriterionContext::conditions",
+    "method:CriterionContext::item",
+    "type:CriterionTestError",
+    "type:CriterionTestError.Unavailable",
+    "type:CriterionTestError.Refused",
+    "type:CriterionTestError.Stack",
+    "type:TriggerCriterionError",
+    "type:TriggerCriterionError.InvalidTrigger",
+    "type:TriggerCriterionError.BuiltinTrigger",
+    "type:TriggerCriterionError.UnloadedChunk",
+    "type:TriggerCriterionError.TestPhaseRefused",
+    "type:TriggerCriterionError.TestPanicked",
+    "type:TriggerCriterionError.TestDisabled",
+    "method:Identifier::as_str",
+]
+why = "Vanilla Criterion.CODEC binds the trigger instance at load, CriterionTriggerInstance validates it, and SimpleCriterionTrigger.trigger borrows the matcher and then tests the player in their level. NeoForge exposes CriteriaTriggers.register without a namespace gate. Keep exact built-in trigger identities and follow DefaultBlockInteractionTrigger.trigger and ItemUsedOnLocationTrigger.trigger: position-dependent LocationPredicate checks (including BlockPredicate.matches) ask for loaded data themselves. Native tests no longer own their callbacks, re-encode conditions, or discard error details through the guest tuple."
+migrate = "Pass &mut predicate instead of Arc::new(predicate) to PlayerRef::trigger_criterion and change CriterionTest::test's receiver from &self to &mut self; the predicate may now borrow input from the firing event. Use criterion.conditions() instead of deserializing criterion.conditions_json(); null is Value::Null. Use criterion.item(key, &stack)? instead of wrapping the old boolean in Ok; Stack now carries a refused stack. Return CriterionTestError::Refused(message) instead of Unavailable or converting an (Identifier, String) tuple. Handle a panicked test with TestPanicked, later calls with TestDisabled, and a wrong-phase test operation with TestPhaseRefused. Both errors are native-only and no longer implement Wire. Replace matches on InvalidTrigger for vanilla keys with BuiltinTrigger, and call the corresponding built-in helper; InvalidTrigger now only describes an empty namespace or path. Remove UnloadedChunk handling from block-use helpers: an unloaded location can simply fail a position-dependent predicate. Use Identifier::as_str() when you need the fully qualified key by reference instead of allocating with to_string()."

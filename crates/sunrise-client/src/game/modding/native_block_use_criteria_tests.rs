@@ -25,6 +25,12 @@ fn install(game: &mut Game<'_>) {
             json!({"location":{"type":"minecraft:match_tool","predicate":{"items":"minecraft:stone","count":2}}}),
         ),
         (
+            "position_requires_chunk",
+            "default_block_use",
+            json!({"location":{"condition":"minecraft:location_check","predicate":{"block":{"blocks":"minecraft:air"}}}}),
+        ),
+        ("default_unconditional", "default_block_use", json!({})),
+        (
             "any2",
             "any_block_use",
             json!({"location":{"type":"minecraft:match_tool","predicate":{"items":"minecraft:stone","count":2}}}),
@@ -130,10 +136,6 @@ fn block_use_refusals_grant_nothing() {
     with_guests(|g| {
         install(g);
         let p = g.player(12).unwrap();
-        assert_eq!(
-            p.trigger_block_use(g, [100000, 64, 100000]),
-            Err(TriggerCriterionError::UnloadedChunk)
-        );
         let invalid = mod_api::ItemStack::new(
             mod_api::__private::item_key("minecraft:stone").unwrap(),
             999,
@@ -157,7 +159,7 @@ fn block_use_refusals_grant_nothing() {
                 &Identifier::parse("minecraft:any_block_use").unwrap(),
                 &mut Never
             ),
-            Err(TriggerCriterionError::InvalidTrigger)
+            Err(TriggerCriterionError::BuiltinTrigger)
         );
         let b = g.player(13).unwrap();
         g.as_guest(12, |g| {
@@ -166,10 +168,7 @@ fn block_use_refusals_grant_nothing() {
                     p.trigger_block_use(g, [0, 64, 0]),
                     Err(TriggerCriterionError::PlayerUnavailable)
                 );
-                assert_eq!(
-                    b.trigger_block_use(g, [100000, 64, 100000]),
-                    Err(TriggerCriterionError::UnloadedChunk)
-                );
+                assert_eq!(b.trigger_block_use(g, [0, 64, 0]), Ok(()));
             })
             .unwrap();
         })
@@ -182,6 +181,95 @@ fn block_use_refusals_grant_nothing() {
         for id in ["default", "item2", "any2", "any1", "any"] {
             assert!(!has(g, id));
         }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn unloaded_block_use_only_fails_predicates_that_need_the_world() {
+    with_guests(|g| {
+        install(g);
+        let p = g.player(12).unwrap();
+        let at = [100000, 64, 100000];
+        let key = mod_api::__private::item_key("minecraft:stone").unwrap();
+        let original = mod_api::ItemStack::new(key, 2).unwrap();
+        assert_eq!(p.trigger_block_use(g, at), Ok(()));
+        assert!(has(g, "default_unconditional"));
+        assert!(!has(g, "position_requires_chunk"));
+        assert_eq!(p.trigger_item_used_on_block(g, at, &original), Ok(()));
+        assert!(has(g, "item2"));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn custom_trigger_borrows_conditions_and_uses_the_target_players_predicate() {
+    use mod_api::ItemStack;
+
+    struct Pipe<'a> {
+        stack: &'a ItemStack,
+        counts: &'a mut Vec<u64>,
+    }
+    impl CriterionTest for Pipe<'_> {
+        fn test(&mut self, criterion: &dyn CriterionContext) -> Result<bool, CriterionTestError> {
+            let count = criterion.conditions()["minimum"].as_u64().unwrap();
+            self.counts.push(count);
+            criterion.item("pipe", self.stack)
+        }
+    }
+
+    with_guests(|g| {
+        install(g);
+        let dir = tempfile::tempdir().unwrap();
+        let advancements = dir.path().join("test/advancement");
+        std::fs::create_dir_all(&advancements).unwrap();
+        for (id, player) in [
+            ("pipe", serde_json::Value::Null),
+            (
+                "pipe_burning",
+                json!({
+                    "condition": "minecraft:entity_properties", "entity": "this",
+                    "predicate": {"flags": {"is_on_fire": true}}
+                }),
+            ),
+        ] {
+            std::fs::write(
+                advancements.join(format!("{id}.json")),
+                json!({"criteria":{"seen":{"trigger":"minecraft:test_pipe_connected",
+                    "conditions":{"minimum":2,"pipe":{"items":"minecraft:stone","count":{"min":2}},"player":player}}}}).to_string(),
+            ).unwrap();
+        }
+        g.adv.tree = Arc::new(a::Tree::load(dir.path()));
+        let p = g.player(12).unwrap();
+        let trigger = Identifier::parse("minecraft:test_pipe_connected").unwrap();
+        let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+        let mut counts = Vec::new();
+        assert_eq!(
+            p.trigger_criterion(
+                g,
+                &trigger,
+                &mut Pipe {
+                    stack: &ItemStack::new(stone, 1).unwrap(),
+                    counts: &mut counts,
+                }
+            ),
+            Ok(())
+        );
+        assert!(!has(g, "pipe"));
+        assert_eq!(
+            p.trigger_criterion(
+                g,
+                &trigger,
+                &mut Pipe {
+                    stack: &ItemStack::new(stone, 2).unwrap(),
+                    counts: &mut counts,
+                }
+            ),
+            Ok(())
+        );
+        assert!(has(g, "pipe"));
+        assert!(!has(g, "pipe_burning"));
+        assert_eq!(counts, [2, 2, 2, 2]);
     });
 }
 
