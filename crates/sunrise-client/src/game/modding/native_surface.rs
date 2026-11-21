@@ -431,7 +431,6 @@ mod tests {
             &game.world,
             game.pack.assets.registry,
             game.res.facts(),
-            false,
             step,
             &game.loop_context,
             game,

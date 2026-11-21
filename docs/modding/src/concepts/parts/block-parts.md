@@ -149,6 +149,19 @@ template block writes still call the rotation Part at their placed world positio
 | Mirroring | Stays the game's: vanilla's table, or the template's for a mod block. |
 | Panics | A panicking part is contained with a warning, and the game's state is placed. |
 
+## Step effects
+
+`BlockPart::step_on` is the block's `Block.stepOn` callback. It runs on the `getOnPosLegacy`
+state of a grounded entity affected by blocks, after the move's restitution and block speed factor
+but before the entity's inside-block effects. An idle grounded item still steps even when it does
+not move. Each effects pass has its own callback; this is not a landing notification.
+
+Register the Part on the block. `StepOnEvent` carries the contacted `state` and `pos`, the entity id
+and kind, whether it is `stepping_carefully`, and its current `movement` (velocity). Edit `movement`
+to change what the rest of this tick sees. Non-finite edits are ignored; there is no veto. The
+`LevelSide` is read-only. Keep the edit a pure function of the inputs so it agrees on both sides and
+during replay. This replaces `Hooks::block_step_on`, the former server-only notice.
+
 ## Landing writes
 
 `BlockPart::bounce_restitution` answers the block's coefficient for a qualifying downward collision,

@@ -105,6 +105,7 @@ impl Game<'_> {
                 0.95_f32,
                 &mut c.velocity,
             );
+            motion.apply_block_speed(c.position, &mut c.velocity);
         }
         // OldMinecartBehavior applies block effects here and at tick end.
         // NewMinecartBehavior applies them after recording each track step.

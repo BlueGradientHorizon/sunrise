@@ -1337,7 +1337,7 @@ impl Game<'_> {
                 h.position.y + moved.y,
                 h.position.z + moved.z,
             );
-            self.restitute_bobber(
+            self.move_bobber_response(
                 h.id,
                 h.position,
                 &mut h.ground,
@@ -1357,7 +1357,7 @@ impl Game<'_> {
         );
         Some(h)
     }
-    fn restitute_bobber(
+    fn move_bobber_response(
         &self,
         id: u32,
         position: Vec3,
@@ -1391,6 +1391,8 @@ impl Game<'_> {
             0.98_f32,
             velocity,
         );
+        motion.apply_block_speed(position, velocity);
+        motion.step_on((id, "minecraft:fishing_bobber"), position, ground, velocity);
     }
     /// The players a hook can catch: everyone but spectators and the dead
     /// (`Projectile.canHitEntity`), the host and the guests in the level.
@@ -2280,7 +2282,7 @@ impl Game<'_> {
                 position.y + moved.y,
                 position.z + moved.z,
             );
-            self.restitute_bobber(id, position, &mut ground, wanted, moved, &mut velocity);
+            self.move_bobber_response(id, position, &mut ground, wanted, moved, &mut velocity);
             if state == State::Flying && (ground.on_ground || ground.horizontal_collision) {
                 velocity = Vec3::ZERO;
             }

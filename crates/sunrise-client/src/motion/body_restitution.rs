@@ -122,6 +122,53 @@ impl BodyMotion<'_> {
         }
     }
 
+    /// Finish `Entity.move` with the block speed factor, before block effects.
+    pub fn apply_block_speed(self, feet: Vec3, velocity: &mut Vec3) {
+        if let Some(blocks) = self.blocks {
+            let factor = super::block_speed_factor_at(self.world, blocks, self.context, feet, None);
+            *velocity = sunrise_world::entity_move::scale_by_block_speed(*velocity, factor);
+        }
+    }
+
+    /// The grounded part of `Entity.applyEffectsFromBlocks`, before the inside sweep.
+    pub fn step_on(
+        self,
+        entity: (u32, &str),
+        feet: Vec3,
+        ground: &GroundState,
+        velocity: &mut Vec3,
+    ) {
+        if !ground.on_ground {
+            return;
+        }
+        let contact = self.legacy_contact(feet, ground);
+        if self.facts.get(contact.state).name.as_ref() == "minecraft:slime_block"
+            && let Some(scale) = crate::entities::slime_step_on_scale(velocity.y)
+        {
+            velocity.x *= scale;
+            velocity.z *= scale;
+        }
+        if let Some(side) = self.side {
+            block_contact::step_on(
+                FrictionLevel {
+                    world: self.world,
+                    registry: self.collision.registry(),
+                    context: self.context,
+                    side,
+                    coefficient: &|id| self.facts.states.get(id.0 as usize).map(|p| p.friction),
+                },
+                Contact {
+                    entity: entity.0 as i32,
+                    kind: entity.1,
+                    state: contact.state,
+                    position: contact.position,
+                },
+                false,
+                velocity,
+            );
+        }
+    }
+
     /// The `canSimulateMovement` decision belongs to the caller. Returns whether vanilla
     /// marked the position for immediate sync, so the owning tracker can observe the bounce.
     #[allow(clippy::too_many_arguments)]

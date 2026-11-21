@@ -33,18 +33,17 @@ impl ItemEntity {
             blocks,
             context,
         );
-        self.apply_move_restitution(
-            BodyMotion {
-                world,
-                collision,
-                facts,
-                blocks,
-                context,
-                side: None,
-            },
-            step,
-        );
-        self.finish_move_block_effects(world, facts, no_physics, blocks, step, context);
+        let motion = BodyMotion {
+            world,
+            collision,
+            facts,
+            blocks,
+            context,
+            side: None,
+        };
+        self.apply_move_restitution(motion, step);
+        self.apply_speed_and_step(motion, no_physics, step);
+        self.finish_move_block_effects(world, facts, step);
         step
     }
 
@@ -227,10 +226,6 @@ impl ItemEntity {
                 fall_move: physics.then_some((from, moved, applied)),
             };
         }
-        // applyEffectsFromBlocksForLastMovements: still lift/drag while idle.
-        if !no_physics {
-            self.slime_step_on(world, facts);
-        }
         ItemStep {
             old_velocity,
             landed: None,
@@ -258,29 +253,30 @@ impl ItemEntity {
         }
     }
 
-    /// Resume the normal block effects after the collision response.
-    pub fn finish_move_block_effects(
+    /// The move's speed factor, then `applyEffectsFromBlocks`' grounded step.
+    pub fn apply_speed_and_step(
         &mut self,
-        world: &World,
-        facts: &BlockFacts,
+        motion: BodyMotion<'_>,
         no_physics: bool,
-        blocks: Option<&BoundMovementProperties>,
         step: ItemStep,
-        context: &sunrise_world::native_load_context::LoopContext,
     ) {
+        if no_physics {
+            return;
+        }
         if step.movement.is_some() {
-            // Entity.move applies the block's speed factor before block effects.
-            if !no_physics && let Some(blocks) = blocks {
-                let factor = crate::motion::block_speed_factor_at(
-                    world,
-                    blocks,
-                    context,
-                    self.position,
-                    None,
-                );
-                self.velocity =
-                    sunrise_world::entity_move::scale_by_block_speed(self.velocity, factor);
-            }
+            motion.apply_block_speed(self.position, &mut self.velocity);
+        }
+        motion.step_on(
+            (self.id, "minecraft:item"),
+            self.position,
+            &self.ground,
+            &mut self.velocity,
+        );
+    }
+
+    /// The item-specific inside effects of a move, after the grounded step.
+    pub fn finish_move_block_effects(&mut self, world: &World, facts: &BlockFacts, step: ItemStep) {
+        if step.movement.is_some() {
             self.apply_honey_slide(world, facts);
             self.stuck = match self.stuck_multiplier(world, facts) {
                 // Entity.makeStuckInBlock resets the fall.

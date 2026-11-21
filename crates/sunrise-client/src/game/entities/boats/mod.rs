@@ -1097,18 +1097,10 @@ impl Game<'_> {
             );
             b.velocity = velocity;
         }
-        // AbstractBoat.tick's applyEffectsFromBlocks: powder snow or a cobweb makes the
-        // boat stuck, which slows its next move, and resets its fall.
+        self.body_motion(&game_side!(self))
+            .apply_block_speed(b.position, &mut b.velocity);
+        self.boat_step_on(&mut b);
         self.boat_stuck_in_blocks(&mut b);
-        // Entity.move's last step: soul sand and honey slow the boat too.
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            b.position,
-            None,
-        );
-        b.velocity = sunrise_world::entity_move::scale_by_block_speed(b.velocity, factor);
         Self::tick_boat_paddles(&mut b, &mut self.audio);
         b
     }
@@ -1280,10 +1272,12 @@ impl Game<'_> {
         // resets the fall of the boat the guest drives.
         if driven.contains(&id) {
             let mut b = self.boats[i].clone();
+            self.boat_step_on(&mut b);
             self.boat_stuck_in_blocks(&mut b);
             self.boats.update(i, |boat| {
                 boat.stuck = b.stuck;
                 boat.fall_distance = b.fall_distance;
+                boat.velocity = b.velocity;
             });
             self.refresh_boat_status(i);
         }
@@ -1467,7 +1461,10 @@ impl Game<'_> {
         }
         let touches = self.boat_bubble_columns(i);
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
-        for _ in 0..2 {
+        for pass in 0..2 {
+            if pass == 1 {
+                self.boat_second_step(i);
+            }
             for &column in &touches {
                 if column.surface {
                     self.boat_above_bubble_column(i, column.drag);
@@ -1479,6 +1476,30 @@ impl Game<'_> {
         self.tick_boat_bubble_column(i);
         if self.options.execution_role.is_client() {
             self.boats.update(i, Boat::tick_bubble_wobble);
+        }
+    }
+    fn boat_step_on(&self, boat: &mut Boat) {
+        let mut velocity = boat.velocity;
+        self.body_motion(&game_side!(self)).step_on(
+            (boat.id, boat.entity_type_name()),
+            boat.position,
+            &boat.ground,
+            &mut velocity,
+        );
+        boat.velocity = velocity;
+    }
+    /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
+    pub(super) fn boat_second_step(&mut self, i: usize) {
+        let b = &self.boats[i];
+        if b.ground.on_ground {
+            let mut velocity = b.velocity;
+            self.body_motion(&game_side!(self)).step_on(
+                (b.id, b.entity_type_name()),
+                b.position,
+                &b.ground,
+                &mut velocity,
+            );
+            self.boats.update(i, |b| b.velocity = velocity);
         }
     }
     /// `PowderSnowBlock.entityInside` for a boat: the powder snow cells its box, and the box it

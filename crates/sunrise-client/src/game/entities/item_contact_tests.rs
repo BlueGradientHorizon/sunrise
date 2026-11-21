@@ -369,3 +369,163 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
         },
     );
 }
+
+type StepCall = (bool, i32, [i32; 3], bool);
+
+#[derive(Clone, Default)]
+struct StepProbe {
+    calls: Arc<Mutex<Vec<StepCall>>>,
+}
+
+#[mod_api::sunrise_part]
+impl BlockPart for StepProbe {
+    fn step_on(&self, level: mod_api::LevelSide<'_>, event: &mut mod_api::StepOnEvent<'_>) {
+        let (client, host) = match level {
+            mod_api::LevelSide::Client(host) => (true, host),
+            mod_api::LevelSide::Server(host) => (false, host),
+        };
+        let pos = [event.pos.x, event.pos.y, event.pos.z];
+        assert_eq!(host.block_state(pos), Some(event.state));
+        self.calls
+            .lock()
+            .unwrap()
+            .push((client, event.entity, pos, event.stepping_carefully));
+        event.movement[0] = 0.25;
+    }
+
+    fn entity_inside(
+        &self,
+        _: &mut dyn mod_api::LevelRandomHost,
+        event: &mut mod_api::EntityInsideEvent<'_>,
+    ) {
+        // A later inside write wins over the step; settle then drags this movement.
+        event.run_after(
+            mod_api::InsideEffect::Freeze,
+            mod_api::EntityWrite::SetMovement([0.5, 0.0, 0.0]),
+        );
+    }
+
+    fn item_after_vertical_collision(
+        &self,
+        _: HostSide<'_>,
+        event: &mut ItemAfterVerticalCollisionEvent<'_>,
+    ) -> Flow {
+        if event.stack.as_ref().is_some_and(|stack| stack.count() == 1) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
+    }
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for StepProbe {
+    fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+        let stone = r.block_key("minecraft:stone");
+        let cobweb = r.block_key("minecraft:cobweb");
+        r.block_part(stone, self.clone());
+        r.block_part(cobweb, self.clone());
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
+    crate::game::in_own_process(
+        "game::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
+        || {
+            use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+            use sunrise_client::motion::{MotionWorld, PlayerMotion};
+
+            let part = StepProbe::default();
+            let mods: mod_api::Mods =
+                vec![mod_api::ModEntry::new("step", Box::new(part.clone()))].into();
+            mod_platform::testing::with_mods(mods.clone(), || {
+                crate::game::api_values::install_parts(&mods).unwrap();
+                crate::game::native_hooks::install_block_contact_hooks();
+                let run = |game: &mut Game<'_>, client| {
+                    let registry = game.pack.assets.registry;
+                    let stone = registry.default_state("minecraft:stone").unwrap();
+                    let web = registry.default_state("minecraft:cobweb").unwrap();
+                    let air = game.res.facts().air;
+                    let floor = [4, 63, 4];
+                    game.world = World::new(air, 1);
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    game.world.set(4, 63, 4, stone).unwrap();
+                    if !client {
+                        game.world.set(4, 64, 4, web).unwrap();
+                    }
+                    let spawn = |game: &mut Game<'_>, count, height| {
+                        game.dropped.clear();
+                        game.spawn_item(
+                            ItemStack::new("minecraft:iron_ingot", count),
+                            [4.5, height, 4.5],
+                            [0.0, -0.96, 0.0],
+                            20,
+                        );
+                        game.dropped[0].clone()
+                    };
+                    let tick = |game: &mut Game<'_>, item: &mut ItemEntity, escape| {
+                        game.tick_item_with_block_contacts(item, escape, &[], client, &mut |_| {})
+                    };
+                    let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
+                    let mut item = spawn(game, 2, 64.25);
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    assert_eq!(item.position.y, 64.0);
+                    let settled = if client { 0.25 } else { 0.5 } * f64::from(0.98_f32 * 0.6_f32);
+                    assert_eq!(item.velocity.x, settled);
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+
+                    game.world.set(4, 64, 4, air).unwrap();
+                    item.velocity = Vec3::ZERO;
+                    item.ticks = item.id.wrapping_neg() & 3;
+                    assert_eq!(tick(game, &mut item, None), (true, false));
+                    assert_eq!(item.position, Vec3::new(4.5, 64.0, 4.5));
+                    assert_eq!(item.velocity.x, 0.25); // no movement drag on an idle tick
+                    assert_eq!(clear_calls(), [(client, item.id as i32, floor, false)]);
+
+                    assert_eq!(tick(game, &mut item, Some(0.1)), (true, false));
+                    let mut airborne = spawn(game, 2, 69.0);
+                    assert_eq!(tick(game, &mut airborne, None), (true, false));
+                    let mut consumed = spawn(game, 1, 64.25);
+                    assert_eq!(tick(game, &mut consumed, None), (false, true));
+                    assert!(clear_calls().is_empty());
+
+                    let position = Vec3::new(4.5, 64.0, 4.5);
+                    let mut player = PlayerMotion::new(game.motion, position).unwrap();
+                    player.entity_id = 77;
+                    player.ground.on_ground = true;
+                    player.shift_key_down = true;
+                    let side = game_side!(game);
+                    let mut motion = MotionWorld {
+                        side: &side,
+                        entities: &[],
+                        player: &mut player,
+                        scene: &mut game.world,
+                        assets: &game.pack.assets,
+                        collision_binding: game.collision,
+                        resources: game.motion,
+                        health: &game.health_resources,
+                        loop_context: &game.loop_context,
+                        damage_hooks: &game.damage_hooks,
+                        tag_items: None,
+                        block_registries: Some(&game.pack.block_registries),
+                    };
+                    if client {
+                        motion.apply_effects_from_blocks().unwrap();
+                    } else {
+                        motion.server_stuck_in_blocks(position).unwrap();
+                        assert!(clear_calls().is_empty());
+                        motion.server_block_damage(position).unwrap();
+                    }
+                    assert_eq!(player.velocity.x, 0.25);
+                    assert_eq!(clear_calls(), [(client, 77, floor, true)]);
+                };
+                with_game(|game| run(game, false));
+                with_client_game(|game| run(game, true));
+            });
+        },
+    );
+}

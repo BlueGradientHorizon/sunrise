@@ -1617,26 +1617,45 @@ pub(crate) fn effects_from_blocks(
         // 0.2 below the feet, or the supporting block when the centre is over
         // its edge.
         let [x, y, z] = m.block_on_legacy(w);
+        let carefully = matches!(m.species(), Species::Cat | Species::Ocelot)
+            && m.extra.pose == super::sync::CROUCHING;
+        let state = w.world.block(x, y, z);
+        if !carefully
+            && w.block_name(x, y, z) == "minecraft:slime_block"
+            && let Some(scale) = crate::entities::slime_step_on_scale(m.velocity.y)
+        {
+            m.velocity.x *= scale;
+            m.velocity.z *= scale;
+        }
         crate::block_contact::step_on(
-            w.block_name(x, y, z),
+            crate::motion::FrictionLevel {
+                world: w.world,
+                registry: w.registry,
+                context: w.loop_context,
+                side: w.side,
+                coefficient: &|id| Some(w.movement.get(id).ok()?.coefficients.friction),
+            },
             crate::block_contact::Contact {
                 entity: m.id as i32,
                 kind: &m.kind.id,
-                state: w.world.block(x, y, z),
+                state,
                 position: sunrise_core::position::BlockPos::new(x, y, z),
             },
+            carefully,
+            &mut m.velocity,
         );
-        if w.block_name(x, y, z) == "minecraft:magma_block" {
+        if !carefully && w.block_name(x, y, z) == "minecraft:magma_block" {
             m.damage(level, 1.0, Damage::of(DamageKind::HotFloor));
             // Enderman.hurtServer finishes before stepOn returns; the scan
             // below still uses the movements captured before that hurt.
             hurt_teleports(m, w, events);
         }
-        // TurtleEggBlock.stepOn: a mob never steps carefully, so an egg under
+        // TurtleEggBlock.stepOn: unless it steps carefully, an egg under
         // it breaks one time in a hundred (`destroyEgg`), unless it is a turtle
         // or a bat or mob griefing is off (`canDestroyEgg`); the roll is the
         // level's and comes only after those checks.
-        if w.block_name(x, y, z) == "minecraft:turtle_egg"
+        if !carefully
+            && w.block_name(x, y, z) == "minecraft:turtle_egg"
             && !matches!(m.species(), Species::Turtle | Species::Bat)
             && w.can_grief(m.id)
             && level.random().next_int_bound(100).unwrap_or(1) == 0

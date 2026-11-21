@@ -241,15 +241,8 @@ impl Game<'_> {
             f.fall_distance = 0.0;
         }
         let side = game_side!(self);
-        sunrise_client::motion::BodyMotion {
-            world: &self.world,
-            collision: self.collision,
-            facts: self.res.facts(),
-            blocks: Some(&self.res.motion().blocks),
-            context: &self.loop_context,
-            side: Some(&side),
-        }
-        .restitute(
+        let body = self.body_motion(&side);
+        body.restitute(
             (f.id, "minecraft:falling_block"),
             false,
             wanted,
@@ -257,6 +250,13 @@ impl Game<'_> {
             effect,
             sunrise_client::entity_rules::EntityRules::get_gravity(f),
             0.98_f32,
+            &mut f.velocity,
+        );
+        body.apply_block_speed(f.position, &mut f.velocity);
+        body.step_on(
+            (f.id, "minecraft:falling_block"),
+            f.position,
+            &f.ground,
             &mut f.velocity,
         );
         // applyEffectsFromBlocks: WebBlock.entityInside makes it stuck

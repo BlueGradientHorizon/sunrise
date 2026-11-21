@@ -1022,10 +1022,6 @@ impl Game<'_> {
             self.item_fall_on(item.id, on, distance);
         }
         item.apply_move_restitution(self.body_motion(&game_side!(self)), step);
-        if !client {
-            // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
-            self.sweep_item_inside(item);
-        }
         if let Some(pos) = step.vertical_contact {
             let state = self.world.block(pos.x, pos.y, pos.z);
             let position = item.position;
@@ -1056,14 +1052,11 @@ impl Game<'_> {
                 return (false, true);
             }
         }
-        item.finish_move_block_effects(
-            &self.world,
-            self.res.facts(),
-            no_physics,
-            Some(&self.res.motion().blocks),
-            step,
-            &self.loop_context,
-        );
+        item.apply_speed_and_step(self.body_motion(&game_side!(self)), no_physics, step);
+        if !client && !no_physics {
+            self.sweep_item_inside(item);
+        }
+        item.finish_move_block_effects(&self.world, self.res.facts(), step);
         item.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
@@ -1074,7 +1067,6 @@ impl Game<'_> {
             &self.world,
             self.pack.assets.registry,
             self.res.facts(),
-            no_physics,
             step,
             &self.loop_context,
             self,

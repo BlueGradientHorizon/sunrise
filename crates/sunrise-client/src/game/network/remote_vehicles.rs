@@ -859,7 +859,10 @@ impl Game<'_> {
                 self.refresh_boat_status(i);
             }
             let touches = self.boat_bubble_columns(i);
-            for _ in 0..2 {
+            for pass in 0..2 {
+                if pass == 1 && driven {
+                    self.boat_second_step(i);
+                }
                 for &column in &touches {
                     if column.surface {
                         if self.boat_splash_roll(i) {

@@ -228,6 +228,13 @@ impl Rocket {
             if let Some((_, wanted, moved, restored)) = self.free_flight(&mut scene, motion.context)
             {
                 self.restitute_flight(motion, wanted, moved);
+                motion.apply_block_speed(self.position, &mut self.velocity);
+                motion.step_on(
+                    (self.id, "minecraft:firework_rocket"),
+                    self.position,
+                    &self.ground,
+                    &mut self.velocity,
+                );
                 self.velocity = restored;
             }
         }
@@ -446,7 +453,16 @@ impl Game<'_> {
             }
             r.fall_distance = 0.0;
         }
-        r.restitute_flight(self.body_motion(&game_side!(self)), wanted, moved);
+        let side = game_side!(self);
+        let motion = self.body_motion(&side);
+        r.restitute_flight(motion, wanted, moved);
+        motion.apply_block_speed(r.position, &mut r.velocity);
+        motion.step_on(
+            (r.id, "minecraft:firework_rocket"),
+            r.position,
+            &r.ground,
+            &mut r.velocity,
+        );
         let length = moved.length_squared();
         let recorded = length > 1.0e-7 || wanted.length_squared() - length < 1.0e-7;
         let (world, facts) = (&self.world, self.res.facts());

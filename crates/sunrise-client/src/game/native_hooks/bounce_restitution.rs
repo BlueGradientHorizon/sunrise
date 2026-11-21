@@ -17,16 +17,8 @@ impl FrictionView<'_> {
     }
 
     /// `Block.stepOn` before the simulation checks the blocks it traversed.
-    pub(in crate::game) fn native_step_on(
-        &self,
-        entity: i32,
-        kind: &str,
-        state: BlockStateId,
-        pos: BlockPos,
-        stepping_carefully: bool,
-        movement: &mut [f64; 3],
-    ) {
-        self.fire_step_on(entity, kind, state, pos, stepping_carefully, movement);
+    pub(in crate::game) fn native_step_on(&self, call: super::fire::StepOnCall<'_>) {
+        self.fire_step_on(call);
     }
 }
 

@@ -1282,17 +1282,6 @@ impl Game<'_> {
         }
         let v = c.velocity;
         self.move_cart(c, v);
-        // Entity.move's last step: soul sand and honey slow a derailed cart.
-        // The rail paths set the track's velocity again after their move, so
-        // the factor changes nothing there (measured on a rail over soul sand).
-        let factor = crate::motion::block_speed_factor_at(
-            &self.world,
-            &self.motion.blocks,
-            &self.loop_context,
-            c.position,
-            None,
-        );
-        c.velocity = sunrise_world::entity_move::scale_by_block_speed(c.velocity, factor);
         if !c.ground.on_ground {
             // scale(getAirDrag()): 0.95F, widened.
             let drag = f64::from(0.95_f32);
@@ -1306,6 +1295,12 @@ impl Game<'_> {
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
     pub(super) fn cart_block_effects(&self, c: &mut Minecart) {
+        self.body_motion(&game_side!(self)).step_on(
+            (c.id, c.kind.id()),
+            c.position,
+            &c.ground,
+            &mut c.velocity,
+        );
         if c.push_by_bubble_column(
             &self.world,
             self.pack.assets.registry,
