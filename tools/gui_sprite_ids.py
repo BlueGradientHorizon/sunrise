@@ -12,6 +12,8 @@ import re
 SKIP_FILES = {
     "crates/sunrise-client-render/src/hud.rs",
     "crates/sunrise-client-render/src/hud/tests.rs",
+    "crates/sunrise-client-render/src/hud/tests/atlas.rs",
+    "crates/sunrise-client-render/src/hud/tests/renderer.rs",
     "crates/sunrise-client-render/src/hud/gui_sprite.rs",
     "crates/sunrise-client-render/src/hud/sprite_modifiers.rs",
     "crates/sunrise-client-render/src/hud/menu_pictures.rs",

@@ -83,12 +83,12 @@ CodepointMap.remove	skip:java		codepoint lookup table; Sunrise uses HashMap and 
 CodepointMap.forEach	skip:java		codepoint lookup table; Sunrise uses HashMap and BTreeSet
 CodepointMap.keySet	skip:java		codepoint lookup table; Sunrise uses HashMap and BTreeSet
 FontManager.createFontSet	port	crates/sunrise-client-render/src/font.rs::Font::load_set	a font's providers into a set
-FontManager.reload	port	crates/sunrise-client-render/src/hud/atlas.rs::HudAtlas::pack	fonts are rebuilt with the atlas (Font::load at hud.rs:582); no async reload
+FontManager.reload	port	crates/sunrise-client-render/src/hud/atlas_pack.rs::HudAtlas::pack	fonts are rebuilt with the atlas (Font::load at hud.rs:582); no async reload
 FontManager.safeLoad	inline	crates/sunrise-client-render/src/font.rs::Font::load_set	a TrueType provider that fails to load is dropped; a bitmap sheet that fails warns
 FontManager.resolveProviders	port	crates/sunrise-client-render/src/font.rs::providers	reference expansion in order, depth 8; no dependency sort
 FontManager.finalizeProviderLoading	skip:java		prewarm of glyph lookups; the fallback is the missing box that Font::resolve gives
 FontManager.getFontOptions	port	crates/sunrise-client/src/game/interface/options.rs::Game::apply_ui_settings	force unicode and japanese flags read from settings
-FontManager.apply	port	crates/sunrise-client-render/src/hud/atlas.rs::HudAtlas::pack	new font sets replace the old ones with the atlas
+FontManager.apply	port	crates/sunrise-client-render/src/hud/atlas_pack.rs::HudAtlas::pack	new font sets replace the old ones with the atlas
 FontManager.updateOptions	port	crates/sunrise-client/src/game/interface/options.rs::Game::apply_ui_settings	sets the Font uniform and japanese flags when they change (options.rs:299-301)
 FontManager.loadResourceStack	inline	crates/sunrise-client-render/src/font.rs::providers	gap: minor: one fonts.json per font id from the resource root, not a stack of packs
 FontManager.getSpriteFont	missing		minor: atlas sprite fonts (sprite objects in text) are not parsed; they draw the missing box

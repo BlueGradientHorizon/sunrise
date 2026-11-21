@@ -103,6 +103,7 @@ mod atlas_sprites;
 pub use atlas_sprites::*;
 mod atlas;
 pub use atlas::*;
+mod atlas_pack;
 mod image;
 pub use image::*;
 mod batch;
