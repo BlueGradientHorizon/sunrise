@@ -1,34 +1,19 @@
 //! Port-pack's download agents and redirect checks.
 
-use sunrise_proxy::proxy_spec_for;
 pub use sunrise_proxy::{direct, env_for, host_of, keep, parse, redacted, scheme_of, set_proxy};
 
 /// An agent for downloading `url`: through the proxy when one is set, unless `url` is a host that
 /// must be reached directly.
 pub fn agent(url: &str) -> ureq::Agent {
-    keep("port-pack", proxy_spec_for(url).as_deref(), |proxy| {
-        let builder = ureq::AgentBuilder::new();
-        match proxy {
-            Some(proxy) => builder.proxy(proxy).build(),
-            None => builder.build(),
-        }
-    })
+    sunrise_proxy::agent("port-pack", url, std::convert::identity)
 }
 
 /// GET from allowed HTTPS hosts, validating every redirect before contacting it.
 pub(crate) fn get_from_hosts(url: &str, hosts: &[&str]) -> Result<Option<ureq::Response>, String> {
     follow(url, hosts, |address| {
-        let agent = keep(
-            "port-pack-no-redirect",
-            proxy_spec_for(address).as_deref(),
-            |proxy| {
-                let builder = ureq::AgentBuilder::new().redirects(0);
-                match proxy {
-                    Some(proxy) => builder.proxy(proxy).build(),
-                    None => builder.build(),
-                }
-            },
-        );
+        let agent = sunrise_proxy::agent("port-pack-no-redirect", address, |builder| {
+            builder.redirects(0)
+        });
         match agent
             .get(address)
             .set("User-Agent", crate::modrinth::AGENT)
@@ -63,6 +48,19 @@ fn follow(
         )?;
     }
     Err("Too many redirects".into())
+}
+
+fn checked_url(address: &str, hosts: &[&str]) -> Result<url::Url, String> {
+    let url = url::Url::parse(address).map_err(|e| e.to_string())?;
+    if url.scheme() != "https"
+        || !url.host_str().is_some_and(|host| hosts.contains(&host))
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("Refused download URL outside allowed HTTPS hosts".into());
+    }
+    Ok(url)
 }
 
 #[cfg(test)]
@@ -134,17 +132,4 @@ mod redirect_tests {
             .is_err()
         );
     }
-}
-
-fn checked_url(address: &str, hosts: &[&str]) -> Result<url::Url, String> {
-    let url = url::Url::parse(address).map_err(|e| e.to_string())?;
-    if url.scheme() != "https"
-        || !url.host_str().is_some_and(|host| hosts.contains(&host))
-        || url.port().is_some()
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        return Err("Refused download URL outside allowed HTTPS hosts".into());
-    }
-    Ok(url)
 }

@@ -1,4 +1,7 @@
 //! Shared HTTP proxy selection and connection pools for Sunrise downloads.
+//!
+//! Local hosts and hosts in `NO_PROXY` go direct. Other URLs use the launcher setting when present,
+//! then `HTTPS_PROXY` or `HTTP_PROXY` for the URL's scheme, then `ALL_PROXY`.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,9 +38,25 @@ pub fn proxy_spec_for(url: &str) -> Option<String> {
         .or_else(|| env_for(scheme_of(url).unwrap_or("https")))
 }
 
-/// The agent `url` is fetched with, built by `build` and then kept for the next request that names
-/// the same `slot` and proxy: a fresh `Agent` starts a new connection pool, so building one per
-/// request is a handshake per file, and a modpack's jars are fetched one after another.
+/// A kept agent for `url`, using the same proxy rules as [`proxy_spec_for`].
+/// Each `slot` names one builder configuration. `configure` only runs when the slot has no agent
+/// for the selected proxy, and should not set a proxy itself.
+pub fn agent(
+    slot: &str,
+    url: &str,
+    configure: impl FnOnce(ureq::AgentBuilder) -> ureq::AgentBuilder,
+) -> ureq::Agent {
+    keep(slot, proxy_spec_for(url).as_deref(), |proxy| {
+        let builder = configure(ureq::AgentBuilder::new());
+        match proxy {
+            Some(proxy) => builder.proxy(proxy).build(),
+            None => builder.build(),
+        }
+    })
+}
+
+/// An agent built by `build` and kept for the next request with the same `slot` and proxy.
+/// Building a fresh agent every time would give each request a new connection pool.
 pub fn keep(
     slot: &str,
     spec: Option<&str>,
@@ -397,6 +416,79 @@ mod tests {
             assert_eq!(answer.into_string().unwrap(), "ok", "{scheme}");
             assert_eq!(server.join().unwrap(), "sunrise.invalid", "{scheme}");
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_configured_agent_uses_the_env_proxy_but_goes_direct_for_localhost() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        const LOCAL_URL: &str = "SUNRISE_PROXY_TEST_LOCAL_URL";
+        const TIMEOUT: Duration = Duration::from_secs(5);
+        if let Ok(local_url) = std::env::var(LOCAL_URL) {
+            let get = |url: &str| {
+                agent("test-configured", url, |builder| {
+                    builder.redirects(0).timeout(TIMEOUT)
+                })
+                .get(url)
+                .call()
+                .unwrap()
+            };
+            assert_eq!(
+                get("http://sunrise.invalid/a.jar").into_string().unwrap(),
+                "ok"
+            );
+            assert_eq!(
+                get(&local_url).status(),
+                302,
+                "the direct agent must not redirect"
+            );
+            return;
+        }
+
+        let (port, proxy) = socks5_proxy();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let local_url = format!(
+            "http://localhost:{}/",
+            listener.local_addr().unwrap().port()
+        );
+        let origin = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(TIMEOUT)).unwrap();
+            let mut line = String::new();
+            let mut request = BufReader::new(&stream);
+            while request.read_line(&mut line).unwrap() > 2 {
+                line.clear();
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+
+        // Set the proxy only in a fresh process, never in the test runner's shared environment.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "tests::a_configured_agent_uses_the_env_proxy_but_goes_direct_for_localhost",
+            ])
+            .env(LOCAL_URL, local_url)
+            .env("HTTP_PROXY", format!("socks5h://127.0.0.1:{port}"))
+            .env("NO_PROXY", "")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        assert_eq!(proxy.join().unwrap(), "sunrise.invalid");
+        origin.join().unwrap();
     }
 
     /// The agent a second request gets is the one the first built: one connection pool, not one
