@@ -103,6 +103,45 @@ fn constructing_or_requiring_a_menu_screen_requires_the_client() {
 }
 
 #[test]
+fn stock_screen_uses_the_opener_owner_not_the_mask_author() {
+    const MENU: &str = "minecraft:hopper";
+    const OPENER: &str = "minecraft:test_machine";
+    struct Presenter;
+    #[mod_api::__subscriptions]
+    impl Hooks for Presenter {
+        fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
+            r.menu_slot_exclusions(MENU, Some(OPENER), &[0]).unwrap();
+            r.register_menu_screen(
+                MENU,
+                Arc::new(|_: &dyn ClientHost, _: crate::MenuScreenOpen<'_>| None),
+            )
+            .unwrap();
+        }
+    }
+    struct Owner;
+    #[mod_api::__subscriptions]
+    impl Hooks for Owner {}
+    let mods: crate::Mods = vec![
+        ModEntry::new("presenter", Box::new(Presenter)),
+        ModEntry::new("owner", Box::new(Owner)),
+    ]
+    .into();
+    crate::testing::with_mods(mods.clone(), || {
+        crate::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        crate::__private::install_content_owners([(OPENER, "owner")], [], [], []);
+        assert_eq!(
+            crate::__private::menu_slot_exclusions(MENU, Some(OPENER)),
+            &[0]
+        );
+        assert!(!crate::__private::has_menu_screen_factory(
+            MENU,
+            None,
+            Some(OPENER)
+        ));
+    });
+}
+
+#[test]
 fn refused_slot_exclusions_cannot_replace_a_scoped_mask() {
     const MENU: &str = "alpha:pack";
     const STOCK: &str = "minecraft:hopper";
