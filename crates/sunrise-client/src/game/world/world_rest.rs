@@ -316,7 +316,7 @@ pub(super) fn load_world_rest(
         ambient,
         nether_environment,
         end_environment,
-        behaviours: behaviours?,
+        behaviours: Arc::new(behaviours?),
         mob_types,
         mob_data,
         spawner_types,

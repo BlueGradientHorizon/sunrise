@@ -161,11 +161,19 @@ Both lookups return `None` before their registry completes, including for vanill
 
 ## Fluids and effects
 
-Declare a tank-only fluid in your own namespace with `r.declare_fluid("chocolate")`; the returned `FluidKey` identifies it for the mod load. Request vanilla or another mod's declared fluid with `r.fluid_key("minecraft:water")` or `r.fluid_key("other:chocolate")`. Requests resolve after all registrations, so declaration order does not matter; an unknown request stops the load and names the requesting mod. Tank-only fluids have no world simulation or world state. Fluid stacks and recipe ingredients use these keys.
+Declare a tank-only fluid with `r.declare_fluid("chocolate")`; the returned `FluidKey` identifies it for the mod load.
+For both tank-only and world fluids, bare declarations use the calling mod's ID as the namespace. An explicit ID
+may name a namespace owned by the caller's manifest or by a content package it serves via `served_by`.
+Request vanilla or another mod's declared fluid with `r.fluid_key("minecraft:water")` or
+`r.fluid_key("other:chocolate")`. Requests resolve after all registrations, so declaration order does not
+matter; an unknown request stops the load and names the requesting mod. Tank-only fluids have no world
+simulation or world state. Fluid stacks and recipe ingredients use these keys.
+
 Declare a fluid that exists in the world with `let mut fluid = WorldFluid::default(); fluid.drop_off = 2; r.declare_world_fluid("oil", fluid);`,
-using `mod_api::WorldFluid`, the code form of a fluid file's `world` object ([content mods](../how-to/content-mods.md)): it adds the block
-`mymod:oil`, the flowing fluid `mymod:flowing_oil` and the bucket `mymod:oil_bucket`, and its fluid file, if it has one,
-describes its appearance. `r.fluid_part("mymod:oil", Part)` attaches a `FluidPart`, whose `fluid_rules` can change the
+using `mod_api::WorldFluid`, the code form of a fluid file's `world` object ([content mods](../how-to/content-mods.md)).
+For `mymod`, this adds the block `mymod:oil`, flowing fluid `mymod:flowing_oil` and bucket `mymod:oil_bucket`.
+The optional file `data/<namespace>/sunrise/fluid/<path>.json` describes its appearance.
+`r.fluid_part("mymod:oil", Part)` attaches a `FluidPart`, whose `fluid_rules` can change the
 declared values by position on the server. It is asked for every cell a spread looks at, so answer fast.
 
 A saved tank whose fluid's mod is absent carries an opaque unresolved identity. Its stack's

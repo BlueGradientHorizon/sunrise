@@ -5,6 +5,7 @@ impl PartRegistrar {
     pub(crate) fn registration_checkpoint(&self) -> impl FnOnce(&mut Self) + use<> {
         let parts = self.parts.clone();
         let attachment_types = self.attachment_types.clone();
+        let attachment_owners = self.attachment_owners.clone();
         let tags = self.tags.clone();
         let keys = self.registry_keys.borrow().clone();
         let menu_screen_factories = self.menu_screen_factories.clone();
@@ -26,6 +27,7 @@ impl PartRegistrar {
                     registrar.block_entity_transforms = block_entity_transforms;
                     registrar.parts = parts;
                     registrar.attachment_types = attachment_types;
+                    registrar.attachment_owners = attachment_owners;
                     registrar.tags = tags;
                     *registrar.registry_keys.borrow_mut() = keys;
                     registrar.menu_screen_factories = menu_screen_factories;
@@ -43,6 +45,7 @@ impl PartRegistrar {
             game_rule_categories,
             game_rules,
             custom_stats,
+            custom_stat_owners,
             entity_tick_each,
             attachment_uses,
             block_entity_types,

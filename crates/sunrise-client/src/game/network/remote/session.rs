@@ -168,6 +168,10 @@ impl Game<'_> {
         streaming.radius = self.settings.render_distance;
         self.streaming = streaming;
         self.reset_client_world(0);
+        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        self.world
+            .chunks
+            .track_connection_groups(group_count.clone());
         self.save = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-remote-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
@@ -308,6 +312,7 @@ impl Game<'_> {
             heard_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
+            group_count,
             predictions: HashMap::new(),
             menu: ClientMenu::default(),
             ticked_before_player: std::collections::HashSet::new(),
@@ -447,6 +452,10 @@ impl Game<'_> {
         streaming.radius = self.settings.render_distance;
         self.streaming = streaming;
         self.reset_client_world(0);
+        let group_count = sunrise_client::chunk_map::ConnectionGroupCount::default();
+        self.world
+            .chunks
+            .track_connection_groups(group_count.clone());
         self.save = Arc::new(SaveDir::new(
             std::env::temp_dir().join("sunrise-replay-unused"),
             sunrise_client::save::LevelShape::OVERWORLD,
@@ -563,6 +572,7 @@ impl Game<'_> {
             heard_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
+            group_count,
             predictions: HashMap::new(),
             menu: ClientMenu::default(),
             ticked_before_player: std::collections::HashSet::new(),
@@ -662,6 +672,18 @@ impl Game<'_> {
         self.stats = Default::default();
         Ok(())
     }
+    /// Refuse a bad Play payload with the normal connection-error screen.
+    pub(in crate::game) fn refuse_play_payload(
+        &mut self,
+        error: impl std::fmt::Display,
+    ) -> Result<()> {
+        log::warn!("Sunrise: {error}");
+        self.leave_server(Some(Text::translate(
+            "disconnect.genericReason",
+            &[Text::literal(error.to_string())],
+        )))
+    }
+
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
     pub(in crate::game) fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
         if reason.is_none() && self.integrated.as_ref().is_some_and(|s| !s.stopped()) {
@@ -895,6 +917,11 @@ impl Game<'_> {
                 self.world.weather,
             );
             self.reset_client_world(spawn.seed);
+            if let Some(remote) = self.remote.as_ref() {
+                self.world
+                    .chunks
+                    .track_connection_groups(remote.group_count.clone());
+            }
             // Entity IDs belong to this ClientLevel, not the connection. A
             // same-level respawn keeps it; a replacement invalidates handles.
             self.native_lifecycle_open_started();
