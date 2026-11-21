@@ -91,9 +91,10 @@ mods, `null` when none is. Each of `mods` has:
 | `needs` | `surface` or `build-data` when the plan didn't give the file its verdict needs; then `verdict` is `null`. The caller fetches it and asks again. |
 
 A `change` is `"removed"`, `"changed"`, `{"lost-impl": trait}`, `{"fields": {gained, at}}`, `{"version": {named, now}}`,
-`{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`. An indexed mixin refusal appears
-in `refusal` with the target, error code and reason. This applies both on the mod's own build and when
-checking how its recorded list fits another build.
+`{"not-buildable": {at}}`, `{"path": path}` or `{"route": {from, owner}}`. On a mod's own build, an indexed
+mixin refusal appears in `refusal`. When checking its fit on another build, the result remains
+`does-not-fit`: the misfit's `id` is display text with the full target, error code and reason, and its
+`change` is `"changed"`.
 
 ## `native-discover` and `native-lock`
 

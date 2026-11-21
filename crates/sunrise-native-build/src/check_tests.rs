@@ -320,14 +320,29 @@ fn cross_build_fit_distinguishes_a_refused_target_from_a_removed_one() {
         build_data: Some(data),
     })
     .unwrap();
-    assert_eq!(checked.route, None);
-    assert_eq!(checked.mods[0].verdict, None);
-    let refusal = checked.mods[0].refusal.as_deref().unwrap();
+    let reply = serde_json::to_value(checked).unwrap();
+    assert_eq!(reply["contract"], 2);
+    assert_eq!(reply["route"], serde_json::Value::Null);
+    let row = &reply["mods"][0];
+    assert_eq!(row["id"], "greeter");
+    assert_eq!(row["refusal"], serde_json::Value::Null);
+    let verdict = &row["verdict"];
+    assert_eq!(verdict["kind"], "does-not-fit");
+    assert_eq!(verdict["made_for"], pin(&dir));
+    let [misfit] = verdict["misfits"].as_array().unwrap().as_slice() else {
+        panic!("expected one misfit: {verdict}");
+    };
+    assert_eq!(misfit["change"], "changed");
+    let diagnostic = misfit["id"].as_str().unwrap();
     assert!(
-        refusal.contains(RUN_WITH)
-            && refusal.contains(RUN_WITH_REFUSAL)
-            && refusal.contains("E_MIXIN_NOT_REPLACEABLE"),
-        "{refusal}"
+        !diagnostic.starts_with("game:"),
+        "the launcher shortens game ids"
+    );
+    assert!(diagnostic.contains(RUN_WITH), "{diagnostic}");
+    assert!(diagnostic.contains(RUN_WITH_REFUSAL), "{diagnostic}");
+    assert!(
+        diagnostic.contains("E_MIXIN_NOT_REPLACEABLE"),
+        "{diagnostic}"
     );
     std::fs::remove_dir_all(dir).unwrap();
 }

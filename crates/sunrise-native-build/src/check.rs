@@ -272,26 +272,19 @@ pub fn check(plan: &Plan) -> Result<Reply, String> {
                 },
             )
         };
-        let judged = judged.and_then(|verdict| {
-            // Indexed refusals are build blockers even across pins. Keep using native-check's
-            // refusal field; launchers decode a fixed set of changes in its fit verdict.
-            if let Verdict::DoesNotFit { misfits, .. } = &verdict
-                && misfits
-                    .iter()
-                    .any(|misfit| matches!(misfit.change, Change::Refused { .. }))
-            {
-                return Err(Lack::Refused(
-                    misfits
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                ));
-            }
-            Ok(verdict)
-        });
         match judged {
-            Ok(verdict) => {
+            Ok(mut verdict) => {
+                if let Verdict::DoesNotFit { misfits, .. } = &mut verdict {
+                    for misfit in misfits {
+                        if matches!(misfit.change, Change::Refused { .. }) {
+                            // Contract 2 callers isolate unfit mods and their dependents, but
+                            // only decode known changes. Carry the full diagnostic as entry
+                            // text, not a `game:fn:` id the launcher shortens to its leaf.
+                            misfit.id = misfit.to_string();
+                            misfit.change = Change::Changed;
+                        }
+                    }
+                }
                 if verdict.usable() {
                     usable.push(project);
                 }
