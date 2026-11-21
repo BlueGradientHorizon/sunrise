@@ -158,21 +158,15 @@ fn light(game: &mut Game<'_>, cx: i32, cz: i32) {
 /// the destination around the trip's target.
 fn finish_trip(game: &mut Game<'_>, dim: Dim) {
     let home = game.dim;
-    game.enter_level(dim).unwrap();
-    let at = game
-        .server_trips
-        .iter()
-        .find(|trip| trip.conn == CONN)
-        .expect("the player is on a trip")
-        .target;
-    light(game, (at.x.floor() as i32) >> 4, (at.z.floor() as i32) >> 4);
     for _ in 0..20 {
-        let (target_dim, target) = game
-            .server_trips
-            .iter()
-            .find(|trip| trip.conn == CONN)
-            .map(|trip| (trip.dim, trip.target))
-            .unwrap_or((game.dim, at));
+        let Some(trip) = game.server_trips.iter().find(|trip| trip.conn == CONN) else {
+            break;
+        };
+        let (target_dim, target) = (trip.dim, trip.target);
+        let waiting_for = trip
+            .spawn_search
+            .as_ref()
+            .and_then(|search| search.waiting_for);
         if game.dim != target_dim {
             game.enter_level(target_dim).unwrap();
         }
@@ -181,13 +175,13 @@ fn finish_trip(game: &mut Game<'_>, dim: Dim) {
             (target.x.floor() as i32) >> 4,
             (target.z.floor() as i32) >> 4,
         );
-        if !game.on_server_trip(CONN) {
-            break;
+        if let Some((x, z)) = waiting_for {
+            light(game, x, z);
         }
         game.tick_server_travel();
     }
     assert!(
-        !game.on_server_trip(CONN),
+        !game.has_pending_travel(CONN),
         "the trip into {dim:?} never ended (current {:?}, trips {:?})",
         game.dim,
         game.server_trips

@@ -522,16 +522,6 @@ pub mod game {
         }
     }
 
-    pub fn original_player_ref(token: u64) -> OriginalPlayerRef {
-        OriginalPlayerRef { token }
-    }
-    impl Fields for OriginalPlayerRef {
-        type Fields<'a> = u64;
-        fn fields(&self) -> u64 {
-            self.token
-        }
-    }
-
     /// Allocate a fresh delayed task id for `schedule_task`, without exposing its raw value.
     pub fn allocate_task_id() -> Option<TaskId> {
         TaskId::allocate()

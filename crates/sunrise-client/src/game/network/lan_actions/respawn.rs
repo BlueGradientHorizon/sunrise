@@ -1,175 +1,188 @@
 use super::*;
+use crate::game::{commands::Target, server_travel::SpawnAction};
 
 impl Game<'_> {
     pub(in crate::game) fn guest_respawn(&mut self, conn: u32) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) else {
-            return;
-        };
-        // The guest's own bed, else the world spawn: never the host's bed.
-        let world = self.world_spawn_position();
-        let spawn = host.hub.guests[i].spawn.unwrap_or(world);
-        if !host.hub.guests[i].dead {
-            return;
-        }
-        let (uuid, entity_id) = (host.hub.guests[i].uuid, host.hub.guests[i].entity_id);
-        let original = self.capture_original_player(conn);
-        // PlayerList.respawn replaces the player, retaining only opted-in data.
-        if let Some(attachments) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.guests.attachments_mut(conn))
-            && let Ok(copy) = attachments.copy_on_death()
-        {
-            attachments.replace_contents(copy);
-        }
-        // NeoForge's clone keeps only the `PlayerPersisted` part of a mod's saved compound.
-        self.keep_only_player_persisted(conn);
-        self.reinitialize_server_player(uuid, conn);
-        // The new `ServerPlayer` is filed where it is placed, untold.
-        self.entity_section_forget(entity_id as u32);
-        // PlayerList.respawn removes the dead player (Player.remove).
-        self.guest_drop_carried(i);
-        // AbstractContainerScreen.tick / ServerPlayer.closeContainer: the dead
-        // player's open container goes with it, so a chest's lid (its opener
-        // count) falls instead of staying up for a player who is gone.
-        self.guest_close_menus_and_tell(conn);
-        let spawn_level = self.world_spawn_level();
+        self.after_commit(crate::game::transactions::After::PlayerRespawn(conn));
+    }
+
+    /// `handleClientCommand(PERFORM_RESPAWN)` calls PlayerList, not ServerPlayer.teleport.
+    pub(in crate::game) fn commit_player_respawn(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        // PlayerList.respawn builds a new `ServerPlayer`, whose `lastEquipmentItems` starts
-        // empty: the mods hear each worn item again from empty (`native_players_equipment`).
-        if let Some(play) = host.play.get_mut(&conn) {
+        let Some(guest) = host.hub.guest(conn) else {
+            return;
+        };
+        let end_conquered = host
+            .play
+            .get_mut(&conn)
+            .is_some_and(|play| std::mem::take(&mut play.won_game));
+        if end_conquered || (guest.dead && !guest.respawning) {
+            self.queue_spawn_trip(
+                conn,
+                SpawnAction::Replace {
+                    was_death: !end_conquered,
+                },
+            );
+        }
+    }
+
+    /// Player.remove in the source level. The close hook still writes the old player's map.
+    pub(in crate::game) fn remove_old_player_for_clone(&mut self, conn: u32, was_death: bool) {
+        let Some(entity) = self
+            .lan
+            .as_ref()
+            .and_then(|h| h.hub.guest(conn))
+            .filter(|g| g.placed)
+            .map(|g| g.entity_id as u32)
+        else {
+            return;
+        };
+        self.eject_player_riders(Some(entity));
+        self.guest_close_menus(
+            conn,
+            if was_death {
+                MenuRemoval::Killed
+            } else {
+                MenuRemoval::ChangedDimension
+            },
+        );
+        if let Some(host) = self.lan.as_mut()
+            && let Some(i) = host.hub.guests.connection_index(conn)
+        {
+            host.hub.remove_player_for_respawn(i);
+            if let Some(map) = host.hub.guests.attachments_mut(conn) {
+                map.retire();
+                map.unbind_index();
+            }
+        }
+        self.entity_section_forget(entity);
+    }
+
+    /// PlayerList.respawn, after its TeleportTransition and NeoForge's redirect are final.
+    pub(in crate::game) fn place_cloned_player(
+        &mut self,
+        conn: u32,
+        to: crate::game::respawn_position::Respawn,
+        was_death: bool,
+        copy_spawn: bool,
+        missing: bool,
+    ) {
+        let Some(old) = self.command_guest(conn) else {
+            return;
+        };
+        let old_spawn = old.spawn;
+        let old_saved = old.respawn_elsewhere.clone();
+        let old_config = old_saved.as_ref().and_then(RespawnConfig::from_saved);
+        if let Some(host) = self.lan.as_mut()
+            && let Some(play) = host.play.get_mut(&conn)
+        {
             play.equipment_heard = None;
             play.inventory_heard = None;
             play.level_up_sound = Default::default();
         }
-        // PlayerList.respawn: a server's player comes back in its respawn
-        // point's level: the world spawn's, the Overworld for a bed,
-        // or another one's anchor or forced point, which its block resolves
-        // once the level has loaded around it.
-        let server = self.options.dedicated.is_some();
-        let own = host.hub.guests[i]
-            .respawn_elsewhere
+        let keep_inventory_rule = self
+            .ui
+            .rules
+            .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY);
+        let motion = self.motion;
+        if !self.restore_cloned_player(
+            conn,
+            to.dim,
+            was_death,
+            |g| {
+                if let Some(previous) = g.new_body(!was_death) {
+                    let previous = *previous;
+                    g.logs_kept = Some((previous.hurt_log, previous.attack_log));
+                }
+                // Even a credits return constructs a new entity. Keep its restored attributes
+                // and health, not the old body's Entity.tickCount.
+                g.carried_tick_count = None;
+                // Entity's constructor starts it at the origin; snapTo follows clone and copy.
+                g.place([0.0; 3]);
+                (g.yaw, g.pitch) = (0.0, 0.0);
+                g.spawn = None;
+                g.respawn_elsewhere = None;
+                if !was_death {
+                    return;
+                }
+                g.dead = false;
+                g.death_time = 0;
+                g.food = 20;
+                g.saturation = 5.0;
+                g.health = g.respawn_health(motion);
+                let mut xp = Experience {
+                    level: g.xp_level,
+                    progress: g.xp_progress,
+                    total: g.xp_total,
+                };
+                let keep_inventory = keep_inventory_rule || g.game_mode == SPECTATOR;
+                if !keep_inventory {
+                    g.inventory.fill(None);
+                    g.armor.fill(None);
+                    g.offhand = None;
+                    g.equipment = Default::default();
+                    g.selected = 0;
+                }
+                xp.respawn(keep_inventory);
+                g.effects = Default::default();
+                (g.xp_level, g.xp_progress, g.xp_total) = (xp.level, xp.progress, xp.total);
+            },
+            |game| {
+                if !copy_spawn {
+                    return;
+                }
+                // NeoForge's setRespawnPosition event can veto the copy without
+                // undoing a point already set by a clone listener.
+                let legacy = old_config.is_none().then_some(old_spawn).flatten();
+                let config = old_config.or_else(|| {
+                    legacy.map(|at| {
+                        RespawnConfig::forced(
+                            Dim::Overworld,
+                            at.map(|c| c.floor() as i32),
+                            0.0,
+                            0.0,
+                        )
+                    })
+                });
+                let accepted = game.as_guest(conn, |g| {
+                    if !g.set_respawn_point(config) {
+                        return false;
+                    }
+                    // Keep the save's legacy point as a literal position, not a block lookup.
+                    if legacy.is_some() {
+                        g.spawn = legacy;
+                        g.respawn_config = None;
+                    }
+                    true
+                });
+                if accepted == Some(true)
+                    && config.is_none()
+                    && let Some(host) = game.lan.as_mut()
+                {
+                    // A config in a missing dimension is preserved in the save.
+                    host.hub
+                        .update_guest(conn, |g| g.respawn_elsewhere = old_saved);
+                }
+            },
+        ) {
+            return;
+        }
+        let Some(i) = self
+            .lan
             .as_ref()
-            .and_then(RespawnConfig::from_saved);
-        let elsewhere = own.filter(|_| server);
-        // In the window's world a guest has no level of its own to wait in:
-        // its bed is resolved at once when its chunk is there, else it
-        // comes back on the bed.
-        let in_frame_bed = own.filter(|c| !server && c.dim == crate::game::Dim::Overworld);
-        let spawn = in_frame_bed.map_or(spawn, |c| {
-            [
-                f64::from(c.pos[0]) + 0.5,
-                f64::from(c.pos[1]) + 0.6,
-                f64::from(c.pos[2]) + 0.5,
-            ]
-        });
-        // An Overworld point of its own (`spawn`, or the bed above) is there; without any
-        // point, the world spawn's level (findRespawnDimension).
-        let level = match elsewhere {
-            Some(c) => c.dim,
-            None if host.hub.guests[i].spawn.is_some() || in_frame_bed.is_some() => {
-                crate::game::Dim::Overworld
-            }
-            None => spawn_level,
-        };
-        let spawn = elsewhere.map_or(spawn, |c| {
-            [
-                f64::from(c.pos[0]) + 0.5,
-                f64::from(c.pos[1]),
-                f64::from(c.pos[2]) + 0.5,
-            ]
-        });
-        // PlayerRespawnPositionEvent: an Overworld forced point needs no
-        // block, so it is final now, before the Respawn packet goes out, and
-        // a mod's other level or point costs no extra one. A bed or anchor,
-        // or the world spawn's column, is final only once its trip arrives
-        // (`arrive_server_trips`).
-        let forced_spawn = host.hub.guests[i].spawn;
-        let point_level = level;
-        // The fresh player faces where `hub.respawn` turns it by default,
-        // not the way the dead one faced.
-        let found = crate::game::respawn_position::Respawn {
-            dim: level,
-            at: sunrise_core::geometry::Vec3::new(spawn[0], spawn[1], spawn[2]),
-            yaw: 0.0,
-            pitch: 0.0,
-        };
-        let decision = (server && elsewhere.is_none() && forced_spawn.is_some())
-            .then(|| self.respawn_position(conn, found, None))
-            .flatten();
-        let keep_point = decision.is_none_or(|d| d.copy);
-        let (level, spawn) = match decision {
-            Some(d) => (d.to.dim, [d.to.at.x, d.to.at.y, d.to.at.z]),
-            None => (level, spawn),
-        };
-        let Some(host) = self.lan.as_mut() else {
+            .and_then(|h| h.hub.guests.connection_index(conn))
+        else {
             return;
         };
-        let rotation = decision.map(|d| [d.to.yaw, d.to.pitch]);
-        let back = self.dim;
-        let left = crate::game::Dim::from_id(&host.hub.guests[i].dimension);
-        let away = server && host.hub.guests[i].dimension != level.id();
-        if server {
-            self.server_trips.retain(|t| !t.is(conn));
-        }
-        if away && let Err(e) = self.enter_level(level) {
-            log::error!("could not open {}: {e}", level.id());
-            return;
-        }
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let (cloned, name) = host.hub.guests.update(i, |g| {
-            // restartClientLoadTimerAfterRespawn.
-            g.dead = false;
-            g.load_timeout = sunrise_client::lan::guest::CLIENT_LOADED_TIMEOUT;
-            g.loading = true;
-            g.death_time = 0;
-            g.food = 20;
-            g.saturation = 5.0;
-            g.sent_health = None;
-            // ServerPlayer.restoreFrom(old, false): the base values come back,
-            // and the new player has the max health they give.
-            if let Some(m) = g.new_body(false) {
-                let m = *m;
-                g.logs_kept = Some((m.hurt_log, m.attack_log));
-            }
-            g.health = g.respawn_health(self.motion);
-            let mut xp = Experience {
-                level: g.xp_level,
-                progress: g.xp_progress,
-                total: g.xp_total,
-            };
-            let keep_inventory = self
-                .ui
-                .rules
-                .bool_at(sunrise_client::gamerules::vanilla::KEEP_INVENTORY)
-                || g.game_mode == SPECTATOR;
-            xp.respawn(keep_inventory);
-            g.effects = Default::default();
-            (g.xp_level, g.xp_progress, g.xp_total) = (xp.level, xp.progress, xp.total);
-            // PlayerEvent.Clone, at the end of `restoreFrom`: the data is copied,
-            // the new player not yet placed.
-            (g.uuid, g.name.clone())
-        });
-        if let Some(original) = original {
-            self.with_original_player(original, |game, original| {
-                game.native_player_clone(cloned, &name, true, original);
-            });
-        }
         let clock_rate = self.network_clock_rate();
+        let world_spawn = self.world_spawn_position();
         let ctx = TickCtx {
             world: &mut self.world,
             entities: &[],
             next_entity: &mut self.next_entity,
-            // PlayerList.respawn / sendLevelInfo send level respawn data,
-            // independently of the personal destination passed to Hub::respawn.
-            spawn: world,
+            spawn: world_spawn,
             spawn_angle: self.level.world_spawn_angle,
             spawn_dimension: crate::game::Dim::of_world_spawn(&self.level).id(),
             sea_level: self.end.locator().map_or(63, |terrain| terrain.sea_level()),
@@ -184,131 +197,100 @@ impl Game<'_> {
             streaming: Some(&self.streaming),
         };
         if let Some(host) = self.lan.as_mut() {
-            host.hub.respawn(i, spawn, rotation, &ctx);
+            if missing {
+                host.hub.missing_respawn_block(conn);
+            }
+            host.hub.respawn(
+                i,
+                [to.at.x, to.at.y, to.at.z],
+                Some([to.yaw, to.pitch]),
+                !was_death,
+                &ctx,
+            );
         }
         self.bind_player_attachments(conn, false);
-        // ServerGamePacketListenerImpl.handleClientCommand: a hardcore world's
-        // respawned player only watches.
-        if self.level.hardcore {
-            let (uuid, name, from) = {
-                let Some(host) = self.lan.as_ref() else {
-                    return;
+        if mod_api::__private::listened(mod_api::HookId::PlayerRespawned)
+            && let Some(guest) = self.command_guest(conn)
+        {
+            let (uuid, name) = (guest.uuid, guest.name.clone());
+            self.as_guest(conn, |g| g.native_player_respawned(uuid, &name, !was_death));
+        }
+        if !was_death {
+            self.as_guest(conn, |g| {
+                g.trigger_changed_dimension(crate::game::Dim::End, crate::game::Dim::Overworld)
+            });
+        } else {
+            if let Some(config) = self
+                .command_guest(conn)
+                .and_then(|g| g.respawn_elsewhere.as_ref())
+                .and_then(RespawnConfig::from_saved)
+            {
+                // PlayerList.respawn uses Level.getBlockState, which loads the saved point's
+                // column to FULL (unless it is outside the level's addressable bounds).
+                let placement = self.dim;
+                let anchor = match self.enter_level(config.dim) {
+                    Ok(()) => {
+                        let [x, y, z] = config.pos;
+                        let chunk = (x >> 4, z >> 4);
+                        // ChunkPyramid.MAX_CHUNK_COORDINATE_VALUE: the packed BlockPos range,
+                        // less the player view radius and FULL's 12 accumulated dependency rings.
+                        const MAX_CHUNK: i32 = (((1 << 25) - 1) >> 4) - 2 * (32 + 12 + 1);
+                        if !self.world.shape.contains_y(y)
+                            || chunk.0.abs().max(chunk.1.abs()) > MAX_CHUNK
+                        {
+                            false
+                        } else if self.streaming.load_full_column(&mut self.world, chunk) {
+                            self.is_anchor(self.world.block(x, y, z))
+                        } else {
+                            log::error!(
+                                "could not load the respawn sound's saved point at {config:?}"
+                            );
+                            false
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "could not open {} for the respawn sound: {e}",
+                            config.dim.id()
+                        );
+                        false
+                    }
                 };
-                let g = &host.hub.guests[i];
-                (
-                    g.uuid,
-                    g.name.clone(),
-                    crate::game::game_mode::mode_from_id(g.game_mode),
-                )
-            };
-            let (mut cancel, mut to) = (false, GameMode::Spectator);
-            if from != GameMode::Spectator {
-                self.native_player_game_mode_changed(uuid, &name, from, &mut to, &mut cancel);
-                // A redirect to the mode the player has is no change: nothing is sent.
-                cancel |= to == from;
+                if let Err(e) = self.enter_level(placement) {
+                    log::error!("could not reopen {}: {e}", placement.id());
+                    return;
+                }
+                // Send only to this connection, using the placement level's RNG.
+                if anchor {
+                    let seed = self.world.random.next_long();
+                    self.play_sound_to(
+                        Target::Guest(conn),
+                        "minecraft:block.respawn_anchor.deplete",
+                        config.pos.map(f64::from),
+                        1.0,
+                        1.0,
+                        mod_api::SoundSource::Blocks.index(),
+                        seed,
+                    );
+                }
             }
-            if !cancel && let Some(host) = self.lan.as_mut() {
+            let Some(guest) = self.command_guest(conn) else {
+                return;
+            };
+            let from = crate::game::game_mode::mode_from_id(guest.game_mode);
+            if !self.level.hardcore || from == GameMode::Spectator {
+                return;
+            }
+            let (uuid, name) = (guest.uuid, guest.name.clone());
+            let (mut cancel, mut to) = (false, GameMode::Spectator);
+            self.native_player_game_mode_changed(uuid, &name, from, &mut to, &mut cancel);
+            if !cancel
+                && to != from
+                && let Some(host) = self.lan.as_mut()
+            {
                 host.hub
                     .set_game_mode(conn, to.id(), &self.world, Some(self.collision));
             }
-        }
-        // PlayerList.respawn: `copyRespawnPosition` hands the new player the
-        // old point through `setRespawnPosition`: none, or an Overworld forced
-        // point (`spawn`). A point with a block is copied once the block is
-        // found. A cancel leaves the new player with none; it still comes
-        // back here this time, as vanilla placed it before the copy.
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if !keep_point {
-            // copyOriginalSpawnPosition false: the fresh player has none.
-            {
-                let value = None;
-                host.hub.guests.update(i, |guest| guest.spawn = value);
-            }
-        } else if let Some(point) = copied_respawn_point(own.is_some(), forced_spawn) {
-            let g = &host.hub.guests[i];
-            let (uuid, id, name) = (g.uuid, g.entity_id, g.name.clone());
-            let mut cancel = false;
-            self.native_player_set_spawn(mod_api::__private::PlayerSetSpawnCall {
-                player: uuid,
-                player_entity_id: id,
-                name: &name,
-                dimension: point_level.id(),
-                pos: point,
-                forced: point.is_some(),
-                cancel: &mut cancel,
-            });
-            if cancel && let Some(host) = self.lan.as_mut() {
-                {
-                    let value = None;
-                    host.hub.guests.update(i, |guest| guest.spawn = value);
-                }
-            }
-        }
-        if let Some(config) = elsewhere {
-            self.respawn_trip(conn, config);
-        } else if in_frame_bed.is_none() && forced_spawn.is_none() {
-            // TeleportTransition.createDefault: no point of its own, so the
-            // world spawn's free column once its chunks have loaded.
-            self.world_spawn_trip(conn, None);
-        }
-        if let Some(c) = in_frame_bed
-            && self.dim == crate::game::Dim::Overworld
-            && self.world.loaded(c.pos[0], c.pos[2])
-        {
-            let found = self
-                .as_guest(conn, |g| g.resolve_server_respawn(c, true))
-                .flatten();
-            let world = self
-                .level
-                .world_spawn
-                .map_or([0.5, 80.0, 0.5], |[x, y, z]| {
-                    [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5]
-                });
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let at = found.map_or(world, |(at, yaw, pitch)| {
-                {
-                    let value = yaw;
-                    host.hub.guests.update(i, |guest| {
-                        guest.yaw = value;
-                        guest.pitch = pitch;
-                    });
-                }
-                [at.x, at.y, at.z]
-            });
-            if found.is_none() {
-                // TeleportTransition.missingRespawnBlock.
-                host.hub.missing_respawn_block(conn);
-                self.world_spawn_trip(conn, None);
-            }
-            if let Some(host) = self.lan.as_mut() {
-                host.hub.teleport(i, Some(at));
-            }
-        }
-        // PlayerRespawnEvent, at the end of PlayerList.respawn: the player is
-        // placed, in their respawn level, with their state swapped in so the
-        // helpers reach them (as for a command executor).
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let (respawned, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
-        self.as_guest(conn, |g| g.native_player_respawned(respawned, &name));
-        // The player left another level for the respawn point's: placed for
-        // good they tell the mods now, else the trip that is still carrying
-        // them (a bed or anchor in another level, the world spawn's free
-        // column) does when it arrives (`arrive_server_trips`).
-        if away {
-            if let Some(trip) = self.server_trips.iter_mut().find(|t| t.is(conn)) {
-                trip.left = Some(left);
-            } else {
-                self.tell_mods_changed_dimension(conn, Some(left), level);
-            }
-        }
-        if away && let Err(e) = self.enter_level(back) {
-            log::error!("could not reopen {}: {e}", back.id());
         }
     }
 
