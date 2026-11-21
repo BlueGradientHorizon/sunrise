@@ -9,23 +9,73 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 | Just before `finalizeSpawn` | `finalize_spawn` | `Flow::Cancel`, `spawn_cancelled`, a new `difficulty`, edits to `mob`, a new `group` |
 | Each tick, before a mob's `checkDespawn` | `mob_despawn` | `Despawn::{Default, Allow, Deny}` |
 
-## Saying where a mod mob spawns
+## Registering a spawn predicate
 
-`Registrar::declare_spawn_placement(path, rule)` is NeoForge's `RegisterSpawnPlacementsEvent`: during registration a mod gives its entity type a `SpawnPlacementRule`, and the game's own spawn checks answer from it for that type, wherever they run (natural spawning, chunk generation, spawners, patrols, sieges, reinforcements).
+Use `Registrar::register_spawn_placement` in `Hooks::register` (NeoForge's
+`RegisterSpawnPlacementsEvent.register`). Request the entity's fully qualified registry key
+with `r.entity_type_key`. It can name your own type, a vanilla type, or a type from another mod.
+This example registers a ghoul that spawns on blocks in a ground tag, in biomes in a biome tag,
+and in the dark (except at a trial spawner):
 
 ```rust,ignore
-r.declare_spawn_placement("ghoul", mod_api::SpawnPlacementRule {
-    placement: mod_api::SpawnPlacementType::OnGround,
-    heightmap: mod_api::Heightmap::MotionBlockingNoLeaves,
-    spawnable_on: Some("mymod:ghoul_ground".to_owned()), // a block tag the block below is in
-    light: mod_api::SpawnLight::Dark,              // Any, Dark (a monster's) or Bright (an animal's)
-    biome_tag: Some("mymod:haunted".to_owned()),         // a biome tag the spot's biome is in
-}).unwrap();
+use mod_api::{
+    BlockPos, EntityTypeKey, Heightmap, SpawnPlacementContext, SpawnPlacementOperation,
+    SpawnPlacementType, SpawnReason,
+};
+use std::sync::Arc;
+
+fn predicate(
+    _: EntityTypeKey,
+    ctx: &mut dyn SpawnPlacementContext,
+    reason: SpawnReason,
+    pos: BlockPos,
+) -> bool {
+    ctx.level().block_in_tag(pos.offset(0, -1, 0), "mymod:ghoul_ground")
+        && ctx.level().biome_in_tag(pos, "mymod:haunted")
+        && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn())
+}
+
+// In Hooks::register:
+let key = r.entity_type_key("mymod:ghoul");
+let placement = SpawnPlacementType::OnGround;
+let heightmap = Heightmap::MotionBlockingNoLeaves;
+let _ = r.register_spawn_placement(
+    key,
+    Some(placement),
+    Some(heightmap),
+    Arc::new(predicate),
+    SpawnPlacementOperation::Replace,
+);
 ```
 
-The placement type is `SpawnPlacements.isSpawnPositionOk`'s first check, and the rule stands in for the type's spawn predicate: every field that is set must hold, and a trial spawner ignores `light`. A type with no declaration keeps its template's rules. The game resolves the declarations once at load, so a check reads one table and never walks the mods. A tag is a namespaced name written without `#`; an id outside the mod's namespace, a bad tag or a second declaration of the same type refuses the mods at startup, and a type no content file defines refuses the resource load.
+If the type has no vanilla spawn placement, its first registration must supply both metadata
+fields: the placement checks where the type can stand, and the heightmap is how natural spawning
+and chunk generation find the surface. The first predicate becomes the original, whatever
+operation you give it. For an existing entry, only `Replace` can set either field; `None` keeps
+that field's current value, including any change by an earlier replacement.
 
-`mob_spawn_placement_check` is the separate per-check moment: it runs after the rule and is told its answer as `default_result`, so you can override it for one position.
+If an existing entry was replaced, only the last replacement runs, even after later `Or` or
+`And` registrations. Otherwise the original (vanilla or the first predicate for a new entry)
+runs first. If it fails, `Or` predicates run in registration order until one passes. If neither
+the original nor any `Or` passes, the result is false and no `And` runs. Otherwise `And`
+predicates run in registration order until one fails; the result is true only if all pass.
+Use `None` for both metadata fields when adding `Or` or `And` to an existing entry.
+
+`SpawnPlacementContext` lends a read-only level and the caller's live `RandomSource` for one call.
+Level reads never load chunks or write to the world. Use namespaced block and biome tags without
+`#`. The light helpers don't check the reason: for vanilla's trial-spawner bypass, test
+`reason == SpawnReason::TrialSpawner` first, as above. For a brightness condition, use
+`ctx.level().is_bright_enough_to_spawn(pos)` in place of the darkness test. To allow any light
+level, omit the light test. Draw any additional randomness from `ctx.random()`. The darkness
+helper also draws from that stream. Short-circuited predicates don't draw, and draws that did
+happen are not rolled back if the spawn is later refused.
+
+An unavailable key both returns `SpawnPlacementError::InvalidEntityType` and records a startup
+refusal, so ignoring the returned error does not hide it. A type missing at resource load or
+invalid placement/heightmap options refuse resource loading with the mod and type named. If mods
+register predicates, the prepared resources must include vanilla's spawn placement data.
+Registration is native and in-process: `SpawnPlacementType` and `SpawnPlacementError` no longer
+have Wire encodings.
 
 ## Saved display and utility entities
 
@@ -94,8 +144,14 @@ hook rather than repeatedly crossing the host boundary.
 `mob_spawn_placement_check` and `mob_spawn_position_check` both get the `level` the mob would join (a `LevelRef`, so a
 listener can read the blocks around `pos` through the host) and the `spawner` that asked: `Spawner::Block { pos }` for a
 spawner block, `Spawner::Trial { pos }` for a trial spawner, and `None` for natural spawning, chunk generation, patrols,
-sieges, reinforcements and a spawner minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to force the
-check; `Default` keeps vanilla's answer.
+sieges, reinforcements and a spawner minecart. Set `*event.result` to `SpawnCheck::Succeed` or `Fail` to override that
+check; `Default` keeps the check's own answer.
+
+In `mob_spawn_placement_check` version 2, `event.default_result` is the effective predicate result. It can differ
+from vanilla even for a vanilla type, because registrations can add to or replace its predicate. The hook fires at
+the same point: the predicates have run and made their live random draws before listeners answer. An override does
+not undo those draws or decide later spawn checks. Ordinary spawners with custom spawn rules bypass this placement
+check; trial spawners check their custom rules afterward. Commands and spawn eggs still don't run it.
 
 ```rust,ignore
 fn mob_spawn_placement_check(&self, _: &dyn mod_api::Host, event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>) {

@@ -722,24 +722,6 @@
       "canonical_path": "crate::world::types::SpawnCheck"
     },
     {
-      "name": "SpawnLight",
-      "path": "crate::world::types::SpawnLight",
-      "hash": "52308115c1bf6d98",
-      "canonical_path": "crate::world::types::SpawnLight"
-    },
-    {
-      "name": "SpawnPlacementError",
-      "path": "crate::world::types::SpawnPlacementError",
-      "hash": "51c72252d1d5d3f7",
-      "canonical_path": "crate::world::types::SpawnPlacementError"
-    },
-    {
-      "name": "SpawnPlacementType",
-      "path": "crate::world::types::SpawnPlacementType",
-      "hash": "8ba0ef8dc68e1bbb",
-      "canonical_path": "crate::world::types::SpawnPlacementType"
-    },
-    {
       "name": "SpawnReason",
       "path": "crate::world::types::SpawnReason",
       "hash": "f2e8034ff82f1b76",

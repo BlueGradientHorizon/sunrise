@@ -20,11 +20,20 @@ pub trait Hooks {
     /// with slots hidden at open.
     /// The player's state is swapped in. Server-side.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_container_open",
+        dispatch = "flat",
         side = "server",
         version = 2,
         contract = "listen",
         neoforge = "PlayerContainerEvent.Open",
         cancellable = false
     )]
-    fn player_container_open();
+    fn player_container_open(
+        player: u128,
+        name: &str,
+        dimension: &str,
+        menu_type: &str,
+        pos: Option<[i32; 3]>,
+        menu: Option<mod_api::MenuRef>,
+    );
 }

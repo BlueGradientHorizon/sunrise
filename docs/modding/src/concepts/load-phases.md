@@ -48,11 +48,31 @@ updates cannot draw live and may appear only after it returns, if another loadin
 Slow work can run in a mod-owned worker and step a retained bar, but neither that worker nor
 the bar keeps the loading screen open. Live display of synchronous setup work and a creation
 route from `client_setup` remain outside this change.
+
 ## Registration and setup
 
-Registration runs once: `register`, `component_types`, `blocks`, `items` and `standalone_models`
+Startup hooks such as `register`, `component_types`, `blocks`, `items` and `standalone_models`
 receive no `Host` and read startup facts through `RegistrationContext`.
-`register` also receives `&mut dyn Registrar` for writing declarations. The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
+`register` receives `&mut dyn Registrar` for writing declarations. In `component_types`, call
+`event.register("mymod:charge".into())` with each owned, namespaced ID. The game checks IDs and
+duplicates before freezing the component registry.
+
+Scoped registration events are borrowed only for the listener call. Their registration methods
+add entries in dispatch order without letting a listener read, edit or remove earlier registrations.
+If the phase gate refuses a listener, its additions are discarded and earlier registrations stand.
+
+A callback registered on the event cannot borrow the event or the context. Capture owned inputs
+for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;
+a particle group factory runs once per particle engine, not on sprite reload. A standalone model
+baker can run on a resource worker during each load, and borrows its bake context only for that
+invocation. See [model drawing](../how-to/client/model-drawing.md) and
+[particle render groups](../how-to/client/particles-and-movement-queries.md#particle-render-groups).
+
+Not every registration-context hook runs only at startup. `register_fluid_models` and
+`register_texture_atlases` collect declarations again on client resource reload before baking or
+stitching, respectively. Atlas admission, duplicate handling and dispatch timing are unchanged.
+
+The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
 one view captured before the first of them runs, so every registration step sees the same values
 whatever the dispatch order: the loaded packages, the built-in registries as `registries.json`
 lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A

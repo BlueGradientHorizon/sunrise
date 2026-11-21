@@ -16,6 +16,8 @@ pub trait Hooks {
     /// transaction restores do not emit this notice. Client network updates
     /// use `block_entity_data_received` instead.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         event_per_listener = true,
@@ -25,5 +27,11 @@ pub trait Hooks {
         neoforge = "none (vanilla BlockEntity.loadAdditional; NeoForge adds no event for this moment)",
         version = 2
     )]
-    fn block_entity_load_additional();
+    fn block_entity_load_additional(
+        id: mod_api::BlockEntityTypeKey,
+        entity: BlockEntityRef,
+        pos: [i32; 3],
+        level: LevelRef,
+        tag: &Compound,
+    );
 }

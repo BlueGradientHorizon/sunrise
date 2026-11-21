@@ -986,7 +986,7 @@ mod tests {
                     "reload_boundary:block/oil_{}",
                     self.0.load(Ordering::SeqCst)
                 ));
-                event.models.push(model);
+                event.register(model);
             }
         }
         let dir = std::env::temp_dir().join(format!("sunrise-fluid-reload-{}", std::process::id()));

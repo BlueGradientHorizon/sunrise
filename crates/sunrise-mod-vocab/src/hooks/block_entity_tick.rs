@@ -16,6 +16,7 @@ pub trait Hooks {
     /// update; normal menu synchronization reads the resident data slots.
     /// With no Part subscribed for this type, the game skips the tick dispatch.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         scope = "block_entity",
@@ -23,5 +24,8 @@ pub trait Hooks {
         neoforge = "none (vanilla BlockEntityTicker; NeoForge adds no event or extension for it)",
         version = 2
     )]
-    fn block_entity_tick();
+    fn block_entity_tick(
+        kind: mod_api::BlockEntityTypeKey,
+        subject: mod_api::BlockEntityTickScope<'_>,
+    );
 }

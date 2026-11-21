@@ -32,10 +32,6 @@ fn checked_records_have_declared_field_bytes() {
         FileToIdConverter::new("recipes", ".json").unwrap(),
         ("recipes".to_owned(), ".json".to_owned()),
     );
-    fields(
-        ReloadResourceError::from((id("example:bad"), "broken".to_owned())),
-        (id("example:bad"), "broken".to_owned()),
-    );
     fields(JavaString(vec![65, 0xd800, 90]), (vec![65u16, 0xd800, 90],));
     let mut nbt = Compound::new();
     nbt.insert("answer".into(), Tag::Int(42));
@@ -312,7 +308,7 @@ impl Drop for Keys {
 }
 
 #[test]
-fn snapshot_and_reload_records_have_declared_field_bytes() {
+fn snapshot_records_have_declared_field_bytes() {
     let _keys = Keys::new();
     let block = BlockKey::from_slot(0).unwrap();
     fields(
@@ -341,19 +337,6 @@ fn snapshot_and_reload_records_have_declared_field_bytes() {
     fields(DamageContainer::from(values.clone()), (values,));
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
-    let files = std::collections::BTreeMap::from([(id("example:recipe"), vec![3u8, 5, 7])]);
-    fields(
-        crate::world::reload::ReloadFiles::new(files.clone()),
-        (files.clone(),),
-    );
-    let (server,): (crate::world::reload::ReloadFiles,) = decode(ServerReloadContext::new(
-        crate::world::reload::ReloadFiles::new(files.clone()),
-    ));
-    assert_eq!(server.0, files);
-    let (client,): (crate::world::reload::ReloadFiles,) = decode(ClientReloadContext::new(
-        crate::world::reload::ReloadFiles::new(files.clone()),
-    ));
-    assert_eq!(client.0, files);
     fields(
         AttachmentPolicy {
             copy_on_death: true,

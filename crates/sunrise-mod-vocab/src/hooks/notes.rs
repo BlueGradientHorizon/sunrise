@@ -1685,7 +1685,11 @@ package that is not loaded, and `Unavailable` when the engine supplied no data. 
 supplied by the engine and have no game `Host`, handle constructors or transactions. Declarations
 still go on each event or registrar.
 
-- `component_types(context, types)` runs once before content loads. Append namespaced component IDs; duplicates, invalid IDs and the `minecraft` namespace stop startup. `native_component`, `native_set_component` and `native_remove_component` read, set and remove registered components, including item defaults. Values use NBT and must fit the network reader limits.
+- `component_types(context, event)` runs once before content loads. Call `event.register(id)` with each owned namespaced ID. Duplicates, invalid IDs and the `minecraft` namespace stop startup. `native_component`, `native_set_component` and `native_remove_component` read, set and remove registered components, including item defaults. Values use NBT and must fit the network reader limits.
+
+- `create_skull_models`, `map_decoration_types`, `register_entity_spectator_shaders`, `register_fluid_models`, `register_render_pipelines` and `register_texture_atlases` take one entry per `event.register(entry)` call. `block_entity_type_add_blocks` adds memberships with `event.modify(kind, blocks)` or `event.modify_matching(predicate, blocks)`; `event.types` lists registered types, not additions. These registration methods stage entries in listener order. A listener cannot read, edit or remove earlier registrations; a phase refusal discards only that listener's additions. Fluid models and texture atlases are collected again on resource reload. Atlas timing and duplicate handling are unchanged.
+
+- `register_layer_definitions(context, event)` binds each layer ID to an owned `Send + Sync + 'static` supplier with `event.register(id, supplier)`. Accepted suppliers run once in registration order at client startup when the layer table freezes. The game keeps their definitions, not the suppliers. Baking through `ClientHost::bake_layer` and reloading resources reuse the definitions.
 
 - [explosions](#explosions) for server mods: `LevelRef::explode(host, source, center, radius, fire, interaction, settings)`
   sets one off as `Level.explode` does, with an optional source entity, `ExplosionInteraction::None`, `Block`, `Mob`, `Tnt`
@@ -1910,6 +1914,12 @@ tick. Declarations support linear size/opacity curves and constant gravity/frict
 code, register a provider with `register_particle_providers` ("Particle providers"). A provider replaces the
 declared motion (its tick moves the particle) but the declared spawn values still seed it.
 
+`register_particle_groups(context, event)` binds a namespaced `Identifier` to a factory with
+`event.register(id, factory)` once at client startup. The factory captures owned data
+(`Send + Sync + 'static`) and returns a `ParticleGroup` with its blend and particle types,
+not its ID. The engine calls an accepted factory once per particle engine construction.
+A sprite reload resolves particle types against those groups without running factories again.
+
 
 - the open screen hears of a key press (`screen_key_pressed_pre`) and of each character it types (`screen_char_typed_pre`), as vanilla's `ScreenEvent.KeyPressed.Pre` and `.CharacterTyped.Pre`: the screen, vanilla's key name (`key.keyboard.e`; a key with no name fires nothing), whether the press is an auto-repeat, the character, GLFW's modifier bits (shift 1, control 2, alt 4, super 8), and `screen.mouse` for the pointer. A cancelled press goes no further — no focus move, no Escape-close, no inventory or hotbar key, no typing by the key itself — while its release still arrives and the characters no mod cancelled still reach the text box, as vanilla's separate `charTyped` comes for a cancelled `keyPressed` too. A cancelled character drops only that character and never reaches a text box, and the character hook's `field` is a copy of the focused box whose edits the box takes through its own filter, length limit and responders; control characters (Enter, Backspace, Tab, Delete, Escape, a Control letter) are keys and fire nothing. A key's characters fire after the key has acted, as GLFW's char callback comes after its key callback, so a key that closes the screen (the inventory key) reports no character (the closed screen hears none) and one that moves the focus types into the box it moved to. The input method's committed text fires the character hook too. They fire for the window and the control socket's `key` and `type` (not its `\b` backspace), after the fullscreen, screenshot, debug and narrator keys, never on the connect and loading screens, the prompts, books and sign editors drawn over gameplay, or while a world loads or saves.
 
@@ -1965,8 +1975,8 @@ and `/datapack` changes, after pack selection. The `&dyn Host` beside the event 
 access at registration, as `AddServerReloadListenersEvent.getRegistryAccess` does. Register an
 `Arc<impl ServerReloadListener>`
 with a unique `Identifier` and `FileToIdConverter::json("machines")`, or `::new("machines", ".bin")`
-for another suffix. The listener's `ServerReloadContext` lists converted IDs and reads their
-bytes from `data/*/machines/`, including a mod's packaged files and later selected datapack
+for another suffix. The listener's `ServerReloadContext` lends converted IDs and bytes from
+`data/*/machines/`, including a mod's packaged files and later selected datapack
 overrides. A file `data/other/machines/heavy/press.json` becomes `other:heavy/press`: the directory
 and extension are removed, subdirectories preserved, and all namespaces included. It cannot
 read assets, other directories, or filesystem paths. Converter directories have no leading or
@@ -1974,29 +1984,38 @@ trailing `/`, or empty, `.` or `..` components. Converter fields and reload-view
 
 The prepare context is the pack view only, as vanilla's `ResourceManager`. Like vanilla's
 `SimplePreparableReloadListener`, `ServerReloadListener::prepare` parses and validates without
-changing live state and returns `<dyn ReloadApply>::new(move || { /* publish parsed state */ })`.
-All listeners prepare before **any** apply runs. Do not read another listener's new published
-state in prepare: dependencies order both phases but do not remove this barrier. Publication
-cannot fail. As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a listener that
-parses its files logs and skips one that will not parse, carrying the rest through. Returning
-`Err` from `prepare` — like any preparation, registration or ordering error — aborts the whole
-reload: all pending applies are dropped and the old mod data and vanilla function library are
-kept. A panic in `prepare` or an apply is not recovered: it stops the server, and the crash
-report names the listener and the mod that registered it. The error names the namespaced
-listener and, for file errors, resource ID; world open fails, and `/reload` reports the
-failure. A failed `/datapack` change also preserves the selected packs on disk.
+changing live state and returns a `Box<dyn FnOnce() + Send + 'static>` using
+`Box::new(move || { /* publish parsed state */ })`. The action owns its prepared state and the
+runner consumes it once on the server's owning thread. All listeners prepare before **any** apply
+runs. Do not read another listener's new published state in prepare: dependencies order both
+phases but do not remove this barrier. Publication cannot report an error, and a later server
+table refusal does not roll back actions that already ran. As vanilla's
+`SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
+skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — like
+any preparation, registration or ordering error — aborts the whole reload: all pending actions
+are dropped without running and the old mod data and vanilla function library are kept. A
+panic in `prepare` or an apply is not recovered: it stops the server, and the crash
+report names the listener and the mod that registered it. Wrap the original error in
+`ReloadResourceError::new(id, cause)` to keep its source chain; `resource()` borrows the
+resource ID and `std::error::Error::source` exposes the cause. The diagnostic names the
+listener and the resource; world open fails, and `/reload` reports the failure. A failed `/datapack` change also preserves the selected packs on disk.
 
-`event.listeners.add_dependency(first, second)` orders named listeners. Both names must
-already be registered; unknown names fail immediately, and cycles fail after registration.
+`event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
+IDs as typed variants: unknown names fail immediately, and cycles fail after registration.
 `VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
 `last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
 listeners run after vanilla by default, in registration order; an explicit dependency before
-`functions()` works without a false cycle. Use these anchors rather than their string values. The read-only `get_registry`,
-`get_graph` and `get_last_vanilla_listener` give the registered names, the dependency edges and
-the vanilla anchor's name, by value (NeoForge's give the objects; a mod keeps its own listener's
-`Arc`, and its name is the one it registered it under). `prepare` returns
-`Box<dyn ReloadApply>`; `<dyn ReloadApply>::new(move || ...)` makes one from a closure. Sunrise does not expose NeoForge's condition
-context here.
+`functions()` works without a false cycle. Use these anchors rather than their string values.
+`event.listeners.get_registry().iter()` borrows the registered names in registration order,
+including the boundaries. `event.listeners.get_graph().iter()` borrows `(first, second)`
+name pairs in edge insertion order. These views borrow the registration in progress: copy
+only the IDs you need to keep or use after registering another listener or dependency.
+`event.listeners.get_last_vanilla_listener()` borrows the effective default anchor: the
+built-in global loot modifier listener is registered after the function library and becomes
+the anchor. Use `VanillaServerListeners::functions()` to target the function library itself.
+The reads give names, not the listener objects NeoForge exposes (a mod keeps its own listener's
+`Arc`, and its name is the one it registered it under). `prepare` returns a boxed `FnOnce() + Send + 'static` action. Sunrise does not expose
+NeoForge's condition context here.
 
 `event.listeners.add_retained_listener(&key, converter, listener)` also keeps the listener
 object for other hooks, the counterpart of NeoForge's `addRetainedListener(key, listener)`: the
@@ -2013,13 +2032,16 @@ for a key whose id or type does not match a registration, `listener` gives `None
 use std::sync::{Arc, RwLock};
 use mod_api::{
     self, AddServerReloadListenersEvent, FileToIdConverter, Host, Hooks, Identifier,
-    ReloadApply, ServerReloadContext, ReloadResourceError, ServerReloadListener,
+    ReloadResourceError, ServerReloadContext, ServerReloadListener,
 };
 
 #[derive(Default)]
 struct MachineData(Arc<RwLock<serde_json::Value>>);
 impl ServerReloadListener for MachineData {
-    fn prepare(&self, context: &ServerReloadContext) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+    fn prepare(
+        &self,
+        context: &ServerReloadContext,
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:press").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)
@@ -2027,7 +2049,7 @@ impl ServerReloadListener for MachineData {
             None => serde_json::Value::Null,
         };
         let live = self.0.clone();
-        Ok(<dyn ReloadApply>::new(move || *live.write().unwrap() = next))
+        Ok(Box::new(move || *live.write().unwrap() = next))
     }
 }
 #[derive(Default)]
@@ -2059,22 +2081,22 @@ assembled — the player changed resource packs, pressed F3+T, or a server sent 
 after the selection is known and before the reload's assets are staged. The `&dyn ClientHost`
 beside the event is the client read host. Register an `Arc<impl ClientReloadListener>` with a
 unique `Identifier` and the same converters as the server side
-(`FileToIdConverter::json("ui")`). The listener's `ClientReloadContext` lists converted IDs and
-reads their bytes from `assets/*/ui/` with resource-pack overrides already resolved: a selected
+(`FileToIdConverter::json("ui")`). The listener's `ClientReloadContext` lends converted IDs and
+bytes from `assets/*/ui/` with resource-pack overrides already resolved: a selected
 pack's file wins over the mod's packaged one, and a pack added later wins over both. A file
 `assets/my_mod/ui/theme.json` becomes `my_mod:theme`. It cannot read data files, other
 directories, or filesystem paths. Files resolve like vanilla resource packs: every file
 except `lang/*.json` is delivered as the exact bytes of the winning pack's file, while
 language files arrive key-wise merged across the packs, as vanilla loads them.
 
-Prepare and apply semantics, error handling, crash attribution, dependency ordering and the
-read-only registry views are the [server listener's](#server-data-reload-listeners):
-`ClientReloadListener::prepare` parses without changing live state and returns a `ReloadApply`;
-all prepares finish before any apply, a prepare, registration or ordering error aborts the
-reload and keeps every listener's previous assets, and a panic names the listener and its
-registering mod in the crash report. `VanillaClientListeners::model_manager()` names vanilla's
-model manager, the anchor of the 26.3 `Minecraft` registration order; `first()` and `last()`
-are the ordering boundaries. Mod applies run on the main thread after the staged pack is
+Prepare and apply semantics, error handling, crash attribution and dependency ordering match
+those of [server listeners](#server-data-reload-listeners). Client registry reads return owned IDs.
+`ClientReloadListener::prepare` parses without changing live state and returns a boxed
+`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare,
+registration or ordering error aborts the reload and drops pending actions without running them.
+A panic names the listener and its registering mod in the crash report.
+`VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
+26.3 `Minecraft` registration order; `first()` and `last()` are the ordering boundaries. Mod applies run on the main thread after the staged pack is
 published, before `client_resources_reloaded`. Listeners are registered fresh for every
 load: the initial resource load registers them once, before any prepare runs (as
 NeoForge's construction-time event does — no game exists yet, and a host read during
@@ -2091,13 +2113,16 @@ own live state.
 use std::sync::{Arc, RwLock};
 use mod_api::{
     self, AddClientReloadListenersEvent, ClientHost, ClientReloadContext, ClientReloadListener,
-    FileToIdConverter, Hooks, Identifier, ReloadApply, ReloadResourceError,
+    FileToIdConverter, Hooks, Identifier, ReloadResourceError,
 };
 
 #[derive(Default)]
 struct Theme(Arc<RwLock<serde_json::Value>>);
 impl ClientReloadListener for Theme {
-    fn prepare(&self, context: &ClientReloadContext) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+    fn prepare(
+        &self,
+        context: &ClientReloadContext,
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:theme").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)
@@ -2105,7 +2130,7 @@ impl ClientReloadListener for Theme {
             None => serde_json::Value::Null,
         };
         let live = self.0.clone();
-        Ok(<dyn ReloadApply>::new(move || *live.write().unwrap() = next))
+        Ok(Box::new(move || *live.write().unwrap() = next))
     }
 }
 #[derive(Default)]
@@ -2255,7 +2280,7 @@ registration path.
 
 - A player finishing a sign: `native_sign_changed(player, name, dimension, pos, front, lines, cancel)` is heard when a player sends the text they wrote on a sign they were editing, right before it goes on the sign, once the checks have passed, on a server, with the player's state swapped in (`PlayerRef::tell` reaches them). A mod may rewrite `lines` (four lines of plain text) or set `cancel` so the sign keeps its old text; a waxed sign is not told.
 
-- Models no blockstate names, as NeoForge's `ModelEvent.RegisterStandalone`: `standalone_models(context, event)` contract version 2, asked once at client startup (not on integrated or dedicated servers), retains plain ids in `event.models` and adds `event.forms: Vec<StandaloneModelForm>`. `Rotated { id, model, turns, uvlock }` bakes a source using centered negative XYZ quarter-turns and real inverse-face UV locking; `Combined { id, parts }` concatenates dependencies' baked quads into one result. Missing dependencies drop the entire form and log the registering mod, not the source namespace. Result ids follow the plain-id namespace rule. Every resource load rebakes both from current files. Resolve each result's `Identifier` through `host.render_assets().model(&id)` in `model_baking_completed`, retaining its opaque `ModelRef` between frames. `BlockEntityDrawContext::model(model, tint)` consumes that handle under the draw pose in `block_entity_submit` or `render_living_pre`, with `tint` (`0xAARRGGBB`) on tinted faces, alpha included; use `0xFFFFFFFF` for no tint. Missing or unbaked names return `ModelError::UnknownModel`. Successful resource replacement invalidates old handles with `ModelError::StaleModel`; failed reloads keep them usable. Drawing errors append no geometry. Lookup never reads or bakes files, and results are quads rather than arbitrary mod-defined baked types.
+- Models no blockstate names, as in NeoForge's `ModelEvent.RegisterStandalone`: `standalone_models(context, event)` runs once at client startup (not on integrated or dedicated servers). Call `event.register_model(id)` for a plain file, or `event.register(id, dependencies, baker)` to assemble declared model files during resource loads. The baker owns its captures (`Send + Sync + 'static`) and may run on a resource worker; the `StandaloneModelBakeContext` is borrowed only for that invocation. Use its `append_dependency(id, quarter_turns, uvlock)` to append quads in call order with the blockstate baker's centered negative XYZ quarter-turns and inverse-face UV locking. A missing dependency, undeclared or failed append (even if ignored), or failed callback drops the entire result and logs the registering mod, not the source namespace. A successfully baked file wins over a baker with the same ID; otherwise the first successful baker wins. Resolve each result's `Identifier` through `host.render_assets().model(&id)` in `model_baking_completed`, retaining its opaque `ModelRef` between frames. `BlockEntityDrawContext::model(model, tint)` consumes that handle under the draw pose in `block_entity_submit` or `render_living_pre`, with `tint` (`0xAARRGGBB`) on tinted faces, alpha included; use `0xFFFFFFFF` for no tint. Missing or unbaked names return `ModelError::UnknownModel`. Successful resource replacement invalidates old handles with `ModelError::StaleModel`; failed reloads keep them usable. Drawing errors append no geometry. Lookup never reads or bakes files, and results are quads rather than arbitrary mod-defined baked types.
 
 - A player opening and closing any menu on a server, on the single player server thread and on a dedicated server: `player_container_open(player, name, dimension, menu_type, pos, menu)` and `player_container_close(...)` (NeoForge's `PlayerContainerEvent.Open` and `.Close`), with the menu type's name and, for a block's menu, its position. They run with the player's state swapped in. Unlike the viewer count of a mod container (`mod_container_viewers`) they name the player and cover every menu: chests, furnaces, crafting tables, trades, a mod's own. The open is heard synchronously after construction, the open packet is queued and full contents sent, with the new menu already current; failed construction and the player's own inventory are excluded. Even inside one tick, open precedes close; replacement closes the old menu before the new open. Each open has one close, also when the player leaves. The synchronous timing is unchanged; version 2 adds `menu: Option<MenuRef>` during open and names the type string `menu_type` on both notices. Crafting tables, merchants, workstations, lecterns, mount inventories and hidden-slot menus have no handle yet.
 

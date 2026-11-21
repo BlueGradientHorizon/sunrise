@@ -18,11 +18,19 @@ pub trait Hooks {
     /// (`native_open_menu`), the inventory screen, and the editors (sign,
     /// book, command block). Server-side, for every player of the world.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_container_opened",
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
         neoforge = "none (not NeoForge's PlayerContainerEvent.Open: this hook can cancel the opening)",
         cancellable = true
     )]
-    fn container_opened();
+    fn container_opened(
+        player: u128,
+        name: &str,
+        kind: &str,
+        pos: Option<[i32; 3]>,
+        cancel: &mut bool,
+    );
 }

@@ -2914,6 +2914,7 @@ mod tests {
             species_placements: Default::default(),
             resolved: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
         };
         (mob, data)
     }
@@ -3253,6 +3254,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let atlas = |name: &str| {
@@ -3348,6 +3350,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let atlas = |name: &str| {
@@ -3407,6 +3410,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         for left in [false, true] {
@@ -3525,6 +3529,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let atlas = |_: &str| Some([0.0, 0.0, 0.25, 0.25]);
@@ -3833,6 +3838,7 @@ mod scroll_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let atlas = |name: &str| {
@@ -4001,6 +4007,7 @@ mod emissive_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         }
     }
@@ -4284,6 +4291,7 @@ mod random_texture_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         }
     }

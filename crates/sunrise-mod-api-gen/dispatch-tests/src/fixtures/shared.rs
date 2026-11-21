@@ -1,4 +1,5 @@
 //! Shared exception: dispatch infrastructure and cross-area fixture types/tests; no new hooks.
+use mod_api::mod_api::BlockEntityTypeKey;
 use mod_api::mod_api::client::hud_layout::GuiDraw;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -127,7 +128,7 @@ mod generated {
             pub id: String,
         }
         pub(super) use super::super::ItemStack;
-        // The generated standalone-model dispatch builds the stub `Answered` and names the type through this path.
+        // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
             Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
@@ -141,6 +142,7 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
+    use self::mod_api::StandaloneModelRegistration;
     pub(super) use self::mod_api::{BlockFace, BlockKey, BlockState, CrosshairTarget};
     pub use sunrise_mod_api_macros::__subscriptions;
 }

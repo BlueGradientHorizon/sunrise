@@ -9,10 +9,12 @@ pub trait Hooks {
     /// handles, services and transactions panic naming the phase. Existing
     /// data-load callbacks retain their DataLoadContext; no setup event is added.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         host = "read",
         neoforge = "AddServerReloadListenersEvent"
     )]
-    fn add_server_reload_listeners();
+    fn add_server_reload_listeners(listeners: &mut dyn ServerReloadListeners);
 }

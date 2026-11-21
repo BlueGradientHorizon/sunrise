@@ -2,6 +2,7 @@
 //! once and share its geometry across positions. Resource failure recovery and
 //! resource-pack reloads remain separate work.
 use crate::{Result, sprites::Sprites};
+use mod_api::{__private::game::standalone_model_bake_context, StandaloneModelBakeError};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -198,45 +199,68 @@ fn bake_resolved(
     })
 }
 
-/// `FaceBakery.bakeQuad`: use the same centered geometry and inverse face UV
-/// transformation as a blockstate variant, not the draw-time pose.
-fn bake_form(
+/// Assemble one slot from this generation's declared model files. Both the
+/// callback and every append must succeed before the catalog can publish it.
+fn bake_standalone_model(
     root: &crate::resource_source::ResourceSource,
     sprites: &mut Sprites,
     models: &crate::model_library::ParsedModels,
-    form: &mod_api::StandaloneModelForm,
-) -> Result<BakedModel> {
-    use mod_api::StandaloneModelForm;
-    match form {
-        StandaloneModelForm::Rotated {
-            model,
-            turns,
-            uvlock,
-            ..
-        } => {
-            let library = models.block_library(root, vec![model.clone()])?;
-            bake_variant(sprites, &library, model, *turns, *uvlock)
+    entry: &super::StandaloneBaker,
+) -> std::result::Result<BakedModel, String> {
+    let dependencies = &entry.registration.dependencies;
+    let library = models
+        .block_library(root, dependencies.clone())
+        .map_err(|error| error.to_string())?;
+    let mut combined = BakedModel {
+        ambient_occlusion: true,
+        particle: None,
+        faces: Vec::new(),
+        cube: None,
+    };
+    let mut failure: Option<StandaloneModelBakeError> = None;
+    let mut append = |id: &str, quarter_turns, uvlock| {
+        if let Some(error) = &failure {
+            return Err(error.clone());
         }
-        StandaloneModelForm::Combined { parts, .. } => {
-            let library = models.block_library(root, parts.clone())?;
-            let mut combined = BakedModel {
-                ambient_occlusion: true,
-                particle: None,
-                faces: Vec::new(),
-                cube: None,
-            };
-            for part in parts {
-                let baked = bake_variant(sprites, &library, part, [0; 3], false)?;
+        let baked = if dependencies.iter().any(|dependency| dependency == id) {
+            // Use the same centered geometry and inverse face UV transform as a blockstate variant.
+            bake_variant(sprites, &library, id, quarter_turns, uvlock).map_err(|error| {
+                StandaloneModelBakeError::DependencyBake {
+                    id: id.to_owned(),
+                    reason: error.to_string(),
+                }
+            })
+        } else {
+            Err(StandaloneModelBakeError::UndeclaredDependency(
+                id.to_owned(),
+            ))
+        };
+        match baked {
+            Ok(baked) => {
                 if combined.particle.is_none() {
                     combined.particle = baked.particle;
                 }
                 combined.ambient_occlusion &= baked.ambient_occlusion;
                 combined.faces.extend(baked.faces);
+                Ok(())
             }
-            combined.cube = super::cube::cube_styles(&combined.faces);
-            Ok(combined)
+            Err(error) => {
+                failure = Some(error.clone());
+                Err(error)
+            }
         }
+    };
+    let result = entry
+        .owner
+        .call("standalone model baker", "bake_standalone_model", || {
+            (entry.registration.bake)(&mut standalone_model_bake_context(&mut append))
+        })?;
+    if let Some(error) = failure {
+        return Err(error.to_string());
     }
+    result.map_err(|error| error.to_string())?;
+    combined.cube = super::cube::cube_styles(&combined.faces);
+    Ok(combined)
 }
 /// The definitions a blockstate file holds, bottom first: the layers of a
 /// file the pack overlay stacked (`packs::BLOCKSTATE_LAYERS`), else the
@@ -546,27 +570,25 @@ impl StateModels {
         }
         Ok(())
     }
-    /// Bake dependencies atomically into one standalone slot; never publish a partial form.
-    pub(crate) fn bake_standalone_forms(
+    /// Bake each callback into a private assembly; publish only successful slots.
+    pub(super) fn bake_standalone_bakers(
         &mut self,
         root: &crate::resource_source::ResourceSource,
         sprites: &mut Sprites,
         models: &crate::model_library::ParsedModels,
-        forms: &[super::StandaloneFormRegistration],
+        bakers: &[super::StandaloneBaker],
     ) {
-        for entry in forms {
-            let id = entry.form.id();
+        for entry in bakers {
+            let id = &entry.registration.id;
             if self.standalone.contains_key(id) {
                 continue;
             }
-            let result = bake_form(root, sprites, models, &entry.form);
-            match result {
+            match bake_standalone_model(root, sprites, models, entry) {
                 Ok(model) => {
-                    self.standalone
-                        .insert(id.to_owned(), self.baked.len() as u32);
+                    self.standalone.insert(id.clone(), self.baked.len() as u32);
                     self.baked.push((
                         Variant {
-                            model: id.to_owned(),
+                            model: id.clone(),
                             rotations: [0; 3],
                             uv_lock: false,
                         },
@@ -574,8 +596,8 @@ impl StateModels {
                     ));
                 }
                 Err(error) => log::warn!(
-                    "Sunrise: mod {} standalone form {id} not loaded: {error}",
-                    entry.owner
+                    "Sunrise: mod {} standalone model {id} not loaded: {error}",
+                    entry.mod_id
                 ),
             }
         }

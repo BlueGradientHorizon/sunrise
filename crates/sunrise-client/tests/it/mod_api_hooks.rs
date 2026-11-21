@@ -113,15 +113,15 @@ mod model_layers {
             _context: &RegistrationContext,
             event: &mut RegisterLayerDefinitionsEvent<'_>,
         ) {
-            let mut mesh = MeshDefinition::new();
-            let root = mesh.root();
-            let head = CubeListBuilder::create()
-                .tex_offs(0, 0)
-                .add_box([-4.0, -8.0, -4.0], [8.0, 8.0, 8.0]);
-            mesh.add_or_replace_child(root, "head", head, PartPose::offset(0.0, 6.0, 0.0));
-            event
-                .layers
-                .push((self.0.into(), LayerDefinition::create(mesh, 64, 32)));
+            event.register(self.0, || {
+                let mut mesh = MeshDefinition::new();
+                let root = mesh.root();
+                let head = CubeListBuilder::create()
+                    .tex_offs(0, 0)
+                    .add_box([-4.0, -8.0, -4.0], [8.0, 8.0, 8.0]);
+                mesh.add_or_replace_child(root, "head", head, PartPose::offset(0.0, 6.0, 0.0));
+                LayerDefinition::create(mesh, 64, 32)
+            });
         }
         // ANCHOR_END: register_layer_definitions
     }
@@ -142,9 +142,18 @@ mod model_layers {
                     &RegistrationContext::new(),
                     &mut layers,
                 );
-                let ids: Vec<_> = layers.iter().map(|(id, _)| id.as_str()).collect();
-                assert_eq!(ids, ["first:golem#main", "second:golem#main"]);
-                let model = layers[0].1.bake_root();
+                let owners_and_ids: Vec<_> = layers
+                    .iter()
+                    .map(|layer| (layer.mod_id, layer.answer.id.as_str()))
+                    .collect();
+                assert_eq!(
+                    owners_and_ids,
+                    [
+                        ("first", "first:golem#main"),
+                        ("second", "second:golem#main")
+                    ]
+                );
+                let model = (layers[0].answer.supplier)().bake_root();
                 let head = model.get_child("head").expect("the head part");
                 assert_eq!((head.y, head.polygons.len()), (6.0, 6));
             },
@@ -164,7 +173,7 @@ mod skull_models {
             _context: &RegistrationContext,
             event: &mut CreateSkullModelsEvent<'_>,
         ) {
-            event.models.push(SkullModel {
+            event.register(SkullModel {
                 kind: format!("{}:goblin", self.0),
                 layer: format!("{}:goblin_head#main", self.0),
                 texture: format!("{}:entity/goblin", self.0),
@@ -192,6 +201,83 @@ mod skull_models {
             },
         );
     }
+}
+
+#[test]
+fn block_entity_additions_collect_in_order_and_quiet_dispatch_preserves_input() {
+    use mod_api::__private::game::RegistrationContextNew;
+    use mod_api::__private::parts_installation::{block_entity_type_key, block_key};
+    use mod_api::{
+        BlockEntityTypeAddBlocksEvent, BlockEntityTypeKey, BlockKey, RegistrationContext,
+        dispatch_block_entity_type_add_blocks,
+    };
+
+    struct Listener {
+        block: BlockKey,
+        direct: BlockEntityTypeKey,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn block_entity_type_add_blocks(
+            &self,
+            _: &RegistrationContext,
+            event: &mut BlockEntityTypeAddBlocksEvent<'_>,
+        ) {
+            event.modify_matching(|kind| kind != self.direct, &[self.block]);
+            event.modify(self.direct, &[self.block]);
+        }
+    }
+
+    let [a, b, c] = [0, 1, 2].map(block_entity_type_key);
+    let [first_block, second_block] = [0, 1].map(block_key);
+    let types = [b, a, c];
+    let seed = (c, second_block);
+    let mut additions = vec![seed];
+
+    mod_platform::testing::with_mods(Vec::<ModEntry>::new().into(), || {
+        dispatch_block_entity_type_add_blocks(&RegistrationContext::new(), &types, &mut additions);
+    });
+    assert_eq!(additions, [seed]);
+
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new(
+                "first",
+                Box::new(Listener {
+                    block: first_block,
+                    direct: c,
+                }),
+            ),
+            ModEntry::new(
+                "second",
+                Box::new(Listener {
+                    block: second_block,
+                    direct: b,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            dispatch_block_entity_type_add_blocks(
+                &RegistrationContext::new(),
+                &types,
+                &mut additions,
+            );
+        },
+    );
+    assert_eq!(
+        additions,
+        [
+            seed,
+            (b, first_block),
+            (a, first_block),
+            (c, first_block),
+            (a, second_block),
+            (c, second_block),
+            (b, second_block),
+        ]
+    );
 }
 
 /// Each mod changes the prior answer, vanilla's stays readable, and cancel

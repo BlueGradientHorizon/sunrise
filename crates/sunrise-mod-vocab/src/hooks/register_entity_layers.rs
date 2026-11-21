@@ -69,10 +69,12 @@ and asked no more until the next resource load adds it again; what it drew that 
 living types) and the players; the armour stand and the ender dragon take them once their own draws run
 layers, in a follow-up of #860, which lifts their refusal."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.AddLayers"
     )]
-    fn register_entity_layers();
+    fn register_entity_layers(layers: &mut dyn EntityLayers);
 }

@@ -16,9 +16,11 @@ pub trait Hooks {
     /// and apply on the owning game thread; completion restores the entering
     /// phase. Startup's empty Host grants no extra access.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "AddClientReloadListenersEvent"
     )]
-    fn add_client_reload_listeners();
+    fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }

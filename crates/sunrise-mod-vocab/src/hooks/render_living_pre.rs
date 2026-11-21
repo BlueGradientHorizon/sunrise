@@ -19,6 +19,8 @@ pub trait Hooks {
     /// armour, held items and other layers keep every part. An entity is drawn afresh each frame:
     /// `draw.keep()` does nothing here.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         version = 2,
         contract = "cancel",
@@ -26,5 +28,10 @@ pub trait Hooks {
         neoforge = "RenderLivingEvent.Pre",
         cancellable = true
     )]
-    fn render_living_pre();
+    fn render_living_pre(
+        entity: &MobRender<'_>,
+        draw: &mut dyn BlockEntityDrawContext,
+        hidden: &mut HiddenParts,
+        canceled: &mut bool,
+    );
 }

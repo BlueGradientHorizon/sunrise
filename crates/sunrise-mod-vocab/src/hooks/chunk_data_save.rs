@@ -15,5 +15,5 @@ pub trait Hooks {
         neoforge = "ChunkDataEvent.Save",
         version = 2
     )]
-    fn chunk_data_save();
+    fn chunk_data_save(data: &mut ChunkDiskData);
 }

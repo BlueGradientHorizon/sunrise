@@ -9,6 +9,8 @@ pub trait Hooks {
     /// passive listener's unchanged false); true requests vanilla eligibility.
     /// Without enabled listeners, vanilla latch, double tap and input are unchanged.
     #[hook(
+        receiver = "read",
+        dispatch = "api_carrier",
         side = "client",
         contract = "listen",
         neoforge = "MovementInputUpdateEvent",

@@ -5,11 +5,13 @@ pub trait Hooks {
     /// frame the overlay draws it. `id` is the entry's id; push its lines to `lines`, legacy colour
     /// codes (§) work. A disabled entry is never asked. Client-side.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "lines",
         cancellable = false,
         neoforge = "RegisterDebugEntriesEvent"
     )]
-    fn debug_entry_lines();
+    fn debug_entry_lines(id: &str, lines: &mut Vec<String>);
 }

@@ -1,4 +1,5 @@
 # Resident block-entity ticker loans, on real hosted storage.
+sunrise-client game::block_entity_part_state_tests::part_state_counts_ticks_across_chunk_reload lib daily child-process
 sunrise-client game::native_hooks::block_entity_tick::tests::retaking_the_view_checks_the_instance_and_state lib daily resources
 sunrise-client game::native_hooks::block_entity_tick::tests::read_only_and_noop_loans_do_not_journal_or_dirty lib daily resources
 sunrise-client game::native_hooks::block_entity_tick::tests::a_scope_transaction_aborts_subject_and_dropped_item_edits_together lib daily resources

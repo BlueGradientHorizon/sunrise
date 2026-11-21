@@ -1054,7 +1054,7 @@ sunrise-client game::mod_api_host::attachment_membership_tests::attachment_off_w
 sunrise-client game::mod_recipe_property_tests::tests::host_and_slot_prediction_use_replacement_property_generation lib daily resources
 sunrise-client game::model_baking_completed_tests::a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles lib daily resources
 sunrise-client game::model_baking_completed_tests::a_failed_reload_fires_no_model_baking_completed lib daily resources
-sunrise-client game::model_baking_completed_tests::standalone_forms_resolve_as_one_model_and_republish_after_resource_reload lib daily resources
+sunrise-client game::model_baking_completed_tests::standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload lib daily resources
 sunrise-client game::mods::tests::a_declared_type_spawns_with_its_merged_row_not_its_content_row lib daily resources
 sunrise-client game::mods::tests::a_mods_declared_attribute_reaches_rows_the_live_map_saves_and_sync lib daily resources
 sunrise-client game::mods::tests::a_mods_declared_entity_attributes_reach_spawn_and_the_live_map lib daily resources

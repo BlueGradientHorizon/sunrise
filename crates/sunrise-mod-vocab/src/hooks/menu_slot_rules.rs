@@ -48,6 +48,8 @@ pub trait Hooks {
     /// Parts that read `context.setting(..)` or `side()` have no counterpart
     /// on the Host.
     #[hook(
+        receiver = "read",
+        dispatch = "api_carrier",
         side = "both",
         contract = "listen",
         scope = "menu",
