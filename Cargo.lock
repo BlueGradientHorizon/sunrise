@@ -4270,7 +4270,6 @@ dependencies = [
  "ureq",
  "wgpu",
  "winit",
- "winresource",
  "zip",
 ]
 
