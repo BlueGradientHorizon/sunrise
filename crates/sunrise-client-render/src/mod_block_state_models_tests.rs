@@ -241,47 +241,47 @@ fn a_registered_type_picks_each_states_model_and_again_on_reload() {
     let post = names(&["rendtest:block/post", "rendtest:block/dim"]);
     let none = Vec::new();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("lamps", Box::new(Lamps))].into();
-    mod_platform::testing::with_mods(mods, || {
+    let (def_fixture, kept) = mod_platform::testing::with_mods(mods, || {
         let mut definitions = Vec::new();
         mod_api::dispatch_register_block_state_models(
             &RegistrationContext::new(),
             &mut definitions,
         );
-        let (_def_fixture, kept) = DefinitionsFixture::from_registrations(definitions);
-        assert_eq!(kept, ["rendtest:by_power"]);
-        fixture.lamp(
-            r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/on","off":"rendtest:block/off"}"#,
-        );
-        assert_eq!(
-            load(&fixture),
-            [
-                names(&["rendtest:block/off"]),
-                names(&["rendtest:block/on"]),
-                post.clone()
-            ]
-        );
-        // A pack edit, then a reload: the powered lamp is dim now.
-        fixture.lamp(
-            r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/dim","off":"rendtest:block/off"}"#,
-        );
-        assert_eq!(
-            load(&fixture),
-            [
-                names(&["rendtest:block/off"]),
-                names(&["rendtest:block/dim"]),
-                post.clone()
-            ]
-        );
-        // Malformed for the type: refused.
-        fixture
-            .lamp(r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/on"}"#);
-        assert_eq!(load(&fixture), [none.clone(), none.clone(), post.clone()]);
-        // A type no mod registered: refused.
-        fixture.lamp(
-            r#"{"neoforge:definition_type":"rendtest:never","on":"rendtest:block/on","off":"rendtest:block/off"}"#,
-        );
-        assert_eq!(load(&fixture), [none.clone(), none.clone(), post.clone()]);
+        DefinitionsFixture::from_registrations(definitions)
     });
+    assert_eq!(kept, ["rendtest:by_power"]);
+    fixture.lamp(
+        r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/on","off":"rendtest:block/off"}"#,
+    );
+    assert_eq!(
+        load(&fixture),
+        [
+            names(&["rendtest:block/off"]),
+            names(&["rendtest:block/on"]),
+            post.clone()
+        ]
+    );
+    // A pack edit, then a reload: the powered lamp is dim now.
+    fixture.lamp(
+        r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/dim","off":"rendtest:block/off"}"#,
+    );
+    assert_eq!(
+        load(&fixture),
+        [
+            names(&["rendtest:block/off"]),
+            names(&["rendtest:block/dim"]),
+            post.clone()
+        ]
+    );
+    // Malformed for the type: refused.
+    fixture.lamp(r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/on"}"#);
+    assert_eq!(load(&fixture), [none.clone(), none.clone(), post.clone()]);
+    // A type no mod registered: refused.
+    fixture.lamp(
+        r#"{"neoforge:definition_type":"rendtest:never","on":"rendtest:block/on","off":"rendtest:block/off"}"#,
+    );
+    assert_eq!(load(&fixture), [none.clone(), none.clone(), post.clone()]);
+    drop(def_fixture);
     // With no bound provider installed: refused.
     fixture.lamp(
         r#"{"neoforge:definition_type":"rendtest:by_power","on":"rendtest:block/on","off":"rendtest:block/off"}"#,
@@ -315,18 +315,18 @@ fn a_typed_layer_over_vanilla_replaces_only_the_states_it_picks() {
     ]});
     fixture.lamp(&stacked.to_string());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("on", Box::new(PoweredOnly))].into();
-    mod_platform::testing::with_mods(mods, || {
+    let (_def_fixture, kept) = mod_platform::testing::with_mods(mods, || {
         let mut definitions = Vec::new();
         mod_api::dispatch_register_block_state_models(
             &RegistrationContext::new(),
             &mut definitions,
         );
-        let (_def_fixture, kept) = DefinitionsFixture::from_registrations(definitions);
-        assert_eq!(kept, ["rendtest:powered_only"]);
-        let picked = load(&fixture);
-        assert_eq!(picked[0], ["rendtest:block/off"]);
-        assert_eq!(picked[1], ["rendtest:block/on"]);
+        DefinitionsFixture::from_registrations(definitions)
     });
+    assert_eq!(kept, ["rendtest:powered_only"]);
+    let picked = load(&fixture);
+    assert_eq!(picked[0], ["rendtest:block/off"]);
+    assert_eq!(picked[1], ["rendtest:block/on"]);
 }
 
 #[test]
@@ -364,28 +364,28 @@ fn minecraft_namespace_is_accepted_and_last_writer_wins() {
         mod_api::ModEntry::new("later_bsm", Box::new(Later)),
     ]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    let (_def_fixture, kept) = mod_platform::testing::with_mods(mods, || {
         let mut definitions = Vec::new();
         mod_api::dispatch_register_block_state_models(
             &RegistrationContext::new(),
             &mut definitions,
         );
-        let (_def_fixture, kept) = DefinitionsFixture::from_registrations(definitions);
-        assert_eq!(kept, ["minecraft:rendtest_override"]);
-        let states = [BTreeMap::new()];
-        let models = instantiate(
-            "minecraft:rendtest_override",
-            "rendtest:lamp",
-            &serde_json::json!({}),
-            &states,
-        )
-        .unwrap();
-        assert_eq!(
-            models[0].as_ref().unwrap().model,
-            "rendtest:block/on",
-            "last registration replaces earlier one"
-        );
+        DefinitionsFixture::from_registrations(definitions)
     });
+    assert_eq!(kept, ["minecraft:rendtest_override"]);
+    let states = [BTreeMap::new()];
+    let models = instantiate(
+        "minecraft:rendtest_override",
+        "rendtest:lamp",
+        &serde_json::json!({}),
+        &states,
+    )
+    .unwrap();
+    assert_eq!(
+        models[0].as_ref().unwrap().model,
+        "rendtest:block/on",
+        "last registration replaces earlier one"
+    );
 }
 
 #[test]
@@ -442,45 +442,44 @@ fn panic_disables_provider_with_notice_and_non_panic_err_does_not_latch() {
         mod_api::ModEntry::new("bsm_flaky", Box::new(Flaky(Arc::clone(&flaky_calls)))),
     ]
     .into();
-    mod_platform::testing::with_mods(mods, || {
+    let (_def_fixture, kept) = mod_platform::testing::with_mods(mods, || {
         let mut definitions = Vec::new();
         mod_api::dispatch_register_block_state_models(
             &RegistrationContext::new(),
             &mut definitions,
         );
-        let (_def_fixture, kept) = DefinitionsFixture::from_registrations(definitions);
-        assert_eq!(kept, ["rendtest:bsm_panics", "rendtest:bsm_flaky"]);
-
-        let states = [BTreeMap::new()];
-        let cfg = serde_json::json!({});
-
-        let _ = take_callback_panic_notices();
-        let err = instantiate("rendtest:bsm_panics", "rendtest:lamp", &cfg, &states).unwrap_err();
-        assert!(err.contains("bsm_panicker"), "{err:?}");
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-        let notices = take_callback_panic_notices();
-        assert!(
-            notices
-                .iter()
-                .any(|notice| notice.mod_id == "bsm_panicker"
-                    && notice.kind == "block state definition"),
-            "expected panic notice, got {notices:?}"
-        );
-        // Disabled after panic: second call does not invoke the callback again.
-        let err2 = instantiate("rendtest:bsm_panics", "rendtest:lamp", &cfg, &states).unwrap_err();
-        assert!(err2.contains("disabled"), "{err2:?}");
-        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-        // Non-panic Err does not latch or queue a panic notice.
-        let err = instantiate("rendtest:bsm_flaky", "rendtest:lamp", &cfg, &states).unwrap_err();
-        assert!(
-            err.contains("bsm_flaky") && err.contains("missing key"),
-            "{err:?}"
-        );
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-        assert!(take_callback_panic_notices().is_empty());
-        let recovered = instantiate("rendtest:bsm_flaky", "rendtest:lamp", &cfg, &states).unwrap();
-        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-        assert_eq!(recovered[0].as_ref().unwrap().model, "rendtest:block/on");
+        DefinitionsFixture::from_registrations(definitions)
     });
+    assert_eq!(kept, ["rendtest:bsm_panics", "rendtest:bsm_flaky"]);
+
+    let states = [BTreeMap::new()];
+    let cfg = serde_json::json!({});
+
+    let _ = take_callback_panic_notices();
+    let err = instantiate("rendtest:bsm_panics", "rendtest:lamp", &cfg, &states).unwrap_err();
+    assert!(err.contains("bsm_panicker"), "{err:?}");
+    assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+    let notices = take_callback_panic_notices();
+    assert!(
+        notices.iter().any(
+            |notice| notice.mod_id == "bsm_panicker" && notice.kind == "block state definition"
+        ),
+        "expected panic notice, got {notices:?}"
+    );
+    // Disabled after panic: second call does not invoke the callback again.
+    let err2 = instantiate("rendtest:bsm_panics", "rendtest:lamp", &cfg, &states).unwrap_err();
+    assert!(err2.contains("disabled"), "{err2:?}");
+    assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+    // Non-panic Err does not latch or queue a panic notice.
+    let err = instantiate("rendtest:bsm_flaky", "rendtest:lamp", &cfg, &states).unwrap_err();
+    assert!(
+        err.contains("bsm_flaky") && err.contains("missing key"),
+        "{err:?}"
+    );
+    assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+    assert!(take_callback_panic_notices().is_empty());
+    let recovered = instantiate("rendtest:bsm_flaky", "rendtest:lamp", &cfg, &states).unwrap();
+    assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+    assert_eq!(recovered[0].as_ref().unwrap().model, "rendtest:block/on");
 }

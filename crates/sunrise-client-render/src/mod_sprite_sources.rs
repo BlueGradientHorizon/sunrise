@@ -278,56 +278,56 @@ mod tests {
             mod_api::ModEntry::new("later_src", Box::new(Later)),
         ]
         .into();
-        mod_platform::testing::with_mods(mods, || {
+        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
             let mut registrations = Vec::new();
             mod_api::dispatch_register_sprite_sources(
                 &RegistrationContext::new(),
                 &mut registrations,
             );
-            let (_fixture, kept) = SourcesFixture::from_registrations(registrations);
-            assert_eq!(
-                kept,
-                ["srcreg:shared", "minecraft:single", "minecraft:custom"]
-            );
-            assert!(
-                Declared.is_registered("srcreg:shared")
-                    && Declared.is_registered("minecraft:single")
-                    && Declared.is_registered("minecraft:custom")
-            );
-            let source = crate::resource_source::ResourceSource::indexed(
-                [
-                    (
-                        "assets/minecraft/atlases/blocks.json".to_owned(),
-                        sunrise_assets::resource_source::Resource::bytes(
-                            br#"{"sources":[
-                                {"type":"srcreg:shared"},
-                                {"type":"single","resource":"srctest:item/apple"},
-                                {"type":"minecraft:custom"}
-                            ]}"#
-                            .to_vec(),
-                        ),
-                    ),
-                    (
-                        "assets/srctest/textures/item/apple.png".to_owned(),
-                        sunrise_assets::resource_source::Resource::bytes(b"png".to_vec()),
-                    ),
-                ]
-                .into(),
-            );
-            let listing = Listing::build(&source, &Registered);
-            assert_eq!(
-                listing
-                    .sprites("minecraft:blocks")
-                    .keys()
-                    .collect::<Vec<_>>(),
-                [
-                    "srcreg:from_later",
-                    "srcreg:mc_custom",
-                    "srcreg:single_override"
-                ],
-                "later registration replaces earlier one and overrides built-in minecraft:single"
-            );
+            SourcesFixture::from_registrations(registrations)
         });
+        assert_eq!(
+            kept,
+            ["srcreg:shared", "minecraft:single", "minecraft:custom"]
+        );
+        assert!(
+            Declared.is_registered("srcreg:shared")
+                && Declared.is_registered("minecraft:single")
+                && Declared.is_registered("minecraft:custom")
+        );
+        let source = crate::resource_source::ResourceSource::indexed(
+            [
+                (
+                    "assets/minecraft/atlases/blocks.json".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(
+                        br#"{"sources":[
+                            {"type":"srcreg:shared"},
+                            {"type":"single","resource":"srctest:item/apple"},
+                            {"type":"minecraft:custom"}
+                        ]}"#
+                        .to_vec(),
+                    ),
+                ),
+                (
+                    "assets/srctest/textures/item/apple.png".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(b"png".to_vec()),
+                ),
+            ]
+            .into(),
+        );
+        let listing = Listing::build(&source, &Registered);
+        assert_eq!(
+            listing
+                .sprites("minecraft:blocks")
+                .keys()
+                .collect::<Vec<_>>(),
+            [
+                "srcreg:from_later",
+                "srcreg:mc_custom",
+                "srcreg:single_override"
+            ],
+            "later registration replaces earlier one and overrides built-in minecraft:single"
+        );
     }
 
     #[test]
@@ -394,69 +394,71 @@ mod tests {
             mod_api::ModEntry::new("src_healthy", Box::new(Healthy(Arc::clone(&healthy_calls)))),
         ]
         .into();
-        mod_platform::testing::with_mods(mods, || {
+        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
             let mut registrations = Vec::new();
             mod_api::dispatch_register_sprite_sources(
                 &RegistrationContext::new(),
                 &mut registrations,
             );
-            let (_fixture, kept) = SourcesFixture::from_registrations(registrations);
-            assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
-
-            let atlas_source = |kind: &str| {
-                crate::resource_source::ResourceSource::indexed(
-                    [(
-                        "assets/minecraft/atlases/blocks.json".to_owned(),
-                        sunrise_assets::resource_source::Resource::bytes(
-                            format!(r#"{{"sources":[{{"type":"{kind}"}}]}}"#).into_bytes(),
-                        ),
-                    )]
-                    .into(),
-                )
-            };
-
-            let _ = take_callback_panic_notices();
-            let first_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
-            assert!(first_panic.sprites("minecraft:blocks").is_empty());
-            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
-            assert!(
-                notices.iter().any(|notice| notice.mod_id == "src_panicker" && notice.kind == "sprite source"),
-                "expected panic notice, got {notices:?}"
-            );
-
-            // Disabled after panic: a second load does not invoke the panicking callback again.
-            let second_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
-            assert!(second_panic.sprites("minecraft:blocks").is_empty());
-            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-            // Non-panic Err does not latch or queue a panic notice.
-            let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
-            assert!(first_flaky.sprites("minecraft:blocks").is_empty());
-            assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-            assert!(take_callback_panic_notices().is_empty());
-
-            let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
-            assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-            assert_eq!(
-                second_flaky
-                    .sprites("minecraft:blocks")
-                    .keys()
-                    .collect::<Vec<_>>(),
-                ["srctest:recovered"]
-            );
-
-            // Another mod's provider is unaffected by the panic.
-            let healthy = Listing::build(&atlas_source("srctest:healthy"), &Registered);
-            assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
-            assert_eq!(
-                healthy
-                    .sprites("minecraft:blocks")
-                    .keys()
-                    .collect::<Vec<_>>(),
-                ["srctest:ok"]
-            );
+            SourcesFixture::from_registrations(registrations)
         });
+        assert_eq!(kept, ["srctest:panics", "srctest:flaky", "srctest:healthy"]);
+
+        let atlas_source = |kind: &str| {
+            crate::resource_source::ResourceSource::indexed(
+                [(
+                    "assets/minecraft/atlases/blocks.json".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(
+                        format!(r#"{{"sources":[{{"type":"{kind}"}}]}}"#).into_bytes(),
+                    ),
+                )]
+                .into(),
+            )
+        };
+
+        let _ = take_callback_panic_notices();
+        let first_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+        assert!(first_panic.sprites("minecraft:blocks").is_empty());
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+        let notices = take_callback_panic_notices();
+        assert!(
+            notices
+                .iter()
+                .any(|notice| notice.mod_id == "src_panicker" && notice.kind == "sprite source"),
+            "expected panic notice, got {notices:?}"
+        );
+
+        // Disabled after panic: a second load does not invoke the panicking callback again.
+        let second_panic = Listing::build(&atlas_source("srctest:panics"), &Registered);
+        assert!(second_panic.sprites("minecraft:blocks").is_empty());
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+        // Non-panic Err does not latch or queue a panic notice.
+        let first_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+        assert!(first_flaky.sprites("minecraft:blocks").is_empty());
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+        assert!(take_callback_panic_notices().is_empty());
+
+        let second_flaky = Listing::build(&atlas_source("srctest:flaky"), &Registered);
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(
+            second_flaky
+                .sprites("minecraft:blocks")
+                .keys()
+                .collect::<Vec<_>>(),
+            ["srctest:recovered"]
+        );
+
+        // Another mod's provider is unaffected by the panic.
+        let healthy = Listing::build(&atlas_source("srctest:healthy"), &Registered);
+        assert_eq!(healthy_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            healthy
+                .sprites("minecraft:blocks")
+                .keys()
+                .collect::<Vec<_>>(),
+            ["srctest:ok"]
+        );
     }
 
     #[test]

@@ -296,20 +296,21 @@ mod tests {
             .collect::<Vec<_>>()
         };
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("panel", Box::new(Panel))].into();
-        mod_platform::testing::with_mods(mods, || {
+        let (fixture, kept) = mod_platform::testing::with_mods(mods, || {
             let mut loaders = Vec::new();
             mod_api::dispatch_register_model_loaders(&RegistrationContext::new(), &mut loaders);
-            let (_fixture, kept) = LoadersFixture::from_registrations(loaders);
-            assert_eq!(kept, ["rendtest:panel"]);
-            assert_eq!(
-                widths(&library(8)),
-                [(0.5, "minecraft:block/panel".to_owned())]
-            );
-            assert_eq!(
-                widths(&library(4)),
-                [(0.25, "minecraft:block/panel".to_owned())]
-            );
+            LoadersFixture::from_registrations(loaders)
         });
+        assert_eq!(kept, ["rendtest:panel"]);
+        assert_eq!(
+            widths(&library(8)),
+            [(0.5, "minecraft:block/panel".to_owned())]
+        );
+        assert_eq!(
+            widths(&library(4)),
+            [(0.25, "minecraft:block/panel".to_owned())]
+        );
+        drop(fixture);
         mod_platform::testing::with_mods(Vec::new().into(), || {
             let missing = widths(&library(8));
             assert_eq!(missing.len(), 6);
@@ -373,23 +374,22 @@ mod tests {
             mod_api::ModEntry::new("second_loader", Box::new(Second)),
         ]
         .into();
-        mod_platform::testing::with_mods(mods, || {
+        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
             let mut loaders = Vec::new();
             mod_api::dispatch_register_model_loaders(&RegistrationContext::new(), &mut loaders);
-            let (_fixture, kept) = LoadersFixture::from_registrations(loaders);
-            assert_eq!(kept, ["minecraft:rendtest_first", "rendtest:"]);
-            let textures =
-                BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
-            let loaders = active_loaders().unwrap();
-            let baked = (loaders["minecraft:rendtest_first"].bake)("t:vanilla_ns", "{}", &textures)
-                .unwrap();
-            assert_eq!(baked.len(), 1);
-            assert_eq!(baked[0].positions[0][0], 0.25, "first registration wins");
-            let empty_path = (loaders["rendtest:"].bake)("t:empty_path", "{}", &textures).unwrap();
-            assert_eq!(empty_path.len(), 1);
-            assert_eq!(empty_path[0].positions[0][0], 0.5);
-            assert!(!loaders.contains_key("rendtest:unregistered"));
+            LoadersFixture::from_registrations(loaders)
         });
+        assert_eq!(kept, ["minecraft:rendtest_first", "rendtest:"]);
+        let textures = BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
+        let loaders = active_loaders().unwrap();
+        let baked =
+            (loaders["minecraft:rendtest_first"].bake)("t:vanilla_ns", "{}", &textures).unwrap();
+        assert_eq!(baked.len(), 1);
+        assert_eq!(baked[0].positions[0][0], 0.25, "first registration wins");
+        let empty_path = (loaders["rendtest:"].bake)("t:empty_path", "{}", &textures).unwrap();
+        assert_eq!(empty_path.len(), 1);
+        assert_eq!(empty_path[0].positions[0][0], 0.5);
+        assert!(!loaders.contains_key("rendtest:unregistered"));
     }
 
     #[test]
@@ -451,40 +451,38 @@ mod tests {
             mod_api::ModEntry::new("loader_flaky", Box::new(Flaky(Arc::clone(&flaky_calls)))),
         ]
         .into();
-        mod_platform::testing::with_mods(mods, || {
+        let (_fixture, kept) = mod_platform::testing::with_mods(mods, || {
             let mut loaders = Vec::new();
             mod_api::dispatch_register_model_loaders(&RegistrationContext::new(), &mut loaders);
-            let (_fixture, kept) = LoadersFixture::from_registrations(loaders);
-            assert_eq!(kept, ["rendtest:panics", "rendtest:flaky"]);
-
-            let textures =
-                BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
-            let loaders = active_loaders().unwrap();
-            let panics = &loaders["rendtest:panics"].bake;
-            let flaky = &loaders["rendtest:flaky"].bake;
-            let _ = take_callback_panic_notices();
-            assert!(panics("t:p", "{}", &textures).is_err());
-            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-            let notices = take_callback_panic_notices();
-            assert!(
-                notices
-                    .iter()
-                    .any(|notice| notice.mod_id == "loader_panicker"
-                        && notice.kind == "model loader"),
-                "expected panic notice, got {notices:?}"
-            );
-            // Disabled after panic: second call does not invoke the callback again.
-            assert!(panics("t:p", "{}", &textures).is_err());
-            assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
-
-            // Non-panic Err does not latch or queue a panic notice.
-            assert!(flaky("t:f", "{}", &textures).is_err());
-            assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
-            assert!(take_callback_panic_notices().is_empty());
-            let recovered = flaky("t:f", "{}", &textures).unwrap();
-            assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
-            assert_eq!(recovered.len(), 1);
-            assert_eq!(recovered[0].positions[0][0], 0.5);
+            LoadersFixture::from_registrations(loaders)
         });
+        assert_eq!(kept, ["rendtest:panics", "rendtest:flaky"]);
+
+        let textures = BTreeMap::from([("side".to_owned(), "minecraft:block/panel".to_owned())]);
+        let loaders = active_loaders().unwrap();
+        let panics = &loaders["rendtest:panics"].bake;
+        let flaky = &loaders["rendtest:flaky"].bake;
+        let _ = take_callback_panic_notices();
+        assert!(panics("t:p", "{}", &textures).is_err());
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+        let notices = take_callback_panic_notices();
+        assert!(
+            notices
+                .iter()
+                .any(|notice| notice.mod_id == "loader_panicker" && notice.kind == "model loader"),
+            "expected panic notice, got {notices:?}"
+        );
+        // Disabled after panic: second call does not invoke the callback again.
+        assert!(panics("t:p", "{}", &textures).is_err());
+        assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
+
+        // Non-panic Err does not latch or queue a panic notice.
+        assert!(flaky("t:f", "{}", &textures).is_err());
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
+        assert!(take_callback_panic_notices().is_empty());
+        let recovered = flaky("t:f", "{}", &textures).unwrap();
+        assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0].positions[0][0], 0.5);
     }
 }
