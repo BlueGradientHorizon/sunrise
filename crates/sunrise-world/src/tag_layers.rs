@@ -1,4 +1,7 @@
 //! Fold resource-pack tag layers, then bind the resulting entries to a registry.
+mod order;
+pub(crate) use order::dependency_order;
+
 use crate::loot::PackOverlay;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -107,68 +110,28 @@ impl TagLayers {
         contains: impl Fn(&str) -> bool,
     ) -> HashMap<String, Vec<String>> {
         let mut names: Vec<_> = raw.keys().map(String::as_str).collect();
-        names.sort_unstable();
-        let mut dependencies: HashMap<&str, Vec<&str>> = HashMap::new();
-        let mut pending = Vec::new();
-        let mut seen = HashSet::new();
-        for required in [true, false] {
-            for &name in &names {
-                for id in raw[name]
-                    .0
-                    .iter()
-                    .filter(|entry| (entry.required && !entry.remove) == required)
-                    .filter_map(|entry| entry.id.strip_prefix('#'))
-                {
-                    if !raw.contains_key(id)
-                        || dependencies.get(name).is_some_and(|ids| ids.contains(&id))
-                    {
-                        continue;
-                    }
-                    pending.clear();
-                    seen.clear();
-                    pending.push(id);
-                    let mut cyclic = false;
-                    while let Some(next) = pending.pop() {
-                        if next == name {
-                            cyclic = true;
-                            break;
-                        }
-                        if seen.insert(next) {
-                            pending.extend(dependencies.get(next).into_iter().flatten().copied());
-                        }
-                    }
-                    if !cyclic {
-                        dependencies.entry(name).or_default().push(id);
-                    }
-                }
-            }
-        }
-
+        // ResourceManager lists tag files in Identifier order (path first,
+        // namespace second), including the extension in the path comparison.
+        names.sort_by_cached_key(|name| {
+            let (namespace, path) = name.split_once(':').unwrap_or(("minecraft", name));
+            (format!("{path}.json"), namespace)
+        });
+        let sorted = dependency_order(names.into_iter(), |name| {
+            raw[name].0.iter().filter_map(|entry| {
+                Some((entry.id.strip_prefix('#')?, entry.required && !entry.remove))
+            })
+        });
         let mut bound: HashMap<String, Vec<String>> = HashMap::new();
-        let mut scheduled = HashSet::new();
-        let mut pending = Vec::new();
-        for name in names {
-            pending.push((name, false));
-            while let Some((name, ready)) = pending.pop() {
-                if ready {
-                    match raw[name].build(&contains, |id| bound.get(id).map(Vec::as_slice)) {
-                        Some(members) => {
-                            bound.insert(name.to_owned(), members);
-                        }
-                        None => log::warn!(
-                            "Sunrise: couldn't bind {kind} tag {name}: missing required member"
-                        ),
-                    }
-                } else if scheduled.insert(name) {
-                    pending.push((name, true));
-                    pending.extend(
-                        dependencies
-                            .get(name)
-                            .into_iter()
-                            .flatten()
-                            .rev()
-                            .map(|&id| (id, false)),
-                    );
+        for name in sorted {
+            let Some(entries) = raw.get(name) else {
+                continue;
+            };
+            match entries.build(&contains, |id| bound.get(id).map(Vec::as_slice)) {
+                Some(members) => {
+                    bound.insert(name.to_owned(), members);
+                }
+                None => {
+                    log::warn!("Sunrise: couldn't bind {kind} tag {name}: missing required member")
                 }
             }
         }
@@ -297,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_nested_tags_are_built_once_without_a_depth_cap() {
+    fn shared_nested_tags_are_built_once() {
         let mut raw = HashMap::new();
         for i in 0..128 {
             let child = format!("#test:{}", i + 1);
@@ -317,6 +280,28 @@ mod tests {
             true
         });
         assert_eq!(tags["test:0"], ["minecraft:stick", "minecraft:potion"]);
+    }
+
+    #[test]
+    fn an_optional_cycle_binds_in_java_identifier_bucket_order() {
+        let raw = HashMap::from([
+            (
+                "test:a".into(),
+                TagLayers::from_file(
+                    &json!({"values": ["sand", {"id":"#test:b", "required":false}]}),
+                ),
+            ),
+            (
+                "test:b".into(),
+                TagLayers::from_file(
+                    &json!({"values": ["dirt", {"id":"#test:a", "required":false}]}),
+                ),
+            ),
+        ]);
+        let bound = TagLayers::bind("block", &raw, |_| true);
+        // b is in bucket 2 and a in bucket 13; b's optional edge wins.
+        assert_eq!(bound["test:a"], ["minecraft:sand"]);
+        assert_eq!(bound["test:b"], ["minecraft:dirt", "minecraft:sand"]);
     }
 
     #[test]
