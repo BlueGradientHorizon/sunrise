@@ -3228,37 +3228,13 @@ mod join_order_tests {
         );
     }
 
-    /// Lists the walk refuses are drawn list by list, and the runs the walk had built before it
-    /// stopped are gone: a late entity that never joined sends the whole pass to storage order.
+    /// A broken join invariant must not silently switch the ordered pass to storage order.
     #[test]
-    fn lists_the_walk_refuses_are_drawn_list_by_list_with_nothing_kept() {
-        let local_player = JoinSeq::next();
-        let (mut lists, _) = mixed();
-        lists.stands.push(ArmorStand::new(9, at(), 0.0));
-        lists.stands[2].join = sunrise_client::join_seq::JoinSeq::UNJOINED;
-        assert!(lists.walk().is_err());
-        assert_eq!(
-            runs(&lists, Some(local_player)),
-            [
-                (DrawFamily::Boat, 0..1),
-                (DrawFamily::ArmorStand, 0..3),
-                (DrawFamily::Rocket, 0..2),
-                (DrawFamily::Trident, 0..2),
-                (DrawFamily::LocalPlayer, 0..1),
-            ]
-        );
-        // A list out of join order is refused the same way.
+    #[should_panic(expected = "drawn level entities must be stored in join order")]
+    fn draw_runs_reject_a_list_out_of_join_order() {
         let (mut lists, _) = mixed();
         lists.tridents.swap(0, 1);
-        assert_eq!(
-            runs(&lists, None),
-            [
-                (DrawFamily::Boat, 0..1),
-                (DrawFamily::ArmorStand, 0..2),
-                (DrawFamily::Rocket, 0..2),
-                (DrawFamily::Trident, 0..2),
-            ]
-        );
+        runs(&lists, None);
     }
 
     /// An entity taken out and put back (a tick takes its list) keeps its place.
