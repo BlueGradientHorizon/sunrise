@@ -401,6 +401,16 @@ mod tests {
                         Some([0.25, 0.25, 3.0, 3.0]),
                         &mut |child| crosshair(child, [0.0, 0.0, 4.0, 4.0]),
                     )?;
+                    for angle in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                        assert_eq!(
+                            parent.scope(
+                                &[PoseOp::Translate(2.0, 0.0), PoseOp::Rotate(angle)],
+                                None,
+                                &mut |_| panic!("a refused rotation must not invoke the callback"),
+                            ),
+                            Err(GuiDrawError::NotFinite),
+                        );
+                    }
                     assert_eq!(
                         parent.scope(
                             &[PoseOp::Scale(f32::MAX, 1.0), PoseOp::Scale(2.0, 1.0)],
@@ -475,6 +485,171 @@ mod tests {
             before.as_slice()
         );
         assert_eq!(batch.blends, [(0..12, HudBlend::Invert)]);
+    }
+
+    #[test]
+    fn a_refused_blit_leaves_the_batch_as_it_was_before_the_group() {
+        const DST: [f32; 4] = [10.0, 20.0, 4.0, 4.0];
+        const WHITE: u32 = u32::MAX;
+        const REGION: GuiBlitRegion = GuiBlitRegion {
+            uv: [0.0, 0.0],
+            src: [4, 4],
+            tex: [4, 4],
+        };
+        let mut atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let rect = Rect {
+            u0: 0.25,
+            v0: 0.5,
+            u1: 0.5,
+            v1: 0.75,
+            w: 4,
+            h: 4,
+        };
+        atlas.gui.insert(
+            "test:present".into(),
+            GuiSprite::Present {
+                rect,
+                scaling: None,
+            },
+        );
+        atlas.gui.insert("test:removed".into(), GuiSprite::Missing);
+        atlas.sprites.insert("test:removed".into(), rect);
+        atlas.live.insert("test:live".into(), rect);
+
+        let mut batch = HudBatch::scratch([320, 240]);
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            root.atlas_sprite("test:removed", DST, WHITE)?;
+            root.blit_sprite("test:present", DST, None, WHITE, Blend::Crosshair)
+        })
+        .unwrap();
+        assert_eq!(batch.vertices.len(), 12);
+        assert_eq!(batch.vertices[0].uv, [0.25, 0.5]);
+        assert_eq!(batch.vertices[6].uv, [0.25, 0.5]);
+        assert_eq!(batch.blends, [(6..12, HudBlend::Invert)]);
+        let before = bytemuck::cast_slice::<_, u8>(&batch.vertices).to_vec();
+
+        let mut refuses = |draw: &mut dyn FnMut(&mut dyn GuiCanvas) -> Result<(), GuiDrawError>,
+                           expected| {
+            assert_eq!(
+                GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+                    root.scope(&[PoseOp::Translate(2.0, 0.0)], None, &mut |child| {
+                        child.blit("test:live", DST, REGION, WHITE, Blend::Crosshair)
+                    })?;
+                    draw(root)
+                }),
+                Err(expected)
+            );
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&batch.vertices),
+                before.as_slice()
+            );
+            assert_eq!(batch.blends, [(6..12, HudBlend::Invert)]);
+        };
+        for name in [
+            "test:unknown",
+            "test:removed",
+            "mob_effect/test_missing",
+            "test:mob_effect/missing",
+        ] {
+            refuses(
+                &mut |gui| gui.blit_sprite(name, DST, None, WHITE, Blend::Textured),
+                GuiDrawError::UnknownSprite,
+            );
+        }
+        refuses(
+            &mut |gui| gui.atlas_sprite("test:unknown", DST, WHITE),
+            GuiDrawError::UnknownSprite,
+        );
+        for blend in [Blend::Nausea, Blend::Vignette] {
+            refuses(
+                &mut |gui| gui.blit_sprite("test:present", DST, None, WHITE, blend),
+                GuiDrawError::UnsupportedSpriteBlend,
+            );
+        }
+        for (size, blend) in [
+            ([0, 4], Blend::Textured),
+            ([4, 0], Blend::Textured),
+            ([-1, 4], Blend::Crosshair),
+        ] {
+            let region = Some(GuiSpriteRegion {
+                size,
+                offset: [0; 2],
+            });
+            refuses(
+                &mut |gui| gui.blit_sprite("test:present", DST, region, WHITE, blend),
+                GuiDrawError::BadSpriteRegion,
+            );
+        }
+        refuses(
+            &mut |gui| gui.blit("test:unknown", DST, REGION, WHITE, Blend::Vignette),
+            GuiDrawError::UnknownTexture,
+        );
+        for (region, error) in [
+            (
+                GuiBlitRegion {
+                    tex: [0, 4],
+                    ..REGION
+                },
+                GuiDrawError::BadBlitRegion,
+            ),
+            (
+                GuiBlitRegion {
+                    src: [4, -1],
+                    ..REGION
+                },
+                GuiDrawError::BadBlitRegion,
+            ),
+            (
+                GuiBlitRegion {
+                    uv: [f32::NAN, 0.0],
+                    ..REGION
+                },
+                GuiDrawError::NotFinite,
+            ),
+        ] {
+            refuses(
+                &mut |gui| gui.blit("test:live", DST, region, WHITE, Blend::Textured),
+                error,
+            );
+        }
+    }
+
+    #[test]
+    fn scoped_text_keeps_its_style_and_a_late_conversion_failure_discards_it() {
+        let atlas = HudAtlas::build(&ResourceSource::directory(
+            "/nonexistent/sunrise-test-assets".into(),
+        ))
+        .unwrap();
+        let mut styled = Text::literal("A");
+        styled.style.color = Some("#112233".into());
+        styled.style.underlined = Some(true);
+        let too_deep = (0..512).fold(Text::literal("leaf"), |child, _| {
+            Text::literal("").append(child)
+        });
+        let at = [10.0, 20.0];
+        let mut batch = HudBatch::scratch([320, 240]);
+        assert_eq!(
+            GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+                root.text(&styled, at, u32::MAX, false)?;
+                root.text(&too_deep, at, u32::MAX, false)
+            }),
+            Err(GuiDrawError::Text(mod_api::text::TextFormError::TooDeep))
+        );
+        assert!(batch.vertices.is_empty());
+        GameGuiCanvas::draw(&mut batch, &atlas, None, &mut |root| {
+            root.text(&styled, at, u32::MAX, false)
+        })
+        .unwrap();
+        assert!(!batch.vertices.is_empty());
+        assert!(
+            batch
+                .vertices
+                .iter()
+                .all(|vertex| vertex.color == 0xFF33_2211)
+        );
     }
 
     #[test]

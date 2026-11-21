@@ -1,11 +1,11 @@
-//! Moved here from the game so mods can name it.
-#[allow(unused_imports)]
-use crate::*;
+//! Vocabulary for GUI poses, texture blits and the health HUD.
+use crate::{ClientHost, GuiCanvas, GuiDrawError};
 use std::sync::Arc;
+
+// no wire: a pose operation is passed directly to an in-process canvas scope.
 /// A `Matrix3x2fStack` operation applied to a copy of the current pose.
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: a closed set the game matches without a wildcard
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum PoseOp {
     Translate(f32, f32),
     Scale(f32, f32),
@@ -13,14 +13,14 @@ pub enum PoseOp {
     /// origin, applied after the ops before it, as vanilla composes them. Positive angles turn
     /// clockwise on screen (y grows downwards). Everything drawn after it follows: fills,
     /// sprites, blits and text. [`GuiCanvas::scope`](crate::GuiCanvas::scope) refuses a NaN or
-    /// infinite angle with [`crate::GuiDrawError::NotFinite`]. In a `gui_paint` buffer it is
-    /// logged as `E_GUI_POSE_ROTATE_NOT_FINITE` and leaves the pose as it was.
+    /// infinite angle with [`crate::GuiDrawError::NotFinite`] before any draw in the scope.
     Rotate(f32),
 }
+
+// no wire: the blend is passed directly to an in-process blit.
 /// The render pipeline of a texture blit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set the game matches without a wildcard
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum Blend {
     /// `GUI_TEXTURED`.
     Textured,

@@ -1,2 +1,0 @@
-# Scoped GUI item models and decorations, and the engine's hotbar draw, in a prepared game.
-sunrise-client game::gui_paint_items_tests::scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeeze lib daily resources

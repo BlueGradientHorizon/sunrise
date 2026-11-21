@@ -101,9 +101,8 @@ pub enum GuiDraw {
 pub type Pose = [f32; 6];
 pub const IDENTITY: Pose = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 
-/// Applies `op` like JOML's `translate` / `scale` / `rotate` (same float order). A
-/// `Rotate` by a NaN or infinite angle is refused: `m` stays as it was (see
-/// [`pose_refused`]).
+/// Applies `op` like JOML's `translate` / `scale` / `rotate` (same float order).
+/// A `Rotate` by a NaN or infinite angle leaves `m` as it was.
 pub fn pose_apply(m: &mut Pose, op: PoseOp) {
     match op {
         PoseOp::Translate(x, y) => {
@@ -142,14 +141,6 @@ pub fn pose_point(pose: Pose, [x, y]: [f32; 2]) -> [f32; 2] {
         pose[0] * x + pose[2] * y + pose[4],
         pose[1] * x + pose[3] * y + pose[5],
     ]
-}
-
-/// The first op of `ops` that [`pose_apply`] refuses (a `Rotate` by a NaN or infinite
-/// angle), if any.
-pub fn pose_refused(ops: &[PoseOp]) -> Option<PoseOp> {
-    ops.iter()
-        .copied()
-        .find(|op| matches!(op, PoseOp::Rotate(angle) if !angle.is_finite()))
 }
 
 pub const WHITE: u32 = 0xFFFF_FFFF;
@@ -1083,7 +1074,7 @@ fn opaque(color: u32) -> u32 {
 
 #[path = "hud_layout_items.rs"]
 mod items;
-pub use items::{GuiItems, Undrawable, item_slot, paint_checked, paint_items, undrawable};
+pub use items::{GuiItems, paint_items};
 
 #[cfg(test)]
 #[path = "hud_layout_gradient_tests.rs"]

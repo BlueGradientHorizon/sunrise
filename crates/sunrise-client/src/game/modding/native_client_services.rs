@@ -374,6 +374,13 @@ mod tests {
             // The view a mod's group sends for a focused field, as `Widgets::draw` builds it.
             struct Draws<'a, 'g>(&'a super::Game<'g>, HudBatch, Vec<TextFieldView>);
             impl mod_api::DrawContext for Draws<'_, '_> {
+                fn with_scissor(
+                    &mut self,
+                    _: [f32; 4],
+                    _: &mut dyn FnMut(&mut dyn mod_api::DrawContext),
+                ) -> Result<(), mod_api::GuiClipRefusal> {
+                    unreachable!("the widget under test does not open a scissor")
+                }
                 fn widget_text_field(&mut self, field: &TextFieldView) -> TextFieldLayout {
                     self.2.push(field.clone());
                     self.0.native_widget_text_field(&mut self.1, field)

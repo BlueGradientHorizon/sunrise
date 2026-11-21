@@ -1,4 +1,4 @@
-# Painting a GUI command buffer
+# Drawing GUI content
 
 ## Drawing directly with a canvas
 
@@ -107,32 +107,22 @@ impl Hooks for StatusHud {
 }
 ```
 
-## Command buffer
-
-`DrawContext::gui_paint(&[GuiDraw])` draws a buffer of vanilla's `GuiGraphics` calls in order, under their poses
-(`GuiDraw::Push` / `Pop`). Every op in it is drawn, or none is: an op the paint cannot draw refuses the whole buffer
-with a `GuiPaintError` that names it and its index, so a mod can draw it another way.
-
 ## Blits
 
-`GuiDraw::Blit` draws part of a texture (`texture` is the path under `textures/`, without `.png`) with its
-`blend`: `Textured` blends normally, `Vignette` darkens what is under it by the texture (`dst * (1 - src)`),
-`Nausea` adds to it and `Crosshair` inverts it.
+- `canvas.blit_sprite` looks up a GUI sprite by id, such as `container/slot` or `mymod:panel`.
+  Pass `None` to draw the whole sprite or `Some(GuiSpriteRegion { size, offset })` to give the
+  whole sprite's logical size and the source offset in its pixels. Only `Textured` and `Crosshair`
+  work on this path. A removed GUI sprite is refused, not drawn as a missing texture.
+- `canvas.atlas_sprite` looks up the exact packed atlas name, independently of the GUI lookup.
+- `canvas.blit` draws part of a raw texture (a path under `textures/`, without `.png`, or a live
+  or registered texture id). `GuiBlitRegion { uv, src, tex }` gives the source offset, source size
+  and whole texture size in its pixels. `Textured` blends normally, `Vignette` darkens what is under
+  it (`dst * (1 - src)`), `Nausea` is additive and `Crosshair` inverts it.
 
 ## Refusals
 
-| `GuiPaintError` | When |
-| --- | --- |
-| `Text(TextFormError)` | A `Text` op's text cannot cross to the game (deeper than 512 nodes, malformed). |
-| `ItemSlot { index, slot }` | An `Item` of a slot other than 0-8 or 40. |
-| `ItemNotFinite { index }` | An `Item` whose `scale` or `pivot` is NaN or infinite. |
-| `BlitTexture { index, texture }` | A `Blit` of a texture the GUI atlas does not hold. |
-| `BlitSize { index }` | A `Blit` whose `tex` size is not positive, or whose `uv` is NaN or infinite. |
-| `Sprite { index, sprite }` | A `Sprite` or `AtlasSprite` the GUI atlas does not hold, a mob effect sprite (`mob_effect/...`, namespaced or not) included. |
-| `SpriteRegion { index }` | A `Sprite` whose `region` has a sprite width or height of zero (or less). |
-| `SpriteBlend { index, blend }` | A `Sprite` with the `Nausea` or `Vignette` blend, which sprites cannot be drawn with. |
-
-The enum is `#[non_exhaustive]`. `index` is the op's place in the buffer; nothing of the buffer was drawn, the
-ops before it included. A `TextFormError` converts into it with `?`.
-
-- **Cost.** The check reads the buffer once before drawing it; a mod that doesn't paint pays nothing.
+`GuiDrawError` belongs to the call that returned it. Geometry or pose arithmetic that isn't finite
+returns `NotFinite`; text and stack conversion failures carry `Text` or `Stack` errors. The blit
+methods distinguish `UnknownSprite`, `UnknownTexture`, `BadSpriteRegion`, `BadBlitRegion` and
+`UnsupportedSpriteBlend`. Return a refusal from the callback to discard its whole group, or
+handle it there and keep the successful draws.

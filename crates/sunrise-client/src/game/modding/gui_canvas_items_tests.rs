@@ -1,5 +1,5 @@
 #![cfg(test)]
-//! Real dispatch through a mod's GUI canvas and the engine's hotbar painter.
+//! Seeded item models and decorations through a mod's GUI canvas and real dispatch.
 use mod_api::{
     ClientHost, ComponentHoverEvent, GuiCanvas, GuiDrawError, Hooks, ItemBarEvent,
     ItemDecorationsEvent, ItemDisplayContext, ItemModelLayer, ItemModelUpdateEvent, ItemPart,
@@ -8,12 +8,7 @@ use mod_api::{
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 use sunrise_assets::item_model::ItemModelNode;
-use sunrise_client::{
-    hud::{HudBatch, HudVertex},
-    hud_layout::{self, HotbarInputs},
-    items::ItemStack,
-    text::Text,
-};
+use sunrise_client::{hud::HudBatch, items::ItemStack, text::Text};
 
 const MODEL: &str = "painter:icon";
 const ITEM: &str = "minecraft:paper";
@@ -104,9 +99,9 @@ impl ItemPart for Decorator {
 
 #[test]
 #[ignore = "daily"]
-fn scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
+fn scoped_items_keep_the_seed_and_draw_decorations_outside_the_squeeze() {
     use crate::game::{
-        Game, hotbar_items::HotbarItems, native_client_session::tests::logged_client,
+        Game, native_client_session::tests::logged_client,
         native_entity_refs::tests::with_client_game,
     };
 
@@ -142,7 +137,6 @@ fn scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeez
             };
             // This count is legal to draw, but exceeds paper's resident stack limit.
             game.inventory[0] = Some(ItemStack::new(ITEM, 65));
-            game.offhand = Some(ItemStack::new(ITEM, 65));
             let hover = Text::from(serde_json::json!({
                 "text": "x", "hover_event": { "action": "show_text", "value": "hi" }
             }));
@@ -156,64 +150,41 @@ fn scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeez
                 committed.as_slice()
             );
 
-            let mut hotbar = HudBatch::scratch([320, 240]);
-            let inputs = HotbarInputs {
-                selected: 0,
-                right_handed: true,
-                offhand: true,
-                slots: [Some(0.0), None, None, None, None, None, None, None, None],
-                offhand_pop: 5.0,
-                attack: None,
-            };
-            let draws = hud_layout::hotbar(320, 240, &inputs);
+            // Paper's flat GUI model covers its 16-pixel square. Its bounds identify the
+            // model independently of face order. The bar, text and marker use the parent pose.
+            let bar = canvas
+                .vertices
+                .iter()
+                .position(|v| v.color == BAR)
+                .expect("no bar")
+                - 6;
+            let mut min = [f32::INFINITY; 2];
+            let mut max = [f32::NEG_INFINITY; 2];
+            for v in &canvas.vertices[..bar] {
+                for axis in 0..2 {
+                    min[axis] = min[axis].min(v.pos[axis]);
+                    max[axis] = max[axis].max(v.pos[axis]);
+                }
+            }
+            assert_eq!([min, max], [[24.0, 24.0], [32.0, 48.0]], "model bounds");
+
             let atlas = &game.gui.atlas;
-            hud_layout::paint_items(&mut hotbar, atlas, &draws, &mut HotbarItems { game });
-
-            // Paper's flat GUI model covers its 16-pixel square. Its bounds identify the model
-            // suffix independently of its face order. The bar, text and marker use the parent.
-            let check = |vertices: &[HudVertex], [x, y]: [f32; 2], bounds: [[f32; 2]; 2]| {
-                let bar = vertices
-                    .iter()
-                    .position(|v| v.color == BAR)
-                    .expect("no bar")
-                    - 6;
-                let mut min = [f32::INFINITY; 2];
-                let mut max = [f32::NEG_INFINITY; 2];
-                for v in &vertices[..bar] {
-                    for axis in 0..2 {
-                        min[axis] = min[axis].min(v.pos[axis]);
-                        max[axis] = max[axis].max(v.pos[axis]);
-                    }
-                }
-                assert_eq!([min, max], bounds, "model bounds");
-
-                let mut expected = HudBatch::scratch([320, 240]);
-                expected.fill(atlas, x + 2.0, y + 13.0, 13.0, 2.0, 0xFF00_0000);
-                expected.fill(atlas, x + 2.0, y + 13.0, 5.0, 1.0, BAR);
-                let width = atlas.font.width("65") as i32;
-                expected.text(atlas, "65", (17 - width) as f32, 9.0, u32::MAX, true);
-                for v in &mut expected.vertices[12..] {
-                    v.pos[0] += x;
-                    v.pos[1] += y;
-                }
-                assert!(expected.vertices.len() > 12, "count has no glyphs");
-                expected.fill(atlas, x - 2.0, y + 2.0, 1.0, 2.0, 0xFF00_00FF);
-                let end = bar + expected.vertices.len();
-                assert_eq!(
-                    bytemuck::cast_slice::<_, u8>(&vertices[bar..end]),
-                    bytemuck::cast_slice::<_, u8>(&expected.vertices),
-                    "bar, count and custom marker in parent coordinates",
-                );
-                end
-            };
-            let end = check(&canvas.vertices, [20.0, 30.0], [[24.0, 24.0], [32.0, 48.0]]);
-            assert_eq!(end, canvas.vertices.len());
-            // Three background quads precede the main-hand and offhand draws, in that order.
-            let items = &hotbar.vertices[18..];
-            let end = check(items, [72.0, 221.0], [[72.0, 221.0], [88.0, 237.0]]);
-            let offhand = &items[end..];
-            let end = check(offhand, [43.0, 221.0], [[47.0, 215.0], [55.0, 239.0]]);
-            assert_eq!(end, offhand.len());
+            let mut expected = HudBatch::scratch([320, 240]);
+            expected.fill(atlas, 22.0, 43.0, 13.0, 2.0, 0xFF00_0000);
+            expected.fill(atlas, 22.0, 43.0, 5.0, 1.0, BAR);
+            let width = atlas.font.width("65") as i32;
+            expected.text(atlas, "65", (17 - width) as f32, 9.0, u32::MAX, true);
+            for v in &mut expected.vertices[12..] {
+                v.pos[0] += 20.0;
+                v.pos[1] += 30.0;
+            }
+            assert!(expected.vertices.len() > 12, "count has no glyphs");
+            expected.fill(atlas, 18.0, 32.0, 1.0, 2.0, 0xFF00_00FF);
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&canvas.vertices[bar..]),
+                bytemuck::cast_slice::<_, u8>(&expected.vertices),
+                "bar, count and custom marker in parent coordinates",
+            );
 
             game.inventory[0] = None;
             game.component_hover_effect(&mut canvas, style, (40.0, 30.0));
@@ -229,6 +200,6 @@ fn scoped_and_hotbar_items_keep_the_seed_and_draw_decorations_outside_the_squeez
     );
     assert_eq!(
         *resolves.lock().unwrap(),
-        [37, 37, 1, 10].map(|seed| (seed, 65, ItemDisplayContext::Gui))
+        [37, 37].map(|seed| (seed, 65, ItemDisplayContext::Gui))
     );
 }

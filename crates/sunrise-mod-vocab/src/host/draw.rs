@@ -45,7 +45,7 @@ pub trait DrawContext {
     }
     /// `GuiGraphics.fillGradient`: rectangle `rect` (`[x, y, w, h]` in GUI pixels, as
     /// [`fill`](Self::fill) takes it) blending from ARGB `top` at `y` to `bottom` at `y + h`.
-    /// It follows the current pose and clip ([`push_clip`](Self::push_clip)) as `fill` does.
+    /// It follows the current clip ([`with_scissor`](Self::with_scissor)) as `fill` does.
     /// Zero area, inversion on exactly one axis, or a non-finite coordinate draws nothing.
     /// With both `w` and `h` negative, bounds are sorted and colours flipped, keeping
     /// `top` at `y`, now the lower edge.
@@ -73,8 +73,8 @@ pub trait DrawContext {
         unimplemented!("DrawContext::text")
     }
     /// `text` scaled by `scale` about `at`, its top-left corner: what a GUI pose of translate,
-    /// scale and translate back around `text` draws (`PoseStack.scale` in vanilla's HUD), without
-    /// a `gui_paint` buffer. `0.5` is the half-size line under a widget's label.
+    /// scale and translate back around `text` draws (`PoseStack.scale` in vanilla's HUD).
+    /// `0.5` is the half-size line under a widget's label.
     fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
         unimplemented!("DrawContext::text_scaled")
     }
@@ -117,7 +117,7 @@ pub trait DrawContext {
     /// GUI pixels, and every dimension and position it answers — each line's `at` and `width`, the
     /// block's `width` and `height` — is in scaled GUI pixels. `scale` of one is the text as it
     /// draws at its own size; `scale` of two is the label at twice the size, in a box of the same
-    /// `max_width`. Draw a line within [`GuiDraw::Push`](crate::GuiDraw::Push) of
+    /// `max_width`. Draw a line in a [`GuiCanvas::scope`] with
     /// [`PoseOp::Scale`](crate::client::hud_layout::PoseOp::Scale) at its `at` divided by `scale`
     /// (the answer's positions are already scaled, and the pose scales them again), and its
     /// glyphs cover the scaled box it measured.
@@ -143,9 +143,8 @@ pub trait DrawContext {
     /// unscaled, as vanilla's `TextAlignment.CENTER.calculateLeft` floors the half line width.
     /// Empty text has no line at all, and then `width` and `height` are zero.
     ///
-    /// Draw each line through [`gui_paint`](Self::gui_paint)'s
-    /// [`GuiDraw::Text`](crate::GuiDraw::Text): [`text`](Self::text) draws plain characters, so a
-    /// styled label is `GuiDraw::Text`'s.
+    /// Draw each line through [`GuiCanvas::text`] to retain its styles;
+    /// [`DrawContext::text`] draws plain characters.
     ///
     /// Refuses, answering no line at all (a [`TextLinesRefusal`], never a partial layout):
     /// a `max_width` that is not finite or that dividing by `scale` overflows, a `scale` that is
@@ -196,25 +195,19 @@ pub trait DrawContext {
     ) -> Result<(), SceneError> {
         Err(SceneError::Unavailable)
     }
-    /// `GuiGraphics.enableScissor`: what this hook call draws from now on, until the matching
-    /// [`pop_clip`](Self::pop_clip), is cut to `rect` (`[x, y, w, h]` in GUI pixels, as
-    /// [`fill`](Self::fill) takes it), the visible part of a sprite, glyph or item kept.
-    /// Clips nest: an inner one is cut to the one around it, so it never shows more than that
-    /// does. A negative width or height clips everything. What a scrolling list, a scrolling
-    /// label or a viewport into a larger page draws through; a scene from
-    /// [`draw_scene`](Self::draw_scene) keeps its own box. A clip still open when the hook call
-    /// returns is closed then, so it also cuts what later listeners of the same call draw:
-    /// close what you open. Refuses a rectangle that is not finite and a 65th open clip,
-    /// leaving the clips as they were. A client's call; nothing is clipped on a server.
-    fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
-        unimplemented!("DrawContext::push_clip")
-    }
-    /// `GuiGraphics.disableScissor`: closes the clip [`push_clip`](Self::push_clip) opened
-    /// last, so what is drawn next is cut only by the clips around it. Refuses with
-    /// [`GuiClipRefusal::NoneOpen`] when this hook call has none open.
-    fn pop_clip(&mut self) -> Result<(), GuiClipRefusal> {
-        unimplemented!("DrawContext::pop_clip")
-    }
+    /// Run `draw` with the full drawing context clipped to `rect` (`[x, y, w, h]` in GUI pixels,
+    /// as [`fill`](Self::fill) takes it), like `GuiGraphics.enableScissor` / `disableScissor`.
+    /// Clips nest by intersection; a nonpositive extent clips everything. The enclosing clip
+    /// is restored when the callback returns or unwinds. A non-finite rectangle or endpoint,
+    /// or a 65th nested clip, is refused before the callback runs.
+    ///
+    /// This does not roll back draws. For a fallible group of GUI primitives with a local pose
+    /// and scissor, use [`GuiCanvas::scope`] inside [`DrawContext::draw_gui`].
+    fn with_scissor(
+        &mut self,
+        rect: [f32; 4],
+        draw: &mut dyn FnMut(&mut dyn DrawContext),
+    ) -> Result<(), GuiClipRefusal>;
     /// Draws living entity `entity` standing in `view.rect`, `view.size` GUI
     /// pixels a block, turned as `view.look` says: vanilla's
     /// `InventoryScreen.renderEntityInInventoryFollowsMouse` (`GuiEntityLook::At`
@@ -241,7 +234,7 @@ pub trait DrawContext {
     ///   drew before or after it, and later drawing covers it in call order. An item's faces meet
     ///   each other by depth, as a model's do, and its enchantment glint follows them; the
     ///   OptiFine CIT glint layers of a stack are not drawn on this path yet (sunrise#3555). There
-    ///   is no z input. Both are cut by the clips opened with [`DrawContext::push_clip`], as
+    ///   is no z input. Both are cut by the clips opened with [`DrawContext::with_scissor`], as
     ///   `fill` is.
     ///
     /// A client's call from a drawing hook (`screen_draw`, `gui_render_post`); on a server it is

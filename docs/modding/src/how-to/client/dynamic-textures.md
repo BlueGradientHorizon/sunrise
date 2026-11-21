@@ -33,8 +33,8 @@ the game's atlas, so they take `&mut dyn ClientHost`: call them from a hook that
 not from inside a draw.
 
 - **`create_dynamic_texture(id, width, height, rgba)`** makes the image. From the next frame, its id is a GUI sprite of
-  `width` x `height` pixels: `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite`, `gui_paint`'s `Blit` and
-  `gui_sprite` draw and find it as any other sprite.
+  `width` x `height` pixels: `DrawContext::sprite`, `gui_nine_slice`, `tiled_sprite`, `GuiCanvas::blit`,
+  `GuiCanvas::blit_sprite` and `gui_sprite` draw and find it as any other sprite.
 - **`update_dynamic_texture(id, width, height, rgba)`** gives it new pixels, written into the slot it already holds on
   the next frame. The size may change within the image's class (below); the sprite takes the new size. Update when
   the image changed, not every frame: each update copies the pixels and uploads the image.
