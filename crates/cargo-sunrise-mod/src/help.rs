@@ -53,6 +53,18 @@ const COMMANDS: &[Command] = &[
         summary: "Stages a package, its registry entry, and pull request text; it uploads nothing. --sunrise pins signed source to a stable release from --releases and uses the author’s release at --asset-base. --binaries checks signed release assets and fit; to append to an existing version, give --registry and its original signed --package.",
     },
     Command {
+        name: "keygen",
+        everyday: false,
+        usage: "keygen [--out <dir>] [--no-password]",
+        summary: "Makes a Minisign key pair in the mod’s per-user key folder (or --out) and prints the public key. The private key is encrypted unless --no-password is given (Unix only). Never overwrites either key.",
+    },
+    Command {
+        name: "sign",
+        everyday: false,
+        usage: "sign <file> [--key <private key path>] [--no-password] | sign <file> --key-env",
+        summary: "Writes the detached .minisig beside <file> without replacing it. Uses the current mod’s per-user signing key unless --key is given; --key-env reads SUNRISE_MOD_SIGNING_KEY and optional SUNRISE_MOD_SIGNING_PASSPHRASE without prompting.",
+    },
+    Command {
         name: "internals",
         everyday: false,
         usage: "internals sync | internals add <path>… [--kind <kind>]",

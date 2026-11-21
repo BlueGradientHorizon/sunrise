@@ -16,16 +16,32 @@ const CACHE_ENV: &str = "SUNRISE_MOD_CACHE";
 /// The per-user cache folder: `SUNRISE_MOD_CACHE`, else the platform's cache folder.
 pub(crate) fn cache_dir() -> Result<PathBuf, String> {
     let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
-    cache_in(
-        &env,
-        if cfg!(windows) {
-            Platform::Windows
-        } else if cfg!(target_os = "macos") {
-            Platform::Mac
-        } else {
-            Platform::Unix
+    cache_in(&env, Platform::current())
+}
+
+/// Persistent per-user data, independent of the SDK cache and its override.
+pub(crate) fn data_dir() -> Result<PathBuf, String> {
+    let location = |name| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+    };
+    let home = || {
+        location(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .ok_or("no per-user data folder for signing keys; give a folder with --out or a key file with --key")
+    };
+    let base = match Platform::current() {
+        Platform::Windows => match location("LOCALAPPDATA") {
+            Some(path) => path,
+            None => home()?.join("AppData/Local"),
         },
-    )
+        Platform::Mac => home()?.join("Library/Application Support"),
+        Platform::Unix => match location("XDG_DATA_HOME") {
+            Some(path) => path,
+            None => home()?.join(".local/share"),
+        },
+    };
+    Ok(base.join("sunrise-mod"))
 }
 
 #[derive(Clone, Copy)]
@@ -33,6 +49,18 @@ enum Platform {
     Windows,
     Mac,
     Unix,
+}
+
+impl Platform {
+    fn current() -> Self {
+        if cfg!(windows) {
+            Self::Windows
+        } else if cfg!(target_os = "macos") {
+            Self::Mac
+        } else {
+            Self::Unix
+        }
+    }
 }
 
 fn cache_in(env: &dyn Fn(&str) -> Option<OsString>, platform: Platform) -> Result<PathBuf, String> {

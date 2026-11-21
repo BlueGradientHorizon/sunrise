@@ -507,14 +507,19 @@ name = "cargo-sunrise-mod"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "cap-fs-ext",
+ "cap-std",
  "chrono",
  "dunce",
+ "getrandom 0.4.3",
  "libc",
  "lzma-rust2",
  "minisign",
  "minisign-verify",
  "ring",
+ "rpassword",
  "rustc-demangle",
+ "same-file",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -531,6 +536,8 @@ dependencies = [
  "toml",
  "toml_edit",
  "ureq",
+ "windows-sys 0.61.2",
+ "zeroize",
  "zip",
 ]
 
@@ -4844,6 +4851,7 @@ dependencies = [
 name = "sunrise-mod-package"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cap-fs-ext",
  "cap-std",
  "getrandom 0.4.3",

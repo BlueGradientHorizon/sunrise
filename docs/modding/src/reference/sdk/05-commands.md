@@ -1,6 +1,6 @@
 # Commands
 
-The `cargo sunrise-mod` commands that read the SDK. One tool serves every build: it reads each build's data from its
+The `cargo sunrise-mod` commands for mod projects. One tool serves every build: it reads each build's data from its
 SDK, fetched as [In a mod project](03-in-a-project.md) says, and refuses a schema it doesn't know. Run them in a mod's
 folder.
 
@@ -10,6 +10,8 @@ folder.
 | `build` | Fetches the pinned SDK when needed, then packs the `.smod` with its [`uses.json`](04-fit.md#usesjson). For a native mod it then compiles the crate against the build's prebuilt game, as [`native-build`](08-native-build.md) does, with no launcher: see [`build` for a native mod](#build-for-a-native-mod). |
 | `build --binaries <dir> --sunrise-release <tag> --releases <file> [--server]` | Builds and packs a standalone API native mod pinned to that stable SDK. Writes the unsigned archive for this computer's SDK host; `--server` selects the dedicated-server host. |
 | `build --describe-binaries <dir> --sunrise-release <tag> --releases <file> --sdk-data <dir>` | Reads the SDK host list, checks each signed archive's structure and identity, and writes the unsigned descriptor. Does not compile or sign. |
+| `keygen [--out <dir>] [--no-password]` | Makes a Minisign pair in the [mod’s per-user key folder](../../how-to/publish.md#signing) or the named folder. Prints the public key; the private key is passphrase-encrypted by default and always on Windows. Refuses to overwrite either file. |
+| `sign <file> [--key <path>] [--no-password]` or `sign <file> --key-env` | Writes the detached `<file>.minisig`, without overwriting an existing signature. Uses the current mod’s per-user signing key by default. For CI, `--key-env` reads `SUNRISE_MOD_SIGNING_KEY` and optional `SUNRISE_MOD_SIGNING_PASSPHRASE` with no prompt; see [Signing](../../how-to/publish.md#signing). |
 | `run [--resources <folder>] [--jars <dir>] [-- <game args>]` | For a native mod, builds, stages the game with the mod in `target/sunrise-mod/run/` and starts it. |
 | `check [--uses]` | The package rules, and every render pipeline shader (`assets/*/shaders/pipeline/**/*.wgsl`) composed and validated by the game's own code, failing with `<file>: <reason>` for each refusal ([render pipelines](../../how-to/client/render-pipelines.md)); then, for a code mod, fetches the pinned SDK when needed and runs `cargo check` for this computer, then what the mod uses of its pinned build: `Greeter uses 14 items of the API (6 hooks, 5 methods, 3 types). Made for nightly-2026-11-13 (afe471c).` `--uses` lists each item with the line that brought it in, and how the mod builds each struct it builds with a literal. |
 | `hooks <text> [--all]` | Searches the pinned build's hooks offline, by id, doc and their NeoForge, Fabric and Paper names; every word must match. `--all` searches every record. Matches in the id come first, then in a counterpart, then in the doc. |

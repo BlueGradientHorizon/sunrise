@@ -104,25 +104,48 @@ Published source versions never change. A file that must go is taken down by the
 
 ## Signing
 
-Authors may sign with an Ed25519 key in [minisign](https://jedisct1.github.io/minisign/) format. The entry then
-holds the public key, every version of the project must be signed with it, and an update signed with another key is
-refused. `cargo sunrise-mod` verifies a signature but does not make keys or signatures: use `minisign`.
+Signed projects use an Ed25519 key in [Minisign](https://jedisct1.github.io/minisign/) format. The registry entry
+holds the public key; every version of that project must be signed with the same private key.
 
-Build and sign before calling `publish`, including on the first listing. For example, for a mod with ID `my_mod`:
+Run `cargo sunrise-mod keygen` once in your mod project. It reads the mod ID from `sunrise-mod.toml`, asks for a
+passphrase without echoing it, and prints the registry public key. It saves the encrypted `signing.key` and a text
+copy of the public key (`signing.pub`) in the mod's per-user data folder:
+
+- Linux: `$XDG_DATA_HOME/sunrise-mod/keys/<mod-id>/` (default data home: `~/.local/share`).
+- macOS: `~/Library/Application Support/sunrise-mod/keys/<mod-id>/`.
+- Windows: `%LOCALAPPDATA%/sunrise-mod/keys/<mod-id>/` (fallback: `%USERPROFILE%/AppData/Local`).
+
+Use `--out <dir>` to choose a different folder, either outside the project or under its top-level `.sunrise/`,
+`target/`, or `.git/` directory, which are excluded from packages. The tool does not change Git's ignore rules.
+Back up the private key securely; never commit it or upload it as an asset.
+
+Build and sign before calling `publish`, including on the first listing. For example, for a mod with ID `my_mod`,
+set `public_key` to the value printed by `keygen`:
 
 ```sh
 cargo sunrise-mod build
-minisign -S -s my_mod.key -m target/sunrise-mod/my_mod.smod
+cargo sunrise-mod sign target/sunrise-mod/my_mod.smod
 cargo sunrise-mod publish --summary "..." --owner you --categories utility \
-  --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig
+  --key "$public_key" --signature target/sunrise-mod/my_mod.smod.minisig
 ```
+
+`sign` writes a detached `.minisig` beside the input. It uses the current mod's per-user `signing.key` unless
+`--key <path>` is given. Existing Minisign key files and signatures work too. On Unix, `keygen --no-password` explicitly
+opts in to generating an unencrypted key. On Windows, `keygen` requires encryption because key files inherit the
+folder's permissions. Use `sign --no-password` to sign with an existing unencrypted key file. Neither command
+overwrites an existing output. After rebuilding a file at the same path, remove its old `.minisig` before signing
+the new bytes. Keep the existing signature when retrying publication of unchanged, verified bytes.
+
+For CI, store the full private key file text as a protected secret named `SUNRISE_MOD_SIGNING_KEY` and, for an
+encrypted key, store its passphrase separately as `SUNRISE_MOD_SIGNING_PASSPHRASE`. Set those only in the
+signing step's environment and run `cargo sunrise-mod sign <file> --key-env`. With a passwordless CI key, leave
+the passphrase variable unset. The command never prompts in this mode. Do not put either secret on the command
+line, in a log, or in a build artifact. The tool clears its own in-memory copies of keys and passphrases after use;
+it cannot clear the process environment or the copies held internally by Minisign and the password prompt library.
 
 For a new version of an already-signed project, use the same key and replace the page flags (`--summary`, `--owner`,
 `--categories`) with `--registry <your checkout of sunrise-mods>`. With `--key` and `--signature`, `publish` checks
-and stages the exact bytes you signed, without rebuilding. If you change the package, build and sign it again.
-
-Generate a key pair once with `minisign -G -p my_mod.pub -s my_mod.key`. Keep the secret key (`my_mod.key`) out of
-both your repository and releases; losing it means a new key and a review.
+and copies the exact bytes you signed, without rebuilding.
 
 ## Publishing a stable source version
 
@@ -134,7 +157,7 @@ commit, build and [sign the source package](#signing), and pass a release list (
 ```sh
 cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
   --sunrise 26.3-0.1.0 --releases releases.json \
-  --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+  --key "$public_key" --signature target/sunrise-mod/my_mod.smod.minisig \
   --package target/sunrise-mod/my_mod.smod \
   --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
 ```
@@ -162,23 +185,23 @@ pin and the target commit. To describe the archives with `--describe-binaries`, 
 
    Run it with `--server` as well for each dedicated-server host the SDK lists. Every run writes a `.smod` and the
    selected host's `<id>-<version>+<release>-<host>.tar.xz`. Keep one `.smod` to sign as the source for a new version.
-2. Sign every archive with `minisign -S -s my_mod.key -m <archive>`. Gather the archives and their `.minisig` files
+2. Sign every archive with `cargo sunrise-mod sign <archive>`. Gather the archives and their `.minisig` files
    in `release-assets`, then assemble and sign the descriptor with the same key:
 
    ```sh
    cargo sunrise-mod build --describe-binaries release-assets --sunrise-release 26.3-0.1.0 \
      --releases releases.json --sdk-data sdk-data
-   minisign -S -s my_mod.key -m release-assets/my_mod-0.1.0+26.3-0.1.0.binaries.json
+   cargo sunrise-mod sign release-assets/my_mod-0.1.0+26.3-0.1.0.binaries.json
    ```
 
    The descriptor embeds the archive signatures; it does not sign the archives for you.
 3. Prepare the submission. For a new listing:
 
    ```sh
-   minisign -S -s my_mod.key -m target/sunrise-mod/my_mod.smod
+   cargo sunrise-mod sign target/sunrise-mod/my_mod.smod
    cargo sunrise-mod publish --summary 'A brief summary' --owner you --categories utility \
      --sunrise 26.3-0.1.0 --releases releases.json --sdk-data sdk-data \
-     --key "$(tail -n 1 my_mod.pub)" --signature target/sunrise-mod/my_mod.smod.minisig \
+     --key "$public_key" --signature target/sunrise-mod/my_mod.smod.minisig \
      --package target/sunrise-mod/my_mod.smod \
      --binaries release-assets --asset-base 'https://github.com/you/my_mod/releases/download/v0.1.0'
    ```

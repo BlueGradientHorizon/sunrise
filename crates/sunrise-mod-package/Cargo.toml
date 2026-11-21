@@ -22,6 +22,7 @@ png = "0.18"
 zip = { version = "9.1.3", default-features = false, features = ["deflate"] }
 # `[runtime]` and `[[jar]]` hashes (SHA-512), and the registry index's SHA-256.
 sha2 = "0.10"
+base64 = "0.22"
 # The registry index's minisign signatures (feature `index`; no dependencies of its own).
 minisign-verify = { version = "0.3", optional = true }
 # Inspect a signed native library's format, type and architecture without loading it.

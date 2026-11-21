@@ -11,6 +11,7 @@
 //! - `build [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
 //!   and `data/`; a native mod is compiled first (`dev.rs`).
 //! - `publish`: build, then write the registry entry, the staged file and the pull request text (`publish.rs`).
+//! - `keygen`, `sign`: make an author-held Minisign key pair or sign a release asset (`signing.rs`).
 //! - `run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]`: build, then play with
 //!   the mod.
 //! - `check [--uses]` in a mod folder: the package rules and render pipeline shaders; for a native
@@ -43,6 +44,7 @@ mod registry;
 mod release;
 mod sdk_cmds;
 mod sdk_fetch;
+mod signing;
 mod uses_table;
 
 use options::Options;
@@ -96,6 +98,8 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("publish") => publish::run(entry, &args[1..]),
+        Some("keygen") => signing::keygen(&args[1..]),
+        Some("sign") => signing::sign(&args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
         Some("check") => check_args(&args[1..]).and_then(|wanted| match wanted {
             Check::Folder { uses } => sdk_cmds::check_mod(entry, uses),
