@@ -969,30 +969,30 @@ the entry, and a default never stands in for invalid data. The engine adds no en
 of its own. Only both-side packages may declare registries. The game loads entries from mod content and enabled data packs.
 
 Use `level.datapack_entries(host, registry)` to list owned entry IDs in sorted order and
-`level.datapack_handle(host, registry, entry_id)` to obtain a `DatapackHandle`. Borrow the
-published entry through a visitor. For example, keep only the `power` number:
+`level.datapack_read(host, registry, entry_id, &mut visit)` to borrow the published entry
+through a visitor. For example, keep only the `power` number:
 
 ```rust,ignore
-let handle = level.datapack_handle(host, "example:spell", "addon:fire")?;
 let mut power = None;
-level.datapack_read(host, &handle, &mut |entry| {
+level.datapack_read(host, "example:spell", "addon:fire", &mut |entry| {
     if let Some(mod_api::DatapackValue::Int(value)) = entry.get("power") {
         power = Some(*value);
     }
 })?;
 ```
 
-Read `entry.values` in schema order or use `entry.get(name)` by field name. The generation stays
-pinned until the visitor returns, with no registry lock held and no disk access. Keep IDs to
-look up again, or copy only the fields you need to retain as a snapshot.
+Read `entry.values` in schema order or use `entry.get(name)` by field name. The active registry
+set stays pinned until the visitor returns, with no registry lock held and no disk access. Keep
+IDs to look up again, or copy only the fields you need to retain as a snapshot.
 
-The visitor runs once on success, never on error. A handle from a previous reload gives
-`StaleGeneration`; one from another world session gives `WrongSession`. Unknown registries,
-stale or parked levels, and a missing published set give `UnknownRegistry`; a registry without
-the entry gives `MissingEntry`. A host without a backend returns `Unavailable`. Listing returns
-`None` for an unavailable level or registry, not for a known empty registry. Once a client
-receives a valid snapshot at join or reload, it reads those entries; any of its declared
-registries omitted from the snapshot have no entries there.
+The visitor runs once on success, never on error. On the logical server, both the active
+dimension and any loaded parked server dimension are accepted (matching vanilla
+`Level.registryAccess()`); stale epochs and unloaded dimensions are refused. Unknown or
+unavailable registries, stale or unloaded levels, and a missing published set give
+`UnknownRegistry`; a registry without the entry gives `MissingEntry`. A host without a backend
+returns `Unavailable`. Listing returns `None` for an unavailable level or registry, not for a
+known empty registry. Once a client receives a valid snapshot at join or reload, it reads those
+entries; any of its declared registries omitted from the snapshot have no entries there.
 
 A code mod can also use `Registrar::declare_entity_attributes(path, template, attributes)` during registration.
 That declaration starts from the vanilla template's attribute row, replacing the content row's overrides.
