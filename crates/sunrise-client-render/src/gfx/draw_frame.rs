@@ -2908,9 +2908,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
@@ -3066,9 +3066,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
@@ -3258,9 +3258,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
@@ -3567,9 +3567,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
@@ -3624,9 +3624,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
@@ -3725,9 +3725,9 @@ impl Renderer {
                         oit_on,
                     );
                     self.world_primitives
-                        .as_mut()
+                        .as_ref()
                         .expect("world primitives")
-                        .upload_and_draw_stage(&self.device, &self.queue, &mut pass, &data)
+                        .draw_prepared(&mut pass, None, data)
                 } else {
                     self.world_primitives
                         .as_ref()
