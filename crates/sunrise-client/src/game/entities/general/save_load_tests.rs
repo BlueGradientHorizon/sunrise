@@ -209,6 +209,72 @@ fn general_tree_loads_joins_and_saves_one_record() {
 
 #[test]
 #[ignore = "daily"]
+fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
+    with_types(|game| {
+        let cart_uuid = [1, 2, 3, 4];
+        let rider_uuid = [2, 3, 4, 5];
+        let cart = Tag::Compound(
+            [
+                ("id".into(), Tag::String("minecraft:minecart".into())),
+                ("UUID".into(), Tag::IntArray(cart_uuid.to_vec())),
+                (
+                    "Pos".into(),
+                    Tag::List(
+                        [0.5_f64, 64.0, 0.5]
+                            .map(|n| Tag::Double(n.to_bits()))
+                            .to_vec(),
+                    ),
+                ),
+            ]
+            .into(),
+        );
+        game.load_listed("minecraft:minecart", Some(cart_uuid), None, cart)
+            .unwrap();
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", rider_uuid, b"rider", Vec::new()),
+        )
+        .unwrap();
+        let cart_id = game.carts[0].id;
+        let rider_id = game.resident_entities.general.rows[0].id;
+        let cart = game.entity(cart_id).unwrap();
+        let rider = game.entity(rider_id).unwrap();
+        assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
+        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+
+        // Keep the chunk loaded but outside simulation range so the pass refreshes
+        // the adjacency without rider movement invalidating it again.
+        use sunrise_client::ticket_levels::{Sources, ViewedTicket};
+        game.tickets.update(Some(Sources {
+            viewed: vec![ViewedTicket {
+                center: (0, 0),
+                radius: 0,
+                ticking: false,
+            }],
+            ..Default::default()
+        }));
+        game.begin_ordered_ticks();
+        game.tick_general().unwrap();
+        assert_eq!(game.entity_passengers(cart), Some(vec![rider]));
+        assert_eq!(game.entity_is_vehicle(cart), Some(true));
+        assert_eq!(game.boarding_order(cart_id, u32::MAX, false), 1);
+        let saved = saved_chunk(game, (0, 0));
+        assert_eq!(saved.len(), 1);
+        let Some(Tag::List(passengers)) = saved[0].get("Passengers") else {
+            panic!("minecart saved without its passenger");
+        };
+        assert_eq!(passengers.len(), 1);
+        assert_eq!(
+            sunrise_client::entity_nbt::uuid(&passengers[0]),
+            Some(rider_uuid)
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn mixed_passengers_sit_and_unload_with_their_actual_root() {
     use crate::game::commands::Target;
     use mod_api::StartRidingRefusal;
