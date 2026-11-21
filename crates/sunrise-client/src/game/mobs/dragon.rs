@@ -8,8 +8,6 @@
 //! exit portal, the egg and the next gateway; and its rendering and boss bar.
 #[path = "dragon/death.rs"]
 mod death;
-#[path = "dragon/rays.rs"]
-mod rays;
 #[path = "dragon/residency.rs"]
 mod residency;
 #[path = "dragon/save_lending.rs"]
@@ -24,7 +22,6 @@ use super::{
     potions::{Victim, mob_can_be_affected},
 };
 use mod_api::DragonPhase;
-use rays::dragon_rays;
 use sunrise_client::{
     health::{DamageContainer, DamageLevel, HurtSource, Reduction},
     hud::HudBatch,
@@ -37,6 +34,7 @@ use sunrise_client::{
     text::Text,
 };
 use sunrise_client_core::nbt_value;
+use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::{
@@ -2973,7 +2971,7 @@ impl Game<'_> {
         }
         // EnderDragon.aiStep queries living entities, not only players.
         if let Some(d) = self.dragon.as_ref() {
-            let frame = sunrise_client::mobs::dragon_contacts::Frame {
+            let frame = sunrise_gameplay::dragon_contacts::Frame {
                 dragon_id: d.id,
                 origin: d.position,
                 center: (bc, bz),
@@ -3006,7 +3004,7 @@ impl Game<'_> {
                         self.combat.attack(),
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if sunrise_client::mobs::dragon_contacts::contact_part(
+                    if sunrise_gameplay::dragon_contacts::contact_part(
                         crate::game::entity::damage_level_of!(
                             self,
                             &sunrise_client::health::NO_ATTACK,
@@ -5108,9 +5106,6 @@ impl Game<'_> {
 
 #[path = "dragon/crystal.rs"]
 mod crystal;
-#[path = "dragon/death_render.rs"]
-mod death_render;
-use death_render::{dissolve_color, dissolve_mask};
 
 #[cfg(test)]
 mod tests {
