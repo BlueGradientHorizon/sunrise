@@ -3,6 +3,7 @@
 //! with two sides that `shadowcomp` programs flip as composite programs flip colortex (6.1.6).
 //! Square, `shadowMapResolution` pixels.
 
+use super::pack_post::SINK;
 use sunrise_shaders::SHADOW_COLORS;
 
 type Ops<T> = wgpu::Operations<T>;
@@ -41,6 +42,9 @@ pub(super) struct ShadowTargets {
     /// The copy of each buffer a pass samples while binding it as `shadowcolorimgN`, or whose
     /// copy a dispatch's loads read: taken from "main" just before that pass.
     pub scratch: [Option<wgpu::TextureView>; SHADOW_COLORS],
+    /// What a `shadowcomp` program that writes only images draws into: the shadow map's size,
+    /// so its fragments cover the buffers' texels.
+    pub sink: Option<wgpu::TextureView>,
     /// The clear colour of each buffer cleared every frame.
     pub clears: [Option<[f32; 4]>; SHADOW_COLORS],
     /// Bit n set: B is shadowcolor n's "main".
@@ -65,6 +69,8 @@ pub(super) struct ShadowUse {
     pub storage: u16,
     /// Has a `scratch` copy.
     pub copied: u16,
+    /// A `shadowcomp` program writes only images: the pass has a `sink`.
+    pub sink: bool,
 }
 
 fn target(
@@ -133,6 +139,7 @@ impl ShadowTargets {
             }
             None => wgpu::TextureFormat::Rgba8Unorm,
         });
+        uses.sink = self.sink.is_some();
         *self = Self::new(device, shadow, formats, uses, self.depth1.is_some());
     }
 
@@ -150,6 +157,7 @@ impl ShadowTargets {
             doubled,
             storage,
             copied,
+            sink,
         } = uses;
         let size = shadow
             .resolution
@@ -205,6 +213,10 @@ impl ShadowTargets {
             depth1: depth1.then(|| target(device, "Shader pack shadowtex1", size, depth, copy)),
             color,
             scratch,
+            sink: sink.then(|| {
+                let usage = wgpu::TextureUsages::empty();
+                target(device, "Shader pack shadow sink", size, SINK, usage).1
+            }),
             clears: std::array::from_fn(|n| {
                 let b = &shadow.colors[n];
                 b.clear.then(|| b.clear_color.unwrap_or([1.0; 4]))
@@ -220,6 +232,14 @@ impl ShadowTargets {
                 ..Default::default()
             }),
         }
+    }
+
+    /// The shadowcolor buffers not cleared every frame (bit n: shadowcolor n): what a pass
+    /// writes there builds on the frame before.
+    pub fn kept(&self) -> u16 {
+        (0..SHADOW_COLORS)
+            .filter(|&n| self.clears[n].is_none())
+            .fold(0, |m, n| m | 1 << n)
     }
 
     /// Side `alt` (of "main" and "alt") of shadowcolor `n`.

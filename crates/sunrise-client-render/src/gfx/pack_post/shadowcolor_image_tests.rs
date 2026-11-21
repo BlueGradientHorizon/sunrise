@@ -491,18 +491,15 @@ fn terrain_pack(program: &str, fragment: &str) -> Post {
     )
 }
 
-/// Builds `post` with the terrain's vertex layout and renders two frames of it, the terrain a
-/// quad over the whole shadow map and screen: the build's notes, and pixels (0, 0) and (1, 0) of each
-/// frame.
-fn shadow_frames(gpu: &Fixture, post: Post) -> (Vec<String>, Vec<[[u8; 4]; 2]>) {
-    use wgpu::util::DeviceExt;
+/// `post` built with the terrain's vertex layout.
+fn build_terrain(gpu: &Fixture, post: Post) -> PackPost {
     const ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0=>Float32x3];
     let layouts = [Some(wgpu::VertexBufferLayout {
         array_stride: 12,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &ATTRS,
     })];
-    let mut post = gpu.build_with_terrain(
+    gpu.build_with_terrain(
         post,
         Some(Geometry {
             material_maps: false,
@@ -513,7 +510,14 @@ fn shadow_frames(gpu: &Fixture, post: Post) -> (Vec<String>, Vec<[[u8; 4]; 2]>) 
             ids: None,
             cull: false,
         }),
-    );
+    )
+}
+
+/// [`build_terrain`] and two frames of it, the terrain a quad over the whole shadow map and
+/// screen: the build's notes, and pixels (0, 0) and (1, 0) of each frame.
+fn shadow_frames(gpu: &Fixture, post: Post) -> (Vec<String>, Vec<[[u8; 4]; 2]>) {
+    use wgpu::util::DeviceExt;
+    let mut post = build_terrain(gpu, post);
     let positions: [[f32; 3]; 6] = [
         [-1., -1., 0.],
         [1., -1., 0.],
@@ -642,4 +646,308 @@ fn a_shadowcomp_program_binds_the_buffer_it_draws_into_from_the_other_side() {
     for f in frames(&gpu, &mut post) {
         assert_eq!(f, [[102, 0, 0, 255], [255; 4]]);
     }
+}
+
+#[test]
+fn only_the_two_literal_names_are_shadowcolor_images() {
+    use wgpu::TextureFormat as T;
+    let formats = [
+        T::Rgba8Unorm,
+        T::R32Float,
+        T::Rgba16Float,
+        T::Rgba8Unorm,
+        T::Rgba8Unorm,
+        T::Rgba8Unorm,
+        T::Rgba8Unorm,
+        T::Rgba8Unorm,
+    ];
+    assert!(shadow_image("shadowcolorimg0", Some(&formats)) == Some((0, T::Rgba8Unorm)));
+    assert!(shadow_image("shadowcolorimg1", Some(&formats)) == Some((1, T::R32Float)));
+    // Spellings a number parser would read as 0, 1 or 2: none is spec 5.2's name.
+    for name in [
+        "shadowcolorimg01",
+        "shadowcolorimg+1",
+        "shadowcolorimg00",
+        "shadowcolorimg2",
+    ] {
+        assert!(shadow_image(name, Some(&formats)).is_none(), "{name}");
+    }
+}
+
+/// [`bindings`] of a composite compute program declaring `images`, with the shadow pass's
+/// buffers RGBA8 and storable: the images bound, or `None`, and the notes.
+fn bind_images(
+    images: Vec<sunrise_shaders::Image>,
+) -> Option<(Option<Vec<(u32, Image)>>, Vec<String>)> {
+    let (adapter, device, _queue) = crate::gfx::test_gpu::optional_device()?;
+    let interface = sunrise_shaders::Interface {
+        uniform_size: 48,
+        initial_values: vec![0; 48],
+        uniforms: Vec::new(),
+        samplers: Vec::new(),
+        outputs: Vec::new(),
+        draw: false,
+        images,
+        buffers: Vec::new(),
+    };
+    let buffers = pack_images::Buffers::new(
+        &device,
+        Default::default(),
+        Default::default(),
+        wgpu::ShaderStages::COMPUTE,
+    );
+    let stand_ins = std::cell::RefCell::new(Vec::new());
+    let pack = Resources {
+        textures: &[],
+        images: &[],
+        left_out: &[],
+        buffers: &buffers,
+        indices: None,
+        gpu: Gpu::of(&adapter, device.features()),
+        // Every buffer of both kinds can be an image.
+        storable: u32::MAX,
+        rgb: 0,
+        packed: [None; BUFFERS],
+        released: std::cell::Cell::new(("", 0)),
+        stand_ins: &stand_ins,
+        shadow_linear: 0,
+        jobs: None,
+    };
+    let mut notes = Vec::new();
+    let bound = bindings(
+        device.features(),
+        &interface,
+        "composite",
+        Group::Composite,
+        &[],
+        None,
+        &[wgpu::TextureFormat::Rgba8Unorm; BUFFERS],
+        Some(&[wgpu::TextureFormat::Rgba8Unorm; SHADOW_COLORS]),
+        &mut notes,
+        &pack,
+    )
+    .map(|(.., images)| images);
+    Some((bound, notes))
+}
+
+#[test]
+fn a_shadowcolor_image_or_its_copy_of_another_dimension_is_refused() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let image = |name: &str, ty: &str, before: Option<&str>| sunrise_shaders::Image {
+        name: name.into(),
+        ty: ty.into(),
+        format: "rgba8".into(),
+        access: String::new(),
+        binding: 1,
+        before: before.map(Into::into),
+    };
+    // The 2D declarations bind the buffer and the copy taken before a dispatch.
+    let Some((bound, notes)) = bind_images(vec![image("shadowcolorimg0", "image2D", None)]) else {
+        return;
+    };
+    assert!(bound == Some(vec![(1, Image::ShadowColor(0))]), "{notes:?}");
+    let (bound, notes) = bind_images(vec![image(
+        "hz_before_shadowcolorimg1",
+        "image2D",
+        Some("shadowcolorimg1"),
+    )])
+    .expect("a GPU");
+    assert!(
+        bound == Some(vec![(1, Image::ShadowColorBefore(1))]),
+        "{notes:?}"
+    );
+    // Any other dimension would bind a 2D view to a layout wgpu then refuses to match: the
+    // program is refused while the pack loads. A copy is checked on its own, as a dispatch
+    // loads from it.
+    for (img, of) in [
+        (image("shadowcolorimg0", "image3D", None), "shadowcolor0"),
+        (image("shadowcolorimg1", "uimage1D", None), "shadowcolor1"),
+        (
+            image("shadowcolorimg0", "image2DArray", None),
+            "shadowcolor0",
+        ),
+        (
+            image(
+                "hz_before_shadowcolorimg1",
+                "image3D",
+                Some("shadowcolorimg1"),
+            ),
+            "shadowcolor1",
+        ),
+    ] {
+        let name = img.name.clone();
+        let ty = img.ty.clone();
+        let (bound, notes) = bind_images(vec![img]).expect("a GPU");
+        assert!(bound.is_none(), "{name} {ty}");
+        assert_eq!(
+            notes,
+            [format!(
+                "composite: `{name}` is declared {ty} but {of} is 2D; skipped"
+            )]
+        );
+    }
+}
+
+#[test]
+fn a_pack_declaring_a_3d_shadowcolor_image_runs_without_that_program() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Fixture::new() else { return };
+    // The first stores, the second loads then stores (its loads read a copy, `hz_before_`):
+    // both are refused while loading, and the frames draw the buffers' clear colour.
+    for access in ["writeonly ", ""] {
+        let composite = format!(
+            "{COMPUTE}layout(rgba8) {access}uniform image3D shadowcolorimg0;\n\
+             void main() {{\n    ivec3 p = ivec3(gl_GlobalInvocationID.xy, 0);\n\
+                 imageStore(shadowcolorimg0, p, {});\n}}\n",
+            if access.is_empty() {
+                "imageLoad(shadowcolorimg0, p) * 0.5"
+            } else {
+                "vec4(0.2)"
+            }
+        );
+        let mut post = gpu
+            .try_build(pack(&[("composite.csh", &composite)]))
+            .unwrap();
+        assert!(
+            post.notes.iter().any(|n| n.ends_with(
+                "`shadowcolorimg0` is declared image3D but shadowcolor0 is 2D; skipped"
+            )),
+            "{:?}",
+            post.notes
+        );
+        for f in frames(&gpu, &mut post) {
+            assert_eq!(f, [[255; 4]; 2], "{access:?}");
+        }
+    }
+}
+
+#[test]
+fn a_shadowcomp_program_that_only_stores_draws_into_a_shadow_sized_sink() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    // No output: the pass draws into the shadow sink, its only effect the store, at every
+    // texel of the shadow map.
+    let Some(gpu) = Fixture::new() else { return };
+    let mut post = gpu.build(pack(&[
+        ("shadowcomp.vsh", VERTEX),
+        (
+            "shadowcomp.fsh",
+            "#version 430 compatibility\n\
+             layout(rgba8) writeonly uniform image2D shadowcolorimg1;\n\
+             void main() { imageStore(shadowcolorimg1, ivec2(gl_FragCoord.xy), vec4(0.0, 0.6, 0.2, 1.0)); }\n",
+        ),
+    ]));
+    for f in frames(&gpu, &mut post) {
+        assert_eq!(f, [[255; 4], [0, 153, 51, 255]]);
+    }
+    // A history reset makes the shadow buffers again, the sink with them.
+    post.reset_history(&gpu.device);
+    for f in frames(&gpu, &mut post) {
+        assert_eq!(f, [[255; 4], [0, 153, 51, 255]], "after a reset");
+    }
+}
+
+#[test]
+fn the_shadow_cache_counts_every_kind_of_shadow_program_write() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Fixture::new() else { return };
+    // The terrain draws into shadowcolor0 and stores into shadowcolor1.
+    let post = build_terrain(
+        &gpu,
+        terrain_pack(
+            "shadow",
+            "#version 430 compatibility\nlayout(rgba8) writeonly uniform image2D shadowcolorimg1;\n\
+             void main() {\n    imageStore(shadowcolorimg1, ivec2(gl_FragCoord.xy), vec4(1.0));\n\
+                 gl_FragData[0] = vec4(1.0);\n}\n",
+        ),
+    );
+    assert_eq!(post.shadow_writes, 0b11);
+    // shadowcomp draws into shadowcolor0 and flips buffer 1, shadowcolor1, without drawing into
+    // it (`flip.*` names buffers as colortex in every group: sunrise-shaders' `buffer_index`).
+    let post = gpu.build(pack(&[
+        ("shadowcomp.vsh", VERTEX),
+        (
+            "shadowcomp.fsh",
+            "#version 120\n/* RENDERTARGETS: 0 */\nvoid main() { gl_FragData[0] = vec4(1.0); }\n",
+        ),
+        ("shaders.properties", "flip.shadowcomp.colortex1=true\n"),
+    ]));
+    assert_eq!(post.shadow_writes, 0b11);
+    // Programs outside the shadow pass are the other rule's (`shadow_images_outside`).
+    let composite = format!(
+        "{COMPUTE}layout(rgba8) writeonly uniform image2D shadowcolorimg0;\n\
+         void main() {{ imageStore(shadowcolorimg0, ivec2(gl_GlobalInvocationID.xy), vec4(1.0)); }}\n"
+    );
+    let post = gpu.build(pack(&[("composite.csh", &composite)]));
+    assert_eq!((post.shadow_writes, post.shadow_images_outside), (0, 1));
+}
+
+/// Two frames of the pack of `files` and `final` with `directives`, with the Shadow Cache off
+/// and then on (a new [`PackPost`] each): pixels (0, 0) and (1, 0) of each frame.
+fn cache_off_and_on(files: &[(&str, &str)], directives: &str) -> Option<[Vec<[[u8; 4]; 2]>; 2]> {
+    let gpu = Fixture::new()?;
+    Some([false, true].map(|cached| {
+        let mut post = gpu.build(pack_with(files, directives));
+        (0..2)
+            .map(|_| {
+                let pixels = if cached {
+                    gpu.render_cached(&mut post, [8, 8])
+                } else {
+                    gpu.render(&mut post, [8, 8])
+                };
+                [pixels[0], pixels[1]]
+            })
+            .collect()
+    }))
+}
+
+#[test]
+fn the_shadow_cache_reruns_a_shadowcomp_dispatch_into_a_buffer_kept_between_frames() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    // shadowcomp adds 0.2 to shadowcolor0, which isn't cleared: 0.2 on the first frame, 0.4
+    // on the second. Nothing in the cache key changes, but a kept map would read 0.2 twice.
+    let shadowcomp = format!(
+        "{COMPUTE}layout(r32f) uniform image2D shadowcolorimg0;\n\
+         void main() {{\n    ivec2 p = ivec2(gl_GlobalInvocationID.xy);\n\
+             imageStore(shadowcolorimg0, p, imageLoad(shadowcolorimg0, p) + 0.2);\n}}\n"
+    );
+    let Some([off, on]) = cache_off_and_on(
+        &[("shadowcomp.csh", &shadowcomp)],
+        "/* const int shadowcolor0Format = R32F; */\nconst bool shadowcolor0Clear = false;\n",
+    ) else {
+        return;
+    };
+    assert_eq!(
+        off,
+        [[[51, 0, 0, 255], [255; 4]], [[102, 0, 0, 255], [255; 4]]]
+    );
+    assert_eq!(on, off);
+}
+
+#[test]
+fn the_shadow_cache_key_has_the_uniforms_of_an_attached_compute_stage() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    // shadowcomp.csh, run in shadowcomp.fsh's pass, is the only program reading
+    // `frameCounter`: it stores (frameCounter + 1) / 5 into shadowcolor1, cleared every frame.
+    let shadowcomp = format!(
+        "{COMPUTE}uniform int frameCounter;\n\
+         layout(rgba8) writeonly uniform image2D shadowcolorimg1;\n\
+         void main() {{\n    float v = float(frameCounter % 4 + 1) * 0.2;\n\
+             imageStore(shadowcolorimg1, ivec2(gl_GlobalInvocationID.xy), vec4(v, v, v, 1.0));\n}}\n"
+    );
+    let Some([off, on]) = cache_off_and_on(
+        &[
+            ("shadowcomp.csh", &shadowcomp),
+            ("shadowcomp.vsh", VERTEX),
+            (
+                "shadowcomp.fsh",
+                "#version 120\n/* RENDERTARGETS: 0 */\nvoid main() { gl_FragData[0] = vec4(0.0, 0.0, 1.0, 1.0); }\n",
+            ),
+        ],
+        "",
+    ) else {
+        return;
+    };
+    // The frames differ, as the counter does, with the cache off and on alike.
+    assert_ne!(off[0][1], off[1][1], "{off:?}");
+    assert_eq!(on, off);
 }

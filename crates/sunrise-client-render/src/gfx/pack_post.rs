@@ -342,24 +342,24 @@ fn shadow_copies(group: Group, reads: u16, shadow_reads: u16, images: &[(u32, Im
     own & sampled | before
 }
 
-/// The shadowcolor images a program may declare: `shadowcolorimg0` and `1` (spec 5.2).
-const SHADOW_IMAGES: usize = 2;
-
-/// The shadowcolor buffer image `name` binds (`shadowcolorimgN`) and its format, while the
-/// shadow pass runs (its buffers have the formats `shadow`).
+/// The shadowcolor buffer image `name` binds and its format, while the shadow pass runs (its
+/// buffers have the formats `shadow`). Only the two names spec 5.2 gives: `shadowcolorimg01` or
+/// `shadowcolorimg2` is no buffer.
 fn shadow_image(
     name: &str,
     shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
 ) -> Option<(usize, wgpu::TextureFormat)> {
-    let n = name
-        .strip_prefix("shadowcolorimg")
-        .and_then(|n| n.parse::<usize>().ok())
-        .filter(|&n| n < SHADOW_IMAGES)?;
+    let n = match name {
+        "shadowcolorimg0" => 0,
+        "shadowcolorimg1" => 1,
+        _ => return None,
+    };
     shadow.map(|f| (n, f[n]))
 }
 
-/// The format of the sink of passes that write only images.
-const SINK: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
+/// The format of the sink of passes that write only images (a shadowcomp program's is
+/// `ShadowTargets::sink`).
+pub(super) const SINK: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 
 /// What packs use of the device beyond drawing. OpenGL ES and older drivers lack some of it: a
 /// program that needs what is missing is skipped with a note, and the game runs on without it.
@@ -779,6 +779,10 @@ pub struct PackPost {
     /// The shadowcolor buffers a shadow program binds as images: cleared before the shadow pass
     /// draws (`ShadowTargets::clear_images`).
     shadow_pass_images: u16,
+    /// The shadowcolor buffers a shadow program, or a compute stage attached to one, draws
+    /// into, flips or binds as an image: the Shadow Cache keeps the pass only while all of them
+    /// are cleared every frame.
+    shadow_writes: u16,
     /// Set 5 of programs with a geometry stage.
     indices: Option<wgpu::BindGroupLayout>,
     shadow_culling: sunrise_shaders::ShadowCulling,
@@ -1820,6 +1824,18 @@ fn bindings(
             }
             (None, None) => stand_in(&i.name, notes),
         };
+        // The shadowcolor buffers are plain 2D textures: an `image3D` (or 1D, array, cube...)
+        // declaration would bind a 2D view to a layout of another dimension, which wgpu
+        // refuses. A dispatch's copy is declared as the image it copies.
+        if let Image::ShadowColor(n) | Image::ShadowColorBefore(n) = target
+            && !i.ty.ends_with("image2D")
+        {
+            notes.push(format!(
+                "{name}: `{}` is declared {} but shadowcolor{n} is 2D; skipped",
+                i.name, i.ty
+            ));
+            return None;
+        }
         // An `R11F_G11F_B10F` image or buffer this device makes `RGBA16F` (a float stand-in
         // that neither clamps nor drops NaN) takes `layout(r11f_g11f_b10f)` as `rgba16f`
         // (`storage_formats_of`): Iris 1.11.7 stored into and read back such an image with a
@@ -2504,6 +2520,7 @@ impl PackPost {
         // shadowcolor buffers bound as images, and those copied before a pass.
         let (mut shadow_storage, mut shadow_copied) = (0u16, 0u16);
         let (mut shadow_images_outside, mut shadow_pass_images) = (0u16, 0u16);
+        let mut shadow_writes = 0u16;
         let draws = DrawUniforms::new(device);
         // The shadow buffers' formats when the shadow pass runs; their programs see them as
         // buffers 0 to 7.
@@ -2739,6 +2756,7 @@ impl PackPost {
                 shadow_storage |= own | before;
                 if in_shadow {
                     shadow_pass_images |= own | before;
+                    shadow_writes |= p.written | p.flip | own;
                 } else {
                     shadow_images_outside |= own | before;
                 }
@@ -3169,6 +3187,7 @@ impl PackPost {
                     doubled: shadow_doubled & colors,
                     storage: shadow_storage & colors,
                     copied: shadow_copied & colors,
+                    sink: shadow_comp.iter().any(|p| p.sink),
                 },
                 depth1,
             );
@@ -3550,6 +3569,7 @@ impl PackPost {
             shadow_cache: Default::default(),
             shadow_images_outside,
             shadow_pass_images,
+            shadow_writes,
         };
         Ok((built, jobs))
     }
@@ -5134,12 +5154,18 @@ impl PackPost {
         // Custom images are cleared each frame (`pack_images::clear`) before the
         // shadow pass writes them, so a pack with any redraws it too. A pass after the shadow
         // pass that binds a shadowcolor buffer as an image may change it, so the map kept isn't
-        // the shadow pass's any more.
+        // the shadow pass's any more. And a shadow program writing a buffer that isn't cleared
+        // every frame builds on the frame before (an accumulating `shadowcomp` dispatch): the
+        // same inputs give another result, so only a pass whose writes all start from a clear
+        // is kept.
         let cache_hit = !has_shadow_entities
             && self.images.is_empty()
             && self.shadow_images_outside == 0
             && self.shadow_cache.key == Some(cache_key)
-            && self.shadow_targets.is_some();
+            && self
+                .shadow_targets
+                .as_ref()
+                .is_some_and(|t| self.shadow_writes & t.kept() == 0);
         if cache_hit {
             // The targets still hold this map (and `main`, the A/B side
             // `shadowcomp` left current).
@@ -5198,6 +5224,14 @@ impl PackPost {
             let t = self.shadow_targets.as_ref().expect("shadow pass");
             let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
                 SmallVec::new();
+            // A program that writes only images draws into the sink, which keeps nothing.
+            if pass.sink {
+                let ops = wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Discard,
+                };
+                attachments.push(t.sink.as_ref().and_then(|v| attach(v, ops)));
+            }
             for &(location, buffer) in &pass.writes {
                 let l = location as usize;
                 if attachments.len() <= l {
@@ -5307,7 +5341,9 @@ impl PackPost {
                 self.entities
                     .iter()
                     .flat_map(|entities| entities.shadow.iter().flatten()),
-            );
+            )
+            // Their compute stages read uniforms of their own.
+            .flat_map(|p| std::iter::once(p).chain(&p.compute));
         for pass in passes {
             pass.name.hash(&mut hasher);
             for (index, ty, offset) in &pass.uniforms {

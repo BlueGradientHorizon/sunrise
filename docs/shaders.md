@@ -75,9 +75,12 @@ options are saved to `shaderpacks/<pack>.txt` (`NAME=value` lines), and the pack
 
 The **Shadow Cache** (off by default; `shadowCache` in `sunrise-graphics.txt`) skips the shadow pass and keeps the
 shadow map and shadowcolor buffers of the frame before while nothing that draws them has changed (the world, the
-time, the snapped shadow camera, the shadow settings). The shadow pass still runs every frame while an entity casts a
-shadow, while the pack has `image.*` or `bufferObject.*` images, and while a program outside the shadow pass binds
-`shadowcolorimg0` or `shadowcolorimg1`, since its stores would otherwise pile up in the kept buffers.
+time, the snapped shadow camera, the shadow settings, and the uniforms the shadow programs and their compute stages
+read). It keeps them only while the pass would draw the same again: the shadow pass still runs every frame while an
+entity casts a shadow, while the pack has `image.*` images, while a shadow program draws into, flips or stores into a
+shadowcolor buffer that isn't cleared every frame (`shadowcolorNClear=false`: the program builds on the frame
+before), and while a program outside the shadow pass binds `shadowcolorimg0` or `shadowcolorimg1`, since its stores
+would otherwise pile up in the kept buffers.
 
 ## Testing a pack frame by frame
 
