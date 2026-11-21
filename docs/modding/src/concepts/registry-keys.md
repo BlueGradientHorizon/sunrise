@@ -81,12 +81,13 @@ itself to metadata queries; there is no separate record to convert to. See
 [Block-state facts](../how-to/world/block-state-facts.md) for reading properties, changing a
 property on a copy and constructing a state from a block's default.
 
-`SceneBlock::new(pos, state, entity)` and `StructureTemplateBlock::new(pos, state, nbt)`
-use this owned `BlockState`, including all properties. Structure reads preserve vanilla palette
-selection, mirror-then-rotation and placement order; an unavailable state mapping refuses the
-whole snapshot with `None`. `DrawContext::draw_scene` checks the entire scene before drawing:
-an unknown key, invalid ordinal or unavailable mapping draws nothing, never a partial scene or
-a replacement air block.
+`SceneBlock::new(pos, state, entity)` and `StructureTemplateBlockView` (lent by
+`LevelRef::visit_structure_template`) use this owned `BlockState`, including all properties.
+Structure reads preserve vanilla palette selection, mirror-then-rotation and placement order;
+an unavailable state mapping refuses the whole read with `StructureTemplateError::InvalidState`
+or `StructureTemplateError::Unavailable` before visiting. `DrawContext::draw_scene` checks the
+entire scene before drawing: an unknown key, invalid ordinal or unavailable mapping draws
+nothing, never a partial scene or a replacement air block.
 
 Tint callbacks receive immutable block metadata explicitly, without a `Host`.
 Local state ordinals retain their meaning when world numeric state IDs are reordered.

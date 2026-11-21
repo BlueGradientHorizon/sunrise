@@ -1,7 +1,8 @@
 # Typed bulk block edits
 
-Use complete `BlockState` values in `BlockEdit.palette`. Construct them with
-`BlockState::of(&host.block_states(), block, constraints)` (or change an existing state
+Call `level.edit_blocks(host, &edit)` on a [`LevelRef`] (active or parked server level) to
+apply a `BlockEdit`. Use complete `BlockState` values in `BlockEdit.palette`. Construct them
+with `BlockState::of(&host.block_states(), block, constraints)` (or change an existing state
 with `with`). `filters` contains owned `StatePredicate` values. `StatePredicate::block`
 validates property names and values strictly; `StatePredicate::tag` retains arbitrary
 property requirements, including for an empty tag, and rejects duplicate properties.
@@ -14,41 +15,49 @@ are supported: a partial predicate does not need to form a complete state with d
 All palette entries, predicates and run indices are prepared before any mutation.
 NBT is not representable. At most 65,536 filters are allowed. Unloaded chunks and
 out-of-height portions of runs are skipped. Edits preserve strict block-entity behavior,
-notify no neighbors and send whole changed chunks.
+notify no neighbors and send whole changed chunks. Refusals return a typed `BlockEditError`
+with nothing changed (`Stale`, `Unavailable`, `InTransaction` for a parked level inside an
+open Host transaction, `InvalidState`, `InvalidPredicate`, `PaletteOutOfRange`,
+`FilterOutOfRange`, or `TooManyFilters`).
 
-## Read column palettes
+## Read column heights and slices
 
-`ColumnBlocks.palette` also contains complete `BlockState` values. States of the
-same block with different properties have distinct entries. Only distinct numeric
-states are converted to API values, not each block in the returned columns.
-
-`ColumnBlocks.water_colors` carries one `0xRRGGBB` server-side biome JSON water
-colour (`BiomeSpecialEffects.waterColor`) per column at the column's top (`0` where
-unloaded). Colormap-derived grass and foliage tints are client-side only. See
-[Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
-for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
+- `level.visit_surface_heights(host, columns, heightmap, &mut |pos, height| ...)` visits each
+  `(x, z)` column's height by `heightmap` in input order (`None` where the column's chunk is
+  not loaded), stopping early on `ControlFlow::Break(())`. Refuses before visiting with
+  `LevelReadError` (`Stale` or `Unavailable`).
+- `level.visit_columns(host, columns, heightmap, (below, above), &mut |slice| ...)` lends a
+  `ColumnBlockSlice<'_>` per column in input order, stopping early on `ControlFlow::Break(())`.
+  `slice.blocks` contains `below + above` complete `BlockState` values (bottom first, air
+  outside the column's height or where unloaded). `slice.water_color` carries the `0xRRGGBB`
+  server-side biome JSON water colour (`BiomeSpecialEffects.waterColor`) at `base - 1` (`0`
+  where unloaded). Colormap-derived grass and foliage tints are client-side only. See
+  [Read blended biome tints on the client](read-biome-data.md#read-blended-biome-tints-on-the-client)
+  for `ClientHost::biome_tint(pos, resolver)` and the equivalent read inside a block tint callback.
+  Refuses with `ColumnReadError` (`Stale`, `Unavailable`, `InvalidRange`, or `InvalidState`).
 
 ## Query terrain before loading chunks
 
-`ServerHost::terrain_surface(dimension, columns)` reads the level's generator, not resident
-chunks. It returns one optional `TerrainColumn` per input pair `(x, z)`, in input order.
-At most `MAX_TERRAIN_COLUMNS` (4,096) columns are accepted per call. The call is available in the World phase.
+`level.visit_terrain_surface(host, columns, &mut |pos, col| ...)` reads the level's generator
+for an active or parked server level, not resident chunks, lending `(pos, Option<TerrainColumnView<'_>>)`
+in input order and stopping early on `ControlFlow::Break(())`. The call is available in the World phase.
 
 - `height` is one above the highest solid block, skipping fluids, like OceanFloor. The scan
   starts at the level top, so the Nether returns its bedrock roof, not a floor.
 - `block` is that surface's `BlockKey`; `water` is one above the highest fluid over it,
-  or absent on dry land. `biome` names the biome in the world's table, including data pack biomes.
-- Void columns and worlds without their own generator return `None`. Custom generators that
+  or absent on dry land. `biome` borrows the biome identifier from the world's table,
+  including data pack biomes.
+- Void columns and worlds without their own generator lend `None`. Custom generators that
   do not provide a noise surface also have no answer.
 - No chunk is created, loaded or held. Features (trees, ores, lakes and decorations) and slope
   rules are not included: even an undecorated chunk may have a different top block. A teleport
   mod can sample candidate columns, then hold only its chosen chunk and verify the decorated blocks.
-- A client, a dimension other than the level being ticked, or an over-limit request returns
-  error text before reading anything. Results depend on generator inputs, not loaded chunks or
-  query order. The game makes one noise sample per column on the server tick, and logs the
-  column count for calls exceeding the configured slow-call threshold.
+- A client or stale handle refuses before sampling with `LevelReadError` (`Unavailable` or
+  `Stale`). Results depend on generator inputs, not loaded chunks or query order. The game makes
+  one noise sample per column visited on the server tick, and logs the column count for calls
+  exceeding the configured slow-call threshold.
 
-Mods only receive `TerrainColumn`; it is non-exhaustive and constructed by the game.
+Mods only receive `TerrainColumnView<'_>`; it is non-exhaustive and lent for one callback.
 
 #### Upgrading saved block entities and entities
 

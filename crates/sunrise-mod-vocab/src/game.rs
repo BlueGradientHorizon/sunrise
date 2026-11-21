@@ -81,44 +81,6 @@ pub struct Clock {
     /// it modulo 24000 for the hour; `/time set` can make it negative.
     pub day_time: i64,
 }
-/// Maximum number of columns in one generator surface query.
-pub const MAX_TERRAIN_COLUMNS: usize = 4096;
-
-/// The generator's undecorated surface, without slope rules or chunk allocation.
-/// Created only by the game.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct TerrainColumn {
-    /// One above the highest solid block, skipping fluids (OceanFloor).
-    pub height: i32,
-    /// The block at height minus one.
-    pub block: BlockKey,
-    /// One above the highest fluid over the surface, absent on dry land.
-    pub water: Option<i32>,
-    /// Identifier from the world's biome table, including data pack biomes.
-    pub biome: String,
-}
-
-/// What `read_columns` read: the blocks round each column's height (`bases`, none where it isn't loaded),
-/// as indexes into `palette`, a column after another, and each column's biome JSON water colour
-/// (`water_colors`, `0xRRGGBB`, `0` where unloaded).
-///
-/// Colormap-derived grass and foliage tints are client-side only: read blended tints with
-/// [`BlockAndTintGetter::block_tint`] inside block tint callbacks or `ClientHost::biome_tint`
-/// in other client hooks.
-#[derive(Clone, Debug, PartialEq, Default)]
-// exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ColumnBlocks {
-    /// Distinct complete states, including separate entries for different property combinations.
-    pub palette: Vec<BlockState>,
-    pub bases: Vec<Option<i32>>,
-    pub blocks: Vec<u16>,
-    /// One `0xRRGGBB` biome water colour (`BiomeSpecialEffects.waterColor`) per column, at the
-    /// column's top block (`base - 1`); `0` where the column is not loaded.
-    pub water_colors: Vec<u32>,
-}
 /// Why `upgrade_block_entity_nbt` or `upgrade_entity_nbt` gave no upgraded value. Depth is counted as the data is
 /// encoded (the root compound at 0): the compound the NBT writer puts around an element of a mixed list is a level
 /// of its own. There is no size refusal.
@@ -391,24 +353,6 @@ impl<'a> CubeFace<'a> {
 pub(crate) mod built {
     #[allow(unused_imports)]
     use super::*;
-    // exhaustive: the game builds it with a literal; mods only read it
-    #[derive(sunrise_mod_api_macros::Wire)]
-    pub struct TerrainColumn {
-        pub height: i32,
-        pub block: BlockKey,
-        pub water: Option<i32>,
-        pub biome: String,
-    }
-    impl From<TerrainColumn> for super::TerrainColumn {
-        fn from(v: TerrainColumn) -> Self {
-            Self {
-                height: v.height,
-                block: v.block,
-                water: v.water,
-                biome: v.biome,
-            }
-        }
-    }
     // no wire: the in-process config loader builds this projection for callbacks.
     // exhaustive: the game builds it with a literal; mods only read it
     pub struct ConfigFile {
