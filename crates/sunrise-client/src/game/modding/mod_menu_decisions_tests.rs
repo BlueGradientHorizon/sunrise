@@ -40,6 +40,8 @@ struct Script {
     change_cursor: bool,
     /// `menu_button`: consume the player's carried stack.
     clear_cursor: bool,
+    /// Put a one-shot update in the detached entity (and edit a slot for `menu_button`).
+    write_update: bool,
 }
 
 thread_local! {
@@ -102,6 +104,14 @@ impl BlockEntityPart for Part {
             event.entity.items.resize(9, None);
             event.entity.items[1] = Some(stone(if s.invalid { 65 } else { 4 }));
             event.entity.items[2] = Some(stone(if s.all { 6 } else { 5 }));
+            if s.write_update {
+                event
+                    .entity
+                    .set_client_update_fields(mod_api::Compound::from([(
+                        "panic_fixture".into(),
+                        mod_api::Tag::Int(1),
+                    )]));
+            }
             if s.all {
                 *event.stack = None;
             } else {
@@ -176,6 +186,18 @@ impl mod_api::MenuPart for Part {
                 .unwrap(),
             );
         }
+        if script.write_update {
+            let entity = event.entity.as_mut().unwrap();
+            let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+            entity.items[1] = Some(mod_api::ItemStack::new(stone, 4).unwrap());
+            entity.set_client_update_fields(mod_api::Compound::from([(
+                "panic_fixture".into(),
+                mod_api::Tag::Int(2),
+            )]));
+        }
+        if script.panic {
+            panic!("menu button failed after editing the entity and cursor");
+        }
         if script.replace_menu {
             host.open_menu(
                 event.context.player,
@@ -222,6 +244,41 @@ fn with_mod(test: impl FnOnce()) {
     });
 }
 
+const HEALTHY_MENU: &str = "healthy_menu:depot_menu";
+
+fn with_publication_mods(test: impl FnOnce()) {
+    struct HealthyMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for HealthyMod {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r.block_entity_type("depot").blocks(&[]).build();
+            r.block_entity_part(&kind, Part).unwrap();
+            r.menu_part(HEALTHY_MENU, Part);
+        }
+    }
+    let mods: Mods = vec![
+        ModEntry::new("movemod", Box::new(Mod)),
+        ModEntry::new("healthy_menu", Box::new(HealthyMod)),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        test();
+    });
+}
+
+fn detached_depot(id: &str) -> ModBlockEntity {
+    let mut items = vec![None; 9];
+    items[0] = Some(ItemStack::new("minecraft:stone", 10));
+    ModBlockEntity::new(
+        id.into(),
+        ModBlockEntityFields {
+            items,
+            ..Default::default()
+        },
+    )
+}
+
 /// How many decisions were entered since the last `script`.
 fn decided() -> usize {
     super::decided_action::DECIDED.get()
@@ -257,11 +314,21 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
             assert_eq!(inventory(game, 20), 2);
             assert!(game.transactions.is_empty());
-            // Rows 79 and 84: a write and then a panic: the write is undone, the click is not
-            // heard again, and the next click works.
             game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 g.inventory[20] = None;
             });
+            // Row 90: heard inside a transaction that then aborts: the write is undone.
+            script(Script {
+                write_dirt: true,
+                ..Script::default()
+            });
+            let seal = game.transaction_open();
+            click(game);
+            assert_eq!(inventory(game, 20), 2);
+            game.transaction_close(&seal, false);
+            assert_eq!(inventory(game, 20), 0);
+            // Rows 79 and 84: a write and then a panic: the write is undone and the callback
+            // is not heard on a subsequent click.
             script(Script {
                 write_dirt: true,
                 panic: true,
@@ -273,17 +340,7 @@ fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it
             assert!(game.transactions.is_empty());
             script(Script::default());
             click(game);
-            assert_eq!(DISPATCHES.get(), 1);
-            // Row 90: heard inside a transaction that then aborts: the write is undone.
-            script(Script {
-                write_dirt: true,
-                ..Script::default()
-            });
-            let seal = game.transaction_open();
-            click(game);
-            assert_eq!(inventory(game, 20), 2);
-            game.transaction_close(&seal, false);
-            assert_eq!(inventory(game, 20), 0);
+            assert_eq!(DISPATCHES.get(), 0);
         });
     });
 }
@@ -505,9 +562,18 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
             });
             click(game);
             assert_eq!(depot(game), (10, 0, 0, 0));
-            // Rows 79 and 84: a panic after writing: the block entity is put back as it was
-            // (it is out of the world while the mods are asked), the write is undone, and the next
-            // click works.
+            // Row 90: applied inside a transaction that then aborts: the move is undone.
+            open_depot(game);
+            script(Script {
+                take: true,
+                ..Script::default()
+            });
+            let seal = game.transaction_open();
+            click(game);
+            assert_eq!(depot(game), (1, 4, 5, 0));
+            game.transaction_close(&seal, false);
+            assert_eq!(depot(game), (10, 0, 0, 0));
+            // Rows 79 and 84: a panic aborts the live write inside the click's savepoint.
             open_depot(game);
             script(Script {
                 take: true,
@@ -516,34 +582,134 @@ fn a_mod_quick_move_is_one_action_and_a_refusal_leaves_no_prefix() {
                 ..Script::default()
             });
             click(game);
-            assert_eq!(depot(game), (10, 0, 0, 0));
-            assert!(game.transactions.is_empty());
-            // The panic alone, with no `Host` write (which would make the move stale by itself):
-            // the move the listener answered is still refused and the block entity is put back.
-            open_depot(game);
-            script(Script {
-                take: true,
-                panic: true,
-                ..Script::default()
-            });
-            click(game);
             assert_eq!(DISPATCHES.get(), 1);
             assert_eq!(depot(game), (10, 0, 0, 0));
             assert!(game.transactions.is_empty());
-            open_depot(game);
-            script(Script {
-                take: true,
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_menu_button_cannot_publish_edits_to_the_detached_block_entity() {
+    with_publication_mods(|| {
+        with_guests(|game| {
+            let context = mod_api::item::menu::MenuButtonContext {
+                player: 12,
+                player_entity_id: 1,
+                pos: Some([POS.0, POS.1, POS.2]),
+                id: 3,
+            };
+            let mut entity = detached_depot("movemod:depot");
+            let before = entity.revision();
+            let mut carried = Some(ItemStack::new("minecraft:stick", 3));
+            let edits = Script {
+                change_cursor: true,
+                write_update: true,
                 ..Script::default()
+            };
+            script(Script {
+                panic: true,
+                ..edits.clone()
             });
-            click(game);
-            assert_eq!(depot(game), (1, 4, 5, 0));
-            // Row 90: applied inside a transaction that then aborts: the move is undone.
-            open_depot(game);
-            let seal = game.transaction_open();
-            click(game);
-            assert_eq!(depot(game), (1, 4, 5, 0));
-            game.transaction_close(&seal, false);
-            assert_eq!(depot(game), (10, 0, 0, 0));
+            BUTTONS.set(0);
+            game.api_menu_button(DEPOT_MENU, None, &context, Some(&mut entity), &mut carried);
+            assert_eq!(BUTTONS.get(), 1);
+            assert_eq!(entity.revision(), before);
+            assert!(entity.items[1].is_none());
+            // The one-shot packet fields must never enter the block-update queue.
+            assert!(!entity.has_client_update_fields());
+            assert_eq!(carried, Some(ItemStack::new("minecraft:stick", 3)));
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "movemod",
+                    hook: "menu_button",
+                }]
+            );
+
+            // Identical edits complete for the other owner, but the failed owner isn't re-entered.
+            script(edits);
+            game.api_menu_button(DEPOT_MENU, None, &context, Some(&mut entity), &mut carried);
+            assert_eq!(BUTTONS.get(), 1);
+            let mut healthy = detached_depot("healthy_menu:depot");
+            game.api_menu_button(
+                HEALTHY_MENU,
+                None,
+                &context,
+                Some(&mut healthy),
+                &mut carried,
+            );
+            assert_eq!(BUTTONS.get(), 2);
+            assert_eq!(healthy.items[1], Some(ItemStack::new("minecraft:stone", 4)));
+            assert!(healthy.has_client_update_fields());
+            assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_checked_quick_move_cannot_publish_a_detached_prefix() {
+    with_publication_mods(|| {
+        with_guests(|game| {
+            let pos = [POS.0, POS.1, POS.2];
+            let mut entity = detached_depot("movemod:depot");
+            let before = entity.revision();
+            let mut stack = Some(ItemStack::new("minecraft:stone", 10));
+            let mut handled = false;
+            let edits = Script {
+                take: true,
+                write_update: true,
+                ..Script::default()
+            };
+            script(Script {
+                panic: true,
+                ..edits.clone()
+            });
+            // Call the publication boundary directly; the decided-action guard cannot
+            // undo an accidental writeback and make this test pass.
+            assert!(!game.menu_quick_move_checked(
+                pos,
+                &mut entity,
+                9,
+                0,
+                &mut stack,
+                &mut handled
+            ));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(entity.revision(), before);
+            assert!(entity.items[1..3].iter().all(Option::is_none));
+            assert!(!entity.has_client_update_fields());
+            assert_eq!(stack, Some(ItemStack::new("minecraft:stone", 10)));
+            assert!(!handled);
+            assert_eq!(
+                mod_api::__private::take_hook_panics(),
+                [mod_api::__private::HookPanicReport {
+                    mod_id: "movemod",
+                    hook: "menu_quick_move",
+                }]
+            );
+
+            script(edits);
+            assert!(game.menu_quick_move_checked(pos, &mut entity, 9, 0, &mut stack, &mut handled));
+            assert_eq!(DISPATCHES.get(), 0);
+            assert!(!handled);
+            let mut healthy = detached_depot("healthy_menu:depot");
+            assert!(game.menu_quick_move_checked(
+                pos,
+                &mut healthy,
+                9,
+                0,
+                &mut stack,
+                &mut handled
+            ));
+            assert_eq!(DISPATCHES.get(), 1);
+            assert_eq!(healthy.items[1], Some(ItemStack::new("minecraft:stone", 4)));
+            assert_eq!(healthy.items[2], Some(ItemStack::new("minecraft:stone", 5)));
+            assert!(healthy.has_client_update_fields());
+            assert_eq!(stack, Some(ItemStack::new("minecraft:stone", 1)));
+            assert!(handled);
         });
     });
 }
@@ -627,7 +793,7 @@ fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
                 crafting: None,
                 links: None,
             }));
-            for fail_take in [true, false] {
+            for fail_take in [false, true] {
                 let window = open_depot(game);
                 second_block(game);
                 game.lan

@@ -185,8 +185,10 @@ The backing contents are already written, before dirty/comparator updates. The d
 and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
 for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
 notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
-it. Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides
-itself do not synthesize notifications; neither do rollback restores. A double container notifies
+it. Each Part runs in its own transaction. Its journaled edits merge on success, but a panic
+rolls them back, including committed nested transactions, without undoing the backing change.
+Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides itself
+do not synthesize notifications; neither do rollback restores. A double container notifies
 each component, not again for the other half's comparator refresh. A listener's writes still apply,
 but its backing block does not re-enter; another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:

@@ -303,8 +303,10 @@ host.transaction(|host, tx| {
 
 `menu_clicked` (contract version 2) and `menu_quick_move` (contract version 3, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
 through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
-`menu_quick_move` answer that is invalid, or a `Host` write to a player's inventory, cursor or menu storage,
-refuses the whole click instead of falling back to the game's routing. `menu_clicked` hears the raw slot, button
+panicking `menu_quick_move` publishes neither the detached block entity (including one-shot update fields)
+nor the stack remainder or handled answer. A panic, an invalid answer, or a `Host` write to a player's inventory,
+cursor or menu storage refuses the whole quick move instead of falling back to the game's routing.
+`menu_clicked` hears the raw slot, button
 and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
 set-slot never reach it, and it cannot know whether the click changes anything.
 

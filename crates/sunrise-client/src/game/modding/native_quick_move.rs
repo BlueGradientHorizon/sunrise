@@ -249,9 +249,9 @@ impl Game<'_> {
         })
     }
 
-    /// Check the mods' answer before applying it. An invalid answer leaves the block entity,
-    /// stack and `handled` as they were and is refused by the decision.
-    fn menu_quick_move_checked(
+    /// Check the mods' answer before applying it. A panic or invalid answer leaves the block
+    /// entity, stack and `handled` as they were and is refused by the decision.
+    pub(super) fn menu_quick_move_checked(
         &mut self,
         pos: [i32; 3],
         entity: &mut ModBlockEntity,
@@ -269,6 +269,7 @@ impl Game<'_> {
         let revision = api.revision();
         let original = held.clone();
         let mut candidate_handled = *handled;
+        let failures = mod_api::runtime::isolated_failures();
         self.native_menu_quick_move(
             pos,
             &mut api,
@@ -277,6 +278,9 @@ impl Game<'_> {
             &mut held,
             &mut candidate_handled,
         );
+        if mod_api::runtime::isolated_failures() != failures {
+            return false;
+        }
         let held = if held == original {
             Ok(None)
         } else {

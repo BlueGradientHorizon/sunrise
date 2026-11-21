@@ -1081,7 +1081,23 @@ pub(super) fn emit<'a>(
             } else {
                 run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"))
             };
-            let plain_call = run(mod_id_expr, on_abort, &format!("{callee}.{name}({invoke})"));
+            let expression = format!("{callee}.{name}({invoke})");
+            let expression = if name == "contents_changed" {
+                // The journal must see the unwind before invoke catches it. A successful child
+                // transaction merges here, not straight into the backing edit's transaction.
+                // Outside World, leave the call to the normal typed phase-refusal path.
+                let (host, _) = host.as_ref().unwrap();
+                format!(
+                    "if contained {{ {expression}; }} else {{\
+                     let _: Result<(), core::convert::Infallible> =\
+                     super::item::transaction::run_transaction(&mut *{host}, |{host}, _| {{\
+                         {expression}; Ok(())\
+                     }}); }}"
+                )
+            } else {
+                expression
+            };
+            let plain_call = run(mod_id_expr, on_abort, &expression);
             let invocation = match contract {
                 Contract::Cancel => format!(
                     "if matches!({plain_call}, Flow::Cancel) {{ *{o} = true; {exit}; }}",

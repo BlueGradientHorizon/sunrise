@@ -19,8 +19,9 @@ pub trait Hooks {
     ///
     /// The move is one action: the answer is validated once and applied once,
     /// and a refused move changes nothing, with every write the listener made
-    /// undone and the client given the menu again. It is refused when a
-    /// listener fails (panics or traps), when the answer is invalid (a stack
+    /// undone and the client given the menu again. A panic also prevents publication
+    /// of the detached entity, its queued update fields, and the stack and handled
+    /// outputs. The move is refused when a listener panics, the answer is invalid (a stack
     /// past its item's maximum in `entity.items` or `stack`), or when a
     /// listener wrote through the `Host` to a player's inventory, cursor or
     /// menu storage (the move read its own player's; a write to any player's
