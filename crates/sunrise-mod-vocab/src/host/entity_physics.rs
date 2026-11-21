@@ -17,7 +17,7 @@ pub trait EntityPhysicsBackend {
     /// Side: both.
     /// How the entity reacts to a piston (`Entity.getPistonPushReaction`), including
     /// the current marker flag of an armor stand. `Ok(None)` for a stale handle;
-    /// `Err(LevelReadError::Unavailable)` if the host cannot read the entity.
+    /// `Err(LevelReadError::Unavailable)` if the host does not support that read.
     #[access(WorldOnly)]
     fn entity_piston_push_reaction(
         &self,
@@ -27,7 +27,7 @@ pub trait EntityPhysicsBackend {
     /// Whether this is a vanilla `HangingEntity`: a painting, item frame or glow item frame.
     /// Leash knots and cushions are block-attached but do not inherit `HangingEntity`.
     /// `Ok(None)` for a stale handle; `Err(LevelReadError::Unavailable)` if the host
-    /// cannot read the entity.
+    /// does not support that read.
     #[access(WorldOnly)]
     fn entity_is_hanging(&self, entity: EntityRef) -> Result<Option<bool>, LevelReadError>;
     /// Side: both.

@@ -28,7 +28,7 @@ a sleeper, a player without a connection, or a move the collision query cannot a
 On either side, `entity.piston_push_reaction(host)` reads vanilla's piston reaction, including
 `PushReaction::IgnoreEntity` for marker armor stands. `entity.is_hanging(host)` reads the class:
 paintings and frames qualify; leash knots do not. Both take `&dyn Host` and return `Ok(None)` for
-a stale handle or `Err(LevelReadError::Unavailable)` if the host cannot read entities.
+a stale handle or `Err(LevelReadError::Unavailable)` if the host does not support that read.
 A general type can supply a reaction to `declare_general_entity`; pass `None` to use
 `PushReaction::PushPull`.
 
