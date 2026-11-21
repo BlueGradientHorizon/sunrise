@@ -21,7 +21,7 @@ mod selector_tests;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
 use crate::game::level_control_hooks::LevelControl;
-pub(super) use argument_kinds::{CommandArguments, command_arguments};
+pub(super) use argument_kinds::{CommandArguments, RegisteredArgument, command_arguments};
 use argument_kinds::{
     UNCENTERED, argument_type, custom_value, dimension_value, nbt_value, parsed_type, parser,
     positional_value, resource_parser,
@@ -73,7 +73,6 @@ const LEVELS: [&str; 5] = ["", "moderators", "gamemasters", "admins", "owners"];
 fn usage_nodes(
     usage: &str,
     custom: &CommandArguments,
-    client: bool,
 ) -> Result<Vec<(String, Value, bool)>, String> {
     let mut out = Vec::new();
     let mut optional_seen = false;
@@ -114,19 +113,9 @@ fn usage_nodes(
                 let Some(argument) = custom.get(kind) else {
                     return Err(format!("`{usage}`: unknown kind `{kind}`"));
                 };
-                // A declared provider answers on the server alone: whoever types the argument asks
-                // the server, and no mod code runs in a client. A client tree has no server behind
-                // it, so it refuses the usage by name rather than run the provider locally.
-                if client && declares_provider(kind, argument) {
-                    return Err(format!(
-                        "`{usage}`: argument type `{kind}` declares a suggestion provider, which \
-                         only a server command can offer; a client command completes without one"
-                    ));
-                }
-                let (properties, greedy) = match std::panic::catch_unwind(
-                    std::panic::AssertUnwindSafe(|| argument.kind()),
-                )
-                .map_err(|_| format!("`{usage}`: argument type `{kind}` panicked"))?
+                let (properties, greedy) = match argument
+                    .kind()
+                    .map_err(|why| format!("`{usage}`: argument type `{kind}` failed: {why}"))?
                 {
                     mod_api::CommandArgumentKind::Word => (json!({"type": "word"}), false),
                     mod_api::CommandArgumentKind::Greedy => (json!({"type": "greedy"}), true),
@@ -176,35 +165,17 @@ pub(super) fn command_tree(
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, false, None)
+    command_tree_for(commands, vanilla, custom, None)
 }
 
-/// Build the display tree for the client's own commands. An argument type that declares a
-/// suggestion provider is refused by name because a client command has no server to answer it.
-/// Every other argument kind builds exactly as on the server.
+/// Build the display tree for the client's own commands, using the same argument grammar and
+/// custom argument types as the server.
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, true, None)
-}
-
-/// Whether `argument` declares a suggestion provider, read once per tree. A panic is logged and
-/// counts as no provider, as `argument_type` reads it when it builds the node.
-fn declares_provider(kind: &str, argument: &Arc<dyn mod_api::CommandArgumentType>) -> bool {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        argument.suggestion_provider()
-    })) {
-        Ok(provider) => provider.is_some(),
-        Err(_) => {
-            eprintln!(
-                "mod command argument type {kind} panicked declaring its suggestion provider; \
-                 its arguments complete by `suggest`"
-            );
-            false
-        }
-    }
+    command_tree_for(commands, vanilla, custom, None)
 }
 
 // Executable paths (including argument names) mapped to the input registration slot.
@@ -214,14 +185,13 @@ fn command_tree_for(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
-    client: bool,
     mut executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
     let mut root: Map<String, Value> = Map::new();
     let mut levels: HashMap<String, u8> = HashMap::new();
     let mut problems = Vec::new();
     for (slot, command) in commands.iter().enumerate() {
-        let nodes = match usage_nodes(&command.usage, custom, client) {
+        let nodes = match usage_nodes(&command.usage, custom) {
             Ok(n) => n,
             Err(e) => {
                 problems.push(e);
@@ -3190,82 +3160,179 @@ mod tests {
             }
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             ["press", "furnace"]
                 .into_iter()
-                .filter(|machine| machine.starts_with(prefix))
-                .map(mod_api::CommandSuggestion::new)
+                .filter(|machine| machine.starts_with(request.prefix.as_str()))
+                .map(|machine| request.suggest(machine))
                 .collect()
         }
     }
 
-    struct HostileArgument;
-
-    impl mod_api::CommandArgumentType for HostileArgument {
-        fn kind(&self) -> mod_api::CommandArgumentKind {
-            mod_api::CommandArgumentKind::Word
-        }
-        fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
-            if input == "panic" {
-                panic!("parser")
-            }
-            Ok(input.into())
-        }
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
-            match prefix {
-                "panic" => panic!("completer"),
-                "text" => vec![mod_api::CommandSuggestion::new("a".repeat(32768))],
-                "tip" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "a".repeat(65536),
-                )],
-                "unicode" => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "ok",
-                    "\0".repeat(32768),
-                )],
-                _ => vec![mod_api::CommandSuggestion::with_tooltip(
-                    "a".repeat(32767),
-                    "a".repeat(65535),
-                )],
-            }
-        }
-    }
-
     #[test]
-    fn hostile_argument_callbacks_are_refused_without_losing_the_dispatcher() {
-        let arguments: CommandArguments = HashMap::from([(
-            "test:hostile".into(),
-            Arc::new(HostileArgument) as Arc<dyn mod_api::CommandArgumentType>,
-        )]);
-        let (tree, _, problems) = super::command_tree(
-            &[mod_api::Command::new("probe <value:test:hostile>")],
-            |_| false,
-            &arguments,
-        );
-        assert!(problems.is_empty());
-        let mut dispatcher = Dispatcher::new();
-        register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
-        let registries = sunrise_client::command::Registries::default();
-        for prefix in ["panic", "text", "tip", "unicode"] {
-            let input = format!("probe {prefix}");
-            let parsed = dispatcher.parse(&input, &registries);
-            assert_eq!(parsed.executable().is_err(), prefix == "panic");
-            let (_, suggestions) = dispatcher.suggestions(&parsed, input.len(), &registries);
-            assert!(suggestions.is_empty(), "{prefix}");
+    fn panicking_argument_parse_or_suggest_disables_only_that_argument_and_emits_notice() {
+        use std::sync::atomic::AtomicUsize;
+
+        struct PanickingParse(Arc<AtomicUsize>);
+        impl mod_api::CommandArgumentType for PanickingParse {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Word
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                if input == "panic" {
+                    panic!("parser panic fixture");
+                }
+                Ok(input.into())
+            }
+            fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                vec![request.suggest("ok")]
+            }
         }
-        let input = "probe valid";
-        let parsed = dispatcher.parse(input, &registries);
-        let (_, suggestions) = dispatcher.suggestions(&parsed, input.len(), &registries);
-        assert_eq!(suggestions.len(), 1);
-        assert_eq!(suggestions[0].text.len(), 32767);
+
+        struct PanickingSuggest(Arc<AtomicUsize>);
+        impl mod_api::CommandArgumentType for PanickingSuggest {
+            fn kind(&self) -> mod_api::CommandArgumentKind {
+                mod_api::CommandArgumentKind::Word
+            }
+            fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Ok(input.into())
+            }
+            fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                if request.prefix == "panic" {
+                    panic!("suggest panic fixture");
+                }
+                vec![request.suggest("ok")]
+            }
+        }
+
+        struct PanicMod {
+            parse_calls: Arc<AtomicUsize>,
+            suggest_calls: Arc<AtomicUsize>,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for PanicMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_command_argument("bad_parse", PanickingParse(self.parse_calls.clone()));
+                r.register_command_argument(
+                    "bad_suggest",
+                    PanickingSuggest(self.suggest_calls.clone()),
+                );
+                r.register_command_argument("machine", MachineArgument);
+            }
+        }
+
+        let parse_calls = Arc::new(AtomicUsize::new(0));
+        let suggest_calls = Arc::new(AtomicUsize::new(0));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "arg_panic_fixture",
+            Box::new(PanicMod {
+                parse_calls: parse_calls.clone(),
+                suggest_calls: suggest_calls.clone(),
+            }),
+        )]
+        .into();
+
+        let _ = mod_api::testing::rebuild_parts(|| -> Result<(), ()> {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            mod_platform::testing::with_mods(mods, || {
+                let _ = mod_api::__private::game::take_callback_panic_notices();
+                let arguments = command_arguments();
+                let (tree, _, problems) = super::command_tree(
+                    &[
+                        mod_api::Command::new("badparse <value:arg_panic_fixture:bad_parse>"),
+                        mod_api::Command::new("badsuggest <value:arg_panic_fixture:bad_suggest>"),
+                        mod_api::Command::new("good <value:arg_panic_fixture:machine>"),
+                    ],
+                    |_| false,
+                    &arguments,
+                );
+                assert!(problems.is_empty(), "{problems:?}");
+                let mut dispatcher = Dispatcher::new();
+                register_dispatcher(&mut dispatcher, &tree, "native_mod_command", &arguments);
+                let registries = sunrise_client::command::Registries::default();
+
+                // Panicking parse disables `bad_parse` and emits a CallbackPanicNotice.
+                assert!(
+                    dispatcher
+                        .parse("badparse panic", &registries)
+                        .executable()
+                        .is_err()
+                );
+                assert_eq!(parse_calls.load(Ordering::Relaxed), 1);
+                let notices: Vec<_> = mod_api::__private::game::take_callback_panic_notices()
+                    .into_iter()
+                    .filter(|notice| notice.mod_id == "arg_panic_fixture")
+                    .collect();
+                assert_eq!(notices.len(), 1);
+                assert_eq!(notices[0].kind, "command_argument");
+                assert_eq!(notices[0].operation, "parse");
+
+                // Subsequent parse and suggest on the disabled argument do not invoke it again.
+                assert!(
+                    dispatcher
+                        .parse("badparse valid", &registries)
+                        .executable()
+                        .is_err()
+                );
+                let (_, disabled_suggestions) = dispatcher.suggestions(
+                    &dispatcher.parse("badparse v", &registries),
+                    "badparse v".len(),
+                    &registries,
+                );
+                assert!(disabled_suggestions.is_empty());
+                assert_eq!(parse_calls.load(Ordering::Relaxed), 1);
+
+                // Panicking suggest disables `bad_suggest` and emits a CallbackPanicNotice.
+                let (_, suggestions) = dispatcher.suggestions(
+                    &dispatcher.parse("badsuggest panic", &registries),
+                    "badsuggest panic".len(),
+                    &registries,
+                );
+                assert!(suggestions.is_empty());
+                assert_eq!(suggest_calls.load(Ordering::Relaxed), 1);
+                let notices: Vec<_> = mod_api::__private::game::take_callback_panic_notices()
+                    .into_iter()
+                    .filter(|notice| notice.mod_id == "arg_panic_fixture")
+                    .collect();
+                assert_eq!(notices.len(), 1);
+                assert_eq!(notices[0].kind, "command_argument");
+                assert_eq!(notices[0].operation, "suggest");
+
+                // Disabled `bad_suggest` is skipped on later calls.
+                let (_, suggestions) = dispatcher.suggestions(
+                    &dispatcher.parse("badsuggest ok", &registries),
+                    "badsuggest ok".len(),
+                    &registries,
+                );
+                assert!(suggestions.is_empty());
+                assert_eq!(suggest_calls.load(Ordering::Relaxed), 1);
+
+                // Sibling argument type keeps parsing and suggesting normally.
+                assert!(
+                    dispatcher
+                        .parse("good press", &registries)
+                        .executable()
+                        .is_ok()
+                );
+                let (_, good_suggestions) = dispatcher.suggestions(
+                    &dispatcher.parse("good pr", &registries),
+                    "good pr".len(),
+                    &registries,
+                );
+                assert_eq!(
+                    good_suggestions
+                        .iter()
+                        .map(|s| s.text.as_str())
+                        .collect::<Vec<_>>(),
+                    ["press"]
+                );
+            });
+            Err(())
+        });
     }
 
     #[test]
@@ -3278,17 +3345,14 @@ mod tests {
             fn parse(&self, _: &str) -> Result<String, mod_api::CommandArgumentError> {
                 unreachable!()
             }
-            fn suggest(
-                &self,
-                _: Option<&mod_api::CommandSender>,
-                _: &str,
-            ) -> Vec<mod_api::CommandSuggestion> {
+            fn suggest(&self, _: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
                 unreachable!()
             }
         }
+        let owner = mod_api::__private::game::CallbackOwner::for_mod("panic_kind_fixture");
         let arguments: CommandArguments = HashMap::from([(
             "test:panic".into(),
-            Arc::new(PanicKind) as Arc<dyn mod_api::CommandArgumentType>,
+            RegisteredArgument::owned(owner.clone(), Arc::new(PanicKind)),
         )]);
         let (_, _, problems) = super::command_tree(
             &[mod_api::Command::new("probe <value:test:panic>")],
@@ -3296,7 +3360,8 @@ mod tests {
             &arguments,
         );
         assert_eq!(problems.len(), 1);
-        assert!(problems[0].contains("panicked"));
+        assert!(problems[0].contains("panicked"), "{}", problems[0]);
+        assert!(!owner.is_enabled());
     }
 
     struct Machines;
@@ -3419,16 +3484,12 @@ mod tests {
             Ok(input.trim().to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
-            let start = prefix.rfind(' ').map_or(0, |space| space + 1);
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            let start = request.prefix.rfind(' ').map_or(0, |space| space + 1);
             ["stone", "dirt"]
                 .into_iter()
-                .filter(|block| block.starts_with(&prefix[start..]))
-                .map(|block| mod_api::CommandSuggestion::new(block).replacing_from(start))
+                .filter(|block| block.starts_with(&request.prefix[start..]))
+                .map(|block| request.suggest_from(start, block))
                 .collect()
         }
     }
@@ -3437,7 +3498,7 @@ mod tests {
     fn a_greedy_argument_completes_the_token_being_typed() {
         let arguments: CommandArguments = HashMap::from([(
             "test:pattern".into(),
-            Arc::new(PatternArgument) as Arc<dyn mod_api::CommandArgumentType>,
+            RegisteredArgument::builtin(Arc::new(PatternArgument)),
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("replace <pattern:test:pattern>")],
@@ -3483,14 +3544,10 @@ mod tests {
             Ok(input.to_owned())
         }
 
-        fn suggest(
-            &self,
-            _: Option<&mod_api::CommandSender>,
-            prefix: &str,
-        ) -> Vec<mod_api::CommandSuggestion> {
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
             vec![
-                mod_api::CommandSuggestion::new("stone").replacing_from(0),
-                mod_api::CommandSuggestion::new("dirt").replacing_from(prefix.len() + 1),
+                request.suggest_from(0, "stone"),
+                request.suggest_from(request.prefix.len() + 1, "dirt"),
             ]
         }
     }
@@ -3499,7 +3556,7 @@ mod tests {
     fn a_suggestion_with_an_offset_past_the_text_is_refused_and_the_others_stay() {
         let arguments: CommandArguments = HashMap::from([(
             "test:mixed".into(),
-            Arc::new(MixedOffsets) as Arc<dyn mod_api::CommandArgumentType>,
+            RegisteredArgument::builtin(Arc::new(MixedOffsets)),
         )]);
         let (tree, _, problems) = super::command_tree(
             &[mod_api::Command::new("fill <blocks:test:mixed>")],
@@ -3529,7 +3586,7 @@ mod tests {
         // The test process loads no package: stand in for one the way `command_arguments` does.
         arguments.insert(
             argument_kinds::MOD_ID.into(),
-            Arc::new(mod_api::ChoiceArgument::new(["demo"])),
+            RegisteredArgument::builtin(Arc::new(mod_api::ChoiceArgument::new(["demo"]))),
         );
         let (tree, _, problems) = super::command_tree(
             &[
@@ -4360,13 +4417,8 @@ mod tests {
             ]);
             let arguments = HashMap::new();
             let mut executors = HashMap::new();
-            let (tree, _, problems) = command_tree_for(
-                &commands,
-                |_| false,
-                &arguments,
-                false,
-                Some(&mut executors),
-            );
+            let (tree, _, problems) =
+                command_tree_for(&commands, |_| false, &arguments, Some(&mut executors));
             assert_eq!(problems.len(), 1, "{problems:?}");
             let mut dispatcher = Dispatcher::new();
             register_command_nodes(

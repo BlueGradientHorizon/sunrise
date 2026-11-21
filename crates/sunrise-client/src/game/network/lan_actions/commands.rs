@@ -293,20 +293,15 @@ impl Game<'_> {
         // Commands.sendCommands prunes the tree a player's client completes from; the answer the
         // server sends follows the same test, so a child literal of a path the sender may not run
         // is not offered either (Bukkit hides it; brigadier alone lists every child).
-        let ((start, end), mut suggestions, provider) =
-            d.client_suggestions_owned(&parse, command.len(), &self.ui.registries);
-        // An argument whose type declares a suggestion provider owns its answer: the provider
-        // already gave it for this sender, so `tab_complete` is not asked and no listener can add
-        // to, replace or erase it. Ordinary completions keep the hook.
-        if !provider {
-            self.native_tab_complete(
-                player_uuid,
-                &player_name,
-                command,
-                [start, end],
-                &mut suggestions,
-            );
-        }
+        let ((start, end), mut suggestions) =
+            d.client_suggestions(&parse, command.len(), &self.ui.registries);
+        self.native_tab_complete(
+            player_uuid,
+            &player_name,
+            command,
+            [start, end],
+            &mut suggestions,
+        );
         let reg = self.suggestion_registries();
         reg.permission = level;
         reg.sender = own_sender;
@@ -316,8 +311,7 @@ impl Game<'_> {
         reg.banned_ips = own_banned_ips;
         reg.whitelisted = own_whitelisted;
         reg.trigger_objectives = own_triggers;
-        // ServerCommandSuggestionsProvider.limitSuggestionCount.
-        suggestions.truncate(1000);
+        frame_command_suggestions(&mut suggestions);
         let utf16 = |byte: usize| command[..byte.min(command.len())].encode_utf16().count() as i32;
         let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(id);
@@ -341,5 +335,84 @@ impl Game<'_> {
                 w.data,
             ),
         );
+    }
+}
+
+/// Apply vanilla `ClientboundCommandSuggestionsPacket` entry string bounds (`STRING_UTF8` 32,767
+/// UTF-16 code units; literal NBT `TAG_String` 65,535 Java modified UTF-8 bytes) per entry, then
+/// `ServerCommandSuggestionsProvider.limitSuggestionCount`'s post-sort 1,000-entry limit.
+fn frame_command_suggestions(suggestions: &mut Vec<sunrise_client::command::Suggestion>) {
+    suggestions.retain(|s| {
+        let text_units = s.text.encode_utf16().count();
+        if text_units > sunrise_client::command::MAX_SUGGESTION_TEXT {
+            log::warn!(
+                "dropping oversized command suggestion ({text_units} UTF-16 code units > {})",
+                sunrise_client::command::MAX_SUGGESTION_TEXT
+            );
+            return false;
+        }
+        if let Some(tip) = &s.tooltip {
+            let tip_bytes = tip
+                .encode_utf16()
+                .map(|unit| match unit {
+                    1..=0x7f => 1,
+                    0..=0x7ff => 2,
+                    _ => 3,
+                })
+                .sum::<usize>();
+            if tip_bytes > sunrise_client::command::MAX_SUGGESTION_TOOLTIP {
+                log::warn!(
+                    "dropping command suggestion `{}` with oversized tooltip \
+                     ({tip_bytes} modified UTF-8 bytes > {})",
+                    s.text,
+                    sunrise_client::command::MAX_SUGGESTION_TOOLTIP
+                );
+                return false;
+            }
+        }
+        true
+    });
+    // ServerCommandSuggestionsProvider.limitSuggestionCount.
+    suggestions.truncate(1000);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frame_command_suggestions;
+    use sunrise_client::command::{MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, Suggestion};
+
+    fn entry(text: String, tooltip: Option<String>) -> Suggestion {
+        Suggestion {
+            range: (0, 0),
+            text,
+            tooltip,
+            int_value: None,
+        }
+    }
+
+    #[test]
+    fn frame_command_suggestions_drops_oversized_entries_individually_then_truncates_to_1000() {
+        let mut suggestions = vec![
+            entry("a".repeat(MAX_SUGGESTION_TEXT + 1), None),
+            entry(
+                "bad_tip".into(),
+                Some("b".repeat(MAX_SUGGESTION_TOOLTIP + 1)),
+            ),
+            entry("bad_nul".into(), Some("\0".repeat(32768))),
+            entry(
+                "a".repeat(MAX_SUGGESTION_TEXT),
+                Some("b".repeat(MAX_SUGGESTION_TOOLTIP)),
+            ),
+        ];
+        suggestions.extend((0..1020).map(|i| entry(format!("entry_{i:04}"), None)));
+        frame_command_suggestions(&mut suggestions);
+        assert_eq!(suggestions.len(), 1000);
+        assert_eq!(suggestions[0].text.len(), MAX_SUGGESTION_TEXT);
+        assert_eq!(
+            suggestions[0].tooltip.as_deref().map(str::len),
+            Some(MAX_SUGGESTION_TOOLTIP)
+        );
+        assert_eq!(suggestions[1].text, "entry_0000");
+        assert_eq!(suggestions[999].text, "entry_0998");
     }
 }

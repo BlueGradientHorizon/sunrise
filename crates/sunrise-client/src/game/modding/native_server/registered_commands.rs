@@ -90,7 +90,6 @@ impl Game<'_> {
             &usages,
             |name| hub.is_some_and(|hub| hub.vanilla_command(name)) || vanilla.find(name).is_some(),
             &arguments,
-            false,
             Some(&mut slots),
         );
         for p in problems {

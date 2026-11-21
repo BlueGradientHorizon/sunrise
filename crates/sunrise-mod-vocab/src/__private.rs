@@ -220,12 +220,22 @@ pub fn client_requirement(id: &str) -> Option<String> {
     Some(format!("sends the required payload {channel} to clients"))
 }
 
-/// The command argument types mods registered at startup, by namespaced id, for the game's
-/// command trees. Not part of the mod surface.
-pub fn command_argument_types() -> Vec<(String, std::sync::Arc<dyn crate::CommandArgumentType>)> {
+/// The command argument types mods registered at startup, with their owner and namespaced id, for
+/// the game's command trees. Not part of the mod surface.
+pub fn command_argument_types() -> Vec<(
+    String,
+    crate::callback_owner::CallbackOwner,
+    std::sync::Arc<dyn crate::CommandArgumentType>,
+)> {
     crate::parts::installed_command_arguments()
         .iter()
-        .map(|info| (info.id.to_string(), info.argument.clone()))
+        .map(|info| {
+            (
+                info.id.to_string(),
+                info.owner.clone(),
+                info.argument.clone(),
+            )
+        })
         .collect()
 }
 

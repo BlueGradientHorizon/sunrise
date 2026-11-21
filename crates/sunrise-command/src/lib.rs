@@ -24,9 +24,8 @@ pub mod vanilla;
 mod vanilla_order;
 
 pub use args::{
-    Arg, ArgType, CustomArgument, CustomArgumentKind, CustomCompletionAction, CustomSuggestion,
-    MAX_PROVIDER_SUGGESTIONS, MAX_SUGGESTION_TEXT, MAX_SUGGESTION_TOOLTIP, ParsedArgument,
-    Registries, RegistryId, modify_custom_completions,
+    Arg, ArgType, CustomArgument, CustomArgumentKind, CustomCompletionAction, MAX_SUGGESTION_TEXT,
+    MAX_SUGGESTION_TOOLTIP, ParsedArgument, Registries, RegistryId, modify_custom_completions,
 };
 use std::{
     collections::HashMap,
@@ -728,13 +727,6 @@ pub fn merge_suggestions(input: &str, list: Vec<Suggestion>) -> (Range, Vec<Sugg
             s.text,
             &input[s.range.1..end]
         );
-        // Padding grows the text past what the suggestion itself holds: a long prefix, and a
-        // suggestion starting later, expand to the whole merged range. Each one was within the
-        // packet's limit alone, so the expanded text is measured again and the ones that no
-        // longer fit are left out, keeping the others.
-        if text.encode_utf16().count() > MAX_SUGGESTION_TEXT {
-            continue;
-        }
         let expanded = Suggestion {
             range: (start, end),
             text,
@@ -748,10 +740,6 @@ pub fn merge_suggestions(input: &str, list: Vec<Suggestion>) -> (Range, Vec<Sugg
         if seen.insert((expanded.text.clone(), expanded.tooltip.clone())) {
             out.push(expanded);
         }
-    }
-    if out.is_empty() {
-        // Every completion was too long to send: nothing to show, and no range to show it in.
-        return ((0, 0), out);
     }
     let ints = out.iter().filter(|s| s.int_value.is_some()).count();
     if ints == 0 || ints == out.len() {
@@ -1250,7 +1238,7 @@ impl Dispatcher {
         cursor: usize,
         reg: &Registries,
     ) -> (Range, Vec<Suggestion>) {
-        let (range, list, _, _) = self.suggestions_within(parse, cursor, reg, u8::MAX);
+        let (range, list, _) = self.suggestions_within(parse, cursor, reg, u8::MAX);
         // CommandDispatcher.getCompletionSuggestions: a merged empty list is
         // `Suggestions.empty()` — `StringRange.at(0)`. The token range the chat
         // merge needs is only kept by the `client_suggestions` entries.
@@ -1265,7 +1253,7 @@ impl Dispatcher {
         cursor: usize,
         reg: &Registries,
     ) -> (Range, Vec<Suggestion>) {
-        let (range, list, _, _) = self.suggestions_within(parse, cursor, reg, reg.permission);
+        let (range, list, _) = self.suggestions_within(parse, cursor, reg, reg.permission);
         (range, list)
     }
     /// [`Self::client_suggestions`], and whether a node at the cursor asks
@@ -1277,21 +1265,7 @@ impl Dispatcher {
         cursor: usize,
         reg: &Registries,
     ) -> (Range, Vec<Suggestion>, bool) {
-        let (range, list, ask, _) = self.suggestions_within(parse, cursor, reg, reg.permission);
-        (range, list, ask)
-    }
-    /// [`Self::client_suggestions`], and whether an argument at the cursor answers from a
-    /// suggestion provider its type declares: that answer is the argument's own, so no
-    /// completion listener may add to, replace or erase it (`tab_complete` is asked for
-    /// ordinary completions only).
-    pub fn client_suggestions_owned(
-        &self,
-        parse: &ParseResults,
-        cursor: usize,
-        reg: &Registries,
-    ) -> (Range, Vec<Suggestion>, bool) {
-        let (range, list, _, owned) = self.suggestions_within(parse, cursor, reg, reg.permission);
-        (range, list, owned)
+        self.suggestions_within(parse, cursor, reg, reg.permission)
     }
     fn suggestions_within(
         &self,
@@ -1299,13 +1273,12 @@ impl Dispatcher {
         cursor: usize,
         reg: &Registries,
         permission: u8,
-    ) -> (Range, Vec<Suggestion>, bool, bool) {
+    ) -> (Range, Vec<Suggestion>, bool) {
         let (parent, start, context) = parse.context.suggestion_context(cursor);
         let start = start.min(cursor);
         let truncated = &parse.input[..cursor.min(parse.input.len())];
         let mut all = Vec::new();
         let mut ask = false;
-        let mut owned = false;
         for &child in &self.nodes[parent].children {
             if self.nodes[child].permission > permission {
                 continue;
@@ -1318,15 +1291,10 @@ impl Dispatcher {
                         builder.suggest(l.clone());
                     }
                 }
-                NodeKind::Argument { ty, name } => {
-                    // A type that declares a provider answers for its argument: that answer is the
-                    // argument's own, and nothing else may add to it.
-                    owned |= matches!(ty, ArgType::Custom(custom) if custom.declares_provider());
-                    match &self.nodes[child].suggests {
-                        Some(provider) => provider.suggest(&mut builder, reg, &parse.context),
-                        None => ty.suggest(&mut builder, reg, context, name),
-                    }
-                }
+                NodeKind::Argument { ty, name } => match &self.nodes[child].suggests {
+                    Some(provider) => provider.suggest(&mut builder, reg, &parse.context),
+                    None => ty.suggest(&mut builder, reg, context, name),
+                },
                 NodeKind::Root => {}
             }
             all.extend(builder.out);
@@ -1342,7 +1310,7 @@ impl Dispatcher {
         } else {
             range
         };
-        (range, list, ask, owned)
+        (range, list, ask)
     }
     fn smart_usage_of(&self, node: usize, optional: bool, deep: bool, level: u8) -> Option<String> {
         let n = &self.nodes[node];
