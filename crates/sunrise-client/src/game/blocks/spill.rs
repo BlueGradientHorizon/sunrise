@@ -234,6 +234,23 @@ pub(super) struct Spawn {
     pub(super) delay: u32,
 }
 
+/// The block-entity context bound to a block break at the moment the break begins, so a
+/// replacement block entity placed at the same position before drops fire (for example by a
+/// `player_destroyed_block` listener) never leaks into `block_drops` or `exp_drop`.
+#[derive(Clone, Copy)]
+pub(in crate::game) enum BlockDropEntity<'a> {
+    /// No block entity belongs to this break (explosions, blocks without one, or an
+    /// already-removed player break that had no block entity).
+    None,
+    /// A block entity that was resident at `pos` with this exact generation when the break
+    /// started. Resolves to a live `BlockEntityRef` only while that same generation remains
+    /// resident at `pos`.
+    Resident(u64),
+    /// Read-only saved data (including `CustomName`) of a block entity already removed by a
+    /// player's break. Never resolves a resident handle at `pos`.
+    Removed(&'a Compound),
+}
+
 /// What a broken block spawns (`GameLevel::block_dropped`).
 /// Prepared engine item entity; API snapshots exist only while a listener runs.
 #[derive(Clone, Debug, PartialEq)]
@@ -245,6 +262,9 @@ pub(crate) struct BlockItemDrop {
     pub(super) pickup_delay: u32,
     /// The item-entity state a drop hook set.
     pub(super) state: DropState,
+    /// For explosion shares, the merged-stack group this prepared entry came from.
+    /// Preserved across in-place edits (`PreparedDropMut`); cleared on `replace`/`push`/`insert`.
+    pub(super) origin_group: Option<usize>,
 }
 
 impl BlockItemDrop {
@@ -257,6 +277,7 @@ impl BlockItemDrop {
             velocity: drop.velocity,
             pickup_delay: drop.pickup_delay,
             state: DropState::of(drop),
+            origin_group: None,
         }
     }
     /// The constructor random the item entity joins with, carrying the state a hook set. A drop
@@ -776,6 +797,7 @@ impl GameLevel<'_> {
         } else if let Some(tag) = saved_entity(self.world, [pos.x, pos.y, pos.z]) {
             self.pending.record_saved(at, &tag);
         }
+        let block_entity = self.resident_block_entity(pos);
         let dynamic = self.pending.dynamic(at);
         let machine = self
             .drop_tool
@@ -796,7 +818,8 @@ impl GameLevel<'_> {
             .drop_entity
             .filter(|_| self.drop_breaker_at == Some(pos));
         let drops = self.roll_block_loot(pos, state, entity, roll, None);
-        let dropped = self.block_dropped(pos, state, None, tool.as_ref(), None, drops, None);
+        let dropped =
+            self.block_dropped(pos, state, None, tool.as_ref(), block_entity, drops, None);
         for item in dropped.items {
             if let Some(kept) = self.drop_into.as_mut().filter(|_| machine) {
                 kept.push(item.stack);
@@ -867,7 +890,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
-        block_entity_data: Option<&Compound>,
+        block_entity: BlockDropEntity<'_>,
         stacks: Vec<ItemStack>,
         exp_to_drop: Option<u32>,
     ) -> BlockDrops {
@@ -882,7 +905,7 @@ impl GameLevel<'_> {
         let name = self.facts.get(state).name.clone();
         let silk = tool.is_some_and(|tool| tool.enchantment_level("minecraft:silk_touch") > 0);
         let experience = exp_to_drop
-            .or_else(|| self.part_break_experience(pos, state, breaker, tool))
+            .or_else(|| self.part_break_experience(pos, state, breaker, tool, block_entity))
             .unwrap_or_else(|| {
                 removal::break_experience(&mut self.world.random, &name)
                     .filter(|_| !silk || &*name == "minecraft:spawner")
@@ -898,7 +921,7 @@ impl GameLevel<'_> {
             state,
             breaker,
             tool,
-            block_entity_data,
+            block_entity,
             BlockDrops {
                 items,
                 experience,
@@ -917,6 +940,7 @@ impl GameLevel<'_> {
             velocity: random.velocity,
             pickup_delay: 10,
             state: DropState::default(),
+            origin_group: None,
         }
     }
     /// The one event/filter boundary for prepared block item entities and XP.
@@ -928,7 +952,7 @@ impl GameLevel<'_> {
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
-        block_entity_data: Option<&Compound>,
+        block_entity: BlockDropEntity<'_>,
         dropped: BlockDrops,
     ) -> BlockDrops {
         let BlockDrops {
@@ -939,11 +963,29 @@ impl GameLevel<'_> {
         if self.native_authoritative
             && mod_api::__private::listened(mod_api::HookId::BlockDrops)
             && let Ok(api_state) = state.try_into_api()
-            && let Ok(tool_metadata) = tool
-                .map(crate::game::api_values::stack_read_metadata)
-                .transpose()
         {
-            let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
+            let tool_metadata = tool.and_then(|stack| {
+                if stack.count == 0 || &*stack.item == "minecraft:air" {
+                    return None;
+                }
+                match crate::game::api_values::stack_read_metadata(stack) {
+                    Ok(metadata) => Some(metadata),
+                    Err(error) => {
+                        log::warn!(
+                            "block_drops at {pos:?}: omitting unrepresentable tool '{}' (count {}): {error:?}",
+                            stack.item,
+                            stack.count,
+                        );
+                        None
+                    }
+                }
+            });
+            let block_entity_data = match block_entity {
+                BlockDropEntity::Removed(data) => Some(data),
+                BlockDropEntity::None | BlockDropEntity::Resident(_) => None,
+            };
+            let (block_entity_ref, breaker_entity) =
+                self.drop_event_refs(pos, breaker, block_entity);
             let project_tool = |metadata| {
                 tool.and_then(|stack| crate::game::api_values::project_stack(stack, metadata).ok())
             };
@@ -960,7 +1002,7 @@ impl GameLevel<'_> {
                 state: api_state,
                 breaker,
                 breaker_entity,
-                block_entity,
+                block_entity: block_entity_ref,
                 block_entity_data,
                 tool: tool_view,
                 drops: mod_api::PreparedBlockDrops::new(&mut drops_access),
@@ -1649,7 +1691,7 @@ mod tests {
                         state,
                         None,
                         None,
-                        None,
+                        BlockDropEntity::None,
                         vec![ItemStack::new(item, 1)],
                         exp_to_drop,
                     )
@@ -1784,7 +1826,7 @@ mod tests {
                         stone,
                         None,
                         None,
-                        None,
+                        BlockDropEntity::None,
                         vec![
                             ItemStack::new("minecraft:stone", 1),
                             ItemStack::new("minecraft:cobblestone", 1),
@@ -1833,6 +1875,103 @@ mod tests {
                 assert_eq!(heard.items[1].pickup_delay, 10);
                 assert_eq!(heard.items[1].random, None);
             });
+        });
+    }
+
+    /// An empty or unrepresentable optional tool (such as an unregistered item from an older
+    /// save) omits only `event.tool` and still dispatches `block_drops` so listeners can edit
+    /// drops and experience or cancel the break.
+    #[test]
+    #[ignore = "daily"]
+    fn block_drops_dispatches_with_empty_or_unrepresentable_tool() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        use sunrise_core::random::LegacyRandom;
+
+        struct ToolOmitListener(Arc<AtomicUsize>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ToolOmitListener {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut mod_api::BlockDropsEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                assert!(
+                    event.tool.is_none(),
+                    "empty or unrepresentable tools omit only event.tool"
+                );
+                if event.drops.iter().any(|drop| {
+                    drop.stack().is_some_and(|stack| {
+                        mod_api::__private::item_key_id(stack.item()) == Some("minecraft:dirt")
+                    })
+                }) {
+                    return mod_api::Flow::Cancel;
+                }
+                event.drops.get_mut(0).unwrap().set_pickup_delay(44);
+                event.experience += 5;
+                mod_api::Flow::Continue
+            }
+        }
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let registry = game.pack.assets.registry;
+            let ore = registry.default_state("minecraft:diamond_ore").unwrap();
+            let dirt = registry.default_state("minecraft:dirt").unwrap();
+            let pos = BlockPos::new(1, 64, 2);
+            let calls = Arc::new(AtomicUsize::new(0));
+            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+                "tool-omit",
+                Box::new(ToolOmitListener(calls.clone())),
+            )]
+            .into();
+            mod_platform::testing::with_mods(mods, || {
+                for tool in [
+                    ItemStack::new("missingmod:ghost_pick", 1),
+                    ItemStack::new("minecraft:air", 1),
+                    ItemStack::new("minecraft:diamond_pickaxe", 0),
+                ] {
+                    game.world.random =
+                        sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
+                    let edited = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            pos,
+                            ore,
+                            None,
+                            Some(&tool),
+                            BlockDropEntity::None,
+                            vec![ItemStack::new("minecraft:diamond", 1)],
+                            Some(3),
+                        )
+                    });
+                    assert!(!edited.canceled);
+                    assert_eq!(edited.experience, 8);
+                    assert_eq!(edited.items.len(), 1);
+                    assert_eq!(edited.items[0].pickup_delay, 44);
+
+                    let canceled = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            pos,
+                            dirt,
+                            None,
+                            Some(&tool),
+                            BlockDropEntity::None,
+                            vec![ItemStack::new("minecraft:dirt", 1)],
+                            Some(3),
+                        )
+                    });
+                    assert!(canceled.canceled);
+                    assert!(canceled.items.is_empty());
+                    assert_eq!(canceled.experience, 0);
+                }
+            });
+            assert_eq!(calls.load(Ordering::Relaxed), 6);
         });
     }
 

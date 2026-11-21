@@ -6,19 +6,35 @@ impl GameLevel<'_> {
 }
 
 impl GameLevel<'_> {
+    /// Capture the resident block entity's generation at `pos`, if one currently exists.
+    pub(in crate::game) fn resident_block_entity(
+        &self,
+        pos: BlockPos,
+    ) -> crate::game::spill::BlockDropEntity<'static> {
+        let key = (pos.x, pos.y, pos.z);
+        if self.world.block_entities.get(&key).is_some()
+            && let Some(generation) = self.world.block_entities.generation(&key)
+        {
+            crate::game::spill::BlockDropEntity::Resident(generation)
+        } else {
+            crate::game::spill::BlockDropEntity::None
+        }
+    }
+
     pub(in crate::game) fn part_break_experience(
         &self,
         pos: BlockPos,
         state: BlockStateId,
         breaker: Option<u128>,
         tool: Option<&ItemStack>,
+        block_entity: crate::game::spill::BlockDropEntity<'_>,
     ) -> Option<u32> {
         if !self.native_authoritative
             || !crate::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
         {
             return None;
         }
-        let (block_entity, breaker) = self.drop_event_refs(pos, breaker);
+        let (block_entity, breaker) = self.drop_event_refs(pos, breaker, block_entity);
         let mut experience = None;
         self.native_exp_drop(super::fire::ExpDropCall {
             dimension: self.dimension,
@@ -34,24 +50,31 @@ impl GameLevel<'_> {
 }
 
 impl GameLevel<'_> {
-    /// The block entity at `pos` and the entity that broke it, as a block's drop and experience
-    /// hooks give them (`BlockDropsEvent.getBlockEntity` and `getBreaker`): the block entity with
-    /// its generation, the player's entity for a player's break (`breaker`, their UUID), or the
-    /// mob in `drop_entity` while its break at this position runs.
+    /// The block entity bound to this break and the entity that broke it, as a block's drop and
+    /// experience hooks give them (`BlockDropsEvent.getBlockEntity` and `getBreaker`): the
+    /// resident block entity only when its original generation still stands at `pos`, the
+    /// player's entity for a player's break (`breaker`, their UUID), or the mob in `drop_entity`
+    /// while its break at this position runs.
     pub(in crate::game) fn drop_event_refs(
         &self,
         pos: BlockPos,
         breaker: Option<u128>,
+        entity: crate::game::spill::BlockDropEntity<'_>,
     ) -> (Option<mod_api::BlockEntityRef>, Option<mod_api::EntityRef>) {
         let at = [pos.x, pos.y, pos.z];
-        let block_entity = self.api_level.and_then(|level| {
-            let key = (pos.x, pos.y, pos.z);
-            self.world.block_entities.get(&key)?;
-            let generation = self.world.block_entities.generation(&key)?;
-            Some(mod_api::__private::game::block_entity_ref(
-                level, at, generation,
-            ))
-        });
+        let block_entity = match entity {
+            crate::game::spill::BlockDropEntity::Resident(expected_generation) => {
+                self.api_level.and_then(|level| {
+                    let key = (pos.x, pos.y, pos.z);
+                    self.world.block_entities.get(&key)?;
+                    let generation = self.world.block_entities.generation(&key)?;
+                    (generation == expected_generation)
+                        .then(|| mod_api::__private::game::block_entity_ref(level, at, generation))
+                })
+            }
+            crate::game::spill::BlockDropEntity::None
+            | crate::game::spill::BlockDropEntity::Removed(_) => None,
+        };
         let breaker = if breaker.is_some() {
             self.api_level
                 .zip(self.native_player_entity)
@@ -80,8 +103,9 @@ impl Game<'_> {
         let breaker = Some(self.native_acting_id());
         *experience = self.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
+            let block_entity = level.resident_block_entity(pos);
             let amount = level
-                .part_break_experience(pos, state, breaker, tool.as_ref())
+                .part_break_experience(pos, state, breaker, tool.as_ref(), block_entity)
                 .unwrap_or_else(|| {
                     sunrise_world::level::removal::break_experience(
                         &mut level.world.random,
@@ -125,7 +149,8 @@ impl Game<'_> {
             // with_level rebuilds GameLevel with both fields None on every call.
             level.drop_entity = breaker;
             level.drop_breaker_at = Some(pos);
-            level.block_dropped(pos, state, None, None, None, drops, None)
+            let block_entity = level.resident_block_entity(pos);
+            level.block_dropped(pos, state, None, None, block_entity, drops, None)
         })
     }
 }
@@ -165,13 +190,17 @@ impl Game<'_> {
         let ([x, y, z], state) = at;
         let (breaker, tool, live) = who;
         let block_entity_data = live.and_then(|(_, data)| data);
+        let block_entity = match block_entity_data.as_ref() {
+            Some(data) => crate::game::spill::BlockDropEntity::Removed(data),
+            None => crate::game::spill::BlockDropEntity::None,
+        };
         self.with_level(|_, level, _| {
             level.block_dropped(
                 BlockPos::new(x, y, z),
                 state,
                 breaker,
                 tool,
-                block_entity_data.as_ref(),
+                block_entity,
                 loot.0,
                 loot.1,
             )

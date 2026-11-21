@@ -23,6 +23,7 @@ fn drop_with(state: DropState, random: bool) -> BlockItemDrop {
         velocity: [0.1, 0.2, 0.0],
         pickup_delay: 10,
         state,
+        origin_group: None,
     }
 }
 

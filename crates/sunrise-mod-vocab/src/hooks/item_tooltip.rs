@@ -26,7 +26,7 @@ pub trait Hooks {
         side = "client",
         contract = "listen",
         neoforge = "ItemTooltipEvent",
-        version = 2
+        version = 3
     )]
     fn item_tooltip(
         player: u128,

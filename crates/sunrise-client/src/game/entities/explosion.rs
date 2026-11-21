@@ -2041,6 +2041,7 @@ impl Game<'_> {
                 .map(|piece| {
                     let mut item = items[piece.group].clone();
                     item.stack.count = piece.count;
+                    item.origin_group = Some(piece.group);
                     (piece, item)
                 })
                 .collect();
@@ -2050,7 +2051,7 @@ impl Game<'_> {
                     block.state,
                     None,
                     None,
-                    None,
+                    super::spill::BlockDropEntity::None,
                     super::spill::BlockDrops {
                         items: originals.iter().map(|(_, item)| item.clone()).collect(),
                         experience: 0,
@@ -2074,10 +2075,21 @@ impl Game<'_> {
                 self.spawn_orbs(block.pos.map(|v| f64::from(v) + 0.5), dropped.experience);
             }
         }
-        for item in merged.into_iter().flatten().chain(edited) {
-            // A fresh constructor random, as `spawn_item` draws, with the state a hook set.
-            let random = None;
-            self.add_item_drop(super::spill::BlockItemDrop { random, ..item });
+        // Pass each surviving merged group's prepared capture to `add_item_drop` at most once so
+        // unchanged groups match `pop_resource` bit-for-bit, sole in-place edits keep their
+        // prepared RNG, and splits never duplicate a capture or UUID.
+        let mut claimed: Vec<bool> = merged.iter().map(Option::is_some).collect();
+        for item in merged.into_iter().flatten() {
+            self.add_item_drop(item);
+        }
+        for mut item in edited {
+            let keep_random = item
+                .origin_group
+                .is_some_and(|group| !std::mem::replace(&mut claimed[group], true));
+            if !keep_random {
+                item.random = None;
+            }
+            self.add_item_drop(item);
         }
     }
 
@@ -2260,6 +2272,7 @@ mod tests {
     enum DropProbeMode {
         Observe,
         InPlaceOne,
+        InPlaceAll,
         CancelAndReplace,
     }
 
@@ -2311,6 +2324,9 @@ mod tests {
                     if event.pos.x == 2 {
                         event.drops.get_mut(0).unwrap().set_pickup_delay(33);
                     }
+                }
+                DropProbeMode::InPlaceAll => {
+                    event.drops.get_mut(0).unwrap().set_pickup_delay(33);
                 }
                 DropProbeMode::CancelAndReplace => {
                     assert_eq!(
@@ -2398,16 +2414,39 @@ mod tests {
                 game.spawn_explosion_drops(drops);
                 game.world.random.next_int()
             };
+            let snapshot = |game: &Game<'_>, index: usize| {
+                let item = &game.dropped[index];
+                let own: (u64, Option<f64>) = (&item.random).into();
+                (
+                    game.persist.uuids.get(&item.id).copied().unwrap(),
+                    item.position,
+                    item.velocity,
+                    item.rotation,
+                    item.bob_offset,
+                    own,
+                )
+            };
+            let one = [[2, 64, 1]];
             let two = [[1, 64, 1], [2, 64, 1]];
             let three = [[1, 64, 1], [2, 64, 1], [3, 64, 1]];
-            let baseline = blast_at(game, &two);
+            let (one_baseline, one_seeds) =
+                sunrise_client::random_source::record_seeds(|| blast_at(game, &one));
+            assert_eq!(game.dropped.len(), 1);
+            let one_state = snapshot(game, 0);
+            let (baseline, two_seeds) =
+                sunrise_client::random_source::record_seeds(|| blast_at(game, &two));
             assert_eq!(game.dropped.len(), 1);
             assert_eq!(game.dropped[0].stack.count, 2);
-            let position = game.dropped[0].position;
-            let three_baseline = blast_at(game, &three);
+            let two_state = snapshot(game, 0);
+            let (two_all_baseline, two_all_seeds) =
+                sunrise_client::random_source::record_seeds(|| blast_at(game, &two));
+            assert_eq!(game.dropped.len(), 1);
+            let two_all_state = snapshot(game, 0);
+            let (three_baseline, three_seeds) =
+                sunrise_client::random_source::record_seeds(|| blast_at(game, &three));
             assert_eq!(game.dropped.len(), 1);
             assert_eq!(game.dropped[0].stack.count, 3);
-            let three_position = game.dropped[0].position;
+            let three_state = snapshot(game, 0);
             let seen = Arc::new(Mutex::new(Vec::new()));
             let mods = |mode| {
                 vec![mod_api::ModEntry::new(
@@ -2420,16 +2459,46 @@ mod tests {
                 .into()
             };
             mod_platform::testing::with_mods(mods(DropProbeMode::Observe), || {
-                assert_eq!(blast_at(game, &two), baseline);
+                let level_after =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&two_seeds), || {
+                        blast_at(game, &two)
+                    });
+                assert!(
+                    two_seeds.complete(),
+                    "no-op listener must draw the exact same entity RNG seeds as no listener"
+                );
+                assert_eq!(level_after, baseline);
                 assert_eq!(game.dropped.len(), 1);
                 assert_eq!(game.dropped[0].stack.count, 2);
-                assert_eq!(game.dropped[0].position, position);
+                assert_eq!(snapshot(game, 0), two_state);
                 assert!(game.orbs.is_empty(), "explosions default to no XP");
             });
             assert_eq!(*seen.lock().unwrap(), two);
             seen.lock().unwrap().clear();
             mod_platform::testing::with_mods(mods(DropProbeMode::InPlaceOne), || {
-                assert_eq!(blast_at(game, &three), three_baseline);
+                let one_after =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&one_seeds), || {
+                        blast_at(game, &one)
+                    });
+                assert!(
+                    one_seeds.complete(),
+                    "sole in-place edit keeps its prepared entity capture with no extra seed draw"
+                );
+                assert_eq!(one_after, one_baseline);
+                assert_eq!(game.dropped.len(), 1);
+                assert_eq!(game.dropped[0].pickup_delay, 33);
+                assert_eq!(snapshot(game, 0), one_state);
+                assert!(game.orbs.is_empty());
+
+                let three_after =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&three_seeds), || {
+                        blast_at(game, &three)
+                    });
+                assert!(
+                    !three_seeds.complete(),
+                    "splitting out an additional entity draws a fresh constructor seed"
+                );
+                assert_eq!(three_after, three_baseline);
                 assert_eq!(game.dropped.len(), 2);
                 assert_eq!(&*game.dropped[0].stack.item, "minecraft:dirt");
                 assert_eq!(
@@ -2437,17 +2506,61 @@ mod tests {
                     "untouched shares rejoin the original merged entity"
                 );
                 assert_eq!(game.dropped[0].pickup_delay, 10);
-                assert_eq!(game.dropped[0].position, three_position);
+                assert_eq!(
+                    snapshot(game, 0),
+                    three_state,
+                    "surviving merged entity keeps the original prepared capture"
+                );
                 assert_eq!(&*game.dropped[1].stack.item, "minecraft:dirt");
                 assert_eq!(
                     game.dropped[1].stack.count, 1,
                     "the in-place edited block spawns separately"
                 );
                 assert_eq!(game.dropped[1].pickup_delay, 33);
-                assert_eq!(game.dropped[1].position, three_position);
+                assert_eq!(game.dropped[1].position, three_state.1);
+                let split_state = snapshot(game, 1);
+                assert_ne!(
+                    split_state.0, three_state.0,
+                    "a split entity never duplicates the merged group's UUID"
+                );
+                assert_ne!(
+                    split_state.5, three_state.5,
+                    "a split entity gets its own entity RNG state"
+                );
                 assert!(game.orbs.is_empty());
             });
-            assert_eq!(*seen.lock().unwrap(), three);
+            assert_eq!(
+                *seen.lock().unwrap(),
+                [one[0], three[0], three[1], three[2]]
+            );
+            seen.lock().unwrap().clear();
+            mod_platform::testing::with_mods(mods(DropProbeMode::InPlaceAll), || {
+                let two_after =
+                    sunrise_client::random_source::replay_seeds(Arc::clone(&two_all_seeds), || {
+                        blast_at(game, &two)
+                    });
+                assert!(
+                    !two_all_seeds.complete(),
+                    "splitting a merged group into two edited entities draws one fresh seed"
+                );
+                assert_eq!(two_after, two_all_baseline);
+                assert_eq!(game.dropped.len(), 2);
+                assert_eq!(game.dropped[0].pickup_delay, 33);
+                assert_eq!(game.dropped[1].pickup_delay, 33);
+                assert_eq!(
+                    snapshot(game, 0),
+                    two_all_state,
+                    "first edited share claims the group's prepared capture once"
+                );
+                let second_state = snapshot(game, 1);
+                assert_ne!(
+                    second_state.0, two_all_state.0,
+                    "second edited share never duplicates the group's UUID"
+                );
+                assert_ne!(second_state.5, two_all_state.5);
+                assert!(game.orbs.is_empty());
+            });
+            assert_eq!(*seen.lock().unwrap(), two);
             seen.lock().unwrap().clear();
             mod_platform::testing::with_mods(mods(DropProbeMode::CancelAndReplace), || {
                 blast_at(game, &two);

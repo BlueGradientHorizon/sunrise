@@ -760,3 +760,107 @@ fn block_drops_holds_nothing_after_a_listener_panics() {
         });
     });
 }
+
+/// Installing a replacement chest at the broken position inside `player_destroyed_block` must
+/// never leak the replacement's live `BlockEntityRef` into `block_drops`: breaking a chest still
+/// lends only the original chest's `block_entity_data`, and breaking a plain block gives neither
+/// `block_entity` nor `block_entity_data`.
+#[test]
+#[ignore = "daily"]
+fn block_drops_ignores_a_replacement_block_entity_placed_after_removal() {
+    struct ReplacementPlacer;
+    #[mod_api::__subscriptions]
+    impl Hooks for ReplacementPlacer {
+        fn player_destroyed_block(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut PlayerDestroyedBlockEvent,
+        ) {
+            set(host, event.pos, "minecraft:chest");
+            let level = host.level("minecraft:overworld").expect("the overworld");
+            assert!(
+                host.block_entity(level, event.pos).is_some(),
+                "replacement chest installed a live block entity before drops fire"
+            );
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let handle = Arc::new(Mutex::new(None));
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("replacement-placer", Box::new(ReplacementPlacer)),
+        mod_api::ModEntry::new(
+            "drops-probe",
+            Box::new(DropsProbe {
+                seen: seen.clone(),
+                handle: handle.clone(),
+                panic: false,
+            }),
+        ),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let player = with_player(
+                game,
+                GameMode::Survival,
+                Some(ItemStack::new("minecraft:diamond_axe", 1)),
+            );
+
+            // Case 1: break a named chest with contents; replacement chest is placed before drops.
+            let chest = [7, 64, 4];
+            put_chest(game, chest);
+            game.world.block_names.insert(
+                (chest[0], chest[1], chest[2]),
+                mod_api::Tag::String("Original Chest".into()),
+            );
+            assert!(game.player_destroy_block(player, chest, false));
+            assert_eq!(block(game, chest), "minecraft:chest");
+            assert!(
+                game.world
+                    .block_entities
+                    .get(&(chest[0], chest[1], chest[2]))
+                    .is_some(),
+                "replacement chest remains resident after the break"
+            );
+            let heard = std::mem::take(&mut *seen.lock().unwrap());
+            assert_eq!(heard.len(), 1);
+            assert!(
+                !heard[0].has_block_entity,
+                "replacement chest's live handle must not leak into block_drops"
+            );
+            assert!(heard[0].has_block_entity_data);
+            assert_eq!(heard[0].items, Some(1));
+            assert_eq!(
+                heard[0].custom_name,
+                Some(mod_api::Tag::String("Original Chest".into()))
+            );
+            assert!(handle.lock().unwrap().is_none());
+
+            // Case 2: break stone (no block entity); replacement chest is placed before drops.
+            let player = with_player(
+                game,
+                GameMode::Survival,
+                Some(ItemStack::new("minecraft:diamond_pickaxe", 1)),
+            );
+            let stone = [8, 64, 4];
+            place(game, stone, "minecraft:stone");
+            assert!(game.player_destroy_block(player, stone, false));
+            assert_eq!(block(game, stone), "minecraft:chest");
+            assert!(
+                game.world
+                    .block_entities
+                    .get(&(stone[0], stone[1], stone[2]))
+                    .is_some(),
+                "replacement chest remains resident after the break"
+            );
+            let heard = std::mem::take(&mut *seen.lock().unwrap());
+            assert_eq!(heard.len(), 1);
+            assert!(
+                !heard[0].has_block_entity && !heard[0].has_block_entity_data,
+                "a broken block with no block entity must not expose a replacement's handle"
+            );
+            assert!(handle.lock().unwrap().is_none());
+        });
+    });
+}
