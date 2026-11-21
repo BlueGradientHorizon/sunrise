@@ -4,7 +4,7 @@
 mod sdk_fixture;
 
 use sdk_fixture::OfflineSdk;
-use std::{fs, path::PathBuf, process::Output};
+use std::{collections::BTreeSet, fs, path::PathBuf, process::Output};
 use sunrise_mod_package::manifest::MANIFEST;
 
 const OLD: &str = "0123456789abcdef0123456789abcdef01234567";
@@ -16,6 +16,10 @@ const RESHAPED: &str = "sunrise_client::game::Settings";
 const DROPPED: &str = "sunrise_client::game::Game::creative";
 /// A method: its fingerprint needs its body, which these builds' function indexes do not hold.
 const BODILESS: &str = "sunrise_client::game::Game<'_>::reach";
+const CHANGED_IDS: &[&str] = &[
+    "any:sunrise_client::game::Game::creative",
+    "any:sunrise_client::game::Settings",
+];
 
 struct Project {
     dir: PathBuf,
@@ -100,54 +104,54 @@ impl Drop for Project {
     }
 }
 
-/// The exit status and standard output, with standard error for a failed assertion.
-fn answer(output: &Output) -> (Option<i32>, String) {
-    let stdout = String::from_utf8(output.stdout.clone()).unwrap();
+fn assert_answer(output: Output, code: i32, game_ids: &[&str]) {
+    let stdout = std::str::from_utf8(&output.stdout).unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    (output.status.code(), format!("{stdout}{stderr}"))
+    assert_eq!(output.status.code(), Some(code), "{stdout}{stderr}");
+    let reported: BTreeSet<_> = stdout
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|id| id.contains("sunrise_client::") || *id == "reach")
+        .collect();
+    assert_eq!(
+        reported,
+        game_ids.iter().copied().collect(),
+        "{stdout}{stderr}"
+    );
 }
 
 #[test]
 #[ignore = "daily"]
 fn fits_judges_declared_game_code_by_each_builds_data() {
     let steady = Project::new("steady", &[STEADY]);
-    let (code, text) = answer(&steady.run(&["fits", "--build", NEW]));
-    assert_eq!(code, Some(0), "{text}");
-    let (code, text) = answer(&steady.run(&["fits", "--build", OLD, "--build", NEW]));
-    assert_eq!(code, Some(0), "{text}");
+    assert_answer(steady.run(&["fits", "--build", NEW]), 0, &[]);
+    assert_answer(
+        steady.run(&["fits", "--build", OLD, "--build", NEW]),
+        0,
+        &[],
+    );
 
     let moved = Project::new("moved", &[STEADY, RESHAPED, DROPPED]);
-    let (code, text) = answer(&moved.run(&["fits", "--build", NEW]));
-    assert_eq!(code, Some(1), "{text}");
-    assert!(text.contains(RESHAPED) && text.contains(DROPPED), "{text}");
-    assert!(!text.contains(&format!("{STEADY} ")), "{text}");
+    assert_answer(moved.run(&["fits", "--build", NEW]), 1, CHANGED_IDS);
     // The build it was made for still fits; one build that does not decides the answer.
-    let (code, text) = answer(&moved.run(&["fits", "--build", OLD]));
-    assert_eq!(code, Some(0), "{text}");
+    assert_answer(moved.run(&["fits", "--build", OLD]), 0, &[]);
+    assert_answer(
+        moved.run(&["fits", "--build", OLD, "--build", NEW]),
+        1,
+        CHANGED_IDS,
+    );
 
     // Neither build can fingerprint the method, so the answer is unknown, not a fit.
     let bodiless = Project::new("bodiless", &[STEADY, BODILESS]);
-    let (code, text) = answer(&bodiless.run(&["fits", "--build", NEW]));
-    assert_eq!(code, Some(2), "{text}");
-    assert!(text.contains("reach"), "{text}");
+    assert_answer(bodiless.run(&["fits", "--build", NEW]), 2, &["reach"]);
 }
 
 #[test]
 #[ignore = "daily"]
 fn update_names_the_declared_game_code_the_new_build_changed() {
     let moved = Project::new("update-moved", &[STEADY, RESHAPED, DROPPED]);
-    let (code, before) = answer(&moved.run(&["update", "--sunrise", NEW]));
-    assert_eq!(code, Some(0), "{before}");
+    assert_answer(moved.run(&["update", "--sunrise", NEW]), 0, CHANGED_IDS);
     let steady = Project::new("update-steady", &[STEADY]);
-    let (code, unchanged) = answer(&steady.run(&["update", "--sunrise", NEW]));
-    assert_eq!(code, Some(0), "{unchanged}");
-    // The game-code lines name what moved, and only that.
-    let named = |text: &str, path: &str| {
-        text.lines()
-            .any(|l| l.contains(path) && !l.contains("unchanged"))
-    };
-    for path in [RESHAPED, DROPPED] {
-        assert!(named(&before, path), "{before}");
-        assert!(!named(&unchanged, path), "{unchanged}");
-    }
+    assert_answer(steady.run(&["update", "--sunrise", NEW]), 0, &[]);
 }
