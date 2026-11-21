@@ -259,7 +259,7 @@ fn standalone_bakers_resolve_as_one_model_and_republish_after_resource_reload() 
 fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
     use super::{Progress, packs::stage_pack};
     use mod_api::{
-        AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener,
+        AddClientReloadListenersEvent, ClientReloadContext, ClientReloadListener, ClientReloadListenerContext,
         FileToIdConverter, ProfessionDefinition, ProfessionKey, RegisterVillagerProfessionsEvent,
         ReloadResourceError, VanillaClientListeners,
     };
@@ -290,7 +290,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
     impl Hooks for Probe {
         fn add_client_reload_listeners(
             &self,
-            _: &dyn ClientHost,
+            _: &dyn ClientReloadListenerContext,
             event: &mut AddClientReloadListenersEvent<'_>,
         ) {
             for (name, prepare, apply) in [
@@ -379,7 +379,7 @@ fn pack_reload_runs_listeners_on_both_sides_of_model_manager() {
                 for reject in [true, false] {
                     refuse.store(reject, Ordering::Relaxed);
                     // A clean registration snapshot for each candidate.
-                    game.mods.profession_declarations.take();
+                    game.mods.profession_declarations = Default::default();
                     trace.lock().unwrap().clear();
                     let previous = game.pack.render.clone();
                     let staged = stage_pack(

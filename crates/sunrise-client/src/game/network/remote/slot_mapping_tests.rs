@@ -51,6 +51,7 @@ fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
         inputs: Vec::new(),
         crafting: None,
         links: Default::default(),
+        owned_slots: None,
     };
     for s in [0usize, 199, 200, 204, 300, 400, 32_731] {
         let internal =
@@ -87,6 +88,7 @@ fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
         inputs: Vec::new(),
         crafting: None,
         links: Default::default(),
+        owned_slots: None,
     };
     assert_eq!(
         Game::inventory_screen_slot_with_type(without_inv.id, 0, || Some(&without_inv)),

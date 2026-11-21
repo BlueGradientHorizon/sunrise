@@ -383,6 +383,7 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
                 None,
                 None,
                 true,
+                None,
             )],
             || {
                 crate::game::native_entity_refs::tests::with_game_role(
@@ -667,6 +668,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                     None,
                     None,
                     true,
+                    None,
                 ),
                 (
                     "beta:hopper".into(),
@@ -678,6 +680,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                     None,
                     None,
                     true,
+                    None,
                 ),
             ],
             || {
@@ -836,6 +839,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                 None,
                 None,
                 true,
+                None,
             )],
             || {
                 let mut sent = None;
@@ -865,7 +869,7 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
                         game.world
                             .block_entities
                             .insert(pos, BlockEntity::Chest(vec![None; 5]));
-                        assert!(game.lan_open_container(1, pos));
+                        assert!(matches!(game.lan_open_container(1, pos), crate::game::lan_actions::MenuOpen::Opened));
                         let hub = &game.lan.as_ref().unwrap().hub;
                         let menu = hub.guest(1).unwrap().menu.as_ref().unwrap();
                         assert_eq!((&*menu.registry_id, menu.slot_count()), (MENU, 41));

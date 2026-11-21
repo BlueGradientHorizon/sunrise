@@ -321,7 +321,9 @@ impl Game<'_> {
         // screen the guest opens (`keys.clear()`) leaves the host walking.
         let host_keys = std::mem::take(&mut self.keys);
         let saved_mappings = std::mem::take(&mut self.vanilla_mappings);
-        if g.sneaking {
+        let sneaking = g.sneaking;
+        let guest_vehicle = g.vehicle;
+        if sneaking {
             self.insert_device_key(KeyCode::ShiftLeft);
         }
         // The window's screens are the host's: a sign, book, command block or
@@ -359,12 +361,12 @@ impl Game<'_> {
         self.set_mapping_held("key.attack", play.digging.is_some());
         self.set_mapping_held("key.use", play.using.is_some() || self.using.is_some());
         // The guest's vehicle (Entity.vehicle) for its turn.
-        let riding = std::mem::replace(&mut self.riding, g.vehicle);
+        let riding = std::mem::replace(&mut self.riding, guest_vehicle);
         // `Entity.isPassenger()` for that turn, from the same vehicle: the
         // guest's body keeps no swim (`Entity.updateSwimming` needs it false).
         // Taken from `g.vehicle` each turn, so boarding and getting out land.
         if let Some(p) = self.player.as_mut() {
-            p.is_passenger = g.vehicle.is_some();
+            p.is_passenger = guest_vehicle.is_some();
         }
         // Entity.collide: the guest's body collides with the level's world
         // border too, as it is this turn (it moves with /worldborder).

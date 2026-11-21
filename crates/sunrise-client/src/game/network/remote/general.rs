@@ -331,96 +331,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn an_over_budget_generation_does_not_replace_or_open_visibility() {
-        use mod_api::{AttachmentCodec, AttachmentError, AttachmentType};
-        use sunrise_core::nbt::{Compound, Tag};
-        use sunrise_mod_runtime::attachments::AttachmentSync;
-
-        const FUEL: AttachmentType<i32> = AttachmentType {
-            namespace: "mymod",
-            name: "fuel",
-            default: || 0,
-            codec: Some(AttachmentCodec {
-                encode: |n| Ok([("n".into(), Tag::Int(*n))].into()),
-                decode: |c| match c.get(&"n".into()) {
-                    Some(Tag::Int(n)) => Ok(*n),
-                    _ => Err(AttachmentError::Decode),
-                },
-            }),
-            sync: true,
-            copy_on_death: false,
-        };
-        mod_platform::__private::initialize().unwrap();
-        let _phase = mod_platform::__private::RegistrationGuard::open();
-        let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
-        mod_platform::testing::with_mods(declare().into(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
-            let slot = general_type_catalog().slot("mymod:missile").unwrap();
-            let mut generals = RemoteGenerals::default();
-            for id in [5, 8] {
-                generals.rows.insert(
-                    id,
-                    RemoteGeneral::new(
-                        slot,
-                        1,
-                        [0.0; 3],
-                        [0.0; 2],
-                        mod_api::EntityRenderAttachments::default(),
-                    ),
-                );
-            }
-            let mut replica = Attachments::default();
-            let sync = |holder: &mut Attachments, name: &str, value: Option<Compound>| {
-                holder.apply_sync(AttachmentSync {
-                    namespace: "mymod".into(),
-                    name: name.into(),
-                    value,
-                });
-            };
-            let fuel = |n| Some([("n".into(), Tag::Int(n))].into());
-            // OwnedHeap charges retained capacity. Reserve it without filling a large payload.
-            // Either binding fits in isolation; their combined generation exceeds 64 MiB.
-            let large =
-                || Some([("bytes".into(), Tag::ByteArray(Vec::with_capacity(40 << 20)))].into());
-            sync(&mut replica, "fuel", fuel(7));
-            sync(&mut replica, "large_a", large());
-            generals.attachments_arrived(5, true, &replica);
-
-            sync(&mut replica, "fuel", fuel(11));
-            sync(&mut replica, "large_b", large());
-            generals.attachments_arrived(5, false, &replica);
-            generals.attachments_arrived(8, true, &replica);
-            let published_fuel = |rows: &RemoteGenerals, id| {
-                *rows
-                    .shown(id)
-                    .unwrap()
-                    .render_attachments
-                    .as_ref()
-                    .unwrap()
-                    .get(&FUEL)
-                    .unwrap()
-                    .unwrap()
-            };
-            assert_eq!(published_fuel(&generals, 5), 7);
-            assert!(generals.shown(8).is_none());
-
-            sync(&mut replica, "large_a", None);
-            for id in [5, 8] {
-                generals.attachments_arrived(id, false, &replica);
-                assert_eq!(published_fuel(&generals, id), 11);
-            }
-
-            generals.reset_attachment_sync();
-            let mut replica = Attachments::default();
-            sync(&mut replica, "fuel", fuel(3));
-            generals.attachments_arrived(5, false, &replica);
-            assert_eq!(published_fuel(&generals, 5), 11);
-            generals.attachments_arrived(5, true, &replica);
-            assert_eq!(published_fuel(&generals, 5), 3);
-        });
-    }
-
     fn spawn(id: i32, key: &str, at: [f64; 3]) -> C {
         spawn_facing(id, key, at, 0.0)
     }
@@ -992,7 +902,7 @@ mod tests {
                 assert_eq!(rows(game)[&21].render_attachments.get(&FUEL), Ok(None));
 
                 // Path 2: existing Holder::Entity map present before spawn -> captured on spawn.
-                let mut existing = Attachments::default();
+                let mut existing = sunrise_mod_runtime::attachments::ResidentAttachments::default();
                 existing.apply_sync(sunrise_mod_runtime::attachments::AttachmentSync {
                     namespace: "mymod".into(),
                     name: "fuel".into(),

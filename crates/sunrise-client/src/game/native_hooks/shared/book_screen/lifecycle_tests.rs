@@ -1119,9 +1119,7 @@ fn open_native_screen_set_data_accepts_full_signed_and_mod_data_ranges() {
                 title_label: None,
                 inventory_label: None,
                 recipe_book: None,
-                title_color: None,
-                inventory_label_color: None,
-                big_result: false,
+                ..Default::default()
             }),
         ),
     };

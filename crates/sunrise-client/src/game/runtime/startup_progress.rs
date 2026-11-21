@@ -309,7 +309,7 @@ mod tests {
             mod_platform::testing::with_mods(Vec::from(mods).into(), || {
                 let _registration = mod_platform::__private::RegistrationGuard::open();
                 let context = <RegistrationContext as RegistrationContextNew>::new();
-                mod_api::dispatch_blocks(&context, |listen| {
+                mod_api::dispatch_blocks(&context, &mut |listen| {
                     assert!(listen(&mut |_| panic!("no blocks declared")));
                 });
                 mod_api::dispatch_component_types(&context, &mut Vec::new());

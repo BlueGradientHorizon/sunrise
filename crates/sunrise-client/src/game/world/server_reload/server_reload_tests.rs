@@ -319,11 +319,11 @@ fn reload_command_runs_listeners_on_both_sides_of_function_library() {
         fn register_commands(&self, _: &mut dyn ServerHost, event: &mut RegisterCommandsEvent<'_>) {
             event
                 .commands
-                .push(Command::new("reload_probe <value:reload_probe:argument>"));
+                .push(Command::new("reload_probe <value:reload_probe:argument>").executes(|_, _, _| Some(1)));
         }
         fn add_server_reload_listeners(
             &self,
-            _: &dyn Host,
+            _: &dyn mod_api::ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             let id = |name| Identifier::parse(name).unwrap();
@@ -954,7 +954,7 @@ fn world_open_reports_nested_reload_causes() {
     impl Hooks for Refusing {
         fn add_server_reload_listeners(
             &self,
-            _: &dyn Host,
+            _: &dyn mod_api::ReloadContext,
             event: &mut AddServerReloadListenersEvent<'_>,
         ) {
             event

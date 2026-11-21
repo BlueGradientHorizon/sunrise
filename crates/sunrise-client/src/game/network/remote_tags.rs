@@ -294,7 +294,7 @@ mod tests {
                 let root = &game.options.resources;
                 let item_data = &game.res.core.item_data;
                 let sources =
-                    crate::game::lan::sync::server_sources(root, item_data, &overlay).unwrap();
+                    crate::game::lan::sync::server_sources(root, item_data, game.items(), &overlay).unwrap();
                 let wire = sunrise_client::lan::data::SyncData::load(
                     root,
                     &overlay,

@@ -160,6 +160,7 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
                 None,
                 None,
                 true,
+                None,
             )],
             || {
                 crate::game::native_entity_refs::tests::with_game_role(

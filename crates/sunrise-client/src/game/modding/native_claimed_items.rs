@@ -134,13 +134,14 @@ impl Game<'_> {
         } else {
             None
         };
+        let held = self.mapped_key_down("key.use");
         if !valid {
             self.reset_client_item_use();
         } else if let Some(active) = self.client_item_use.as_mut() {
             if let Some(live) = live {
                 active.stack = live;
             }
-            if self.mapped_key_down("key.use") {
+            if held {
                 active.ticks = active.ticks.saturating_add(1);
             }
         }

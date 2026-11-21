@@ -210,6 +210,7 @@ impl Game<'_> {
     /// `Pig` / `Strider.mobInteract`: saddle an adult, or ride a saddled one.
     fn interact_steerable(&mut self, index: usize, item: &str) -> bool {
         let held = self.inventory[self.selected].clone();
+        let sneaking = self.held_mapping(Action::Sneak);
         let m = &mut self.mobs[index];
         if m.is_baby() || !m.alive() || Some(m.id) == self.riding {
             return false;
@@ -234,7 +235,7 @@ impl Game<'_> {
         }
         // Pig.mobInteract: held food goes to Animal.mobInteract, not a ride.
         let food = m.kind.food.iter().any(|f| f.as_str() == item);
-        if !m.extra.saddled() || food || self.held_mapping(Action::Sneak) {
+        if !m.extra.saddled() || food || sneaking {
             return false;
         }
         // `Strider.canAddPassenger`: a strider whose eyes are in lava has no
@@ -622,6 +623,7 @@ impl Game<'_> {
                 self.audio.play(&sound, Some(at), 0.4, 1.0);
             }
         }
+        let sprint = keys.sprint || self.held_mapping(Action::Sprint);
         let m = &mut self.mobs[i];
         let pending = m.rider.map_or(0.0, |r| r.jump);
         m.rider = Some(equine::Rider {
@@ -631,7 +633,7 @@ impl Game<'_> {
             pitch: self.pitch,
             jump: if jump > 0.0 { jump } else { pending },
             steer,
-            sprint: keys.sprint || self.held_mapping(Action::Sprint),
+            sprint,
             jumping: keys.jump,
             sneak: keys.shift,
             // A server's player (a LAN guest, single player's window) drives

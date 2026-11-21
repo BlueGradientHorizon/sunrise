@@ -282,7 +282,7 @@ fn the_renderer_list_refreshes_with_the_selection_and_leaves_nothing_behind() {
             &mut draw,
             &mut Vec::new(),
         );
-        assert!(ASKED.lock().unwrap().is_empty(), "the switch is still off");
+        assert!(fixture.lock().unwrap().asked.is_empty(), "the switch is still off");
         assert_eq!(refreshes(fixture), 1, "first world view after login");
     });
 }

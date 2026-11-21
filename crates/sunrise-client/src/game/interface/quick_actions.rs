@@ -47,9 +47,9 @@ impl Game<'_> {
         let Some(dialog) = self.quick_actions_dialog() else {
             return false;
         };
-        let before_rev = self.dialogs.revision;
+        let before_rev = self.dialog_screen_key();
         let before_screen = self.screen;
         self.show_dialog(&dialog);
-        self.dialogs.revision != before_rev || self.screen != before_screen
+        self.dialog_screen_key() != before_rev || self.screen != before_screen
     }
 }

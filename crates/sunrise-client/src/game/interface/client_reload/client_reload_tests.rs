@@ -555,7 +555,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     let settings = Settings::default();
 
                     let loaded = load_resources_for_mods(
-                        ResourceRoot::directory(root.clone()),
+                        ResourceRoot::directory(root.clone()).into(),
                         Vec::new(),
                         None,
                         &root,
@@ -565,6 +565,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         options.execution_role,
                         &Progress::new(),
                         &mut |_, _| unreachable!(),
+                        &mut || unreachable!("default fixture has no optional packs"),
                         &options.mods,
                     )
                     .unwrap();
@@ -595,7 +596,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         root,
                         started,
                         loaded.rest_loader,
-                        Some(settings),
+                        settings,
                         loaded.game_cpu,
                         loaded.client_applies,
                         loaded.entity_models,

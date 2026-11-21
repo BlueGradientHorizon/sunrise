@@ -1152,6 +1152,7 @@ mod tests {
         mod_platform::__private::with_test_package_inventory(packages, || {
             let mut registry = Registration {
                 state: Default::default(),
+                published: None,
                 sprite_exists: &|_| true,
                 refused: None,
             };

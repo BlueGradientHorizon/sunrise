@@ -85,7 +85,6 @@ use sunrise_protocol::{
     secure_chat::{self, Signature},
     text::{Language, plain},
 };
-use winit::keyboard::KeyCode;
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::{Holder, ResidentAttachments},

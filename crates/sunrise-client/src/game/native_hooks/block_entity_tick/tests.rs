@@ -468,7 +468,7 @@ fn check_edit_then_replace(commit: bool) {
             assert_eq!(game.world.block(POS.0, POS.1, POS.2), replacement);
             assert!(game.world.block_entities.get(&POS).is_none());
             assert_eq!(game.inventory[0], Some(taken));
-            let [drop] = game.dropped.as_slice() else {
+            let [drop] = game.dropped.as_ref() else {
                 panic!("expected exactly the item left in the replaced container");
             };
             assert_eq!(drop.stack, left);
@@ -508,7 +508,7 @@ fn edit_then_replace_commit_spills_only_the_remaining_contents() {
             if event.kind == "minecraft:item" {
                 let level = host.level("minecraft:overworld").unwrap();
                 self.0.lock().unwrap().push(Seen::Join {
-                    row_present: level.block_entity(host, AT).is_some(),
+                    row_present: host.block_entity(level, AT).is_some(),
                 });
             }
             Flow::Continue
@@ -669,7 +669,7 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
                     level.set_block(host, AT, furnace, BlockUpdateFlags::NONE),
                     Ok(true)
                 );
-                let replacement = level.block_entity(host, AT).unwrap();
+                let replacement = host.block_entity(level, AT).unwrap();
                 let storage = level
                     .capability(host, &STORAGE, AT, Some(Direction::Up))
                     .unwrap();
@@ -749,7 +749,7 @@ fn spill_join_keeps_the_replacement_furnace_and_its_contents() {
             );
             assert_eq!(replacement.name(game).as_deref(), Some(LABEL));
             assert_eq!(replacement.lock(game), Some(&lock));
-            let [spilled_drop] = game.dropped.as_slice() else {
+            let [spilled_drop] = game.dropped.as_ref() else {
                 panic!("expected exactly one drop, from the original chest");
             };
             assert_eq!(spilled_drop.stack, spilled);
@@ -828,8 +828,8 @@ fn strict_bulk_replacement_aborts_the_block_handle_and_inventory_together() {
             let host = tick.host();
             assert_eq!(host.edit_blocks("minecraft:overworld", &edit), Ok(1));
             let level = host.level("minecraft:overworld").unwrap();
-            assert_ne!(level.block_entity(host, AT), Some(subject));
-            assert!(level.block_entity(host, AT).is_some());
+            assert_ne!(host.block_entity(level, AT), Some(subject));
+            assert!(host.block_entity(level, AT).is_some());
             Err(())
         });
         assert_eq!(result, Err(()));
@@ -944,7 +944,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
                 game.level_set_block(
                     level,
                     AT,
-                    glass.try_into_api().unwrap(),
+                    glass,
                     BlockUpdateFlags::KNOWN_SHAPE
                 ),
                 Ok(true)
@@ -966,7 +966,7 @@ fn ordinary_replacement_between_strict_edits_uses_its_own_resident_row() {
                     .all(Option::is_none)
             );
             assert!(game.world.bulk_log.contains(&CHUNK));
-            let [drop] = game.dropped.as_slice() else {
+            let [drop] = game.dropped.as_ref() else {
                 panic!("one ordinary spill, none from strict")
             };
             assert_eq!(

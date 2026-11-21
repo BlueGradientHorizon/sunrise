@@ -446,7 +446,7 @@ mod tests {
         ModelRef, Overlay, SubmitCustomGeometryEvent, WorldDrawContext,
     };
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use sunrise_client::mesher::Vertex;
 
     static FILL_MODEL: Mutex<Option<ModelRef>> = Mutex::new(None);

@@ -1613,7 +1613,7 @@ mod tests {
                     request
                 })
                 .unwrap();
-            assert_eq!(window, 2);
+            assert_eq!(window, Some(2));
             // The old menu's close, heard once before the new one opens, with
             // no layout callback on the server.
             assert_eq!(
