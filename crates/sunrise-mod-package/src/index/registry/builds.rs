@@ -2,8 +2,11 @@
 use super::{Entry, EntryVersion, Sources, read_regular, valid_repo};
 use crate::index::{File, Kind, MAX_FILE, NativeBinary, SunriseRelease, native};
 use crate::sdk;
+use object::{
+    Architecture, BinaryFormat, Object, ObjectKind, elf,
+    read::elf::{Dyn, ProgramHeader},
+};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{collections::BTreeSet, io::Read, path::Path};
 
 const MAX_DESCRIPTOR: u64 = 256 << 10;
@@ -371,6 +374,65 @@ pub fn library_extension(host: &str) -> Result<&'static str, String> {
         .ok_or_else(|| format!("unknown native library extension for SDK host {host}"))
 }
 
+fn check_library(bytes: &[u8], host: &str, extension: &str) -> Result<(), String> {
+    let format = match extension {
+        "so" => BinaryFormat::Elf,
+        "dll" => BinaryFormat::Pe,
+        "dylib" => BinaryFormat::MachO,
+        _ => unreachable!("SDK library extension"),
+    };
+    let arch = match host.split('-').next() {
+        Some("x86_64") => Architecture::X86_64,
+        Some("aarch64") => Architecture::Aarch64,
+        _ => {
+            return Err(format!(
+                "unknown native library architecture for SDK host {host}"
+            ));
+        }
+    };
+    let invalid = || format!("SDK host {host} requires a {format:?} shared library");
+    let file = object::File::parse(bytes).map_err(|e| format!("{}: {e}", invalid()))?;
+    if file.format() != format || file.kind() != ObjectKind::Dynamic {
+        return Err(invalid());
+    }
+    if file.architecture() != arch || !file.is_64() || !file.is_little_endian() {
+        return Err(format!(
+            "SDK host {host} requires a 64-bit little-endian {arch:?} library, found {:?}",
+            file.architecture()
+        ));
+    }
+    // ELF also calls a position-independent executable ET_DYN. A mod library must not be one.
+    if let object::File::Elf64(elf) = file {
+        let endian = elf.endian();
+        let mut dynamic = false;
+        for segment in elf.elf_program_headers() {
+            if segment.p_type(endian) == elf::PT_INTERP {
+                return Err(invalid());
+            }
+            if let Some(entries) = segment
+                .dynamic(endian, bytes)
+                .map_err(|e| format!("{}: {e}", invalid()))?
+            {
+                dynamic = !entries.is_empty();
+                if entries
+                    .iter()
+                    .take_while(|entry| entry.tag(endian) != elf::DT_NULL)
+                    .any(|entry| {
+                        entry.tag(endian) == elf::DT_FLAGS_1
+                            && entry.val(endian) & u64::from(elf::DF_1_PIE) != 0
+                    })
+                {
+                    return Err(invalid());
+                }
+            }
+        }
+        if !dynamic {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
 fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), String> {
     let extension = library_extension(target)?;
     // Two files only; raw iteration does not allocate PAX/GNU extension entries. Bound both the
@@ -408,12 +470,13 @@ fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), S
                     "SDK host {target} requires a .{extension} library, not {name:?}"
                 ));
             }
-            let mut hash = Sha256::new();
             let name = name.to_owned();
-            if std::io::copy(&mut entry, &mut hash).map_err(io)? != entry.size() {
+            let mut bytes = Vec::new();
+            if entry.read_to_end(&mut bytes).map_err(io)? as u64 != entry.size() {
                 return Err("truncated library".into());
             }
-            library = Some((name, format!("{:x}", hash.finalize())));
+            check_library(&bytes, target, extension)?;
+            library = Some((name, crate::index::sha256(&bytes)));
         } else {
             return Err(format!(
                 "unexpected, repeated or oversized archive member {name:?}"
@@ -451,6 +514,18 @@ fn inspect_archive(bytes: Vec<u8>, target: &str, expected: &str) -> Result<(), S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_right_extension_does_not_make_a_library_fit_the_wrong_architecture() {
+        let bytes = include_bytes!(
+            "../../../tests/index/stable-native/release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz"
+        );
+        let error = inspect_archive(bytes.to_vec(), "aarch64-unknown-linux-gnu", "").unwrap_err();
+        assert!(
+            error.contains("Aarch64") && error.contains("X86_64"),
+            "{error}"
+        );
+    }
 
     #[test]
     fn an_archive_library_must_have_its_hosts_extension() {

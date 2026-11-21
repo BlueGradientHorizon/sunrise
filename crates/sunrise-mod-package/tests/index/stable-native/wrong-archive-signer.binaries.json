@@ -7,16 +7,16 @@
     {
       "target": "x86_64-unknown-linux-gnu",
       "name": "release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu.tar.xz",
-      "size": 380,
-      "sha256": "d64bdaaa3df649c1891b5c82791f422b1706d6c79e43d4d5981a94074dd708d3",
-      "signature": "untrusted comment: test fixture signature\nRUTuxWAqnUzO9Azyvfh8ZVOMGx6Pc2RJou6cqmTj25IK9NT+2s4s/p+H0hjHGiBbKEf5LQhf2dwtlfNOefrxaUFGA4JMvSypZAs=\ntrusted comment: synthetic Sunrise registry fixture\nR8O3VBqQ2uO3sMfAYkTlUvdEpd//PQ7MDFt6h9XegY2Vq9RSNW+f/H6ffcCan0Hqd3I0G0ckER1IkOKaXkxuCw==\n"
+      "size": 776,
+      "sha256": "c6c5fea642e9667095d7fd2442c3573079034588f3918fc1f89d887b44b7a3c7",
+      "signature": "untrusted comment: test fixture signature\nRUQHGTghPdTjGcLhXDM0u6P7p7c0zfczvjDjF8wmwIO2fIEXQ144MO6YlAn8vzetObJXybw7sMxkE3UdrazJSyACF9eLMUP+Rwg=\ntrusted comment: synthetic Sunrise registry fixture\nF7BoKnPg3bfUd6jFNaOQXMeuoljwTgDoNX5d8xVmonro3XFka8VvlJkAcffc4JBKVMztfgyd+VNnneG9AH+fDg==\n"
     },
     {
       "target": "x86_64-unknown-linux-gnu-server",
       "name": "release_probe-1.0.0+26.3-0.1.1-x86_64-unknown-linux-gnu-server.tar.xz",
-      "size": 384,
-      "sha256": "5dd7b1fe7eaf65d9ce24f2daeed124a62209f6ba5d86d96b943246586d3830b0",
-      "signature": "untrusted comment: test fixture signature\nRUSDLS1CMb+niPs/TPACGVQnM5zFhWWVkA/RNaDjeqpVZkBEOnrZEfDAoJLP6ScdppRA7gm91eVrf/JVJFeXbQxxQwEou8WHVg4=\ntrusted comment: synthetic Sunrise registry fixture\n+x9GQrWVun0a0409C1iGb2bnUSS8UpkiFR2d/VoxFuEEzmo6Lz8/NPWr0yanT7pkBmlAq4M+0nY/nnUbggkLAQ==\n"
+      "size": 780,
+      "sha256": "1b192c0a260107bbb7528953b07f70617d44c7f150fe7ebd6636e779585bb90d",
+      "signature": "untrusted comment: test fixture signature\nRURtYUUi6cslUVMPS1DAbMeRXy90OIsDu6ZLpVotQ7DIupzJz5hMzU/xNdQ9o0eS72LEJoPXq9me3DLQ68KQ/0Cc8v2NG0nsyQQ=\ntrusted comment: synthetic Sunrise registry fixture\ndGdaOieJvl2U8OH1nRWwjlCJpQFjUmgttShJr0eyHR5xw1O/weZ6aihCMR6u3/EnMFd6JpzVXRNq9JvaOnDACQ==\n"
     }
   ]
 }

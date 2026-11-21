@@ -1432,6 +1432,7 @@ dependencies = [
  "libc",
  "log",
  "minisign-verify",
+ "object",
  "png",
  "same-file",
  "semver",

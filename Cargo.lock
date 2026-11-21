@@ -4722,6 +4722,7 @@ dependencies = [
  "libc",
  "log",
  "minisign-verify",
+ "object",
  "os_pipe",
  "png",
  "rustix 1.1.5",
