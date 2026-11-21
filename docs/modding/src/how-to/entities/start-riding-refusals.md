@@ -41,3 +41,8 @@ or not, and names it `PlayerVehicle`.
 those checks reaches no hook. (This is this engine's order; moving the hook earlier is tracked in #1557.) The checks run again after the hook, since a hook can fill, remove
 or remount the vehicle, and then name what the hook changed. Such a refusal means the requested
 mount did not complete; what the hook moved or removed stays as it left it.
+
+When a vehicle is destroyed or discarded, its own dismount is offered first, then each direct
+passenger's in passenger-list order. The removed entity no longer resolves during these calls. A vetoed mob rider
+of a removed boat, cart or mob keeps its edge and retries after the next eligible, uncanceled
+`entity_tick_pre`, before it ticks. A rider refused level residency does not retry on its own.

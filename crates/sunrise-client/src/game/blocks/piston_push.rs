@@ -494,10 +494,8 @@ impl Game<'_> {
         let mut i = 0;
         while i < self.cushions.len() {
             let c = &self.cushions[i];
-            if root == Some(c.id) || !meets(c.bounds()) {
+            if root == Some(c.id) || !meets(c.bounds()) || !self.break_cushion_by(i, None) {
                 i += 1;
-            } else {
-                self.break_cushion_by(i, None);
             }
         }
     }

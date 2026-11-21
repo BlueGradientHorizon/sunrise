@@ -4,6 +4,7 @@
 //! vehicle's interaction checks. Mobs keep theirs in `extra.boarding_cooldown`
 //! (`boat_passengers::BOARDING_COOLDOWN`).
 use super::Game;
+use sunrise_client::mobs::Mob;
 
 /// `Entity.getIndirectPassengersStream` for `vehicle`: the vehicle and every
 /// vehicle riding it, directly or through another rider. `mounts` holds
@@ -51,7 +52,7 @@ impl Game<'_> {
     /// load keeps its list order), players ahead.
     pub(in crate::game) fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
         let mut seats = Vec::new();
-        self.any_passenger_seat(vehicle, |seat| {
+        self.any_passenger_seat(vehicle, &[], |seat| {
             seats.push(seat);
             false
         });
@@ -61,13 +62,22 @@ impl Game<'_> {
 
     /// `Entity.isVehicle`: any kind of rider makes this a vehicle.
     pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
-        self.any_passenger_seat(vehicle, |_| true)
+        self.has_seated_passengers_with_lent_mobs(vehicle, &[])
+    }
+
+    /// The same check while the mob tick holds the resident list out of `Game`.
+    pub(in crate::game) fn has_seated_passengers_with_lent_mobs(
+        &self,
+        vehicle: u32,
+        lent_mobs: &[Mob],
+    ) -> bool {
+        self.any_passenger_seat(vehicle, lent_mobs, |_| true)
     }
 
     /// `getPassengers().size()` without allocating or sorting the seats.
     pub(in crate::game) fn seated_passenger_count(&self, vehicle: u32) -> usize {
         let mut count = 0;
-        self.any_passenger_seat(vehicle, |_| {
+        self.any_passenger_seat(vehicle, &[], |_| {
             count += 1;
             false
         });
@@ -79,6 +89,7 @@ impl Game<'_> {
     fn any_passenger_seat(
         &self,
         vehicle: u32,
+        lent_mobs: &[Mob],
         mut matches: impl FnMut((i64, u32, bool)) -> bool,
     ) -> bool {
         let acting = self.lan_acting.filter(|_| self.player.is_some());
@@ -108,15 +119,18 @@ impl Game<'_> {
         {
             return true;
         }
-        let retained = self
-            .persist
-            .off_level
-            .values()
-            .filter_map(super::persist::OffLevel::as_mob)
+        let other_mobs = lent_mobs
+            .iter()
+            .chain(
+                self.persist
+                    .off_level
+                    .values()
+                    .filter_map(super::persist::OffLevel::as_mob),
+            )
             .filter(|m| m.extra.mount == Some(vehicle));
         self.resident_mob_riders(vehicle)
             .map(|(_, m)| m)
-            .chain(retained)
+            .chain(other_mobs)
             .filter(|m| !m.removed)
             .any(|m| matches((m.extra.vehicle_order, m.id, false)))
             || self

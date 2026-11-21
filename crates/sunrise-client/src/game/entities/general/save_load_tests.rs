@@ -48,10 +48,15 @@ impl mod_api::Hooks for Declare {
 /// scope entered before the platform installs its instrumentation writes a
 /// fallback nobody reads, and the declaration then refuses as frozen.
 fn with_types(test: impl FnOnce(&mut Game<'_>)) {
+    with_types_and(None, test);
+}
+
+fn with_types_and(observer: Option<mod_api::ModEntry>, test: impl FnOnce(&mut Game<'_>)) {
     mod_platform::__private::initialize().expect("test registration requires the mod API runtime");
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
-    mod_platform::testing::with_mods(mods, || with_game(test));
+    let mut mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
+    mods.extend(observer);
+    mod_platform::testing::with_mods(mods.into(), || with_game(test));
 }
 
 /// One record's save tag, the format `to_tag` writes.
@@ -1047,6 +1052,187 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
             assert_eq!(root.position(game), None);
             assert_eq!(rider.position(game), Some([0.5, 64.0, 0.5]));
             assert_eq!(rider.vehicle(game), None);
+        }
+    });
+}
+
+struct ObserveDismounts(std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>);
+
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for ObserveDismounts {
+    fn entity_mount(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::EntityMountEvent<'_>,
+    ) -> mod_api::Flow {
+        if !event.mounting {
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity, event.vehicle_kind.to_owned()));
+        }
+        mod_api::Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order() {
+    use crate::game::minecarts::{CartHit, CartKind, Minecart};
+    use sunrise_client::mobs::Mob;
+
+    let dismounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observer =
+        mod_api::ModEntry::new("dismounts", Box::new(ObserveDismounts(dismounts.clone())));
+    with_types_and(Some(observer), |game| {
+        let at = Vec3::new(0.5, 64.0, 0.5);
+        game.options.dedicated = Some(Vec::new());
+        game.build_registries();
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        let mut outcomes = Vec::new();
+        for (case, vehicle) in [
+            "cart damage",
+            "cart kill",
+            "boat damage",
+            "stand damage",
+            "mob death",
+            "mob death with only a mob rider",
+        ]
+        .into_iter()
+        .zip(71..)
+        {
+            match case {
+                "boat damage" => game.boats.push(crate::game::boats::Boat::new(
+                    vehicle,
+                    "oak".into(),
+                    at,
+                    0.0,
+                )),
+                "stand damage" => game
+                    .armor_stands
+                    .push(sunrise_client::entities::ArmorStand::new(vehicle, at, 0.0)),
+                "mob death" | "mob death with only a mob rider" => {
+                    let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    game.mobs.push(Mob::new(vehicle, kind, at, 0.0));
+                }
+                _ => game
+                    .carts
+                    .push(Minecart::new(vehicle, CartKind::Rideable, at)),
+            }
+            let rider_id = if case == "mob death with only a mob rider" {
+                // The occupancy check runs with both the vehicle and its only
+                // rider in the mob tick's lent list, not in Game::mobs.
+                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                game.mobs.push(Mob::new(91, kind, at, 0.0));
+                91
+            } else {
+                game.load_listed(
+                    "mymod:robot",
+                    None,
+                    None,
+                    record_tag("mymod:robot", [vehicle as i32, 0, 0, 0], b"", Vec::new()),
+                )
+                .unwrap();
+                game.resident_entities.general.rows.last().unwrap().id
+            };
+            let rider = game.entity(rider_id).unwrap();
+            let vehicle_ref = game.entity(vehicle).unwrap();
+            game.entity_start_riding(rider, vehicle_ref, true).unwrap();
+            let mut expected = vec![rider_id];
+            if case == "boat damage" {
+                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                let pig = 90;
+                game.mobs.push(Mob::new(pig, kind, at, 0.0));
+                game.entity_start_riding(game.entity(pig).unwrap(), vehicle_ref, true)
+                    .unwrap();
+                expected.push(pig);
+            }
+            // A previous general tick has made the passenger index current.
+            // No tick is allowed between removal and checking the rider links.
+            game.tick_general().unwrap();
+            match case {
+                "cart damage" => {
+                    assert!(game.hurt_cart_result(0, 5.0, false, false, CartHit::default()))
+                }
+                "cart kill" => {
+                    assert!(game.as_console(|g| g.run_command("kill @e[type=minecraft:minecart]")))
+                }
+                "boat damage" => assert!(game.hurt_boat(0, 5.0, false)),
+                "stand damage" => {
+                    assert!(game.break_armor_stand_by_anything(0, "minecraft:in_fire", 0))
+                }
+                "mob death" | "mob death with only a mob rider" => {
+                    game.world.chunks.insert(
+                        (0, 0),
+                        std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)),
+                    );
+                    let index = game.mobs.iter().position(|mob| mob.id == vehicle).unwrap();
+                    game.mobs.update(index, |mob| {
+                        mob.health = 0.0;
+                        mob.death_time = 19;
+                    });
+                    game.died.insert(vehicle);
+                    game.tick_creature_entities().unwrap();
+                }
+                _ => unreachable!(),
+            }
+            assert!(game.entity(vehicle).is_none(), "{case} removed the vehicle");
+            let still_riding: Vec<_> = expected
+                .iter()
+                .copied()
+                .filter(|&id| game.entity_is_passenger(game.entity(id).unwrap()) != Some(false))
+                .collect();
+            let actual: Vec<_> = dismounts
+                .lock()
+                .unwrap()
+                .drain(..)
+                .map(|(id, _)| id)
+                .collect();
+            outcomes.push((case, still_riding, actual, expected));
+        }
+        // Primed TNT is not a typed start_riding target, but the real NBT
+        // loader admits its passengers. Fuse expiry must let them go too.
+        assert!(game.ui.rules.set(
+            "tnt_explodes",
+            sunrise_client::gamerules::Value::Bool(false),
+        ));
+        game.load_tnt(
+            Tag::Compound(
+                [
+                    ("id".into(), Tag::String("minecraft:tnt".into())),
+                    (
+                        "Pos".into(),
+                        Tag::List(at.components().map(|n| Tag::Double(n.to_bits())).into()),
+                    ),
+                    ("fuse".into(), Tag::Short(1)),
+                    (
+                        "Passengers".into(),
+                        Tag::List(vec![record_tag(
+                            "mymod:robot",
+                            [99, 0, 0, 0],
+                            b"",
+                            Vec::new(),
+                        )]),
+                    ),
+                ]
+                .into(),
+            ),
+            None,
+        );
+        let tnt = game.tnts[0].id;
+        let rider = game.resident_entities.general.rows.last().unwrap().id;
+        assert_eq!(game.general_row(rider).unwrap().mount, Some(tnt));
+        game.tick_one_tnt(0, &[]).unwrap();
+        assert!(game.tnts.is_empty());
+        assert_eq!(game.general_row(rider).unwrap().mount, None);
+        let actual = std::mem::take(&mut *dismounts.lock().unwrap());
+        assert_eq!(actual, [(rider, "minecraft:tnt".into())]);
+        for (case, still_riding, notifications, expected) in outcomes {
+            assert_eq!(
+                (still_riding, notifications),
+                (Vec::new(), expected),
+                "{case}"
+            );
         }
     });
 }

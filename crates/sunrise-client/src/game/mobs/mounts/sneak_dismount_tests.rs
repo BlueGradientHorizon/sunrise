@@ -184,7 +184,7 @@ fn a_kept_server_player_still_drives_and_sneaks() {
 fn a_destroyed_vehicle_asks_once_to_let_its_local_rider_go() {
     with_horse(|game, horse, _, leaves| {
         game.start_riding(horse);
-        game.dismount_destroyed_vehicle_players(horse);
+        game.remove_mob_now(horse, false);
         assert_eq!(leaves.load(Ordering::SeqCst), 1, "one ask for one edge");
         assert_eq!(game.riding, Some(horse), "the listener kept the rider");
     });
