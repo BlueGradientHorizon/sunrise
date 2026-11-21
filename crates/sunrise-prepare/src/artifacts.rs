@@ -65,7 +65,7 @@ impl Lock {
         })
     }
 
-    fn pin(&self, key: &str) -> Result<&str, String> {
+    pub(crate) fn pin(&self, key: &str) -> Result<&str, String> {
         self.json
             .get("minecraft")
             .and_then(|m| m.get(key))
@@ -1059,7 +1059,7 @@ fn extract_verified(
 }
 
 /// Modern server downloads are launchers: the game jar and its libraries are inside.
-fn unpack_server(
+pub(crate) fn unpack_server(
     server: PathBuf,
     directory: &Path,
     version: &str,
