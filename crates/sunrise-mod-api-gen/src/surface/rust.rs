@@ -141,7 +141,7 @@ pub(super) struct Paths<'p, 'a> {
 pub(super) struct ExternalTypes<'a> {
     outside: &'a OutsideSeam,
     public: &'a HashMap<ItemId, Vec<String>>,
-    first: std::cell::RefCell<Option<(ItemId, Vec<String>)>>,
+    first: std::cell::RefCell<Option<String>>,
 }
 
 impl<'a> ExternalTypes<'a> {
@@ -161,16 +161,11 @@ impl<'a> ExternalTypes<'a> {
         path: &[String],
         rooted: bool,
     ) {
-        if let Some(path) = self.outside.external_path(index, module, path, rooted) {
-            self.first.borrow_mut().get_or_insert_with(|| (id, path));
+        let result = self.outside.external_path(index, module, path, rooted);
+        if matches!(result, Ok(None)) {
+            return;
         }
-    }
-
-    pub(super) fn finish(&self, index: &Index<'_>) -> Result<(), String> {
-        if let Some(error) = self.outside.take_resolution_error() {
-            return Err(error);
-        }
-        if let Some((id, path)) = self.first.take() {
+        self.first.borrow_mut().get_or_insert_with(|| {
             let owner = self.public.get(&id).map_or_else(
                 || {
                     let (_, name) =
@@ -179,9 +174,16 @@ impl<'a> ExternalTypes<'a> {
                 },
                 |public| format!("mod_api::{}", public.join("::")),
             );
-            return Err(OutsideSeam::error(&owner, &path));
-        }
-        Ok(())
+            match result {
+                Ok(Some(path)) => OutsideSeam::error(&owner, &path),
+                Err(error) => format!("{owner}: {error}"),
+                Ok(None) => unreachable!("a disallowed path or resolution error"),
+            }
+        });
+    }
+
+    pub(super) fn finish(&self) -> Result<(), String> {
+        self.first.take().map_or(Ok(()), Err)
     }
 }
 

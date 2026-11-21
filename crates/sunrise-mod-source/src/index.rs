@@ -172,6 +172,8 @@ pub struct Index<'a> {
     extra: Vec<(String, String)>,
     /// A crate's root file where it is not `lib.rs` (a library's `[lib] path`).
     root_files: HashMap<String, String>,
+    /// Cargo names for dependencies whose source is in this index, by importing crate.
+    dependency_aliases: HashMap<String, HashMap<String, String>>,
 }
 
 /// The file a module's `#[path = "..."]` names.
@@ -227,6 +229,7 @@ impl<'a> Index<'a> {
             read: Default::default(),
             extra: Vec::new(),
             root_files: HashMap::new(),
+            dependency_aliases: HashMap::new(),
         }
     }
 
@@ -247,6 +250,18 @@ impl<'a> Index<'a> {
         if self.crate_dir(name).is_none() {
             self.extra.push((name.to_owned(), dir.to_owned()));
         }
+    }
+
+    pub fn add_dependency_aliases(&mut self, aliases: &HashMap<String, HashMap<String, String>>) {
+        self.dependency_aliases.extend(aliases.clone());
+    }
+
+    fn extern_crate_name(&self, module: usize, name: &str) -> Option<String> {
+        self.dependency_aliases
+            .get(&self.modules[module].krate)
+            .and_then(|aliases| aliases.get(name))
+            .cloned()
+            .or_else(|| self.crate_name(name))
     }
 
     fn crate_name(&self, name: &str) -> Option<String> {
@@ -387,13 +402,23 @@ impl<'a> Index<'a> {
     /// What `name` means in `module`: an item defined there, a `use` of it, or a glob import
     /// that provides it.
     pub fn resolve(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Any)
+        self.resolve_in_namespace(module, name, Namespace::Any, module)
     }
 
     /// What type `name` means in `module`, following named and glob imports in the type namespace.
     /// A named import of a value does not hide a type provided by a glob import.
     pub fn resolve_type(&mut self, module: usize, name: &str) -> Result<Found, String> {
-        self.resolve_in_namespace(module, name, Namespace::Type)
+        self.resolve_in_namespace(module, name, Namespace::Type, module)
+    }
+
+    /// A type that `importer` can bring into scope by globbing `module`.
+    pub fn resolve_visible_type(
+        &mut self,
+        module: usize,
+        name: &str,
+        importer: usize,
+    ) -> Result<Found, String> {
+        self.resolve_in_namespace(module, name, Namespace::Type, importer)
     }
 
     fn resolve_in_namespace(
@@ -401,6 +426,7 @@ impl<'a> Index<'a> {
         module: usize,
         name: &str,
         namespace: Namespace,
+        importer: usize,
     ) -> Result<Found, String> {
         self.depth += 1;
         if self.depth > 64 {
@@ -412,7 +438,7 @@ impl<'a> Index<'a> {
                 m.path.join("::")
             ));
         }
-        let found = self.lookup(module, name, namespace, module, &mut vec![module]);
+        let found = self.lookup(module, name, namespace, importer, &mut vec![module]);
         self.depth = self.depth.saturating_sub(1);
         found?.ok_or_else(|| {
             let m = &self.modules[module];
@@ -467,17 +493,14 @@ impl<'a> Index<'a> {
         }
         let mut external_named = None;
         for (path, rooted) in named {
-            // The target may be a value; classify the result before considering any glob.
-            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Any) {
-                Ok(found @ Found::Item(id)) if is_type_item(self.item(id)) => {
-                    return Ok(Some(found));
-                }
+            match self.resolve_path_in_namespace(module, &path, rooted, Namespace::Type) {
+                Ok(found @ Found::Item(_)) => return Ok(Some(found)),
                 Ok(found @ Found::External { .. }) => {
                     // The index cannot tell whether an unindexed external name is a value or a
                     // type. Try indexed glob types first; preserve the external path as fallback.
                     external_named.get_or_insert(found);
                 }
-                Ok(Found::Item(_)) | Err(_) => {}
+                Err(_) => {}
             }
         }
         for (glob, rooted) in globs {
@@ -545,12 +568,12 @@ impl<'a> Index<'a> {
     ) -> Result<Found, String> {
         let (last, parent) = path.split_last().ok_or("an empty item path")?;
         if !rooted && parent.is_empty() {
-            return self.resolve_in_namespace(module, last, namespace);
+            return self.resolve_in_namespace(module, last, namespace, module);
         }
         if !parent.is_empty()
             && let Some(target) = self.module_path(module, parent, rooted, &mut Vec::new())?
         {
-            return self.resolve_in_namespace(target, last, namespace);
+            return self.resolve_in_namespace(target, last, namespace, target);
         }
         // A non-module path prefix can still be an external crate/type alias.
         if !rooted
@@ -558,7 +581,7 @@ impl<'a> Index<'a> {
                 module,
                 path: mut prefix,
                 rooted,
-            }) = self.resolve_in_namespace(module, &path[0], namespace)
+            }) = self.resolve_in_namespace(module, &path[0], namespace, module)
             && (rooted || prefix.len() > 1)
         {
             prefix.extend(path[1..].iter().cloned());
@@ -607,7 +630,8 @@ impl<'a> Index<'a> {
     ) -> Result<Option<usize>, String> {
         let absolute = if rooted {
             let (first, rest) = path.split_first().ok_or("an empty module path")?;
-            self.crate_name(first).map(|krate| (krate, rest.to_vec()))
+            self.extern_crate_name(module, first)
+                .map(|krate| (krate, rest.to_vec()))
         } else {
             self.absolute(module, path)
         };
@@ -691,7 +715,7 @@ impl<'a> Index<'a> {
                 path.push(name.to_string());
                 (m.krate.clone(), path)
             }
-            name => (self.crate_name(name)?, Vec::new()),
+            name => (self.extern_crate_name(module, name)?, Vec::new()),
         };
         for segment in rest {
             if segment == "super" {
@@ -716,16 +740,10 @@ fn defines(item: &Item, name: &str, namespace: Namespace) -> bool {
         Item::Trait(item) => item.ident == name,
         Item::Union(item) => item.ident == name,
         Item::Const(item) => item.ident == name,
+        Item::Fn(item) => item.sig.ident == name,
         Item::Static(item) => item.ident == name,
         _ => false,
     }
-}
-
-fn is_type_item(item: &Item) -> bool {
-    matches!(
-        item,
-        Item::Struct(_) | Item::Enum(_) | Item::Type(_) | Item::Trait(_) | Item::Union(_)
-    )
 }
 
 fn is_type_item_named(item: &Item, name: &str) -> bool {
@@ -742,6 +760,7 @@ fn is_type_item_named(item: &Item, name: &str) -> bool {
 fn definition(item: &Item) -> Option<(&[Attribute], &Visibility)> {
     let (attrs, visibility) = match item {
         Item::Const(item) => (&item.attrs, &item.vis),
+        Item::Fn(item) => (&item.attrs, &item.vis),
         Item::Enum(item) => (&item.attrs, &item.vis),
         Item::Struct(item) => (&item.attrs, &item.vis),
         Item::Static(item) => (&item.attrs, &item.vis),

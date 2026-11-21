@@ -846,7 +846,7 @@ pub(crate) fn build(
         }
     }
 
-    external.finish(index)?;
+    external.finish()?;
     let macros = macros(root, index, &public.macros, &mut notes)?;
 
     // Shapes, over every type the crossing types contain.
@@ -859,7 +859,7 @@ pub(crate) fn build(
         })
         .collect();
     layouts.finish(index);
-    external.finish(index)?;
+    external.finish()?;
     let mut shapes = Shapes::new(&layouts.table);
     let mut types = Vec::new();
     for (record, key) in pending.into_iter().zip(keys) {

@@ -41,7 +41,6 @@ pub(crate) struct OutsideSeam {
     indexed: Vec<WorkspaceCrate>,
     /// Dependency names as Rust spells them, keyed by the indexed crate that declares them.
     dependencies: HashMap<String, HashMap<String, String>>,
-    resolution_error: std::cell::RefCell<Option<String>>,
 }
 
 struct WorkspaceCrate {
@@ -58,7 +57,10 @@ enum Lookup {
 }
 
 #[derive(Default)]
-struct Resolving(HashSet<Lookup>);
+struct Resolving {
+    active: HashSet<Lookup>,
+    error: Option<String>,
+}
 
 impl Resolving {
     // Cut only the branch that re-enters an active lookup. A later glob may provide the
@@ -68,12 +70,22 @@ impl Resolving {
         lookup: Lookup,
         search: impl FnOnce(&mut Self) -> Option<T>,
     ) -> Option<T> {
-        if !self.0.insert(lookup.clone()) {
+        if !self.active.insert(lookup.clone()) {
             return None;
         }
         let result = search(self);
-        self.0.remove(&lookup);
+        self.active.remove(&lookup);
         result
+    }
+
+    fn record_ambiguous_binding(&mut self, name: &str, first: &[String], second: &[String]) {
+        let first = first.join("::");
+        let second = second.join("::");
+        self.error.get_or_insert_with(|| {
+            format!(
+                "ambiguous type-namespace binding `{name}`: glob imports supply both `{first}` and `{second}`; qualify the intended path explicitly"
+            )
+        });
     }
 }
 
@@ -209,7 +221,6 @@ impl OutsideSeam {
             crates,
             indexed,
             dependencies,
-            resolution_error: Default::default(),
         })
     }
 
@@ -224,6 +235,8 @@ impl OutsideSeam {
                 index.set_root_file(&krate.name, file);
             }
         }
+
+        index.add_dependency_aliases(&self.dependencies);
 
         // Resolve every source module reachable from the seam crates in each default build up
         // front. Export lookup can treat an unknown name as absent, but it must not mistake an
@@ -285,8 +298,10 @@ impl OutsideSeam {
         module: usize,
         path: &[String],
         rooted: bool,
-    ) -> Option<Vec<String>> {
-        self.follow_external_path(index, module, path, rooted, &mut Resolving::default())
+    ) -> Result<Option<Vec<String>>, String> {
+        let mut resolving = Resolving::default();
+        let path = self.follow_external_path(index, module, path, rooted, &mut resolving);
+        resolving.error.map_or(Ok(path), Err)
     }
 
     fn follow_external_path(
@@ -301,15 +316,10 @@ impl OutsideSeam {
             return self.rooted_external_path(index, module, path);
         }
         if let Some(target) = Self::indexed_module(index, module, path) {
-            let target = &index.modules[target];
-            if !self.crates.contains(&target.krate) {
-                return None;
-            }
-            return Some(
-                std::iter::once(target.krate.to_owned())
-                    .chain(target.path.iter().cloned())
-                    .collect(),
-            );
+            return self
+                .crates
+                .contains(&index.modules[target].krate)
+                .then(|| Self::indexed_module_path(index, target));
         }
         resolving.follow(Lookup::Path(module, path.to_vec()), |resolving| {
             self.resolve_external(index, module, path, resolving)
@@ -372,6 +382,13 @@ impl OutsideSeam {
                 .chain(rest.iter().cloned())
                 .collect(),
         )
+    }
+
+    fn indexed_module_path(index: &Index<'_>, module: usize) -> Vec<String> {
+        let module = &index.modules[module];
+        std::iter::once(module.krate.clone())
+            .chain(module.path.iter().cloned())
+            .collect()
     }
 
     fn indexed_external_path(
@@ -473,19 +490,6 @@ impl OutsideSeam {
                     .imported_item(index, module, &path, rooted, resolving)
                     .is_some_and(|id| type_item(index.item(id)).is_some())
         })
-    }
-
-    fn record_ambiguous_binding(&self, name: &str, first: &[String], second: &[String]) {
-        if first == second {
-            return;
-        }
-        let first = first.join("::");
-        let second = second.join("::");
-        self.resolution_error.borrow_mut().get_or_insert_with(|| {
-            format!(
-                "ambiguous type-namespace binding `{name}`: external import `{first}` may collide with workspace glob binding `{second}`; qualify the intended path explicitly"
-            )
-        });
     }
 
     /// Finds a type among the names a module actually exports. `Index::resolve` deliberately
@@ -671,13 +675,15 @@ impl OutsideSeam {
             .then_some(target)
     }
 
-    fn globbed_external_path(
+    /// The type-namespace binding supplied by globs (including modules). The same definition
+    /// can arrive by two routes, but two different definitions cannot both supply the name.
+    fn globbed_binding(
         &self,
         index: &mut Index<'_>,
         module: usize,
         name: &str,
         resolving: &mut Resolving,
-    ) -> Option<Vec<String>> {
+    ) -> Option<(Vec<String>, Option<usize>)> {
         let mut globs = Vec::new();
         for item in &index.modules[module].items {
             if let Item::Use(item) = item
@@ -690,6 +696,7 @@ impl OutsideSeam {
                 });
             }
         }
+        let mut binding: Option<(Vec<String>, Option<usize>)> = None;
         for (glob, rooted) in globs {
             let target = if let Some(path) =
                 self.follow_external_path(index, module, &glob, rooted, resolving)
@@ -699,43 +706,31 @@ impl OutsideSeam {
             } else {
                 Self::module_target(index, module, &glob, rooted)
             };
-            if let Some(target) = target
-                && let Some(path) = self.exported_external_type(index, target, name, resolving)
+            let Some(target) = target else { continue };
+            let candidate = if let Some(module) =
+                self.exported_external_module(index, target, name, resolving)
             {
-                return Some(path);
-            }
-        }
-        None
-    }
-
-    fn globbed_external_module(
-        &self,
-        index: &mut Index<'_>,
-        module: usize,
-        name: &str,
-        resolving: &mut Resolving,
-    ) -> Option<usize> {
-        let mut globs = Vec::new();
-        for item in &index.modules[module].items {
-            if let Item::Use(item) = item
-                && default_build(&item.attrs)
-            {
-                uses(&item.tree, &mut Vec::new(), &mut |path, alias| {
-                    if alias.is_none() {
-                        globs.push((path, item.leading_colon.is_some()));
+                Some((Self::indexed_module_path(index, module), Some(module)))
+            } else if self.crates.contains(&index.modules[target].krate) {
+                self.exported_external_type(index, target, name, resolving)
+                    .map(|path| (path, None))
+            } else if let Ok(Found::Item(id)) = index.resolve_visible_type(target, name, module) {
+                Self::indexed_item_path(index, id).map(|path| (path, None))
+            } else {
+                None
+            };
+            if let Some((path, target)) = candidate {
+                if let Some((first, _)) = &binding {
+                    if first != &path {
+                        resolving.record_ambiguous_binding(name, first, &path);
+                        return None;
                     }
-                });
+                } else {
+                    binding = Some((path, target));
+                }
             }
         }
-        for (glob, rooted) in globs {
-            if let Some(target) =
-                self.external_module_target(index, module, &glob, rooted, resolving)
-                && let Some(target) = self.exported_external_module(index, target, name, resolving)
-            {
-                return Some(target);
-            }
-        }
-        None
+        binding
     }
 
     fn module_target(
@@ -799,14 +794,10 @@ impl OutsideSeam {
         if !rest.is_empty()
             && let Some(target) = Self::indexed_module(index, scope, std::slice::from_ref(first))
         {
-            let target_module = &index.modules[target];
-            if self.crates.contains(&target_module.krate) {
-                return Some(
-                    std::iter::once(target_module.krate.to_owned())
-                        .chain(target_module.path.iter().cloned())
-                        .chain(rest.iter().cloned())
-                        .collect(),
-                );
+            if self.crates.contains(&index.modules[target].krate) {
+                let mut path = Self::indexed_module_path(index, target);
+                path.extend_from_slice(rest);
+                return Some(path);
             }
             return self.follow_external_path(index, target, rest, false, resolving);
         }
@@ -814,54 +805,29 @@ impl OutsideSeam {
             match found {
                 Found::External {
                     module,
-                    path: external,
+                    path,
                     rooted,
                 } => {
-                    if rooted
-                        && let Some(mut path) = self.rooted_external_path(index, module, &external)
-                    {
-                        path.extend(rest.iter().cloned());
-                        return Some(path);
-                    }
-                    let workspace_binding = self
-                        .globbed_external_path(index, scope, first, resolving)
-                        .or_else(|| {
-                            self.globbed_external_module(index, scope, first, resolving)
-                                .map(|module| {
-                                    let module = &index.modules[module];
-                                    std::iter::once(module.krate.to_owned())
-                                        .chain(module.path.iter().cloned())
-                                        .collect()
-                                })
+                    // A named import wins over globs in the same namespace. If its source
+                    // is not indexed, assume it binds a type. This can miss a workspace
+                    // glob type shadowed only in appearance by an opaque value-only import.
+                    return self
+                        .follow_external_path(index, module, &path, rooted, resolving)
+                        .map(|mut path| {
+                            path.extend(rest.iter().cloned());
+                            path
                         });
-                    let workspace_binding = workspace_binding?;
-                    self.record_ambiguous_binding(first, &external, &workspace_binding);
-                    if external != workspace_binding {
-                        return None;
-                    }
                 }
-                // Values and types occupy separate Rust namespaces: a local constant cannot
-                // shadow a same-named type imported by a glob in a signature.
-                Found::Item(id)
-                    if !self.crates.contains(&index.modules[id.module].krate)
-                        && type_item(index.item(id)).is_some() =>
-                {
+                Found::Item(id) => {
                     if id.module != scope
                         && !self.has_named_type_import(index, scope, first, resolving)
-                        && let Some(workspace_binding) =
-                            self.globbed_external_path(index, scope, first, resolving)
-                        && let Some(indexed_binding) = Self::indexed_item_path(index, id)
                     {
-                        self.record_ambiguous_binding(first, &indexed_binding, &workspace_binding);
+                        self.globbed_binding(index, scope, first, resolving);
                     }
-                    return None;
-                }
-                Found::Item(id) if self.crates.contains(&index.modules[id.module].krate) => {
                     return is_public_external_type(index, id)
                         .then(|| self.indexed_external_path(index, id))
                         .flatten();
                 }
-                Found::Item(_) => {}
             }
         }
         if self.crates.contains(first) {
@@ -902,20 +868,11 @@ impl OutsideSeam {
                 _ => {}
             }
         }
-        if let Some((imported, rooted)) = named {
-            if self
+        if let Some((imported, rooted)) = named
+            && !self
                 .imported_item(index, scope, &imported, rooted, resolving)
-                .is_some_and(|id| matches!(index.item(id), Item::Const(_) | Item::Static(_)))
-            {
-                if !self.has_named_type_import(index, scope, first, resolving)
-                    && let Some(mut resolved) =
-                        self.globbed_external_path(index, scope, first, resolving)
-                {
-                    resolved.extend(rest.iter().cloned());
-                    return Some(resolved);
-                }
-                return None;
-            }
+                .is_some_and(|id| type_item(index.item(id)).is_none())
+        {
             if let Some(mut resolved) =
                 self.follow_external_path(index, scope, &imported, rooted, resolving)
             {
@@ -929,22 +886,17 @@ impl OutsideSeam {
             }
             return None;
         }
-        if let Some(target) = self.globbed_external_module(index, scope, first, resolving) {
-            if !rest.is_empty() {
-                return self.follow_external_path(index, target, rest, false, resolving);
-            }
-            let target = &index.modules[target];
-            return Some(
-                std::iter::once(target.krate.to_owned())
-                    .chain(target.path.iter().cloned())
-                    .collect(),
-            );
+        let (mut path, target) = self.globbed_binding(index, scope, first, resolving)?;
+        if rest.is_empty() {
+            return self.crates.contains(&path[0]).then_some(path);
         }
-        self.globbed_external_path(index, scope, first, resolving)
-    }
-
-    pub(crate) fn take_resolution_error(&self) -> Option<String> {
-        self.resolution_error.borrow_mut().take()
+        if let Some(target) = target {
+            return self.follow_external_path(index, target, rest, false, resolving);
+        }
+        self.crates.contains(&path[0]).then(|| {
+            path.extend(rest.iter().cloned());
+            path
+        })
     }
 
     pub(crate) fn error(item: &str, path: &[String]) -> String {
@@ -1002,12 +954,16 @@ mod tests {
             &["nested", "Hidden"].map(str::to_owned),
             false,
         );
-        let path = path.expect("the private workspace glob resolves the exported module binding");
+        let path = path
+            .unwrap()
+            .expect("the private workspace glob resolves the exported module binding");
 
         let expected = ["engine_library", "private", "bridge", "nested", "Hidden"];
         assert_eq!(path, expected);
         assert_eq!(
-            outside.external_path(&mut index, consumer, &["Hidden".to_owned()], false),
+            outside
+                .external_path(&mut index, consumer, &["Hidden".to_owned()], false)
+                .unwrap(),
             Some(expected.map(str::to_owned).to_vec())
         );
     }
@@ -1039,18 +995,20 @@ mod tests {
         let consumer = index.module("consumer", &[]).unwrap();
 
         assert_eq!(
-            outside.external_path(
-                &mut index,
-                consumer,
-                &["alias", "Hidden"].map(str::to_owned),
-                false,
-            ),
+            outside
+                .external_path(
+                    &mut index,
+                    consumer,
+                    &["alias", "Hidden"].map(str::to_owned),
+                    false,
+                )
+                .unwrap(),
             None
         );
     }
 
     #[test]
-    fn external_import_and_globbed_module_collision_fails_closed() {
+    fn two_globbed_modules_with_the_same_name_are_ambiguous() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
         fs::write(
@@ -1067,7 +1025,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join("consumer/src/lib.rs"),
-            "use core::option::Option as nested;\nuse engine::*;\n",
+            "use engine::first::*;\nuse engine::second::*;\n",
         )
         .unwrap();
         fs::write(
@@ -1077,7 +1035,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join("engine/src/lib.rs"),
-            "pub mod nested { pub struct Hidden; }\n",
+            "pub mod first { pub mod nested { pub struct Hidden; } }\npub mod second { pub mod nested { pub struct Hidden; } }\n",
         )
         .unwrap();
 
@@ -1085,23 +1043,20 @@ mod tests {
         let mut index = Index::new(root, &[], &[]);
         outside.add_to_index(&mut index).unwrap();
         let consumer = index.module("consumer", &[]).unwrap();
-        assert_eq!(
-            outside.external_path(
+        let error = outside
+            .external_path(
                 &mut index,
                 consumer,
                 &["nested", "Hidden"].map(str::to_owned),
                 false,
-            ),
-            None
-        );
-        let error = outside
-            .take_resolution_error()
-            .expect("the collision must be reported through the resolver error path");
+            )
+            .unwrap_err();
         assert!(
             error.contains("ambiguous type-namespace binding `nested`"),
             "{error}"
         );
-        assert!(error.contains("engine_library::nested"), "{error}");
+        assert!(error.contains("engine_library::first::nested"), "{error}");
+        assert!(error.contains("engine_library::second::nested"), "{error}");
         assert!(
             error.contains("qualify the intended path explicitly"),
             "{error}"
@@ -1142,12 +1097,14 @@ mod tests {
         let consumer = index.module("consumer", &[]).unwrap();
 
         assert_eq!(
-            outside.external_path(
-                &mut index,
-                consumer,
-                &["engine", "Secret"].map(str::to_owned),
-                true,
-            ),
+            outside
+                .external_path(
+                    &mut index,
+                    consumer,
+                    &["engine", "Secret"].map(str::to_owned),
+                    true,
+                )
+                .unwrap(),
             Some(["engine_library", "Secret"].map(str::to_owned).to_vec())
         );
     }
@@ -1188,13 +1145,9 @@ mod tests {
         index.add_crate("allowed_api", "api/src");
         let consumer = index.module("consumer", &[]).unwrap();
 
-        assert_eq!(
-            outside.external_path(&mut index, consumer, &["Secret".to_owned()], false,),
-            None
-        );
         let error = outside
-            .take_resolution_error()
-            .expect("the allowed and workspace glob bindings must be reported as ambiguous");
+            .external_path(&mut index, consumer, &["Secret".to_owned()], false)
+            .unwrap_err();
         assert!(
             error.contains("ambiguous type-namespace binding `Secret`"),
             "{error}"

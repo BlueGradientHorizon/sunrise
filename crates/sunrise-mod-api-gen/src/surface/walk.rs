@@ -19,6 +19,7 @@ pub(super) enum Target {
     Item(ItemId),
     Module(usize),
     External(Vec<String>),
+    Ambiguous(String),
     ExternalGlob {
         path: Vec<String>,
         written: Vec<String>,
@@ -162,7 +163,7 @@ impl<'i, 'a> Walker<'i, 'a> {
         if path.first().map(String::as_str) == Some(VOCAB_WRITTEN) {
             path[0] = VOCAB.to_owned();
         }
-        if let Some(external) = outside.external_path(self.index, module, &path, true) {
+        if let Some(external) = outside.external_path(self.index, module, &path, true)? {
             return Ok(Some(Target::External(external)));
         }
         let Some((krate, relative)) = path.split_first() else {
@@ -184,7 +185,7 @@ impl<'i, 'a> Walker<'i, 'a> {
             let canonical = std::iter::once(module_path.krate.clone())
                 .chain(module_path.path.iter().cloned())
                 .collect::<Vec<_>>();
-            if let Some(external) = outside.external_path(self.index, module, &canonical, true) {
+            if let Some(external) = outside.external_path(self.index, module, &canonical, true)? {
                 return Ok(Some(Target::External(external)));
             }
             return Ok(Some(Target::Module(target)));
@@ -200,7 +201,8 @@ impl<'i, 'a> Walker<'i, 'a> {
             let canonical = std::iter::once(module_path.krate.clone())
                 .chain(module_path.path.iter().cloned())
                 .collect::<Vec<_>>();
-            if let Some(mut external) = outside.external_path(self.index, module, &canonical, true)
+            if let Some(mut external) =
+                outside.external_path(self.index, module, &canonical, true)?
             {
                 external.push(last.clone());
                 return Ok(Some(Target::External(external)));
@@ -221,7 +223,7 @@ impl<'i, 'a> Walker<'i, 'a> {
                     .chain(item_module.path.iter().cloned())
                     .chain(std::iter::once(name))
                     .collect::<Vec<_>>();
-                match outside.external_path(self.index, module, &canonical, true) {
+                match outside.external_path(self.index, module, &canonical, true)? {
                     Some(external) => Some(Target::External(external)),
                     None => Some(Target::Item(id)),
                 }
@@ -230,11 +232,12 @@ impl<'i, 'a> Walker<'i, 'a> {
                 module,
                 path,
                 rooted,
-            }) => Some(Target::External(
-                outside
-                    .external_path(self.index, module, &path, rooted)
-                    .unwrap_or(path),
-            )),
+            }) => Some(
+                match outside.external_path(self.index, module, &path, rooted) {
+                    Ok(external) => Target::External(external.unwrap_or(path)),
+                    Err(error) => Target::Ambiguous(error),
+                },
+            ),
             Err(_) => None,
         })
     }
@@ -256,8 +259,10 @@ impl<'i, 'a> Walker<'i, 'a> {
         if let Some(target) = self.module_at(module, path, outside) {
             return Ok(Target::Module(target));
         }
-        if let Some(path) = outside.external_path(self.index, module, path, false) {
-            return Ok(Target::External(path));
+        match outside.external_path(self.index, module, path, false) {
+            Ok(Some(path)) => return Ok(Target::External(path)),
+            Err(error) => return Ok(Target::Ambiguous(error)),
+            Ok(None) => {}
         }
         let (last, parent) = path.split_last().ok_or("an empty path")?;
         if parent.is_empty() {
@@ -383,8 +388,11 @@ impl<'i, 'a> Walker<'i, 'a> {
                                         name.hidden |= hidden;
                                         globbed.push(name);
                                     }
-                                } else if let Some(external) =
-                                    outside.external_path(self.index, module, &path, rooted)
+                                } else if let Some(external) = outside
+                                    .external_path(self.index, module, &path, rooted)
+                                    .map_err(|error| {
+                                        format!("{}::*: {error}", self.module_name(module))
+                                    })?
                                 {
                                     globbed.push(Name {
                                         name: String::new(),
@@ -516,14 +524,17 @@ impl<'i, 'a> Walker<'i, 'a> {
                             all.entry(id).or_default().insert(path);
                         }
                     }
-                    Target::External(_) if behind => {}
+                    Target::External(_) | Target::Ambiguous(_) if behind => {}
+                    Target::Ambiguous(error) => {
+                        return Err(format!("mod_api::{}: {error}", path.join("::")));
+                    }
                     Target::External(external) => {
                         if external.first().map(String::as_str) == Some(MACROS)
                             && external.len() == 2
                         {
                             macros.entry(path).or_insert_with(|| external[1].clone());
                         } else if let Some(external) =
-                            outside.external_path(self.index, module, &external, true)
+                            outside.external_path(self.index, module, &external, true)?
                         {
                             return Err(OutsideSeam::error(
                                 &format!("mod_api::{}", path.join("::")),

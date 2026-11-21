@@ -509,37 +509,71 @@ fn a_named_type_import_keeps_precedence_over_workspace_type_globs() {
 }
 
 #[test]
-fn an_external_value_import_and_workspace_glob_collision_fails_closed() {
+fn an_opaque_named_import_is_assumed_to_bind_a_type() {
+    // Without core's source the audit cannot tell that PI binds only a value, so it
+    // cannot see the workspace type that Rust resolves here.
     let edited = "use core::f32::consts::PI as Secret;\nuse engine_library::*;\npub fn leak() -> Secret { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("an unstaged explicit binding has precedence in the source-only audit");
+}
+
+#[test]
+fn an_explicit_external_type_shadows_the_same_name_from_a_workspace_glob() {
+    let edited = "use core::option::Option as Secret;\nuse engine_library::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the explicit type import takes precedence over the workspace glob");
+}
+
+#[test]
+fn a_named_type_from_a_renamed_dependency_is_a_leak_without_any_glob() {
+    let edited = "use engine::Secret as Imported;\npub fn leak() -> Imported { unimplemented!() }\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
-        .expect("the resolver cannot safely guess the namespace winner");
-    assert!(
-        error.contains("ambiguous type-namespace binding `Secret`"),
-        "{error}"
-    );
-    assert!(
-        error.contains("qualify the intended path explicitly"),
-        "{error}"
-    );
+        .expect("the named import must use its Cargo alias to resolve the workspace type");
+    assert!(error.contains("mod_api::leak"), "{error}");
     assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]
-fn an_external_type_import_and_workspace_glob_collision_fails_closed() {
-    let edited = "use core::option::Option as Secret;\nuse engine_library::*;\npub fn safe() -> Secret<u8> { unimplemented!() }\n/// A colour.";
-    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
-        .err()
-        .expect("the resolver cannot safely guess the namespace winner");
-    assert!(
-        error.contains("ambiguous type-namespace binding `Secret`"),
-        "{error}"
-    );
-    assert!(
-        error.contains("qualify the intended path explicitly"),
-        "{error}"
-    );
-    assert!(error.contains("engine_library::Secret"), "{error}");
+fn a_named_value_from_a_renamed_dependency_does_not_shadow_a_globbed_type() {
+    let edited = "use engine::value as nested;\nuse engine::*;\npub fn leak() -> nested::Hidden { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(
+        &[
+            (LIB, "/// A colour.", edited),
+            (
+                "engine-fixture/src/lib.rs",
+                "pub struct Secret;",
+                "pub struct Secret; pub fn value() {}",
+            ),
+        ],
+        HOOKS,
+    )
+    .err()
+    .expect("an indexed value import does not occupy the type namespace");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::nested::Hidden"), "{error}");
+}
+
+#[test]
+fn two_globs_in_the_same_namespace_are_ambiguous_at_the_api_owner() {
+    for globs in [
+        "use engine::*; use local::*;",
+        "use local::*; use engine::*;",
+    ] {
+        let edited = format!(
+            "mod local {{ pub struct Secret; }}\n{globs}\npub fn ambiguous() -> Secret {{ unimplemented!() }}\n/// A colour."
+        );
+        let error = try_export_fixture(&[(LIB, "/// A colour.", &edited)], HOOKS)
+            .err()
+            .expect("two different types imported by globs are ambiguous");
+        assert!(error.contains("mod_api::ambiguous"), "{error}");
+        assert!(
+            error.contains("ambiguous type-namespace binding `Secret`"),
+            "{error}"
+        );
+        assert!(error.contains("engine_library::Secret"), "{error}");
+        assert!(error.contains("mod_api::local::Secret"), "{error}");
+    }
 }
 
 #[test]
