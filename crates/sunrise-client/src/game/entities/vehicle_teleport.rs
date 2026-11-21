@@ -9,7 +9,8 @@ use super::commands::Target;
 use super::entity::{Entity as _, with_entity, with_entity_mut};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
-pub(in crate::game) use sunrise_gameplay::teleport_transition::{Pose, TeleportMotion, Transition};
+pub use sunrise_gameplay::teleport_transition::TeleportMotion;
+pub(in crate::game) use sunrise_gameplay::teleport_transition::{Pose, Transition};
 use sunrise_gameplay::teleport_transition::{absolute_pitch, is_horse};
 pub(super) use sunrise_gameplay::teleport_transition::{
     cart_known_movement, passenger_destination, passenger_rotation,
