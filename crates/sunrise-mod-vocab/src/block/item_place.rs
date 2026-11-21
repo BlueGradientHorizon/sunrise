@@ -798,7 +798,23 @@ impl ItemPlace {
                 let room = holds.unwrap_or(0).saturating_sub(self.amount(host));
                 amount.min(room)
             }
-            ItemPlace::MenuSlot { menu, slot } if menu.slot_gives(host, *slot) != Some(true) => 0,
+            ItemPlace::MenuSlot { menu, slot } => {
+                let gives = if matches!(
+                    menu.slot_backing(host, *slot),
+                    Some(MenuSlotBacking::Place(_))
+                ) {
+                    // The handler owns this stack. The menu's packet mirror can lag behind
+                    // writes to the backing, including earlier writes in this transaction.
+                    self.with_stack(host, |view| view.project())
+                        .flatten()
+                        .and_then(|stack| {
+                            backend_of(host)?.menu_slot_gives_with_stack(*menu, *slot, &stack)
+                        })
+                } else {
+                    menu.slot_gives(host, *slot)
+                };
+                if gives == Some(true) { amount } else { 0 }
+            }
             _ => amount,
         };
         if amount == 0 {

@@ -109,6 +109,15 @@ pub trait MenusBackend {
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
     /// on outside creative.
     fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool>;
+    /// Side: server.
+    /// Ask `Slot.mayPickup` with the stack just read from a backed menu slot's handler.
+    #[manual_handle]
+    fn menu_slot_gives_with_stack(
+        &self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> Option<bool>;
 }
 /// The handles' client reads of the `menus` area, implemented by the game and reached through [`ClientBackend`].
 // hidden: a handle's backend, reached through `ClientBackend`; mods call the handle, never this trait

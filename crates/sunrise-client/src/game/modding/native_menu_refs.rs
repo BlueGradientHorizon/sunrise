@@ -455,6 +455,17 @@ impl Game<'_> {
         Some(rules.slot_gives(&env, slot))
     }
 
+    pub(super) fn menu_slot_gives_with_stack(
+        &self,
+        menu: MenuRef,
+        slot: usize,
+        stack: &ItemStack,
+    ) -> Option<bool> {
+        let (mut rules, env) = self.native_menu_rules(menu, slot)?;
+        rules.load_slot(slot, Some(stack.clone()));
+        Some(rules.slot_gives(&env, slot))
+    }
+
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
         let open = self.native_menu_guest(menu)?.menu.as_ref()?;
         let limit = *open.owned_slots()?.get(slot)?;
@@ -483,8 +494,8 @@ impl Game<'_> {
                 };
                 let kind = match entity.and_then(|e| machine_menu(e, open.mod_type)) {
                     Some((kind, _)) => kind,
-                    None if let Some(layout) =
-                        open.mod_type.filter(|t| t.owned_slots.is_some()) =>
+                    None if open.slots == Slots::Native
+                        && let Some(layout) = open.mod_type =>
                     {
                         Kind::Mod(layout)
                     }
@@ -515,6 +526,10 @@ impl Game<'_> {
             rules.set_block_pos(open.pos.map(|(x, y, z)| [x, y, z]));
             if open.owned_slots().is_some() {
                 rules.load_container(&env, &guest.native_menu, None);
+            } else if open.slots == Slots::Native && open.mod_type.is_some() {
+                for (i, stack) in guest.native_menu.iter().take(open.size).enumerate() {
+                    rules.load_slot(i, stack.clone());
+                }
             }
         }
         (slot < rules.slot_count()).then_some(())?;
