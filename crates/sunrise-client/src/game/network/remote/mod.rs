@@ -26,6 +26,8 @@ mod use_item;
 mod block_entity_data;
 #[cfg(test)]
 mod block_entity_data_tests;
+#[cfg(test)]
+mod claimed_item_use_tests;
 use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
 use super::remote_vehicles::PassengerSeat;
@@ -1078,6 +1080,7 @@ impl Game<'_> {
         lan: bool,
         realm: bool,
     ) -> Result<()> {
+        self.reset_client_item_use();
         self.realm_session = realm;
         self.lan_session = lan;
         self.reset_tutorial();
@@ -1190,7 +1193,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
         self.clicks.miss_time = 0;
         // A new LocalPlayer has no effects: the server sends what it has
         // (ClientboundUpdateMobEffectPacket on placement).
@@ -1408,6 +1410,7 @@ impl Game<'_> {
 
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(super) fn init_remote_for_replay(&mut self) -> Result<()> {
+        self.reset_client_item_use();
         self.realm_session = false;
         self.lan_session = false;
         self.reset_tutorial();
@@ -1469,7 +1472,6 @@ impl Game<'_> {
         self.container = None;
         self.carried = None;
         self.using = None;
-        self.end_mod_use();
 
         self.set_mode_id(0);
         self.experience = Experience {
@@ -3556,6 +3558,7 @@ impl Game<'_> {
                 }
             }
             C::Respawn(p) => {
+                self.reset_client_item_use();
                 // The new LocalPlayer copies reduced debug info through its setter.
                 self.debug_entries.invalidate();
                 let old_player = self.remote.as_ref().map(|r| (r.entity_id, r.profile));
@@ -3576,7 +3579,6 @@ impl Game<'_> {
                     r.general.snapshots_before_spawn.clear();
                 }
                 self.using = None;
-                self.end_mod_use();
                 // After a death (no KEEP_ENTITY_DATA) the new LocalPlayer
                 // rides nothing: the server pairs a vehicle again with its
                 // passengers. A dimension change keeps the vehicle it travels in.
@@ -4272,6 +4274,7 @@ impl Game<'_> {
                                 {
                                     self.use_duration = self.use_duration(&stack);
                                     self.use_start = super::using_item::UseStart::of(stack);
+                                    self.reset_client_item_use();
                                 }
                             }
                             _ => {}
@@ -4762,6 +4765,9 @@ impl Game<'_> {
                     pl.health.flash_health_change(p.health);
                 }
                 self.apply_remote_health();
+                if p.health <= 0.0 {
+                    self.reset_client_item_use();
+                }
                 // The death screen opens (or the respawn is asked for) with the
                 // death packet when the rule hides it.
                 let shown = self.remote.as_ref().is_none_or(|r| r.show_death_screen);
@@ -4782,6 +4788,9 @@ impl Game<'_> {
                 let me = self.remote.as_ref().is_some_and(|r| r.entity_id == p.id);
                 if let Some(r) = self.remote.as_mut() {
                     r.death_message = Some(message);
+                }
+                if me {
+                    self.reset_client_item_use();
                 }
                 // ClientPacketListener.handlePlayerCombatKill: the death
                 // screen, whatever health was last sent, or `respawn()` at
@@ -4866,6 +4875,9 @@ impl Game<'_> {
                     let mode = self.mode_id();
                     if let Some(r) = self.remote.as_mut() {
                         r.game_mode = mode;
+                    }
+                    if self.spectator() {
+                        self.reset_client_item_use();
                     }
                 }
                 // IMMEDIATE_RESPAWN: LocalPlayer.setShowDeathScreen.
@@ -9086,9 +9098,8 @@ impl Game<'_> {
     /// its crumbs until the server's USE_ITEM_COMPLETE. The server sends the
     /// stack, its hunger and the sounds.
     fn remote_tick_using(&mut self) {
+        self.tick_client_item_use();
         let Some((slot, ticks)) = self.using else {
-            // A mod's use the game reset (the server stopping the use...).
-            self.end_mod_use();
             return;
         };
         let stack = self.stack_in(slot).cloned();
@@ -9100,17 +9111,12 @@ impl Game<'_> {
                 r.use_item = item;
             } else if r.use_item != item {
                 self.using = None;
-                self.end_mod_use();
                 return;
             }
         }
         // Another hotbar slot picked: LivingEntity.updatingUsingItem sees a
         // different stack in the hand. The off hand keeps its item.
         let in_hand = slot == self.selected || slot == super::shield::OFFHAND_SLOT;
-        // A mod's item: held until the button lets go, counted for the mod.
-        if self.mod_use_tick(slot, ticks, !self.right || !in_hand) {
-            return;
-        }
         // A client cancel skips this tick's effects; the countdown and release continue.
         if let Some(s) = stack.as_ref().filter(|_| in_hand)
             && !self.use_item_ticked(s, ticks)
@@ -9461,7 +9467,10 @@ impl Game<'_> {
         // `KeyMapping.releaseAll` clears key.use; without this the button still
         // reads held and a use would start again on the first tick back.
         self.right = false;
-        sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
+        // Clearing the mapping for a screen is a capture reset, not a use-key release.
+        if !self.end_client_item_use(false) {
+            sunrise_client::interaction_input::release_on_screen_open(&mut RemoteInputWorld(self));
+        }
     }
 
     /// `MultiPlayerGameMode.releaseUsingItem`: sends `RELEASE_USE_ITEM` and
@@ -10380,15 +10389,12 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.using.is_some()
+        self.0.client_item_use.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
-        if let Some((slot, ticks)) = self.0.using
-            && self.0.mod_use_tick(slot, ticks, true)
-        {
-            return;
+        if !self.0.end_client_item_use(true) && self.0.using.is_some() {
+            self.0.release_remote_use();
         }
-        self.0.release_remote_use();
     }
     fn start_attack(&mut self) -> bool {
         self.0.remote_start_attack()

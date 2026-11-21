@@ -268,20 +268,6 @@ impl Default for Falling {
         }
     }
 }
-/// A stack as a client mod's use events carry it.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct HeldItemSlot {
-    pub id: ItemKey,
-    pub count: u32,
-    /// The inventory slot: 0 to 8, the hotbar (a mod use is the main hand's).
-    pub slot: u32,
-    /// `minecraft:custom_name` as SNBT, when the stack has one.
-    pub custom_name: Option<String>,
-    /// `minecraft:custom_data` as SNBT, when the stack has some.
-    pub custom_data: Option<String>,
-}
 /// The block a ray along the view meets.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
@@ -296,18 +282,6 @@ pub struct Hit {
     pub z: f64,
     /// The block's resolved identity, without state properties.
     pub block: BlockKey,
-}
-/// What happened to a mod's claimed item, oldest first.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum ModEvent {
-    /// A right-click with the item began its use: the stack, and 0 ticks.
-    UseStart(HeldItemSlot, u32),
-    /// The use ended: the stack it began with, and the ticks it was held. It
-    /// ends when the button comes up, the hand's item changes or leaves the
-    /// claim, the player respawns, or the game joins a server.
-    UseStop(HeldItemSlot, u32),
 }
 // no wire: borrowed call-scoped view; transport uses owned snapshots rather than serializing references.
 /// A map as a native mod sees it when `map_decorations` is asked.

@@ -224,16 +224,18 @@ pub trait LivingBackend {
     fn living_item_use_remaining(&self, living: LivingRef) -> Option<i32>;
     /// Side: both.
     /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
-    /// a player or a mob uses, None when it uses none. On a client, the local
-    /// player's only.
+    /// a player or a mob is ordinarily using, None when it uses none. On a client,
+    /// the local player's only. [`crate::ClientItemUseBehavior`] intercepts input
+    /// without entering this state.
     #[access(WorldOnly)]
     fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand>;
     /// Side: both.
     /// `LivingEntity.isBlocking`: whether a player or a mob holds up an item that blocks attacks
     /// (a shield, or any item with `minecraft:blocks_attacks`): it is using that item, from either
     /// hand, and has used it for the component's `block_delay_seconds` (5 ticks for a shield).
-    /// False while it uses nothing or another item. On a client, the local player's only. None
-    /// for armor stands and the dragon, and for a stale handle.
+    /// False while it uses nothing or another item. Intercepting input with
+    /// [`crate::ClientItemUseBehavior`] does not make the player block. On a client, the local
+    /// player's only. None for armor stands and the dragon, and for a stale handle.
     #[access(WorldOnly)]
     fn living_is_blocking(&self, living: LivingRef) -> Option<bool>;
     /// Side: both.

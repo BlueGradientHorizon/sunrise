@@ -105,6 +105,13 @@ Item-model callbacks receive the owned stack and a separate `bundle_selected` nu
 means none). Runtime selection is not a persistent component. Drawing receives the API-owned
 `ItemDisplayContext`, not the renderer's enum.
 
+## Intercept main-hand client input
+
+A [`ClientItemUseBehavior`](../../concepts/parts/item-and-tag-parts.md#intercept-main-hand-client-input)
+receives the original typed `ItemStack` and its hotbar slot on every callback, not the stack
+that may have replaced it. These callbacks intercept local input without starting ordinary
+item use; see the linked example for registration and typed component reads.
+
 ## A stack's name
 
 `host.hover_name(&stack)` is `ItemStack.getHoverName()` as a component, on both sides: the custom

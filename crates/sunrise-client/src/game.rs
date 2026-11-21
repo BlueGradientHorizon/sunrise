@@ -2343,7 +2343,6 @@ use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
-pub use native_claimed_items::{HeldItemSlot, ModEvent};
 pub use native_configs::ConfigFile;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
@@ -3946,8 +3945,10 @@ struct Game<'a> {
     panel: native_panel::Panel,
     /// Sunrise's own shader pack, while one is picked (`game/modding/native_shaders.rs`).
     native_shaders: native_shaders::NativeShaders,
-    /// Native client mods' claimed items, unpolled events and key mappings (game/modding/native_claimed_items.rs).
-    native_input: native_claimed_items::ModInput,
+    /// Main-hand input captured by a client mod, independent of living-item use.
+    client_item_use: Option<native_claimed_items::ActiveClientItemUse>,
+    /// Native client mods' key mappings (game/modding/native_key_mappings.rs).
+    mod_keys: sunrise_client::keymapping::ModKeys,
     /// The native lifecycle bookkeeping.
     native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
@@ -11958,6 +11959,7 @@ impl Game<'_> {
                             self.sync_toggle(1);
                             self.left = false;
                             self.right = false;
+                            self.reset_client_item_use();
                             self.capture(false);
                         }
                         self.regrab_on_refocus = held;
@@ -13569,7 +13571,8 @@ impl<'a> Game<'a> {
             recipe_tables: Default::default(),
             panel: Default::default(),
             native_shaders: Default::default(),
-            native_input: Default::default(),
+            client_item_use: None,
+            mod_keys: Default::default(),
             native_lifecycle: Default::default(),
             resident_entities: Default::default(),
             lent_mobs: Default::default(),

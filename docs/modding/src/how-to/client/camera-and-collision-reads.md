@@ -198,10 +198,11 @@ These read the local player as the client sees it. They take no mod-controlled n
   then, among equal list orders, spectators last, team name and name) and stop at the 80 it draws. Header and footer are `None` when empty. It is what
   this client has been sent and changes as the server updates the list; `None` outside a world.
   There is no NeoForge call for this: it is Sunrise's own read.
-- `ClientHost::local_item_use()` is the item in use: `ItemUse { hand, ticks_used, ticks_remaining }`
+- `ClientHost::local_item_use()` reports ordinary item use: `ItemUse { hand, ticks_used, ticks_remaining }`
   (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`, `getUseItemRemainingTicks`).
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world
-  is open.
+  is open. Track intercepted main-hand input through [`ClientItemUseBehavior` callbacks](../../concepts/parts/item-and-tag-parts.md#intercept-main-hand-client-input)
+  instead; interception does not make the player use or block with the item.
 - `ClientHost::creative_search_items()` returns the built creative search tab's display order,
   for ranking stacks in inventory sorters. It requests the catalog with the local player's permission
   and Operator Items Tab option. A cache miss can fire the creative build hook, so this read needs a
