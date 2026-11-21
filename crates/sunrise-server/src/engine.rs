@@ -110,10 +110,10 @@ pub fn check_prepared(resources: &Path) -> Result<(), String> {
         }
         Err(e) => problems.push(e.clone()),
     }
-    if !manifest
+    let server_profile = manifest
         .as_ref()
-        .is_ok_and(|manifest| manifest["profile"] == "server")
-    {
+        .is_ok_and(|manifest| manifest["profile"] == "server");
+    if !server_profile {
         for dir in PREPARED_DIRS {
             let empty = std::fs::read_dir(resources.join(dir))
                 .map_or(true, |mut entries| entries.next().is_none());
@@ -125,10 +125,14 @@ pub fn check_prepared(resources: &Path) -> Result<(), String> {
     if problems.is_empty() {
         return Ok(());
     }
+    let command = if server_profile {
+        "sunrise-prepare --server"
+    } else {
+        "sunrise-prepare --prepare --server-jar PATH"
+    };
     Err(format!(
         "the prepared game files in {} are incomplete or damaged:\n  {}\nPrepare them again with \
-         `sunrise-prepare --prepare --server-jar PATH` (or the launcher), or copy the whole prepared folder to \
-         the server again.",
+         `{command}`, or copy the whole prepared folder to the server again.",
         resources.display(),
         problems.join("\n  ")
     ))
