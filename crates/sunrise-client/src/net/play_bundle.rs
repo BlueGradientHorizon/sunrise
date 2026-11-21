@@ -1,6 +1,6 @@
 //! PacketBundlePacker assembles on receive; ClientPacketListener handles the
 //! completed bundle in one ordinary main-thread task.
-use super::{Event, PlayCookie, PlayIo, PlayIoAction, Reason, brand_event};
+use super::{Cookie, Event, PlayIo, PlayIoAction, Reason, brand_event};
 use std::sync::Arc;
 use sunrise_protocol::packets::{custom_payload::CustomPayload, play::Clientbound as C};
 
@@ -76,11 +76,7 @@ impl PlayIo {
     /// Vanilla checks whether the listener can handle the outer packet. It
     /// does not re-check eligibility between handlers once the loop starts.
     pub fn accepts_bundle(&self) -> bool {
-        self.writer
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_some_and(super::QueuedWriter::accepts_packets)
+        self.common.accepts_packets()
     }
 
     pub fn invalid_bundle_payload(&self) -> Event {
@@ -93,12 +89,23 @@ impl PlayIo {
             C::KeepAlive(p) => PlayIoAction::KeepAlive(p),
             C::ChunkBatchStart(_) => PlayIoAction::ChunkBatchStart,
             C::ChunkBatchFinished(p) => PlayIoAction::ChunkBatchFinished(p.size),
-            C::CookieRequest(p) => PlayIoAction::Cookie(PlayCookie::Request(p)),
-            C::StoreCookie(p) => PlayIoAction::Cookie(PlayCookie::Store(p)),
+            C::CookieRequest(p) => {
+                self.common.handle_cookie(Cookie::Request(p));
+                return BundleStep::Continue;
+            }
+            C::StoreCookie(p) => {
+                self.common.handle_cookie(Cookie::Store(p));
+                return BundleStep::Continue;
+            }
             C::ResourcePackPush(p) => return BundleStep::Event(Event::PackPush(p)),
             C::ResourcePackPop(p) => return BundleStep::Event(Event::PackPop(p.id)),
             C::ServerLinks(p) => return BundleStep::Event(Event::ServerLinks(p.links)),
-            C::Transfer(p) => return BundleStep::Transfer(p),
+            C::Transfer(p) => {
+                self.common
+                    .transferring
+                    .store(true, std::sync::atomic::Ordering::Release);
+                return BundleStep::Transfer(p);
+            }
             C::Disconnect(p) => {
                 self.close_after_pending();
                 return BundleStep::Close(Reason::tag(&p.reason, &self.lang).ended(true));

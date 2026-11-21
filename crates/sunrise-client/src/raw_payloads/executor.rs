@@ -67,6 +67,20 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         return;
     }
     if matches!(incoming.body, Body::Work(_)) || incoming.receiver.thread == HandlerThread::Main {
+        if let MainQueue::Client(events) = main
+            && matches!(incoming.body, Body::Payload(_))
+        {
+            // This is a wire record on the dedicated client reader, not work
+            // staged by a mod. Main rechecks the payload epoch on delivery.
+            if let Err(error) = events.send_wait(crate::net::Event::RawPayload(Box::new(incoming)))
+            {
+                endpoint.disconnect(failure(&format!(
+                    "payload main refused: {:?}",
+                    error.reason
+                )));
+            }
+            return;
+        }
         let epoch = incoming.epoch.clone();
         let prepared = match main.prepare(incoming) {
             Ok(prepared) => prepared,

@@ -177,9 +177,12 @@ impl Game<'_> {
                     }
                 }
                 BundleStep::Transfer(packet) => {
-                    transfer = self.start_remote_transfer(packet)?;
+                    // ConnectScreen.startConnecting keeps the first opening.
                     if transfer.is_none() {
-                        end.get_or_insert_with(local_transfer_notice);
+                        transfer = self.start_remote_transfer(packet)?;
+                        if transfer.is_none() {
+                            end.get_or_insert_with(local_transfer_notice);
+                        }
                     }
                 }
                 BundleStep::Close(notice) => {
@@ -251,11 +254,9 @@ impl Game<'_> {
                     remote.far_terrain = Some(offer);
                 }
             }
-            Event::PlayCookie(cookie) => {
-                let (receiver, cookie) = *cookie;
-                if receiver.accepts_bundle() {
-                    receiver.handle_cookie(cookie);
-                }
+            Event::Cookie(task) => task.handle(),
+            Event::FinishConfiguration(resume) => {
+                let _ = resume.send(());
             }
             Event::Reconfiguring(resume) => {
                 self.reset_book_view();
@@ -320,11 +321,9 @@ impl Game<'_> {
                 self.set_registries(registries);
             }
             Event::Transfer(packet) => {
-                if self
-                    .remote
-                    .as_ref()
-                    .is_some_and(|r| r.session.accepts_packets())
-                {
+                // This task was received on the old transferring listener.
+                // The source writer may already be closed.
+                if self.remote.is_some() {
                     if let Some(opening) = self.start_remote_transfer(packet)? {
                         self.install_remote_transfer(opening)?;
                         return Ok(false);
