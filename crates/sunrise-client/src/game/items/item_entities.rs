@@ -191,7 +191,7 @@ impl Game<'_> {
                     2
                 };
                 if merging
-                    && (alive || item.age == 6000 && item.position.y >= void)
+                    && (alive || item.age <= ItemEntity::LIFETIME && item.position.y >= void)
                     && item.ticks.is_multiple_of(rate)
                 {
                     let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
@@ -205,23 +205,44 @@ impl Game<'_> {
                         &max_stack,
                     );
                 }
-                let item = &mut items[i];
-                let mut alive = alive || (item.age < 6000 && item.position.y >= void);
-                if merging && !removed[i] && item.age >= 6000 && item.position.y >= void {
+                let mut alive =
+                    alive || (items[i].age < items[i].lifespan && items[i].position.y >= void);
+                if merging
+                    && !removed[i]
+                    && items[i].age >= items[i].lifespan
+                    && items[i].position.y >= void
+                {
                     let mut extra_life = 0;
-                    self.native_item_expire(item.id, &item.stack, &mut extra_life);
-                    if extra_life > 0 {
-                        item.age = 6000 - extra_life.min(32766);
-                        alive = true;
-                    } else if self.serving.is_some() || self.options.dedicated.is_some() {
-                        self.native_item_despawn(
-                            item.id,
-                            &item.stack.item,
-                            item.stack.count as i32,
-                            [item.position.x, item.position.y, item.position.z],
+                    if mod_api::__private::listened(mod_api::HookId::ItemExpire) {
+                        let id = items[i].id;
+                        let stack = items[i].stack.clone();
+                        let given = self.give_items_back(
+                            items,
+                            &mut removed,
+                            &mut cells,
+                            &mut gone,
+                            i,
+                            |game| {
+                                game.native_item_expire(id, &stack, &mut extra_life);
+                            },
                         );
+                        (items, next) = (given.items, given.next);
+                        let Some(at) = given.at else {
+                            continue;
+                        };
+                        i = at;
                     }
+                    let item = &mut items[i];
+                    // NeoForge `ItemEntity.tick`: clamp `lifespan + extra_life` to
+                    // `0..=Short.MAX_VALUE - 1` without rewinding `age`.
+                    item.lifespan = item
+                        .lifespan
+                        .saturating_add(extra_life)
+                        .clamp(0, ItemEntity::MAX_LIFESPAN);
+                    alive =
+                        item.age < item.lifespan && item.position.y >= void && item.stack.count > 0;
                 }
+                let item = &mut items[i];
                 if !alive || removed[i] {
                     removed[i] = true;
                     gone = true;
@@ -327,8 +348,24 @@ impl Game<'_> {
         for pos in bubble_tops {
             self.bubble_column_particles(pos);
         }
+        let left = if gone && merging && !self.persist.live.is_empty() {
+            items
+                .iter()
+                .zip(removed.iter())
+                .filter_map(|(item, &was_removed)| was_removed.then_some(item.id))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut removed = removed.into_iter();
         items.retain(|_| !removed.next().unwrap_or(false));
+        if !left.is_empty() {
+            self.put_back_dropped(items);
+            for id in left {
+                self.native_entity_left(id);
+            }
+            items = self.dropped.lift();
+        }
         let Some(p) = self.player.as_ref() else {
             self.put_back_dropped(items);
             self.spawn_destroyed_contents(destroyed);
@@ -376,12 +413,24 @@ impl Game<'_> {
     ) -> GivenBack {
         let (id, join) = (items[i].id, items[i].join);
         let same_rows = !*gone && self.dropped.is_empty();
+        let left = if *gone && self.remote.is_none() && !self.persist.live.is_empty() {
+            items
+                .iter()
+                .zip(removed.iter())
+                .filter_map(|(item, &was_removed)| was_removed.then_some(item.id))
+                .collect()
+        } else {
+            Vec::new()
+        };
         if *gone {
             let mut left = removed.iter();
             items.retain(|_| !left.next().copied().unwrap_or(false));
             *gone = false;
         }
         self.put_back_dropped(items);
+        for left_id in left {
+            self.native_entity_left(left_id);
+        }
         let restored = self.dropped.stamp();
         call(self);
         let unchanged = same_rows && self.dropped.stamp() == restored;
@@ -1128,6 +1177,230 @@ mod escape_tests {
         assert_eq!(item.velocity.y, f64::from_bits(0x3fc5_9ef4_570f_5500));
         assert_eq!(item.random.clone().next_float().to_bits(), 0x3f03_61b3);
         assert_eq!(game.world.random.next_float(), level.next_float());
+    }
+}
+
+#[cfg(test)]
+mod expire_tests {
+    use crate::game::Dim;
+    use crate::game::native_entity_refs::tests::with_game;
+    use mod_api::{EntityLeaveLevelEvent, ItemExpireEvent, ModEntry, ServerHost};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicI32, Ordering},
+    };
+    use sunrise_client::chunk::Chunk;
+    use sunrise_client::entities::ItemEntity;
+    use sunrise_client::items::ItemStack;
+
+    #[derive(Default)]
+    struct ExpireLog {
+        seen: Vec<(u32, Option<[f64; 3]>, Option<i32>)>,
+        leaves: Vec<(u32, String)>,
+    }
+
+    struct ExpireListener {
+        extra: Arc<AtomicI32>,
+        log: Arc<Mutex<ExpireLog>>,
+        record_leave: bool,
+    }
+
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ExpireListener {
+        fn item_expire(&self, host: &mut dyn ServerHost, event: &mut ItemExpireEvent<'_>) {
+            let entity = host.entity(event.entity);
+            let pos = entity.and_then(|e| e.position(host));
+            let age = entity
+                .and_then(|e| host.item_entity(e))
+                .and_then(|item| item.age(host));
+            self.log.lock().unwrap().seen.push((event.entity, pos, age));
+            event.extra_life += self.extra.load(Ordering::Relaxed);
+        }
+
+        fn entity_leave_level(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut EntityLeaveLevelEvent<'_>,
+        ) {
+            if self.record_leave {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .leaves
+                    .push((event.entity, event.kind.to_owned()));
+            }
+        }
+    }
+
+    /// NeoForge `EventHooks.onItemExpire` / `ItemEntity.tick`: listeners see the live
+    /// resident item, add to `extra_life`, extend `lifespan` without rewinding `age`,
+    /// clamp `lifespan` to `Short.MAX_VALUE - 1` (32766), and fire `entity_leave_level`
+    /// once at the removal site when discarded.
+    #[test]
+    #[ignore = "daily"]
+    fn item_expire_extends_lifespan_without_rewinding_age_and_caps_at_32766() {
+        let log = Arc::new(Mutex::new(ExpireLog::default()));
+        let extra_a = Arc::new(AtomicI32::new(60));
+        let extra_b = Arc::new(AtomicI32::new(40));
+        let mods: mod_api::Mods = vec![
+            ModEntry::new(
+                "item-expire-a",
+                Box::new(ExpireListener {
+                    extra: extra_a.clone(),
+                    log: log.clone(),
+                    record_leave: true,
+                }),
+            ),
+            ModEntry::new(
+                "item-expire-b",
+                Box::new(ExpireListener {
+                    extra: extra_b.clone(),
+                    log: log.clone(),
+                    record_leave: false,
+                }),
+            ),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.enter_level(Dim::Overworld).unwrap();
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                game.push_item_entity(
+                    ItemStack::new("minecraft:diamond", 1),
+                    [2.5, 64.0, 2.5],
+                    Some([0.0, 0.0, 0.0]),
+                    0,
+                    None,
+                );
+                let id = game.dropped.last().unwrap().id;
+                game.native_joins_flush(false, 0);
+                game.ticked_entities_through = id;
+                game.dropped.last_mut().unwrap().age = 5999;
+
+                // First expiry at age 6000: listeners add 60 + 40 -> lifespan 6100, age stays 6000.
+                game.tick_items();
+                let item = game
+                    .dropped
+                    .iter()
+                    .find(|item| item.id == id)
+                    .expect("extended item survives");
+                assert_eq!(item.age, 6000);
+                assert_eq!(item.lifespan, 6100);
+                {
+                    let guard = log.lock().unwrap();
+                    assert_eq!(guard.seen.len(), 2);
+                    for &(seen_id, pos, age) in &guard.seen {
+                        assert_eq!(seen_id, id);
+                        assert!(pos.is_some(), "item entity is resident during item_expire");
+                        assert_eq!(age, Some(6000));
+                    }
+                    assert!(guard.leaves.is_empty());
+                }
+
+                // Overflowing extension clamps to ItemEntity::MAX_LIFESPAN (32766).
+                extra_a.store(i32::MAX, Ordering::Relaxed);
+                extra_b.store(0, Ordering::Relaxed);
+                game.dropped.last_mut().unwrap().age = 6099;
+                game.tick_items();
+                let item = game
+                    .dropped
+                    .iter()
+                    .find(|item| item.id == id)
+                    .expect("clamped item survives at age 6100 < 32766");
+                assert_eq!(item.age, 6100);
+                assert_eq!(item.lifespan, ItemEntity::MAX_LIFESPAN);
+
+                // Reaching 32766 discards even when listeners still request extra life;
+                // entity_leave_level fires immediately at removal and does not duplicate on flush.
+                game.dropped.last_mut().unwrap().age = ItemEntity::MAX_LIFESPAN - 1;
+                game.tick_items();
+                assert!(!game.dropped.iter().any(|item| item.id == id));
+                assert_eq!(
+                    log.lock().unwrap().leaves.as_slice(),
+                    &[(id, "minecraft:item".to_owned())]
+                );
+                game.native_leaves_flush();
+                assert_eq!(
+                    log.lock().unwrap().leaves.len(),
+                    1,
+                    "native_leaves_flush does not duplicate entity_leave_level"
+                );
+            });
+        });
+    }
+
+    /// An over-aged item whose extension does not push `lifespan` past `age`, or an item
+    /// with a negative `extra_life`, is discarded and fires `entity_leave_level` once.
+    #[test]
+    #[ignore = "daily"]
+    fn item_expire_insufficient_or_negative_extension_discards_and_fires_entity_leave_level() {
+        let log = Arc::new(Mutex::new(ExpireLog::default()));
+        let extra = Arc::new(AtomicI32::new(100));
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "item-expire-discard",
+            Box::new(ExpireListener {
+                extra: extra.clone(),
+                log: log.clone(),
+                record_leave: true,
+            }),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            with_game(|game| {
+                game.enter_level(Dim::Overworld).unwrap();
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+
+                // Over-aged item (age 6500 after tick): lifespan 6000 + 100 = 6100 <= 6500 -> discarded.
+                game.push_item_entity(
+                    ItemStack::new("minecraft:stone", 1),
+                    [2.5, 64.0, 2.5],
+                    Some([0.0, 0.0, 0.0]),
+                    0,
+                    None,
+                );
+                let over_aged = game.dropped.last().unwrap().id;
+                game.dropped.last_mut().unwrap().age = 6499;
+                game.native_joins_flush(false, 0);
+                game.ticked_entities_through = over_aged;
+                game.tick_items();
+                assert!(!game.dropped.iter().any(|item| item.id == over_aged));
+                assert_eq!(
+                    log.lock().unwrap().leaves.as_slice(),
+                    &[(over_aged, "minecraft:item".to_owned())]
+                );
+
+                // Negative extra_life clamps lifespan downward and discards.
+                extra.store(-500, Ordering::Relaxed);
+                game.push_item_entity(
+                    ItemStack::new("minecraft:cobblestone", 1),
+                    [2.5, 64.0, 2.5],
+                    Some([0.0, 0.0, 0.0]),
+                    0,
+                    None,
+                );
+                let negative = game.dropped.last().unwrap().id;
+                game.dropped.last_mut().unwrap().age = 5999;
+                game.native_joins_flush(false, 0);
+                game.ticked_entities_through = negative;
+                game.tick_items();
+                assert!(!game.dropped.iter().any(|item| item.id == negative));
+                assert_eq!(
+                    log.lock().unwrap().leaves.as_slice(),
+                    &[
+                        (over_aged, "minecraft:item".to_owned()),
+                        (negative, "minecraft:item".to_owned()),
+                    ]
+                );
+                game.native_leaves_flush();
+                assert_eq!(log.lock().unwrap().leaves.len(), 2);
+            });
+        });
     }
 }
 

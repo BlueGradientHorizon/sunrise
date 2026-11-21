@@ -1,0 +1,3 @@
+# Dropped-item expiry (debt p3-65): NeoForge ItemExpireEvent lifespan rules and entity_leave_level at removal.
+sunrise-client game::item_entities::expire_tests::item_expire_extends_lifespan_without_rewinding_age_and_caps_at_32766 lib daily resources
+sunrise-client game::item_entities::expire_tests::item_expire_insufficient_or_negative_extension_discards_and_fires_entity_leave_level lib daily resources

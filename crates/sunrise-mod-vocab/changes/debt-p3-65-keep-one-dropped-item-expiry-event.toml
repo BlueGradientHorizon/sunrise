@@ -1,0 +1,25 @@
+ids = [
+    "hook:item_despawn",
+    "hook:item_expire",
+]
+why = """
+Removed the duplicate `item_despawn` hook so dropped-item lifetime expiry has one NeoForge-shaped
+event (`item_expire`, matching NeoForge `EventHooks.onItemExpire` / `ItemExpireEvent` and the
+`ItemEntity.tick` patch over vanilla `net.minecraft.world.entity.item.ItemEntity#tick`), while
+general removal of expired items continues to fire `entity_leave_level` at the removal site.
+
+`ItemEntity` now carries NeoForge's separate `lifespan` field (default 6000, saved in NBT under
+`"Lifespan"` when non-default) instead of rewinding `age` on expiry extension. When `age >= lifespan`,
+`item_expire` runs with the item entity live and resident in the level (`host.entity(event.entity)`
+and `host.item_entity(...)` resolve live), then updates `lifespan` to
+`clamp(lifespan + extra_life, 0, 32766)` (`Short.MAX_VALUE - 1`) and discards the item if
+`age >= lifespan` (or the stack is empty). `item_expire` hook version bumped from 1 to 2 because
+listeners observe updated `lifespan`/`age` semantics and live entity residency under the same
+signature.
+"""
+migrate = """
+Remove any `item_despawn` listener and listen to `item_expire` (leaving `event.extra_life` at zero
+if only observing expiry, and reading position or other entity state through
+`host.entity(event.entity)` / `host.item_entity(...)`), or listen to `entity_leave_level` for
+general removal. If your manifest pins `hook_version` for `item_expire`, bump it to `2`.
+"""
