@@ -15,7 +15,7 @@ take or give what the player carries. A blockless menu supplies None for the pos
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_button",
         dispatch = "flat",
-        version = 2,
+        version = 3,
         side = "server",
         contract = "listen",
         scope = "menu",

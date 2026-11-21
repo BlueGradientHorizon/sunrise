@@ -12,7 +12,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "PotionBrewEvent.Post",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn potion_brew_post(pos: [i32; 3], stacks: &mut [Option<ItemStack>; 5]);
 }

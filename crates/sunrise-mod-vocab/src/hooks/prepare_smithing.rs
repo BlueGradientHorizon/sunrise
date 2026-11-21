@@ -10,7 +10,8 @@ pub trait Hooks {
         contract = "replace",
         out = "result",
         neoforge = "none (NeoForge has no such event)",
-        paper = "PrepareSmithingEvent"
+        paper = "PrepareSmithingEvent",
+        version = 2
     )]
     fn prepare_smithing(player: u128, name: &str, pos: [i32; 3], result: &mut Option<ItemStack>);
 }

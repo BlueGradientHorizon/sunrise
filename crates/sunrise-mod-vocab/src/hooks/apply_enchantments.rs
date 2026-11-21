@@ -23,7 +23,8 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         host = "read",
-        neoforge = "IItemExtension.applyEnchantments"
+        neoforge = "IItemExtension.applyEnchantments",
+        version = 2
     )]
     fn apply_enchantments(
         stack: &ItemStack,

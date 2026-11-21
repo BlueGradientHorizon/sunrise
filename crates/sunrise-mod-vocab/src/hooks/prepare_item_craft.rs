@@ -10,7 +10,8 @@ pub trait Hooks {
         contract = "replace",
         out = "result",
         neoforge = "none (NeoForge has no such event)",
-        paper = "PrepareItemCraftEvent"
+        paper = "PrepareItemCraftEvent",
+        version = 2
     )]
     fn prepare_item_craft(
         player: u128,

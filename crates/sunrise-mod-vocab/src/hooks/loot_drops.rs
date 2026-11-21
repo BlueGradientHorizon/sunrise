@@ -37,7 +37,8 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "drops",
-        neoforge = "LivingDropsEvent, BlockDropsEvent"
+        neoforge = "LivingDropsEvent, BlockDropsEvent",
+        version = 2
     )]
     fn loot_drops(context: &LootDrops<'_>, drops: &mut Vec<ItemStack>);
 }
