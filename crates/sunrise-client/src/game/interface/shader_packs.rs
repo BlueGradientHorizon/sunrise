@@ -580,8 +580,10 @@ impl Game<'_> {
     /// The window's player's state for the player booleans and the status uniforms: the six
     /// Iris also gives programs and the vitals read as the HUD reads them, and the eight only
     /// custom uniforms read (D-2 in `docs/cleanroom/decisions.md`), each as its vanilla method
-    /// answers on a client. The eight are asked only while a pack is loaded: no one reads them
-    /// otherwise, and the rain they ask for costs a column walk.
+    /// answers on a client. `is_alive`, `is_glowing`, `is_ridden` and `is_wet` are asked only
+    /// while a pack is loaded: no one reads them otherwise, and the rain `is_wet` asks for costs a
+    /// column walk. `is_in_lava`, `is_in_water`, `is_riding` and `is_child` are field reads (or a
+    /// constant), given always.
     fn pack_player_status(&mut self) -> PlayerStatus {
         let spectator = self.spectator();
         let survival = !self.creative && !spectator;
@@ -619,7 +621,7 @@ impl Game<'_> {
             // camera.
             alive: pack && p.health.health() > 0.0,
             glowing,
-            in_lava: pack && p.is_in_lava(),
+            in_lava: p.is_in_lava(),
             ridden,
             wet,
         }
