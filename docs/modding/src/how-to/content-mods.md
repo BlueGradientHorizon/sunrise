@@ -731,8 +731,12 @@ round-trip through saved NBT; negative zero is not supported. A key such as
 
 `crafting_remainder` names what the item leaves in the crafting grid when a
 recipe uses it, as a milk bucket leaves a bucket (vanilla's
-`Item.Properties.craftRemainder`, not a data component): a vanilla item or
-one of the mod's own, refused at load otherwise. It holds on the crafting
+`Item.Properties.craftRemainder`, not a data component): a vanilla item, one
+of the mod's own, or, across a `served_by` delegation (see
+[Declare content in code](#declare-content-in-code)), an item or item-bearing block the other
+side declares: a served package's file may name one its serving runtime declares in that
+package's namespaces, and the runtime may name one from a package it serves. Anything else
+is refused at load. It holds on the crafting
 table, the inventory grid, the crafter and as furnace fuel (the last of the stack leaves it in
 the fuel slot, a stack with more left drops it), not in a brewing stand. What the item leaves once eaten
 or drunk is the `minecraft:use_remainder` component instead:
