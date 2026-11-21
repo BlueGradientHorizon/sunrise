@@ -119,8 +119,8 @@ ParticleUtils.spawnParticleBelow	inline	crates/sunrise-client/src/animate_tick.r
 PlaceholderLookupProvider.hasRegisteredPlaceholders	skip:data		datagen placeholder lookup for data-driven registries
 PlaceholderLookupProvider.UniversalLookup.get	skip:data		datagen placeholder lookup for data-driven registries
 PlaceholderLookupProvider.UniversalLookup.getOrCreate	skip:data		datagen placeholder lookup for data-driven registries
-PngInfo.fromStream	inline	crates/sunrise-client-render/src/hud.rs::png_size	the signature and IHDR type are checked and width/height read from the header, as the file-size probes do; bit depth and colour type are not read
-PngInfo.validateHeader	inline	crates/sunrise-client-render/src/hud.rs::png_size	the eight signature bytes and the IHDR chunk type are checked; the IHDR length field is not
+PngInfo.fromStream	inline	crates/sunrise-client-render/src/hud/image.rs::png_size	the signature and IHDR type are checked and width/height read from the header, as the file-size probes do; bit depth and colour type are not read
+PngInfo.validateHeader	inline	crates/sunrise-client-render/src/hud/image.rs::png_size	the eight signature bytes and the IHDR chunk type are checked; the IHDR length field is not
 PngInfo.validateBounds	missing		minor: no 16-bit buffer bound check in crates; the image decoder enforces its own limits
 ProblemReporter.Collector.hasFatalProblems	skip:other		log text for load problems; Sunrise's loaders report errors through their own results
 ProblemReporter.Collector.forEach	skip:other		log text for load problems; Sunrise's loaders report errors through their own results

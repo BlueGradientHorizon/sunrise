@@ -1121,37 +1121,54 @@ macro_rules! define_entity_handles {
         }
 
 
-        impl EntityLists<'_> {
-            /// Visits every entity once, in the order they joined, whatever the
-            /// kind: a merge of the lists, each already in join order, by a
-            /// cursor per list. Static dispatch and nothing allocated. Checked:
-            /// a list out of join order, or an entity that never joined, stops
-            /// the walk with the entity at fault.
+        impl<'w> EntityLists<'w> {
+            /// Merge lists already ordered by join number, taking the lowest head at each
+            /// step. The cursors live on the stack. The draw pass reads only its own lists.
+            fn merge_in_join_order<const DRAWN_ONLY: bool>(self)
+                -> impl Iterator<Item = (EntityHandle, JoinSeq)> + use<'w, DRAWN_ONLY>
+            {
+                let mut cursors = [$(self.$field.len()),*].map(|_| 0usize);
+                std::iter::from_fn(move || {
+                    let mut best: Option<(usize, EntityHandle, JoinSeq)> = None;
+                    let mut list = 0;
+                    $(
+                        let index = cursors[list];
+                        let handle = EntityHandle::$kind(index);
+                        if (!DRAWN_ONLY || DrawFamily::of(handle).is_some())
+                            && let Some(row) = self.$field.get(index)
+                        {
+                            let seq = row.join_seq();
+                            if best.is_none_or(|(_, _, lowest)| seq < lowest) {
+                                best = Some((list, handle, seq));
+                            }
+                        }
+                        list += 1;
+                    )*
+                    let _ = list;
+                    let (list, handle, seq) = best?;
+                    cursors[list] += 1;
+                    Some((handle, seq))
+                })
+            }
+
+            /// Visits every entity once in join order. On authoritative lists, tick passes
+            /// can reorder storage; report any such list rather than taking it as join order.
             pub(super) fn walk_in_join_order(
                 self,
-                visit: impl FnMut(EntityHandle, JoinSeq),
+                mut visit: impl FnMut(EntityHandle, JoinSeq),
             ) -> Result<(), JoinOrderError> {
-                let lens = [$(self.$field.len()),*];
-                merge_in_join_order(
-                    lens,
-                    |kind, i| {
-                        let mut at = 0;
-                        $(if kind == at {
-                            return self.$field[i].join_seq();
-                        } at += 1;)*
-                        let _ = at;
-                        unreachable!("kind {kind} is not a list")
-                    },
-                    |kind, i| {
-                        let mut at = 0;
-                        $(if kind == at {
-                            return EntityHandle::$kind(i);
-                        } at += 1;)*
-                        let _ = at;
-                        unreachable!("kind {kind} is not a list")
-                    },
-                    visit,
-                )
+                let mut last = JoinSeq::UNJOINED;
+                for (handle, seq) in self.merge_in_join_order::<false>() {
+                    if !seq.is_joined() {
+                        return Err(JoinOrderError::Unjoined(handle));
+                    }
+                    if seq <= last {
+                        return Err(JoinOrderError::OutOfOrder(handle));
+                    }
+                    last = seq;
+                    visit(handle, seq);
+                }
+                Ok(())
             }
         }
 
@@ -1259,6 +1276,8 @@ pub(super) enum JoinOrderError {
 /// The families `entity_geometry` draws in one ordered pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum DrawFamily {
+    Mob,
+    LocalPlayer,
     Item,
     Orb,
     Falling,
@@ -1284,6 +1303,7 @@ impl DrawFamily {
     fn of(handle: EntityHandle) -> Option<(Self, usize)> {
         use EntityHandle as H;
         Some(match handle {
+            H::Mob(i) => (Self::Mob, i),
             H::Item(i) => (Self::Item, i),
             H::Orb(i) => (Self::Orb, i),
             H::Falling(i) => (Self::Falling, i),
@@ -1313,74 +1333,46 @@ fn push_draw_run(runs: &mut Vec<DrawRun>, handle: EntityHandle) {
     }
 }
 
-/// The entities of `lists`' drawn families as runs in the order they joined the level. Lists
-/// the walk refuses (see [`JoinOrderError`]) are taken list by list from `storage_order`, as the
-/// state digest takes them, and nothing the walk had built stays.
-fn draw_runs<H: Iterator<Item = EntityHandle>>(
-    lists: EntityLists<'_>,
-    storage_order: impl FnOnce() -> H,
-    runs: &mut Vec<DrawRun>,
-) {
+/// The drawn entities as runs in the order they joined the level.
+fn draw_runs(lists: EntityLists<'_>, local_player: Option<JoinSeq>, runs: &mut Vec<DrawRun>) {
     runs.clear();
-    if lists
-        .walk_in_join_order(|handle, _| push_draw_run(runs, handle))
-        .is_err()
-    {
-        runs.clear();
-        for handle in storage_order() {
-            push_draw_run(runs, handle);
+    let mut pending = local_player.unwrap_or(JoinSeq::MAX);
+    for (handle, seq) in lists.merge_in_join_order::<true>() {
+        // The local player has its own resident slot, outside these entity lists.
+        if pending < seq {
+            runs.push(LOCAL_PLAYER_RUN);
+            pending = JoinSeq::MAX;
         }
+        push_draw_run(runs, handle);
+    }
+    if pending != JoinSeq::MAX {
+        runs.push(LOCAL_PLAYER_RUN);
     }
 }
+
+const LOCAL_PLAYER_RUN: DrawRun = DrawRun {
+    family: DrawFamily::LocalPlayer,
+    range: 0..1,
+};
 
 impl Game<'_> {
     /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
     /// order they joined the level (`EntityLookup.byId`, which
     /// `LevelExtractor.extractVisibleEntities` follows), whatever their family.
+    ///
+    /// The window sees a client level, including when the server is integrated. Its packet
+    /// handlers append freshly joined bodies without reordering survivors. A dropped item
+    /// reserves its sequence at AddEntity and takes that slot when its stack arrives. Client
+    /// ticks restore lifted rows before nested spawns and put a lent mount back at its old
+    /// index. Respawn either keeps the lists or clears them for a new level. The server's
+    /// save loads, level swaps, and tick-specific list reorders never feed this merge; they
+    /// publish to the window through packets.
     pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
-        draw_runs(entity_lists_of!(self), || self.entity_handles(), runs);
-    }
-}
-
-/// The merge behind the join-order walk, over `N` lists: `lens` are their
-/// lengths, `seq(list, i)` the join number of entity `i` of a list, `handle`
-/// names it. Each step takes the lowest next number among the `N` cursors
-/// (a stack array; no allocation).
-#[allow(
-    dead_code,
-    reason = "the tick order work that reads this has not landed yet"
-)]
-fn merge_in_join_order<const N: usize>(
-    lens: [usize; N],
-    seq: impl Fn(usize, usize) -> JoinSeq,
-    handle: impl Fn(usize, usize) -> EntityHandle,
-    mut visit: impl FnMut(EntityHandle, JoinSeq),
-) -> Result<(), JoinOrderError> {
-    let mut cursor = [0usize; N];
-    let mut last = JoinSeq::UNJOINED;
-    loop {
-        let mut best: Option<(usize, JoinSeq)> = None;
-        for list in 0..N {
-            if cursor[list] < lens[list] {
-                let s = seq(list, cursor[list]);
-                if !s.is_joined() {
-                    return Err(JoinOrderError::Unjoined(handle(list, cursor[list])));
-                }
-                if best.is_none_or(|(_, b)| s < b) {
-                    best = Some((list, s));
-                }
-            }
-        }
-        let Some((list, s)) = best else {
-            return Ok(());
-        };
-        let h = handle(list, cursor[list]);
-        if s <= last {
-            return Err(JoinOrderError::OutOfOrder(h));
-        }
-        last = s;
-        cursor[list] += 1;
-        visit(h, s);
+        // A first-person body can draw into the shadow pass only.
+        let local_player = self
+            .player_model_shown()
+            .then(|| self.resident_entities.local_player.join());
+        draw_runs(entity_lists_of!(self), local_player, runs);
     }
 }
 
@@ -3042,16 +3034,21 @@ mod restore_tests;
 #[cfg(test)]
 mod join_order_tests {
     use super::{DrawFamily, EntityHandle, EntityLists, JoinOrderError};
-    use crate::game::{boats::Boat, fireworks::Rocket, trident::ThrownTrident};
+    use crate::game::{
+        boats::Boat, creatures::render_fixture::mob, fireworks::Rocket, trident::ThrownTrident,
+    };
     use sunrise_client::entities::ArmorStand;
-    use sunrise_client::join_seq::JoinList;
+    use sunrise_client::join_seq::{JoinList, JoinSeq};
+    use sunrise_client::mobs::{Mob, Species};
     use sunrise_core::geometry::Vec3;
 
     fn at() -> Vec3 {
         Vec3::new(0.5, 100.0, 0.5)
     }
 
+    #[derive(Default)]
     struct Lists {
+        mobs: JoinList<Mob>,
         stands: JoinList<ArmorStand>,
         tridents: JoinList<ThrownTrident>,
         rockets: JoinList<Rocket>,
@@ -3061,7 +3058,7 @@ mod join_order_tests {
     impl Lists {
         fn view(&self) -> EntityLists<'_> {
             EntityLists {
-                mobs: &[],
+                mobs: &self.mobs,
                 dropped: &[],
                 boats: &self.boats,
                 carts: &[],
@@ -3082,14 +3079,9 @@ mod join_order_tests {
         }
     }
 
-    /// Joins five kinds' entities interleaved, the way a level gets them.
+    /// Joins different kinds of entities interleaved, the way a level gets them.
     fn mixed() -> (Lists, Vec<EntityHandle>) {
-        let mut l = Lists {
-            stands: JoinList::default(),
-            tridents: JoinList::default(),
-            rockets: JoinList::default(),
-            boats: JoinList::default(),
-        };
+        let mut l = Lists::default();
         l.trident(1);
         l.rocket(2);
         l.stand(3);
@@ -3134,24 +3126,12 @@ mod join_order_tests {
         assert_ne!(joined[0], EntityHandle::ArmorStand(0));
     }
 
-    /// Every entity, each list in turn: what `Game::entity_handles` gives for these lists.
-    fn storage_order(lists: &Lists) -> impl Iterator<Item = EntityHandle> + use<> {
-        let counts = (
-            lists.boats.len(),
-            lists.stands.len(),
-            lists.rockets.len(),
-            lists.tridents.len(),
-        );
-        (0..counts.0)
-            .map(EntityHandle::Boat)
-            .chain((0..counts.1).map(EntityHandle::ArmorStand))
-            .chain((0..counts.2).map(EntityHandle::Rocket))
-            .chain((0..counts.3).map(EntityHandle::Trident))
-    }
-
-    fn runs(lists: &Lists) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
+    fn runs(
+        lists: &Lists,
+        local_player: Option<JoinSeq>,
+    ) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
         let mut runs = Vec::new();
-        super::draw_runs(lists.view(), || storage_order(lists), &mut runs);
+        super::draw_runs(lists.view(), local_player, &mut runs);
         runs.into_iter().map(|r| (r.family, r.range)).collect()
     }
 
@@ -3159,13 +3139,30 @@ mod join_order_tests {
     /// each run names the list range its family draws.
     #[test]
     fn draw_runs_interleave_families_in_join_order() {
-        let (lists, _) = mixed();
+        let mut lists = Lists::default();
+        let cow = |id| mob(id, "minecraft:cow", Species::Cow, 0.9, 1.4);
+        lists.mobs.push(cow(4));
+        lists.mobs.push(cow(3));
+        let local_player = JoinSeq::next();
+        lists.mobs.push(cow(2));
+        lists.trident(6);
+        lists.rocket(8);
+        lists.stand(5);
+        lists.mobs.push(cow(1));
+        lists.boat(7);
+        lists.trident(9);
+        lists.stand(11);
+        lists.rocket(10);
         assert_eq!(
-            runs(&lists),
+            runs(&lists, Some(local_player)),
             [
+                (DrawFamily::Mob, 0..2),
+                (DrawFamily::LocalPlayer, 0..1),
+                (DrawFamily::Mob, 2..3),
                 (DrawFamily::Trident, 0..1),
                 (DrawFamily::Rocket, 0..1),
                 (DrawFamily::ArmorStand, 0..1),
+                (DrawFamily::Mob, 3..4),
                 (DrawFamily::Boat, 0..1),
                 (DrawFamily::Trident, 1..2),
                 (DrawFamily::ArmorStand, 1..2),
@@ -3177,18 +3174,13 @@ mod join_order_tests {
     /// Entities of one family that joined back to back are one run.
     #[test]
     fn draw_runs_join_a_family_that_joined_back_to_back() {
-        let mut lists = Lists {
-            stands: JoinList::default(),
-            tridents: JoinList::default(),
-            rockets: JoinList::default(),
-            boats: JoinList::default(),
-        };
+        let mut lists = Lists::default();
         lists.stand(1);
         lists.stand(2);
         lists.boat(3);
         lists.stand(4);
         assert_eq!(
-            runs(&lists),
+            runs(&lists, None),
             [
                 (DrawFamily::ArmorStand, 0..2),
                 (DrawFamily::Boat, 0..1),
@@ -3197,13 +3189,12 @@ mod join_order_tests {
         );
     }
 
-    /// Entities the pass does not draw split no run: a stand either side of a mob is one.
+    /// Entities the pass does not draw split no run: a stand either side of a general row is one.
     #[test]
     fn an_undrawn_family_splits_no_run() {
         let mut runs = Vec::new();
         for handle in [
             EntityHandle::ArmorStand(0),
-            EntityHandle::Mob(0),
             EntityHandle::General(0),
             EntityHandle::ArmorStand(1),
         ] {
@@ -3214,37 +3205,6 @@ mod join_order_tests {
                 .map(|r| (r.family, r.range))
                 .collect::<Vec<_>>(),
             [(DrawFamily::ArmorStand, 0..2)]
-        );
-    }
-
-    /// Lists the walk refuses are drawn list by list, and the runs the walk had built before it
-    /// stopped are gone: a late entity that never joined sends the whole pass to storage order.
-    #[test]
-    fn lists_the_walk_refuses_are_drawn_list_by_list_with_nothing_kept() {
-        let (mut lists, _) = mixed();
-        lists.stands.push(ArmorStand::new(9, at(), 0.0));
-        lists.stands[2].join = sunrise_client::join_seq::JoinSeq::UNJOINED;
-        assert!(lists.walk().is_err());
-        assert_eq!(
-            runs(&lists),
-            [
-                (DrawFamily::Boat, 0..1),
-                (DrawFamily::ArmorStand, 0..3),
-                (DrawFamily::Rocket, 0..2),
-                (DrawFamily::Trident, 0..2),
-            ]
-        );
-        // A list out of join order is refused the same way.
-        let (mut lists, _) = mixed();
-        lists.tridents.swap(0, 1);
-        assert_eq!(
-            runs(&lists),
-            [
-                (DrawFamily::Boat, 0..1),
-                (DrawFamily::ArmorStand, 0..2),
-                (DrawFamily::Rocket, 0..2),
-                (DrawFamily::Trident, 0..2),
-            ]
         );
     }
 

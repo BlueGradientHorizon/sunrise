@@ -54,9 +54,9 @@ fn the_last_bolt_in_the_draw_list_reaches_the_pack_in_player_space() {
     assert_eq!(bolt_position(&u), [0.0; 4]);
 }
 
-/// It is a `vec4`: a program declaring it so reads it, one declaring a `vec3` or a `bool` reads
-/// 0 as for the other built-ins (a `bool` doesn't take its first component, unlike a scalar
-/// float's), and custom uniforms see four components before the first frame.
+/// It is a `vec4`: a program declaring it so reads it. A `vec3` or `bool` declaration keeps its
+/// initial value (zero unless the shader specifies an initializer), not the first component.
+/// Custom uniforms see four components before the first frame.
 #[test]
 fn the_bolt_position_is_a_vec4() {
     let v = Value::f(&[1.0, 2.0, 3.0, 1.0]);

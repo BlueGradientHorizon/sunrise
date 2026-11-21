@@ -59,7 +59,6 @@ class WorldInputCaptureTests(unittest.TestCase):
         game = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
                        for path in ("game/world/player_spawn.rs", "game/runtime/window_handler.rs", "game.rs"))
         remote_dir = ROOT / "crates/sunrise-client/src/game/network/remote"
-        remote = (remote_dir / "mod.rs").read_text(encoding="utf-8")
         tick = (remote_dir / "tick.rs").read_text(encoding="utf-8")
         level_tick = (remote_dir / "client_level_tick.rs").read_text(encoding="utf-8")
         spawn = method(game, "spawn_player")
@@ -75,7 +74,7 @@ class WorldInputCaptureTests(unittest.TestCase):
         level = method(tick, "tick_remote_player")
         self.assertLess(level.index("self.tick_client_load()"),
                         level.index("self.tick_remote_own_player()"))
-        self.assertIn("self.tick_local_player(", method(remote, "tick_remote_own_player"))
+        self.assertIn("self.tick_local_player(", method(tick, "tick_remote_own_player"))
         # The extracted local-player pass owns the movement input now.
         self.assertIn("let stick = self.pad_move()", method(tick, "tick_local_player"))
 
