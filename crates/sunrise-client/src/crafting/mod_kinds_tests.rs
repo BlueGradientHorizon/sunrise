@@ -173,6 +173,7 @@ fn custom_recipes_decode_once_per_source_generation() {
                         serde_json::json!({"type":"test:literal", "rest":rest}),
                     ),
                 ],
+                &items,
                 &load,
             )
             .unwrap()

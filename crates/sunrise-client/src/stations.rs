@@ -39,7 +39,8 @@ impl StationData {
         defaults: &sunrise_world::item_defaults::ItemDefaults,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         let recipes = crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(
             root,
@@ -846,7 +847,8 @@ impl StationRecipes {
         overlay: &PackOverlay,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> crate::Result<Self> {
-        let sources = crate::crafting::ResolvedSources::load_collecting(root, overlay, context)?;
+        let sources =
+            crate::crafting::ResolvedSources::load_collecting(root, items, overlay, context)?;
         crate::crafting::Recipes::from_resolved(root, items, overlay, &sources)?;
         Ok(Self::from_sources(root, items, &sources))
     }
@@ -858,7 +860,7 @@ impl StationRecipes {
     ) -> Self {
         let mut smithing = Vec::new();
         let mut stonecutting = Vec::new();
-        for recipe in sources.station_recipes(items).iter().flatten() {
+        for recipe in sources.station_recipes() {
             match recipe {
                 ParsedStationRecipe::Smithing(recipe) => smithing.push(recipe.clone()),
                 ParsedStationRecipe::Stonecutting(recipe) if !recipe.input.items.is_empty() => {

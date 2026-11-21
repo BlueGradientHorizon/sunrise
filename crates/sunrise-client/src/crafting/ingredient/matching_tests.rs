@@ -109,7 +109,7 @@ fn empty_ingredient_recipes_retain_predicates_but_not_placement() {
     sources.retain(|(name, _)| {
         !name.starts_with("empty_fixture:direct") && !name.starts_with("empty_fixture:missing")
     });
-    let resolved = ResolvedSources::resolve(sources, &load).unwrap();
+    let resolved = ResolvedSources::resolve(sources, &items, &load).unwrap();
     let root = std::env::temp_dir();
     let recipes = Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &resolved).unwrap();
     let stations = crate::stations::StationRecipes::from_sources(&root, &items, &resolved);

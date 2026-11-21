@@ -1547,6 +1547,7 @@ mod tests {
         // the kind, and no sources reach SyncData or the book.
         let error = crate::crafting::ResolvedSources::load(
             &root,
+            &crate::items::Items::empty(),
             &sunrise_world::loot::PackOverlay::NONE,
             &crate::test_resources::server_load(),
         )
