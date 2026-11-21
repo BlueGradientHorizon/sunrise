@@ -2531,11 +2531,12 @@ pub enum MobEvent {
         mob: u32,
         pos: [i32; 3],
     },
-    /// `WorkAtPoi.start`'s restock of a villager with a trading player.
-    VillagerRestock {
+    /// A restock step of a villager with a trading player: its offers then,
+    /// and the pitch of the trade sound drawn when the screen has a payment.
+    VillagerRestockStep {
         mob: u32,
-        game_time: i64,
-        day: i64,
+        offers: Vec<crate::merchant::MerchantOffer>,
+        pitch: Option<f32>,
     },
     /// A villager asks whether enough neighbours want an iron golem.
     GolemCheck {

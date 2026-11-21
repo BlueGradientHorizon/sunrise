@@ -2887,6 +2887,7 @@ impl Menu {
         );
         let (a, b) = if a.is_none() { (b, None) } else { (a, b) };
         m.active = None;
+        m.paying = a.is_some();
         if a.is_none() {
             self.state.containers[RESULT][0] = None;
             m.future_xp = 0;

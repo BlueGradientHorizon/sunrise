@@ -547,13 +547,22 @@ fn trade(
             "restock" if m.villager => {
                 let time: i64 = f[1].parse()?;
                 let day: i64 = f[2].parse()?;
+                // The mob's offers are the screen's (the game keeps them live):
+                // the brain restocks them, then the screen refreshes its prices.
                 if let Some(sess) = menu.merchant.as_mut() {
-                    // Game::villager_restock_open: the result slot follows the new prices.
-                    if sess.restock_if_due(&mut m.trader, time, day) {
-                        menu.merchant_update(env);
-                    }
-                } else if m.trader.should_restock(time, day) {
+                    m.trader.offers.clone_from(&sess.offers);
+                }
+                let caught = m.trader.catch_up(time, day);
+                let due = m.trader.restock_due(time);
+                if due {
                     m.trader.restock(time);
+                }
+                if let Some(sess) = menu.merchant.as_mut()
+                    && (caught || due)
+                {
+                    sess.offers.clone_from(&m.trader.offers);
+                    sess.update_special_prices();
+                    menu.merchant_update(env);
                 }
             }
             _ => {}

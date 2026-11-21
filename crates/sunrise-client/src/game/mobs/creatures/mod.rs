@@ -3694,11 +3694,9 @@ impl Game<'_> {
                     child,
                 } => self.villager_birth(parent, partner, child),
                 MobEvent::WorkAtComposter { mob, pos } => self.villager_work_at_composter(mob, pos),
-                MobEvent::VillagerRestock {
-                    mob,
-                    game_time,
-                    day,
-                } => self.villager_restock_open(mob, game_time, day),
+                MobEvent::VillagerRestockStep { mob, offers, pitch } => {
+                    self.villager_offers_open(mob, offers, pitch)
+                }
                 MobEvent::GolemCheck { mob, needed } => self.villager_golem_check(mob, needed),
                 MobEvent::Firework { at, color, flight } => {
                     self.villager_firework(at, color, flight)

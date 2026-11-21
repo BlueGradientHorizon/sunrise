@@ -292,6 +292,77 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
+/// A villager's work step restocks while a guest trades: the guest's screen, the packets, the
+/// autosave and the mob after close all hold the restock (it was lost on close before).
+#[test]
+#[ignore = "daily"]
+fn a_restock_while_a_guest_trades_reaches_the_screen_the_save_and_the_mob() {
+    with_guests(|game| {
+        open(game, 2);
+        // The offer is used up; a new day passed (catch-up keeps the used offers, then restock: two updates).
+        let live = |game: &mut Game<'_>, f: &dyn Fn(&mut Session)| {
+            let gm = game.lan.as_mut().unwrap().play.get_mut(&12).unwrap();
+            f(&mut gm.merchant.as_mut().unwrap().merchant.session);
+        };
+        live(game, &|s| s.offers[0].uses = 10);
+        let t = game.mobs[0].extra.trade.as_mut().unwrap();
+        t.offers[0].uses = 10;
+        t.last_restock = -13_000;
+        t.restocks_today = 2;
+        let rx = record_packets(game);
+        let mut mob = game.mobs[0].clone();
+        let mut events = Vec::new();
+        {
+            let w = game.mob_world_base(&[]);
+            sunrise_client::mobs::villager_brain::restock_if_due(&mut mob, &w, &mut events);
+        }
+        game.mobs[0] = mob;
+        assert_eq!(events.len(), 2, "catch-up, then restock");
+        game.handle_mob_events(events).unwrap();
+        let sent = packets(&rx);
+        let offers: Vec<_> = sent
+            .iter()
+            .filter_map(|p| match p {
+                Clientbound::MerchantOffers(o) => Some(o),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offers.len(), 2, "one MerchantOffers per step");
+        assert_eq!(offers[0].offers[0].uses, 10, "the catch-up step");
+        assert_eq!(offers[1].offers[0].uses, 0, "the restock step");
+        assert!(
+            sent.iter()
+                .any(|p| matches!(p, Clientbound::ContainerSetContent(_)))
+        );
+        let screen = game.lan.as_ref().unwrap().play[&12].merchant.as_ref().unwrap();
+        assert_eq!(screen.merchant.session.offers[0].uses, 0);
+        // An autosave with the screen open writes the live offers with the clock.
+        let saved = sunrise_client::entity_nbt::mob_to_nbt(
+            &game.mobs[0],
+            [1, 2, 3, 4],
+            None,
+            Some(game.pack.assets.registry),
+            |_| None,
+            game.items(),
+        );
+        let loaded = sunrise_client::entity_nbt::mob_from_nbt(
+            &saved,
+            game.res.mob_types(),
+            999,
+            Some(game.pack.assets.registry),
+        )
+        .unwrap();
+        let t = loaded.extra.trade.as_ref().unwrap();
+        assert_eq!(t.offers[0].uses, 0);
+        assert_eq!(t.offers[0].demand, offers[1].offers[0].demand);
+        assert_eq!(t.restocks_today, 1);
+        // Close and reopen: the restock is still there.
+        game.guest_close_all(12);
+        let t = game.mobs[0].extra.trade.as_ref().unwrap();
+        assert_eq!((t.offers[0].uses, t.restocks_today), (0, 1));
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn refusal_restores_crafted_score_and_another_merchants_offers() {

@@ -46,6 +46,9 @@ pub struct Trader {
     /// The offers are not made yet (vanilla's `offers` is null): they are
     /// generated when first asked for, keeping the experience.
     pub unset: bool,
+    /// A trading screen is open on this merchant with a payment in it, so a
+    /// refresh of its prices makes the merchant say yes or no (`updateSellItem`).
+    pub paying: bool,
 }
 impl Trader {
     fn update_demand(&mut self) {
@@ -55,12 +58,17 @@ impl Trader {
     }
     /// `Villager.shouldRestock`.
     pub fn should_restock(&mut self, game_time: i64, day: i64) -> bool {
+        self.catch_up(game_time, day);
+        self.restock_due(game_time)
+    }
+    /// The new-day half of `Villager.shouldRestock` (`resetNumberOfRestocks` /
+    /// `catchUpDemand`). True on a new day.
+    pub fn catch_up(&mut self, game_time: i64, day: i64) -> bool {
         let mut new_day = game_time > self.last_restock + 12000;
         new_day |= self.check_day > 0 && day > self.check_day;
         self.check_day = day;
         if new_day {
             self.last_restock = game_time;
-            // resetNumberOfRestocks / catchUpDemand.
             let missed = 2 - self.restocks_today;
             if missed > 0 {
                 for o in &mut self.offers {
@@ -72,6 +80,10 @@ impl Trader {
             }
             self.restocks_today = 0;
         }
+        new_day
+    }
+    /// `allowedToRestock && needsToRestock`.
+    pub fn restock_due(&self, game_time: i64) -> bool {
         let allowed = self.restocks_today == 0
             || self.restocks_today < 2 && game_time > self.last_restock + 2400;
         allowed && self.offers.iter().any(|o| o.uses > 0)
@@ -207,6 +219,8 @@ pub struct Session {
     pub selection_hint: usize,
     pub active: Option<usize>,
     pub future_xp: i32,
+    /// A payment is in the menu (`Trader::paying`).
+    pub paying: bool,
     /// `Mob.ambientSoundTime`.
     pub ambient_sound_time: i32,
     /// `Villager.lastTradedPlayer` is set: the TRADE reputation event is due.
@@ -233,6 +247,7 @@ impl Session {
             selection_hint: 0,
             active: None,
             future_xp: 0,
+            paying: false,
             ambient_sound_time: 0,
             last_traded: false,
             client_side: false,
@@ -255,23 +270,6 @@ impl Session {
         if self.villager {
             update_special_prices(&mut self.offers, self.reputation, self.hero);
         }
-    }
-    /// `Villager.shouldRestock` / `restock` while a player trades: the screen's
-    /// offers are the live ones, so they restock, not the mob's stale copy in
-    /// `trader` (which keeps the restock clock); `updateSpecialPrices` follows.
-    /// True when the offers changed (the player is sent them again).
-    pub fn restock_if_due(&mut self, trader: &mut Trader, game_time: i64, day: i64) -> bool {
-        let before = self.offers.clone();
-        std::mem::swap(&mut trader.offers, &mut self.offers);
-        if trader.should_restock(game_time, day) {
-            trader.restock(game_time);
-        }
-        std::mem::swap(&mut trader.offers, &mut self.offers);
-        let changed = self.offers != before;
-        if changed {
-            self.update_special_prices();
-        }
-        changed
     }
     /// `AbstractVillager.notifyTrade`: the offer's use, then `rewardTradeXp`
     /// (and a level-up with its offers). True when the special prices were
@@ -1077,27 +1075,6 @@ mod tests {
                 expected,
             );
         }
-    }
-
-    #[test]
-    fn an_open_screen_restocks_its_own_offers_not_the_mobs_stale_copy() {
-        // The mob's copy was taken when the screen opened: unused.
-        let mut mob = Trader {
-            offers: vec![offer(4, None)],
-            ..Default::default()
-        };
-        // The screen's offers were used up since: they are the live ones.
-        let mut session = Session::new(vec![offer(4, None)], true);
-        session.offers[0].uses = 12;
-        session.reputation = 5;
-        assert!(session.restock_if_due(&mut mob, 100, 0));
-        let o = &session.offers[0];
-        assert_eq!((o.uses, o.demand, o.special_price_diff), (0, 12, -1));
-        // The restock clock lives on the mob; its stale offers are untouched.
-        assert_eq!((mob.last_restock, mob.restocks_today), (100, 1));
-        assert_eq!((mob.offers[0].uses, mob.offers[0].demand), (0, 0));
-        // Nothing used since: not due, nothing resent.
-        assert!(!session.restock_if_due(&mut mob, 200, 0));
     }
 
     #[test]

@@ -3342,25 +3342,39 @@ fn play_work_sound(m: &mut Mob, cx: &mut Bx) {
     }
 }
 /// `WorkAtPoi.start`'s restock.
-fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
+pub fn restock_if_due(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     if w.professions.state_index(&m.extra.profession).is_none() {
         return;
     }
     let day = w.day_time.div_euclid(24000);
-    // A trading player's open screen holds the live offers (the mob's are stale
-    // until it closes): the game restocks those.
-    if m.extra.flag2 {
-        events.push(MobEvent::VillagerRestock {
-            mob: m.id,
-            game_time: w.game_time,
-            day,
-        });
+    let Some(t) = m.extra.trade.as_mut() else {
+        return;
+    };
+    // Each step with a trading player runs `updateSpecialPrices`, which
+    // updates and resends its screen (a new day can send two); the trade
+    // sound's pitch is drawn here, in work-step order.
+    let mut steps = Vec::new();
+    if t.catch_up(w.game_time, day) {
+        steps.push(t.offers.clone());
+    }
+    if t.restock_due(w.game_time) {
+        t.restock(w.game_time);
+        steps.push(t.offers.clone());
+    }
+    let paying = t.paying;
+    if !m.extra.flag2 {
         return;
     }
-    if let Some(t) = m.extra.trade.as_mut()
-        && t.should_restock(w.game_time, day)
-    {
-        t.restock(w.game_time);
+    for offers in steps.into_iter().filter(|o| !o.is_empty()) {
+        let pitch = (paying && m.ambient_timer > -60).then(|| {
+            m.ambient_timer = -80;
+            m.voice_pitch()
+        });
+        events.push(MobEvent::VillagerRestockStep {
+            mob: m.id,
+            offers,
+            pitch,
+        });
     }
 }
 #[cfg(test)]
