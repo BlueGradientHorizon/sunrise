@@ -254,7 +254,7 @@ impl Game<'_> {
     fn dispatch_general_tick(&mut self, kind: &str, epoch: mod_api::WorldEpoch, id: u32) {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             mod_api::run_transaction(self, |game, _| {
-                game.native_general_entity_tick(kind, EntityRef::new(epoch, id));
+                game.tick_general_row_scoped(kind, EntityRef::new(epoch, id));
                 Ok::<_, std::convert::Infallible>(())
             })
         }));

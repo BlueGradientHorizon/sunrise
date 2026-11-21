@@ -53,15 +53,14 @@ impl Game<'_> {
     /// `stack` is about to tick (`ItemEntity.tick`). Set `canceled` and its
     /// movement and merging are skipped for this tick. Server-side.
     pub(in crate::game) fn native_on_entity_item_update(
-        &mut self,
         call: mod_api::__private::OnEntityItemUpdateCall<'_>,
     ) {
-        self.fire_on_entity_item_update(call);
+        Self::fire_on_entity_item_update(call);
     }
 
     /// Asks the parts of the item entity at `index` of `dropped` whether its tick
     /// ends here. An item no part is attached to is told nothing: its stack is not
-    /// converted and no handle is made.
+    /// converted and no scope is made.
     pub(in crate::game) fn item_update_halts(&mut self, index: usize) -> bool {
         let item = &self.dropped[index];
         if !mod_api::__private::item_listens(mod_api::HookId::OnEntityItemUpdate, &item.stack.item)
@@ -78,12 +77,119 @@ impl Game<'_> {
             return false;
         };
         let mut canceled = false;
-        self.native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
+        let mut access = ItemEntityTickAccess {
+            game: self,
+            subject: handle,
+        };
+        Self::native_on_entity_item_update(mod_api::__private::OnEntityItemUpdateCall {
             stack: &stack,
-            item: handle,
+            subject: mod_api::ItemEntityServerScope::new(&mut access),
             canceled: &mut canceled,
         });
         canceled
+    }
+}
+
+struct ResidentDroppedItem<'g, 'w> {
+    game: &'g mut Game<'w>,
+    subject: mod_api::ItemEntityRef,
+    index: usize,
+}
+
+impl mod_api::ResidentItemEntity for ResidentDroppedItem<'_, '_> {
+    fn position(&self) -> [f64; 3] {
+        let p = self.game.dropped[self.index].position;
+        [p.x, p.y, p.z]
+    }
+    fn velocity(&self) -> [f64; 3] {
+        let v = self.game.dropped[self.index].velocity;
+        [v.x, v.y, v.z]
+    }
+    fn with_stack(&self, call: &mut dyn for<'a> FnMut(mod_api::ItemStackView<'a>)) {
+        use crate::game::api_values::{project_stack, stack_read_metadata};
+        let stack = &self.game.dropped[self.index].stack;
+        let Ok(metadata) = stack_read_metadata(stack) else {
+            return;
+        };
+        let project = |metadata| project_stack(stack, metadata).ok();
+        call(mod_api::ItemStackView::resident(metadata, &project));
+    }
+    fn pickup_delay(&self) -> Option<i32> {
+        let delay = self.game.dropped[self.index].pickup_delay;
+        if delay == i64::from(u32::MAX) {
+            Some(i32::from(i16::MAX))
+        } else {
+            i32::try_from(delay).ok()
+        }
+    }
+    fn age(&self) -> i32 {
+        self.game.dropped[self.index].age
+    }
+    fn target(&self) -> Option<u128> {
+        self.game.dropped[self.index]
+            .target
+            .map(sunrise_client::lan::playerdata::ints_uuid)
+    }
+    fn owner(&self) -> Option<mod_api::EntityRef> {
+        self.game.item_entity_owner(self.subject)
+    }
+    fn set_stack(&mut self, stack: mod_api::ItemStack) -> Result<bool, mod_api::StackWriteError> {
+        use crate::game::api_values::TryIntoEngine;
+        let stack = stack.try_into_engine(self.game.res.items())?;
+        if stack.count == 0 || &*stack.item == "minecraft:air" {
+            return Ok(false);
+        }
+        Ok(self
+            .game
+            .journal_set_item_entity(self.subject.entity().id(), stack))
+    }
+    fn set_pickup_delay(&mut self, ticks: i32) -> bool {
+        self.game.dropped[self.index].pickup_delay = i64::from(ticks);
+        true
+    }
+    fn set_target(&mut self, target: Option<u128>) -> bool {
+        self.game.dropped[self.index].target =
+            target.map(sunrise_client::lan::playerdata::uuid_ints);
+        true
+    }
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.game.dropped[self.index].velocity =
+            sunrise_core::geometry::Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+}
+
+struct ItemEntityTickAccess<'g, 'w> {
+    game: &'g mut Game<'w>,
+    subject: mod_api::ItemEntityRef,
+}
+
+impl mod_api::ItemEntityServerAccess for ItemEntityTickAccess<'_, '_> {
+    fn with_view(&mut self, call: &mut dyn FnMut(mod_api::ItemEntitySubjectView<'_>)) {
+        if !self.game.is_logical_server() {
+            return;
+        }
+        let Some(crate::game::commands::Target::Item(id)) =
+            self.game.native_entity_target(self.subject.entity())
+        else {
+            return;
+        };
+        let Some(index) = self.game.dropped.iter().position(|item| item.id == id) else {
+            return;
+        };
+        let mut data = ResidentDroppedItem {
+            game: self.game,
+            subject: self.subject,
+            index,
+        };
+        call(mod_api::ItemEntitySubjectView::new(self.subject, &mut data));
+    }
+
+    fn host(&mut self) -> &mut dyn mod_api::ServerHost {
+        self.game
     }
 }
 

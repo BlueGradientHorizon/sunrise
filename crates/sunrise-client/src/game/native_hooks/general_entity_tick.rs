@@ -1,17 +1,128 @@
 use super::*;
+use crate::game::{
+    commands::{Target, entity_pitch},
+    general::GeneralRow,
+};
+use mod_api::{
+    EntityRef, EntityServerAccess, EntityServerScope, EntitySubjectView, ResidentGeneralEntity,
+    ServerHost,
+};
+use sunrise_client::lan::playerdata::ints_uuid;
+use sunrise_core::geometry::Vec3;
+
+struct ResidentGeneralRow<'a> {
+    row: &'a mut GeneralRow,
+    kind: &'a str,
+}
+
+impl ResidentGeneralEntity for ResidentGeneralRow<'_> {
+    fn kind(&self) -> &str {
+        self.kind
+    }
+    fn position(&self) -> [f64; 3] {
+        [
+            self.row.position.x,
+            self.row.position.y,
+            self.row.position.z,
+        ]
+    }
+    fn velocity(&self) -> [f64; 3] {
+        [
+            self.row.velocity.x,
+            self.row.velocity.y,
+            self.row.velocity.z,
+        ]
+    }
+    fn rotation(&self) -> [f32; 2] {
+        self.row.rotation
+    }
+    fn uuid(&self) -> u128 {
+        ints_uuid(self.row.uuid)
+    }
+    fn set_velocity(&mut self, velocity: [f64; 3]) -> bool {
+        if !velocity.iter().all(|v| v.is_finite()) {
+            return false;
+        }
+        self.row.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
+        true
+    }
+    fn set_rotation(&mut self, yaw: f32, pitch: f32) -> bool {
+        if !yaw.is_finite() || !pitch.is_finite() {
+            return false;
+        }
+        self.row.rotation = [yaw, entity_pitch(pitch)];
+        true
+    }
+    fn reset_fall_distance(&mut self) {
+        self.row.fall_distance = 0.0;
+    }
+}
+
+struct GeneralTickAccess<'g, 'w, 'k> {
+    game: &'g mut Game<'w>,
+    subject: EntityRef,
+    kind: &'k str,
+}
+
+impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
+    fn with_view(&mut self, call: &mut dyn FnMut(EntitySubjectView<'_>)) {
+        if !self.game.is_logical_server()
+            || self.game.native_lifecycle.epoch() != Some(self.subject.epoch())
+            || self
+                .game
+                .persist
+                .removals
+                .contains(&Target::General(self.subject.id()))
+        {
+            return;
+        }
+        let Some(row) = self
+            .game
+            .resident_entities
+            .general
+            .row_mut(self.subject.id())
+        else {
+            return;
+        };
+        let mut data = ResidentGeneralRow {
+            row,
+            kind: self.kind,
+        };
+        call(EntitySubjectView::new(self.subject, &mut data));
+    }
+
+    fn host(&mut self) -> &mut dyn ServerHost {
+        self.game
+    }
+}
 
 impl Game<'_> {
-    /// The authoritative tick of one general entity row of type `kind`
-    /// (`mymod:robot`) with ID `entity` (#792 stage 4): `ServerLevel
-    /// .tickNonPassenger`'s `entity.tick()` for a row the type registry owns,
-    /// its rider subtree ticked after it. Read and change the row's data
-    /// through its attachments; a part hears only the type it is attached
-    /// to. Vanilla families never reach this call. Server-side.
-    pub(in crate::game) fn native_general_entity_tick(
+    /// Dispatch the authoritative tick of one resident general entity row of type `kind`,
+    /// lending its live row sequentially with `ServerHost`.
+    pub(in crate::game) fn tick_general_row_scoped(
         &mut self,
         kind: &str,
-        entity: mod_api::EntityRef,
+        subject: mod_api::EntityRef,
     ) {
-        self.fire_general_entity_tick(kind, entity);
+        let mut access = GeneralTickAccess {
+            game: self,
+            subject,
+            kind,
+        };
+        Self::native_general_entity_tick(mod_api::__private::GeneralEntityTickCall {
+            kind,
+            subject: EntityServerScope::new(&mut access),
+        });
+    }
+
+    /// The authoritative tick of one general entity row of type `kind`
+    /// (`mymod:robot`) (#792 stage 4): `ServerLevel.tickNonPassenger`'s
+    /// `entity.tick()` for a row the type registry owns, its rider subtree
+    /// ticked after it. The scope lends the live row sequentially with `ServerHost`.
+    /// Vanilla families never reach this call. Server-side.
+    pub(in crate::game) fn native_general_entity_tick(
+        call: mod_api::__private::GeneralEntityTickCall<'_>,
+    ) {
+        Self::fire_general_entity_tick(call);
     }
 }

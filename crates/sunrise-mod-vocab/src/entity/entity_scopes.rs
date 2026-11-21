@@ -54,10 +54,6 @@ impl<'a> EntitySubjectView<'a> {
     pub fn rotation(&self) -> [f32; 2] {
         self.data.rotation()
     }
-    /// Whether the entity stands on a block (`Entity.onGround`).
-    pub fn on_ground(&self) -> bool {
-        self.data.on_ground()
-    }
     /// The entity's persistent UUID.
     pub fn uuid(&self) -> u128 {
         self.data.uuid()
@@ -210,7 +206,9 @@ impl<'a> EntityClientScope<'a> {
     // hidden: dispatch routes entity parts from the live subject without a separate Host.
     #[doc(hidden)]
     pub fn route_kind(&self) -> Option<&str> {
-        self.0.route_kind()
+        self.0
+            .route_kind()
+            .and_then(crate::content::registry_keys::entity_type_name)
     }
 
     /// Lend the client entity view for `f`. Returns `None` if the entity is no longer resident.
@@ -393,7 +391,6 @@ pub trait ResidentGeneralEntity {
     fn position(&self) -> [f64; 3];
     fn velocity(&self) -> [f64; 3];
     fn rotation(&self) -> [f32; 2];
-    fn on_ground(&self) -> bool;
     fn uuid(&self) -> u128;
     fn set_velocity(&mut self, velocity: [f64; 3]) -> bool;
     fn set_rotation(&mut self, yaw: f32, pitch: f32) -> bool;
@@ -422,7 +419,7 @@ pub trait ResidentClientEntity {
 // hidden: the engine owns alternating view and Host loans; listeners receive EntityClientScope.
 #[doc(hidden)]
 pub trait EntityClientAccess {
-    fn route_kind(&self) -> Option<&str>;
+    fn route_kind(&self) -> Option<EntityTypeKey>;
     fn with_view(&mut self, f: &mut dyn FnMut(EntityClientView<'_>));
     fn host(&mut self) -> &mut dyn ClientHost;
 }
