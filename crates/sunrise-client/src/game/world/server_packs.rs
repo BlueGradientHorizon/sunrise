@@ -767,7 +767,7 @@ mod tests {
                     message.component(),
                     serde_json::json!({
                         "translate": "sunrise.mods.hook_panic.description",
-                        "with": ["veto_mod", "client_tick_pre"],
+                        "with": [{"text": "veto_mod"}, {"text": "client_tick_pre"}],
                     })
                 );
                 assert!(message.plain().contains("veto_mod"));

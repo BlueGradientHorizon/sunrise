@@ -6,11 +6,19 @@ use std::{
 use sunrise_core::nbt::{Compound, Tag};
 
 /// An admitted effect: the codec value's canonical saved map and its typed Wire form.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Admitted {
     pub name: Arc<str>,
     pub saved: Arc<Tag>,
     pub wire: Arc<[u8]>,
+    // A preserved template can still hold the original map rather than its canonical projection.
+    source: Option<Arc<Tag>>,
+}
+
+impl PartialEq for Admitted {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.saved == other.saved && self.wire == other.wire
+    }
 }
 
 type Load = dyn Fn(&Compound) -> Result<(Compound, Vec<u8>), String> + Send + Sync;
@@ -82,7 +90,12 @@ impl Admitted {
             name: name.clone(),
             saved: Arc::new(Tag::Compound(fields)),
             wire,
+            source: None,
         }
+    }
+
+    pub fn matches_tag(&self, tag: &Tag) -> bool {
+        self.saved.as_ref() == tag || self.source.as_deref() == Some(tag)
     }
 }
 
@@ -92,8 +105,12 @@ pub fn admit(name: &str, fields: &Compound) -> Result<Option<Admitted>, String> 
     let Some((name, ty)) = by_name(name) else {
         return Ok(None);
     };
-    let mut fields = fields.clone();
-    fields.remove(&"type".into());
-    let (saved, wire) = (ty.load)(&fields)?;
-    Ok(Some(Admitted::new(name, saved, wire.into())))
+    let mut input = fields.clone();
+    input.remove(&"type".into());
+    let (saved, wire) = (ty.load)(&input)?;
+    let mut effect = Admitted::new(name, saved, wire.into());
+    if matches!(effect.saved.as_ref(), Tag::Compound(saved) if saved != fields) {
+        effect.source = Some(Arc::new(Tag::Compound(fields.clone())));
+    }
+    Ok(Some(effect))
 }

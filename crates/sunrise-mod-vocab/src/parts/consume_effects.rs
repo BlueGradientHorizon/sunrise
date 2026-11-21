@@ -24,13 +24,16 @@ impl ConsumeEffectType {
     /// Construct a type from its persistent map codec. Implement the stream
     /// form by deriving [`Wire`](crate::Wire) on `T`. The game handles the
     /// dispatch key `type`; neither function reads or writes that field.
-    /// `load` validates saved data before the stack is admitted; `save` writes
-    /// the canonical fields of that value, including when received over Wire.
+    /// `load` validates fields in new data and edits, including effects in nested
+    /// stack templates. `save` writes the canonical fields when a value is
+    /// admitted, including when it arrives over Wire.
     /// Neither callback depends on the live gameplay listener being enabled.
     /// Both can run on load and network threads. Return an error for invalid
     /// data rather than panicking: an error refuses that value, whereas a panic
-    /// disables the callback for the session. Failure in either map callback
-    /// does not disable structural Wire decoding.
+    /// disables that callback for the session and names the mod in the log and
+    /// error toast. Reopening a save retains an effect's original data if its
+    /// codec fails, without running the effect. Failure in a map callback does
+    /// not disable structural Wire decoding.
     pub fn new<T: wire::Wire + 'static>(
         load: fn(&Compound) -> Result<T, String>,
         save: fn(&T) -> Result<Compound, String>,

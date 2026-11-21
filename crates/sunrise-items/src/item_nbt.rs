@@ -91,13 +91,15 @@ pub fn item_from_persistent_nbt(tag: &Tag) -> Option<crate::items::ItemStack> {
     if let Some(components) = tag.get("components") {
         sunrise_world::item_defaults::validate_component_map_tag(components).ok()?;
     }
-    item_from_nbt(tag)
+    let stack = item_from_nbt(tag)?;
+    (!stack.has_refused_consume_effects()).then_some(stack)
 }
 /// A stack read from a save. Earlier Sunrise saves can hold transient components
 /// (`creative_slot_lock`, `additional_trade_cost`, `map_post_processing`), so only
 /// those entries are dropped and the stack stays; commands and data files use
 /// [`item_from_persistent_nbt`]. Cost: one pass over the component keys; the
-/// patch is cloned only when it holds a transient entry.
+/// patch is cloned only when it holds a transient entry. A refused registered
+/// effect remains in the saved patch but isn't installed in the live stack.
 ///
 /// ItemStack.CODEC's count range is independent of the item's stack limit;
 /// an out-of-range count uses the field's default of one. The id is read as an
@@ -136,20 +138,12 @@ pub(crate) fn item_from_nbt_with_effects(
         Some(effects) => crate::item_data::decode_network_components(components, effects),
         None => crate::item_data::decode_components(components),
     };
-    let stack = crate::items::ItemStack {
+    Some(crate::items::ItemStack {
         item: Arc::from(id.as_str()),
         count,
         damage,
         extra,
-    };
-    if let Some(components) = components
-        && ((components.get("minecraft:consumable").is_some() && stack.consumable(None).is_none())
-            || (components.get("minecraft:death_protection").is_some()
-                && stack.death_protection(None).is_none()))
-    {
-        return None;
-    }
-    Some(stack)
+    })
 }
 pub fn encode_items(slots: &[Option<crate::items::ItemStack>], items: &crate::items::Items) -> Tag {
     Tag::List(encode_items_using(slots, |stack| item_to_nbt(stack, items)))

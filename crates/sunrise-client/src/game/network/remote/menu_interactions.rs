@@ -41,7 +41,6 @@ impl Game<'_> {
             };
             clicks.push((slot, button, input));
         }
-        // Unpredicted: nothing changed, the carried stack as it is.
         let mut prepared = None;
         let mut threw = false;
         self.menu_session_with_game(|game, m, env, _| {
@@ -52,27 +51,18 @@ impl Game<'_> {
             let packets = game.prepare_clicks(container, &predicted);
             let commit = packets.is_ok();
             prepared = Some(packets.map(|packets| (predicted, packets)));
-            threw = dropped;
+            threw = commit && dropped;
             Some(commit)
         });
-        let result = prepared.unwrap_or_else(|| {
-            let unpredicted: Vec<Predicted> = clicks
-                .iter()
-                .map(|&(slot, button, input)| {
-                    (slot, button, input, Vec::new(), self.carried.clone())
-                })
-                .collect();
-            self.prepare_clicks(container, &unpredicted)
-                .map(|packets| (unpredicted, packets))
-        });
-        let (predicted, packets) = match result {
-            Ok(result) => result,
-            Err(error) => {
-                log::warn!("Refused menu click: {error}");
-                return false;
+        match prepared {
+            Some(Ok((predicted, packets))) => self.send_clicks(&predicted, packets),
+            other => {
+                if let Some(Err(error)) = other {
+                    log::warn!("Sending menu clicks without prediction: {error}");
+                }
+                self.send_unpredicted_clicks(container, clicks);
             }
-        };
-        self.send_clicks(&predicted, packets);
+        }
         // LivingEntity.drop(.., Prediction.PREDICTED): the client swings its own
         // main hand; the server shows the swing only to the other players.
         if threw {
@@ -89,12 +79,7 @@ impl Game<'_> {
         let Some(slot) = Self::menu_slot_index(&menu, internal) else {
             return false;
         };
-        let carried = self.carried.clone();
-        let clicks = [(slot as i16, 0, Input::QuickMove, Vec::new(), carried)];
-        match self.prepare_clicks(container, &clicks) {
-            Ok(packets) => self.send_clicks(&clicks, packets),
-            Err(error) => log::warn!("Refused quick move: {error}"),
-        }
+        self.send_unpredicted_clicks(container, [(slot as i16, 0, Input::QuickMove)]);
         true
     }
     /// A Shift double click on a server (`AbstractContainerScreen.mouseReleased`):
@@ -121,10 +106,46 @@ impl Game<'_> {
         });
         match prepared {
             Some(Ok(packets)) => self.send_clicks(&sent, packets),
-            Some(Err(error)) => log::warn!("Refused quick move: {error}"),
+            Some(Err(error)) => {
+                log::warn!("Sending quick moves without prediction: {error}");
+                self.send_unpredicted_clicks(
+                    container,
+                    sent.into_iter()
+                        .map(|(slot, button, input, ..)| (slot, button, input)),
+                );
+            }
             None => (),
         }
     }
+
+    /// Don't publish an unhashable local prediction. The server runs the click
+    /// normally and broadcasts changed slots; an unhashable cursor claims no match.
+    fn send_unpredicted_clicks(
+        &mut self,
+        container: i32,
+        clicks: impl IntoIterator<Item = (i16, i32, Input)>,
+    ) {
+        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let carried = match self.hashed_stack(&self.carried) {
+            Ok(carried) => carried,
+            Err(error) => {
+                log::warn!("Cannot hash the carried stack for a menu click: {error}");
+                None
+            }
+        };
+        for (slot, button, input) in clicks {
+            self.send(S::ContainerClick(play::ContainerClick {
+                container,
+                state,
+                slot,
+                button: button as i8,
+                input: input_ordinal(input),
+                changed: Vec::new(),
+                carried: carried.clone(),
+            }));
+        }
+    }
+
     fn prepare_clicks(
         &self,
         container: i32,
@@ -209,7 +230,8 @@ impl Game<'_> {
         let carried = match self.hashed_stack(&predicted) {
             Ok(carried) => carried,
             Err(error) => {
-                log::warn!("Refused drop click: {error}");
+                log::warn!("Sending drop click without prediction: {error}");
+                self.send_unpredicted_clicks(container, [(-999, i32::from(right), input)]);
                 return;
             }
         };

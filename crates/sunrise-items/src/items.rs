@@ -207,6 +207,7 @@ pub(crate) fn stack_effects(
     raw: &mut sunrise_core::nbt::Tag,
     key: &str,
     received: Option<&[sunrise_world::component_value::consume_effects::Admitted]>,
+    mut refused: Option<&mut bool>,
 ) -> Result<Vec<ConsumeEffect>, String> {
     use sunrise_core::nbt::Tag;
     use sunrise_world::component_value::consume_effects::admit;
@@ -240,7 +241,18 @@ pub(crate) fn stack_effects(
                     .iter()
                     .find(|effect| effect.saved.as_ref() == entry)
                     .cloned(),
-                None => admit(&kind, fields)?,
+                None => match admit(&kind, fields) {
+                    Ok(effect) => effect,
+                    Err(error) => {
+                        // The registered codec already reported the error. Preserve this
+                        // saved entry, but don't let it run or discard its siblings.
+                        let Some(refused) = refused.as_deref_mut() else {
+                            return Err(error);
+                        };
+                        *refused = true;
+                        continue;
+                    }
+                },
             };
             let data = if let Some(effect) = &registered {
                 *entry = (*effect.saved).clone();

@@ -100,6 +100,10 @@ pub struct StackData {
     /// Saved consumable and its typed runtime value, replaced together.
     consumable: Option<Arc<ConsumableComponent>>,
     death_protection: Option<Arc<Vec<crate::items::ConsumeEffect>>>,
+    death_protection_refused: bool,
+    // Original template NBT stays in `other`; these decoded children retain admitted effects.
+    use_remainder_template: Option<Box<ItemStack>>,
+    sulfur_cube_template: Option<Box<ItemStack>>,
     /// Validated nutrition; the original component is preserved in `other`.
     villager_food: Option<i32>,
     /// `minecraft:potion_contents.potion`.
@@ -167,6 +171,9 @@ impl PartialEq for StackData {
             kinetic_weapon,
             consumable,
             death_protection,
+            death_protection_refused: _,
+            use_remainder_template: _,
+            sulfur_cube_template: _,
             villager_food,
             potion,
             potion_extra,
@@ -240,6 +247,9 @@ impl std::hash::Hash for StackData {
             kinetic_weapon,
             consumable,
             death_protection,
+            death_protection_refused: _,
+            use_remainder_template: _,
+            sulfur_cube_template: _,
             villager_food,
             potion,
             potion_extra,
@@ -335,10 +345,18 @@ use sunrise_world::component_value::consume_effects::Admitted;
 struct ConsumableComponent {
     raw: Tag,
     value: crate::items::ItemConsumable,
+    refused: bool,
 }
 impl ConsumableComponent {
     fn new(mut raw: Tag, received: Option<&[Admitted]>) -> Option<Arc<Self>> {
-        let effects = crate::items::stack_effects(&mut raw, "on_consume_effects", received).ok()?;
+        let mut refused = false;
+        let effects = crate::items::stack_effects(
+            &mut raw,
+            "on_consume_effects",
+            received,
+            Some(&mut refused),
+        )
+        .ok()?;
         let sound = raw.get("sound");
         let value = crate::items::ItemConsumable {
             seconds: raw
@@ -360,7 +378,11 @@ impl ConsumableComponent {
                 .unwrap_or(true),
             effects,
         };
-        Some(Arc::new(Self { raw, value }))
+        Some(Arc::new(Self {
+            raw,
+            value,
+            refused,
+        }))
     }
 }
 /// The component patch a server sent for a stack, as the creative slot packet
@@ -368,14 +390,48 @@ impl ConsumableComponent {
 /// changed since. Like vanilla's `BundleContents.selectedItem` it is left out
 /// when stacks are compared.
 #[derive(Clone, Debug, Default)]
-pub struct Wire(Option<Arc<(ItemStack, Arc<[u8]>)>>);
+pub struct Wire(Option<Arc<WireData>>);
+
+#[derive(Debug)]
+struct WireData {
+    decoded: ItemStack,
+    patch: Arc<[u8]>,
+    effect_mapping: Option<Arc<()>>,
+    admitted_effects: Vec<Admitted>,
+    effect_refused: bool,
+}
+
 impl Wire {
     pub fn new(decoded: ItemStack, patch: Arc<[u8]>) -> Self {
-        Self(Some(Arc::new((decoded, patch))))
+        Self::from_network(decoded, patch, None, Vec::new(), false)
     }
+
+    pub fn from_network(
+        decoded: ItemStack,
+        patch: Arc<[u8]>,
+        effect_mapping: Option<Arc<()>>,
+        admitted_effects: Vec<Admitted>,
+        effect_refused: bool,
+    ) -> Self {
+        Self(Some(Arc::new(WireData {
+            decoded,
+            patch,
+            effect_mapping,
+            admitted_effects,
+            effect_refused,
+        })))
+    }
+
     /// The server's patch, whether or not the stack changed since.
     pub fn patch(&self) -> Option<&[u8]> {
-        self.0.as_deref().map(|(_, patch)| &**patch)
+        self.0.as_ref().map(|wire| wire.patch.as_ref())
+    }
+
+    /// The effects projected from this exact patch, not from edits made since.
+    pub fn admitted_effects(&self) -> &[Admitted] {
+        self.0
+            .as_ref()
+            .map_or(&[], |wire| wire.admitted_effects.as_slice())
     }
 }
 impl PartialEq for Wire {
@@ -433,33 +489,94 @@ impl StackData {
     pub fn kinetic_weapon(&self) -> Option<&crate::kinetic_weapon::KineticComponent> {
         self.kinetic_weapon.as_ref()
     }
-    /// Borrow preserved components without bypassing their insertion codecs.
-    /// Project an admitted effect component into the common stream encoder's value.
-    pub fn effect_codec_value(
-        &self,
-        name: &str,
-        raw: &Tag,
-    ) -> Result<sunrise_world::component_value::Value, String> {
-        let effects = match name {
-            "minecraft:consumable" => self.consumable.as_ref().map(|c| c.value.effects.as_slice()),
-            _ => self.death_protection.as_deref().map(Vec::as_slice),
-        }
-        .ok_or_else(|| "invalid consume effect component".to_owned())?;
-        sunrise_world::component_value::source::from_admitted_effect_component_tag(
-            name,
-            raw,
-            &|tag| {
-                effects.iter().find_map(|effect| match effect {
-                    crate::items::ConsumeEffect::Native {
-                        registered: Some(effect),
-                        ..
-                    } if effect.saved.as_ref() == tag => Some(effect.clone()),
-                    _ => None,
-                })
-            },
-        )
+    /// Components whose stack templates or own values can carry consume effects.
+    pub const CONSUME_EFFECT_COMPONENTS: [&str; 8] = [
+        "minecraft:consumable",
+        "minecraft:death_protection",
+        "minecraft:bundle_contents",
+        "minecraft:charged_projectiles",
+        "minecraft:container",
+        "minecraft:pot_decorations",
+        "minecraft:use_remainder",
+        "minecraft:sulfur_cube_content",
+    ];
+
+    fn effect_templates(&self) -> impl Iterator<Item = (&'static str, &ItemStack)> {
+        self.bundle_contents
+            .iter()
+            .map(|s| ("minecraft:bundle_contents", s))
+            .chain(
+                self.charged
+                    .iter()
+                    .map(|s| ("minecraft:charged_projectiles", s)),
+            )
+            .chain(
+                self.container
+                    .iter()
+                    .map(|(_, s)| ("minecraft:container", s)),
+            )
+            .chain(
+                self.pot_decorations
+                    .iter()
+                    .flat_map(|sides| sides.iter().flatten())
+                    .map(|s| ("minecraft:pot_decorations", s)),
+            )
+            .chain(
+                self.use_remainder_template
+                    .as_deref()
+                    .map(|s| ("minecraft:use_remainder", s)),
+            )
+            .chain(
+                self.sulfur_cube_template
+                    .as_deref()
+                    .map(|s| ("minecraft:sulfur_cube_content", s)),
+            )
     }
 
+    /// Whether decoding this override (including any child stack) refused an effect.
+    pub fn refused_consume_effect_component(&self, id: &str) -> bool {
+        match id {
+            "minecraft:consumable" => self
+                .consumable
+                .as_ref()
+                .map_or_else(|| self.other(id).is_some(), |value| value.refused),
+            "minecraft:death_protection" => {
+                self.death_protection_refused
+                    || (self.death_protection.is_none() && self.other(id).is_some())
+            }
+            _ => self
+                .effect_templates()
+                .any(|(name, stack)| name == id && stack.has_refused_consume_effects()),
+        }
+    }
+
+    /// Find an effect retained at admission without reinvoking its map codec.
+    pub fn find_admitted_consume_effect(
+        &self,
+        matches: &impl Fn(&Admitted) -> bool,
+    ) -> Option<Admitted> {
+        self.consumable
+            .iter()
+            .flat_map(|c| &c.value.effects)
+            .chain(
+                self.death_protection
+                    .iter()
+                    .flat_map(|effects| effects.iter()),
+            )
+            .find_map(|effect| match effect {
+                crate::items::ConsumeEffect::Native {
+                    registered: Some(effect),
+                    ..
+                } if matches(effect) => Some(effect.clone()),
+                _ => None,
+            })
+            .or_else(|| {
+                self.effect_templates()
+                    .find_map(|(_, stack)| stack.data()?.find_admitted_consume_effect(matches))
+            })
+    }
+
+    /// Borrow preserved components without bypassing their insertion codecs.
     pub fn preserved_components(&self) -> &[(String, Tag)] {
         &self.other
     }
@@ -471,8 +588,10 @@ impl StackData {
         if id == "minecraft:kinetic_weapon" {
             return self.kinetic_weapon.as_ref().map(|k| k.raw());
         }
-        if id == "minecraft:consumable" {
-            return self.consumable.as_ref().map(|c| &c.raw);
+        if id == "minecraft:consumable"
+            && let Some(consumable) = &self.consumable
+        {
+            return Some(&consumable.raw);
         }
         self.other.iter().find(|(k, _)| k == id).map(|(_, v)| v)
     }
@@ -631,24 +750,39 @@ impl StackData {
         }
         if id == "minecraft:death_protection" {
             self.death_protection = match value.as_mut() {
-                Some(raw) => match crate::items::stack_effects(raw, "death_effects", None) {
+                Some(raw) => match crate::items::stack_effects(raw, "death_effects", None, None) {
                     Ok(effects) => Some(Arc::new(effects)),
                     Err(_) => return,
                 },
                 None => None,
             };
+            self.death_protection_refused = false;
         }
         if id == "minecraft:consumable" {
             let replacement = match value {
                 Some(raw) => match ConsumableComponent::new(raw, None) {
-                    Some(component) => Some(component),
-                    None => return,
+                    Some(component) if !component.refused => Some(component),
+                    _ => return,
                 },
                 None => None,
             };
             self.other.retain(|(k, _)| k != id);
             self.consumable = replacement;
             return;
+        }
+        if let Some(cache) = match id {
+            "minecraft:use_remainder" => Some(&mut self.use_remainder_template),
+            "minecraft:sulfur_cube_content" => Some(&mut self.sulfur_cube_template),
+            _ => None,
+        } {
+            let template = value.as_ref().and_then(template_from);
+            if template
+                .as_ref()
+                .is_some_and(ItemStack::has_refused_consume_effects)
+            {
+                return;
+            }
+            *cache = template.map(Box::new);
         }
         let edits_raid_patch = (self.ominous_banner
             || self.banner_patterns.len() == OMINOUS_LAYERS.len())
@@ -839,8 +973,12 @@ impl StackData {
                 "minecraft:repair_cost" => replace_fields!(repair_cost),
                 "minecraft:custom_name" => replace_fields!(custom_name),
                 "minecraft:potion_contents" => replace_fields!(potion, potion_extra),
-                "minecraft:death_protection" => replace_fields!(death_protection),
+                "minecraft:death_protection" => {
+                    replace_fields!(death_protection, death_protection_refused)
+                }
                 "minecraft:consumable" => replace_fields!(consumable),
+                "minecraft:use_remainder" => replace_fields!(use_remainder_template),
+                "minecraft:sulfur_cube_content" => replace_fields!(sulfur_cube_template),
                 "minecraft:villager_food" => replace_fields!(villager_food),
                 "minecraft:kinetic_weapon" => replace_fields!(kinetic_weapon),
                 "minecraft:map_id" => replace_fields!(map_id),
@@ -988,6 +1126,17 @@ impl ItemStack {
         }
         info.and_then(|i| i.villager_food)
     }
+    /// New persistent content must not admit a partial effect projection from any nested stack.
+    pub fn has_refused_consume_effects(&self) -> bool {
+        self.data().is_some_and(|data| {
+            data.refused_consume_effect_component("minecraft:consumable")
+                || data.refused_consume_effect_component("minecraft:death_protection")
+                || data
+                    .effect_templates()
+                    .any(|(_, stack)| stack.has_refused_consume_effects())
+        })
+    }
+
     /// Death protection effects retained at patch or prototype load.
     pub fn death_protection<'a>(
         &'a self,
@@ -1016,6 +1165,9 @@ impl ItemStack {
             }
             if let Some(consumable) = &data.consumable {
                 return Some(&consumable.value);
+            }
+            if data.other("minecraft:consumable").is_some() {
+                return None;
             }
         }
         info.and_then(|item| item.consumable.as_ref())
@@ -1049,13 +1201,30 @@ impl ItemStack {
     /// The patch the server sent for this stack, while the stack is still what
     /// it decoded to (its count aside); None once anything else changed.
     pub fn wire_patch(&self) -> Option<Arc<[u8]>> {
-        let (decoded, patch) = &**self.data()?.wire.0.as_ref()?;
+        let wire = self.data()?.wire.0.as_ref()?;
+        let decoded = &wire.decoded;
         let none = StackData::default();
         (decoded.item == self.item
             && decoded.damage == self.damage
             && decoded.data().unwrap_or(&none) == self.data().unwrap_or(&none))
-        .then(|| patch.clone())
+        .then(|| wire.patch.clone())
     }
+
+    /// Reuse the server's bytes only under their original consume-effect mapping
+    /// and if the live stack admitted every effect in them.
+    pub fn wire_patch_for(&self, effect_mapping: Option<&Arc<()>>) -> Option<Arc<[u8]>> {
+        let wire = self.data()?.wire.0.as_ref()?;
+        let same_mapping = match (wire.effect_mapping.as_ref(), effect_mapping) {
+            (None, None) => true,
+            (Some(original), Some(current)) => Arc::ptr_eq(original, current),
+            _ => false,
+        };
+        if wire.effect_refused || !same_mapping {
+            return None;
+        }
+        self.wire_patch()
+    }
+
     pub fn data_mut(&mut self) -> &mut StackData {
         self.extra.get_or_insert_with(Box::default)
     }
@@ -2122,10 +2291,24 @@ fn decode_components_inner(
         _ => Vec::new(),
     };
     let mut death_tag = c.get("minecraft:death_protection").cloned();
+    let mut death_protection_refused = false;
     let death_protection = death_tag
         .as_mut()
-        .and_then(|raw| crate::items::stack_effects(raw, "death_effects", received_effects).ok())
+        .and_then(|raw| {
+            crate::items::stack_effects(
+                raw,
+                "death_effects",
+                received_effects,
+                Some(&mut death_protection_refused),
+            )
+            .ok()
+        })
         .map(Arc::new);
+    let template = |id| {
+        c.get(id)
+            .and_then(|tag| template_from_with(tag, received_effects))
+            .map(Box::new)
+    };
     let mut data = StackData {
         villager_food: None,
         damage_set: damage == 0 && c.get("minecraft:damage").is_some(),
@@ -2145,6 +2328,9 @@ fn decode_components_inner(
         potion,
         potion_extra,
         death_protection,
+        death_protection_refused,
+        use_remainder_template: template("minecraft:use_remainder"),
+        sulfur_cube_template: template("minecraft:sulfur_cube_content"),
         consumable: c
             .get("minecraft:consumable")
             .cloned()
@@ -3755,11 +3941,14 @@ mod tests {
         let mut data = StackData {
             villager_food: None,
             damage_set: damage == 0 && c.get("minecraft:damage").is_some(),
+            death_protection_refused: false,
+            use_remainder_template: None,
+            sulfur_cube_template: None,
             death_protection: c
                 .get("minecraft:death_protection")
                 .cloned()
                 .and_then(|mut raw| {
-                    crate::items::stack_effects(&mut raw, "death_effects", None).ok()
+                    crate::items::stack_effects(&mut raw, "death_effects", None, None).ok()
                 })
                 .map(Arc::new),
             consumable: c

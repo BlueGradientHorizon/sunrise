@@ -12,6 +12,7 @@ mod exact;
 mod gameplay;
 pub(crate) mod ops;
 mod raw;
+use super::consume_effects::AdmissionLookup;
 use super::{
     Component, FireworkExplosion, Hashed, Stack, StackHashError, WirePatch, component as kind,
     persistent,
@@ -27,6 +28,11 @@ pub trait Names {
     /// The consume-effect type at this connection's stream ID.
     fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
         super::consume_effects::builtin_name(id).map(|_| super::consume_effects::Kind::Builtin(id))
+    }
+
+    /// Effects already projected from this same stream patch, including its nested templates.
+    fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+        None
     }
 }
 /// No registries: only the components that hold no registry id hash.
@@ -482,6 +488,32 @@ impl Component {
 }
 
 impl Hashed {
+    /// Hash a retained stream patch using the effect values already decoded from it.
+    pub fn create_with_admitted(
+        stack: &Stack,
+        names: &dyn Names,
+        admitted: &AdmissionLookup<'_>,
+    ) -> Result<Self, StackHashError> {
+        struct Projection<'a> {
+            names: &'a dyn Names,
+            admitted: &'a AdmissionLookup<'a>,
+        }
+        impl Names for Projection<'_> {
+            fn name(&self, registry: &str, id: i32) -> Option<String> {
+                self.names.name(registry, id)
+            }
+
+            fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+                self.names.consume_effect_kind(id)
+            }
+
+            fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+                Some(self.admitted)
+            }
+        }
+        Self::create(stack, &Projection { names, admitted })
+    }
+
     /// Hash all effective sets on a nonempty stack, or refuse the whole patch.
     /// An absent slot is represented by the caller, separately from failure.
     pub fn create(stack: &Stack, names: &dyn Names) -> Result<Self, StackHashError> {

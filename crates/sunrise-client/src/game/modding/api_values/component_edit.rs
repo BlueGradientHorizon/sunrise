@@ -132,8 +132,7 @@ pub(in crate::game) fn prepare_component_edit(
     let (mut fields, _) = decode_stack_record(&record, id.clone());
     validate_decoded_components(|name| match edits.component(name) {
         Some(ComponentEdit::Value(_)) => Some(&fields),
-        Some(ComponentEdit::Remove | ComponentEdit::Inherit) => None,
-        None => resident.carries_component(None, name).then_some(resident),
+        _ => None,
     })?;
     admit_stack_limits(&mut fields, definition, record.damage_component())?;
 
@@ -187,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn refused_registered_effect_edit_keeps_the_resident_consumable() {
+    fn refused_registered_effect_edit_keeps_the_resident_component() {
         use std::sync::Arc;
         use sunrise_world::component_value::consume_effects::{self, Type};
 
@@ -225,35 +224,71 @@ mod tests {
                     ]),
                 )])
             };
-            let original = component(Tag::Int(7));
-            let mut resident = EngineStack::new("minecraft:stick", 1);
-            resident
-                .data_mut()
-                .set_other("minecraft:consumable", Some(original.clone()));
-            assert_eq!(resident.consumable(None).unwrap().effects.len(), 2);
-
-            let change =
-                prepare_component_edit(EquipmentRead::resident(&resident), &items, &mut |editor| {
-                    editor
-                        .apply_components(
-                            &[(
-                                JavaString::from("minecraft:consumable"),
-                                component(Tag::String("bad".into())),
-                            )]
-                            .into(),
-                        )
-                        .unwrap();
-                });
-            assert!(matches!(
-                change,
-                Err(ItemPlaceEditError::Stack(
-                    StackWriteError::InvalidEffectPayload
-                ))
-            ));
-            assert_eq!(
-                resident.data().unwrap().other("minecraft:consumable"),
-                Some(&original)
-            );
+            for id in [
+                "minecraft:consumable",
+                "minecraft:bundle_contents",
+                "minecraft:charged_projectiles",
+                "minecraft:container",
+                "minecraft:pot_decorations",
+                "minecraft:use_remainder",
+                "minecraft:sulfur_cube_content",
+            ] {
+                let value = |points| {
+                    let consumable = component(points);
+                    if id == "minecraft:consumable" {
+                        return consumable;
+                    }
+                    let template = Tag::compound([
+                        ("id", Tag::String("minecraft:stone".into())),
+                        (
+                            "components",
+                            Tag::compound([("minecraft:consumable", consumable)]),
+                        ),
+                    ]);
+                    match id {
+                        "minecraft:bundle_contents" | "minecraft:charged_projectiles" => {
+                            Tag::List(vec![template])
+                        }
+                        "minecraft:container" => Tag::List(vec![Tag::compound([
+                            ("slot", Tag::Int(0)),
+                            ("item", template),
+                        ])]),
+                        "minecraft:pot_decorations" => Tag::compound([("back", template)]),
+                        _ => template,
+                    }
+                };
+                let edit = |resident: &EngineStack, points: Tag| {
+                    prepare_component_edit(
+                        EquipmentRead::resident(resident),
+                        &items,
+                        &mut |editor| {
+                            editor
+                                .apply_components(
+                                    &[(JavaString::from(id), value(points.clone()))].into(),
+                                )
+                                .unwrap();
+                        },
+                    )
+                };
+                let mut resident = EngineStack::new("minecraft:stick", 1);
+                let (prepared, _) = edit(&resident, Tag::Int(7)).unwrap().unwrap();
+                prepared.apply(&mut resident);
+                let original = sunrise_client::item_data::component_snapshot(&resident).unwrap();
+                assert_eq!(original.get(id), Some(&value(Tag::Int(7))), "{id}");
+                assert!(
+                    matches!(
+                        edit(&resident, Tag::String("bad".into())),
+                        Err(ItemPlaceEditError::Stack(
+                            StackWriteError::InvalidEffectPayload
+                        ))
+                    ),
+                    "{id}"
+                );
+                assert_eq!(
+                    sunrise_client::item_data::component_snapshot(&resident),
+                    Some(original)
+                );
+            }
         });
     }
 }

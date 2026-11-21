@@ -752,14 +752,16 @@ fn resolvable(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
 }
 
 #[derive(Clone, Copy)]
-struct Source {
+struct Source<'a> {
     upgraded: bool,
     is_native: fn(&str) -> bool,
+    admitted: Option<&'a AdmittedLookup<'a>>,
 }
-impl Source {
+impl Source<'_> {
     const SAVED: Self = Self {
         upgraded: false,
         is_native: |_| false,
+        admitted: None,
     };
 
     fn component_type(self, id: &str) -> Result<()> {
@@ -888,15 +890,22 @@ fn predicate(t: &Tag, source: Source) -> Result<Value> {
 pub fn from_component_tag(id: &str, t: &Tag) -> Result<Value> {
     from_component_tag_with(id, t, |_| false)
 }
-/// Project a retained component without invoking its registered map codec again.
-pub fn from_admitted_effect_component_tag(
-    name: &str,
+/// Project a retained component and its templates using effects admitted when it was read.
+pub fn from_admitted_component_tag(
+    id: &str,
     t: &Tag,
+    is_native: fn(&str) -> bool,
     admitted: &AdmittedLookup<'_>,
 ) -> Result<Value> {
-    let bare = name.strip_prefix("minecraft:").unwrap_or(name);
-    validate_source(bare, t)?;
-    effect_component(t, bare == "consumable", Some(admitted))
+    component_tag(
+        &identifier(id)?,
+        t,
+        Source {
+            is_native,
+            admitted: Some(admitted),
+            ..Source::SAVED
+        },
+    )
 }
 
 fn effect_component(
@@ -1135,7 +1144,7 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             r.required("saturation", float)?;
             r.b("can_always_eat", false)
         })?,
-        "consumable" => effect_component(t, true, None)?,
+        "consumable" => effect_component(t, true, source.admitted)?,
         "use_cooldown" => record(t, |r| {
             r.required("seconds", float)?;
             r.optional("cooldown_group", ident)
@@ -1192,7 +1201,7 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             }
             r.id("shearing_sound", "minecraft:item.shears.snip", sound)
         })?,
-        "death_protection" => effect_component(t, false, None)?,
+        "death_protection" => effect_component(t, false, source.admitted)?,
         "piercing_weapon" => record(t, |r| {
             r.b("deals_knockback", true)?;
             r.b("dismounts", false)?;

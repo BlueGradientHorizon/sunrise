@@ -68,6 +68,12 @@ impl<'a> Reader<'a> {
                 .map(|_| crate::item::consume_effects::Kind::Builtin(id)),
         }
     }
+    pub(crate) fn consume_effect_admissions(
+        &self,
+    ) -> Option<&'a crate::item::consume_effects::AdmissionLookup<'a>> {
+        self.names?.consume_effect_admissions()
+    }
+
     pub fn subreader(&mut self, size: usize) -> Result<Self> {
         Ok(Self {
             data: self.bytes(size)?,

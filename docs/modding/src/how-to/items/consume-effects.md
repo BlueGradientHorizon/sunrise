@@ -6,8 +6,10 @@ In `Hooks::register`, call `register_consume_effect_type` on the engine's
 this is how the game finds your `consume_effect` listener. The two functions
 in `ConsumeEffectType::new` read and write the
 saved map; the game handles the `type` field. `load` validates the fields
-before a stack edit or load is admitted. `save` supplies the canonical fields
-with exact NBT types, including when the value arrives over the network.
+before a new stack or edit is admitted. This includes effects inside stack
+components such as `bundle_contents` and `use_remainder`. `save` supplies the
+canonical fields with exact NBT types, including for values received over the
+network.
 
 Derive `Wire` on the value itself. Its bytes follow the server's registry ID,
 just as a built-in effect's stream fields do. Install the registering mod on
@@ -15,9 +17,12 @@ both sides: normal configuration sync resolves the server's IDs by key and
 checks the Wire schemas. Switching off a live effect listener does not remove
 its registered codec from the connection. Return `Err` for invalid data: an
 error refuses that value without disabling the codec. A panicking codec
-callback is reported with the mod's name and disabled for the session. A save
-failure on receipt leaves out that effect, not the rest of the stack or the
-other slots in the update.
+callback is reported with the mod's name in the log and an error toast, and
+is disabled for the session. When a codec fails while reopening an existing
+save, the item and its saved data are kept but the failed effect does not run.
+A save failure on network receipt leaves out that effect, not the rest of the
+stack or the other slots in the update. The client hashes the admitted effects
+for menu prediction.
 
 ```rust
 use mod_api::{Compound, ConsumeEffectType, Identifier, Registrar, Tag, Wire};
@@ -63,7 +68,8 @@ built-in effects; stack patches can change or remove the list.
 - Consumable and death protection payloads are decoded once for item definitions
   and stack component patches. The event borrows the retained payload. Player death
   protection uses this hook; mob death protection does not dispatch it.
-- Invalid payloads refuse loading rather than failing during consumption.
+- An invalid registered payload refuses a new stack or edit. It is not installed
+  into gameplay when reopening a save.
 
 To apply an effect without consuming an item, use
 [`LivingRef::apply_consume_effect`](consumable-effects.md).

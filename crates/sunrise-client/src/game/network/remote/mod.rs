@@ -1957,7 +1957,14 @@ impl Game<'_> {
         let r = self.remote.as_ref()?;
         // A stack as the server sent it, only its count changed: its own
         // components go back, as a vanilla client keeps them.
-        if let Some((stack, patch)) = s.as_ref().and_then(|s| Some((s, s.wire_patch()?))) {
+        let effect_mapping = r
+            .registries
+            .consume_effect_codecs
+            .as_ref()
+            .map(|snapshot| snapshot.identity());
+        if let Some(stack) = s.as_ref()
+            && let Some(patch) = stack.wire_patch_for(effect_mapping)
+        {
             let mut out = Stack::new(self.item_id(&stack.item), stack.count as i32);
             let safe = r.registries.custom_components
                 || sunrise_protocol::item::custom::entries().next().is_none()
@@ -2022,8 +2029,26 @@ impl Game<'_> {
         let stack = self
             .to_network(s)
             .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
-        Hashed::create(&stack, &names)
-            .map(Some)
+        let hash = if let Some(data) = s.as_ref().and_then(ItemStack::data) {
+            Hashed::create_with_admitted(&stack, &names, &|name, bytes| {
+                let matches =
+                    |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                        &effect.name == name && effect.wire.as_ref() == bytes
+                    };
+                if stack.wire.0.is_some() {
+                    data.wire
+                        .admitted_effects()
+                        .iter()
+                        .find(|effect| matches(effect))
+                        .cloned()
+                } else {
+                    data.find_admitted_consume_effect(&matches)
+                }
+            })
+        } else {
+            Hashed::create(&stack, &names)
+        };
+        hash.map(Some)
             .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 

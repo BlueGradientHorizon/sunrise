@@ -49,9 +49,10 @@ pub fn from_network(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> ItemStack
         damage: 0,
         extra: None,
     };
-    let mut effects = Vec::new();
+    let mut effects = EffectProjection::default();
     let components = components_tag(s, builtin, synced, &mut effects);
-    let (damage, data) = crate::item_data::decode_network_components(components.as_ref(), &effects);
+    let (damage, data) =
+        crate::item_data::decode_network_components(components.as_ref(), &effects.admitted);
     out.damage = damage;
     if let Some(data) = data {
         *out.data_mut() = *data;
@@ -60,7 +61,17 @@ pub fn from_network(s: &Stack, builtin: &Builtin, synced: &Dynamic) -> ItemStack
     // What it decoded to, to send the server's own patch back if that holds.
     if let Some(patch) = &s.wire.0 {
         let decoded = out.clone();
-        out.data_mut().wire = crate::item_data::Wire::new(decoded, patch.clone());
+        let effect_mapping = synced
+            .consume_effect_codecs
+            .as_ref()
+            .map(|snapshot| snapshot.identity().clone());
+        out.data_mut().wire = crate::item_data::Wire::from_network(
+            decoded,
+            patch.clone(),
+            effect_mapping,
+            effects.admitted,
+            effects.refused,
+        );
     }
     out
 }
@@ -344,7 +355,7 @@ pub fn decode_consumable_bytes_with(
     let n = r.count(r.remaining()).unwrap_or(0);
     let mut effects = Vec::with_capacity(n.min(64));
     for _ in 0..n {
-        if let Some(Some(tag)) = consume_effect_tag(&mut r, b, &mut Vec::new()) {
+        if let Some(Some(tag)) = consume_effect_tag(&mut r, b, &mut EffectProjection::default()) {
             let json = crate::item_render::tag_json(&tag);
             if let Some(parsed) = sunrise_items::items::parse_consume_effect(&json) {
                 effects.push(parsed);
@@ -441,12 +452,18 @@ fn item_name(builtin: &Builtin, id: i32) -> Arc<str> {
     )
 }
 
+#[derive(Default)]
+struct EffectProjection {
+    admitted: Vec<Admitted>,
+    refused: bool,
+}
+
 /// The item's patched components as vanilla's `components` compound.
 fn components_tag(
     s: &Stack,
     builtin: &Builtin,
     synced: &Dynamic,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Option<Tag> {
     let name = |id: i32| {
         builtin
@@ -825,7 +842,7 @@ fn template_tag(
     t: &Stack,
     builtin: &Builtin,
     synced: &Dynamic,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Tag {
     let mut entries = vec![
         (
@@ -1051,7 +1068,7 @@ fn death_protection_tag(
     bytes: &[u8],
     builtin: &Builtin,
     synced: &Dynamic,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Option<Tag> {
     let mut r = Reader::new(bytes).with_names(synced);
     let n = r.count(r.remaining()).ok()?;
@@ -1074,7 +1091,7 @@ fn consumable_tag(
     bytes: &[u8],
     builtin: &Builtin,
     synced: &Dynamic,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Option<Tag> {
     let mut r = Reader::new(bytes).with_names(synced);
     let seconds = r.f32().ok()?;
@@ -1110,7 +1127,7 @@ fn consumable_tag(
 fn consume_effect_tag(
     r: &mut Reader,
     builtin: &Builtin,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Option<Option<Tag>> {
     use sunrise_protocol::item::consume_effects::{Kind, read_kind, read_native};
     let mut fields: Vec<(&str, Tag)> = Vec::new();
@@ -1158,11 +1175,17 @@ fn consume_effect_tag(
         }
         Kind::Builtin(_) => unreachable!("built-in consume-effect type"),
         Kind::Native(name, ty) => {
-            return Some(read_native(name, ty, r).ok()?.map(|effect| {
-                let tag = (*effect.saved).clone();
-                admitted.push(effect);
-                tag
-            }));
+            return Some(match read_native(name, ty, r).ok()? {
+                Some(effect) => {
+                    let tag = (*effect.saved).clone();
+                    admitted.admitted.push(effect);
+                    Some(tag)
+                }
+                None => {
+                    admitted.refused = true;
+                    None
+                }
+            });
         }
     }
     Some(Some(Tag::compound(fields)))
@@ -1263,7 +1286,7 @@ fn container_tag(
     bytes: &[u8],
     builtin: &Builtin,
     synced: &Dynamic,
-    admitted: &mut Vec<Admitted>,
+    admitted: &mut EffectProjection,
 ) -> Option<Tag> {
     let mut r = Reader::new(bytes).with_names(synced);
     let mut slots = Vec::new();
@@ -1343,6 +1366,193 @@ mod tests {
     use std::path::Path;
     use sunrise_core::use_animation::UseAnimation;
     use sunrise_protocol::registry::Ids;
+
+    #[test]
+    fn nested_registered_effects_encode_with_the_configured_ids() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use sunrise_protocol::item::{consume_effects as stream, persistent};
+        use sunrise_protocol::packets::configuration::{RegistryData, RegistryEntry};
+        use sunrise_world::component_value::consume_effects::{self, Type};
+
+        consume_effects::with_test_registry(|| {
+            let loads = Arc::new(AtomicUsize::new(0));
+            let calls = loads.clone();
+            consume_effects::install(
+                [(
+                    Arc::from("nested:charge"),
+                    Type {
+                        schema: 17,
+                        load: Box::new(move |fields| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            let Some(Tag::Int(points)) = fields.get(&"points".into()) else {
+                                return Err("expected points".into());
+                            };
+                            let mut saved = fields.clone();
+                            saved.insert("canonical".into(), Tag::Byte(1));
+                            Ok((
+                                saved,
+                                vec![u8::try_from(*points).map_err(|e| e.to_string())?],
+                            ))
+                        }),
+                        read: Box::new(|bytes, project| {
+                            let byte = *bytes.first().ok_or("missing points")?;
+                            Ok((
+                                1,
+                                project.then(|| {
+                                    [
+                                        ("points".into(), Tag::Int(i32::from(byte))),
+                                        ("canonical".into(), Tag::Byte(1)),
+                                    ]
+                                    .into()
+                                }),
+                            ))
+                        }),
+                    },
+                )]
+                .into(),
+            )
+            .unwrap();
+            let mut rows: Vec<_> = stream::configuration()
+                .map(|(name, schema)| RegistryEntry {
+                    id: name.into(),
+                    data: Some(Tag::Long(schema as i64)),
+                })
+                .collect();
+            rows.swap(0, 5);
+            let mut synced = Dynamic::default();
+            synced
+                .add_consume_effects(RegistryData {
+                    registry: stream::REGISTRY.into(),
+                    entries: rows,
+                })
+                .unwrap();
+            let ids = |registry: &str, name: &str| match registry {
+                "minecraft:item" if name == "minecraft:stone" => Some(1),
+                stream::REGISTRY => synced.consume_effect_id(name),
+                _ => None,
+            };
+            let lookup = |registry: &str, id| match (registry, id) {
+                ("minecraft:item", 1) => Some("minecraft:stone".into()),
+                _ => None,
+            };
+            let names = persistent::NameLookup::new(&lookup).with_registries(&synced);
+            let template = Tag::compound([
+                ("id", Tag::String("minecraft:stone".into())),
+                (
+                    "components",
+                    Tag::compound([(
+                        "minecraft:death_protection",
+                        Tag::compound([(
+                            "death_effects",
+                            Tag::List(vec![Tag::compound([
+                                ("type", Tag::String("nested:charge".into())),
+                                ("points", Tag::Int(7)),
+                            ])]),
+                        )]),
+                    )]),
+                ),
+            ]);
+            // One template, item 1/count 1, one own component, one effect: ID 0 and payload 7.
+            let wire = [1, 1, 1, 1, 0, component::DEATH_PROTECTION as u8, 1, 0, 7];
+            for kind in [component::BUNDLE_CONTENTS, component::CHARGED_PROJECTILES] {
+                let encoded =
+                    persistent::component_from_tag(kind, &Tag::List(vec![template.clone()]), &ids)
+                        .unwrap();
+                let Component::Stacks(stacks) = &encoded else {
+                    panic!("expected typed templates")
+                };
+                assert_eq!(
+                    stacks[0].component(component::DEATH_PROTECTION),
+                    Some(&Component::Raw(vec![1, 0, 7]))
+                );
+                assert_eq!(
+                    persistent::component_value(kind, &Component::Raw(wire.to_vec()), &names)
+                        .unwrap(),
+                    persistent::component_value(kind, &encoded, &names).unwrap(),
+                );
+            }
+
+            let saved = Tag::compound([
+                ("id", Tag::String("minecraft:stone".into())),
+                (
+                    "components",
+                    Tag::compound([("minecraft:use_remainder", template)]),
+                ),
+            ]);
+            let held = crate::item_nbt::item_from_persistent_nbt(&saved).unwrap();
+            assert_eq!(loads.load(Ordering::Relaxed), 3);
+            let sent = crate::lan::guest::stack_to_network(|_| 1, ids, &Some(held)).unwrap();
+            assert_eq!(
+                sent.component(component::USE_REMAINDER),
+                Some(&Component::Raw(wire[1..].to_vec()))
+            );
+            assert_eq!(
+                loads.load(Ordering::Relaxed),
+                3,
+                "encoding must not reload the effect"
+            );
+        });
+    }
+
+    #[test]
+    fn reopening_inventory_keeps_refused_effect_nbt_and_admits_its_siblings() {
+        use sunrise_world::component_value::consume_effects::{self, Type};
+        consume_effects::with_test_registry(|| {
+            consume_effects::install(
+                [(
+                    Arc::from("saved:charge"),
+                    Type {
+                        schema: 1,
+                        load: Box::new(|_| Err("registered load callback is disabled".into())),
+                        read: Box::new(|_, _| unreachable!("no Wire read during save load")),
+                    },
+                )]
+                .into(),
+            )
+            .unwrap();
+            let saved = Tag::compound([
+                ("Slot", Tag::Byte(2)),
+                ("id", Tag::String("minecraft:stone".into())),
+                ("count", Tag::Int(5)),
+                (
+                    "components",
+                    Tag::compound([
+                        ("minecraft:damage", Tag::Int(2)),
+                        (
+                            "minecraft:death_protection",
+                            Tag::compound([(
+                                "death_effects",
+                                Tag::List(vec![
+                                    Tag::compound([
+                                        ("type", Tag::String("saved:charge".into())),
+                                        ("points", Tag::Int(7)),
+                                    ]),
+                                    Tag::compound([(
+                                        "type",
+                                        Tag::String("minecraft:clear_all_effects".into()),
+                                    )]),
+                                ]),
+                            )]),
+                        ),
+                    ]),
+                ),
+            ]);
+            assert!(crate::item_nbt::item_from_persistent_nbt(&saved).is_none());
+            let inventory = Tag::List(vec![saved]);
+            let slots = crate::item_nbt::decode_items(Some(&inventory), 3);
+            let stack = slots[2].as_ref().expect("item survives reopening");
+            assert_eq!(
+                (&*stack.item, stack.count, stack.damage),
+                ("minecraft:stone", 5, 2)
+            );
+            assert!(matches!(
+                stack.death_protection(None),
+                Some([ConsumeEffect::ClearAllEffects])
+            ));
+            let items = crate::items::Items::for_tests(Default::default());
+            assert_eq!(crate::item_nbt::encode_items(&slots, &items), inventory);
+        });
+    }
 
     /// `Equippable.equipSound` is the stack's component's own: a replaced
     /// component without one plays the generic sound, a removed one none.

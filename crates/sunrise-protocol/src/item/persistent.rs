@@ -6,7 +6,9 @@ use sunrise_core::nbt::Tag;
 use sunrise_world::component_value::{Patch, Template as ValueTemplate, Value};
 
 mod source;
-pub use source::{component_from_tag, component_from_value, template_from_parts};
+pub use source::{
+    component_from_admitted_tag, component_from_tag, component_from_value, template_from_parts,
+};
 
 /// The output direction only needs names to ids, not a bidirectional registry.
 pub trait Ids {
@@ -140,7 +142,7 @@ pub(crate) fn special_value(
             || super::custom::contains(kind)
         {
             Some((|| {
-                let mut reader = Reader::new(bytes);
+                let mut reader = Reader::new(bytes).with_names(names);
                 let decoded = Component::read(kind, &mut reader)?;
                 if reader.remaining() != 0 {
                     return Err(Error::new("trailing component bytes"));

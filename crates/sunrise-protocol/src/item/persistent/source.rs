@@ -240,6 +240,16 @@ pub fn template_from_parts(
     patch: &[(String, Option<Value>)],
     ids: &dyn Ids,
 ) -> Result<Stack> {
+    template_from_parts_at_depth(item, count, patch, ids, 0)
+}
+
+fn template_from_parts_at_depth(
+    item: &str,
+    count: i32,
+    patch: &[(String, Option<Value>)],
+    ids: &dyn Ids,
+    depth: u32,
+) -> Result<Stack> {
     if count == 0 || item == "minecraft:air" {
         return Err(err("empty native template"));
     }
@@ -251,9 +261,10 @@ pub fn template_from_parts(
     for (name, value) in effective_patch(patch) {
         let kind = patch_kind(name, ids)?;
         if let Some(value) = value {
-            stack
-                .added
-                .push((kind, component_from_value(kind, value, ids)?));
+            stack.added.push((
+                kind,
+                component_from_value_at_depth(kind, value, ids, depth)?,
+            ));
         } else {
             stack.removed.push(kind);
         }
@@ -312,18 +323,62 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
     .map_err(err)?;
     component_from_value(kind, &value, ids)
 }
+/// Encode a retained stack component using its admitted effects (including those in templates).
+pub fn component_from_admitted_tag(
+    kind: i32,
+    value: &Tag,
+    ids: &dyn Ids,
+    admitted: &dyn Fn(&Tag) -> Option<sunrise_world::component_value::consume_effects::Admitted>,
+) -> Result<Component> {
+    let name = component_name(kind).ok_or_else(|| err("unknown component type"))?;
+    let value = sunrise_world::component_value::source::from_admitted_component_tag(
+        name,
+        value,
+        is_native_component,
+        admitted,
+    )
+    .map_err(err)?;
+    component_from_value(kind, &value, ids)
+}
+
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err(format!("unknown component type {kind}")))?;
-    component_from_value_named(kind, value, ids).map_err(|error| err(format!("{name}: {error}")))
+    component_from_value_at_depth(kind, value, ids, 0)
+        .map_err(|error| err(format!("{name}: {error}")))
 }
-fn component_from_value_named(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
+fn component_from_value_at_depth(
+    kind: i32,
+    value: &Value,
+    ids: &dyn Ids,
+    depth: u32,
+) -> Result<Component> {
+    if matches!(
+        kind,
+        crate::item::component::CHARGED_PROJECTILES | crate::item::component::BUNDLE_CONTENTS
+    ) {
+        if depth >= crate::item::MAX_NESTING {
+            return Err(err("item component nesting too deep"));
+        }
+        // Construct the typed children directly. Their streams already use the peer's IDs,
+        // which a registry-free structural read would interpret as local defaults.
+        let stacks = list(value)?
+            .iter()
+            .map(|entry| {
+                let Value::Template(t) = entry else {
+                    return Err(err("expected canonical template"));
+                };
+                template_from_parts_at_depth(&t.item, t.count, &t.patch, ids, depth + 1)
+            })
+            .collect::<Result<_>>()?;
+        return Ok(Component::Stacks(stacks));
+    }
     if let Some(name) = crate::item::custom::name(kind) {
         patch_kind(name, ids)?;
         return Ok(Component::Nbt(value.to_tag().map_err(err)?));
     }
     let mut w = Writer::new();
-    encode(kind, value, &mut w, ids, 0)?;
-    if !matches!(kind,0..=4|6|9..=13|17..=21|30|45|47|48|50..=53|55..=58|63|65|69..=72|74|75|109)
+    encode(kind, value, &mut w, ids, depth)?;
+    if !matches!(kind,0..=4|6|9..=13|17..=21|30|45|47|48|50|53|55..=58|63|65|69..=72|74|75|109)
         || matches!(
             (kind, value),
             (63, Value::Map(_)) | (109, Value::StreamOnly(_))

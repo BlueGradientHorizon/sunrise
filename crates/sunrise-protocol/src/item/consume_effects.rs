@@ -1,8 +1,10 @@
 //! `ConsumeEffect.Type` dispatch through the connection's synchronized registry.
 use crate::{Error, Result, buf::Reader, packets::configuration::RegistryEntry};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_world::component_value::consume_effects::{Admitted, by_name, entries};
+
+pub type AdmissionLookup<'a> = dyn Fn(&Arc<str>, &[u8]) -> Option<Admitted> + 'a;
 
 pub const REGISTRY: &str = "minecraft:consume_effect_type";
 const BUILTINS: [&str; 5] = [
@@ -48,6 +50,7 @@ pub fn configuration() -> impl Iterator<Item = (&'static str, u64)> {
 /// from the same advertised order, never from local registration order.
 #[derive(Clone, Debug)]
 pub struct Snapshot {
+    identity: Arc<()>,
     kinds: Vec<Kind>,
     ids: HashMap<&'static str, HashMap<&'static str, i32>>,
 }
@@ -55,6 +58,7 @@ pub struct Snapshot {
 impl Snapshot {
     pub(crate) fn resolve(entries: &[RegistryEntry]) -> Result<Self> {
         let mut snapshot = Self {
+            identity: Arc::new(()),
             kinds: Vec::with_capacity(entries.len()),
             ids: HashMap::new(),
         };
@@ -92,6 +96,11 @@ impl Snapshot {
         Ok(snapshot)
     }
 
+    /// A connection-local identity for retained bytes that use this mapping.
+    pub fn identity(&self) -> &Arc<()> {
+        &self.identity
+    }
+
     pub(crate) fn kind(&self, id: i32) -> Option<Kind> {
         self.kinds.get(usize::try_from(id).ok()?).copied()
     }
@@ -103,7 +112,11 @@ impl Snapshot {
     pub(crate) fn owned_heap_bytes(&self) -> usize {
         use crate::retained::fresh_hash_table_bytes;
 
-        let kind_bytes = self.kinds.capacity().saturating_mul(size_of::<Kind>());
+        let kind_bytes = self
+            .kinds
+            .capacity()
+            .saturating_mul(size_of::<Kind>())
+            .saturating_add(2 * size_of::<usize>()); // Arc allocation's reference counts
         self.ids.values().fold(
             kind_bytes.saturating_add(fresh_hash_table_bytes::<(&str, HashMap<&str, i32>)>(
                 self.ids.capacity(),
@@ -155,7 +168,18 @@ pub fn read_native(
     ty: &sunrise_world::component_value::consume_effects::Type,
     reader: &mut Reader<'_>,
 ) -> Result<Option<Admitted>> {
-    let (size, saved) = (ty.read)(reader.unread(), true).map_err(Error::new)?;
+    let unread = reader.unread();
+    if let Some(admitted) = reader.consume_effect_admissions() {
+        let (size, _) = (ty.read)(unread, false).map_err(Error::new)?;
+        let bytes = unread
+            .get(..size)
+            .ok_or_else(|| Error::new("consume effect extends beyond its patch"))?;
+        if let Some(effect) = admitted(name, bytes) {
+            reader.bytes(size)?;
+            return Ok(Some(effect));
+        }
+    }
+    let (size, saved) = (ty.read)(unread, true).map_err(Error::new)?;
     let bytes = reader.bytes(size)?;
     Ok(saved.map(|saved| Admitted::new(name, saved, bytes.into())))
 }
