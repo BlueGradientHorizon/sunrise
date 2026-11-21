@@ -224,7 +224,7 @@ impl Game<'_> {
                 "cauldron interaction for {} has no installed owner",
                 callback.owner
             );
-            return Outcome::Pass;
+            return Outcome::Consume;
         };
         let Some(held) = self.held().cloned() else {
             return Outcome::Pass;
@@ -271,7 +271,7 @@ impl Game<'_> {
             Ok(_) => Outcome::Pass,
             Err(why) => {
                 log::warn!("cauldron interaction refused: {why}");
-                Outcome::Pass
+                Outcome::Consume
             }
         }
     }

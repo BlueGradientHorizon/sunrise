@@ -272,6 +272,16 @@ fn a_panicking_cauldron_registrar_leaves_no_exact_tag_or_all_entries() {
     );
 }
 
+fn fixture_mods(mods: mod_api::Mods, test: impl FnOnce(&mut Game<'_>)) {
+    mod_platform::__private::install(mods.clone());
+    crate::game::api_values::install_parts(&mods).unwrap();
+    let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+    let root = crate::game::mods::content_root(&base, &Default::default())
+        .unwrap()
+        .prepared()
+        .to_path_buf();
+    with_game_at(root, test);
+}
 fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
     let seen = Arc::new(Seen::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -282,14 +292,7 @@ fn fixture(dye: bool, test: impl FnOnce(&mut Game<'_>, &Arc<Seen>)) {
         }),
     )]
     .into();
-    mod_platform::__private::install(mods.clone());
-    crate::game::api_values::install_parts(&mods).unwrap();
-    let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let root = crate::game::mods::content_root(&base, &Default::default())
-        .unwrap()
-        .prepared()
-        .to_path_buf();
-    with_game_at(root, |game| {
+    fixture_mods(mods, |game| {
         setup(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
         test(game, &seen);
     });
@@ -353,6 +356,14 @@ fn unchanged(game: &Game<'_>, seen: &Seen) {
         0
     );
 }
+fn bottles(game: &Game<'_>) -> u32 {
+    game.inventory
+        .iter()
+        .flatten()
+        .filter(|s| &*s.item == "minecraft:glass_bottle")
+        .map(|s| s.count)
+        .sum()
+}
 #[test]
 #[ignore = "daily"]
 fn cauldron_syrup_applies_once() {
@@ -373,15 +384,9 @@ fn cauldron_syrup_applies_once() {
             state(game),
             ("test:syrup_cauldron".into(), Some("1".into()))
         );
-        assert_eq!(
-            game.inventory
-                .iter()
-                .flatten()
-                .filter(|s| &*s.item == "minecraft:glass_bottle")
-                .map(|s| s.count)
-                .sum::<u32>(),
-            1
-        );
+        assert_eq!(bottles(game), 1);
+        assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
+        assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
         assert!(
             game.creatures
                 .lan_sounds
@@ -396,6 +401,32 @@ fn cauldron_syrup_applies_once() {
             )
         });
         assert_eq!(seen.drops.load(Ordering::SeqCst), 0);
+
+        setup(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
+        game.creative = true;
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+        assert_eq!(seen.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(game.inventory[0].as_ref().unwrap().count, 2);
+        assert_eq!(
+            state(game),
+            ("test:syrup_cauldron".into(), Some("1".into()))
+        );
+        assert_eq!(bottles(game), 1);
+        assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 2);
+        assert_eq!(game.stats.get("used", "test:syrup_bottle"), 2);
+        assert_eq!(events(), 1);
+        assert_eq!(seen.drops.load(Ordering::SeqCst), 0);
+
+        let empty = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:cauldron")
+            .unwrap();
+        game.world.set(POS[0], POS[1], POS[2], empty).unwrap();
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+        assert_eq!(game.inventory[0].as_ref().unwrap().count, 2);
+        assert_eq!(bottles(game), 1);
     });
 }
 #[test]
@@ -465,8 +496,22 @@ fn cauldron_transfer_awards_two_statistics_once() {
     ) {
         return;
     }
-    fixture(false, |game, _| {
+    fixture(false, |game, seen| {
+        for slot in game.inventory.iter_mut().skip(1) {
+            *slot = Some(ItemStack::new("minecraft:stone", 64));
+        }
         assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+        assert_eq!(game.inventory[0].as_ref().unwrap().count, 1);
+        assert_eq!(
+            state(game),
+            ("test:syrup_cauldron".into(), Some("1".into()))
+        );
+        assert_eq!(seen.drops.load(Ordering::SeqCst), 1);
+        assert_eq!(game.dropped.len(), 1);
+        assert_eq!(
+            (&*game.dropped[0].stack.item, game.dropped[0].stack.count),
+            ("minecraft:glass_bottle", 1)
+        );
         assert_eq!(game.stats.get("custom", "minecraft:use_cauldron"), 1);
         assert_eq!(game.stats.get("used", "test:syrup_bottle"), 1);
     });
@@ -805,5 +850,333 @@ fn cauldron_tag_registration_normalizes_admits_and_expands_over_the_complete_set
                 == "c:foods"),
             Some(Entry::Mod(callback)) if callback.owner == "second_mod"
         ));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn cauldron_decision_controls_swing_and_fallback() {
+    if run_fresh_cases(
+        "game::cauldron_interactions::tests::cauldron_decision_controls_swing_and_fallback",
+        "SUNRISE_CAULDRON_CASE",
+        &["run"],
+    ) {
+        return;
+    }
+    struct DecisionHandler {
+        decision: Arc<std::sync::Mutex<CauldronDecision>>,
+        calls: Arc<AtomicUsize>,
+    }
+    impl mod_api::Interaction for DecisionHandler {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            *self.decision.lock().unwrap()
+        }
+    }
+    struct DecisionMod {
+        decision: Arc<std::sync::Mutex<CauldronDecision>>,
+        calls: Arc<AtomicUsize>,
+        fallthrough: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for DecisionMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            event
+                .interactions
+                .register(
+                    mod_api::__private::block_key("minecraft:cauldron").unwrap(),
+                    mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    Arc::new(DecisionHandler {
+                        decision: self.decision.clone(),
+                        calls: self.calls.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+        fn right_click_item(
+            &self,
+            _: mod_api::HostSide<'_>,
+            _: &mut mod_api::RightClickItemEvent<'_>,
+        ) -> mod_api::Flow {
+            self.fallthrough.fetch_add(1, Ordering::SeqCst);
+            mod_api::Flow::Continue
+        }
+    }
+
+    let decision = Arc::new(std::sync::Mutex::new(CauldronDecision::Success));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let fallthrough = Arc::new(AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "decision_mod",
+        Box::new(DecisionMod {
+            decision: decision.clone(),
+            calls: calls.clone(),
+            fallthrough: fallthrough.clone(),
+        }),
+    )]
+    .into();
+    fixture_mods(mods, |game| {
+        setup(game, "minecraft:cauldron", None, "minecraft:stick", 1);
+        let hit = Hit {
+            pos: POS,
+            face: [0, 1, 0],
+            point: [0.5, 65.0, 0.5],
+            inside: false,
+        };
+
+        *decision.lock().unwrap() = CauldronDecision::Success;
+        game.swing = Default::default();
+        let before = game.swings_started;
+        assert!(game.use_hand(Some(&hit)).unwrap());
+        assert_eq!(game.swings_started, before + 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(fallthrough.load(Ordering::SeqCst), 0);
+
+        *decision.lock().unwrap() = CauldronDecision::Consume;
+        game.swing = Default::default();
+        let before = game.swings_started;
+        assert!(game.use_hand(Some(&hit)).unwrap());
+        assert_eq!(game.swings_started, before);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(fallthrough.load(Ordering::SeqCst), 0);
+
+        *decision.lock().unwrap() = CauldronDecision::Pass;
+        game.swing = Default::default();
+        let before = game.swings_started;
+        assert!(!game.use_hand(Some(&hit)).unwrap());
+        assert_eq!(game.swings_started, before);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert_eq!(fallthrough.load(Ordering::SeqCst), 1);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items() {
+    if run_fresh_cases(
+        "game::cauldron_interactions::tests::cauldron_overwrites_vanilla_and_mod_entries_and_prefers_tags_over_items",
+        "SUNRISE_CAULDRON_CASE",
+        &["run"],
+    ) {
+        return;
+    }
+    struct RecordHandler {
+        label: &'static str,
+        decision: CauldronDecision,
+        log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+    impl mod_api::Interaction for RecordHandler {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            self.log.lock().unwrap().push(self.label);
+            self.decision
+        }
+    }
+    struct FirstMod {
+        log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for FirstMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            let cauldron = mod_api::__private::block_key("minecraft:cauldron").unwrap();
+            event
+                .interactions
+                .register(
+                    cauldron,
+                    mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    Arc::new(RecordHandler {
+                        label: "first_mod_stick",
+                        decision: CauldronDecision::Success,
+                        log: self.log.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+    }
+    struct SecondMod {
+        log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for SecondMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            let cauldron = mod_api::__private::block_key("minecraft:cauldron").unwrap();
+            event
+                .interactions
+                .register(
+                    cauldron,
+                    mod_api::__private::item_key("minecraft:water_bucket").unwrap(),
+                    Arc::new(RecordHandler {
+                        label: "vanilla_override",
+                        decision: CauldronDecision::Consume,
+                        log: self.log.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register(
+                    cauldron,
+                    mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    Arc::new(RecordHandler {
+                        label: "second_mod_stick",
+                        decision: CauldronDecision::Success,
+                        log: self.log.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register_tag(
+                    cauldron,
+                    "minecraft:arrows",
+                    Arc::new(RecordHandler {
+                        label: "tag_arrows",
+                        decision: CauldronDecision::Success,
+                        log: self.log.clone(),
+                    }),
+                )
+                .unwrap();
+            event
+                .interactions
+                .register(
+                    cauldron,
+                    mod_api::__private::item_key("minecraft:arrow").unwrap(),
+                    Arc::new(RecordHandler {
+                        label: "exact_arrow",
+                        decision: CauldronDecision::Consume,
+                        log: self.log.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+    }
+
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mods: mod_api::Mods = vec![
+        mod_api::ModEntry::new("first_mod", Box::new(FirstMod { log: log.clone() })),
+        mod_api::ModEntry::new("second_mod", Box::new(SecondMod { log: log.clone() })),
+    ]
+    .into();
+    fixture_mods(mods, |game| {
+        setup(
+            game,
+            "minecraft:cauldron",
+            None,
+            "minecraft:water_bucket",
+            1,
+        );
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Consume);
+        assert_eq!(state(game), ("minecraft:cauldron".into(), None));
+        assert_eq!(
+            &*game.inventory[0].as_ref().unwrap().item,
+            "minecraft:water_bucket"
+        );
+
+        setup(game, "minecraft:cauldron", None, "minecraft:stick", 1);
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+
+        assert!(
+            game.items()
+                .item_in_tag("minecraft:arrows", "minecraft:arrow")
+        );
+        setup(game, "minecraft:cauldron", None, "minecraft:arrow", 1);
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+
+        assert_eq!(
+            log.lock().unwrap().as_slice(),
+            &["vanilla_override", "second_mod_stick", "tag_arrows"]
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn cauldron_panicking_handler_disables_callback_and_reports_toast() {
+    if run_fresh_cases(
+        "game::cauldron_interactions::tests::cauldron_panicking_handler_disables_callback_and_reports_toast",
+        "SUNRISE_CAULDRON_CASE",
+        &["run"],
+    ) {
+        return;
+    }
+    struct Panicking {
+        calls: Arc<AtomicUsize>,
+    }
+    impl mod_api::Interaction for Panicking {
+        fn interact(&self, _host: &mut dyn ServerHost, _input: &CauldronUse) -> CauldronDecision {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            panic!("boom in cauldron interaction");
+        }
+    }
+    struct PanicMod {
+        calls: Arc<AtomicUsize>,
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for PanicMod {
+        fn register_cauldron_interaction(
+            &self,
+            _: &mod_api::RegistrationContext,
+            event: &mut mod_api::RegisterCauldronInteractionEvent<'_>,
+        ) {
+            event
+                .interactions
+                .register(
+                    mod_api::__private::block_key("minecraft:cauldron").unwrap(),
+                    mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    Arc::new(Panicking {
+                        calls: self.calls.clone(),
+                    }),
+                )
+                .unwrap();
+        }
+    }
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "panic_cauldron",
+        Box::new(PanicMod {
+            calls: calls.clone(),
+        }),
+    )]
+    .into();
+    fixture_mods(mods, |game| {
+        let _ = mod_api::__private::take_hook_panics();
+        setup(game, "minecraft:cauldron", None, "minecraft:stick", 1);
+
+        let before_swings = game.swings_started;
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Consume);
+        assert_eq!(game.swings_started, before_swings);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            mod_api::__private::take_hook_panics(),
+            [mod_api::__private::HookPanicReport {
+                mod_id: "panic_cauldron",
+                hook: "cauldron_interaction",
+            }]
+        );
+
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Consume);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert!(mod_api::__private::take_hook_panics().is_empty());
+
+        setup(game, "minecraft:cauldron", None, "minecraft:lava_bucket", 1);
+        assert_eq!(game.use_on_cauldron(POS).unwrap(), Outcome::Success);
+        assert_eq!(state(game), ("minecraft:lava_cauldron".into(), None));
+        assert_eq!(
+            &*game.inventory[0].as_ref().unwrap().item,
+            "minecraft:bucket"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     });
 }
