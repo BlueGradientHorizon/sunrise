@@ -563,179 +563,234 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn player_and_mob_trampling_without_a_listener_follow_vanilla_order() {
-        for body in [WALKING, Body::Pig] {
-            land(body, Choice::Absent);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::player_and_mob_trampling_without_a_listener_follow_vanilla_order",
+            || {
+                for body in [WALKING, Body::Pig] {
+                    land(body, Choice::Absent);
+                }
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback() {
-        land(Body::Pig, Choice::MoveBystander);
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback",
+            || {
+                land(Body::Pig, Choice::MoveBystander);
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn an_allowing_listener_keeps_the_player_and_mob_landing_order() {
-        for body in [WALKING, Body::Pig] {
-            let baseline = land(body, Choice::Absent);
-            let allowed = land(body, Choice::Allow);
-            assert_eq!(allowed[1..], baseline);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::an_allowing_listener_keeps_the_player_and_mob_landing_order",
+            || {
+                for body in [WALKING, Body::Pig] {
+                    let baseline = land(body, Choice::Absent);
+                    let allowed = land(body, Choice::Allow);
+                    assert_eq!(allowed[1..], baseline);
+                }
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_trapping_listener_rolls_back_without_preventing_fall_damage() {
-        for body in [WALKING, Body::Pig] {
-            land(body, Choice::Trap);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::a_trapping_listener_rolls_back_without_preventing_fall_damage",
+            || {
+                for body in [WALKING, Body::Pig] {
+                    land(body, Choice::Trap);
+                }
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn cancelling_keeps_the_crop_without_preventing_fall_damage() {
-        for body in [WALKING, Body::Pig] {
-            land(body, Choice::Cancel);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::cancelling_keeps_the_crop_without_preventing_fall_damage",
+            || {
+                for body in [WALKING, Body::Pig] {
+                    land(body, Choice::Cancel);
+                }
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it() {
-        land(Body::Guest { sneaking: true }, Choice::AvoidSneak);
-        land(WALKING, Choice::AvoidSneak);
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it",
+            || {
+                land(Body::Guest { sneaking: true }, Choice::AvoidSneak);
+                land(WALKING, Choice::AvoidSneak);
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_guest_landing_uses_its_own_move_in_a_batch() {
-        land_with_later_packet(
-            Body::Guest { sneaking: true },
-            Choice::AvoidSneak,
-            Some(S::PlayerInput(play::PlayerInput { flags: 0 })),
-        );
-        land_with_later_packet(
-            WALKING,
-            Choice::Allow,
-            Some(S::MovePlayerPos(play::MovePlayerPos {
-                x: 0.5,
-                y: LANDING_Y,
-                z: 1.5,
-                flags: 0,
-            })),
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::a_guest_landing_uses_its_own_move_in_a_batch",
+            || {
+                land_with_later_packet(
+                    Body::Guest { sneaking: true },
+                    Choice::AvoidSneak,
+                    Some(S::PlayerInput(play::PlayerInput { flags: 0 })),
+                );
+                land_with_later_packet(
+                    WALKING,
+                    Choice::Allow,
+                    Some(S::MovePlayerPos(play::MovePlayerPos {
+                        x: 0.5,
+                        y: LANDING_Y,
+                        z: 1.5,
+                        flags: 0,
+                    })),
+                );
+            },
         );
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it() {
-        for crouching in [true, false] {
-            land(Body::Cat { crouching }, Choice::AvoidSneak);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it",
+            || {
+                for crouching in [true, false] {
+                    land(Body::Cat { crouching }, Choice::AvoidSneak);
+                }
+            },
+        );
     }
 
     #[test]
     #[ignore = "daily"]
     fn ordinary_moves_and_short_farmland_landings_do_not_pause() {
-        use sunrise_client::{
-            health::{DamageLevel, LentLevel},
-            mobs::{Mob, ai},
-            motion::MotionWorld,
-        };
-
-        let trace = Trace::default();
-        mod_platform::testing::with_mods(
-            vec![ModEntry::new(
-                "gardener",
-                Box::new(Gardener(Choice::Allow, trace.clone())),
-            )]
-            .into(),
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::ordinary_moves_and_short_farmland_landings_do_not_pause",
             || {
-                with_game(|game| {
-                    game.options.dedicated = Some(Vec::new());
-                    game.streaming
-                        .insert_remote(&mut game.world, Chunk::empty(0, 0));
-                    let registry = game.pack.assets.registry;
-                    let farmland = registry.default_state("minecraft:farmland").unwrap();
-                    let [x, y, z] = FIELD;
-                    game.world.set(x, y, z, farmland).unwrap();
-                    let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                    let mut lent = LentLevel::take(&mut game.world);
-                    {
-                        let view = game.mob_world_base(&[]);
-                        let mut level = DamageLevel::lent(
-                            &game.world,
-                            registry,
-                            &mut lent,
-                            Some(game.items()),
-                            Some(&game.pack.block_registries),
-                            &game.damage_hooks,
-                        );
-                        for walking in [false, true] {
-                            let (start_y, velocity) = if walking {
-                                (LANDING_Y, Vec3::new(0.125, -0.08, 0.0))
-                            } else {
-                                // Even the smallest random draw cannot pass this short fall.
-                                (64.125, Vec3::new(0.0, -0.5, 0.0))
-                            };
-                            let mut mob =
-                                Mob::new(LANDING, pig.clone(), Vec3::new(1.5, start_y, 1.5), 0.0);
-                            mob.ai.goals = Default::default();
-                            mob.ai.targets = Default::default();
-                            mob.on_ground = walking;
-                            mob.velocity = velocity;
-                            let mut trample = None;
-                            let progress = ai::tick_until_consumption(
-                                &mut mob,
-                                &view,
-                                &mut level,
-                                &mut Vec::new(),
-                                &mut trample,
-                            );
-                            assert!(trample.is_none());
-                            assert!(
-                                matches!(progress, ai::TickProgress::Complete(true)),
-                                "walking={walking}: {progress:?}"
-                            );
-                            assert!(mob.on_ground);
-                            assert_eq!(mob.position.y, LANDING_Y);
-                            assert_eq!(mob.fall_distance, 0.0);
-                            assert_eq!(mob.position.x > 1.5, walking);
-                        }
-                    }
-                    lent.give_back(&mut game.world);
+                use sunrise_client::{
+                    health::{DamageLevel, LentLevel},
+                    mobs::{Mob, ai},
+                    motion::MotionWorld,
+                };
 
-                    // The guest motion pass finishes a short fall by itself:
-                    // `None` means no continuation and no return to the owning host.
-                    let mut guest =
-                        PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5)).unwrap();
-                    guest.fall_distance = 0.125;
-                    let side = game_side!(game);
-                    let mut motion = MotionWorld {
-                        side: &side,
-                        entities: &[],
-                        player: &mut guest,
-                        scene: &mut game.world,
-                        assets: &game.pack.assets,
-                        collision_binding: game.collision,
-                        resources: game.motion,
-                        health: &game.health_resources,
-                        tag_items: Some(world_items!(game)),
-                        loop_context: &game.loop_context,
-                        damage_hooks: &game.damage_hooks,
-                        block_registries: Some(&game.pack.block_registries),
-                    };
-                    assert!(
-                        motion
-                            .check_guest_fall_damage(-0.125, true, farmland, BlockPos::new(x, y, z))
-                            .unwrap()
-                            .is_none()
-                    );
-                    assert_eq!(guest.fall_distance, 0.0);
-                    assert_eq!(game.world.block(x, y, z), farmland);
-                    assert!(trace.lock().unwrap().is_empty());
-                });
+                let trace = Trace::default();
+                mod_platform::testing::with_mods(
+                    vec![ModEntry::new(
+                        "gardener",
+                        Box::new(Gardener(Choice::Allow, trace.clone())),
+                    )]
+                    .into(),
+                    || {
+                        with_game(|game| {
+                            game.options.dedicated = Some(Vec::new());
+                            game.streaming
+                                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                            let registry = game.pack.assets.registry;
+                            let farmland = registry.default_state("minecraft:farmland").unwrap();
+                            let [x, y, z] = FIELD;
+                            game.world.set(x, y, z, farmland).unwrap();
+                            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                            let mut lent = LentLevel::take(&mut game.world);
+                            {
+                                let view = game.mob_world_base(&[]);
+                                let mut level = DamageLevel::lent(
+                                    &game.world,
+                                    registry,
+                                    &mut lent,
+                                    Some(game.items()),
+                                    Some(&game.pack.block_registries),
+                                    &game.damage_hooks,
+                                );
+                                for walking in [false, true] {
+                                    let (start_y, velocity) = if walking {
+                                        (LANDING_Y, Vec3::new(0.125, -0.08, 0.0))
+                                    } else {
+                                        // Even the smallest random draw cannot pass this short fall.
+                                        (64.125, Vec3::new(0.0, -0.5, 0.0))
+                                    };
+                                    let mut mob = Mob::new(
+                                        LANDING,
+                                        pig.clone(),
+                                        Vec3::new(1.5, start_y, 1.5),
+                                        0.0,
+                                    );
+                                    mob.ai.goals = Default::default();
+                                    mob.ai.targets = Default::default();
+                                    mob.on_ground = walking;
+                                    mob.velocity = velocity;
+                                    let mut trample = None;
+                                    let progress = ai::tick_until_consumption(
+                                        &mut mob,
+                                        &view,
+                                        &mut level,
+                                        &mut Vec::new(),
+                                        &mut trample,
+                                    );
+                                    assert!(trample.is_none());
+                                    assert!(
+                                        matches!(progress, ai::TickProgress::Complete(true)),
+                                        "walking={walking}: {progress:?}"
+                                    );
+                                    assert!(mob.on_ground);
+                                    assert_eq!(mob.position.y, LANDING_Y);
+                                    assert_eq!(mob.fall_distance, 0.0);
+                                    assert_eq!(mob.position.x > 1.5, walking);
+                                }
+                            }
+                            lent.give_back(&mut game.world);
+
+                            // The guest motion pass finishes a short fall by itself:
+                            // `None` means no continuation and no return to the owning host.
+                            let mut guest =
+                                PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5))
+                                    .unwrap();
+                            guest.fall_distance = 0.125;
+                            let side = game_side!(game);
+                            let mut motion = MotionWorld {
+                                side: &side,
+                                entities: &[],
+                                player: &mut guest,
+                                scene: &mut game.world,
+                                assets: &game.pack.assets,
+                                collision_binding: game.collision,
+                                resources: game.motion,
+                                health: &game.health_resources,
+                                tag_items: Some(world_items!(game)),
+                                loop_context: &game.loop_context,
+                                damage_hooks: &game.damage_hooks,
+                                block_registries: Some(&game.pack.block_registries),
+                            };
+                            assert!(
+                                motion
+                                    .check_guest_fall_damage(
+                                        -0.125,
+                                        true,
+                                        farmland,
+                                        BlockPos::new(x, y, z)
+                                    )
+                                    .unwrap()
+                                    .is_none()
+                            );
+                            assert_eq!(guest.fall_distance, 0.0);
+                            assert_eq!(game.world.block(x, y, z), farmland);
+                            assert!(trace.lock().unwrap().is_empty());
+                        });
+                    },
+                );
             },
         );
     }
@@ -743,9 +798,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_listener_that_changes_the_block_refuses_the_trample() {
-        for body in [WALKING, Body::Pig] {
-            land(body, Choice::Replace);
-            land(body, Choice::ReplaceDuringLift);
-        }
+        crate::game::in_own_process(
+            "game::native_hooks::farmland_trample::tests::a_listener_that_changes_the_block_refuses_the_trample",
+            || {
+                for body in [WALKING, Body::Pig] {
+                    land(body, Choice::Replace);
+                    land(body, Choice::ReplaceDuringLift);
+                }
+            },
+        );
     }
 }

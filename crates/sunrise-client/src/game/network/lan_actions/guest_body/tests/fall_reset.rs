@@ -147,70 +147,80 @@ fn fall(g: &Game<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
 #[test]
 #[ignore = "daily"]
 fn a_guest_move_that_goes_up_ends_its_fall() {
-    let mut resources = None;
-    let scratch = tempfile::tempdir().unwrap();
-    let mut g = scene(&mut resources, scratch.path());
-    // One block down: a fall of 1, tracked from where the tick left the guest.
-    tick_with_moves(&mut g, &[109.0], (1.0, None, [false; 3]));
-    assert_eq!(fall(&g), (1.0, Some([12.5, 109.0, 12.5]), [false; 3]));
-    // Half a block up: no fall left, and the fall of half a block is awarded.
-    tick_with_moves(&mut g, &[109.5], (0.0, None, [true, true, false]));
-    assert_eq!(fall(&g), (0.0, None, [true, true, false]));
+    crate::game::in_own_process(
+        "game::lan_actions::guest_body::tests::fall_reset::a_guest_move_that_goes_up_ends_its_fall",
+        || {
+            let mut resources = None;
+            let scratch = tempfile::tempdir().unwrap();
+            let mut g = scene(&mut resources, scratch.path());
+            // One block down: a fall of 1, tracked from where the tick left the guest.
+            tick_with_moves(&mut g, &[109.0], (1.0, None, [false; 3]));
+            assert_eq!(fall(&g), (1.0, Some([12.5, 109.0, 12.5]), [false; 3]));
+            // Half a block up: no fall left, and the fall of half a block is awarded.
+            tick_with_moves(&mut g, &[109.5], (0.0, None, [true, true, false]));
+            assert_eq!(fall(&g), (0.0, None, [true, true, false]));
 
-    for name in ["any", "short"] {
-        assert!(g.run_command(&format!("advancement revoke {NAME} only fall:{name}")));
-    }
-    tick_with_moves(&mut g, &[108.5], (1.0, None, [false; 3]));
-    assert_eq!(fall(&g), (1.0, Some([12.5, 108.5, 12.5]), [false; 3]));
-    // Three moves in one server tick: down to 104, up to 104.5, down to 103.5. The move up
-    // ends the fall where it is, 4 blocks below its start, not at the tick's end, 5 below.
-    // The last move starts a new fall of 1.
-    tick_with_moves(
-        &mut g,
-        &[104.0, 104.5, 103.5],
-        (1.0, None, [true, false, false]),
-    );
-    assert_eq!(
-        fall(&g),
-        (1.0, Some([12.5, 103.5, 12.5]), [true, false, false])
-    );
+            for name in ["any", "short"] {
+                assert!(g.run_command(&format!("advancement revoke {NAME} only fall:{name}")));
+            }
+            tick_with_moves(&mut g, &[108.5], (1.0, None, [false; 3]));
+            assert_eq!(fall(&g), (1.0, Some([12.5, 108.5, 12.5]), [false; 3]));
+            // Three moves in one server tick: down to 104, up to 104.5, down to 103.5. The move up
+            // ends the fall where it is, 4 blocks below its start, not at the tick's end, 5 below.
+            // The last move starts a new fall of 1.
+            tick_with_moves(
+                &mut g,
+                &[104.0, 104.5, 103.5],
+                (1.0, None, [true, false, false]),
+            );
+            assert_eq!(
+                fall(&g),
+                (1.0, Some([12.5, 103.5, 12.5]), [true, false, false])
+            );
 
-    // A player that dies later in the tick was alive at its move up, so the fall still counts:
-    // half a heart left, and a block at its head to suffocate in once it has moved.
-    assert!(g.run_command(&format!("advancement revoke {NAME} only fall:any")));
-    assert!(g.run_command("gamerule natural_health_regeneration false"));
-    let health = g.lan.as_ref().unwrap().hub.guests[0].health;
-    assert!(g.run_command(&format!("damage {NAME} {} minecraft:generic", health - 0.5)));
-    // The damage clock runs out, so the next damage counts.
-    for _ in 0..20 {
-        g.tick_lan(false);
-    }
-    assert!(g.run_command("setblock 12 105 12 minecraft:stone"));
-    tick_with_moves(&mut g, &[104.0], (0.0, None, [true, true, false]));
-    let guest = &g.lan.as_ref().unwrap().hub.guests[0];
-    assert!(
-        guest.health <= 0.0,
-        "the guest suffocated: {}",
-        guest.health
+            // A player that dies later in the tick was alive at its move up, so the fall still counts:
+            // half a heart left, and a block at its head to suffocate in once it has moved.
+            assert!(g.run_command(&format!("advancement revoke {NAME} only fall:any")));
+            assert!(g.run_command("gamerule natural_health_regeneration false"));
+            let health = g.lan.as_ref().unwrap().hub.guests[0].health;
+            assert!(g.run_command(&format!("damage {NAME} {} minecraft:generic", health - 0.5)));
+            // The damage clock runs out, so the next damage counts.
+            for _ in 0..20 {
+                g.tick_lan(false);
+            }
+            assert!(g.run_command("setblock 12 105 12 minecraft:stone"));
+            tick_with_moves(&mut g, &[104.0], (0.0, None, [true, true, false]));
+            let guest = &g.lan.as_ref().unwrap().hub.guests[0];
+            assert!(
+                guest.health <= 0.0,
+                "the guest suffocated: {}",
+                guest.health
+            );
+            // Half a block up from where the last fall began: any fall, and a short one.
+            assert_eq!(fall(&g).2, [true, true, false]);
+        },
     );
-    // Half a block up from where the last fall began: any fall, and a short one.
-    assert_eq!(fall(&g).2, [true, true, false]);
 }
 
 #[test]
 #[ignore = "daily"]
 fn entering_water_ends_a_tracked_fall_before_the_next_move() {
-    let mut resources = None;
-    let scratch = tempfile::tempdir().unwrap();
-    let mut g = scene(&mut resources, scratch.path());
-    assert!(g.run_command("setblock 12 104 12 minecraft:water"));
-    tick_with_moves(&mut g, &[105.0], (5.0, None, [false; 3]));
-    assert_eq!(fall(&g).1, Some([12.5, 105.0, 12.5]));
+    crate::game::in_own_process(
+        "game::lan_actions::guest_body::tests::fall_reset::entering_water_ends_a_tracked_fall_before_the_next_move",
+        || {
+            let mut resources = None;
+            let scratch = tempfile::tempdir().unwrap();
+            let mut g = scene(&mut resources, scratch.path());
+            assert!(g.run_command("setblock 12 104 12 minecraft:water"));
+            tick_with_moves(&mut g, &[105.0], (5.0, None, [false; 3]));
+            assert_eq!(fall(&g).1, Some([12.5, 105.0, 12.5]));
 
-    // Enter airborne water a half block down, then fall below it in the same batch.
-    drain_moves(&mut g, [(104.5, 0), (101.5, 0)]);
-    assert_eq!(g.lan.as_ref().unwrap().hub.guests[0].position[1], 101.5);
-    assert_eq!(fall(&g), (0.0, None, [true, true, false]));
+            // Enter airborne water a half block down, then fall below it in the same batch.
+            drain_moves(&mut g, [(104.5, 0), (101.5, 0)]);
+            assert_eq!(g.lan.as_ref().unwrap().hub.guests[0].position[1], 101.5);
+            assert_eq!(fall(&g), (0.0, None, [true, true, false]));
+        },
+    );
 }
 
 fn lethal_landing(totem: bool) {
@@ -260,11 +270,21 @@ fn lethal_landing(totem: bool) {
 #[test]
 #[ignore = "daily"]
 fn a_lethal_landing_records_death_and_drops_before_the_next_move() {
-    lethal_landing(false);
+    crate::game::in_own_process(
+        "game::lan_actions::guest_body::tests::fall_reset::a_lethal_landing_records_death_and_drops_before_the_next_move",
+        || {
+            lethal_landing(false);
+        },
+    );
 }
 
 #[test]
 #[ignore = "daily"]
 fn a_totem_saves_the_guest_before_its_tracked_fall_ends() {
-    lethal_landing(true);
+    crate::game::in_own_process(
+        "game::lan_actions::guest_body::tests::fall_reset::a_totem_saves_the_guest_before_its_tracked_fall_ends",
+        || {
+            lethal_landing(true);
+        },
+    );
 }
