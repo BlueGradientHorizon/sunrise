@@ -48,6 +48,7 @@ struct Registration<'a> {
     state: ArmorExtensions,
     sprite_exists: &'a dyn Fn(&str) -> bool,
     refused: Option<String>,
+    added_items: Vec<ItemKey>,
 }
 impl ClientItemExtensionsRegistrar for Registration<'_> {
     fn register_model(
@@ -129,6 +130,7 @@ impl ClientItemExtensionsRegistrar for Registration<'_> {
                     previous.attached.mod_id()
                 ));
             }
+            self.added_items.push(item);
             self.state.items.insert(
                 item,
                 ItemExtensionsPart {
@@ -220,6 +222,7 @@ impl Game<'_> {
             state: ArmorExtensions::default(),
             sprite_exists: &|name| gui.atlas.sprites.contains_key(name),
             refused: None,
+            added_items: Vec::new(),
         };
         // Prebind every default texture once, so frame callbacks receive only integer references.
         for name in gui.atlas.sprites.keys() {
@@ -227,7 +230,25 @@ impl Game<'_> {
         }
         Self::native_register_client_item_extensions(
             &mod_api::RegistrationContext::new(),
-            &mut registration,
+            |call| {
+                let models = registration.state.models.len();
+                let textures = registration.state.textures.len();
+                let previous_refusal = registration.refused.take();
+                if call(&mut registration) {
+                    registration.refused = registration.refused.take().or(previous_refusal);
+                } else {
+                    registration.refused = previous_refusal;
+                    registration.state.models.truncate(models);
+                    let state = &mut registration.state;
+                    for name in state.textures.drain(textures..) {
+                        state.texture_keys.remove(&name);
+                    }
+                    for item in &registration.added_items {
+                        state.items.remove(item);
+                    }
+                }
+                registration.added_items.clear();
+            },
         );
         if let Some(why) = registration.refused {
             log::warn!("Sunrise: client item extensions refused: {why}");
@@ -494,6 +515,50 @@ mod tests {
         )
     }
     #[test]
+    #[ignore = "daily"]
+    fn panicking_item_extension_registration_drops_only_its_batch() {
+        struct Probe(&'static str, bool);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Probe {
+            fn register_client_item_extensions(
+                &self,
+                _: &mod_api::RegistrationContext,
+                event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
+            ) {
+                event.extensions.register_model(self.0, &tree(0.0)).unwrap();
+                assert!(!self.1, "item extension registration probe");
+            }
+        }
+        let mods = vec![
+            mod_api::ModEntry::new("discarded", Box::new(Probe("discarded:gear", true))),
+            mod_api::ModEntry::new("admitted", Box::new(Probe("admitted:gear", false))),
+        ]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                let mut reports = Vec::new();
+                for _ in 0..2 {
+                    let prepared = Game::prepare_client_item_extensions(&game.gui).unwrap();
+                    assert_eq!(
+                        prepared
+                            .models
+                            .iter()
+                            .map(|model| model.name.as_str())
+                            .collect::<Vec<_>>(),
+                        ["admitted:gear"]
+                    );
+                    reports.extend(
+                        mod_api::__private::game::take_mod_error_toasts()
+                            .into_iter()
+                            .filter(|&(id, _)| id == "discarded"),
+                    );
+                }
+                assert_eq!(reports, [("discarded", "register_client_item_extensions")]);
+            });
+        });
+    }
+
+    #[test]
     fn an_armour_model_tree_too_deep_to_bake_is_refused() {
         let mut model = tree(0.0);
         for _ in 0..MAX_ARMOR_MODEL_DEPTH {
@@ -570,6 +635,7 @@ mod tests {
                     state: Default::default(),
                     sprite_exists: &|_| true,
                     refused: None,
+                    added_items: Vec::new(),
                 };
                 let _owner = owner("armor_test");
                 let models = [
@@ -739,6 +805,7 @@ mod tests {
                     state: Default::default(),
                     sprite_exists: &|name| name == "known",
                     refused: None,
+                    added_items: Vec::new(),
                 };
                 let missing = registry.register_texture("armor_test:missing").unwrap_err();
                 assert!(missing.contains("armor_test:missing"));
@@ -801,6 +868,7 @@ mod tests {
                     state: Default::default(),
                     sprite_exists: &|_| true,
                     refused: None,
+                    added_items: Vec::new(),
                 };
                 let _owner = owner("armor_test");
                 registry.register_texture("original").unwrap();
@@ -903,6 +971,7 @@ mod tests {
                         state: Default::default(),
                         sprite_exists: &|_| true,
                         refused: None,
+                        added_items: Vec::new(),
                     };
                     let _owner = owner("armor_test");
                     registry.register_texture("original").unwrap();
@@ -989,6 +1058,7 @@ mod tests {
                             state: Default::default(),
                             sprite_exists: &|_| true,
                             refused: None,
+                            added_items: Vec::new(),
                         };
                         {
                             let _owner = owner("gated");

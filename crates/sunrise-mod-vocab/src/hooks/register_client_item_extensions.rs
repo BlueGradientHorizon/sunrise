@@ -5,14 +5,15 @@ pub trait Hooks {
     /// applies. The validated bindings are installed with the candidate models. Models are baked once;
     /// frame callbacks choose references, never geometry. A duplicate item provider or an unknown
     /// texture refuses registration with a named diagnostic. Server-only packages cannot listen.
+    /// A panicking callback loses its batch, is reported by mod name and skipped for the session.
     #[hook(
         receiver = "associated",
-        dispatch = "flat",
+        dispatch = "direct",
         side = "client",
         contract = "listen",
         context = "registration",
         neoforge = "RegisterClientExtensionsEvent",
-        version = 2
+        version = 3
     )]
     fn register_client_item_extensions(extensions: &mut dyn mod_api::ClientItemExtensionsRegistrar);
 }

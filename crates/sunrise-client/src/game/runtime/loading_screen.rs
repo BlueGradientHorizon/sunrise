@@ -386,16 +386,13 @@ impl Loading {
             loaded.game_cpu,
             std::mem::take(&mut loaded.client_applies),
             loaded.entity_models,
+            Some((window, renderer)),
         )?
         else {
             return Ok(None);
         };
         drop(game_step);
         let game_ms = game_at.elapsed().as_millis();
-        game.renderer = Some(renderer);
-        game.resize_state = Some(game.resize_state_of(window.inner_size()));
-        game.window = Some(window);
-        game.world_renderer_ready = true;
         game.fullscreen = self.fullscreen;
         game.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);

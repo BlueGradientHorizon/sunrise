@@ -305,13 +305,32 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
             );
         }
 
-        fn register_client_item_extensions(extensions: &mut dyn ClientItemExtensionsRegistrar) {
+        fn register_client_item_extensions(
+            &self,
+            _: &RegistrationContext,
+            event: &mut mod_api::RegisterClientItemExtensionsEvent<'_>,
+        ) {
+            let extensions: &mut dyn ClientItemExtensionsRegistrar = &mut *event.extensions;
             if REFUSE_EXTENSIONS.get() {
                 assert!(
                     extensions
                         .register_texture("startup_anchor:missing")
                         .is_err()
                 );
+            }
+        }
+
+        fn texture_atlas_stitched(
+            &self,
+            host: &mut dyn ClientHost,
+            event: &mut mod_api::TextureAtlasStitchedEvent,
+        ) {
+            assert_eq!(
+                host.render_assets().model(&id("startup_anchor:stone")),
+                Err(mod_api::ModelError::UnknownModel)
+            );
+            if matches!(event.atlas, mod_api::TextureAtlas::Blocks) {
+                self.0.lock().unwrap().push("publish atlas without models");
             }
         }
 
@@ -325,7 +344,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     .model(&id("startup_anchor:stone"))
                     .is_ok()
             );
-            self.0.lock().unwrap().push("install models");
+            self.0.lock().unwrap().push("observe published models");
         }
     }
 
@@ -344,8 +363,8 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                 Game::native_standalone_models(&RegistrationContext::new(), &mut registrations);
                 let _models =
                     sunrise_client::models::StandaloneFixture::from_registrations(registrations);
-                for reject in [true, false] {
-                    REFUSE_EXTENSIONS.set(reject);
+                for refusal in [Some("renderer"), Some("extensions"), None] {
+                    REFUSE_EXTENSIONS.set(refusal == Some("extensions"));
                     trace.lock().unwrap().clear();
                     let root = fixture_root();
                     let scratch = tempfile::tempdir().unwrap();
@@ -376,7 +395,7 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                     );
                     assert!(loaded.pack_error.is_none());
                     options.resources = loaded.root;
-                    let result = start_game(
+                    let mut game = start_game(
                         &loaded.resources,
                         loaded.pack,
                         loaded.gui.unwrap(),
@@ -390,31 +409,50 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
                         loaded.game_cpu,
                         loaded.client_applies,
                         loaded.entity_models,
+                        None,
+                    )
+                    .unwrap()
+                    .unwrap();
+                    assert_eq!(game.pack.render.generation, 0);
+                    assert_eq!(
+                        game.pack.render.model(&id("startup_anchor:stone")),
+                        Err(mod_api::ModelError::UnknownModel)
                     );
-                    if reject {
+                    let pending = game.pending_initial_models.take().unwrap();
+                    let candidate = pending.models.pack.render.generation;
+                    let renderer = if refusal == Some("renderer") {
+                        Err("renderer validation refused".into())
+                    } else {
+                        Ok(None)
+                    };
+                    let result = game.apply_pending_client_start(*pending, renderer);
+                    if let Some(refusal) = refusal {
                         let error = result
                             .err()
                             .expect("startup must refuse the unknown texture");
-                        assert!(
-                            error
-                                .to_string()
-                                .contains("unknown armour texture startup_anchor:missing")
-                        );
+                        assert!(error.to_string().contains(if refusal == "renderer" {
+                            "renderer validation refused"
+                        } else {
+                            "unknown armour texture startup_anchor:missing"
+                        }));
+                        assert_eq!(game.pack.render.generation, 0);
                         assert_eq!(
                             *trace.lock().unwrap(),
                             ["prepare before", "bake model", "prepare after"]
                         );
                         continue;
                     }
-                    assert!(result.unwrap().is_some());
+                    assert!(result.unwrap());
+                    assert_eq!(game.pack.render.generation, candidate);
                     assert_eq!(
                         *trace.lock().unwrap(),
                         [
                             "prepare before",
                             "bake model",
                             "prepare after",
+                            "publish atlas without models",
                             "apply before",
-                            "install models",
+                            "observe published models",
                             "apply after",
                         ]
                     );
@@ -1102,7 +1140,8 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                     seen.lock().unwrap().clear();
                     with_client_game(|game| {
                         let resources = game.res.clone();
-                        let options = game.options.clone();
+                        let mut options = game.options.clone();
+                        options.headless = true;
                         let root = options.resources.clone();
                         let gui = UiResources::server(
                             &sunrise_assets::resource_source::ResourceSource::directory(
@@ -1128,6 +1167,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                             Some(game.settings.clone()),
                             None,
                             vec![PreparedClientReload::Vanilla(())],
+                            None,
                             None,
                         )
                         .unwrap()

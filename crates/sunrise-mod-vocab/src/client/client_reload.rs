@@ -29,7 +29,7 @@ impl VanillaClientListeners {
         Self::model_manager()
     }
     /// Vanilla's model manager: building the next models in prepare and publishing
-    /// them in apply, with the atlas and model-baking notifications. Use this anchor
+    /// them in apply, with the model-baking notification. Atlas upload precedes it. Use this anchor
     /// rather than its string value, which need not
     /// match NeoForge's identifier.
     pub fn model_manager() -> Identifier {
@@ -85,8 +85,10 @@ pub trait ClientReloadListener: Send + Sync + 'static {
     /// carrying the rest through; returning `Err` aborts the whole reload and
     /// keeps every listener's previous assets. Attach the original error to the
     /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
-    /// A panic in `prepare` or the returned apply stops the game; the crash
-    /// report names the listener and the mod that registered it.
+    /// A panic in `prepare` or apply skips this listener for the session. The
+    /// mod and listener are reported, and unrelated listeners still apply.
+    /// Native callbacks must publish their own state atomically: the engine
+    /// cannot undo writes a closure makes to private mod memory.
     fn prepare(
         &self,
         context: &ClientReloadContext,
@@ -163,6 +165,12 @@ impl ClientReloadListeners for ClientListenerRegistry {
     }
 }
 impl ClientListenerRegistry {
+    pub(crate) fn stage(&mut self, invoke: impl FnOnce(&mut Self) -> bool) {
+        let checkpoint = self.core.checkpoint();
+        if !invoke(self) {
+            self.core.discard_since(checkpoint);
+        }
+    }
     pub(crate) fn new() -> Self {
         Self {
             core: crate::world::reload::ReloadCore::new(

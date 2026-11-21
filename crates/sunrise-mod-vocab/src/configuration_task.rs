@@ -14,12 +14,14 @@ pub trait ConfigurationTask: Send + 'static {
     /// [`ConfigurationTaskContext::fail`], or leave it pending for a tick or a reply.
     /// A finish request takes effect after the callback commits and publishes its
     /// deferred sends. A panic rolls back the callback and fails this peer's admission,
-    /// naming the mod in the log and error toast rather than crashing the server.
+    /// naming the mod in the log and error toast. This mod’s task type is skipped
+    /// for the rest of the session, including on later connections.
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
 
     /// Poll a pending task, at most once per server tick after its start. By default
     /// the task just waits. As in [`Self::start`], use the context to send, finish or
     /// fail. A failure or panic rolls back the callback and fails admission.
+    /// Only a panic disables the mod’s task type for later peers.
     fn tick(&mut self, _host: &mut dyn ServerHost, _context: &mut ConfigurationTaskContext<'_>) {}
 }
 

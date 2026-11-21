@@ -10,6 +10,8 @@ pub trait Hooks {
     /// nothing, and the old handles stay valid. Resolve models once through `render_assets().model`
     /// and keep the `ModelRef`s until the next `model_baking_completed`, when the old ones answer
     /// `ModelError::StaleModel`. Never look them up by name every frame. Client-side.
+    /// A panicking callback's transaction rolls back; that callback is reported and skipped for
+    /// the session without suppressing other mods' notifications.
     #[notes = r#"## Model baking completed
 
 `model_baking_completed` (NeoForge's `ModelEvent.BakingCompleted`) fires on the render thread once per successful model
@@ -20,12 +22,12 @@ the next `model_baking_completed`, when the old ones answer `ModelError::StaleMo
 and leaves them valid. It gives no view of the baked geometry and edits nothing (that is #861). A dedicated server never
 fires it."#]
     #[hook(
-        dispatch = "flat",
+        dispatch = "direct",
         side = "client",
         contract = "listen",
         cancellable = false,
         neoforge = "ModelEvent.BakingCompleted",
-        version = 2
+        version = 3
     )]
     fn model_baking_completed();
 }

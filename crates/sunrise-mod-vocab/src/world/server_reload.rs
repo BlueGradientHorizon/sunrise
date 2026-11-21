@@ -83,8 +83,11 @@ pub trait ServerReloadListener: Send + Sync + 'static {
     /// carrying the rest through; returning `Err` aborts the whole reload and
     /// keeps every listener's previous data. Attach the original error to the
     /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
-    /// A panic in `prepare` or the returned apply stops the server; the crash
-    /// report names the listener and the mod that registered it.
+    /// A panic in `prepare` or apply skips this listener for the session. The
+    /// mod and listener are reported, unrelated listeners still apply, and a
+    /// failed listener does not replace its last admitted retained object.
+    /// Native callbacks must publish their own state atomically: the engine
+    /// cannot undo writes a closure makes to private mod memory.
     fn prepare(
         &self,
         context: &ServerReloadContext,
@@ -227,6 +230,14 @@ impl ServerReloadListeners for ServerListenerRegistry {
     }
 }
 impl ServerListenerRegistry {
+    pub(crate) fn stage(&mut self, invoke: impl FnOnce(&mut Self) -> bool) {
+        let checkpoint = self.core.checkpoint();
+        let retained = self.retained.len();
+        if !invoke(self) {
+            self.core.discard_since(checkpoint);
+            self.retained.truncate(retained);
+        }
+    }
     pub(crate) fn new() -> Self {
         Self {
             core: ReloadCore::new(
@@ -336,10 +347,17 @@ impl ServerReloadResources for RetainedListeners {
     }
 }
 impl RetainedListeners {
-    pub(crate) fn install(&mut self, retained: Vec<RetainedEntry>) {
-        self.entries = retained
-            .into_iter()
-            .map(|entry| (entry.id, entry.any))
-            .collect();
+    pub(crate) fn install(
+        &mut self,
+        retained: Vec<RetainedEntry>,
+        skipped: &std::collections::HashSet<Identifier>,
+    ) {
+        // Refused callbacks never replace a previously admitted retained object.
+        self.entries.retain(|id, _| skipped.contains(id));
+        self.entries.extend(
+            retained.into_iter().filter_map(|entry| {
+                (!skipped.contains(&entry.id)).then_some((entry.id, entry.any))
+            }),
+        );
     }
 }

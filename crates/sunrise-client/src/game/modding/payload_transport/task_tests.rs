@@ -29,6 +29,7 @@ enum Case {
     SendRefusal,
     SendRefusalPanic,
     ConcurrentPeers,
+    RetainedConnection,
 }
 struct Fixture {
     case: Case,
@@ -278,6 +279,11 @@ impl ConfigurationTask for Task {
                 context.fail("fixture failure");
                 context.finish(); // Cannot overwrite failure.
             }
+            (Case::RetainedConnection, 0) => {
+                context
+                    .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![1]))
+                    .unwrap();
+            }
             (Case::Tick, 0) => self.waiting = true,
             (Case::Panic, 0) => {
                 context.finish();
@@ -524,7 +530,7 @@ fn serving_game_drives_configuration_tasks() {
                                         );
                                     }
                                     assert!(
-                                        reason.contains("Configuration task callback panicked"),
+                                        reason.contains("callback panicked; it is disabled"),
                                         "{reason}"
                                     );
                                     assert_eq!(*starts, [kind("first")]);
@@ -583,6 +589,29 @@ fn serving_game_drives_configuration_tasks() {
                         _ => 2,
                     }
                 );
+                if matches!(case, Case::Panic) {
+                    // The same serving Game admits another peer without calling the
+                    // disabled task again. Another task of that mod still runs.
+                    let (mut peer, _, known) =
+                        super::config_tests::configuration_peer(port, "ConfigPeer");
+                    peer.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
+                        .unwrap();
+                    loop {
+                        let (id, body) = peer.recv().unwrap();
+                        match cfg::Clientbound::decode(id, &body).unwrap() {
+                            cfg::Clientbound::FinishConfiguration(_) => break,
+                            cfg::Clientbound::Disconnect(reason) => {
+                                panic!("second peer refused: {reason:?}")
+                            }
+                            cfg::Clientbound::CustomPayload(p) => assert_ne!(p.channel, CHANNEL),
+                            _ => {}
+                        }
+                    }
+                    assert_eq!(
+                        *fixture.starts.lock().unwrap(),
+                        [kind("first"), kind("second")]
+                    );
+                }
                 game.leave_server(None).unwrap();
             });
         },
@@ -690,4 +719,81 @@ fn peer_completion_rejects_other_connections() {
             game.leave_server(None).unwrap();
         });
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn retained_configuration_host_send_refuses_play_while_session_is_registered() {
+    use sunrise_protocol::{
+        attachment_sync, packets::configuration as cfg, payload_negotiation::Phase,
+    };
+    super::tests::require_resources();
+    if super::super::native_entity_refs::tests::run_fresh_cases(
+        "game::payload_transport::task_tests::retained_configuration_host_send_refuses_play_while_session_is_registered",
+        "SUNRISE_TASK_RETAINED_CONNECTION_CHILD",
+        &["play"],
+    ) {
+        return;
+    }
+    let fixture = Arc::new(Fixture::new(Case::RetainedConnection));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "task_fixture",
+            Box::new(Mod(fixture.clone())),
+        )]
+        .into(),
+        || {
+            super::super::native_entity_refs::tests::with_client_game(|game| {
+                let port = publish_task_server(game);
+                let (mut peer, _, known) =
+                    super::config_tests::configuration_peer(port, "ConfigPeer");
+                peer.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match cfg::Clientbound::decode(id, &body).unwrap() {
+                        cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => break,
+                        cfg::Clientbound::Disconnect(reason) => panic!("peer refused: {reason:?}"),
+                        _ => {}
+                    }
+                }
+                let connection = fixture.connection.lock().unwrap().unwrap();
+                game.integrated
+                    .as_ref()
+                    .unwrap()
+                    .call(move |server| {
+                        let session = server.configuration_session(connection).unwrap().clone();
+                        let transport = session.transport();
+                        assert_eq!(transport.epoch().unwrap().phase, Phase::Configuration);
+                        // Do these two I/O transition steps between ticks while the
+                        // configuration writer is still open and the handle is in the map.
+                        session.close();
+                        transport.finish_configuration().unwrap();
+                        let channel = PayloadId(attachment_sync::CHANNEL.into());
+                        assert_eq!(
+                            transport
+                                .epoch()
+                                .unwrap()
+                                .peer
+                                .can_send(Phase::Play, &channel),
+                            Ok(())
+                        );
+                        let seal = server.transaction_open();
+                        let host: &mut dyn ServerHost = server;
+                        let result = host.configuration_send_payload(
+                            connection,
+                            &channel,
+                            PayloadBytes(vec![1]),
+                        );
+                        let queued = server.pending_transaction_payloads();
+                        server.transaction_close(&seal, false);
+                        assert_eq!(result, Err(ConfigurationTaskError::Disconnected));
+                        assert_eq!(queued, 0);
+                    })
+                    .unwrap();
+                drop(peer);
+                game.leave_server(None).unwrap();
+            });
+        },
+    );
 }

@@ -3,8 +3,10 @@ impl Game<'_> {
     /// Registers this resource load's item-owned client equipment extensions.
     pub(in crate::game) fn native_register_client_item_extensions(
         context: &mod_api::RegistrationContext,
-        extensions: &mut dyn mod_api::ClientItemExtensionsRegistrar,
+        with_registrar: impl FnMut(
+            &mut dyn FnMut(&mut dyn mod_api::ClientItemExtensionsRegistrar) -> bool,
+        ),
     ) {
-        Self::fire_register_client_item_extensions(context, extensions);
+        mod_api::dispatch_register_client_item_extensions(context, with_registrar);
     }
 }

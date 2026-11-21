@@ -16,7 +16,12 @@ nodes or automatic edges. During sorting, only dangling non-`minecraft` listener
 the anchor (matching NeoForge's `ReloadListenerSort`). A dependency orders both phases:
 `functions()` reads function files in prepare and admits the new library in apply;
 `model_manager()` builds the models in prepare. Its apply publishes the validated
-model generation and fires `texture_atlas_stitched` and `model_baking_completed`.
+model generation and fires `model_baking_completed`. Before that apply, the atlas upload
+publishes new sprites and fires `texture_atlas_stitched` while model lookups still see the previous
+generation (no models on first load). A panicking registration discards that mod's batch. A
+panicking prepare or apply disables that named listener for the session and does not stop unrelated
+listeners. The game does not admit the failed listener's new retained object; native code must
+publish changes to its own memory atomically.
 On first load and later reloads, validation finishes before either the manager
 or mod listeners publish.
 

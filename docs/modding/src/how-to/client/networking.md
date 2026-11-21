@@ -92,8 +92,9 @@ A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
 without failing the task session, so the task can handle it, call
 `context.fail(...)`, or finish. An explicit `fail` or callback panic aborts the
 task callback and closes that client with the configuration-error reason. A panic
-is logged for that peer and shown in a mod error toast if there is a local client.
-The next peer receives its own task instances. A send uses the live configuration
+names the mod and task type in the log and shows an error toast if there is a local client.
+That mod’s task type is skipped for the rest of the server session, including for later peers.
+Other task types still run. A returned refusal is reported but does not disable the task. A send uses the live configuration
 connection, not the current task state: even after another handler completes the
 task, sends can still queue while the connection is configuring. After the peer enters
 Play, a saved `ConfigurationConnection` returns `Disconnected`, even for a channel

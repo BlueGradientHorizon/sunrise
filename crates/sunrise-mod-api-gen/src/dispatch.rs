@@ -883,6 +883,57 @@ pub(super) fn emit<'a>(
                 inits.join(", "),
             )
         };
+        // These load callbacks lend a registrar or a transactional Host, so the
+        // concrete owner of that surface commits only one listener's batch at a time.
+        let staged = match name {
+            "add_client_reload_listeners" | "add_server_reload_listeners" => {
+                let (surface, registry) = if name == "add_client_reload_listeners" {
+                    ("ClientReloadListeners", "ClientListenerRegistry")
+                } else {
+                    ("ServerReloadListeners", "ServerListenerRegistry")
+                };
+                Some((
+                    dispatch_signature.replace(&format!("dyn {surface}"), registry),
+                    format!(
+                        "listeners.stage(|listeners| {{ {build} {event_call} }});",
+                        event_call = format_args!(
+                            "super::runtime::contain_hook(HookId::{hook_id}, mod_id, \"{name}\", || {mod_item}.{name}({invoke}))"
+                        )
+                    ),
+                ))
+            }
+            "register_client_item_extensions"
+            | "texture_atlas_stitched"
+            | "model_baking_completed" => {
+                let (surface, parameter) = if name == "register_client_item_extensions" {
+                    ("ClientItemExtensionsRegistrar", "extensions")
+                } else {
+                    ("ClientHost", host.as_ref().unwrap().0.as_str())
+                };
+                let params = dispatch_params
+                    .iter()
+                    .filter(|param| !param.starts_with(&format!("{parameter}:")))
+                    .cloned()
+                    .chain(std::iter::once(format!(
+                        "mut with_surface: impl FnMut(&mut dyn FnMut(&mut dyn {surface}) -> bool)"
+                    )))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Some((
+                    params,
+                    format!(
+                        "with_surface(&mut |{parameter}| {{ {build} super::runtime::contain_hook(HookId::{hook_id}, mod_id, \"{name}\", || {mod_item}.{name}({invoke})) }});"
+                    ),
+                ))
+            }
+            _ => None,
+        };
+        if let Some((params, call)) = staged {
+            dispatch.push_str(&format!(
+                "#[doc(hidden)] pub fn dispatch_{name}({params}) {{ for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ if !super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ {call} }} }} }}\n"
+            ));
+            continue;
+        }
         // Each listener gets a fresh event with the original inputs. Writable borrowed
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.

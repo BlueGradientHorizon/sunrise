@@ -92,6 +92,7 @@ pub(super) fn stage_client_reload<V, E: From<ReloadStageError>>(
     let mut models = None;
     let steps = prepare_listeners(
         ordered,
+        HookId::AddClientReloadListeners,
         "client_reload_prepare",
         || -> Result<(), E> {
             models = Some(build_models.take().expect("one model manager")()?);
@@ -114,9 +115,15 @@ pub(super) fn apply_client_reload(
     publish_models: impl FnOnce(),
 ) {
     let mut publish_models = Some(publish_models);
-    apply_listeners(prepared, phase, "client_reload_apply", |()| {
-        publish_models.take().expect("one model manager")();
-        Ok::<_, std::convert::Infallible>(())
-    })
+    apply_listeners(
+        prepared,
+        phase,
+        HookId::AddClientReloadListeners,
+        "client_reload_apply",
+        |()| {
+            publish_models.take().expect("one model manager")();
+            Ok::<_, std::convert::Infallible>(())
+        },
+    )
     .unwrap();
 }

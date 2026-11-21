@@ -599,6 +599,18 @@ impl Game<'_> {
             trace.lock().unwrap().push(entry);
         }
     }
+    /// Pending payloads in the innermost transaction (before publication).
+    #[cfg(test)]
+    pub(in crate::game) fn pending_transaction_payloads(&self) -> usize {
+        self.transactions
+            .last()
+            .unwrap()
+            .after
+            .iter()
+            .filter(|after| matches!(after, After::Payload(_)))
+            .count()
+    }
+
     /// Opens a transaction, nested in the open one if any (`Transaction.open`), and gives back
     /// the seal that ends it.
     pub(in crate::game) fn transaction_open(&mut self) -> TransactionSeal {

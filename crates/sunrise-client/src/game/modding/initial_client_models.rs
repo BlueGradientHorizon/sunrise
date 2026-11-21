@@ -1,24 +1,95 @@
-//! Initial-load publication boundary shared by startup and its resource fixture.
-use super::{Game, client_reload};
+//! First client reload: the initial game owns no published model generation until apply.
+use super::{Game, PackResources, Renderer, UiResources, client_reload};
+use std::sync::Arc;
+use sunrise_client::gfx::PreparedModels;
+
+pub(super) struct InitialModelGeneration {
+    pub(super) pack: PackResources,
+    pub(super) gui: UiResources,
+}
+
+pub(super) struct PendingClientStart {
+    pub(super) models: InitialModelGeneration,
+    pub(super) applies: Vec<client_reload::PreparedClientReload>,
+    pub(super) pack_error: Option<String>,
+    pub(super) handoff: bool,
+}
+
 impl Game<'_> {
+    /// AtlasManager.apply: adopt the uploaded textures and the GUI sprites, without
+    /// admitting the new model store or its GPU buffers.
+    pub(super) fn publish_client_atlases(
+        &mut self,
+        atlas: &Arc<super::RenderAssets>,
+        gui: UiResources,
+        renderer: Option<Renderer>,
+    ) -> Option<PreparedModels> {
+        let mut prepared = None;
+        if let Some(mut renderer) = renderer {
+            prepared = renderer.take_prepared_models();
+            if let Some(old) = &self.renderer {
+                renderer.resize(old.config.width, old.config.height);
+            }
+            self.renderer = Some(renderer);
+        }
+        self.stitching_block_atlas = Some(atlas.clone());
+        self.native_texture_atlas_stitched(mod_api::TextureAtlas::Blocks);
+        self.gui = gui;
+        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        self.dynamic_textures.rebind(pool, &mut names);
+        sunrise_client::ui_theme::reset_atlas();
+        self.native_texture_atlas_stitched(mod_api::TextureAtlas::Gui);
+        prepared
+    }
+
+    pub(super) fn install_model_upload(&mut self, prepared: Option<PreparedModels>) {
+        self.stitching_block_atlas = None;
+        if let Some(renderer) = &mut self.renderer {
+            renderer.publish_prepared_models(prepared);
+        }
+    }
+
+    pub(super) fn apply_initial_model_generation(
+        &mut self,
+        models: InitialModelGeneration,
+        client_applies: Vec<client_reload::PreparedClientReload>,
+        renderer: Option<Renderer>,
+    ) -> sunrise_client::Result<()> {
+        self.join_world_rest()?;
+        let InitialModelGeneration { pack, gui } = models;
+        let item_extensions = Self::prepare_client_item_extensions(&gui)?;
+        let geometry = super::native_block_entity_draw::StandaloneGeometry::new(&pack, &gui);
+        let phase = self.mod_phase.clone();
+        // The atlas listener applies before the model manager. Both use the same
+        // prepared atlas/model bundle, but each publishes only its own store.
+        let upload = self.publish_client_atlases(&pack.render, gui, renderer);
+        client_reload::apply_client_reload(&phase, client_applies, || {
+            self.pack = pack;
+            self.standalone_geometry = geometry;
+            let context = self.worker_context();
+            self.streaming.reload_resources(&mut self.world, context);
+            self.install_model_upload(upload);
+            self.armor_stand_assets.extensions = item_extensions;
+            self.resolve_entity_renderers();
+            self.native_model_baking_completed();
+        });
+        self.native_client_setup();
+        Ok(())
+    }
+
+    /// Fixtures with an already constructed Game drive the same application path.
+    #[cfg(test)]
     pub(in crate::game) fn publish_initial_client_models(
         &mut self,
         client_applies: Vec<client_reload::PreparedClientReload>,
     ) -> sunrise_client::Result<()> {
-        if self.options.is_client_start() {
-            // The renderers and client setup read the world-rest tables. Join
-            // them and validate extensions before publishing any listener state.
-            self.join_world_rest()?;
-            let item_extensions = Self::prepare_client_item_extensions(&self.gui)?;
-            let phase = self.mod_phase.clone();
-            client_reload::apply_client_reload(&phase, client_applies, || {
-                self.armor_stand_assets.extensions = item_extensions;
-                self.resolve_entity_renderers();
-                self.texture_atlases_stitched();
-                self.native_model_baking_completed();
-            });
-            self.native_client_setup();
-        }
-        Ok(())
+        let pack = self.pack.clone();
+        let metrics = UiResources::server(&pack.source)?;
+        let gui = std::mem::replace(&mut self.gui, metrics);
+        self.apply_initial_model_generation(
+            InitialModelGeneration { pack, gui },
+            client_applies,
+            None,
+        )
     }
 }

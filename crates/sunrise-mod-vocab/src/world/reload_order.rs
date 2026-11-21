@@ -99,6 +99,15 @@ impl<T> ReloadOrder<T> {
         }
         Ok(())
     }
+    pub(crate) fn checkpoint(&self) -> (usize, usize) {
+        (self.listeners.len(), self.edges.len())
+    }
+    pub(crate) fn discard_since(&mut self, (listeners, edges): (usize, usize)) {
+        for (id, _) in self.listeners.drain(listeners..) {
+            self.indices.remove(&id);
+        }
+        self.edges.truncate(edges);
+    }
     pub(crate) fn registry(&self) -> impl Iterator<Item = (&Identifier, &T)> {
         self.listeners.iter().map(|(id, value)| (id, value))
     }

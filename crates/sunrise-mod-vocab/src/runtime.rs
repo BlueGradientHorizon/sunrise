@@ -48,6 +48,9 @@ pub(crate) fn client_hook_name(subscribed: &[Option<HookId>]) -> Option<&'static
 /// The ordered list of named mods shared by the client and server.
 pub type Mods = Arc<[ModEntry]>;
 
+type NamedPoison =
+    std::collections::HashMap<(usize, &'static str), std::collections::HashSet<Identifier>>;
+
 pub(crate) struct Installed {
     pub(crate) mods: Mods,
     pub(crate) by_id: std::collections::HashMap<&'static str, usize>,
@@ -63,6 +66,7 @@ pub(crate) struct Installed {
     /// poison pays nothing.
     poisons: std::sync::Mutex<Option<Box<[Option<std::collections::HashSet<&'static str>>]>>>,
     poison_free: std::sync::atomic::AtomicBool,
+    pub(crate) named_poison: std::sync::Mutex<NamedPoison>,
 }
 
 impl Installed {
@@ -113,6 +117,7 @@ impl Installed {
             disabled_count: std::sync::atomic::AtomicUsize::new(0),
             poisons: std::sync::Mutex::new(None),
             poison_free: std::sync::atomic::AtomicBool::new(true),
+            named_poison: Default::default(),
         }
     }
 }
@@ -192,6 +197,16 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
                 .and_then(|poisons| poisons[hook as usize].as_ref())
                 .is_some_and(|poisoned| poisoned.contains(id))
     })
+}
+
+/// Contain one subscribed hook callback, keeping the dispatch's existing poison slot.
+pub(crate) fn contain_hook(
+    hook: generated::HookId,
+    owner: &'static str,
+    name: &'static str,
+    invoke: impl FnOnce(),
+) -> bool {
+    crate::callback_owner::contain(owner, "hook", name, || poison(hook, owner), invoke).is_ok()
 }
 
 pub(crate) fn report_mod_panic(mod_id: &'static str, kind: &'static str, operation: &'static str) {

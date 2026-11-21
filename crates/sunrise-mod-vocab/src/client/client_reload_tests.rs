@@ -135,3 +135,71 @@ fn duplicate_objects_cannot_make_the_reverse_lookup_ambiguous() {
         })
     );
 }
+
+#[test]
+fn registration_panic_discards_its_listeners_and_edges_before_later_subscribers() {
+    struct Broken;
+    #[mod_api::__subscriptions]
+    impl crate::Hooks for Broken {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn crate::ClientHost,
+            event: &mut crate::AddClientReloadListenersEvent<'_>,
+        ) {
+            let key = id("registration_probe:discarded");
+            event
+                .listeners
+                .add_listener(key.clone(), files(), Arc::new(Boundary))
+                .unwrap();
+            event
+                .listeners
+                .add_dependency(key, VanillaClientListeners::model_manager())
+                .unwrap();
+            panic!("registration probe");
+        }
+    }
+    struct Healthy;
+    #[mod_api::__subscriptions]
+    impl crate::Hooks for Healthy {
+        fn add_client_reload_listeners(
+            &self,
+            _: &dyn crate::ClientHost,
+            event: &mut crate::AddClientReloadListenersEvent<'_>,
+        ) {
+            assert!(event.listeners.get_graph().is_empty());
+            event
+                .listeners
+                .add_listener(id("registration_probe:kept"), files(), Arc::new(Boundary))
+                .unwrap();
+        }
+    }
+    crate::testing::with_dispatch(
+        vec![
+            crate::ModEntry::new("registration_probe", Box::new(Broken)),
+            crate::ModEntry::new("registration_healthy", Box::new(Healthy)),
+        ]
+        .into(),
+        || {
+            for _ in 0..2 {
+                let mut registry = ClientListenerRegistry::new();
+                crate::dispatch_add_client_reload_listeners(
+                    &crate::testing::FakeHost::default(),
+                    &mut registry,
+                );
+                assert!(registry.get_graph().is_empty());
+                assert_eq!(
+                    registry.get_registry(),
+                    [
+                        VanillaClientListeners::model_manager(),
+                        id("registration_probe:kept")
+                    ]
+                );
+                crate::callback_owner::assert_toast_count(
+                    "registration_probe",
+                    "add_client_reload_listeners",
+                    1,
+                );
+            }
+        },
+    );
+}

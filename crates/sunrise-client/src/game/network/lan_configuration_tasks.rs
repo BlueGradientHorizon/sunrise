@@ -2,10 +2,10 @@
 use super::{Game, lan::LanHost};
 use mod_api::{
     __private::{
-        ConfigurationTaskOutcome, ConfigurationTaskRegistration, configuration_task_context,
-        game::queue_mod_error_toast,
+        ConfigurationTaskOutcome, ConfigurationTaskRegistration, call_session_callback,
+        configuration_task_context, session_callback_enabled,
     },
-    ConfigurationConnection, ConfigurationTaskError, PayloadBytes, PayloadId,
+    ConfigurationConnection, ConfigurationTaskError, HookId, Identifier, PayloadBytes, PayloadId,
 };
 use std::{io, sync::Arc};
 use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
@@ -21,29 +21,31 @@ impl Game<'_> {
     fn configuration_callback(
         &mut self,
         session: &Arc<Session>,
-        owner: Option<(&'static str, &'static str)>,
+        owner: Option<(&'static str, &Identifier, &'static str)>,
         callback: impl FnOnce(&mut Self) -> Result<Option<usize>, String>,
     ) -> bool {
         let seal = self.transaction_open();
-        let result = {
-            // The installed hook must not relay a recovered task panic as a fatal server crash.
+        let result = if let Some((owner, task_type, operation)) = owner {
+            call_session_callback(
+                HookId::RegisterConfigurationTasks,
+                owner,
+                task_type,
+                operation,
+                || callback(self),
+            )
+            .unwrap_or_else(Err)
+        } else {
             let _contained = mod_api::__private::enter_contained();
-            let _mod = owner.map(|(id, operation)| mod_api::__private::enter(id, operation));
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)))
-        }
-        .unwrap_or_else(|_| {
-            if let Some((id, operation)) = owner {
-                log::error!("mod {id}: `{operation}` panicked; this peer's configuration failed");
-                if !self.is_dedicated_server() {
-                    queue_mod_error_toast(id, operation);
-                }
-            }
-            Err("Configuration task callback panicked".into())
-        });
+                .unwrap_or_else(|_| Err("Configuration task callback panicked".into()))
+        };
         let ordinal = match result {
             Ok(ordinal) => ordinal,
             Err(reason) => {
                 self.transaction_close(&seal, false);
+                if let Some((owner, kind, operation)) = owner {
+                    log::error!("mod {owner}: {operation} for {kind} failed this peer: {reason}");
+                }
                 session.fail(reason);
                 return false;
             }
@@ -143,7 +145,18 @@ impl Game<'_> {
                     } else {
                         "ConfigurationTask::tick"
                     };
-                    let owner = task.owner.map(|id| (id, operation));
+                    if task.owner.is_some_and(|owner| {
+                        !session_callback_enabled(
+                            HookId::RegisterConfigurationTasks,
+                            owner,
+                            &task.task_type,
+                        )
+                    }) {
+                        // This callback was disabled after registration (possibly by another peer).
+                        session.finish_current(turn.ordinal);
+                        continue;
+                    }
+                    let owner = task.owner.map(|id| (id, &task.task_type, operation));
                     let commit = self.configuration_callback(&session, owner, |game| {
                         let mut outcome = ConfigurationTaskOutcome::Pending;
                         let mut context = configuration_task_context(connection, &mut outcome);

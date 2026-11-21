@@ -2,7 +2,8 @@
 //! `server_reload` and `client_reload` define each side's context, listener trait
 //! and vanilla anchors.
 use crate::{
-    FileToIdConverter, Identifier,
+    FileToIdConverter, HookId, Identifier,
+    callback_owner::{call_session_callback, session_callback_enabled},
     world::reload_order::{ReloadOrder, ReloadOrderError},
 };
 use std::{
@@ -52,29 +53,12 @@ impl std::error::Error for ReloadResourceError {
 /// side's file implements its listener trait for it.
 pub(crate) struct Boundary;
 
-/// Crash attribution for one listener call. A returned `Err` is recovered by the
-/// reload; a panic in `prepare` or `apply` is fatal, and the report names the
-/// registering mod (through the native-mod mark) and the listener (through the
-/// report's details).
-pub(crate) struct ReloadMark {
-    _guard: Option<crate::content::crash::ModGuard>,
-}
-
+/// Attach the listener name to a diagnostic while the callback runs.
+struct ReloadMark;
 impl ReloadMark {
-    pub(crate) fn enter(
-        owner: Option<&'static str>,
-        listener: &Identifier,
-        phase: &'static str,
-    ) -> Self {
-        let _guard = owner.map(|id| {
-            crate::content::crash::enter_native_mod(crate::content::crash::ModCall {
-                id,
-                hook: phase,
-                part: None,
-            })
-        });
+    fn enter(listener: &Identifier) -> Self {
         crate::content::crash::set_detail("Reload listener", listener.to_string());
-        Self { _guard }
+        Self
     }
 }
 
@@ -165,6 +149,12 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
         second: Identifier,
     ) -> Result<(), ReloadOrderError> {
         self.order.add_dependency(first, second)
+    }
+    pub(crate) fn checkpoint(&self) -> (usize, usize) {
+        self.order.checkpoint()
+    }
+    pub(crate) fn discard_since(&mut self, checkpoint: (usize, usize)) {
+        self.order.discard_since(checkpoint);
     }
     /// Registration order, vanilla anchor included.
     pub(crate) fn registry(&self) -> impl Iterator<Item = (&Identifier, &RegisteredListener<L>)> {
@@ -275,6 +265,8 @@ pub enum PreparedStep<V = ()> {
     },
     /// The side's prepared vanilla anchor.
     Vanilla(V),
+    /// A disabled or refused listener whose work must not be admitted.
+    Skipped(Identifier),
 }
 
 /// Orders the registered listeners, then prepares each with a converter
@@ -285,6 +277,7 @@ pub enum PreparedStep<V = ()> {
 /// If any prepare fails, the already prepared actions are dropped without running.
 pub fn prepare_listeners<L: ?Sized, C, V, E: From<ReloadStageError>>(
     ordered: Vec<RegisteredListener<L>>,
+    hook: HookId,
     phase: &'static str,
     mut vanilla: impl FnMut() -> Result<V, E>,
     context_of: impl Fn(&Identifier, &FileToIdConverter) -> C,
@@ -296,13 +289,29 @@ pub fn prepare_listeners<L: ?Sized, C, V, E: From<ReloadStageError>>(
             prepared.push(PreparedStep::Vanilla(vanilla()?));
             continue;
         };
-        let context = context_of(&listener.id, converter);
-        let _mark = ReloadMark::enter(listener.owner, &listener.id, phase);
-        let apply = prepare_of(&*listener.listener, &context).map_err(|source| {
-            ReloadStageError::Listener {
-                listener: listener.id.clone(),
-                source,
+        let apply = if let Some(owner) = listener.owner {
+            if !session_callback_enabled(hook, owner, &listener.id) {
+                prepared.push(PreparedStep::Skipped(listener.id));
+                continue;
             }
+            let context = context_of(&listener.id, converter);
+            let _mark = ReloadMark::enter(&listener.id);
+            match call_session_callback(hook, owner, &listener.id, phase, || {
+                prepare_of(&*listener.listener, &context)
+            }) {
+                Ok(apply) => apply,
+                Err(_) => {
+                    prepared.push(PreparedStep::Skipped(listener.id));
+                    continue;
+                }
+            }
+        } else {
+            let context = context_of(&listener.id, converter);
+            prepare_of(&*listener.listener, &context)
+        }
+        .map_err(|source| ReloadStageError::Listener {
+            listener: listener.id.clone(),
+            source,
         })?;
         prepared.push(PreparedStep::Mod {
             apply,
@@ -319,22 +328,35 @@ pub fn prepare_listeners<L: ?Sized, C, V, E: From<ReloadStageError>>(
 pub fn apply_listeners<V, E>(
     prepared: Vec<PreparedStep<V>>,
     phase_owner: &crate::world::phase::PhaseOwner,
+    hook: HookId,
     phase: &'static str,
     mut vanilla: impl FnMut(V) -> Result<(), E>,
-) -> Result<(), E> {
+) -> Result<HashSet<Identifier>, E> {
+    let mut skipped = HashSet::new();
     for step in prepared {
         match step {
             PreparedStep::Mod { apply, owner, id } => {
                 let _reload = phase_owner
                     .reloading()
                     .expect("reload apply on its owning thread");
-                let _mark = ReloadMark::enter(owner, &id, phase);
-                apply();
+                if let Some(owner) = owner {
+                    let _mark = ReloadMark::enter(&id);
+                    if !session_callback_enabled(hook, owner, &id)
+                        || call_session_callback(hook, owner, &id, phase, apply).is_err()
+                    {
+                        skipped.insert(id);
+                    }
+                } else {
+                    apply();
+                }
             }
             PreparedStep::Vanilla(step) => vanilla(step)?,
+            PreparedStep::Skipped(id) => {
+                skipped.insert(id);
+            }
         }
     }
-    Ok(())
+    Ok(skipped)
 }
 
 /// The files one converter selected from a reload's packs, shared by both
@@ -382,6 +404,7 @@ mod tests {
                         .collect();
                     prepare_listeners(
                         ordered,
+                        HookId::AddServerReloadListeners,
                         "reload_prepare",
                         || Ok::<_, ReloadStageError>("apply vanilla"),
                         |_, _| (),
@@ -406,10 +429,16 @@ mod tests {
             ["prepare first", "prepare last"]
         );
         let phase = crate::world::phase::PhaseOwner::new(crate::world::phase::ModPhase::World);
-        apply_listeners(prepared, &phase, "reload_apply", |vanilla| {
-            trace.lock().unwrap().push(vanilla.into());
-            Ok::<_, std::convert::Infallible>(())
-        })
+        apply_listeners(
+            prepared,
+            &phase,
+            HookId::AddServerReloadListeners,
+            "reload_apply",
+            |vanilla| {
+                trace.lock().unwrap().push(vanilla.into());
+                Ok::<_, std::convert::Infallible>(())
+            },
+        )
         .unwrap();
         assert_eq!(
             trace.lock().unwrap().as_slice(),
@@ -421,6 +450,89 @@ mod tests {
                 "apply last"
             ]
         );
+    }
+
+    #[test]
+    fn prepare_and_apply_panics_skip_only_the_named_listeners_on_later_loads() {
+        struct Mod;
+        #[mod_api::__subscriptions]
+        impl crate::Hooks for Mod {}
+        let mods = vec![crate::ModEntry::new("reload_scene", Box::new(Mod))].into();
+        crate::testing::with_dispatch(mods, || {
+            let trace = Arc::new(Mutex::new(Vec::new()));
+            let phase = crate::world::phase::PhaseOwner::new(crate::world::phase::ModPhase::World);
+            let hook = HookId::AddServerReloadListeners;
+            for reload in 0..2 {
+                let ordered = ["bad_prepare", "vanilla", "bad_apply", "healthy"]
+                    .into_iter()
+                    .map(|name| RegisteredListener {
+                        id: Identifier::parse(&format!("reload_scene:{name}")).unwrap(),
+                        converter: (name != "vanilla")
+                            .then(|| FileToIdConverter::json("data").unwrap()),
+                        listener: Arc::new(name),
+                        owner: (name != "vanilla").then_some("reload_scene"),
+                    })
+                    .collect();
+                let prepared = prepare_listeners(
+                    ordered,
+                    hook,
+                    "reload_prepare_probe",
+                    || Ok::<_, ReloadStageError>(()),
+                    |_, _| (),
+                    |&name, _| {
+                        trace.lock().unwrap().push(("prepare", name));
+                        assert_ne!(name, "bad_prepare");
+                        let trace = trace.clone();
+                        Ok(Box::new(move || {
+                            trace.lock().unwrap().push(("apply", name));
+                            assert_ne!(name, "bad_apply");
+                        }))
+                    },
+                )
+                .unwrap();
+                let skipped = apply_listeners(prepared, &phase, hook, "reload_apply_probe", |()| {
+                    trace.lock().unwrap().push(("apply", "vanilla"));
+                    Ok::<_, std::convert::Infallible>(())
+                })
+                .unwrap();
+                assert_eq!(
+                    skipped,
+                    ["reload_scene:bad_prepare", "reload_scene:bad_apply"]
+                        .map(|name| Identifier::parse(name).unwrap())
+                        .into_iter()
+                        .collect()
+                );
+                let observed = std::mem::take(&mut *trace.lock().unwrap());
+                if reload == 0 {
+                    assert_eq!(
+                        observed,
+                        [
+                            ("prepare", "bad_prepare"),
+                            ("prepare", "bad_apply"),
+                            ("prepare", "healthy"),
+                            ("apply", "vanilla"),
+                            ("apply", "bad_apply"),
+                            ("apply", "healthy")
+                        ]
+                    );
+                } else {
+                    assert_eq!(
+                        observed,
+                        [
+                            ("prepare", "healthy"),
+                            ("apply", "vanilla"),
+                            ("apply", "healthy")
+                        ]
+                    );
+                }
+                crate::callback_owner::assert_toast_count(
+                    "reload_scene",
+                    "reload_prepare_probe",
+                    1,
+                );
+                crate::callback_owner::assert_toast_count("reload_scene", "reload_apply_probe", 1);
+            }
+        });
     }
 
     #[test]

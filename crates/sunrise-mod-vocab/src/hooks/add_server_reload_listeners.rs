@@ -10,14 +10,15 @@ pub trait Hooks {
     /// data-load callbacks retain their DataLoadContext; no setup event is added.
     /// Dependencies on the function library order both its prepare and admission;
     /// every listener prepares before any apply.
+    /// A panicking callback loses its batch, is reported by mod name and skipped for the session.
     #[hook(
         receiver = "read",
-        dispatch = "flat",
+        dispatch = "direct",
         side = "server",
         contract = "listen",
         host = "read",
         neoforge = "AddServerReloadListenersEvent",
-        version = 3
+        version = 4
     )]
     fn add_server_reload_listeners(listeners: &mut dyn ServerReloadListeners);
 }

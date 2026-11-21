@@ -7,8 +7,8 @@ mod tests;
 use super::packs::reload_files;
 use super::{Game, functions::PackStack};
 use mod_api::{
-    __private::reload::{ReloadStageError, apply_listeners, prepare_listeners},
-    FileToIdConverter, Identifier, ServerReloadContext, ServerReloadListener,
+    __private::reload::{ReloadStageError, RetainedEntry, apply_listeners, prepare_listeners},
+    FileToIdConverter, HookId, Identifier, ServerReloadContext, ServerReloadListener,
     ServerReloadResources,
 };
 use sunrise_client::datapack::DataStore;
@@ -21,7 +21,7 @@ use mod_api::__private::reload::PreparedStep;
 /// retained listeners' store.
 pub(super) struct PreparedServerReload {
     pub(super) steps: Vec<PreparedReload>,
-    pub(super) resources: mod_api::RetainedListeners,
+    pub(super) retained: Vec<RetainedEntry>,
     pub(super) loot: std::sync::Arc<mod_api::GlobalLootModifierManager>,
 }
 impl PreparedServerReload {
@@ -75,11 +75,10 @@ impl Game<'_> {
         let loot = super::global_loot_modifiers::register_anchor(&mut listeners)
             .map_err(ReloadStageError::Order)?;
         self.native_add_server_reload_listeners(&mut listeners);
-        let mut resources = mod_api::RetainedListeners::default();
         let ordered = listeners.finish().map_err(ReloadStageError::Order)?;
-        resources.install(ordered.retained);
         let steps = prepare_listeners(
             ordered.listeners,
+            HookId::AddServerReloadListeners,
             "server_reload_prepare",
             || Ok::<_, ReloadStageError>(Box::new(functions_store(stack))),
             |id, converter| stack.reload_context(id, converter),
@@ -87,7 +86,7 @@ impl Game<'_> {
         )?;
         Ok(PreparedServerReload {
             steps,
-            resources,
+            retained: ordered.retained,
             loot,
         })
     }
@@ -98,17 +97,23 @@ impl Game<'_> {
         enabled_features: &[String],
     ) {
         let phase = self.mod_phase.clone();
-        apply_listeners(prepared.steps, &phase, "server_reload_apply", |store| {
-            self.build_native_commands(enabled_features);
-            let _reload = phase.reloading().expect("function library apply");
-            self.admit_store(*store, stack);
-            Ok::<_, std::convert::Infallible>(())
-        })
+        let skipped = apply_listeners(
+            prepared.steps,
+            &phase,
+            HookId::AddServerReloadListeners,
+            "server_reload_apply",
+            |store| {
+                self.build_native_commands(enabled_features);
+                let _reload = phase.reloading().expect("function library apply");
+                self.admit_store(*store, stack);
+                Ok::<_, std::convert::Infallible>(())
+            },
+        )
         .unwrap();
         if let Some(tables) = &self.world_tables {
             prepared.loot.bind_from(&tables.loot_modifier_manager);
         }
-        self.reload_resources = prepared.resources;
+        self.reload_resources.install(prepared.retained, &skipped);
         self.structure_templates.clear();
     }
     /// The retained server reload listeners of the last successful reload.

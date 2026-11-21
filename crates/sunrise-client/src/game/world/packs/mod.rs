@@ -544,8 +544,15 @@ impl Game<'_> {
                 return Err(error);
             }
         };
-        // Everything loaded. Swap the models, sprites and renderer at the
-        // model manager's point in the order, not before the mod applies.
+        let skip = self
+            .settings
+            .extras
+            .skip_modded_splashes_if_vanilla_modified;
+        let gui = gui.with_splashes(&pack.source, &self.vanilla_root(), skip);
+        let has_renderer = renderer.is_some();
+        let upload = self.publish_client_atlases(&pack.render, gui, renderer);
+        // With the atlas visible, admit the models at the model manager's point
+        // in the listener order. All renderer and model validation is finished.
         let phase = self.mod_phase.clone();
         super::client_reload::apply_client_reload(&phase, client_applies, || {
             // Refresh modifiers from the newly staged packs, including removals.
@@ -566,11 +573,6 @@ impl Game<'_> {
             self.pack = pack;
             // The joined level's environment for the frame has the packs' layers over its type.
             self.build_level_environments();
-            let skip = self
-                .settings
-                .extras
-                .skip_modded_splashes_if_vanilla_modified;
-            self.gui = gui.with_splashes(&self.pack.source, &self.vanilla_root(), skip);
             self.standalone_geometry = standalone_geometry;
             self.instance_groups.borrow_mut().clear();
             // The new atlas's skin and map slots are blank: players and maps
@@ -582,10 +584,6 @@ impl Game<'_> {
             self.maps.slots.forget();
             self.map_patches.clear();
             self.text_patches.get_mut().clear();
-            // Mods' dynamic textures keep their names and slots in the new atlas's pool, and their
-            // kept pixels upload into it again.
-            let (pool, mut names) = self.gui.atlas.dynamic_names();
-            self.dynamic_textures.rebind(pool, &mut names);
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
             // registry's states.
             self.kept_block_entities.get_mut().clear();
@@ -598,7 +596,6 @@ impl Game<'_> {
                 &self.gui.atlas.sprites,
                 &self.gui.atlas.translucent,
             );
-            sunrise_client::ui_theme::reset_atlas();
             // Villager hats come from the pack's texture metadata (shared data, swapped in place).
             *self
                 .res
@@ -658,14 +655,8 @@ impl Game<'_> {
             let context = self.worker_context();
             self.streaming.reload_resources(&mut self.world, context);
             self.pending_uploads.clear();
-            // New GPU textures: a renderer built from the reloaded resources; the
-            // sections are uploaded again as they are meshed.
-            if let Some(mut renderer) = renderer {
-                // Keep the current framebuffer size across the reload.
-                if let Some(old) = &self.renderer {
-                    renderer.resize(old.config.width, old.config.height);
-                }
-                self.renderer = Some(renderer);
+            self.install_model_upload(upload);
+            if has_renderer {
                 self.apply_ui_settings();
             }
             // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
@@ -676,7 +667,6 @@ impl Game<'_> {
             self.ui.chat.rescale(&self.gui.atlas);
             self.install_loop_context(loop_context);
             self.resolve_entity_renderers();
-            self.texture_atlases_stitched();
             self.native_model_baking_completed();
         });
         self.native_client_resources_reloaded();

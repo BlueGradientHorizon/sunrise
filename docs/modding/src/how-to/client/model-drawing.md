@@ -83,7 +83,8 @@ reloading resources reuse the definition.
 
 An item attaches one `ClientItemExtensions` Part in
 `Hooks::register_client_item_extensions`, on the client at every resource load before any
-reload listener applies. The validated bindings are installed with the new models.
+reload listener applies. The validated bindings are installed with the new models. A panic discards
+that mod's registration batch and disables its registration callback for the rest of the session.
 The event's `extensions: &mut dyn ClientItemExtensionsRegistrar` registers the
 models, textures and item providers together. There is no startup provider
 registration path: request your `ItemKey` during ordinary registration, then
@@ -192,7 +193,7 @@ the registering mod's ID. A successfully baked plain file wins over any baker fo
 otherwise the first successful baker in registration order wins. Register once at
 startup; eligible bakers run against current files at each resource load. Registration
 does not expose earlier entries for editing. Resolve result IDs in
-`model_baking_completed`, at the model manager's apply step before any listener ordered
+`model_baking_completed`, after atlas publication and at the model manager's apply step before any listener ordered
 after it applies. Successful reloads invalidate old handles, while refused prepares retain them. The result is baked quads, not a mod-defined baked object.
 
 ## Colour, hidden faces and translucency of copies

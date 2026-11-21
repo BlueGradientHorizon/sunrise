@@ -25,6 +25,7 @@ struct Kept {
     part: Vec<Result<ModelRef, ModelError>>,
     nobody: Vec<Result<ModelRef, ModelError>>,
     baked: Vec<[Result<ModelRef, ModelError>; 3]>,
+    during_stitch: Vec<Result<ModelRef, ModelError>>,
 }
 struct Keeper(Arc<Mutex<Kept>>);
 #[mod_api::__subscriptions]
@@ -49,14 +50,13 @@ impl Hooks for Keeper {
 
     fn texture_atlas_stitched(
         &self,
-        _: &mut dyn ClientHost,
+        host: &mut dyn ClientHost,
         event: &mut TextureAtlasStitchedEvent,
     ) {
-        self.0
-            .lock()
-            .unwrap()
-            .heard
-            .push(format!("atlas {:?}", event.atlas));
+        let mut kept = self.0.lock().unwrap();
+        kept.heard.push(format!("atlas {:?}", event.atlas));
+        kept.during_stitch
+            .push(host.render_assets().model(&id(PART)));
     }
     fn model_baking_completed(&self, host: &mut dyn ClientHost, _: &mut ModelBakingCompletedEvent) {
         let mut kept = self.0.lock().unwrap();
@@ -139,7 +139,11 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
                 game.pack.render.resolve_model(first).is_ok(),
                 "the handle is of the store the hook published"
             );
-            kept.lock().unwrap().heard.clear();
+            {
+                let mut log = kept.lock().unwrap();
+                log.heard.clear();
+                log.during_stitch.clear();
+            }
             reload(game);
             let kept = kept.lock().unwrap();
             assert_eq!(
@@ -157,6 +161,11 @@ fn a_client_mod_hears_model_baking_completed_once_per_load_and_keeps_its_handles
                     kept.part
                 );
             };
+            assert_eq!(
+                kept.during_stitch,
+                [Ok(first), Ok(first)],
+                "stitch still reads the old model store"
+            );
             assert!(game.pack.render.resolve_model(second).is_ok());
             assert_eq!(
                 game.pack.render.resolve_model(first).err(),
@@ -472,6 +481,69 @@ fn a_failed_reload_fires_no_model_baking_completed() {
             assert!(
                 game.pack.render.resolve_model(first).is_ok(),
                 "the last successful load's handle stays right"
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_publication_notice_does_not_stop_later_subscribers_or_recur() {
+    struct Observer(Arc<Mutex<Vec<&'static str>>>, bool);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observer {
+        fn texture_atlas_stitched(
+            &self,
+            _: &mut dyn ClientHost,
+            _: &mut TextureAtlasStitchedEvent,
+        ) {
+            if self.1 {
+                panic!("atlas observer");
+            }
+            self.0.lock().unwrap().push("atlas");
+        }
+        fn model_baking_completed(
+            &self,
+            _: &mut dyn ClientHost,
+            _: &mut ModelBakingCompletedEvent,
+        ) {
+            if self.1 {
+                panic!("model observer");
+            }
+            self.0.lock().unwrap().push("models");
+        }
+    }
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![
+        ModEntry::new("panic_publication", Box::new(Observer(trace.clone(), true))),
+        ModEntry::new(
+            "healthy_publication",
+            Box::new(Observer(trace.clone(), false)),
+        ),
+    ]
+    .into();
+    with_mods(mods, || {
+        with_client_game(|game| {
+            let mut reports = Vec::new();
+            for _ in 0..2 {
+                game.texture_atlases_stitched();
+                game.native_model_baking_completed();
+                reports.extend(
+                    mod_api::__private::game::take_mod_error_toasts()
+                        .into_iter()
+                        .filter(|&(id, _)| id == "panic_publication"),
+                );
+            }
+            assert_eq!(
+                *trace.lock().unwrap(),
+                ["atlas", "atlas", "models", "atlas", "atlas", "models"]
+            );
+            assert_eq!(
+                reports,
+                [
+                    ("panic_publication", "texture_atlas_stitched"),
+                    ("panic_publication", "model_baking_completed")
+                ]
             );
         });
     });

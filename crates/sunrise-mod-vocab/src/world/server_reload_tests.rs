@@ -151,7 +151,7 @@ fn retained_listeners_read_back_typed_from_the_resources() {
     assert_eq!(key.id(), &id("test_mod:kept"));
     let ordered = listeners.finish().unwrap();
     let mut resources = RetainedListeners::default();
-    resources.install(ordered.retained);
+    resources.install(ordered.retained, &Default::default());
     let kept = (&resources as &dyn ServerReloadResources)
         .listener(&key)
         .unwrap();
@@ -176,7 +176,7 @@ fn reload_replaces_the_retained_store_whole() {
         .add_retained_listener(&first, files(), Arc::new(Boundary))
         .unwrap();
     let mut resources = RetainedListeners::default();
-    resources.install(listeners.finish().unwrap().retained);
+    resources.install(listeners.finish().unwrap().retained, &Default::default());
     assert!(
         (&resources as &dyn ServerReloadResources)
             .listener(&first)
@@ -184,7 +184,7 @@ fn reload_replaces_the_retained_store_whole() {
     );
 
     let later = ServerListenerRegistry::new().finish().unwrap();
-    resources.install(later.retained);
+    resources.install(later.retained, &Default::default());
     assert!(
         (&resources as &dyn ServerReloadResources)
             .listener(&first)

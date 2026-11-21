@@ -7,8 +7,8 @@ impl Game<'_> {
     /// `AddServerReloadListenersEvent.getRegistryAccess` does.
     pub(in crate::game) fn native_add_server_reload_listeners(
         &self,
-        listeners: &mut dyn ServerReloadListeners,
+        listeners: &mut mod_api::ServerListenerRegistry,
     ) {
-        self.fire_add_server_reload_listeners(listeners);
+        mod_api::dispatch_add_server_reload_listeners(self, listeners);
     }
 }

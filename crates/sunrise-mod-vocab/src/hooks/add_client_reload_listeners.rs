@@ -10,20 +10,20 @@ pub trait Hooks {
     /// resource-pack overrides resolved, and its returned apply publishes the
     /// parsed state, all applies after all prepares, before
     /// `client_resources_reloaded`. Dependencies on the model manager order
-    /// both its real model build and its publication, including the atlas and model
-    /// notifications. A listener prepare or engine preflight that refuses the
+    /// both its real model build and its publication. Atlas upload precedes the model manager. A listener prepare or engine preflight that refuses the
     /// candidate aborts the load before any listener applies.
     /// Client-side, in Reloading nested in Setup initially and World later.
     /// Later registration is on the render thread, prepare on the loader,
     /// and apply on the owning game thread; completion restores the entering
     /// phase. Startup's empty Host grants no extra access.
+    /// A panicking callback loses its batch, is reported by mod name and skipped for the session.
     #[hook(
         receiver = "read",
-        dispatch = "flat",
+        dispatch = "direct",
         side = "client",
         contract = "listen",
         neoforge = "AddClientReloadListenersEvent",
-        version = 3
+        version = 4
     )]
     fn add_client_reload_listeners(listeners: &mut dyn ClientReloadListeners);
 }
