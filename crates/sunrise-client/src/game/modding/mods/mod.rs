@@ -543,9 +543,9 @@ pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
 /// animation files may name them.
 /// Block-state
 /// definition types (`native_register_block_state_models`), so blockstate files naming one get
-/// the models the mod picks; and special item model renderers
-/// (`native_register_special_model_renderer`), so special models of their types draw what the
-/// mod answers.
+/// the models the mod picks; and special item model factories
+/// (`native_register_special_model_renderer`), so each special model node of a registered type
+/// bakes its own renderer.
 pub(super) fn register_resource_sources(role: ExecutionRole) {
     if !role.is_client() {
         return;
@@ -585,7 +585,7 @@ fn register_special_model_renderers() {
             );
         }
     }
-    let (mut renderers, replaced) = registry.into_renderers();
+    let (factories, replaced) = registry.into_renderers();
     for replaced in replaced {
         let name = |id: Option<&str>| id.unwrap_or("the game").to_owned();
         log::warn!(
@@ -595,19 +595,7 @@ fn register_special_model_renderers() {
             name(replaced.later)
         );
     }
-    // In slot order: the types' models resolve to these slots as they decode.
-    let kept = sunrise_assets::item_model::register_special_model_types(
-        renderers.keys().cloned().collect(),
-    );
-    super::native_special_renderers::register(
-        kept.into_iter()
-            .filter_map(|kind| {
-                renderers
-                    .remove(&kind)
-                    .map(|(policy, renderer)| (kind, policy, renderer))
-            })
-            .collect(),
-    );
+    sunrise_client::item_render::install_special_model_factories(factories);
 }
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
