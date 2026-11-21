@@ -305,14 +305,20 @@ mod texture_atlas_stitched_tests {
         )]
         .into();
         with_mods(mods, || {
+            let role = crate::game::execution_role::ExecutionRole::Client;
+            // The fixture skips startup's registration pass before it loads resources.
+            super::super::mods::register_resource_sources(role);
             super::super::native_entity_refs::tests::with_game_role(
                 root.path().to_owned(),
-                crate::game::execution_role::ExecutionRole::Client,
+                role,
                 |game| {
                     game.texture_atlases_stitched();
                     {
-                        let marker = marker.lock().unwrap();
-                        assert!(marker.block.is_some(), "no model names the block sprite");
+                        let mut marker = marker.lock().unwrap();
+                        assert!(
+                            marker.block.take().is_some(),
+                            "no model names the block sprite"
+                        );
                         assert_eq!(marker.gui.map(|s| s.size), Some([3, 3]));
                     }
                     assert_eq!(
