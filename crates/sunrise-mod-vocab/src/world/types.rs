@@ -336,6 +336,19 @@ impl LevelRef {
         crate::content::registry_keys::dimension_id(self.dimension)
             .expect("the game's table made the key")
     }
+    /// Side: both.
+    /// Property `key` of the block state at `pos` (`BlockState.getValue`):
+    /// `east` for `facing`. None for a block without it, or as for
+    /// `block_state`. API 381.
+    /// The value borrows `host`, not `key`.
+    pub fn block_property<'h>(
+        self,
+        host: &'h dyn Host,
+        pos: [i32; 3],
+        key: &str,
+    ) -> Option<&'h str> {
+        crate::backend::backend_of(host)?.level_block_property(self, pos, key)
+    }
     /// Borrow the named server level's live random stream (`Level.getRandom`) for `draw`
     /// only: `level.with_random(host, |rng| rng.next_int_bound(bound))`. The closure cannot
     /// keep or reseed the stream. Draws advance that level's live stream directly in
@@ -1160,17 +1173,18 @@ pub struct RespawnData {
 }
 
 /// A map's saved data (`MapItemSavedData`) as it stands: where it is, how far it reaches and
-/// its pixels. The markers (players, banners, frames) are not part of it.
+/// its pixels. The markers (players, banners, frames) are not part of it. The dimension and
+/// colors are borrowed for the duration of [`LevelRef::visit_map_data`]'s visitor.
+// no wire: borrows the map for a scoped visit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct MapState {
+pub struct MapState<'a> {
     /// The centre block `[x, z]`.
     pub center: [i32; 2],
     /// A map pixel is `1 << scale` blocks, 0 to 4.
     pub scale: u8,
     /// The dimension it shows, `minecraft:overworld`.
-    pub dimension: String,
+    pub dimension: &'a str,
     /// A locked map (a cartography table's glass pane) no longer reveals the world.
     pub locked: bool,
     /// Whether it shows its holders' markers.
@@ -1178,7 +1192,7 @@ pub struct MapState {
     /// Whether it shows them however far away they are.
     pub unlimited: bool,
     /// 128 by 128 map colour ids, row by row (`x + z * 128`).
-    pub colors: Vec<u8>,
+    pub colors: &'a [u8],
 }
 
 /// One entity a level ray passes through, as tested by `ProjectileUtil.getEntityHitResult`.

@@ -68,7 +68,8 @@ pub trait LevelBlocksBackend {
     /// `east` for `facing`. None for a block without it, or as for
     /// `block_state`. API 381.
     #[access(WorldOnly)]
-    fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<String>;
+    #[manual_handle]
+    fn level_block_property(&self, level: LevelRef, pos: [i32; 3], key: &str) -> Option<&str>;
 }
 /// The handles' writes of the `level_blocks` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

@@ -187,7 +187,7 @@ impl Game<'_> {
 
     /// `LevelReader.getBiome`: the noise cell selected by this level's BiomeManager zoom.
     /// Unlike a generating server query, an absent selected column returns None.
-    fn native_read_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
+    fn native_read_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<&str> {
         let world = self.native_level_read_world(level)?;
         let streaming = if level.dimension() == self.native_level_key() {
             &self.streaming
@@ -202,11 +202,11 @@ impl Game<'_> {
         let max_qy = (world.shape.max_y() - 1) >> 2;
         let y = qy.clamp(min_qy, max_qy) << 2;
         let biome = chunk.biome(qx << 2, y, qz << 2);
-        Some(world_biomes!(self).get(biome).name.clone())
+        Some(world_biomes!(self).get(biome).name.as_str())
     }
 
     /// The authoritative server's `LevelReader.getBiome`, including parked levels.
-    pub(super) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
+    pub(super) fn level_biome_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<&str> {
         if !self.is_logical_server() {
             return None;
         }
@@ -214,7 +214,7 @@ impl Game<'_> {
     }
 
     /// The client's current copy of `LevelReader.getBiome`, never an authoritative server read.
-    pub(super) fn level_client_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<String> {
+    pub(super) fn level_client_biome(&self, level: LevelRef, pos: [i32; 3]) -> Option<&str> {
         if self.is_logical_server() {
             return None;
         }
@@ -647,7 +647,7 @@ impl Game<'_> {
         level: LevelRef,
         pos: [i32; 3],
         key: &str,
-    ) -> Option<String> {
+    ) -> Option<&str> {
         let state = self.level_block_state(level, pos)?;
         self.pack
             .assets
@@ -655,7 +655,7 @@ impl Game<'_> {
             .state(state)?
             .properties
             .get(key)
-            .cloned()
+            .map(String::as_str)
     }
     /// Whether this is the level in place: the one the server ticks now, whose block entities
     /// the game's own capabilities read and write and whose capabilities
@@ -856,20 +856,27 @@ impl Game<'_> {
         self.set_world_spawn(super::Dim::from_id(level.dimension_id()), pos, [yaw, pitch]);
         true
     }
-    /// Map `id`'s saved data as it stands (`with_map`). None on a client, for a stale handle
-    /// and for a map nothing made.
-    pub(super) fn level_map_data(&self, level: LevelRef, id: i32) -> Option<MapState> {
+    /// Visit map `id`'s saved data as it stands (`with_map`). None on a client, for a stale
+    /// handle and for a map nothing made.
+    pub(super) fn level_visit_map_data(
+        &self,
+        level: LevelRef,
+        id: i32,
+        visit: &mut dyn FnMut(MapState<'_>),
+    ) -> Option<()> {
         if !self.native_world_data_allowed(level) {
             return None;
         }
-        self.with_map(id, |map| MapState {
-            center: map.center,
-            scale: map.scale,
-            dimension: map.dimension.clone(),
-            locked: map.locked,
-            tracking: map.tracking,
-            unlimited: map.unlimited,
-            colors: map.colors.clone(),
+        self.with_map(id, |map| {
+            visit(MapState {
+                center: map.center,
+                scale: map.scale,
+                dimension: &map.dimension,
+                locked: map.locked,
+                tracking: map.tracking,
+                unlimited: map.unlimited,
+                colors: &map.colors,
+            });
         })
     }
     /// Repaint map `id` (`MapData::paint`). False for another length, a stale handle, a
@@ -1359,7 +1366,11 @@ mod tests {
             // A map repainted through the handle reads back and is marked to save and redraw.
             let fresh = crate::game::maps::MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");
             let id = game.new_map_id(fresh);
-            let mut colors = level.map_data(game, id).unwrap().colors;
+            let mut colors = Vec::new();
+            assert_eq!(
+                level.visit_map_data(game, id, &mut |map| colors = map.colors.to_vec()),
+                Some(())
+            );
             assert_eq!(colors.len(), 128 * 128);
             colors[5 + 2 * 128] = 34;
             assert!(level.set_map_data(game, id, &colors));
@@ -1368,12 +1379,24 @@ mod tests {
                 "nothing left to change"
             );
             assert!(!level.set_map_data(game, id, &colors[..10]));
-            let read = level.map_data(game, id).unwrap();
-            assert_eq!(read.colors[5 + 2 * 128], 34);
-            assert_eq!((read.center, read.scale), ([0, 0], 0));
-            assert_eq!(stale.map_data(game, id), None);
+            assert_eq!(
+                level.visit_map_data(game, id, &mut |map| {
+                    assert_eq!(map.colors[5 + 2 * 128], 34);
+                    assert_eq!((map.center, map.scale), ([0, 0], 0));
+                    assert_eq!(map.dimension, "minecraft:overworld");
+                }),
+                Some(())
+            );
+            assert_eq!(
+                stale.visit_map_data(game, id, &mut |_| panic!("visited a stale handle")),
+                None
+            );
             assert!(!stale.set_map_data(game, id, &colors));
-            assert_eq!(level.map_data(game, i32::MAX), None, "a map nothing made");
+            assert_eq!(
+                level.visit_map_data(game, i32::MAX, &mut |_| panic!("visited a missing map")),
+                None,
+                "a map nothing made"
+            );
 
             // Ticks run only in the level in place, at a loaded position inside its height.
             let height = level.height(game).unwrap();
@@ -2438,9 +2461,7 @@ mod tests {
                 .unwrap();
             assert!(level.block_random_tick(game, [4, 64, 4]));
             assert_eq!(
-                level
-                    .block_property(game, [4, 64, 4], "moisture")
-                    .as_deref(),
+                level.block_property(game, [4, 64, 4], "moisture"),
                 Some("7")
             );
             game.save
@@ -2465,16 +2486,12 @@ mod tests {
             assert!(!reopened.has_water_ticket(game, [4, 64, 4]));
             assert!(!old.remove(game));
             assert_eq!(
-                reopened
-                    .block_property(game, [4, 64, 4], "moisture")
-                    .as_deref(),
+                reopened.block_property(game, [4, 64, 4], "moisture"),
                 Some("7")
             );
             assert!(reopened.block_random_tick(game, [4, 64, 4]));
             assert_eq!(
-                reopened
-                    .block_property(game, [4, 64, 4], "moisture")
-                    .as_deref(),
+                reopened.block_property(game, [4, 64, 4], "moisture"),
                 Some("6")
             );
             drop(guard);
@@ -3046,19 +3063,19 @@ mod environment_read_tests {
             paint_biome(game, "minecraft:plains");
             let before = (game.world.chunks.len(), game.streaming.pending());
             assert_eq!(
-                overworld.biome_at(game, [8, 64, 8]).as_deref(),
+                overworld.biome_at(game, [8, 64, 8]),
                 Some("minecraft:plains")
             );
             assert_eq!(overworld.biome_at(game, [31, 64, 31]), None);
             assert_eq!(before, (game.world.chunks.len(), game.streaming.pending()));
             paint_biome(game, "minecraft:desert");
             assert_eq!(
-                overworld.biome_at(game, [8, 64, 8]).as_deref(),
+                overworld.biome_at(game, [8, 64, 8]),
                 Some("minecraft:desert")
             );
             game.enter_level(Dim::Nether).unwrap();
             assert_eq!(
-                overworld.biome_at(game, [8, 64, 8]).as_deref(),
+                overworld.biome_at(game, [8, 64, 8]),
                 Some("minecraft:desert"),
                 "parked level's cells"
             );
@@ -3083,7 +3100,7 @@ mod environment_read_tests {
             let client_level = game.level("minecraft:overworld").unwrap();
             let before = (game.world.chunks.len(), game.streaming.pending());
             assert_eq!(
-                client_level.client_biome(game, [8, 64, 8]).as_deref(),
+                client_level.client_biome(game, [8, 64, 8]),
                 Some("minecraft:snowy_plains")
             );
             assert_eq!(client_level.client_biome(game, [31, 64, 31]), None);
@@ -3545,7 +3562,11 @@ mod environment_read_tests {
                 let level = game.level(dimension).unwrap();
                 let before = (game.world.chunks.len(), game.streaming.pending());
                 let value = match kind {
-                    "biome" => json!(level.biome_at(game, position(&input["position"]))),
+                    "biome" => {
+                        let biome: Option<&str> =
+                            level.biome_at(game, position(&input["position"]));
+                        json!(biome)
+                    }
                     "floor" => json!(level.block_floor_height(game, [8, 100, 8]).map(|height| {
                         if height == f64::NEG_INFINITY {
                             json!("-Infinity")

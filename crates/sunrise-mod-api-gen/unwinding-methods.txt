@@ -575,7 +575,6 @@ level_rules::level_game_rule_bool
 level_rules::level_game_rule_int
 level_rules::level_local_difficulty
 level_rules::level_set_game_rule
-level_saved_data::level_map_data
 level_saved_data::level_raid
 level_saved_data::level_raid_at
 level_saved_data::level_raids
@@ -583,6 +582,7 @@ level_saved_data::level_request_save
 level_saved_data::level_respawn_data
 level_saved_data::level_set_map_data
 level_saved_data::level_set_respawn_data
+level_saved_data::level_visit_map_data
 level_signals::level_best_neighbor_signal
 level_signals::level_direct_signal
 level_signals::level_direct_signal_to

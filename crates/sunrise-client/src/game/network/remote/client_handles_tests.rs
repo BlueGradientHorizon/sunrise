@@ -53,7 +53,7 @@ fn client_handles_reach_a_custom_level() {
         assert_eq!(level.dimension().id(game), Some("test:pocket"));
         assert!(game.level("minecraft:overworld").is_none());
         assert!(level.height(game).is_some());
-        let facts = level.dimension_type(game).unwrap();
+        let facts: mod_api::LevelDimensionType<'_> = level.dimension_type(game).unwrap();
         assert_eq!(facts.id, "test:type");
         assert_eq!(facts.coordinate_scale, 4.0);
         assert_eq!(facts.ambient_light, 0.3);

@@ -172,14 +172,14 @@ impl Game<'_> {
     }
 
     /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-    pub(super) fn level_dimension_type(&self, level: LevelRef) -> Option<LevelDimensionType> {
+    pub(super) fn level_dimension_type(&self, level: LevelRef) -> Option<LevelDimensionType<'_>> {
         use sunrise_world::dimension_type::{CardinalLight, Skybox};
         use sunrise_world::worldgen::value_provider::IntProvider;
         self.native_level_read_world(level)?;
         let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
         let facts = self.dimension_facts_for(key);
         Some(LevelDimensionType {
-            id: facts.id.clone(),
+            id: &facts.id,
             min_y: facts.height.min_y,
             height: facts.height.height,
             logical_height: facts.height.logical_height,
@@ -189,7 +189,7 @@ impl Game<'_> {
             has_ender_dragon_fight: facts.has_ender_dragon_fight,
             coordinate_scale: facts.coordinate_scale,
             ambient_light: facts.ambient_light,
-            infiniburn: facts.infiniburn.clone(),
+            infiniburn: &facts.infiniburn,
             monster_spawn_light_level: match facts.monster_spawn_light_level {
                 IntProvider::Constant(n) => Some((n, n)),
                 IntProvider::Uniform { min, max } => Some((min, max)),
@@ -197,13 +197,13 @@ impl Game<'_> {
             },
             monster_spawn_block_light_limit: facts.monster_spawn_block_light_limit,
             skybox: match facts.skybox {
-                Skybox::None => "none".to_owned(),
-                Skybox::Overworld => "overworld".to_owned(),
-                Skybox::End => "end".to_owned(),
+                Skybox::None => "none",
+                Skybox::Overworld => "overworld",
+                Skybox::End => "end",
             },
             cardinal_light: match facts.cardinal_light {
-                CardinalLight::Default => "default".to_owned(),
-                CardinalLight::Nether => "nether".to_owned(),
+                CardinalLight::Default => "default",
+                CardinalLight::Nether => "nether",
             },
             water_evaporates: facts.water_evaporates,
             fast_lava: facts.fast_lava,
@@ -213,14 +213,14 @@ impl Game<'_> {
             snow_golem_melts: facts.snow_golem_melts,
             can_start_raid: facts.can_start_raid,
             sky_light_level: facts.sky_light_level,
-            timelines: facts.timelines.clone(),
-            default_clock: facts.default_clock.clone(),
-            bed_can_sleep: facts.bed_rule.can_sleep.name().to_owned(),
-            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name().to_owned(),
+            timelines: &facts.timelines,
+            default_clock: facts.default_clock.as_deref(),
+            bed_can_sleep: facts.bed_rule.can_sleep.name(),
+            bed_can_set_spawn: facts.bed_rule.can_set_spawn.name(),
             bed_destroy_on_use: facts.bed_rule.destroy_on_use,
             bed_destroy_on_leave: facts.bed_rule.destroy_on_leave,
-            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name().to_owned(),
-            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name().to_owned(),
+            straw_bed_can_sleep: facts.straw_bed_rule.can_sleep.name(),
+            straw_bed_can_set_spawn: facts.straw_bed_rule.can_set_spawn.name(),
             straw_bed_destroy_on_use: facts.straw_bed_rule.destroy_on_use,
             straw_bed_destroy_on_leave: facts.straw_bed_rule.destroy_on_leave,
         })
