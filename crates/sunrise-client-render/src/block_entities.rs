@@ -135,8 +135,7 @@ pub struct BlockEntities {
     /// (`take`) stays listed until `put` or `remove`.
     mods: FxHashMap<(i32, i32), FxHashSet<Pos>>,
     /// Every block entity's position by chunk, taken-out ones (`take`) included until `put` or
-    /// `remove`: a column unloads (`unload_column`) and a frame finds the block entities near
-    /// the camera (`near`) without scanning the whole map.
+    /// `remove`, so a column unloads without scanning the whole map.
     columns: FxHashMap<(i32, i32), FxHashSet<Pos>>,
     /// The positions of the block entities that draw a bounding box (structure and test
     /// instance blocks, `shows_box`), so a frame looks at them without scanning the map.
@@ -683,28 +682,6 @@ impl BlockEntities {
             .iter()
             .filter(move |((cx, cz), _)| !far(*cx, x) && !far(*cz, z))
             .flat_map(|(_, set)| set)
-    }
-    /// The block entities in chunks that can contain a block centre within `radius` of `x`, `z`,
-    /// in no order. The caller checks the exact distance; a taken-out entity is not there.
-    /// It looks up every chunk of the square, so `radius` stays a few chunks.
-    pub fn near(&self, x: f64, z: f64, radius: f64) -> impl Iterator<Item = (&Pos, &BlockEntity)> {
-        let chunks = move |at: f64| {
-            // Renderers measure from the centre, but the index uses integer block positions.
-            ((at - radius - 0.5) / 16.0).floor() as i32
-                ..=((at + radius - 0.5) / 16.0).floor() as i32
-        };
-        let xs = chunks(x);
-        let zs = chunks(z);
-        crate::spans::note_block_entity_item_chunks(|| {
-            let width = |r: &std::ops::RangeInclusive<i32>| {
-                (i64::from(*r.end()) - i64::from(*r.start()) + 1).max(0) as u64
-            };
-            width(&xs).saturating_mul(width(&zs))
-        });
-        xs.flat_map(move |cx| zs.clone().map(move |cz| (cx, cz)))
-            .filter_map(|chunk| self.columns.get(&chunk))
-            .flatten()
-            .filter_map(|pos| Some((pos, self.map.get(pos)?)))
     }
     /// The mod block entities of chunk `chunk`, in no order; one taken out is
     /// listed too.
@@ -1300,8 +1277,7 @@ mod tests {
     }
 
     /// Column unloads (`unload_column`, `unload_column_where`) leave exactly what the full-scan
-    /// `unload` leaves, and `near` finds exactly what a scan of the whole map finds, through any
-    /// mix of the calls that add, take back, return and drop block entities.
+    /// `unload` leaves, through any mix of calls that add, take back, return and drop block entities.
     #[test]
     fn column_lists_match_a_full_scan() {
         let mut seed = 0x2545_f491_4f6c_dd1d_u64;
@@ -1392,19 +1368,6 @@ mod tests {
             };
             assert_eq!(keys(&a), keys(&b), "step {step}");
             let (x, z, radius) = (roll(100) as f64 - 50.0, roll(100) as f64 - 50.0, 20.0);
-            let intersects = |chunk: i32, at: f64| {
-                let first = f64::from(chunk * 16) + 0.5;
-                first <= at + radius && first + 16.0 > at - radius
-            };
-            let mut scanned: Vec<Pos> = b
-                .keys()
-                .filter(|p| intersects(p.0 >> 4, x) && intersects(p.2 >> 4, z))
-                .copied()
-                .collect();
-            scanned.sort();
-            let mut found: Vec<Pos> = a.near(x, z, radius).map(|(p, _)| *p).collect();
-            found.sort();
-            assert_eq!(found, scanned, "step {step}: near {x} {z}");
             assert_eq!(
                 near(&a, x, z, radius),
                 near(&b, x, z, radius),

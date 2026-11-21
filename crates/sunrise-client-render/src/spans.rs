@@ -13,7 +13,7 @@ thread_local! {
     static SPANS: RefCell<Vec<Span>> = const { RefCell::new(Vec::new()) };
     /// Wall-only recording on this thread: the ongoing setting and the scoped frame override.
     static HERE: Cell<u8> = const { Cell::new(0) };
-    /// Block-entity load writes and item-render chunk probes in this raw-flight frame.
+    /// Block-entity load writes and item-render entity visits in this raw-flight frame.
     static BLOCK_ENTITY_WORK: Cell<[u64; 2]> = const { Cell::new([0; 2]) };
     /// How many timed spans the thread is inside: the next span's [`Span::depth`].
     static DEPTH: Cell<u8> = const { Cell::new(0) };
@@ -80,7 +80,7 @@ pub struct FrameRecording {
 }
 
 impl FrameRecording {
-    /// Load writes and item-render chunk probes recorded since the frame started.
+    /// Load writes and item-render entity visits recorded since the frame started.
     pub fn block_entity_work(&self) -> [u64; 2] {
         BLOCK_ENTITY_WORK.get()
     }
@@ -101,9 +101,9 @@ pub fn note_block_entity_loads(count: usize) {
     }
 }
 
-/// Count chunk lookups in an item renderer's fully consumed `near` iterator.
+/// Count block entities visited in an item-render scan.
 #[inline]
-pub fn note_block_entity_item_chunks(count: impl FnOnce() -> u64) {
+pub fn note_block_entity_item_visits(count: impl FnOnce() -> u64) {
     if HERE.get() & FRAME != 0 {
         let [loads, probes] = BLOCK_ENTITY_WORK.get();
         BLOCK_ENTITY_WORK.set([loads, probes + count()]);
@@ -830,7 +830,7 @@ mod tests {
         super::record_here(true);
         assert!(super::raw_flight_guard("outside_flight").is_none());
         super::note_block_entity_loads(19);
-        super::note_block_entity_item_chunks(|| panic!("must not count outside a raw flight"));
+        super::note_block_entity_item_visits(|| panic!("must not count outside a raw flight"));
         {
             let frame = super::record_frame();
             {
@@ -838,8 +838,8 @@ mod tests {
                 super::note_block_entity_loads(1);
                 super::note_block_entity_loads(3);
             }
-            super::note_block_entity_item_chunks(|| 64);
-            super::note_block_entity_item_chunks(|| 81);
+            super::note_block_entity_item_visits(|| 64);
+            super::note_block_entity_item_visits(|| 81);
             assert_eq!(frame.block_entity_work(), [4, 145]);
         }
         super::record_here(false);

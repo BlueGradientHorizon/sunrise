@@ -793,7 +793,7 @@ pub struct FrameStats {
     streaming_work: Vec<[u64; 3]>,
     /// Meshes submitted to the renderer and their bytes at the upload budget's vertex size.
     streaming_uploads: Vec<[u64; 2]>,
-    /// Column-load writes and probes of the item renderers' chunk index, per rendered frame.
+    /// Column-load writes and item-render entity visits, per rendered frame.
     streaming_block_entities: Vec<[u64; 2]>,
     /// The same frames' wall milliseconds, by streaming span. None when it did not run.
     streaming_spans: Vec<[Option<f32>; STREAMING_SPANS.len()]>,

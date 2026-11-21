@@ -615,8 +615,8 @@ pub const COMMANDS: &[Cmd] = &[
          The streaming_work series is [unload_entries_visited, upload_elements_sorted, upload_elements_merged]. \
          The streaming_uploads series is [meshes_uploaded, vertex_bytes_uploaded] for inline and queued uploads combined. \
          Bytes use the upload budget's unpacked vertex size, not actual GPU transfers. \
-         The streaming_block_entities series is [block_entities_inserted_on_load, item_chunks_visited]. \
-         Replacements count as inserts; item_chunks_visited counts chunk index lookups, including misses. \
+         The streaming_block_entities series is [block_entities_inserted_on_load, item_entities_visited]. \
+         Replacements count as inserts; item_entities_visited counts entity visits in the item-render loops. \
          The streaming_span_ms object holds wall milliseconds for unload_block_entities (column removal), \
          order_uploads (stale-entry filtering and queue ordering), upload_queue (queued uploads only), \
          load_block_entities (column block-entity loads) and block_entity_items (campfire, vault, shelf and brushable item loops). \
