@@ -91,8 +91,13 @@ pub fn entity_providers<T: ?Sized + 'static, C: Copy + 'static>(
     context: C,
 ) -> Option<EntityProviders<T, C>> {
     let by_kind = installed()?.keys.entity_capabilities.get(key.name)?;
-    let name = entity.kind(host)?.id(host)?;
-    let parts = by_kind.get(name.as_str())?;
+    let kind = entity
+        .kind(host)
+        .and_then(crate::content::registry_keys::entity_type_name)?;
+    let parts = by_kind
+        .get(kind)
+        .map(Vec::as_slice)
+        .filter(|parts| !parts.is_empty())?;
     Some(EntityProviders {
         parts,
         entity,
@@ -112,17 +117,28 @@ pub struct EntityProviders<T: ?Sized + 'static, C: 'static> {
 }
 
 impl<T: ?Sized + 'static, C: Copy + 'static> EntityProviders<T, C> {
+    pub(crate) fn answer(
+        self,
+        host: &mut dyn ServerHost,
+        game: impl FnOnce(&mut dyn ServerHost) -> bool,
+    ) -> Answer<T> {
+        let (entity, context) = (self.entity, self.context);
+        ask_providers(
+            host,
+            self.parts.iter(),
+            |provider, host| {
+                provider
+                    .get::<Arc<EntityProvider<T, C>>>()?
+                    .provide(host, entity, context)
+            },
+            game,
+        )
+    }
+
     /// A mod's handler where the game would answer with its own unless a mod comes first: one
     /// registered `before_game`, else, where the game has no answer (`game`), the first mod's.
     pub fn ask(self, host: &mut dyn ServerHost, game: bool) -> Option<Capability<T>> {
-        let (entity, context) = (self.entity, self.context);
-        match ask_providers(
-            host,
-            |index| next_provider(self.parts, index),
-            NativeCapabilityProvider::get::<Arc<EntityProvider<T, C>>>,
-            |provider, host| provider.provide(host, entity, context),
-            |_| game,
-        ) {
+        match self.answer(host, |_| game) {
             Answer::Mod(found) => Some(found),
             Answer::Game | Answer::Nobody => None,
         }
@@ -290,28 +306,4 @@ impl EntityTickEach {
 #[doc(hidden)]
 pub fn entity_tick_each() -> Option<&'static EntityTickEach> {
     installed().map(|parts| &parts.entity_tick_each)
-}
-
-/// CapabilityProviders operations for entities.
-// hidden: per-kind lookup implementation for native provider bindings
-#[doc(hidden)]
-pub trait EntitiesCapabilityProviders {
-    /// The next enabled provider of entity capability `name` for entity type `kind`, advancing `index`.
-    fn entity_provider(
-        &self,
-        name: &str,
-        kind: &str,
-        index: &mut u32,
-    ) -> Option<(NativeCapabilityProvider, &'static str, bool)>;
-}
-
-impl EntitiesCapabilityProviders for InstalledProviders {
-    fn entity_provider(
-        &self,
-        name: &str,
-        kind: &str,
-        index: &mut u32,
-    ) -> Option<(NativeCapabilityProvider, &'static str, bool)> {
-        next(&installed()?.keys.entity_capabilities, name, kind, index)
-    }
 }

@@ -584,21 +584,6 @@ impl Parts {
     }
 }
 
-/// Walk only this capability and type's registrations, once each even if a provider switches
-/// a mod off during the lookup. The table and the game's direct lookups share this path.
-pub(crate) fn next_provider<P: Clone>(
-    parts: &[CapabilityPart<P>],
-    index: &mut u32,
-) -> Option<(P, &'static str, bool)> {
-    while let Some(part) = parts.get(*index as usize) {
-        *index += 1;
-        if crate::mod_index_on(part.mod_index) {
-            return Some((part.provider.clone(), part.mod_id, part.before_game));
-        }
-    }
-    None
-}
-
 pub(crate) fn attached<'a, 'k, P: ?Sized>(
     table: &'a HashMap<Box<str>, Vec<Attached<P>>>,
     id: impl FnOnce() -> Option<&'k str>,

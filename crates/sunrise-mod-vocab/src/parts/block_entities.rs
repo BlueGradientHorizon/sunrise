@@ -82,25 +82,27 @@ pub fn block_providers<T: ?Sized + 'static>(
     let keys = &installed()?.keys;
     // Each table checked for the capability first, so a lookup no mod answers reads nothing at
     // the position.
-    let entity = match keys.capabilities.contains_key(key.name) {
-        true => providers_at(
-            &keys.capabilities,
-            key.name,
-            at.kind(host)
-                .and_then(crate::content::registry_keys::block_entity_type_name),
-        ),
-        false => &[],
-    };
-    let block = match keys.block_capabilities.contains_key(key.name) {
-        true => providers_at(
-            &keys.block_capabilities,
-            key.name,
-            at.level
+    let entity = keys
+        .capabilities
+        .get(key.name)
+        .and_then(|by_kind| {
+            let kind = at
+                .kind(host)
+                .and_then(crate::content::registry_keys::block_entity_type_name)?;
+            by_kind.get(kind).map(Vec::as_slice)
+        })
+        .unwrap_or(&[]);
+    let block = keys
+        .block_capabilities
+        .get(key.name)
+        .and_then(|by_block| {
+            let block = at
+                .level
                 .block(host, at.pos)
-                .and_then(crate::content::registry_keys::block_id),
-        ),
-        false => &[],
-    };
+                .and_then(crate::content::registry_keys::block_id)?;
+            by_block.get(block).map(Vec::as_slice)
+        })
+        .unwrap_or(&[]);
     if entity.is_empty() && block.is_empty() {
         return None;
     }
@@ -123,19 +125,25 @@ pub struct BlockProviders<T: ?Sized + 'static> {
 }
 
 impl<T: ?Sized + 'static> BlockProviders<T> {
+    pub(crate) fn answer(
+        self,
+        host: &mut dyn ServerHost,
+        game: impl FnOnce(&mut dyn ServerHost) -> bool,
+    ) -> Answer<T> {
+        let at = self.at;
+        ask_providers(
+            host,
+            MergedProviders::new(self.entity, self.block),
+            |provider, host| provider.get::<Arc<BlockProvider<T>>>()?.provide(host, at),
+            game,
+        )
+    }
+
     /// A mod's handler where the game would answer with its own unless a mod comes first: one
     /// registered `before_game`, else, where the game has no answer (`game`), the first mod's,
     /// in [`LevelRef::capability`]'s order.
     pub fn ask(self, host: &mut dyn ServerHost, game: bool) -> Option<Capability<T>> {
-        let at = self.at;
-        let answer = ask_providers(
-            host,
-            |index| next_merged(self.entity, self.block, index),
-            NativeCapabilityProvider::get::<Arc<BlockProvider<T>>>,
-            |provider, host| provider.provide(host, at),
-            |_| game,
-        );
-        match answer {
+        match self.answer(host, |_| game) {
             Answer::Mod(found) => Some(found),
             Answer::Game | Answer::Nobody => None,
         }

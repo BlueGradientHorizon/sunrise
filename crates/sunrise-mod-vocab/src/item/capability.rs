@@ -310,27 +310,20 @@ impl LevelRef {
             pos,
             side,
         };
+        let Some(providers) = crate::block_providers(key, host, at) else {
+            return key.default.and_then(|default| {
+                default(host, at).map(|handler| Capability {
+                    handler,
+                    owner: None,
+                })
+            });
+        };
         let mut game = None;
-        let table = host.capability_providers();
-        let kind = table
-            .provided(crate::ProvidedBy::BlockEntity, key.name)
-            .then(|| at.kind(host))
-            .flatten();
-        let block = table
-            .provided(crate::ProvidedBy::Block, key.name)
-            .then(|| self.block(host, pos))
-            .flatten();
         crate::answered(
-            crate::ask_providers(
-                host,
-                |index| table.block_provider(key.name, kind, block, index),
-                crate::NativeCapabilityProvider::get::<std::sync::Arc<crate::BlockProvider<T>>>,
-                |provider, host| provider.provide(host, at),
-                |host| {
-                    game = key.default.and_then(|default| default(host, at));
-                    game.is_some()
-                },
-            ),
+            providers.answer(host, |host| {
+                game = key.default.and_then(|default| default(host, at));
+                game.is_some()
+            }),
             game,
         )
     }

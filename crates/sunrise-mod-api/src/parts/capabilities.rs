@@ -72,17 +72,6 @@ impl PartRegistrar {
             ProvidedBy::Entity => &mut self.parts.entity_capabilities,
         };
         let providers = table.entry(name).or_default().entry(id.into()).or_default();
-        // A position's lookup keeps its place in a block's and a block entity type's lists in
-        // one cursor, which bounds each.
-        if block && providers.len() >= mod_vocab::__private::parts_installation::max_providers_at()
-        {
-            self.refused.push(format!(
-                "{me} answered capability {name} for {id}, which already has the most providers \
-                 one block or block entity type may have ({})",
-                mod_vocab::__private::parts_installation::max_providers_at()
-            ));
-            return;
-        }
         self.registered += 1;
         let order = self.registered;
         // Those asked ahead of the game first, each kind in registration order.
@@ -683,31 +672,198 @@ pub mod tests {
     }
 
     #[test]
-    fn block_provider_limits_accept_65535_and_refuse_the_next() {
-        for block_entity in [false, true] {
-            let mut r = super::PartRegistrar::new("limit_mod");
-            let block = r.block_key("test:target");
-            let entity = r.block_entity_type_key("test:target");
-            for _ in 0..65_535 {
-                let registrar = &mut r as &mut dyn Registrar;
-                if block_entity {
-                    registrar.block_entity_capability(&ITEMS, &entity, |_, _| None);
-                } else {
-                    registrar.block_capability(&ITEMS, &block, |_, _, _, _| None);
+    fn block_and_block_entity_providers_walk_past_65535_in_merged_precedence_order() {
+        use std::sync::{
+            Mutex,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        struct Empty;
+        #[mod_api::__subscriptions]
+        impl Hooks for Empty {}
+
+        const BULK_AFTER_GAME: usize = u16::MAX as usize - 2;
+
+        crate::testing::with_mods(
+            vec![
+                ModEntry::new("enabled", Box::new(Empty)),
+                ModEntry::new("disabled", Box::new(Empty)),
+            ]
+            .into(),
+            || {
+                assert!(crate::__private::set_mod_enabled("disabled", false));
+                let block_calls = Arc::new(AtomicUsize::new(0));
+                let entity_calls = Arc::new(AtomicUsize::new(0));
+                let boundary_order = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+
+                let mut registrar = PartRegistrar::new("enabled");
+                let block = registrar.block_key("test:target");
+                let entity = registrar.block_entity_type_key("test:target");
+
+                {
+                    let calls = Arc::clone(&block_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_capability_before_game(
+                        &ITEMS,
+                        &block,
+                        move |_, _, _, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("block:before_game");
+                            None
+                        },
+                    );
                 }
-            }
-            assert!(r.refused.is_empty(), "{:?}", r.refused);
-            if block_entity {
-                (&mut r as &mut dyn Registrar)
-                    .block_entity_capability(&ITEMS, &entity, |_, _| None);
-            } else {
-                (&mut r as &mut dyn Registrar).block_capability(&ITEMS, &block, |_, _, _, _| None);
-            }
-            assert_eq!(r.refused.len(), 1);
-            for expected in ["limit_mod", "test:target", "65535", "sunrise:items"] {
-                assert!(r.refused[0].contains(expected), "{}", r.refused[0]);
-            }
-        }
+                {
+                    let calls = Arc::clone(&entity_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability_before_game(
+                        &ITEMS,
+                        &entity,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("be:before_game");
+                            None
+                        },
+                    );
+                }
+
+                for _ in 0..BULK_AFTER_GAME {
+                    let b_calls = Arc::clone(&block_calls);
+                    let e_calls = Arc::clone(&entity_calls);
+                    let r = &mut registrar as &mut dyn Registrar;
+                    r.block_entity_capability(&ITEMS, &entity, move |_, _| {
+                        e_calls.fetch_add(1, Ordering::Relaxed);
+                        None
+                    });
+                    r.block_capability(&ITEMS, &block, move |_, _, _, _| {
+                        b_calls.fetch_add(1, Ordering::Relaxed);
+                        None
+                    });
+                }
+
+                registrar.mod_id = "disabled";
+                registrar.mod_index = 1;
+                (&mut registrar as &mut dyn Registrar).block_capability(
+                    &ITEMS,
+                    &block,
+                    |_, _, _, _| panic!("disabled block provider must not run"),
+                );
+
+                registrar.mod_id = "enabled";
+                registrar.mod_index = 0;
+                {
+                    let calls = Arc::clone(&entity_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability(
+                        &ITEMS,
+                        &entity,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("be:65534");
+                            None
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&block_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_capability(
+                        &ITEMS,
+                        &block,
+                        move |_, _, _, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("block:65535");
+                            None
+                        },
+                    );
+                }
+
+                registrar.mod_id = "disabled";
+                registrar.mod_index = 1;
+                (&mut registrar as &mut dyn Registrar).block_entity_capability(
+                    &ITEMS,
+                    &entity,
+                    |_, _| panic!("disabled block-entity provider must not run"),
+                );
+
+                registrar.mod_id = "enabled";
+                registrar.mod_index = 0;
+                {
+                    let calls = Arc::clone(&block_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_capability(
+                        &ITEMS,
+                        &block,
+                        move |_, _, _, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("block:65536");
+                            None
+                        },
+                    );
+                }
+                {
+                    let calls = Arc::clone(&entity_calls);
+                    let order = Arc::clone(&boundary_order);
+                    (&mut registrar as &mut dyn Registrar).block_entity_capability(
+                        &ITEMS,
+                        &entity,
+                        move |_, _| {
+                            calls.fetch_add(1, Ordering::Relaxed);
+                            order.lock().unwrap().push("be:65536");
+                            Some(Box::new(Marked(42)))
+                        },
+                    );
+                }
+
+                assert!(registrar.refused.is_empty(), "{:?}", registrar.refused);
+                install_registrar(registrar, &rule_schema()).unwrap();
+                mod_vocab::__private::resolve_block_keys(["test:target"], |_| {
+                    sunrise_mod_runtime::block_definitions::BlockDefinition::new(
+                        &[&Default::default()],
+                        0,
+                    )
+                    .map_err(|e| format!("{e:?}"))
+                })
+                .unwrap();
+
+                let pos = [0, 64, 0];
+                let mut world = FakeHost::new();
+                world.level.set_block(pos, "test:target");
+                world.level.block_entity(pos).of_type("test:target");
+
+                assert!(
+                    block_providers(&ITEMS, &world, on(pos, None))
+                        .unwrap()
+                        .ask(&mut world, true)
+                        .is_none()
+                );
+                assert_eq!(block_calls.swap(0, Ordering::Relaxed), 1);
+                assert_eq!(entity_calls.swap(0, Ordering::Relaxed), 1);
+                assert_eq!(
+                    std::mem::take(&mut *boundary_order.lock().unwrap()),
+                    vec!["block:before_game", "be:before_game"]
+                );
+
+                let found = here()
+                    .capability(&mut world, &ITEMS, pos, None)
+                    .expect("final provider past 65,535 should answer");
+                assert_eq!(found.owner(), "enabled");
+                assert_eq!(found.size(&mut world), 42);
+                assert_eq!(block_calls.load(Ordering::Relaxed), 65_536);
+                assert_eq!(entity_calls.load(Ordering::Relaxed), 65_536);
+                assert_eq!(
+                    *boundary_order.lock().unwrap(),
+                    vec![
+                        "block:before_game",
+                        "be:before_game",
+                        "be:65534",
+                        "block:65535",
+                        "block:65536",
+                        "be:65536",
+                    ]
+                );
+            },
+        );
     }
 
     #[test]

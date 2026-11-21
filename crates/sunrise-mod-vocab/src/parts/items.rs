@@ -282,29 +282,11 @@ pub trait ItemsRegistrar {
 // hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait ItemsCapabilityProviders {
-    /// The next enabled provider of item capability `name` for item `item`, advancing `index`.
-    fn item_provider(
-        &self,
-        name: &str,
-        item: crate::ItemKey,
-        index: &mut u32,
-    ) -> Option<(NativeCapabilityProvider, &'static str, bool)>;
-
     /// The enabled provider of the item places named `name`, with its mod.
     fn place_provider(&self, name: &str) -> Option<(Arc<dyn PlaceProvider>, &'static str)>;
 }
 
 impl ItemsCapabilityProviders for InstalledProviders {
-    fn item_provider(
-        &self,
-        name: &str,
-        item: crate::ItemKey,
-        index: &mut u32,
-    ) -> Option<(NativeCapabilityProvider, &'static str, bool)> {
-        let item = crate::content::registry_keys::item_id(item)?;
-        next(&installed()?.keys.item_capabilities, name, item, index)
-    }
-
     fn place_provider(&self, name: &str) -> Option<(Arc<dyn PlaceProvider>, &'static str)> {
         let part = installed()?.keys.place_providers.get(name)?;
         crate::mod_index_on(part.mod_index).then(|| (part.provider.clone(), part.mod_id))

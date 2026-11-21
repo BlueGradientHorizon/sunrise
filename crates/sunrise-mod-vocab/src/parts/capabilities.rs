@@ -47,51 +47,40 @@ impl NativeCapabilityProvider {
 /// The registrar's table, as the game reads it.
 pub(crate) struct InstalledProviders;
 
-pub(crate) fn next<P: Clone>(
-    table: &Capabilities<P>,
-    name: &str,
-    id: &str,
-    index: &mut u32,
-) -> Option<(P, &'static str, bool)> {
-    next_provider(table.get(name)?.get(id)?, index)
+/// Visits two sorted provider slices (a block entity type's and a block's) as one sequence in
+/// dispatch order: those asked ahead of the game, then the others, each group in registration
+/// order across both slices.
+pub(crate) struct MergedProviders<'a, P> {
+    first: &'a [CapabilityPart<P>],
+    second: &'a [CapabilityPart<P>],
 }
 
-/// The most providers one capability may have for one block or one block entity type: a
-/// position's lookup keeps its place in both lists in the one `u32` cursor, 16 bits each.
-pub(crate) const MAX_PROVIDERS_AT: usize = u16::MAX as usize;
+impl<'a, P> MergedProviders<'a, P> {
+    pub(crate) fn new(first: &'a [CapabilityPart<P>], second: &'a [CapabilityPart<P>]) -> Self {
+        Self { first, second }
+    }
+}
 
-/// The next enabled provider of two lists asked as one, `first` and `second` (a block entity
-/// type's and a block's): those asked ahead of the game, then the others, each group in
-/// registration order across both lists. `index` holds the place in each list, `first`'s in
-/// its low 16 bits and `second`'s in its high ones, so each step looks at the two lists' next
-/// provider and takes one, past disabled ones, as [`next_provider`] does for one list.
-pub(crate) fn next_merged<P: Clone>(
-    first: &[CapabilityPart<P>],
-    second: &[CapabilityPart<P>],
-    index: &mut u32,
-) -> Option<(P, &'static str, bool)> {
-    // Each list is already in this order: those ahead of the game first, by registration.
-    let rank = |part: &CapabilityPart<P>| (!part.before_game, part.order);
-    let (mut at_first, mut at_second) = (*index & 0xffff, *index >> 16);
-    loop {
-        let part = match (first.get(at_first as usize), second.get(at_second as usize)) {
-            (Some(a), Some(b)) if rank(b) < rank(a) => {
-                at_second += 1;
-                b
+impl<'a, P> Iterator for MergedProviders<'a, P> {
+    type Item = &'a CapabilityPart<P>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Each slice is already in this order: those ahead of the game first, by registration.
+        let rank = |part: &CapabilityPart<P>| (!part.before_game, part.order);
+        match (self.first.split_first(), self.second.split_first()) {
+            (Some((a, _)), Some((b, rest))) if rank(b) < rank(a) => {
+                self.second = rest;
+                Some(b)
             }
-            (Some(a), _) => {
-                at_first += 1;
-                a
+            (Some((a, rest)), _) => {
+                self.first = rest;
+                Some(a)
             }
-            (None, Some(b)) => {
-                at_second += 1;
-                b
+            (None, Some((b, rest))) => {
+                self.second = rest;
+                Some(b)
             }
-            (None, None) => return None,
-        };
-        *index = at_first | at_second << 16;
-        if crate::mod_index_on(part.mod_index) {
-            return Some((part.provider.clone(), part.mod_id, part.before_game));
+            (None, None) => None,
         }
     }
 }
@@ -120,31 +109,32 @@ pub(crate) fn answered<T: ?Sized>(
     }
 }
 
-/// Asks the providers `next` gives (advancing a registration cursor in dispatch order: those
-/// registered `before_game`, then the others), and the game's own (`game`: whether it answers) between the
-/// two, in the fork's chosen order (NeoForge's javadoc doesn't state one between mods'
-/// providers and the game's); the first to answer wins. `get` borrows the bound provider
-/// if it matches the capability's handler type and context.
-pub(crate) fn ask_providers<O, P: ?Sized + 'static, T: ?Sized>(
+/// Asks the borrowed `providers` in dispatch order (those registered `before_game`, then the
+/// others), checking each row's mod enablement right before it is used, and the game's own
+/// (`game`: whether it answers) once at the boundary between the two groups or after
+/// exhaustion, in the fork's chosen order (NeoForge's javadoc doesn't state one between mods'
+/// providers and the game's); the first to answer wins.
+pub(crate) fn ask_providers<'a, T: ?Sized>(
     host: &mut dyn ServerHost,
-    next: impl Fn(&mut u32) -> Option<(O, &'static str, bool)>,
-    get: impl Fn(&O) -> Option<&Arc<P>>,
-    call: impl Fn(&P, &mut dyn ServerHost) -> Option<Box<T>>,
+    providers: impl Iterator<Item = &'a CapabilityPart<NativeCapabilityProvider>>,
+    call: impl Fn(&NativeCapabilityProvider, &mut dyn ServerHost) -> Option<Box<T>>,
     game: impl FnOnce(&mut dyn ServerHost) -> bool,
 ) -> Answer<T> {
     let mut game = Some(game);
-    let mut index = 0;
-    while let Some((provider, owner, before_game)) = next(&mut index) {
-        if !before_game
+    for part in providers {
+        if !crate::mod_index_on(part.mod_index) {
+            continue;
+        }
+        if !part.before_game
             && let Some(game) = game.take()
             && game(host)
         {
             return Answer::Game;
         }
-        if let Some(handler) = get(&provider).and_then(|provider| call(provider, host)) {
+        if let Some(handler) = call(&part.provider, host) {
             return Answer::Mod(Capability {
                 handler,
-                owner: Some(owner),
+                owner: Some(part.mod_id),
             });
         }
     }
@@ -158,9 +148,6 @@ pub(crate) fn ask_providers<O, P: ?Sized + 'static, T: ?Sized>(
 // hidden: per-kind lookup implementation for native provider bindings
 #[doc(hidden)]
 pub trait CapabilitiesCapabilityProviders {
-    /// Whether any mod registered capability `name` for the things `by` names. This presence
-    /// check includes disabled mods; enumeration skips their providers.
-    fn provided(&self, by: ProvidedBy, name: &str) -> bool;
     /// Known block capability names in declaration/discovery order.
     fn block_capability_names(&self) -> Vec<String>;
     /// Whether this capability was explicitly marked safe to forward.
@@ -173,14 +160,6 @@ pub trait CapabilitiesCapabilityProviders {
 }
 
 impl CapabilitiesCapabilityProviders for InstalledProviders {
-    fn provided(&self, by: ProvidedBy, name: &str) -> bool {
-        installed().is_some_and(|installed| match by {
-            ProvidedBy::BlockEntity => installed.keys.capabilities.contains_key(name),
-            ProvidedBy::Block => installed.keys.block_capabilities.contains_key(name),
-            ProvidedBy::Item => installed.keys.item_capabilities.contains_key(name),
-            ProvidedBy::Entity => installed.keys.entity_capabilities.contains_key(name),
-        })
-    }
     fn block_capability_names(&self) -> Vec<String> {
         match installed() {
             Some(installed) => installed
@@ -214,62 +193,5 @@ impl CapabilitiesCapabilityProviders for InstalledProviders {
     }
     fn mods_switched(&self) -> u64 {
         crate::runtime::mods_switched()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::*;
-
-    struct Empty;
-    #[mod_api::__subscriptions]
-    impl Hooks for Empty {}
-
-    #[test]
-    fn merged_cursor_exhausts_both_halves_without_wrapping_past_disabled_entries() {
-        install(
-            vec![
-                ModEntry::new("enabled", Box::new(Empty)),
-                ModEntry::new("disabled", Box::new(Empty)),
-            ]
-            .into(),
-        );
-        assert!(set_mod_enabled("disabled", false));
-        let providers: Vec<_> = (0..65_535)
-            .map(|order| CapabilityPart {
-                mod_id: if order == 65_533 {
-                    "disabled"
-                } else {
-                    "enabled"
-                },
-                mod_index: if order == 65_533 { 1 } else { 0 },
-                before_game: false,
-                order,
-                provider: order,
-            })
-            .collect();
-        for high_half in [false, true] {
-            let (first, second) = if high_half {
-                (&[][..], providers.as_slice())
-            } else {
-                (providers.as_slice(), &[][..])
-            };
-            let mut cursor = 0;
-            let mut count = 0;
-            let mut last = None;
-            while let Some((provider, owner, before_game)) = next_merged(first, second, &mut cursor)
-            {
-                assert_eq!(owner, "enabled");
-                assert!(!before_game);
-                count += 1;
-                last = Some(provider);
-            }
-            assert_eq!(count, 65_534);
-            assert_eq!(last, Some(65_534));
-            assert_eq!(cursor, if high_half { 0xffff_0000 } else { 0x0000_ffff });
-            assert_eq!(next_merged(first, second, &mut cursor), None);
-            assert_eq!(cursor, if high_half { 0xffff_0000 } else { 0x0000_ffff });
-        }
     }
 }
