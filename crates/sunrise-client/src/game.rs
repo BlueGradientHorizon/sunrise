@@ -3452,7 +3452,7 @@ struct Game<'a> {
     model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
-    debug_renderers: Vec<mod_api::Answered<mod_api::DebugRenderer>>,
+    debug_renderers: Vec<sunrise_client::debug_entries::ActiveDebugRenderer>,
     /// `DebugRenderer.lastDebugEntriesVersion`: none before the first view of a world.
     debug_renderers_version: Option<u64>,
     /// Next undrawn mod layer in HUD `gui_layers::order`; `None` while hidden or outside its pass.
@@ -7070,7 +7070,9 @@ impl Game<'_> {
             || self.dialog_open())
             && self.player.is_none()
         {
-            HudBatch::new(size, self.settings.gui_scale_inputs())
+            let mut batch = HudBatch::new(size, self.settings.gui_scale_inputs());
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
+            batch
         } else {
             self.hud_layers(size)
         };
@@ -7129,6 +7131,7 @@ impl Game<'_> {
             // The early return skips the match below: the hooks still see the
             // screen, after its own drawing.
             self.draw_screen_with_post_hook(&mut batch);
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
             return batch;
         }
         if self.screen == Screen::Options {
@@ -7144,6 +7147,7 @@ impl Game<'_> {
             }
             self.draw_screen_with_post_hook(&mut batch);
             self.draw_controller_notice(&mut batch);
+            self.draw_pack_toasts(&mut batch, true, self.ui.hide_gui);
             return batch;
         }
         self.settle_title_toasts();

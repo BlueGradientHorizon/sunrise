@@ -70,6 +70,11 @@ pub fn enter_scope(mod_id: &'static str) -> OuterScope {
     })))
 }
 
+/// Temporarily leave the mod's phase scope while executing delegated engine code.
+pub(crate) fn suspend_scope() -> OuterScope {
+    OuterScope(SCOPE.replace(None))
+}
+
 /// Closes the scope, restores the outer one, and returns the refusal the scope latched.
 // hidden: called by `contain_refusal` only.
 #[doc(hidden)]

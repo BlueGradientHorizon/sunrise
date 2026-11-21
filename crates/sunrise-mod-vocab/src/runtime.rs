@@ -159,7 +159,7 @@ pub(crate) fn hook_dispatch_depth() -> u32 {
     HOOK_DISPATCH_DEPTH.get()
 }
 
-struct DispatchPanicScope(u32);
+pub(crate) struct DispatchPanicScope(u32);
 
 impl DispatchPanicScope {
     #[inline]
@@ -168,6 +168,11 @@ impl DispatchPanicScope {
         HOOK_DISPATCH_DEPTH.set(prev.saturating_add(1));
         Self(prev)
     }
+
+    /// Delegated engine code is outside the callback fence. A panic there is fatal.
+    pub(crate) fn suspend() -> Self {
+        Self(HOOK_DISPATCH_DEPTH.replace(0))
+    }
 }
 
 impl Drop for DispatchPanicScope {
@@ -175,6 +180,17 @@ impl Drop for DispatchPanicScope {
     fn drop(&mut self) {
         HOOK_DISPATCH_DEPTH.set(self.0);
     }
+}
+
+/// All mod callbacks enter the same panic fence and settle their owner state and diagnostics
+/// within it, including any disposal of the panic payload.
+#[inline]
+pub(crate) fn contain_callback<T, R>(
+    call: impl FnOnce() -> T,
+    settle: impl FnOnce(std::thread::Result<T>) -> R,
+) -> R {
+    let _scope = DispatchPanicScope::enter();
+    settle(std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)))
 }
 
 pub(crate) fn take_hook_panics() -> Vec<HookPanicReport> {
@@ -281,16 +297,12 @@ pub(crate) fn record_hook_panic(
     }
 }
 
-fn log_and_queue_panic(
+pub(crate) fn log_and_queue_panic(
     hook: &'static str,
     mod_id: &'static str,
     payload: &(dyn std::any::Any + Send),
 ) {
-    let reason = payload
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("panic");
+    let reason = panic_message(payload);
     log::error!(
         "mod {mod_id} panicked in hook {hook} and has been disabled for this hook for the rest of the session: {reason}"
     );
@@ -304,6 +316,14 @@ fn log_and_queue_panic(
             .has_hook_panics
             .store(true, std::sync::atomic::Ordering::Release);
     }
+}
+
+pub(crate) fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("panic")
 }
 
 pub(crate) enum DispatchOutcome<T> {
@@ -328,24 +348,25 @@ pub(crate) fn invoke<T>(
     contained: bool,
     call: impl FnOnce() -> T,
 ) -> DispatchOutcome<T> {
-    let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| refusable(contained, call))) {
-        Ok(Ok(value)) => DispatchOutcome::Ok(value),
-        Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
-        Err(payload) => {
-            record_hook_panic(hook_id, hook, mod_id, &*payload);
-            dispose_panic_payload(payload);
-            DispatchOutcome::Panicked
-        }
-    }
+    contain_callback(
+        || refusable(contained, call),
+        |result| match result {
+            Ok(Ok(value)) => DispatchOutcome::Ok(value),
+            Ok(Err(refusal)) => DispatchOutcome::Refused(refusal),
+            Err(payload) => {
+                record_hook_panic(hook_id, hook, mod_id, &*payload);
+                drop_contained(payload);
+                DispatchOutcome::Panicked
+            }
+        },
+    )
 }
 
-// A mod's panic payload may itself panic on drop. Stay in DispatchPanicScope and do not
+// A mod's panic payload may itself panic on drop. Stay in the callback fence and do not
 // recursively destroy a secondary payload that may repeat the same panic.
 #[cold]
-fn dispose_panic_payload(payload: Box<dyn std::any::Any + Send>) {
-    if let Err(secondary) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
-    {
+pub(crate) fn drop_contained<T>(value: T) {
+    if let Err(secondary) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(value))) {
         std::mem::forget(secondary);
     }
 }
@@ -449,17 +470,16 @@ impl<T> RegistrationMap<T> {
 /// failure, logging the error, and queueing a client error toast so the caller can roll back the
 /// mod's partial registrations and continue with remaining mods.
 pub(crate) fn invoke_registration(mod_id: &'static str, call: impl FnOnce()) -> bool {
-    let _scope = DispatchPanicScope::enter();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
+    contain_callback(call, |result| match result {
         Ok(()) => true,
         Err(payload) => {
             let (entered, trapped) = LISTENER_SERIAL.get();
             LISTENER_SERIAL.set((entered, trapped.wrapping_add(1)));
             log_and_queue_panic("register", mod_id, &*payload);
-            dispose_panic_payload(payload);
+            drop_contained(payload);
             false
         }
-    }
+    })
 }
 
 /// How many listeners of `hook` are poisoned for the session.

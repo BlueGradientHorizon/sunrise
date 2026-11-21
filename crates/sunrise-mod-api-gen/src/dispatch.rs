@@ -546,14 +546,11 @@ pub(super) fn emit<'a>(
                     hook.name
                 ));
             }
-            // Owned configuration tasks cannot be snapshotted. The connection's
-            // registration transaction owns the entire staging sink.
             let task_registration =
                 event_type == "RegisterConfigurationTasksEvent" && name == "registration";
-            if scalar {
+            if scalar || task_registration {
                 rollback.push((name.clone(), false));
-            } else if !task_registration
-                && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
+            } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
                 {
@@ -1053,7 +1050,7 @@ pub(super) fn emit<'a>(
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
         let answered_collect_batch =
-            answered && contract == Contract::Collect && declaration.is_none();
+            answered && contract == Contract::Collect && !single_answer && declaration.is_none();
         // Trait-object fields have no whole value to copy. For a staged registrar the
         // owning sink handles publication; drawing and other live views are not registrars.
         for (field, by_reference) in rollback
@@ -1067,6 +1064,11 @@ pub(super) fn emit<'a>(
                 continue;
             }
             let index = snaps.len();
+            if event_type == "RegisterConfigurationTasksEvent" && field == "registration" {
+                snaps.push(format!("{event}.{field}.checkpoint()"));
+                restores.push(format!("{event}.{field}.rollback({saved}.{index});"));
+                continue;
+            }
             if registration_append.is_some() && Some(field.as_str()) == out {
                 // Only the tail is writable; never clone or restore earlier registrations.
                 snaps.push(format!("{event}.{field}.len()"));
@@ -1086,11 +1088,6 @@ pub(super) fn emit<'a>(
                 "{}{event}.{field} = {saved}.{index};",
                 if *by_reference { "*" } else { "" }
             ));
-        }
-        if event_type == "RegisterConfigurationTasksEvent" {
-            let index = snaps.len();
-            snaps.push(format!("{event}.registration.checkpoint()"));
-            restores.push(format!("{event}.registration.rollback({saved}.{index});"));
         }
         let previous_cancel = snaps.len();
         if mod_cancel {
