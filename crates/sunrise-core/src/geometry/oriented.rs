@@ -460,8 +460,11 @@ impl OrientedCollider {
                 }
                 if let Some((time, _)) =
                     self.time_of_impact(&axes, mover, relative, amount, &self.obb(local))
+                    && time >= 0.0
                 {
-                    first = first.min(time.max(0.0));
+                    // A body already overlapping the back face is not a new contact,
+                    // even if the overlap is only roundoff and the sweep exits it.
+                    first = first.min(time);
                 }
             }
             1.0 - first
