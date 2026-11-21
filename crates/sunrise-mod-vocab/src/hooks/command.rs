@@ -1,4 +1,4 @@
-//! The `command` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
+//! The `update_shape` hook: declarations the mod API generator reads (see `hooks/mod.rs`).
 // catalog-order: 0016
 
 pub trait Hooks {
