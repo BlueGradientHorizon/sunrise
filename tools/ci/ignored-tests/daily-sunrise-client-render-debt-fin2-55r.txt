@@ -1,0 +1,1 @@
+sunrise-client-render hud::coverage_tests::bounded_nine_slice_repeats_the_inner_subregion_in_metadata_units lib daily slow

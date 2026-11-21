@@ -1,5 +1,14 @@
 use super::*;
-use crate::gfx::hud_coverage;
+use crate::{
+    gfx::hud_coverage,
+    hud_layout::Blend as SpriteBlend,
+    ui::{GuiSpriteBlit, GuiSpriteScaling, NineSlice, blit_gui_sprite},
+};
+
+const RED: [u8; 4] = [255, 0, 0, 255];
+const GREEN: [u8; 4] = [0, 255, 0, 255];
+const BLUE: [u8; 4] = [0, 0, 255, 255];
+const YELLOW: [u8; 4] = [255, 255, 0, 255];
 
 #[test]
 fn standalone_picture_draw_order_and_screen_exit_release() {
@@ -70,15 +79,6 @@ fn standalone_picture_draw_order_and_screen_exit_release() {
 #[test]
 #[ignore = "daily"]
 fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
-    use crate::{
-        hud_layout::Blend as SpriteBlend,
-        ui::{GuiSpriteBlit, GuiSpriteScaling, blit_gui_sprite},
-    };
-
-    const RED: [u8; 4] = [255, 0, 0, 255];
-    const GREEN: [u8; 4] = [0, 255, 0, 255];
-    const BLUE: [u8; 4] = [0, 0, 255, 255];
-    const YELLOW: [u8; 4] = [255, 255, 0, 255];
     let _gpu = crate::gfx::test_gpu::lock();
     let mut atlas = HudAtlas::boot();
     (atlas.width, atlas.height) = (1, 5120);
@@ -149,12 +149,7 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
             None,
         ));
         gpu.hud.zoom = zoom;
-        let mut encoder = gpu.device.create_command_encoder(&Default::default());
-        let mut uploads = crate::gfx::upload::Uploads::new(&gpu.device);
-        gpu.hud
-            .prepare(&gpu.device, &mut uploads, &mut encoder, &batch, size);
-        uploads.finish(&encoder);
-        let (pixels, _) = gpu.read_draw(encoder, &batch, size, [0.0, 0.0], false);
+        let pixels = gpu.draw_prepared(&batch, size);
         let rows = pixels.chunks_exact(size[0] as usize * 4);
         for (row, color) in rows.zip(expected) {
             assert!(
@@ -168,13 +163,6 @@ fn tiled_sprites_sample_the_same_atlas_phase_at_device_pixel_centers() {
 #[test]
 #[ignore = "daily"]
 fn overlapping_affine_repeats_sample_both_device_axes_in_draw_order() {
-    use crate::{
-        hud_layout::Blend as SpriteBlend,
-        ui::{GuiSpriteBlit, GuiSpriteScaling, blit_gui_sprite},
-    };
-
-    const RED: [u8; 4] = [255, 0, 0, 255];
-    const BLUE: [u8; 4] = [0, 0, 255, 255];
     let _gpu = crate::gfx::test_gpu::lock();
     let mut atlas = HudAtlas::boot();
     (atlas.width, atlas.height) = (1, 8);
@@ -220,12 +208,7 @@ fn overlapping_affine_repeats_sample_both_device_axes_in_draw_order() {
             None,
         ));
     }
-    let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    let mut uploads = crate::gfx::upload::Uploads::new(&gpu.device);
-    gpu.hud
-        .prepare(&gpu.device, &mut uploads, &mut encoder, &batch, size);
-    uploads.finish(&encoder);
-    let (pixels, _) = gpu.read_draw(encoder, &batch, size, [0.0, 0.0], false);
+    let pixels = gpu.draw_prepared(&batch, size);
     // The top repeat's local Y is (Y - X/2 - 5/8) / 2^40. Just below the
     // seam it hits the last (red) texel; above it the transparent first texel
     // lets the underlying blue repeat show. The rows straddle a diagonal.
@@ -236,6 +219,62 @@ fn overlapping_affine_repeats_sample_both_device_axes_in_draw_order() {
         ]
         .concat()
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn bounded_nine_slice_repeats_the_inner_subregion_in_metadata_units() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let mut atlas = HudAtlas::boot();
+    (atlas.width, atlas.height) = (8, 8);
+    let mut texels = [[[0; 4]; 8]; 8];
+    texels[3][3..5].copy_from_slice(&[RED, GREEN]);
+    texels[4][3..5].copy_from_slice(&[BLUE, YELLOW]);
+    atlas.pixels = texels.as_flattened().concat();
+    let Some(mut gpu) = Gpu::with_atlas([atlas.width, atlas.height], &atlas.pixels) else {
+        return;
+    };
+    let size = [6, 6];
+    let mut batch = HudBatch::scratch(size);
+    assert!(blit_gui_sprite(
+        &mut batch,
+        &atlas,
+        "test:panel",
+        GuiSpriteBlit {
+            rect: Rect {
+                u0: 1.0 / 8.0,
+                v0: 1.0 / 8.0,
+                u1: 7.0 / 8.0,
+                v1: 7.0 / 8.0,
+                w: 6,
+                h: 6,
+            },
+            scaling: Some(GuiSpriteScaling::NineSlice(NineSlice {
+                width: 3,
+                height: 3,
+                border: [1; 4],
+                stretch_inner: false,
+            })),
+            dst: [0.0, 0.0, 8.0, 8.0],
+            color: u32::MAX,
+            region: None,
+            blend: SpriteBlend::Textured,
+        },
+        [0.75, 0.0, 0.0, 0.75, 0.375, 0.375],
+        None,
+    ));
+    let pixels = gpu.draw_prepared(&batch, size);
+    // As in blitNineSliceInnerSegment, the center uses source [1, 2) on each metadata
+    // axis: atlas [3, 5), not the whole [1, 7) sprite. At device centers 1.5, 2.5, 3.5,
+    // the phases are 1/2, 5/6, 1/6. The first sample is on the edge of texel 4.
+    let rows = pixels.as_chunks::<{ 6 * 4 }>().0;
+    for (row, expected) in rows[1..4].iter().zip([
+        [YELLOW, YELLOW, BLUE],
+        [YELLOW, YELLOW, BLUE],
+        [GREEN, GREEN, RED],
+    ]) {
+        assert_eq!(&row[4..16], expected.as_flattened());
+    }
 }
 
 pub(super) struct Gpu {
@@ -330,6 +369,15 @@ impl Gpu {
         );
         let encoder = self.device.create_command_encoder(&Default::default());
         self.read_draw(encoder, batch, [4, 2], [backdrop, initial], coverage)
+    }
+
+    fn draw_prepared(&mut self, batch: &HudBatch, size: [u32; 2]) -> Vec<u8> {
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut uploads = crate::gfx::upload::Uploads::new(&self.device);
+        self.hud
+            .prepare(&self.device, &mut uploads, &mut encoder, batch, size);
+        uploads.finish(&encoder);
+        self.read_draw(encoder, batch, size, [0.0, 0.0], false).0
     }
 
     fn read_draw(
