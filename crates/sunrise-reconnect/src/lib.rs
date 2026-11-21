@@ -121,14 +121,9 @@ impl Seat {
 
 static SEATS: Mutex<Vec<Seat>> = Mutex::new(Vec::new());
 
-/// The player whose turn it is.
+/// Runs `f` on the active seat's state, growing the list as seats appear.
 fn with_seat<T>(f: impl FnOnce(&mut Seat) -> T) -> T {
-    with_seat_at(hooks::seat(), f)
-}
-
-/// Runs `f` on one seat's state, growing the list as seats appear. Tests reach another seat
-/// here: the platform exposes the current [`hooks::seat`] but not the engine's setter.
-fn with_seat_at<T>(seat: usize, f: impl FnOnce(&mut Seat) -> T) -> T {
+    let seat = hooks::seat();
     let mut seats = SEATS.lock().unwrap_or_else(|e| e.into_inner());
     if seats.len() <= seat {
         seats.resize_with(seat + 1, Seat::default);
@@ -222,7 +217,7 @@ mod tests {
     }
 
     /// The only test that touches the statics: off, a lost connection plans nothing; on, the
-    /// screen counts down to the same server; leaving forgets it; each seat plans its own.
+    /// screen counts down to the same server; leaving forgets it.
     #[test]
     fn the_switch_decides_and_its_line_round_trips() {
         assert!(SETTING.is_default());
@@ -242,24 +237,37 @@ mod tests {
         };
         assert!(line.ends_with("(attempt 1 of 5)"), "{line}");
 
-        // A second seat has its own switch and plan: leaving there clears only its countdown.
-        with_seat_at(1, |seat| {
-            seat.on = true;
-            seat.connecting(&Server::new("second.example", "Second", false));
-            seat.ended(&lost, &SystemClock);
-        });
-        assert!(matches!(
-            with_seat_at(1, |seat| seat.retry(&SystemClock)),
-            Some(Retry::Wait(_))
-        ));
-        with_seat_at(1, Seat::left);
-        assert_eq!(with_seat_at(1, |seat| seat.retry(&SystemClock)), None);
-        assert!(matches!(HOOKS.retry(), Some(Retry::Wait(_))));
-
         HOOKS.left(Left::Disconnected);
         assert_eq!(HOOKS.retry(), None);
         SETTING.load(KEY, "false");
         assert!(SETTING.is_default());
+    }
+
+    #[test]
+    fn leaving_one_seat_keeps_the_other_seats_retry() {
+        let clock = FixedClock(Instant::now());
+        let first_server = Server::new("example.org", "First", false);
+        let second_server = Server::new("second.example", "Second", false);
+        let lost = Ended::new("Server closed", None, By::Server);
+        let mut first = Seat {
+            on: true,
+            ..Seat::default()
+        };
+        let mut second = Seat::default();
+        first.connecting(&first_server);
+        first.ended(&lost, &clock);
+        second.connecting(&second_server);
+        second.ended(&lost, &clock);
+        assert_eq!(second.retry(&clock), None);
+
+        second.on = true;
+        second.connecting(&second_server);
+        second.ended(&lost, &clock);
+        let due = FixedClock(clock.0 + Duration::from_secs(5));
+        assert_eq!(second.retry(&due), Some(Retry::Now(second_server)));
+        second.left();
+        assert_eq!(second.retry(&due), None);
+        assert_eq!(first.retry(&due), Some(Retry::Now(first_server)));
     }
 
     #[test]
