@@ -2592,7 +2592,7 @@ mod h255_mob_piston_ground_tests {
             );
             assert_eq!(game.mobs[i].position.y, 202.0);
             assert!(
-                game.mobs[i].on_ground,
+                game.mobs[i].ground.on_ground,
                 "even the observer records vertical collision"
             );
             assert!(!game.mobs[i].sync_position);
