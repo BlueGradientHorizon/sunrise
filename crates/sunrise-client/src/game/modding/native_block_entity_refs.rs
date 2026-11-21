@@ -823,10 +823,12 @@ pub(super) fn part_snapshot(
             >,
         >,
     >,
+    scopes: &sunrise_mod_runtime::attachments::AttachmentQueryScopes,
     entity: BlockEntityRef,
-    namespace: &str,
-    name: &str,
+    (namespace, name): (&str, &str),
 ) -> Result<mod_api::AttachmentBatch, mod_api::PartStateError> {
+    use sunrise_mod_runtime::attachments::AttachmentBatch;
+
     let fields = entity.fields();
     if level != Some(fields.level) {
         return Err(mod_api::PartStateError::OtherLevel);
@@ -844,16 +846,14 @@ pub(super) fn part_snapshot(
             error,
         }
     })?;
-    let empty = || sunrise_mod_runtime::attachments::AttachmentBatch::empty().into();
-    if !authoritative {
-        return Ok(empty());
-    }
-    Ok(index.map_or_else(empty, |index| {
-        sunrise_mod_runtime::attachments::AttachmentBatch::new(
-            index.lock().unwrap().snapshot_named(namespace, name),
-        )
-        .into()
-    }))
+    let batch = if authoritative {
+        index.map_or_else(AttachmentBatch::empty, |index| {
+            AttachmentBatch::new(index.lock().unwrap().snapshot_named(namespace, name))
+        })
+    } else {
+        AttachmentBatch::empty()
+    };
+    Ok(batch.in_scope(scopes).into())
 }
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one

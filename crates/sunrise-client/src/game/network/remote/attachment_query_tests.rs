@@ -25,7 +25,7 @@ fn values(game: &Game<'_>) -> Vec<i32> {
         .query(&VALUE)
         .unwrap()
         .iter()
-        .map(|r| *r.unwrap().value)
+        .map(|row| row.unwrap().with_value(|value| *value).unwrap())
         .collect()
 }
 fn client<'a>(game: &'a mut Game<'_>) -> &'a mut Remote {

@@ -43,7 +43,7 @@ use sunrise_client::{
 };
 use sunrise_core::{position::BlockPos, random::LegacyRandom};
 use sunrise_items::equipment::Equipment;
-use sunrise_mod_runtime::attachments::{Attachments, Holder};
+use sunrise_mod_runtime::attachments::{AttachmentQueryScopes, Attachments, Holder};
 use sunrise_world::level::flags;
 
 #[path = "transactions/decision.rs"]
@@ -65,6 +65,7 @@ type ComposterRandoms =
 #[derive(Default)]
 pub(super) struct OpenTransactions {
     levels: Vec<Level>,
+    pub(in crate::game) attachment_query_scopes: AttachmentQueryScopes,
     closing: Option<TransactionLifecycle>,
     /// Root completions, including those from transactions committed by its listeners.
     closing_configuration_completions: Vec<ConfigurationCompletion>,
@@ -234,6 +235,7 @@ pub(super) struct Level {
     /// What ends it (`TransactionSeal`), drawn apart from `token`: only whoever opened it holds
     /// it, never a handler lent the `Transaction`.
     close_token: u64,
+    parent_attachment_query_scope: u64,
     dimension: Option<super::Dim>,
     /// Each block entity as it was before this transaction first wrote it.
     block_entities: HashMap<Pos, Kept>,
@@ -642,9 +644,11 @@ impl Game<'_> {
             self.world.block_entities.defer_retirement();
         }
         let lifetimes = self.entity_journal_open();
+        let parent_attachment_query_scope = self.transactions.attachment_query_scopes.enter();
         self.transactions.push(Level {
             token,
             close_token,
+            parent_attachment_query_scope,
             dimension: Some(self.dim),
             packets: sunrise_client::lan::conn::transaction_packets::Scope::nested(),
             lifetimes,
@@ -742,6 +746,9 @@ impl Game<'_> {
         let Some(level) = self.transactions.pop() else {
             return;
         };
+        self.transactions
+            .attachment_query_scopes
+            .leave(level.parent_attachment_query_scope);
         let closing = if self.transactions.is_empty() {
             TransactionLifecycle::RootClosing
         } else {

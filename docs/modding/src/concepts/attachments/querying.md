@@ -8,7 +8,9 @@ writes.
 ## Read a snapshot
 
 Call `host.query(&TYPE)` on `&dyn Host`, then borrow rows with `batch.iter()`.
-Each successful row contains a copyable `holder` and a borrowed `value: &T`.
+Each successful row contains a copyable `holder` and lends its value through
+`row.with_value(|value| ...)`. Copy what you need inside the loan; a borrowed
+value cannot outlive it.
 Match `AttachmentHolder` to obtain an `EntityRef`, `PlayerRef`, `BlockEntityRef`,
 `ChunkRef` or `LevelRef`. Keep the batch and its holder identities in process;
 use the [attachment codec](../attachments.md#synchronization) for values that
@@ -32,7 +34,7 @@ fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
     let batch = host.query(&VALUE).map_err(AttachmentRowError::Value)?;
     let mut total = 0;
     for row in batch.iter() {
-        total += *row?.value;
+        total += row?.with_value(|value| *value)?;
     }
     Ok(total)
 }
@@ -42,7 +44,7 @@ fn total(host: &dyn Host) -> Result<u32, AttachmentRowError> {
 |---|---|
 | Value bounds | Iteration requires `T: Send + Sync + 'static`, not `Clone`. |
 | Snapshot | Membership and stored value bindings are captured at query creation. Create a fresh query to see later sets, removals, loads or unloads. |
-| Borrowing | Rows borrow from the batch, not the host, and cannot outlive the batch. You can use the host while retaining a batch. |
+| Borrowing | Rows borrow from the batch, not the host. You can use the host while retaining a batch; using a transaction capture additionally requires its frame to be current. |
 | Defaults | Queries never initialize defaults, dirty holders or queue synchronization. An absent key produces an empty batch. |
 | Saved data | Saved values on bound holders decode lazily when visited, without an earlier typed read. Malformed data and incompatible Rust types produce row errors instead of defaults. |
 | Interior mutability | A snapshot does not deep-freeze interior mutability inside `T`. |
@@ -54,13 +56,13 @@ not scan rows. Decode and type errors use `AttachmentRowError::Value`.
 
 `Ok(None)` means the holder is absent from the snapshot, including when its data
 has not arrived through synchronization. It does not prove the holder is alive:
-`get` performs no host liveness check. A retained query reads its captured value
-even after a live replacement or removal.
+`get` performs no holder liveness check. While in scope, a retained query reads
+its captured value even after a live replacement or removal.
 
 ## Write explicitly on the server
 
 Call `host.query_mut(&TYPE)` on `&mut dyn ServerHost`. Values require
-`T: Clone + Send + Sync + 'static`. Each row provides `holder()`, `value()`,
+`T: Clone + Send + Sync + 'static`. Each row provides `holder()`, `with_value(...)`,
 `set(host, replacement)` and `remove(host)`; it does not provide `&mut T`.
 
 ```rust,ignore
@@ -68,7 +70,7 @@ fn increment(host: &mut dyn ServerHost) -> Result<(), AttachmentRowError> {
     let batch = host.query_mut(&VALUE).map_err(AttachmentRowError::Value)?;
     for row in batch.iter() {
         let row = row?;
-        row.set(host, *row.value() + 1)?;
+        row.set(host, row.with_value(|value| *value + 1)?)?;
     }
     Ok(())
 }
@@ -98,6 +100,14 @@ Queries cover only the host's current dimension and do not load chunks or
 entities. Copying a holder identity does not keep it loaded. Attachments belong
 to an entity object, not its saved UUID: equal-UUID objects have separate values.
 An entity that is not admitted to the level is absent from queries.
+
+A capture made in a transaction is usable only while that exact frame is current
+on its owning game thread. A parent capture can be used again when its child
+closes; a child capture cannot be used in the parent even after the child
+commits. After commit or rollback, capture a fresh query. Using an out-of-scope
+capture reports `AttachmentRowError::OutsideTransaction` for lookup, iteration,
+value loans and writes. An iterator ends after reporting that error; use a fresh
+iterator if the capturing frame becomes current again.
 
 A query is a residency view, not an immediate liveness filter. An entity queued
 for removal can appear until cleanup runs. Its handle's stale rules apply, and
@@ -143,6 +153,7 @@ do not themselves register a holder.
 | `AttachmentError::UnsupportedHolder(family)` | The physical family cannot own attachments. Retrying does not help. `family` is a lowercase identifier, not an engine type. |
 | `AttachmentRowError::HolderBusy` / `AttachmentRowError::UnsupportedHolder(family)` | The corresponding error from a retained row write. |
 | `AttachmentRowError::StaleHolder` | The row's holder is missing or its captured residency is invalid. |
+| `AttachmentRowError::OutsideTransaction` | The snapshot's capturing frame is not current on the calling thread. |
 
 Handle these errors locally. If a message needs to report a refusal, give the
 message its own payload fields rather than encoding the attachment error.

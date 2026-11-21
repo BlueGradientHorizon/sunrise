@@ -75,9 +75,9 @@ the storage-relative `Holder`, it carries the handle's world scope.
 
 Import `AttachmentQueries` to use `host.query(&TYPE)` on either host side. The
 returned batch is a **snapshot** of membership and stored value bindings in the
-host's current dimension. Its `iter()` borrows `&T` without cloning values and
-lazily decodes saved entries; malformed or incompatible values produce row errors,
-not defaults. Later sets, removals and unloads appear only in fresh queries. This
+host's current dimension. Iterate its rows with `iter()`, then borrow each value
+with `row.with_value(|value| ...)` without cloning it. Iteration decodes saved
+entries lazily; malformed or incompatible values produce row errors, not defaults. Later sets, removals and unloads appear only in fresh queries. This
 is a residency view: an entity queued for removal can appear until the removal sweep. Captured handles do not keep holders loaded, and stale writes fail.
 Interior mutability inside `T` is not deep-frozen by a snapshot.
 
@@ -86,12 +86,15 @@ not `Wire` values. Persist or sync the attachment value through its registered
 `AttachmentCodec`, not by encoding the query or a holder's residency.
 
 On a server, import `AttachmentQueriesMut` for `host.query_mut(&TYPE)` (`T: Clone`).
-Each borrowed row has `holder()`, `value()`, and explicit `set(host, replacement)` /
+Each borrowed row has `holder()`, `with_value(...)`, and explicit `set(host, replacement)` /
 `remove(host)` methods. These validate residency against the host's current
 dimension and then use the ordinary attachment journal. There is no `&mut T`,
 implicit transaction, or commit on drop: wrap a system in `host.transaction` for
 all-or-nothing writes. Unload or replacement produces `AttachmentRowError::StaleHolder`.
-Rows retain captured values even after successful write-through updates.
+Rows retain captured values even after successful write-through updates. A capture
+made during a transaction can only be used while its capturing frame is current.
+After commit or rollback, create a fresh query; using the old one returns
+`AttachmentRowError::OutsideTransaction`.
 
 Traversal follows dense index order: insertion appends, and removal fills its slot
 with the last row. The same ordered mutation history is deterministic, but the

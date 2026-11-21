@@ -5,8 +5,9 @@ use sunrise_mod_runtime::attachments::{self as runtime, index};
 /// A SNAPSHOT of membership and value bindings in the host's current dimension.
 /// Later changes require a fresh query. This is a residency view: removed but
 /// unswept entities may appear, and stale writes fail. Acquisition neither clones values nor
-/// decodes saved payloads; iteration decodes lazily. Keep the batch in process; use the
-/// attachment type's codec for saving or syncing individual values.
+/// decodes saved payloads; iteration decodes lazily. A batch captured in a transaction
+/// can only be used while that frame is current, on its owning thread. Keep the batch in
+/// process; use the attachment type's codec for saving or syncing individual values.
 ///
 /// ```compile_fail
 /// use mod_api::{AttachmentBatch, wire::Writer};
@@ -31,17 +32,65 @@ impl AttachmentBatch {
         key: &AttachmentType<T>,
     ) -> Result<AttachmentQuery<'_, T>, AttachmentError> {
         crate::parts::validate_attachment_use(key.namespace, key.name, key.sync)?;
-        self.0.query(key)
+        self.0.query(key).map(AttachmentQuery)
     }
 }
-/// A typed snapshot whose iterator borrows values from its captured bindings.
+
+/// A typed snapshot whose rows lend values from their captured bindings.
 /// `get(holder)` returns an owned clone with an expected O(1) probe before decode.
 /// Missing or not yet synced holders return `Ok(None)`; no default is created.
 /// `None` does not mean the holder is alive: absent and not-live holders alike
 /// return `Ok(None)` when absent from the snapshot, without a host liveness check.
-/// Only scoped residency probes report `StaleHolder`.
+/// Only scoped residency probes report `StaleHolder`. `get` and iteration report
+/// [`AttachmentRowError::OutsideTransaction`] if the capture's frame is not current.
 // no wire: binds a borrowed key to an in-process snapshot.
-pub type AttachmentQuery<'key, T> = runtime::AttachmentQuery<'key, AttachmentHolder, T>;
+#[non_exhaustive]
+pub struct AttachmentQuery<'key, T: 'static>(runtime::AttachmentQuery<'key, AttachmentHolder, T>);
+
+impl<T: Send + Sync + 'static> AttachmentQuery<'_, T> {
+    /// Traverse in captured order, decoding values only as rows are visited.
+    /// A transaction-scope refusal ends this traversal with an error, even for an empty batch.
+    pub fn iter(&self) -> impl Iterator<Item = Result<AttachmentRow<'_, T>, AttachmentRowError>> {
+        self.0.iter().map(|row| {
+            row.map(|binding| AttachmentRow {
+                holder: binding.holder,
+                binding,
+            })
+        })
+    }
+}
+
+impl<T: Clone + Send + Sync + 'static> AttachmentQuery<'_, T> {
+    /// Read an owned captured value without inserting a default.
+    pub fn get(&self, holder: AttachmentHolder) -> Result<Option<T>, AttachmentRowError> {
+        self.0.get(holder)
+    }
+}
+
+/// One captured binding. The holder is copyable; the value must be used through a loan.
+// no wire: borrows an in-process binding and its transaction scope.
+#[non_exhaustive]
+pub struct AttachmentRow<'q, T: 'static> {
+    binding: runtime::AttachmentRowRef<'q, AttachmentHolder, T>,
+    /// The captured holder's identity.
+    pub holder: AttachmentHolder,
+}
+
+impl<T: 'static> AttachmentRow<'_, T> {
+    /// Lend the value for this call. To keep data beyond the loan, copy what you need.
+    /// Refuses if this snapshot's transaction is not current.
+    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, AttachmentRowError> {
+        self.binding.with_value(f)
+    }
+
+    /// The row's residency token. A token captured in a transaction is scoped to that frame.
+    pub fn write_token(&self) -> AttachmentWriteToken {
+        AttachmentWriteToken {
+            owner: self.binding.write_token(),
+            scope: self.binding.scope().cloned(),
+        }
+    }
+}
 
 /// A scoped residency identity issued from a captured row, not an access authorization
 /// token. It cannot be reconstructed from bytes. Mods typically use the row's
@@ -54,11 +103,9 @@ pub type AttachmentQuery<'key, T> = runtime::AttachmentQuery<'key, AttachmentHol
 // no wire: names a residency issued by the live attachment index.
 #[derive(Clone)]
 #[non_exhaustive]
-pub struct AttachmentWriteToken(index::AttachmentOwner<AttachmentHolder>);
-impl From<index::AttachmentOwner<AttachmentHolder>> for AttachmentWriteToken {
-    fn from(token: index::AttachmentOwner<AttachmentHolder>) -> Self {
-        Self(token)
-    }
+pub struct AttachmentWriteToken {
+    owner: index::AttachmentOwner<AttachmentHolder>,
+    scope: Option<runtime::AttachmentQueryScope>,
 }
 impl AttachmentWriteToken {
     /// Check the current dimension's residency before the ordinary write path.
@@ -68,7 +115,10 @@ impl AttachmentWriteToken {
         &self,
         index: &index::AttachmentIndex<AttachmentHolder>,
     ) -> Result<(), AttachmentRowError> {
-        index.validate_owner(&self.0)
+        if let Some(scope) = &self.scope {
+            scope.check()?;
+        }
+        index.validate_owner(&self.owner)
     }
 }
 
@@ -97,8 +147,8 @@ mod tests {
         let query = batch.query(&KEY).unwrap();
         let row = query.iter().next().unwrap().unwrap();
         assert_eq!(row.holder, holder);
-        assert_eq!(*row.value, 7);
-        let token = AttachmentWriteToken::from(row.write_token());
+        assert_eq!(row.with_value(|value| *value), Ok(7));
+        let token = row.write_token();
         assert_eq!(token.validate(&index.lock().unwrap()), Ok(()));
         assert_eq!(
             token.validate(&index::AttachmentIndex::default()),
@@ -116,6 +166,6 @@ mod tests {
             token.validate(&index.lock().unwrap()),
             Err(AttachmentRowError::StaleHolder)
         );
-        assert_eq!(*row.value, 7);
+        assert_eq!(row.with_value(|value| *value), Ok(7));
     }
 }

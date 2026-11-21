@@ -14,6 +14,8 @@ pub mod snapshot;
 pub use query::{
     AttachmentBatch, AttachmentIter, AttachmentQuery, AttachmentRowError, AttachmentRowRef,
 };
+#[doc(hidden)]
+pub use query::{AttachmentQueryScope, AttachmentQueryScopes};
 
 #[doc(hidden)]
 pub use lifetime::{AttachmentLifetime, HasAttachmentLifetime};
@@ -618,21 +620,6 @@ struct ReadCache {
 }
 
 impl AttachmentEntry {
-    /// Rebuild a transferred saved binding for lazy typed reads.
-    #[doc(hidden)]
-    pub fn from_saved(saved: Compound) -> Self {
-        Self::raw(saved)
-    }
-
-    /// Capture the saved envelope, if this binding has a codec.
-    #[doc(hidden)]
-    pub fn saved(&self) -> Option<Compound> {
-        match &self.state {
-            Entry::Raw { saved, .. } => Some(saved.clone()),
-            Entry::Decoded(value) => envelope(value),
-        }
-    }
-
     fn raw(saved: Compound) -> Self {
         Self {
             state: Entry::Raw {

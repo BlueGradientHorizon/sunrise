@@ -8,8 +8,9 @@ pub trait ModStateHost {
     /// Capture a SNAPSHOT of the current dimension's attachment residency and values.
     /// Later changes require a fresh query. Removed-but-unswept entities may appear;
     /// writes through stale holders fail. Values are neither cloned nor eagerly decoded.
-    /// The batch is local, not a save or sync record. An undeclared id is refused
-    /// with the calling package and attachment id.
+    /// The batch is local, not a save or sync record. In a transaction it can be used
+    /// only while the capturing frame is current. An undeclared id is refused with
+    /// the calling package and attachment id.
     #[access(WorldOnly)]
     fn attachment_query(
         &self,
@@ -27,9 +28,9 @@ pub trait ModStateHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ModStateServerHost {
     /// Side: server.
-    /// Validate captured residency against the current dimension immediately before
-    /// an ordinary journaled attachment write. The token comes from a captured row,
-    /// not from disk or the network. This does not open a transaction.
+    /// Validate the capture's transaction, if any, and residency in the current dimension
+    /// immediately before an ordinary journaled attachment write. The token comes from a
+    /// captured row, not from disk or the network. This does not open a transaction.
     #[access(WorldOnly)]
     fn attachment_validate_write(
         &self,

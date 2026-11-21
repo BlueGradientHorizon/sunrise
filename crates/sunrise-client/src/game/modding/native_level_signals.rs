@@ -240,9 +240,9 @@ impl LevelHost for ReadLevel<'_, '_> {
             Some(self.level),
             self.game.native_authoritative(),
             self.game.attachment_indexes.get(&self.game.dim),
+            &self.game.transactions.attachment_query_scopes,
             entity,
-            namespace,
-            name,
+            (namespace, name),
         )
     }
     fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {

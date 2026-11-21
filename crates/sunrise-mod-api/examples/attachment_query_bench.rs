@@ -143,7 +143,8 @@ fn api(host: &dyn Host) -> u64 {
         .iter()
         .map(|row| {
             let row = row.unwrap();
-            row.with_value(|value| contribution(row.holder, value)).unwrap()
+            row.with_value(|value| contribution(row.holder, value))
+                .unwrap()
         })
         .sum()
 }
@@ -190,7 +191,8 @@ fn warm(host: &BenchHost) -> f64 {
                 .iter()
                 .map(|row| {
                     let row = row.unwrap();
-                    row.with_value(|value| contribution(row.holder, value)).unwrap()
+                    row.with_value(|value| contribution(row.holder, value))
+                        .unwrap()
                 })
                 .sum()
         });
@@ -229,7 +231,8 @@ fn cold() {
                     .take(limit)
                     .map(|row| {
                         let row = row.unwrap();
-                        row.with_value(|value| contribution(row.holder, value)).unwrap()
+                        row.with_value(|value| contribution(row.holder, value))
+                            .unwrap()
                     })
                     .sum::<u64>()
             });
@@ -241,7 +244,11 @@ fn cold() {
                 // Eager policy measured using the very same production decode path.
                 let batch = host.query(&VALUE).unwrap();
                 for row in batch.iter() {
-                    row.unwrap().with_value(|value| { black_box(value); }).unwrap();
+                    row.unwrap()
+                        .with_value(|value| {
+                            black_box(value);
+                        })
+                        .unwrap();
                 }
                 black_box(
                     batch

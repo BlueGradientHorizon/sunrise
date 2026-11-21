@@ -1,0 +1,30 @@
+ids = [
+    "type:AttachmentQuery",
+    "type:AttachmentRow",
+    "type:AttachmentWriteToken",
+    "type:AttachmentRowError.OutsideTransaction",
+    "handle:AttachmentQuery::get",
+    "handle:AttachmentQuery::iter",
+    "handle:AttachmentRow::with_value",
+    "handle:AttachmentRow::write_token",
+    "handle:AttachmentQueryMut::iter",
+    "handle:AttachmentRowMut::value",
+    "handle:AttachmentRowMut::with_value",
+]
+why = "A query used to expose a rollback's discarded bindings and could still write when its holder stayed resident. Both read and write captures now follow NeoForge TransactionManager.validateCurrentTransaction and Transaction.close: only the current, open frame on the owning thread can use them. NeoForge AttachmentHolder.getExistingDataOrNull is a live holder read, not a detachable snapshot; vanilla HopperBlockEntity.tryTakeInItemFromSlot restores the source slot on a failed transfer and has no attachment-query API. This changes only the lifetime of Sunrise's in-process captures, not vanilla storage behaviour."
+migrate = """
+Replace a read-only row's `row.value` and a writable row's `row.value()` with
+`row.with_value(|value| ...)?`, for example `let count = row.with_value(|value| *value)?;`.
+Keep only owned data after that loan. An explicit runtime row or query annotation becomes
+`mod_api::AttachmentRow<'_, T>` (read-only) or `mod_api::AttachmentQuery<'_, T>`.
+Both `iter()` methods return an iterator of fallible rows, not an exact-size iterator; use
+`for row in query.iter() { let row = row?; ... }`. To count while still handling errors,
+use `query.iter().try_fold(0usize, |count, row| row.map(|_| count + 1))?`.
+Replace `AttachmentWriteToken::from(row.write_token())` with `row.write_token()` on a
+read-only API row. Prefer `row.set(host, value)` or `row.remove(host)` on a writable row;
+write tokens are not Wire values.
+Catch `AttachmentRowError::OutsideTransaction` for a query, iterator, borrowed row or token
+captured in a different transaction frame. Use it inside its capturing frame or make a
+fresh query after commit or abort; even a committed child's query does not move to the parent.
+For serialization, use the declared attachment value codec, not the retired AttachmentEntry helpers.
+"""

@@ -7,7 +7,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sunrise_mod_runtime::attachments::{
-    AttachmentLifetime, Holder, index::AttachmentIndex, observer::IndexedAttachmentObserver,
+    AttachmentBatch, AttachmentLifetime, Holder, index::AttachmentIndex,
+    observer::IndexedAttachmentObserver,
 };
 
 pub(super) type Indexes = HashMap<Dim, Arc<Mutex<AttachmentIndex<AttachmentHolder>>>>;
@@ -36,11 +37,15 @@ impl Game<'_> {
         name: &str,
     ) -> Result<mod_api::AttachmentBatch, mod_api::AttachmentError> {
         mod_api::__private::validate_attachment_use(namespace, name, false)?;
-        let Some(index) = self.attachment_indexes.get(&self.dim) else {
-            return Ok(sunrise_mod_runtime::attachments::AttachmentBatch::empty().into());
-        };
-        let rows = index.lock().unwrap().snapshot_named(namespace, name);
-        Ok(sunrise_mod_runtime::attachments::AttachmentBatch::new(rows).into())
+        let batch = self
+            .attachment_indexes
+            .get(&self.dim)
+            .map_or_else(AttachmentBatch::empty, |index| {
+                AttachmentBatch::new(index.lock().unwrap().snapshot_named(namespace, name))
+            });
+        Ok(batch
+            .in_scope(&self.transactions.attachment_query_scopes)
+            .into())
     }
 
     pub(in crate::game) fn attachment_validate_write(

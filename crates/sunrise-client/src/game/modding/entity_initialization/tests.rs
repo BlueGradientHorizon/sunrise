@@ -612,7 +612,7 @@ fn mob_constructor_first_store_binds_only_the_resident_lifetime() {
             let rows: Vec<_> = batch.iter().collect();
             assert_eq!(rows.len(), 1);
             let row = rows[0].as_ref().unwrap();
-            assert_eq!(row.value, &41);
+            assert_eq!(row.with_value(|value| *value), Ok(41));
             assert_eq!(
                 row.holder,
                 mod_api::AttachmentHolder::Entity(game.entity(id).unwrap())
@@ -721,7 +721,7 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
             let rows: Vec<_> = batch.iter().collect();
             assert_eq!(rows.len(), 1);
             let row = rows[0].as_ref().unwrap();
-            assert_eq!(row.value, &41);
+            assert_eq!(row.with_value(|value| *value), Ok(41));
             assert_eq!(
                 row.holder,
                 mod_api::AttachmentHolder::Entity(game.entity(421).unwrap())

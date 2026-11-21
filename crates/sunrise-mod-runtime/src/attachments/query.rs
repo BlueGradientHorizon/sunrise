@@ -1,5 +1,15 @@
 //! Owned snapshot batches and lock-free borrowed typed traversal.
-use std::{fmt, hash::Hash, slice, sync::Arc};
+use std::{
+    fmt,
+    hash::Hash,
+    num::NonZeroU64,
+    slice,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    thread::{self, ThreadId},
+};
 
 use super::{
     AttachmentError, AttachmentType,
@@ -15,6 +25,8 @@ pub enum AttachmentRowError {
     Value(AttachmentError),
     /// The holder unloaded, was replaced, or belongs to another index.
     StaleHolder,
+    /// The snapshot's transaction is not the active frame on the calling thread.
+    OutsideTransaction,
     /// The physical holder storage is temporarily unavailable; retry after the pass.
     HolderBusy,
     /// This holder family cannot own attachments.
@@ -26,12 +38,65 @@ impl fmt::Display for AttachmentRowError {
         match self {
             Self::Value(error) => write!(f, "attachment row read failed: {error:?}"),
             Self::StaleHolder => f.write_str("attachment row holder is stale"),
+            Self::OutsideTransaction => {
+                f.write_str("attachment query's transaction is not current")
+            }
             Self::HolderBusy => f.write_str("attachment row holder is busy"),
             Self::UnsupportedHolder(kind) => write!(f, "unsupported attachment holder: {kind}"),
         }
     }
 }
 impl std::error::Error for AttachmentRowError {}
+
+/// Shared current-frame marker for a game's attachment snapshots. The game allocates
+/// it once, not on each transaction or snapshot capture.
+#[derive(Default)]
+pub struct AttachmentQueryScopes {
+    current: Arc<AtomicU64>,
+    last: u64,
+}
+
+impl AttachmentQueryScopes {
+    /// Enter a new frame, returning the marker to restore when it closes.
+    pub fn enter(&mut self) -> u64 {
+        self.last = self.last.wrapping_add(1).max(1);
+        let parent = self.current.load(Ordering::Relaxed);
+        self.current.store(self.last, Ordering::Relaxed);
+        parent
+    }
+
+    /// Leave the current frame before committing or rolling back its edits.
+    pub fn leave(&mut self, parent: u64) {
+        self.current.store(parent, Ordering::Relaxed);
+    }
+}
+
+impl Drop for AttachmentQueryScopes {
+    fn drop(&mut self) {
+        self.current.store(0, Ordering::Relaxed);
+    }
+}
+
+/// A lease to read a captured binding only on the thread and at the depth that captured it.
+#[derive(Clone)]
+pub struct AttachmentQueryScope {
+    current: Arc<AtomicU64>,
+    frame: NonZeroU64,
+    thread: ThreadId,
+}
+
+impl AttachmentQueryScope {
+    /// Refuse use on another thread, in another frame, or after close.
+    pub fn check(&self) -> Result<(), AttachmentRowError> {
+        if self.current.load(Ordering::Relaxed) == self.frame.get()
+            && thread::current().id() == self.thread
+        {
+            Ok(())
+        } else {
+            Err(AttachmentRowError::OutsideTransaction)
+        }
+    }
+}
 
 /// An immutable bucket snapshot. Construction moves the Arc returned by
 /// `AttachmentIndex::snapshot`; it copies neither rows nor values.
@@ -40,17 +105,36 @@ impl std::error::Error for AttachmentRowError {}
 #[non_exhaustive]
 pub struct AttachmentBatch<H> {
     rows: Option<Arc<AttachmentSnapshot<H>>>,
+    scope: Option<AttachmentQueryScope>,
 }
 
 impl<H> AttachmentBatch<H> {
     /// Wrap a captured index bucket without copying its contents.
     pub fn new(rows: Arc<AttachmentSnapshot<H>>) -> Self {
-        Self { rows: Some(rows) }
+        Self {
+            rows: Some(rows),
+            scope: None,
+        }
     }
 
     /// An empty batch requiring no allocation, even without a live index.
     pub fn empty() -> Self {
-        Self { rows: None }
+        Self {
+            rows: None,
+            scope: None,
+        }
+    }
+
+    /// Bind this capture to the game's current frame, if there is one.
+    pub fn in_scope(mut self, scopes: &AttachmentQueryScopes) -> Self {
+        self.scope = NonZeroU64::new(scopes.current.load(Ordering::Relaxed)).map(|frame| {
+            AttachmentQueryScope {
+                current: Arc::clone(&scopes.current),
+                frame,
+                thread: thread::current().id(),
+            }
+        });
+        self
     }
 
     /// Bind the key once, checking its policy before any row is read.
@@ -78,13 +162,15 @@ impl<H: Copy, T: Send + Sync + 'static> AttachmentQuery<'_, H, T> {
     /// or per-item allocation. A first saved decode may allocate in the codec/cache.
     pub fn iter(&self) -> AttachmentIter<'_, H, T> {
         AttachmentIter {
-            rows: self
-                .batch
-                .rows
-                .as_deref()
-                .map_or(&[][..], |rows| rows.as_slice())
-                .iter(),
+            rows: Some(
+                self.batch
+                    .rows
+                    .as_deref()
+                    .map_or(&[][..], |rows| rows.as_slice())
+                    .iter(),
+            ),
             key: self.key,
+            scope: self.batch.scope.as_ref(),
         }
     }
 }
@@ -98,6 +184,9 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
     /// host liveness check. Only scoped residency probes report `StaleHolder`.
     /// Later replacements, removals and rebinds require a fresh snapshot.
     pub fn get(&self, holder: H) -> Result<Option<T>, AttachmentRowError> {
+        if let Some(scope) = &self.batch.scope {
+            scope.check()?;
+        }
         let Some(rows) = self.batch.rows.as_deref() else {
             return Ok(None);
         };
@@ -115,31 +204,47 @@ impl<H: Copy + Eq + Hash, T: Clone + Send + Sync + 'static> AttachmentQuery<'_, 
 /// Borrowing iterator over a batch, not an iterator owning its borrowed values.
 #[non_exhaustive]
 pub struct AttachmentIter<'q, H, T: 'static> {
-    rows: slice::Iter<'q, AttachmentRow<H>>,
+    rows: Option<slice::Iter<'q, AttachmentRow<H>>>,
     key: &'q AttachmentType<T>,
+    scope: Option<&'q AttachmentQueryScope>,
 }
 
 impl<'q, H: Copy, T: Send + Sync + 'static> Iterator for AttachmentIter<'q, H, T> {
     type Item = Result<AttachmentRowRef<'q, H, T>, AttachmentRowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.rows.next().map(|row| {
+        let rows = self.rows.as_mut()?;
+        if let Some(scope) = self.scope
+            && let Err(error) = scope.check()
+        {
+            self.rows = None;
+            return Some(Err(error));
+        }
+        let Some(row) = rows.next() else {
+            self.rows = None;
+            return None;
+        };
+        Some(
             row.entry
                 .read_validated(self.key)
                 .map(|value| AttachmentRowRef {
                     holder: row.holder,
                     value,
                     row,
+                    scope: self.scope,
                 })
-                .map_err(AttachmentRowError::Value)
-        })
+                .map_err(AttachmentRowError::Value),
+        )
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.rows.size_hint()
+        match &self.rows {
+            None => (0, Some(0)),
+            Some(_) if self.scope.is_some() => (0, None),
+            Some(rows) => rows.size_hint(),
+        }
     }
 }
-impl<H: Copy, T: Send + Sync + 'static> ExactSizeIterator for AttachmentIter<'_, H, T> {}
 
 /// A Copy holder identity and a value borrowed directly from its captured entry.
 /// Interior mutability inside T is not deep-frozen by a snapshot.
@@ -147,9 +252,24 @@ impl<H: Copy, T: Send + Sync + 'static> ExactSizeIterator for AttachmentIter<'_,
 pub struct AttachmentRowRef<'q, H, T> {
     /// Ready-to-use holder; no conversion or resolution is done during traversal.
     pub holder: H,
-    /// The captured value, not a clone of T.
-    pub value: &'q T,
+    value: &'q T,
     row: &'q AttachmentRow<H>,
+    scope: Option<&'q AttachmentQueryScope>,
+}
+
+impl<H, T> AttachmentRowRef<'_, H, T> {
+    /// Lend the captured value without permitting its reference to escape the loan.
+    pub fn with_value<R>(&self, f: impl FnOnce(&T) -> R) -> Result<R, AttachmentRowError> {
+        if let Some(scope) = self.scope {
+            scope.check()?;
+        }
+        Ok(f(self.value))
+    }
+
+    /// The frame captured with this row, if it was read in a transaction.
+    pub fn scope(&self) -> Option<&AttachmentQueryScope> {
+        self.scope
+    }
 }
 
 impl<H: Copy + Eq + Hash, T> AttachmentRowRef<'_, H, T> {
@@ -399,7 +519,7 @@ mod tests {
         assert!(Arc::ptr_eq(&present, &expected));
         assert!(absent_name.is_empty());
         assert!(Arc::ptr_eq(&absent_name, &absent_namespace));
-        assert_eq!(empty.iter().len(), 0);
+        assert!(empty.iter().next().is_none());
         index.unload(1).into_result();
         assert!(index.snapshot_named("query😀", "value水").is_empty());
     }

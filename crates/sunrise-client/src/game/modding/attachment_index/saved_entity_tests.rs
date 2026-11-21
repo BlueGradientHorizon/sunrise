@@ -263,7 +263,7 @@ fn saved_binding_family_first_stores_publish_to_queries() {
                     let rows: Vec<_> = query.iter().map(|row| row.unwrap()).collect();
                     assert_eq!(rows.len(), 1, "{} first store", $kind);
                     assert_eq!(rows[0].holder, AttachmentHolder::Entity(entity), "{}", $kind);
-                    assert_eq!(rows[0].value, &7, "{}", $kind);
+                    assert_eq!(rows[0].with_value(|value| *value), Ok(7), "{}", $kind);
                 }
                 assert!(game.entity_discard(entity), "{} discard", $kind);
                 game.native_removals_flush();

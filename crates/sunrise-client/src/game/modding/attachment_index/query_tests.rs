@@ -122,3 +122,57 @@ fn query_writes_join_transaction_journal_without_implicit_commit() {
         assert_eq!(values(game), [15]);
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
+    use mod_api::AttachmentRowError::OutsideTransaction;
+
+    with_game(|game| {
+        game.options.dedicated = Some(Vec::new());
+        game.native_level_opened(Dim::Overworld);
+        game.world
+            .chunks
+            .insert((2, 3), Arc::new(Chunk::empty(2, 3)));
+        let holder = Holder::Chunk([2, 3]);
+        VALUE.set(game, holder, 10).unwrap();
+        let before = game.query_mut(&VALUE).unwrap();
+        let before_row = before.iter().next().unwrap().unwrap();
+        let scoped_holder = before_row.holder();
+
+        // Use the raw seal so the test can keep an iterator and both kinds of row,
+        // as well as their batches, alive across rollback.
+        let seal = game.transaction_open();
+        VALUE.set(game, holder, 11).unwrap();
+        let reader = game.query(&VALUE).unwrap();
+        let writer = game.query_mut(&VALUE).unwrap();
+        let mut retained_iter = reader.iter();
+        let read_row = retained_iter.next().unwrap().unwrap();
+        let write_row = writer.iter().next().unwrap().unwrap();
+        assert_eq!(read_row.with_value(|value| *value), Ok(11));
+        assert_eq!(write_row.with_value(|value| *value), Ok(11));
+        assert_eq!(reader.get(scoped_holder), Ok(Some(11)));
+        game.transaction_close(&seal, false);
+
+        assert_eq!(values(game), [10]);
+        assert_eq!(reader.get(scoped_holder), Err(OutsideTransaction));
+        assert!(matches!(
+            retained_iter.next(),
+            Some(Err(OutsideTransaction))
+        ));
+        assert!(matches!(
+            writer.iter().next(),
+            Some(Err(OutsideTransaction))
+        ));
+        assert_eq!(read_row.with_value(|value| *value), Err(OutsideTransaction));
+        assert_eq!(
+            write_row.with_value(|value| *value),
+            Err(OutsideTransaction)
+        );
+        assert_eq!(write_row.set(game, 99), Err(OutsideTransaction));
+        assert_eq!(write_row.remove(game), Err(OutsideTransaction));
+        assert_eq!(values(game), [10]);
+        before_row.set(game, 12).unwrap();
+        assert_eq!(values(game), [12]);
+    });
+}

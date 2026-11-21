@@ -1479,6 +1479,7 @@ pub trait LevelHost {
         None
     }
     /// Capture Part state using the same attachment snapshot as `Host::query`.
+    /// In a transaction it can be used only while the capturing frame is current.
     /// No chunk loading or loot generation. Refuses unloaded or stale holders; clients
     /// have no server Part state. Owning game thread only, never in worker hook bodies.
     // hidden: typed BlockEntityPartState read implementation.

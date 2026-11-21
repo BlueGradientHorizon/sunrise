@@ -67,8 +67,8 @@ fn saved_mob_binding_survives_store_back_and_retires_at_sweep() {
                 .next()
                 .unwrap()
                 .unwrap()
-                .value,
-            &7
+                .with_value(|value| *value),
+            Ok(7)
         );
         let entity = game.entity(id).unwrap();
         assert!(game.entity_discard(entity));
@@ -245,8 +245,8 @@ fn mob_first_store_binds_and_nested_rollback_retires_authority() {
                 .next()
                 .unwrap()
                 .unwrap()
-                .value,
-            &11
+                .with_value(|value| *value),
+            Ok(11)
         );
     });
 }
@@ -319,28 +319,39 @@ fn mob_inner_first_binding_commit_outer_abort_invalidates_retained_row() {
         let holder = Holder::Entity(id);
         let mut retained = None;
         let result: Result<(), AttachmentError> = game.transaction(|host, _| {
+            let parent_query = host.query(&VALUE).unwrap();
             let inner: Result<(), AttachmentError> = host.transaction(|host, _| {
+                assert!(matches!(
+                    parent_query.iter().next(),
+                    Some(Err(mod_api::AttachmentRowError::OutsideTransaction))
+                ));
                 VALUE.set(host, holder, 13)?;
-                retained = Some(host.query_mut(&VALUE).unwrap());
+                let query = host.query_mut(&VALUE).unwrap();
+                let row = query.iter().next().unwrap().unwrap();
+                assert_eq!(row.with_value(|value| *value), Ok(13));
+                retained = Some(query);
                 Ok(())
             });
             inner?;
+            assert!(parent_query.iter().next().is_none());
+            assert!(matches!(
+                retained.as_ref().unwrap().iter().next(),
+                Some(Err(mod_api::AttachmentRowError::OutsideTransaction))
+            ));
             Err(AttachmentError::MissingHolder)
         });
         assert!(result.is_err());
         assert!(!game.mobs[0].attachment_lifetime.is_bound());
         let batch = retained.unwrap();
-        let row = batch.iter().next().unwrap().unwrap();
-        assert_eq!(row.value(), &13);
-        assert_eq!(
-            row.set(game, 99),
-            Err(mod_api::AttachmentRowError::StaleHolder)
-        );
+        assert!(matches!(
+            batch.iter().next(),
+            Some(Err(mod_api::AttachmentRowError::OutsideTransaction))
+        ));
         VALUE.set(game, holder, 17).unwrap();
-        assert_eq!(
-            row.set(game, 99),
-            Err(mod_api::AttachmentRowError::StaleHolder)
-        );
+        assert!(matches!(
+            batch.iter().next(),
+            Some(Err(mod_api::AttachmentRowError::OutsideTransaction))
+        ));
         assert_eq!(VALUE.get_existing(game, holder), Ok(Some(17)));
     });
 }
