@@ -11,9 +11,10 @@ pub trait Hooks {
     /// next functions loaded; and after a mod calls `host.commands().refresh_commands()`.
     /// Every player's chat box completes them as vanilla's, within their level. A
     /// root vanilla owns is left out. A lower-level child opens traversal through a
-    /// prefix without changing that prefix's own execution permission. When usages execute at the same node (including optional
-    /// prefixes), the lowest declared permission wins, with the first registration
-    /// winning on ties. Only that node's executor runs, attributed to its mod; if the
+    /// prefix without changing that prefix's own execution permission. When accepted usages
+    /// execute at the same node (including optional prefixes), each later accepted registration
+    /// overwrites that node's execution permission and executor, matching Brigadier's
+    /// `CommandNode.addChild`. Only that node's executor runs, attributed to its mod; if the
     /// owner is disabled, execution is refused rather than handed to another mod.
     /// Clients get the command tree, not executors. An argument's kind is one
     /// of `word`, `text`, `integer`, `number`, `boolean`, `player`, `item`,

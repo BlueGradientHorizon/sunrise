@@ -48,8 +48,8 @@ pub fn split_command_registration(
 /// words; the server merges them into one tree. A public `foo bar` lets everyone traverse
 /// `foo`, but does not by itself make an operator-only `foo` executable. Optional arguments
 /// allow a usage to execute at their preceding prefixes too. If accepted usages execute at
-/// the same node, the one requiring the lowest level supplies both permission and executor;
-/// the first such registration wins on ties.
+/// the same node, each later accepted registration overwrites that node's execution
+/// permission and executor, matching Brigadier's `CommandNode.addChild`.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and

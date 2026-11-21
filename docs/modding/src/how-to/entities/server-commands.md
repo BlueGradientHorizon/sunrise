@@ -25,13 +25,13 @@ grammar rather than asking again. Clients receive only display and completion da
 never executors. A parsed invocation belongs to the server dispatcher that parsed it;
 if the tree is rebuilt, the server must parse the command again before it can run.
 
-When accepted usages execute at the same node, the usage with the lowest operator
-level supplies both permission and executor; the first registration at that level
-wins. A usage with optional arguments also executes where those arguments begin,
-so `status` and `status [player:player]` overlap at `status`. By contrast, a public
-`status detail` allows traversal through `status`, but does not make an operator-only
-`status` executable. Use distinct paths to keep distinct executors. A root vanilla
-already owns is not registered.
+When accepted usages execute at the same node, each later accepted registration
+overwrites that node's execution permission and executor, matching Brigadier's
+`CommandNode.addChild`. A usage with optional arguments also executes where those
+arguments begin, so `status` and `status [player:player]` overlap at `status`. By
+contrast, a public `status detail` allows traversal through `status`, but does not
+make an operator-only `status` executable. Use distinct paths to keep distinct
+executors. A root vanilla already owns is not registered.
 
 Literal words use lowercase letters, digits, `_` and `-`. Only the first word may
 additionally begin with one `/`: register `/set <x:word>` and type `//set stone` in chat.

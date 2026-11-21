@@ -167,7 +167,8 @@ fn usage_nodes(
 /// Native mods' commands as a root in the commands report's format
 /// (`lan::commands`, which sends each player what their level allows), and
 /// each command's traversal level: the lowest of its usages. A node is runnable where
-/// only optional arguments follow it, at the lowest level of those executable usages.
+/// only optional arguments follow it; like Brigadier's `CommandNode.addChild`, each
+/// later accepted runnable registration overwrites the node's executor and execution level.
 /// A command vanilla has (`vanilla`
 /// answers) or a usage that doesn't parse is left out, with why.
 #[cfg(test)]
@@ -271,13 +272,9 @@ fn command_tree_for(
                 n["level"] = 4.into();
                 n
             });
-            // Permission and identity belong to the same usage. Keep the first
-            // accepted registration at this level; only a lower one replaces it.
-            if runnable
-                && entry["execution_level"]
-                    .as_u64()
-                    .is_none_or(|old| execution_level < old)
-            {
+            // Like Brigadier's `CommandNode.addChild`, each later accepted runnable
+            // registration overwrites the node's executor and execution level.
+            if runnable {
                 entry["executable"] = true.into();
                 entry["execution_level"] = execution_level.into();
                 if let Some(executors) = executors.as_deref_mut() {
@@ -4046,9 +4043,9 @@ mod tests {
                 event.commands.extend([
                     mod_api::Command::new("origin").executes(execute.clone()),
                     mod_api::Command::op("denied", 4).executes(execute),
-                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
-                    // The selected executor's failure must not fall back to this usage.
+                    // Replaced by the later accepted registration; failure must not fall back here.
                     mod_api::Command::new("unhandled").executes(|_, _, _| Some(99)),
+                    mod_api::Command::new("unhandled").executes(|_, _, _| None),
                 ]);
             }
         }
@@ -4286,22 +4283,29 @@ mod tests {
     }
 
     #[test]
-    fn native_shared_executable_prefix_takes_its_lowest_usage_level() {
-        for reverse in [false, true] {
-            let mut commands = vec![
-                mod_api::Command::op("foo [value:integer]", 4),
-                mod_api::Command::op("foo", 2),
-            ];
-            let (prefix_slot, argument_slot) = if reverse {
-                commands.reverse();
-                (0, 1)
-            } else {
-                (1, 0)
-            };
-            commands.extend([
-                mod_api::Command::op("foo", 2), // The first accepted level-2 registration wins.
-                mod_api::Command::new("foo [value:word]"), // Rejected: parser conflict.
-            ]);
+    fn native_shared_executable_prefix_uses_last_accepted_registration() {
+        let cases = [
+            (
+                vec![
+                    mod_api::Command::op("foo [value:integer]", 4),
+                    mod_api::Command::op("foo", 2),
+                    mod_api::Command::op("foo", 2), // Later registration wins on ties.
+                    mod_api::Command::new("foo [value:word]"), // Rejected: parser conflict.
+                ],
+                (2, 2),
+                (4, 0),
+            ),
+            (
+                vec![
+                    mod_api::Command::op("foo", 2),
+                    mod_api::Command::op("foo [value:integer]", 4), // Later runnable overwrites earlier lower level.
+                    mod_api::Command::new("foo [value:word]"),      // Rejected: parser conflict.
+                ],
+                (4, 1),
+                (4, 1),
+            ),
+        ];
+        for (commands, (prefix_level, prefix_slot), (argument_level, argument_slot)) in cases {
             let arguments = HashMap::new();
             let mut executors = HashMap::new();
             let (tree, _, problems) = command_tree_for(
@@ -4325,13 +4329,23 @@ mod tests {
                     permission,
                     ..Default::default()
                 };
-                for (input, level, slot) in [("foo", 2, prefix_slot), ("foo 7", 4, argument_slot)] {
+                for (input, level, slot) in [
+                    ("foo", prefix_level, prefix_slot),
+                    ("foo 7", argument_level, argument_slot),
+                ] {
                     let parsed = dispatcher.parse(input, &registries);
                     if permission >= level {
                         let (context, _) = parsed.executable().unwrap();
-                        assert_eq!(context.executor.unwrap().slot(), slot);
+                        assert_eq!(
+                            context.executor.unwrap().slot(),
+                            slot,
+                            "{commands:?}, level {permission}, {input}"
+                        );
                     } else {
-                        assert!(parsed.executable().is_err());
+                        assert!(
+                            parsed.executable().is_err(),
+                            "{commands:?}, level {permission}, {input}"
+                        );
                     }
                 }
             }
