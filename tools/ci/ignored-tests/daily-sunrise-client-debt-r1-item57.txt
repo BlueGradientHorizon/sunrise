@@ -1,0 +1,3 @@
+sunrise-client game::block_screen_effect_draw_tests::extraction_keeps_player_interpolation_when_world_interpolation_is_frozen lib daily resources
+sunrise-client game::block_screen_effect_draw_tests::underwater_third_person_neither_extracts_nor_draws_the_overlay lib daily resources
+sunrise-client game::block_screen_effect_draw_tests::waterlogged_eye_reports_default_water_at_the_eye_block lib daily resources

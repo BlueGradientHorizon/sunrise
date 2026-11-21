@@ -6,10 +6,14 @@ use mod_api::{
     BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, ClientHost,
     ExtractBlockScreenEffectEvent, Flow, GuiRenderPostEvent, Hooks, ModEntry, Mods,
 };
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use sunrise_client::{
-    camera::hand_projection,
+    camera::{CameraType, hand_projection},
     chunk::Chunk,
+    clock::FixedStep,
     gfx::ScreenshotRequest,
     motion::PlayerMotion,
     screen_effects::{Blend, ScreenQuad},
@@ -118,19 +122,18 @@ fn quads(game: &Game<'_>) -> Vec<ScreenQuad> {
 }
 /// Names the block overlays' quads in draw order, the HUD's camera overlays left out.
 fn names(quads: &[ScreenQuad]) -> Vec<&'static str> {
-    let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
     quads
         .iter()
         .filter(|quad| quad.blend == Blend::Alpha)
         .filter_map(|quad| {
             let [r, g, b, a] = quad.vertices[0].color;
             Some(match (r, g, b, a) {
-                _ if close(r, 1.0 / 255.0) && g == 0.0 => "mod block",
-                _ if close(r, 2.0 / 255.0) && g == 0.0 => "mod water",
-                _ if close(r, 3.0 / 255.0) && g == 0.0 => "mod fire",
-                _ if close(r, 25.0 / 255.0) && close(a, 1.0) => "block",
-                _ if close(a, 0.1) => "water",
-                _ if close(a, 229.0 / 255.0) => "fire",
+                (_, 0.0, 0.0, 1.0) if r == 1.0 / 255.0 => "mod block",
+                (_, 0.0, 0.0, 1.0) if r == 2.0 / 255.0 => "mod water",
+                (_, 0.0, 0.0, 1.0) if r == 3.0 / 255.0 => "mod fire",
+                (_, _, _, 1.0) if r == 25.0 / 255.0 && r == g && g == b => "block",
+                (_, _, _, 0.1) => "water",
+                (1.0, 1.0, 1.0, _) if a == 229.0 / 255.0 => "fire",
                 _ => return None,
             })
         })
@@ -268,6 +271,27 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 }]
             );
 
+            // Fire cancellation only suppresses vanilla drawing if no renderer was selected.
+            let (canceled_fire, draws) = frame(
+                game,
+                Plan {
+                    custom: &[Fire],
+                    cancel: &[Fire],
+                    ..LEAVE
+                },
+            );
+            assert_eq!(names(&canceled_fire), ["block", "mod fire", "fire", "fire"]);
+            assert_eq!(draws, [Fire]);
+            let (no_op_fire, draws) = frame(
+                game,
+                Plan {
+                    cancel: &[Fire],
+                    ..LEAVE
+                },
+            );
+            assert_eq!(names(&no_op_fire), ["block"]);
+            assert_eq!(draws, []);
+
             // Under water: every overlay claimed, in vanilla's order.
             game.world.set(0, 65, 0, water).unwrap();
             let (under, draws) = frame(
@@ -290,6 +314,123 @@ impl BlockScreenEffectRenderer for Choice {
         assert!(render.draw.quad(QUAD, self.0));
         false
     }
+}
+
+#[derive(Debug, PartialEq)]
+struct OverlayInput {
+    state: mod_api::BlockState,
+    pos: BlockPos,
+    partial_tick: f32,
+    player_partial_tick: f32,
+}
+
+struct ObserveOverlay(BlockScreenEffect, Arc<Mutex<Option<OverlayInput>>>);
+#[mod_api::__subscriptions]
+impl Hooks for ObserveOverlay {
+    fn extract_block_screen_effect(
+        &self,
+        _: &dyn ClientHost,
+        event: &mut ExtractBlockScreenEffectEvent<'_>,
+    ) -> Flow {
+        if event.effect == self.0 {
+            *self.1.lock().unwrap() = Some(OverlayInput {
+                state: event.state,
+                pos: event.pos,
+                partial_tick: event.partial_tick,
+                player_partial_tick: event.player_partial_tick,
+            });
+            if event.effect == Water {
+                event.set_custom_renderer(&Choice(0xFF020000));
+            }
+        }
+        Flow::Continue
+    }
+}
+
+fn observe_overlay(effect: BlockScreenEffect, run: impl FnOnce()) -> Option<OverlayInput> {
+    let seen = Arc::new(Mutex::new(None));
+    let mods = vec![ModEntry::new(
+        "observe-overlay",
+        Box::new(ObserveOverlay(effect, seen.clone())),
+    )];
+    mod_platform::testing::with_mods(mods.into(), run);
+    seen.lock().unwrap().take()
+}
+
+#[test]
+#[ignore = "daily"]
+fn underwater_third_person_neither_extracts_nor_draws_the_overlay() {
+    with_client_game(|game| {
+        burning_player(game);
+        game.camera_type = CameraType::ThirdPersonBack;
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(0, 65, 0, water).unwrap();
+        let seen = observe_overlay(Water, || {
+            let overlays = names(&quads(game));
+            assert!(!overlays.contains(&"mod water") && !overlays.contains(&"water"));
+        });
+        assert_eq!(seen, None);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn waterlogged_eye_reports_default_water_at_the_eye_block() {
+    with_client_game(|game| {
+        burning_player(game);
+        let slab = game
+            .block_state_id("minecraft:oak_slab[type=bottom,waterlogged=true]")
+            .unwrap();
+        game.world.set(0, 65, 0, slab).unwrap();
+        let seen = observe_overlay(Water, || {
+            assert!(
+                names(&quads(game))
+                    .windows(2)
+                    .any(|pair| pair == ["mod water", "water"])
+            );
+        })
+        .unwrap();
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        assert_eq!(
+            seen.state,
+            crate::game::api_values::TryIntoApi::try_into_api(&water).unwrap()
+        );
+        assert_eq!(seen.pos, BlockPos::new(0, 65, 0));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn extraction_keeps_player_interpolation_when_world_interpolation_is_frozen() {
+    with_client_game(|game| {
+        burning_player(game);
+        game.clock = FixedStep::client();
+        game.clock.set_frozen(true);
+        assert!(!game.clock.world_runs());
+        game.clock.end_frame(false);
+        game.clock.advance(Duration::from_millis(25), 50.0);
+        let seen = observe_overlay(Fire, || {
+            let projection = hand_projection(70.0, 1000.0, 500.0, 1000.0);
+            game.screen_quads(
+                game.frame_world_partial_tick() as f32,
+                [1000, 500],
+                1.0,
+                projection,
+            );
+        })
+        .unwrap();
+        assert_eq!((seen.partial_tick, seen.player_partial_tick), (1.0, 0.5));
+    });
 }
 
 struct FirstChoice(bool);
