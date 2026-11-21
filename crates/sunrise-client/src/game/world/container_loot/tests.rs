@@ -974,18 +974,22 @@ impl mod_api::Hooks for FillListener {
 fn container_fill_listener_contract() {
     with_game(|g| {
         g.options.dedicated = Some(Vec::new());
-        place(g, POS, TABLE, 37);
-        open(g, POS, 0.0);
-        let baseline = g.world.block_entities[&POS].slots().to_vec();
-        let baseline_random = g.world.random.state();
+        let open_from_same_state = |g: &mut Game<'_>, seed| {
+            // Closing a previous chest menu consumes level RNG for its sound pitch.
+            // Start each comparison without an open menu and with the same RNG.
+            g.guest_close_menus_and_tell(12);
+            place(g, POS, TABLE, seed);
+            *g.world.random = LegacyRandom::new(123);
+            open(g, POS, 0.0);
+            (
+                g.world.block_entities[&POS].slots().to_vec(),
+                g.world.random.state(),
+            )
+        };
+        let baseline = open_from_same_state(g, 37);
         mod_platform::testing::with_mods(
             vec![mod_api::ModEntry::new("empty", Box::new(EmptyFillMod))].into(),
-            || {
-                place(g, POS, TABLE, 37);
-                open(g, POS, 0.0);
-                assert_eq!(g.world.block_entities[&POS].slots(), baseline);
-                assert_eq!(g.world.random.state(), baseline_random);
-            },
+            || assert_eq!(open_from_same_state(g, 37), baseline),
         );
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mods = |mode| {
@@ -999,17 +1003,9 @@ fn container_fill_listener_contract() {
             .into()
         };
         // A subscribed observer must preserve both the seedless roll and RNG state.
-        *g.world.random = LegacyRandom::new(123);
-        place(g, POS, TABLE, 0);
-        open(g, POS, 0.0);
-        let seedless_slots = g.world.block_entities[&POS].slots().to_vec();
-        let seedless_random = g.world.random.state();
+        let seedless = open_from_same_state(g, 0);
         mod_platform::testing::with_mods(mods(0), || {
-            *g.world.random = LegacyRandom::new(123);
-            place(g, POS, TABLE, 0);
-            open(g, POS, 0.0);
-            assert_eq!(g.world.block_entities[&POS].slots(), seedless_slots);
-            assert_eq!(g.world.random.state(), seedless_random);
+            assert_eq!(open_from_same_state(g, 0), seedless);
         });
         seen.lock().unwrap().clear();
         mod_platform::testing::with_mods(mods(3), || {

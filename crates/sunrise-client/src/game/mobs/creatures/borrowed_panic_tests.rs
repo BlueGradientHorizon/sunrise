@@ -1226,71 +1226,64 @@ fn player_living_breathe_panic_rolls_back_transactional_writes() {
             _: &mut mod_api::LivingBreatheEvent,
         ) {
             use mod_api::HostTransaction;
-            self.calls.fetch_add(1, Ordering::SeqCst);
             let place = mod_api::ItemPlace::PlayerHand {
                 player: self.player,
                 hand: mod_api::client::first_person::Hand::Main,
             };
             host.transaction(|host, tx| place.edit(host, tx, |stack| stack.set_damage(5)))
                 .unwrap();
+            assert_eq!(place.with_stack(host, |stack| stack.damage()), Some(5));
+            self.calls.fetch_add(1, Ordering::SeqCst);
             panic!("player breathing listener");
         }
     }
     let calls = Arc::new(AtomicUsize::new(0));
-    let scratch = Scratch(std::env::temp_dir().join(format!(
-        "sunrise-player-breath-panic-{}",
-        std::process::id()
-    )));
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.world_root = scratch.0.clone();
-        game.enter_level(Dim::Overworld).unwrap();
-        game.player = Some(
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(2.0, 80.0, 0.5))
-                .unwrap(),
-        );
-        game.player.as_mut().unwrap().air = 100;
-        game.selected = 0;
-        game.inventory[0] = Some(sunrise_client::items::ItemStack::new(
-            "minecraft:iron_sword",
-            1,
-        ));
-        let me = game.native_acting_id();
-        let step = sunrise_client::breathing::AirStep {
-            air: 100,
-            max: 300,
-            vanilla: sunrise_client::breathing::Breath {
-                can_breathe: true,
-                consume: 0,
-                refill: 4,
-            },
-            own: false,
-        };
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new(
-                "player-breath-panic",
-                Box::new(PlayerBreathPanic {
-                    player: me,
-                    calls: calls.clone(),
-                }),
-            )]
-            .into(),
-            || {
-                assert!(game.ask_player_breath(step).is_none());
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
-                assert_eq!(game.player.as_ref().unwrap().air, 100);
-                assert_eq!(game.inventory[0].as_ref().unwrap().damage, 0);
-                assert_eq!(
-                    mod_api::__private::take_hook_panics(),
-                    [mod_api::__private::HookPanicReport {
-                        mod_id: "player-breath-panic",
-                        hook: "living_breathe",
-                    }]
-                );
-                // Second call skips the poisoned listener and accepts the vanilla breath.
-                assert_eq!(game.ask_player_breath(step), Some(step.vanilla));
-                assert_eq!(calls.load(Ordering::SeqCst), 1);
-                assert_eq!(game.inventory[0].as_ref().unwrap().damage, 0);
-            },
-        );
+    crate::game::native_guest_turn_tests::with_guests(|game| {
+        game.as_guest(12, |game| {
+            game.player.as_mut().unwrap().air = 100;
+            game.selected = 0;
+            game.inventory[0] = Some(sunrise_client::items::ItemStack::new(
+                "minecraft:iron_sword",
+                1,
+            ));
+            let step = sunrise_client::breathing::AirStep {
+                air: 100,
+                max: 300,
+                vanilla: sunrise_client::breathing::Breath {
+                    can_breathe: true,
+                    consume: 0,
+                    refill: 4,
+                },
+                own: false,
+            };
+            mod_platform::testing::with_mods(
+                vec![mod_api::ModEntry::new(
+                    "player-breath-panic",
+                    Box::new(PlayerBreathPanic {
+                        player: game.native_acting_player().unwrap().uuid(),
+                        calls: calls.clone(),
+                    }),
+                )]
+                .into(),
+                || {
+                    assert!(game.ask_player_breath(step).is_none());
+                    assert_eq!(calls.load(Ordering::SeqCst), 1);
+                    assert_eq!(game.player.as_ref().unwrap().air, 100);
+                    assert_eq!(game.inventory[0].as_ref().unwrap().damage, 0);
+                    assert_eq!(
+                        mod_api::__private::take_hook_panics(),
+                        [mod_api::__private::HookPanicReport {
+                            mod_id: "player-breath-panic",
+                            hook: "living_breathe",
+                        }]
+                    );
+                    // Second call skips the poisoned listener and accepts the vanilla breath.
+                    assert_eq!(game.ask_player_breath(step), Some(step.vanilla));
+                    assert_eq!(calls.load(Ordering::SeqCst), 1);
+                    assert_eq!(game.inventory[0].as_ref().unwrap().damage, 0);
+                },
+            );
+        })
+        .unwrap();
     });
 }
