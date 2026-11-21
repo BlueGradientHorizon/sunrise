@@ -1533,10 +1533,10 @@ fn mirror(
         && !macro_may_be_in_scope(source, path, "thread_local")
         && !uses(&items)
             .iter()
-            .any(|item| may_import(&item.tree, "thread_local"));
+            .any(|item| may_import(&item.tree, None, "thread_local"));
     let std_is_std = !uses(&items)
         .iter()
-        .any(|item| may_import(&item.tree, "std"))
+        .any(|item| may_import(&item.tree, None, "std"))
         && !defined.clone().any(|(ident, _)| ident == "std")
         && !items.iter().any(|item| {
             matches!(item, Item::ExternCrate(krate)
@@ -1856,12 +1856,24 @@ fn macro_may_be_in_scope(source: &mut Source, path: &str, name: &str) -> bool {
     (1..=segments.len()).any(|end| within(source, &segments[..end].join("::"), name))
 }
 
+/// The binding of an unaliased import: `use x::name::{self}` binds `name`.
+fn use_binding<'a>(ident: &'a syn::Ident, prefix: Option<&'a syn::Ident>) -> &'a syn::Ident {
+    if ident == "self" {
+        prefix.unwrap_or(ident)
+    } else {
+        ident
+    }
+}
+
 /// Whether `tree` may bring `name` into scope: it binds it, or it has a glob.
-fn may_import(tree: &syn::UseTree, name: &str) -> bool {
+fn may_import(tree: &syn::UseTree, prefix: Option<&syn::Ident>, name: &str) -> bool {
     match tree {
-        syn::UseTree::Path(path) => may_import(&path.tree, name),
-        syn::UseTree::Group(group) => group.items.iter().any(|item| may_import(item, name)),
-        syn::UseTree::Name(binding) => binding.ident == name,
+        syn::UseTree::Path(path) => may_import(&path.tree, Some(&path.ident), name),
+        syn::UseTree::Group(group) => group
+            .items
+            .iter()
+            .any(|item| may_import(item, prefix, name)),
+        syn::UseTree::Name(binding) => use_binding(&binding.ident, prefix) == name,
         syn::UseTree::Rename(rename) => rename.rename == name,
         syn::UseTree::Glob(_) => true,
     }
@@ -1896,14 +1908,11 @@ fn filter_use_tree(
                 .collect();
             (!group.items.is_empty()).then_some(Group(group))
         }
-        Name(ref name) => {
-            let binding = if name.ident == "self" {
-                prefix.unwrap_or(&name.ident)
-            } else {
-                &name.ident
-            };
-            keep(&binding.to_string(), root.unwrap_or(&name.ident)).then_some(tree)
-        }
+        Name(ref name) => keep(
+            &use_binding(&name.ident, prefix).to_string(),
+            root.unwrap_or(&name.ident),
+        )
+        .then_some(tree),
         Rename(ref rename) => (rename.rename == "_"
             || keep(&rename.rename.to_string(), root.unwrap_or(&rename.ident)))
         .then_some(tree),
@@ -2309,6 +2318,21 @@ mod tests {
         let mut source = source_of(
             "lower::anim",
             "#[cfg(not(test))] mod std {}
+             std::thread_local! { pub static SHARED: u8 = 0; }",
+        );
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
+        assert!(!out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+    }
+
+    #[test]
+    fn a_thread_local_with_a_grouped_std_self_import_keeps_the_glob() {
+        let mut source = source_of(
+            "lower::anim",
+            "use other::std::{self};
              std::thread_local! { pub static SHARED: u8 = 0; }",
         );
         let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
