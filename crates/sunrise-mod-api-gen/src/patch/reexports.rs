@@ -12,6 +12,7 @@ pub(super) type Scopes = HashMap<String, Rc<Scope>>;
 #[derive(Default)]
 pub(super) struct Scope {
     items: HashMap<String, Binding>,
+    conditional_modules: HashSet<String>,
     imports: HashMap<String, Option<Import>>,
     globs: Vec<Import>,
     opaque: bool,
@@ -177,6 +178,10 @@ impl Scope {
             };
             if !mod_source::modules::test_only(attrs) {
                 let name = unraw(ident);
+                if matches!(item, Item::Mod(_)) && conditional(attrs) {
+                    scope.conditional_modules.insert(name);
+                    continue;
+                }
                 scope.items.insert(
                     name.clone(),
                     Binding {
@@ -228,6 +233,9 @@ impl Walk<'_> {
 
     fn binding(&mut self, module: &str, name: &str, follow: bool) -> Lookup {
         let scope = self.scope(module).ok_or(Unresolved)?;
+        if scope.conditional_modules.contains(name) {
+            return Err(Unresolved);
+        }
         if let Some(item) = scope.items.get(name) {
             return Ok(Some(item.clone()));
         }
@@ -393,6 +401,7 @@ pub(super) fn check_body(
                         scope.opaque
                             || !scope.globs.is_empty()
                             || scope.items.contains_key(first)
+                            || scope.conditional_modules.contains(first)
                             || scope.imports.contains_key(first)
                     }))
             {

@@ -258,6 +258,29 @@ fn gated_arm() {
 }
 
 #[test]
+fn a_cfg_selected_public_provider_stays_replaceable() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+#[cfg(any())]
+mod provider {
+    mod imp { pub fn helper() {} }
+    pub(super) use imp::helper;
+}
+#[cfg(all())]
+mod provider { pub fn helper() {} }
+fn target() { provider::helper(); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    index
+        .check(root.path(), "sunrise_client::game::target")
+        .unwrap();
+}
+
+#[test]
 fn a_bare_reference_follows_the_mirrors_import_to_its_provider() {
     let root = fixture();
     fs::write(

@@ -321,16 +321,22 @@ impl Source {
                     .rsplit_once("::")
                     .ok_or_else(|| format!("no module {path}"))?;
                 let parent = self.module(parent)?;
-                parent
-                    .items
-                    .iter()
-                    .find_map(|item| match item {
-                        Item::Mod(module) if module.ident == name => {
-                            module.content.as_ref().map(|(_, items)| items.clone())
-                        }
-                        _ => None,
-                    })
-                    .ok_or_else(|| format!("no module {path}"))?
+                let mut declarations = parent.items.iter().filter_map(|item| match item {
+                    Item::Mod(module)
+                        if module.ident == name
+                            && !mod_source::modules::test_only(&module.attrs) =>
+                    {
+                        module.content.as_ref().map(|(_, items)| items)
+                    }
+                    _ => None,
+                });
+                let items = declarations
+                    .next()
+                    .ok_or_else(|| format!("no module {path}"))?;
+                if declarations.next().is_some() {
+                    return Err(format!("multiple inline declarations for module {path}"));
+                }
+                items.clone()
             };
             self.parsed.insert(path.to_owned(), Module { items });
         }
