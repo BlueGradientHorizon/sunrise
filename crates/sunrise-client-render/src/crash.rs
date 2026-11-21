@@ -66,12 +66,18 @@ fn attributed(message: String) -> String {
     out
 }
 
-/// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting
-/// it end the game. For work that is not the game's own and whose failure the caller recovers
-/// from, such as handing a shader pack's programs to the GPU driver's compiler: the panic goes
-/// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
-/// the load phase comes back as an error that names it.
-pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+/// Outcome of [`contain_outcome`]: a normal return, a phase refusal (not a panic), or a caught
+/// panic.
+pub enum Contained<T> {
+    Ok(T),
+    Refusal(mod_api::__private::PhaseRefusal),
+    Panic(String),
+}
+
+/// Runs `f` inside crash containment and distinguishes a phase refusal from a caught panic:
+/// the panic goes to the log with its stack, no crash report is written, and `SERVER_CRASHED`
+/// stays clear.
+pub fn contain_outcome<T>(f: impl FnOnce() -> T) -> Contained<T> {
     CONTAINED.with(|c| c.set(c.get() + 1));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         mod_api::__private::contain_refusal(
@@ -81,15 +87,30 @@ pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
     }));
     CONTAINED.with(|c| c.set(c.get() - 1));
     match result {
-        Ok(Ok(value)) => Ok(value),
+        Ok(Ok(value)) => Contained::Ok(value),
+        Ok(Err(refusal)) => Contained::Refusal(refusal),
+        Err(payload) => Contained::Panic(
+            CAUGHT
+                .with(|c| c.borrow_mut().take())
+                .unwrap_or_else(|| payload_text(&*payload)),
+        ),
+    }
+}
+
+/// Runs `f`, and returns a panic in it as an error with the panic's message instead of letting
+/// it end the game. For work that is not the game's own and whose failure the caller recovers
+/// from, such as handing a shader pack's programs to the GPU driver's compiler: the panic goes
+/// to the log with its stack, and no crash report is made for it. A mod's Host call refused by
+/// the load phase comes back as an error that names it.
+pub fn contain<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    match contain_outcome(f) {
+        Contained::Ok(value) => Ok(value),
         // A mod's Host call the load phase does not admit: named, not a panic, and no crash report.
-        Ok(Err(refusal)) => {
+        Contained::Refusal(refusal) => {
             refusal.report();
             Err(refusal.to_string())
         }
-        Err(payload) => Err(CAUGHT
-            .with(|c| c.borrow_mut().take())
-            .unwrap_or_else(|| payload_text(&*payload))),
+        Contained::Panic(message) => Err(message),
     }
 }
 

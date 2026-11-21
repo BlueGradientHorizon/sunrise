@@ -1551,11 +1551,14 @@ mod mixin or use it replaces in its design or PR."#]
   receiving a read-only `DamageContainerView` of the live container at that stage and the current reduction value
   (vanilla's or the preceding modifier's output). Matching NeoForge's `DamageContainer` semantics, the modified
   reduction is recorded verbatim without clamping to `[0, before]` or substituting for `NaN`, and only the resulting
-  damage is floored at `0.0` (`max(new_damage - modified, 0)`). For `Reduction::Absorption`, modifiers receive
-  `damage.min(hearts)`, the modified value is recorded as `Reduction::Absorption`, remaining damage is
-  `max(damage - modified, 0)`, and the absorption pool deducts `damage.min(modified)` floored at `0.0`
-  (`max(hearts - absorbed, 0)`). A step the hit skips (a source that bypasses armor, no Resistance effect) runs no
-  modifier. Modifiers last for the hit. A panic inside a reduction callback is caught, disables that mod's reduction
+  damage is floored at `0.0` (`Math.max(new_damage - modified, 0.0F)`). For `Reduction::Absorption`, modifiers receive
+  `Math.min(hearts, damage)`, the modified value is recorded as `Reduction::Absorption`, remaining damage is
+  `Math.max(damage - modified, 0.0F)`, and the absorption pool deducts `Math.min(damage, modified)` floored at `0.0`
+  (`Math.max(0.0F, hearts - absorbed)`). Guarded stages the hit does not enter (for example, `#bypasses_effects`, zero
+  Resistance reduction, no Protection enchantments, a non-matching Witch hit, or a Wolf hit absorbed by wolf armor) run
+  no modifier; `Reduction::Armor` and `Reduction::Absorption` run at their enclosing `actuallyHurt` sites even with a
+  `0.0` starting reduction. Modifiers last for the hit. A panic inside a reduction callback is caught through the
+  engine's crash containment (writing no crash report and keeping `server_crashed` clear), disables that mod's reduction
   callbacks for the rest of the session, reports loudly via `log::error!` and an error toast naming the mod, and leaves
   the incoming reduction value unchanged so other mods and the hit continue; a phase refusal is logged as a warning on
   each occurrence without latching and leaves the reduction value unchanged.

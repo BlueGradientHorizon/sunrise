@@ -4110,114 +4110,111 @@ impl Mob {
                 incoming,
                 self.last_hurt,
                 incoming - self.last_hurt,
-                true,
             );
         }
-        // LivingEntity.getDamageAfterArmorAbsorb asks `hurtArmor` *before*
-        // `CombatRules.getDamageAfterAbsorb`, so a worn piece wears by the
-        // damage the armour, toughness and enchantment reductions have not
-        // touched yet, and only a hit outside `#bypasses_armor` asks at all.
-        let armor_hit = (!source.bypasses_armor() && amount > 0.0).then_some(amount);
-        let entered = amount;
-        let armor_ran = !source.bypasses_armor();
-        if armor_ran {
-            let (armor, armor_toughness) = armor::values(self);
-            if armor > 0.0 {
-                // CombatRules.getDamageAfterAbsorb
-                let toughness = 2.0 + armor_toughness / 4.0;
-                let effective = (armor - amount / toughness).clamp(armor * 0.2, 20.0);
-                let mut fraction = effective / 25.0;
-                if let Some(modify) = armor_effectiveness {
-                    fraction = modify(fraction, level.random()).clamp(0.0, 1.0);
-                }
-                amount *= 1.0 - fraction;
-            }
-        }
-        amount = container.reduce(
-            Reduction::Armor,
-            entered,
-            entered - amount,
-            amount,
-            armor_ran,
-        );
-        let after_armor = amount;
-        // LivingEntity.getDamageAfterMagicAbsorb: Resistance takes 20% per level off
-        // (`#bypasses_resistance` and `#bypasses_effects` skip it) ...
-        let mut resisted = false;
-        if !source.kind.bypasses_effects()
-            && !source.kind.bypasses_resistance()
-            && let Some(&StoredEffect { amplifier: amp, .. }) = self
-                .extra
-                .effects
-                .iter()
-                .find(|e| e.id == "minecraft:resistance")
-        {
-            let remainder = 25i32.wrapping_sub(amp.wrapping_add(1).wrapping_mul(5));
-            amount = (amount * remainder as f32 / 25.0).max(0.0);
-            resisted = true;
-            // actuallyHurt is void: zero health damage still lets hurtServer set hurt state.
-        }
-        amount = container.reduce(
-            Reduction::MobEffects,
-            after_armor,
-            after_armor - amount,
-            amount,
-            resisted,
-        );
-        let after_effects = amount;
-        // ... then, with damage left and outside `#bypasses_enchantments` (a
-        // warden's sonic boom), CombatRules.getDamageAfterMagicAbsorb's
-        // enchantment protection (#11308).
-        let enchanted = amount > 0.0 && !source.kind.bypasses_enchantments();
-        if enchanted {
-            let epf = gear::protection(self, source.kind);
-            if epf > 0.0 {
-                amount *= 1.0 - epf / 25.0;
-            }
-        }
-        amount = container.reduce(
-            Reduction::Enchantments,
-            after_effects,
-            after_effects - amount,
-            amount,
-            enchanted,
-        );
-        let after_enchantments = amount;
-        // Witch.getDamageAfterMagicAbsorb: none from its own doing, else
-        // 85% less from `#witch_resistant_to`.
-        let witch = self.species() == Species::Witch;
-        if witch {
-            if source.attacker == Some(Who::Mob(self.id)) {
-                amount = 0.0;
-            } else if source.kind.witch_resistant_to() {
-                amount *= 0.15;
-            }
-        }
-        amount = container.reduce(
-            Reduction::InnateResistance,
-            after_enchantments,
-            after_enchantments - amount,
-            amount,
-            witch,
-        );
-        // Wolf.actuallyHurt: wolf armor takes the damage instead of the wolf.
+        // Wolf.actuallyHurt: wolf armor intercepts the hit before LivingEntity.actuallyHurt,
+        // wearing by the unreduced incoming damage and skipping armor, magic, Pre and absorption.
         let absorbed = self.wolf_armor_absorbs(&source);
-        let mut knock = true;
-        let window = cooldown;
+        let mut armor_hit = None;
         let mut dealt = amount;
-        // Wolf.actuallyHurt keeps a hit its armor takes away from LivingEntity.actuallyHurt.
-        if !absorbed {
-            container.enter_pre(dealt);
-            level.damage_pre(crate::health::Hurting::Mob(self, &source), &mut container);
-            dealt = container.capture_inflicted();
-        }
         let mut through = 0.0;
         if absorbed {
             self.hurt_wolf_armor(dealt);
         } else {
+            // LivingEntity.getDamageAfterArmorAbsorb asks `hurtArmor` *before*
+            // `CombatRules.getDamageAfterAbsorb`, so a worn piece wears by the
+            // damage the armour, toughness and enchantment reductions have not
+            // touched yet, and only a hit outside `#bypasses_armor` asks at all.
+            armor_hit = (!source.bypasses_armor() && amount > 0.0).then_some(amount);
+            let entered = amount;
+            if !source.bypasses_armor() {
+                let (armor, armor_toughness) = armor::values(self);
+                if armor > 0.0 {
+                    // CombatRules.getDamageAfterAbsorb
+                    let toughness = 2.0 + armor_toughness / 4.0;
+                    let effective = sunrise_world::living_damage::java_clamp_f32(
+                        armor - amount / toughness,
+                        armor * 0.2,
+                        20.0,
+                    );
+                    let mut fraction = effective / 25.0;
+                    if let Some(modify) = armor_effectiveness {
+                        fraction = sunrise_world::living_damage::java_clamp_f32(
+                            modify(fraction, level.random()),
+                            0.0,
+                            1.0,
+                        );
+                    }
+                    amount *= 1.0 - fraction;
+                }
+            }
+            // LivingEntity.actuallyHurt always sets Reduction::Armor (with 0.0 on #bypasses_armor).
+            amount = container.reduce(Reduction::Armor, entered, entered - amount, amount);
+            // LivingEntity.getDamageAfterMagicAbsorb: `#bypasses_effects` returns before both
+            // Resistance and protection enchantments.
+            if !source.kind.bypasses_effects() {
+                if !source.kind.bypasses_resistance()
+                    && let Some(&StoredEffect { amplifier: amp, .. }) = self
+                        .extra
+                        .effects
+                        .iter()
+                        .find(|e| e.id == "minecraft:resistance")
+                {
+                    let remainder = 25i32.wrapping_sub(amp.wrapping_add(1).wrapping_mul(5));
+                    let original = amount;
+                    let after = sunrise_world::living_damage::java_max_f32(
+                        (amount * remainder as f32) / 25.0,
+                        0.0,
+                    );
+                    let resisted = original - after;
+                    if resisted > 0.0 && resisted < sunrise_world::living_damage::STAT_LIMIT {
+                        amount = container.reduce(Reduction::MobEffects, original, resisted, after);
+                    } else {
+                        amount = after;
+                        container.record_new_damage(amount);
+                    }
+                    // actuallyHurt is void: zero health damage still lets hurtServer set hurt state.
+                }
+                if amount <= 0.0 {
+                    amount = 0.0;
+                    container.record_new_damage(0.0);
+                } else if !source.kind.bypasses_enchantments() {
+                    let epf = gear::protection(self, source.kind);
+                    if epf > 0.0 {
+                        let before = amount;
+                        let after = before * (1.0 - epf / 25.0);
+                        amount = container.reduce(
+                            Reduction::Enchantments,
+                            before,
+                            before - after,
+                            after,
+                        );
+                    }
+                }
+            }
+            // Witch.getDamageAfterMagicAbsorb: none from its own doing, else
+            // 85% less from `#witch_resistant_to`.
+            if self.species() == Species::Witch {
+                if source.attacker == Some(Who::Mob(self.id)) {
+                    amount = container.reduce(Reduction::InnateResistance, amount, amount, 0.0);
+                } else if source.kind.witch_resistant_to() {
+                    amount = container.reduce(
+                        Reduction::InnateResistance,
+                        amount,
+                        amount * 0.85,
+                        amount * 0.15,
+                    );
+                }
+            }
+            dealt = amount;
+            container.enter_pre(dealt);
+            level.damage_pre(crate::health::Hurting::Mob(self, &source), &mut container);
+            dealt = container.capture_inflicted();
             through = self.soak_hit(dealt, &source, &mut container);
             self.health -= through;
         }
+        let mut knock = true;
+        let window = cooldown;
         // `lastHurt` takes what Pre left: vanilla's value plus what Pre
         // added, so a hit no listener changes keeps vanilla's.
         self.last_hurt = incoming + container.pre_change();
@@ -4249,8 +4246,9 @@ impl Mob {
                 source: crate::health::mob_source(&source, level.attack()),
             });
         }
-        // Animal.actuallyHurt: damage taken ends love mode (`resetLove`).
-        if drops::is_animal(self.species()) {
+        // Animal.actuallyHurt: damage taken ends love mode (`resetLove`);
+        // Wolf.actuallyHurt does not call super.actuallyHurt when wolf armor absorbs.
+        if !absorbed && drops::is_animal(self.species()) {
             self.extra.in_love = 0;
         }
         // A hit blocked whole is not a success: vanilla records the source and runs the
@@ -4688,14 +4686,17 @@ impl Mob {
     /// credits a `ServerPlayer` attacker with the absorbed damage in tenths.
     fn soak_hit(&mut self, damage: f32, source: &Damage, container: &mut DamageContainer) -> f32 {
         let through = self.soak_absorption(damage, container);
-        let absorbed = damage.min(container.reduction(Reduction::Absorption));
+        let absorbed = sunrise_world::living_damage::java_min_f32(
+            damage,
+            container.reduction(Reduction::Absorption),
+        );
         if absorbed > 0.0
-            && absorbed < 3.402_823_5e37
+            && absorbed < sunrise_world::living_damage::STAT_LIMIT
             && matches!(source.attacker, Some(Who::Player))
         {
             self.dealt_absorbed = self
                 .dealt_absorbed
-                .saturating_add((absorbed * 10.0).round() as i32);
+                .saturating_add(sunrise_core::jmath::round_f32(absorbed * 10.0));
         }
         through
     }
@@ -4704,38 +4705,34 @@ impl Mob {
     /// A modifier registered for the absorption reduction (`container`) changes what the
     /// hearts take, matching NeoForge's unclamped `Reduction::Absorption` step.
     pub fn soak_absorption(&mut self, damage: f32, container: &mut DamageContainer) -> f32 {
-        let positive = |v: f32| {
-            if v.is_nan() {
-                v
-            } else if v <= 0.0 {
-                0.0
-            } else {
-                v
-            }
-        };
         let (remaining, left) = if container.has_reduction_modifier(Reduction::Absorption) {
             let hearts = self.absorption;
             let modified = container
-                .modified_reduction(Reduction::Absorption, damage.min(hearts))
+                .modified_reduction(
+                    Reduction::Absorption,
+                    sunrise_world::living_damage::java_min_f32(hearts, damage),
+                )
                 .unwrap();
             container.record_reduction(Reduction::Absorption, modified);
-            let remaining = positive(damage - modified);
+            let remaining = sunrise_world::living_damage::java_max_f32(damage - modified, 0.0);
             container.record_new_damage(remaining);
-            let absorbed = damage.min(modified);
-            (remaining, positive(hearts - absorbed))
+            let absorbed = sunrise_world::living_damage::java_min_f32(damage, modified);
+            (
+                remaining,
+                sunrise_world::living_damage::java_max_f32(0.0, hearts - absorbed),
+            )
         } else {
-            let remaining = positive(damage - self.absorption);
+            let remaining =
+                sunrise_world::living_damage::java_max_f32(damage - self.absorption, 0.0);
             let absorbed = damage - remaining;
             container.record_reduction(Reduction::Absorption, absorbed);
             container.record_new_damage(remaining);
             (remaining, self.absorption - absorbed)
         };
-        // LivingEntity.setAbsorptionAmount clamps the remainder to the attribute maximum.
-        self.absorption = if left < 0.0 {
-            0.0
-        } else {
-            left.min(armor::max_absorption(self))
-        };
+        // LivingEntity.setAbsorptionAmount clamps the remainder to the attribute maximum
+        // with Java's NaN-propagating Mth.clamp.
+        self.absorption =
+            sunrise_world::living_damage::java_clamp_f32(left, 0.0, armor::max_absorption(self));
         remaining
     }
     /// `LivingEntity.checkTotemDeathProtection`: the first hand with a
@@ -7625,8 +7622,8 @@ mod guardian_tests;
 #[cfg(test)]
 mod live_damage_reduction_tests {
     use super::{
-        Damage, DamageContainer, DamageKind, Mob, Reduction, Species, Who, finalize, gear,
-        sensor_scan_tests,
+        Damage, DamageContainer, DamageKind, Mob, MobEvent, NamedDamage, Reduction, Species, Who,
+        finalize, gear, sensor_scan_tests,
     };
     use crate::health::{DamageHooks, DamageLevel, Hurting, TestLevel, Victim};
     use std::cell::RefCell;
@@ -7841,7 +7838,7 @@ mod live_damage_reduction_tests {
         assert_eq!(neg_container.new_damage(), 12.5);
         assert_eq!(neg_mob.absorption, 5.5);
 
-        // NaN absorption reduction is recorded verbatim without a silent fallback.
+        // NaN absorption reduction is recorded verbatim and propagates to stored absorption.
         let mut nan_mob = make_mob(4103, 3.0);
         let mut nan_container = DamageContainer::new(10.0);
         nan_container.add_reduction_modifier(
@@ -7850,9 +7847,10 @@ mod live_damage_reduction_tests {
         );
         assert!(nan_mob.soak_absorption(10.0, &mut nan_container).is_nan());
         assert!(nan_container.reduction(Reduction::Absorption).is_nan());
+        assert!(nan_mob.absorption.is_nan());
 
         // End-to-end through `Mob::damage` so `soak_hit` credits `dealt_absorbed` with
-        // `damage.min(modified)`.
+        // `java_min_f32(damage, modified)`.
         fn incoming(
             _: DamageLevel<'_>,
             hurting: Hurting<'_>,
@@ -7869,8 +7867,8 @@ mod live_damage_reduction_tests {
                     Box::new(|_: &DamageContainer, _: f32| -2.5),
                 ),
                 // Over-limit (`modified > damage > hearts`): records 52.0 verbatim, floors
-                // remaining damage at 0.0, deducts `damage.min(modified) = 10.0` from hearts
-                // floored at 0.0, and credits `dealt_absorbed` with 10.0 * 10 = 100.
+                // remaining damage at 0.0, deducts `java_min_f32(damage, modified) = 10.0`
+                // from hearts floored at 0.0, and credits `dealt_absorbed` with 10.0 * 10 = 100.
                 4105 => container.add_reduction_modifier(
                     Reduction::Absorption,
                     Box::new(|_: &DamageContainer, taken: f32| taken + 50.0),
@@ -7882,6 +7880,26 @@ mod live_damage_reduction_tests {
                     Reduction::Absorption,
                     Box::new(|_: &DamageContainer, _: f32| 6.0),
                 ),
+                // NaN absorption reduction: propagates to stored absorption and awards no stat.
+                4107 => container.add_reduction_modifier(
+                    Reduction::Absorption,
+                    Box::new(|_: &DamageContainer, _: f32| f32::NAN),
+                ),
+                // Preceding NaN (from Armor) propagates into Absorption callback input, stored
+                // absorption, and awards no stat.
+                4108 => {
+                    container.add_reduction_modifier(
+                        Reduction::Armor,
+                        Box::new(|_: &DamageContainer, _: f32| f32::NAN),
+                    );
+                    container.add_reduction_modifier(
+                        Reduction::Absorption,
+                        Box::new(|_: &DamageContainer, taken: f32| {
+                            assert!(taken.is_nan(), "expected NaN absorption input, got {taken}");
+                            taken
+                        }),
+                    );
+                }
                 _ => {}
             }
             false
@@ -7941,5 +7959,209 @@ mod live_damage_reduction_tests {
             POST.with_borrow(|slot| slot.as_ref().map(|p| (p.health_damage, p.absorption))),
             Some((4.0, 6.0))
         );
+
+        let mut mob_nan = make_mob(4107, 2.0);
+        assert!(mob_nan.damage(&mut test_level.level(), 10.0, source));
+        assert!(mob_nan.absorption.is_nan());
+        assert_eq!(mob_nan.dealt_absorbed, 0);
+
+        let mut mob_prev_nan = make_mob(4108, 2.0);
+        assert!(mob_prev_nan.damage(&mut test_level.level(), 10.0, source));
+        assert!(mob_prev_nan.absorption.is_nan());
+        assert_eq!(mob_prev_nan.dealt_absorbed, 0);
+    }
+
+    #[test]
+    fn wolf_armor_intercepts_before_ordinary_reductions_and_pre() {
+        thread_local! {
+            static CALLED: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+        }
+        fn incoming(
+            _: DamageLevel<'_>,
+            _: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            for (stage, label) in [
+                (Reduction::Armor, "armor"),
+                (Reduction::MobEffects, "effects"),
+                (Reduction::Enchantments, "enchantments"),
+                (Reduction::InnateResistance, "innate"),
+                (Reduction::Absorption, "absorption"),
+            ] {
+                container.add_reduction_modifier(
+                    stage,
+                    Box::new(move |_: &DamageContainer, taken: f32| {
+                        CALLED.with_borrow_mut(|log| log.push(label));
+                        taken + 1.0
+                    }),
+                );
+            }
+            false
+        }
+        fn pre(_: DamageLevel<'_>, _: Hurting<'_>, _: &mut DamageContainer) {
+            CALLED.with_borrow_mut(|log| log.push("pre"));
+        }
+        fn post(_: DamageLevel<'_>, _: Hurting<'_>, container: &DamageContainer) {
+            CALLED.with_borrow_mut(|log| log.push("post"));
+            POST.with_borrow_mut(|slot| {
+                *slot = Some(PostSample {
+                    inflicted: container.inflicted(),
+                    health_damage: container.health_damage(),
+                    absorption: container.reduction(Reduction::Absorption),
+                    side_effects: container.should_cause_side_effects(),
+                    post_ticks: container.post_attack_invulnerability_ticks(),
+                });
+            });
+        }
+        CALLED.with_borrow_mut(Vec::clear);
+        POST.with_borrow_mut(|slot| *slot = None);
+
+        let mut kind = (*sensor_scan_tests::kind()).clone();
+        kind.id = "minecraft:wolf".into();
+        kind.species = Species::Wolf;
+        kind.max_health = 20.0;
+        kind.armor = 11.0;
+        let mut wolf = Mob::new(4110, Arc::new(kind), Vec3::ZERO, 0.0);
+        wolf.extra.set_body(Some("minecraft:wolf_armor".into()));
+        wolf.add_effect("minecraft:resistance", 600, 0);
+        gear::upgrade(&mut wolf, gear::HEAD, "minecraft:protection", 4);
+        wolf.absorption = 4.0;
+
+        let hooks = DamageHooks {
+            incoming: Some(incoming),
+            pre: Some(pre),
+            post: Some(post),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = TestLevel::with_hooks(0, hooks);
+        assert!(wolf.damage(
+            &mut test_level.level(),
+            6.0,
+            Damage::of(DamageKind::Generic)
+        ));
+        assert_eq!(CALLED.with_borrow(Clone::clone), vec!["post"]);
+        assert_eq!(wolf.extra.body_damage(), 6);
+        assert_eq!(wolf.health, 20.0);
+        assert_eq!(
+            POST.with_borrow(|slot| slot.as_ref().map(|p| (p.health_damage, p.absorption))),
+            Some((0.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn mob_reduction_modifiers_match_neoforge_stage_guards() {
+        thread_local! {
+            static RAN: RefCell<Vec<(Reduction, f32)>> = const { RefCell::new(Vec::new()) };
+        }
+        fn incoming(
+            _: DamageLevel<'_>,
+            _: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            for stage in [
+                Reduction::Armor,
+                Reduction::MobEffects,
+                Reduction::Enchantments,
+                Reduction::InnateResistance,
+            ] {
+                container.add_reduction_modifier(
+                    stage,
+                    Box::new(move |_: &DamageContainer, taken: f32| {
+                        RAN.with_borrow_mut(|log| log.push((stage, taken)));
+                        if stage == Reduction::Armor {
+                            taken + 2.0
+                        } else {
+                            taken
+                        }
+                    }),
+                );
+            }
+            false
+        }
+        let hooks = DamageHooks {
+            incoming: Some(incoming),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = TestLevel::with_hooks(0, hooks);
+
+        // 1. Horse hit by #bypasses_armor: Armor callback still runs with 0.0 and modifies
+        // damage, while body armor takes no wear (no ArmorHurt event).
+        RAN.with_borrow_mut(Vec::clear);
+        let mut horse_kind = (*sensor_scan_tests::kind()).clone();
+        horse_kind.species = Species::Horse;
+        horse_kind.max_health = 30.0;
+        horse_kind.armor = 11.0;
+        let mut horse = Mob::new(4120, Arc::new(horse_kind), Vec3::ZERO, 0.0);
+        horse
+            .extra
+            .set_body(Some("minecraft:diamond_horse_armor".into()));
+        assert!(horse.damage(&mut test_level.level(), 10.0, Damage::of(DamageKind::Magic)));
+        assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
+        assert_eq!(horse.health, 22.0);
+        assert!(
+            !horse
+                .outbox
+                .iter()
+                .any(|e| matches!(e, MobEvent::ArmorHurt { .. }))
+        );
+
+        // 2. #bypasses_effects skips both Resistance and Enchantments callbacks even when
+        // the mob has both active.
+        RAN.with_borrow_mut(Vec::clear);
+        let mut kind = (*sensor_scan_tests::kind()).clone();
+        kind.max_health = 30.0;
+        let mut mob = Mob::new(4121, Arc::new(kind), Vec3::ZERO, 0.0);
+        mob.add_effect("minecraft:resistance", 600, 0);
+        gear::upgrade(&mut mob, gear::CHEST, "minecraft:protection", 4);
+        let bypass_effects = Damage::of(DamageKind::Named(NamedDamage::new(
+            "example:no_effects",
+            NamedDamage::BYPASSES_EFFECTS,
+        )));
+        assert!(mob.damage(&mut test_level.level(), 10.0, bypass_effects));
+        assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
+
+        // 3. Mob with Resistance whose reduced damage reaching Resistance is 0.0
+        // (`resisted == 0.0`) runs neither MobEffects nor Enchantments callbacks.
+        RAN.with_borrow_mut(Vec::clear);
+        let mut kind = (*sensor_scan_tests::kind()).clone();
+        kind.max_health = 30.0;
+        let mut zero_res = Mob::new(4122, Arc::new(kind), Vec3::ZERO, 0.0);
+        zero_res.add_effect("minecraft:resistance", 600, 0);
+        gear::upgrade(&mut zero_res, gear::CHEST, "minecraft:protection", 4);
+        assert!(zero_res.damage(
+            &mut test_level.level(),
+            2.0,
+            Damage::of(DamageKind::Generic)
+        ));
+        assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
+
+        // 4. Unenchanted mob with remaining damage > 0.0 still skips Enchantments (`epf == 0.0`).
+        RAN.with_borrow_mut(Vec::clear);
+        let mut kind = (*sensor_scan_tests::kind()).clone();
+        kind.max_health = 30.0;
+        let mut unenchanted = Mob::new(4124, Arc::new(kind), Vec3::ZERO, 0.0);
+        assert!(unenchanted.damage(
+            &mut test_level.level(),
+            10.0,
+            Damage::of(DamageKind::Generic)
+        ));
+        assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
+
+        // 5. Witch hit by an ordinary non-self, non-witch_resistant_to source does not run
+        // InnateResistance.
+        RAN.with_borrow_mut(Vec::clear);
+        let mut witch_kind = (*sensor_scan_tests::kind()).clone();
+        witch_kind.id = "minecraft:witch".into();
+        witch_kind.species = Species::Witch;
+        witch_kind.max_health = 30.0;
+        let mut witch = Mob::new(4123, Arc::new(witch_kind), Vec3::ZERO, 0.0);
+        assert!(witch.damage(
+            &mut test_level.level(),
+            10.0,
+            Damage::of(DamageKind::Generic)
+        ));
+        assert_eq!(RAN.with_borrow(Clone::clone), vec![(Reduction::Armor, 0.0)]);
     }
 }

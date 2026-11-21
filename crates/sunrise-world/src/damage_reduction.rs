@@ -1,7 +1,7 @@
 //! Living damage-source bypass, armor and resistance/protection dispatch.
 use crate::{
     combat_rules::{self, ArmorWorld},
-    living_damage::{MagicAbsorb, STAT_LIMIT, positive, stat_amount},
+    living_damage::{DamageContainer, Reduction, STAT_LIMIT, java_max_f32, stat_amount},
 };
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bypass {
@@ -36,59 +36,43 @@ pub fn after_armor<W: DamageReductionWorld>(world: &mut W, damage: f32) -> Resul
     let toughness = world.toughness_attribute()? as f32;
     combat_rules::after_armor(world, damage, armor, toughness)
 }
-/// `getDamageAfterMagicAbsorb`: Resistance, then protection enchantments.
+/// `getDamageAfterMagicAbsorb`: Resistance, then protection enchantments, applying any
+/// registered reduction modifiers at NeoForge's guarded `setReduction` sites.
 pub fn after_magic<W: DamageReductionWorld>(
     world: &mut W,
+    container: &mut DamageContainer,
     mut damage: f32,
-) -> Result<MagicAbsorb, W::Error> {
+) -> Result<f32, W::Error> {
     if world.bypasses(Bypass::Effects)? {
-        return Ok(MagicAbsorb {
-            damage,
-            mob_effects: 0.0,
-            resisted: false,
-            after_effects: damage,
-            protection: None,
-        });
+        return Ok(damage);
     }
-    let mut mob_effects = 0.0;
-    let mut resisted_step = false;
     if world.has_resistance()? && !world.bypasses(Bypass::Resistance)? {
-        resisted_step = true;
         let reduction = world
             .resistance_amplifier()?
             .wrapping_add(1)
             .wrapping_mul(5);
         let remainder = 25i32.wrapping_sub(reduction);
         let original = damage;
-        damage = positive((damage * remainder as f32) / 25.0);
-        let resisted = original - damage;
-        mob_effects = resisted;
+        let after = java_max_f32((damage * remainder as f32) / 25.0, 0.0);
+        let resisted = original - after;
         if resisted > 0.0 && resisted < STAT_LIMIT {
+            damage = container.reduce(Reduction::MobEffects, original, resisted, after);
             if world.victim_is_server_player() {
                 world.award_resisted(stat_amount(resisted))?;
             } else if world.attacker_is_server_player()? {
                 world.award_dealt_resisted(stat_amount(resisted))?;
             }
+        } else {
+            damage = after;
+            container.record_new_damage(damage);
         }
     }
-    let after_effects = damage;
     if damage <= 0.0 {
-        return Ok(MagicAbsorb {
-            damage: 0.0,
-            mob_effects,
-            resisted: resisted_step,
-            after_effects,
-            protection: None,
-        });
+        container.record_new_damage(0.0);
+        return Ok(0.0);
     }
     if world.bypasses(Bypass::Enchantments)? {
-        return Ok(MagicAbsorb {
-            damage,
-            mob_effects,
-            resisted: resisted_step,
-            after_effects,
-            protection: None,
-        });
+        return Ok(damage);
     }
     let protection = if let Some(level) = world.server_level()? {
         world.damage_protection(level)?
@@ -96,13 +80,9 @@ pub fn after_magic<W: DamageReductionWorld>(
         0.0
     };
     if protection > 0.0 {
-        damage = combat_rules::after_magic(damage, protection);
+        let before = damage;
+        let after = combat_rules::after_magic(before, protection);
+        damage = container.reduce(Reduction::Enchantments, before, before - after, after);
     }
-    Ok(MagicAbsorb {
-        damage,
-        mob_effects,
-        resisted: resisted_step,
-        after_effects,
-        protection: Some(protection),
-    })
+    Ok(damage)
 }

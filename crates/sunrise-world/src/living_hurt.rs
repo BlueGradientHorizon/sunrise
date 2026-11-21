@@ -287,7 +287,6 @@ pub fn select_equipment_hurt<W: HurtWorld>(
             hit.damage,
             s.last_hurt,
             hit.damage - s.last_hurt,
-            true,
         );
         (dealt, cooldown)
     };

@@ -790,5 +790,7 @@ pub fn listener_serial() -> u64 {
     crate::runtime::listener_serial()
 }
 
-pub use crate::entity::health::{DamageContainerBackend, DamageContainerRead};
+pub use crate::entity::health::{
+    ContainedReduction, DamageContainerBackend, DamageContainerRead, wrap_reduction_modifier,
+};
 pub use crate::runtime::{CallbackFault, take_callback_faults};

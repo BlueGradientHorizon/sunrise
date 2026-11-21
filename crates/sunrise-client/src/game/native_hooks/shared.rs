@@ -1765,8 +1765,26 @@ impl mod_api::__private::DamageContainerBackend for LiveDamageContainer<'_> {
     fn add_reduction_modifier(
         &mut self,
         reduction: mod_api::Reduction,
-        mut wrapped: Box<dyn FnMut(mod_api::DamageContainerView<'_>, f32) -> f32>,
+        owner: Option<&'static str>,
+        modifier: Box<dyn FnMut(mod_api::DamageContainerView<'_>, f32) -> f32>,
     ) {
+        fn contain_reduction(
+            call: &mut dyn FnMut() -> f32,
+        ) -> mod_api::__private::ContainedReduction {
+            match sunrise_client::crash::contain_outcome(call) {
+                sunrise_client::crash::Contained::Ok(value) => {
+                    mod_api::__private::ContainedReduction::Ok(value)
+                }
+                sunrise_client::crash::Contained::Refusal(refusal) => {
+                    mod_api::__private::ContainedReduction::Refusal(refusal)
+                }
+                sunrise_client::crash::Contained::Panic(message) => {
+                    mod_api::__private::ContainedReduction::Panic(message)
+                }
+            }
+        }
+        let mut wrapped =
+            mod_api::__private::wrap_reduction_modifier(owner, modifier, contain_reduction);
         self.0.add_reduction_modifier(
             engine_reduction(reduction),
             Box::new(move |engine_container: &DamageContainer, amount: f32| {

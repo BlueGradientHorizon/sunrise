@@ -57,12 +57,75 @@ pub trait DamageContainerBackend: DamageContainerRead {
     fn set_new_damage(&mut self, value: f32);
     /// Change `post_attack_invulnerability_ticks` on the live hit container.
     fn set_post_attack_invulnerability_ticks(&mut self, value: i32);
-    /// Append an engine-owned reduction callback for `reduction`.
+    /// Append an engine-owned reduction callback for `reduction`, attributed to `owner`.
     fn add_reduction_modifier(
         &mut self,
         reduction: Reduction,
+        owner: Option<&'static str>,
         modifier: Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>,
     );
+}
+
+/// Outcome of running a reduction callback inside the engine's crash containment.
+// hidden: engine-side crash containment bridge, not part of the mod surface.
+// no wire: process-local callback execution outcome.
+// exhaustive: engine crash containment produces exactly these three outcomes.
+#[doc(hidden)]
+pub enum ContainedReduction {
+    Ok(f32),
+    Refusal(crate::world::phase_refusal::PhaseRefusal),
+    Panic(String),
+}
+
+/// Wrap a mod reduction callback with per-mod poison, disable, attribution, unlatched refusal
+/// logging, and fault reporting, routing unwind containment through `contain`.
+// hidden: engine-side live damage bridge helper, not part of the mod surface.
+#[doc(hidden)]
+pub fn wrap_reduction_modifier(
+    owner: Option<&'static str>,
+    mut modifier: Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>,
+    contain: for<'call> fn(&'call mut (dyn FnMut() -> f32 + 'call)) -> ContainedReduction,
+) -> Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32> {
+    let owner_index = owner.and_then(crate::__private::mod_index);
+    let mut panicked = false;
+    Box::new(move |view: DamageContainerView<'_>, amount: f32| {
+        if panicked
+            || owner.is_some_and(|id| {
+                owner_index.is_some_and(|i| !crate::mod_index_on(i))
+                    || crate::runtime::reduction_poisoned(id)
+            })
+        {
+            return amount;
+        }
+        let _guard = owner.map(|id| crate::mark_mod(id, "living_damage_reduction"));
+        let mut call = || modifier(view, amount);
+        match contain(&mut call) {
+            ContainedReduction::Ok(next) => next,
+            ContainedReduction::Refusal(refusal) => {
+                log::warn!(
+                    "native refusal: {} hook living_damage_reduction: {refusal}",
+                    owner.unwrap_or("unknown")
+                );
+                amount
+            }
+            ContainedReduction::Panic(message) => {
+                if let Some(id) = owner {
+                    crate::runtime::poison_reduction(id);
+                }
+                panicked = true;
+                log::error!(
+                    "mod {}: living damage reduction callback panicked and is disabled for this session: {message}",
+                    owner.unwrap_or("unknown")
+                );
+                crate::runtime::report_callback_fault(
+                    owner.unwrap_or("unknown"),
+                    "living_damage_reduction",
+                    message,
+                );
+                amount
+            }
+        }
+    })
 }
 
 /// Read-only live view of one hit's damage sequence (NeoForge's `DamageContainer` as seen by
@@ -237,61 +300,11 @@ impl<'a> DamageContainer<'a> {
     pub fn add_reduction_modifier(
         &mut self,
         reduction: Reduction,
-        mut modifier: impl FnMut(DamageContainerView<'_>, f32) -> f32 + 'static,
+        modifier: impl FnMut(DamageContainerView<'_>, f32) -> f32 + 'static,
     ) {
         let owner = crate::content::crash::current_native_mod();
-        let owner_index = owner.and_then(crate::__private::mod_index);
-        let mut panicked = false;
-        self.backend.add_reduction_modifier(
-            reduction,
-            Box::new(move |view: DamageContainerView<'_>, amount: f32| {
-                if panicked
-                    || owner.is_some_and(|id| {
-                        owner_index.is_some_and(|i| !crate::mod_index_on(i))
-                            || crate::runtime::reduction_poisoned(id)
-                    })
-                {
-                    return amount;
-                }
-                let _guard = owner.map(|id| crate::mark_mod(id, "living_damage_reduction"));
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    crate::world::phase_refusal::contain_refusal(
-                        owner.unwrap_or("unknown"),
-                        || modifier(view, amount),
-                    )
-                })) {
-                    Ok(Ok(next)) => next,
-                    Ok(Err(refusal)) => {
-                        log::warn!(
-                            "native refusal: {} hook living_damage_reduction: {refusal}",
-                            owner.unwrap_or("unknown")
-                        );
-                        amount
-                    }
-                    Err(payload) => {
-                        let message = payload
-                            .downcast_ref::<&str>()
-                            .map(|text| (*text).to_owned())
-                            .or_else(|| payload.downcast_ref::<String>().cloned())
-                            .unwrap_or_else(|| "panic".to_owned());
-                        if let Some(id) = owner {
-                            crate::runtime::poison_reduction(id);
-                        }
-                        panicked = true;
-                        log::error!(
-                            "mod {}: living damage reduction callback panicked and is disabled for this session: {message}",
-                            owner.unwrap_or("unknown")
-                        );
-                        crate::runtime::report_callback_fault(
-                            owner.unwrap_or("unknown"),
-                            "living_damage_reduction",
-                            message,
-                        );
-                        amount
-                    }
-                }
-            }),
-        );
+        self.backend
+            .add_reduction_modifier(reduction, owner, Box::new(modifier));
     }
 }
 
@@ -482,9 +495,30 @@ mod tests {
         fn add_reduction_modifier(
             &mut self,
             reduction: Reduction,
+            owner: Option<&'static str>,
             modifier: Box<dyn FnMut(DamageContainerView<'_>, f32) -> f32>,
         ) {
-            self.modifiers.push((reduction, modifier));
+            fn test_contain(call: &mut dyn FnMut() -> f32) -> ContainedReduction {
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::world::phase_refusal::contain_refusal(
+                        crate::content::crash::current_native_mod().unwrap_or("unknown"),
+                        call,
+                    )
+                })) {
+                    Ok(Ok(next)) => ContainedReduction::Ok(next),
+                    Ok(Err(refusal)) => ContainedReduction::Refusal(refusal),
+                    Err(payload) => {
+                        let message = payload
+                            .downcast_ref::<&str>()
+                            .map(|text| (*text).to_owned())
+                            .or_else(|| payload.downcast_ref::<String>().cloned())
+                            .unwrap_or_else(|| "panic".to_owned());
+                        ContainedReduction::Panic(message)
+                    }
+                }
+            }
+            let wrapped = wrap_reduction_modifier(owner, modifier, test_contain);
+            self.modifiers.push((reduction, wrapped));
         }
     }
 

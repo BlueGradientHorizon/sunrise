@@ -1,5 +1,4 @@
 //! Inner living/player damage application after the outer hurt gates.
-use crate::combat_rules;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DamageStat {
     Absorbed,
@@ -101,7 +100,7 @@ impl DamageContainer {
     /// clamped to `0.0` immediately; `NaN` is preserved so `hurtServer` maps it to
     /// `f32::MAX` and `LivingDamageEvent.Pre` reverts it to the pre-event value.
     pub fn set_new_damage(&mut self, damage: f32) {
-        self.new_damage = positive(damage);
+        self.new_damage = java_max_f32(damage, 0.0);
     }
     /// The damage sequence: vanilla's intermediate damage update without clamping.
     #[doc(hidden)]
@@ -162,13 +161,16 @@ impl DamageContainer {
         self.shield_damage = durability;
     }
     /// Change what `reduction` takes off this hit, as NeoForge's
-    /// `DamageContainer.addModifier` does. Add it from `living_incoming_damage`: it
-    /// applies when the step that makes `reduction` runs, to the amount it took, and the
-    /// recorded reduction and the damage the sequence goes on with are the changed ones.
-    /// Modifiers on one reduction apply in the order they were added, each receiving the
-    /// live container and the preceding reduction value; the resulting damage is floored
-    /// at `0.0` (`max(new_damage - modified, 0)`). A step the hit skips (a source that
-    /// bypasses armor, no Resistance effect, ...) runs no modifier. They last for this hit.
+    /// `DamageContainer.addModifier` does. Add it from `living_incoming_damage` (or
+    /// `living_damage_pre` for `Reduction::Absorption`): it applies when the guarded
+    /// reduction site runs, to the amount it took, and the recorded reduction and the
+    /// damage the sequence goes on with are the changed ones. Modifiers on one reduction
+    /// apply in the order they were added, each receiving the live container and the
+    /// preceding reduction value; the resulting damage is floored at `0.0`
+    /// (`Math.max(new_damage - modified, 0.0F)`). A guarded step the hit does not enter
+    /// (for example, no Resistance reduction or no Protection enchantments) runs no modifier;
+    /// `Armor` and `Absorption` run at their enclosing `actuallyHurt` sites even with a zero
+    /// starting reduction. Modifiers last for this hit.
     pub fn add_reduction_modifier(&mut self, reduction: Reduction, modifier: ReductionModifier) {
         self.reduction_modifiers.push((reduction, modifier));
     }
@@ -214,22 +216,15 @@ impl DamageContainer {
         Some(modified)
     }
     /// The damage sequence: `reduction` took `taken` off `before`, leaving `after`. Records
-    /// what it took and returns the damage the sequence goes on with. `ran` is whether the
-    /// step ran (not skipped by the source); only a step that ran applies the registered
-    /// modifiers, and without any the values stand as they came.
+    /// what it took and returns the damage the sequence goes on with. Call only at a guarded
+    /// reduction site that actually ran (matching NeoForge's `DamageContainer.setReduction`);
+    /// without modifiers the vanilla values stand as they came.
     #[doc(hidden)]
-    pub fn reduce(
-        &mut self,
-        reduction: Reduction,
-        before: f32,
-        taken: f32,
-        after: f32,
-        ran: bool,
-    ) -> f32 {
+    pub fn reduce(&mut self, reduction: Reduction, before: f32, taken: f32, after: f32) -> f32 {
         self.new_damage = before;
-        if ran && let Some(modified) = self.modified_reduction(reduction, taken) {
+        if let Some(modified) = self.modified_reduction(reduction, taken) {
             self.record_reduction(reduction, modified);
-            let next = positive(before - modified);
+            let next = java_max_f32(before - modified, 0.0);
             self.new_damage = next;
             next
         } else {
@@ -279,31 +274,16 @@ impl DamageContainer {
         self.health_damage = damage;
     }
 }
-/// What `getDamageAfterMagicAbsorb` left of a hit, and how much of what it took was the
-/// Resistance effect's (the rest is protection enchantments'), with what a modifier on
-/// either needs to redo the step after it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MagicAbsorb {
-    pub damage: f32,
-    pub mob_effects: f32,
-    /// Whether the Resistance step ran (the entity has the effect and the source does not
-    /// bypass it).
-    pub resisted: bool,
-    /// The damage Resistance left, which the enchantments started from.
-    pub after_effects: f32,
-    /// The protection enchantments' total when their step ran (damage left, the source does
-    /// not bypass them); none when it was skipped.
-    pub protection: Option<f32>,
-}
 pub trait DamageWorld {
     type Error;
     type Attacker: Copy;
     fn invulnerable(&mut self) -> Result<bool, Self::Error>;
     fn after_armor(&mut self, damage: f32) -> Result<f32, Self::Error>;
-    /// Whether the source bypasses armor (`#bypasses_armor`), so the armor step is skipped.
-    /// Asked only when a modifier is registered for the armor reduction.
-    fn bypasses_armor(&mut self) -> Result<bool, Self::Error>;
-    fn after_magic(&mut self, damage: f32) -> Result<MagicAbsorb, Self::Error>;
+    fn after_magic(
+        &mut self,
+        container: &mut DamageContainer,
+        damage: f32,
+    ) -> Result<f32, Self::Error>;
     fn absorption(&mut self) -> Result<f32, Self::Error>;
     fn set_absorption(&mut self, value: f32) -> Result<(), Self::Error>;
     fn server_player_attacker(&mut self) -> Result<Option<Self::Attacker>, Self::Error>;
@@ -327,13 +307,36 @@ pub trait DamageWorld {
         Ok(())
     }
 }
-pub(crate) fn positive(value: f32) -> f32 {
-    if value.is_nan() {
-        value
-    } else if value <= 0.0 {
-        0.0
+/// Java `Math.min(float, float)`: propagates `NaN` and prefers `-0.0` over `+0.0`.
+pub fn java_min_f32(a: f32, b: f32) -> f32 {
+    if a.is_nan() {
+        a
+    } else if b.is_nan() {
+        b
+    } else if a == 0.0 && b == 0.0 {
+        f32::from_bits(a.to_bits() | b.to_bits())
     } else {
-        value
+        a.min(b)
+    }
+}
+/// Java `Math.max(float, float)`: propagates `NaN` and prefers `+0.0` over `-0.0`.
+pub fn java_max_f32(a: f32, b: f32) -> f32 {
+    if a.is_nan() {
+        a
+    } else if b.is_nan() {
+        b
+    } else if a == 0.0 && b == 0.0 {
+        f32::from_bits(a.to_bits() & b.to_bits())
+    } else {
+        a.max(b)
+    }
+}
+/// Java `Mth.clamp(float, float, float)`: `value < min ? min : Math.min(value, max)`.
+pub fn java_clamp_f32(value: f32, min: f32, max: f32) -> f32 {
+    if value < min {
+        min
+    } else {
+        java_min_f32(value, max)
     }
 }
 pub(crate) fn stat_amount(value: f32) -> i32 {
@@ -351,7 +354,7 @@ pub(crate) fn stat_amount(value: f32) -> i32 {
         value as i32
     }
 }
-pub(crate) const STAT_LIMIT: f32 = 3.402_823_5e37;
+pub const STAT_LIMIT: f32 = 3.402_823_5e37;
 pub fn actually_hurt<W: DamageWorld>(
     world: &mut W,
     container: &mut DamageContainer,
@@ -371,58 +374,8 @@ pub(crate) fn actually_hurt_after_immunity_check<W: DamageWorld>(
     player: bool,
 ) -> Result<(), W::Error> {
     let after_armor = world.after_armor(damage)?;
-    let ran = container.has_reduction_modifier(Reduction::Armor) && !world.bypasses_armor()?;
-    let after_armor = container.reduce(
-        Reduction::Armor,
-        damage,
-        damage - after_armor,
-        after_armor,
-        ran,
-    );
+    let after_armor = container.reduce(Reduction::Armor, damage, damage - after_armor, after_armor);
     actually_hurt_after_armor(world, container, after_armor, player)
-}
-/// What the damage is once the Resistance and enchantment reductions (and the modifiers
-/// registered for them) have taken their shares of `after_armor`.
-fn after_magic_reductions(
-    container: &mut DamageContainer,
-    after_armor: f32,
-    magic: MagicAbsorb,
-) -> f32 {
-    let modified = |reduction| container.has_reduction_modifier(reduction);
-    if !(magic.resisted && modified(Reduction::MobEffects)
-        || magic.protection.is_some() && modified(Reduction::Enchantments))
-    {
-        container.record_reduction(Reduction::MobEffects, magic.mob_effects);
-        container.record_reduction(
-            Reduction::Enchantments,
-            after_armor - magic.mob_effects - magic.damage,
-        );
-        container.record_new_damage(magic.damage);
-        return magic.damage;
-    }
-    let after_effects = container.reduce(
-        Reduction::MobEffects,
-        after_armor,
-        magic.mob_effects,
-        magic.after_effects,
-        magic.resisted,
-    );
-    let Some(protection) = magic.protection else {
-        container.record_reduction(Reduction::Enchantments, 0.0);
-        return after_effects;
-    };
-    let enchanted = if after_effects > 0.0 && protection > 0.0 {
-        combat_rules::after_magic(after_effects, protection)
-    } else {
-        after_effects
-    };
-    container.reduce(
-        Reduction::Enchantments,
-        after_effects,
-        after_effects - enchanted,
-        enchanted,
-        true,
-    )
 }
 pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
     world: &mut W,
@@ -430,24 +383,24 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
     after_armor: f32,
     player: bool,
 ) -> Result<(), W::Error> {
-    let magic = world.after_magic(after_armor)?;
-    let magic_damage = after_magic_reductions(container, after_armor, magic);
+    let magic_damage = world.after_magic(container, after_armor)?;
     container.enter_pre(magic_damage);
     world.damage_pre(container)?;
     let damage = container.capture_inflicted();
-    let (remaining, absorbed) = if container.has_reduction_modifier(Reduction::Absorption) {
+    let has_absorption_modifier = container.has_reduction_modifier(Reduction::Absorption);
+    let (remaining, absorbed) = if has_absorption_modifier {
         let hearts = world.absorption()?;
         let modified = container
-            .modified_reduction(Reduction::Absorption, damage.min(hearts))
+            .modified_reduction(Reduction::Absorption, java_min_f32(hearts, damage))
             .unwrap();
         container.record_reduction(Reduction::Absorption, modified);
-        let remaining = positive(damage - modified);
+        let remaining = java_max_f32(damage - modified, 0.0);
         container.record_new_damage(remaining);
-        let absorbed = damage.min(modified);
-        world.set_absorption(positive(hearts - absorbed))?;
+        let absorbed = java_min_f32(damage, modified);
+        world.set_absorption(java_max_f32(0.0, hearts - absorbed))?;
         (remaining, absorbed)
     } else {
-        let remaining = positive(damage - world.absorption()?);
+        let remaining = java_max_f32(damage - world.absorption()?, 0.0);
         let absorbed = damage - remaining;
         world.set_absorption(world.absorption()? - absorbed)?;
         container.record_reduction(Reduction::Absorption, absorbed);
@@ -475,7 +428,7 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
         if remaining < STAT_LIMIT {
             world.award_self(DamageStat::Taken, stat_amount(remaining))?;
         }
-    } else {
+    } else if !has_absorption_modifier {
         let absorption = world.absorption()?;
         world.set_absorption(absorption - remaining)?;
     }
@@ -492,6 +445,8 @@ mod tests {
         health: f32,
         absorption: f32,
         bypass_armor: bool,
+        armor_wears: usize,
+        self_stats: Vec<(DamageStat, i32)>,
         pre_damage: Vec<f32>,
     }
     impl Target {
@@ -500,6 +455,8 @@ mod tests {
                 health: 100.0,
                 absorption,
                 bypass_armor: false,
+                armor_wears: 0,
+                self_stats: Vec::new(),
                 pre_damage: Vec::new(),
             }
         }
@@ -514,22 +471,26 @@ mod tests {
             Ok(if self.bypass_armor {
                 damage
             } else {
+                self.armor_wears += 1;
                 damage * 0.5
             })
         }
-        fn bypasses_armor(&mut self) -> Result<bool, ()> {
-            Ok(self.bypass_armor)
-        }
-        fn after_magic(&mut self, damage: f32) -> Result<MagicAbsorb, ()> {
+        fn after_magic(&mut self, container: &mut DamageContainer, damage: f32) -> Result<f32, ()> {
             let after_effects = damage * 0.75;
-            Ok(MagicAbsorb {
-                damage: after_effects * 0.5,
-                mob_effects: damage - after_effects,
-                resisted: true,
+            let after_effects = container.reduce(
+                Reduction::MobEffects,
+                damage,
+                damage - after_effects,
                 after_effects,
-                // `combat_rules::after_magic`: 1 - 12.5 / 25 is one half.
-                protection: Some(12.5),
-            })
+            );
+            let after_enchantments = after_effects * 0.5;
+            let after_enchantments = container.reduce(
+                Reduction::Enchantments,
+                after_effects,
+                after_effects - after_enchantments,
+                after_enchantments,
+            );
+            Ok(after_enchantments)
         }
         fn absorption(&mut self) -> Result<f32, ()> {
             Ok(self.absorption)
@@ -544,7 +505,8 @@ mod tests {
         fn award_attacker(&mut self, _: (), _: DamageStat, _: i32) -> Result<(), ()> {
             Ok(())
         }
-        fn award_self(&mut self, _: DamageStat, _: i32) -> Result<(), ()> {
+        fn award_self(&mut self, stat: DamageStat, amount: i32) -> Result<(), ()> {
+            self.self_stats.push((stat, amount));
             Ok(())
         }
         fn source_food_exhaustion(&mut self) -> Result<f32, ()> {
@@ -719,14 +681,66 @@ mod tests {
     }
     #[test]
     fn a_nan_modifier_is_recorded_verbatim_without_fallback() {
-        let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        // Preceding NaN (from Armor) flows into Absorption callback input, leaves stored
+        // absorption NaN, and awards no absorbed stat.
+        let absorption_input = Rc::new(Cell::new(0.0_f32));
+        let input_log = Rc::clone(&absorption_input);
+        let (mut target, mut c) = (Target::new(3.0), DamageContainer::new(20.0));
         c.add_reduction_modifier(
             Reduction::Armor,
             Box::new(|_: &DamageContainer, _: f32| f32::NAN),
         );
+        c.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(move |_: &DamageContainer, taken: f32| {
+                input_log.set(taken);
+                taken
+            }),
+        );
         hit(&mut target, &mut c, 20.0);
         assert!(c.reduction(Reduction::Armor).is_nan());
+        assert!(absorption_input.get().is_nan());
+        assert!(c.reduction(Reduction::Absorption).is_nan());
+        assert!(target.absorption.is_nan());
         assert!(c.new_damage().is_nan());
+        assert!(
+            !target
+                .self_stats
+                .iter()
+                .any(|(stat, _)| *stat == DamageStat::Absorbed)
+        );
+
+        // NaN returned directly by Absorption modifier leaves stored absorption NaN and
+        // awards no absorbed stat.
+        let (mut target2, mut c2) = (Target::new(3.0), DamageContainer::new(20.0));
+        c2.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, _: f32| f32::NAN),
+        );
+        hit(&mut target2, &mut c2, 20.0);
+        assert!(c2.reduction(Reduction::Absorption).is_nan());
+        assert!(target2.absorption.is_nan());
+        assert!(c2.new_damage().is_nan());
+        assert!(
+            !target2
+                .self_stats
+                .iter()
+                .any(|(stat, _)| *stat == DamageStat::Absorbed)
+        );
+
+        // Signed-zero and NaN helpers match Java Math.min / Math.max / Mth.clamp.
+        assert_eq!(java_min_f32(-0.0, 0.0).to_bits(), (-0.0_f32).to_bits());
+        assert_eq!(java_min_f32(0.0, -0.0).to_bits(), (-0.0_f32).to_bits());
+        assert_eq!(java_max_f32(-0.0, 0.0).to_bits(), (0.0_f32).to_bits());
+        assert_eq!(java_max_f32(0.0, -0.0).to_bits(), (0.0_f32).to_bits());
+        assert!(java_min_f32(f32::NAN, 1.0).is_nan());
+        assert!(java_min_f32(1.0, f32::NAN).is_nan());
+        assert!(java_max_f32(f32::NAN, 1.0).is_nan());
+        assert!(java_max_f32(1.0, f32::NAN).is_nan());
+        assert!(java_clamp_f32(f32::NAN, 0.0, 20.0).is_nan());
     }
     #[test]
     fn reduction_closures_observe_live_container_stage() {
@@ -767,17 +781,193 @@ mod tests {
         );
     }
     #[test]
-    fn a_skipped_step_runs_no_modifier() {
+    fn bypass_armor_still_runs_armor_modifier_with_zero_and_no_wear() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let seen = Rc::new(Cell::new(-1.0_f32));
+        let seen_ref = Rc::clone(&seen);
         let mut target = Target::new(0.0);
         target.bypass_armor = true;
         let mut c = DamageContainer::new(20.0);
         c.add_reduction_modifier(
             Reduction::Armor,
-            Box::new(|_: &DamageContainer, v: f32| v + 5.0),
+            Box::new(move |_: &DamageContainer, v: f32| {
+                seen_ref.set(v);
+                v + 5.0
+            }),
         );
         hit(&mut target, &mut c, 20.0);
-        // Armor took nothing and the 20 went on: Resistance 5, protection half of 15.
-        assert_eq!(reductions(&c), [0.0, 5.0, 7.5, 0.0, 0.0]);
+        // LivingEntity.actuallyHurt still calls setReduction(ARMOR, 0.0) on #bypasses_armor,
+        // without wearing equipment; the modifier takes 5 off 20, leaving 15 -> Resistance 3.75,
+        // protection half of 11.25 = 5.625.
+        assert_eq!(seen.get(), 0.0);
+        assert_eq!(target.armor_wears, 0);
+        assert_eq!(reductions(&c), [5.0, 3.75, 5.625, 0.0, 0.0]);
+    }
+    #[test]
+    fn magic_stage_guards_run_modifiers_only_at_matching_sites() {
+        use crate::combat_rules::ArmorWorld;
+        use crate::damage_reduction::{Bypass, DamageReductionWorld, after_magic};
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct MagicWorld {
+            bypass_effects: bool,
+            bypass_resistance: bool,
+            bypass_enchantments: bool,
+            resistance_amp: Option<i32>,
+            protection: f32,
+        }
+        impl ArmorWorld for MagicWorld {
+            type Error = ();
+            fn armor_value(&mut self) -> Result<i32, ()> {
+                Ok(0)
+            }
+            fn armor_toughness(&mut self) -> Result<f32, ()> {
+                Ok(0.0)
+            }
+            fn modify_armor_effectiveness(&mut self, f: f32) -> Result<f32, ()> {
+                Ok(f)
+            }
+        }
+        impl DamageReductionWorld for MagicWorld {
+            type ServerLevel = ();
+            fn bypasses(&mut self, bypass: Bypass) -> Result<bool, ()> {
+                Ok(match bypass {
+                    Bypass::Armor => false,
+                    Bypass::Effects => self.bypass_effects,
+                    Bypass::Resistance => self.bypass_resistance,
+                    Bypass::Enchantments => self.bypass_enchantments,
+                })
+            }
+            fn hurt_armor(&mut self, _: f32) -> Result<(), ()> {
+                Ok(())
+            }
+            fn has_resistance(&mut self) -> Result<bool, ()> {
+                Ok(self.resistance_amp.is_some())
+            }
+            fn resistance_amplifier(&mut self) -> Result<i32, ()> {
+                Ok(self.resistance_amp.unwrap_or(0))
+            }
+            fn victim_is_server_player(&self) -> bool {
+                true
+            }
+            fn attacker_is_server_player(&mut self) -> Result<bool, ()> {
+                Ok(false)
+            }
+            fn award_resisted(&mut self, _: i32) -> Result<(), ()> {
+                Ok(())
+            }
+            fn award_dealt_resisted(&mut self, _: i32) -> Result<(), ()> {
+                Ok(())
+            }
+            fn server_level(&mut self) -> Result<Option<()>, ()> {
+                Ok(Some(()))
+            }
+            fn damage_protection(&mut self, (): ()) -> Result<f32, ()> {
+                Ok(self.protection)
+            }
+        }
+
+        let run_case = |mut world: MagicWorld, damage: f32, force_zero: bool| {
+            let called = Rc::new(RefCell::new(Vec::<(Reduction, f32)>::new()));
+            let mut c = DamageContainer::new(damage);
+            for stage in [Reduction::MobEffects, Reduction::Enchantments] {
+                let log = Rc::clone(&called);
+                c.add_reduction_modifier(
+                    stage,
+                    Box::new(move |_: &DamageContainer, taken: f32| {
+                        log.borrow_mut().push((stage, taken));
+                        if force_zero { 0.0 } else { taken + 1.0 }
+                    }),
+                );
+            }
+            let out = after_magic(&mut world, &mut c, damage).unwrap();
+            (out, called.borrow().clone(), c)
+        };
+
+        // Bypass::Effects skips both Resistance and Enchantments modifiers.
+        let (out, called, _) = run_case(
+            MagicWorld {
+                bypass_effects: true,
+                bypass_resistance: false,
+                bypass_enchantments: false,
+                resistance_amp: Some(0),
+                protection: 8.0,
+            },
+            10.0,
+            false,
+        );
+        assert_eq!(out, 10.0);
+        assert!(called.is_empty());
+
+        // Unenchanted (protection == 0.0) skips Enchantments modifier.
+        let (_, called, _) = run_case(
+            MagicWorld {
+                bypass_effects: false,
+                bypass_resistance: false,
+                bypass_enchantments: false,
+                resistance_amp: None,
+                protection: 0.0,
+            },
+            10.0,
+            false,
+        );
+        assert!(called.is_empty());
+
+        // Zero-reduction Resistance (amp = -1 -> remainder = 25 -> resisted = 0.0), zero
+        // damage, and resisted >= STAT_LIMIT all skip the MobEffects modifier.
+        for (amp, dmg) in [(-1, 10.0), (0, 0.0), (0, STAT_LIMIT * 10.0)] {
+            let (_, called, _) = run_case(
+                MagicWorld {
+                    bypass_effects: false,
+                    bypass_resistance: false,
+                    bypass_enchantments: false,
+                    resistance_amp: Some(amp),
+                    protection: 0.0,
+                },
+                dmg,
+                false,
+            );
+            assert!(called.is_empty(), "amp={amp} dmg={dmg}");
+        }
+
+        // Present stages still run even when the modifier zeroes out their reduction.
+        let (out, called, c) = run_case(
+            MagicWorld {
+                bypass_effects: false,
+                bypass_resistance: false,
+                bypass_enchantments: false,
+                resistance_amp: Some(0),
+                protection: 12.5,
+            },
+            10.0,
+            true,
+        );
+        assert_eq!(out, 10.0);
+        assert_eq!(
+            called,
+            vec![(Reduction::MobEffects, 2.0), (Reduction::Enchantments, 5.0)]
+        );
+        assert_eq!(c.reduction(Reduction::MobEffects), 0.0);
+        assert_eq!(c.reduction(Reduction::Enchantments), 0.0);
+    }
+    #[test]
+    fn non_player_absorption_modifier_does_not_double_debit_absorption() {
+        // 20.0 -> Armor 10.0 -> MobEffects 2.5 -> Enchantments 3.75 -> inflicted 3.75.
+        // With 4.0 hearts and a modifier returning 1.5, 2.25 reaches health and hearts stay 2.5
+        // (no second vanilla non-player subtraction of `remaining`).
+        let (mut target, mut c) = (Target::new(4.0), DamageContainer::new(20.0));
+        c.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, _: f32| 1.5),
+        );
+        actually_hurt(&mut target, &mut c, 20.0, false).unwrap();
+        assert_eq!(c.reduction(Reduction::Absorption), 1.5);
+        assert_eq!(c.health_damage(), 2.25);
+        assert_eq!(target.health, 97.75);
+        assert_eq!(target.absorption, 2.5);
     }
     #[test]
     fn modifiers_last_for_their_own_hit() {

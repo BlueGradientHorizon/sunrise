@@ -12,8 +12,7 @@ use std::sync::{
 use sunrise_client::health::{HurtSource, Hurting, TestLevel, Victim};
 use sunrise_client::toasts::SystemToast;
 use sunrise_world::living_damage::{
-    DamageContainer, DamageStat, DamageWorld, MagicAbsorb, Reduction as EngineReduction,
-    actually_hurt,
+    DamageContainer, DamageStat, DamageWorld, Reduction as EngineReduction, actually_hurt,
 };
 
 static FAULT_LOCK: Mutex<()> = Mutex::new(());
@@ -77,18 +76,22 @@ impl DamageWorld for Target<'_> {
     fn after_armor(&mut self, damage: f32) -> Result<f32, ()> {
         Ok(damage * 0.5)
     }
-    fn bypasses_armor(&mut self) -> Result<bool, ()> {
-        Ok(false)
-    }
-    fn after_magic(&mut self, damage: f32) -> Result<MagicAbsorb, ()> {
+    fn after_magic(&mut self, container: &mut DamageContainer, damage: f32) -> Result<f32, ()> {
         let after_effects = damage * 0.75;
-        Ok(MagicAbsorb {
-            damage: after_effects * 0.5,
-            mob_effects: damage - after_effects,
-            resisted: true,
+        let after_effects = container.reduce(
+            EngineReduction::MobEffects,
+            damage,
+            damage - after_effects,
             after_effects,
-            protection: Some(12.5),
-        })
+        );
+        let after_enchantments = after_effects * 0.5;
+        let after_enchantments = container.reduce(
+            EngineReduction::Enchantments,
+            after_effects,
+            after_effects - after_enchantments,
+            after_enchantments,
+        );
+        Ok(after_enchantments)
     }
     fn absorption(&mut self) -> Result<f32, ()> {
         Ok(self.absorption)
@@ -325,13 +328,7 @@ fn two_mods_reduction_order_live_views_pre_absorption_and_post() {
         container.record_new_damage(damage);
         container.record_should_cause_side_effects(false);
         container.set_post_attack_invulnerability_ticks(15);
-        damage = container.reduce(
-            EngineReduction::Invulnerability,
-            damage,
-            2.0,
-            damage - 2.0,
-            true,
-        );
+        damage = container.reduce(EngineReduction::Invulnerability, damage, 2.0, damage - 2.0);
         assert_eq!(damage, 20.0);
 
         let mut target = Target {
@@ -665,4 +662,143 @@ fn phase_refusal_in_reduction_callback_is_not_disabled_and_reports_each_time() {
             "each phase refusal occurrence must be logged without latching"
         );
     }
+}
+
+#[test]
+fn production_crash_hook_contains_reduction_panic_and_refusal_on_server_thread() {
+    let _lock = FAULT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = mod_api::__private::take_callback_faults();
+
+    struct RestoreHook(Option<Box<dyn Fn(&std::panic::PanicHookInfo<'_>) + Sync + Send + 'static>>);
+    impl Drop for RestoreHook {
+        fn drop(&mut self) {
+            if let Some(prev) = self.0.take() {
+                std::panic::set_hook(prev);
+            }
+        }
+    }
+
+    let home = tempfile::tempdir().expect("tempdir for crash reports");
+    let _restore = RestoreHook(Some(std::panic::take_hook()));
+    sunrise_client::crash::install(home.path().to_path_buf(), "client");
+
+    let panic_runs = Arc::new(AtomicUsize::new(0));
+    let refuse_runs = Arc::new(AtomicUsize::new(0));
+    let panic_runs_thread = Arc::clone(&panic_runs);
+    let refuse_runs_thread = Arc::clone(&refuse_runs);
+    let reports_dir = home.path().join("crash-reports");
+
+    let handle = std::thread::Builder::new()
+        .name(sunrise_client::crash::INTEGRATED_SERVER_THREAD.into())
+        .spawn(move || {
+            struct ServerPanicMod(Arc<AtomicUsize>);
+            #[mod_api::__subscriptions]
+            impl Hooks for ServerPanicMod {
+                fn living_incoming_damage(
+                    &self,
+                    _: &mut dyn HitHost,
+                    event: &mut LivingIncomingDamageEvent<'_>,
+                ) -> Flow {
+                    let runs = Arc::clone(&self.0);
+                    event
+                        .container
+                        .add_reduction_modifier(Reduction::Armor, move |_, _| {
+                            runs.fetch_add(1, Ordering::Relaxed);
+                            panic!("server reduction boom");
+                        });
+                    Flow::Continue
+                }
+            }
+
+            struct ServerRefuseMod(Arc<AtomicUsize>);
+            #[mod_api::__subscriptions]
+            impl Hooks for ServerRefuseMod {
+                fn living_incoming_damage(
+                    &self,
+                    _: &mut dyn HitHost,
+                    event: &mut LivingIncomingDamageEvent<'_>,
+                ) -> Flow {
+                    let runs = Arc::clone(&self.0);
+                    event
+                        .container
+                        .add_reduction_modifier(Reduction::Armor, move |_, amount| {
+                            if runs.fetch_add(1, Ordering::Relaxed) == 0 {
+                                mod_api::__private::refuse(
+                                    "block_state",
+                                    mod_api::__private::ModPhase::Setup,
+                                );
+                            }
+                            amount + 1.5
+                        });
+                    Flow::Continue
+                }
+            }
+
+            struct ServerGoodMod;
+            #[mod_api::__subscriptions]
+            impl Hooks for ServerGoodMod {
+                fn living_incoming_damage(
+                    &self,
+                    _: &mut dyn HitHost,
+                    event: &mut LivingIncomingDamageEvent<'_>,
+                ) -> Flow {
+                    event
+                        .container
+                        .add_reduction_modifier(Reduction::Armor, |_, amount| amount + 2.0);
+                    Flow::Continue
+                }
+            }
+
+            let mods: Mods = vec![
+                ModEntry::new(
+                    "server_panic_mod",
+                    Box::new(ServerPanicMod(panic_runs_thread)),
+                ),
+                ModEntry::new(
+                    "server_refuse_mod",
+                    Box::new(ServerRefuseMod(refuse_runs_thread)),
+                ),
+                ModEntry::new("server_good_mod", Box::new(ServerGoodMod)),
+            ]
+            .into();
+
+            mod_platform::testing::with_mods(mods, || {
+                // Hit 1: panic and phase refusal are both contained without tripping
+                // `server_crashed()` or writing crash reports.
+                let first = run_simple_hit(20.0, 0.0);
+                assert_eq!(first.reduction(EngineReduction::Armor), 12.0);
+                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!reports_dir.exists());
+
+                let faults = mod_api::__private::take_callback_faults();
+                assert_eq!(faults.len(), 1);
+                assert_eq!(faults[0].mod_id, "server_panic_mod");
+                assert_eq!(faults[0].callback, "living_damage_reduction");
+                assert!(
+                    faults[0].message.contains("server reduction boom"),
+                    "unexpected fault message: {}",
+                    faults[0].message
+                );
+                assert!(
+                    faults[0]
+                        .message
+                        .contains("in native mod server_panic_mod, hook living_damage_reduction"),
+                    "fault must be attributed to registering mod: {}",
+                    faults[0].message
+                );
+
+                // Hit 2: only the panicking mod is poisoned; the refusing mod still runs
+                // and applies its +1.5 adjustment alongside server_good_mod's +2.0.
+                let second = run_simple_hit(20.0, 0.0);
+                assert_eq!(second.reduction(EngineReduction::Armor), 13.5);
+                assert!(!sunrise_client::crash::server_crashed());
+                assert!(!reports_dir.exists());
+                assert!(mod_api::__private::take_callback_faults().is_empty());
+            });
+        })
+        .expect("spawn integrated server test thread");
+
+    handle.join().expect("server thread must not panic");
+    assert_eq!(panic_runs.load(Ordering::Relaxed), 1);
+    assert_eq!(refuse_runs.load(Ordering::Relaxed), 2);
 }

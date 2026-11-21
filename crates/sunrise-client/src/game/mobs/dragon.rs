@@ -854,9 +854,10 @@ impl Dragon {
         if damage > 0.0 {
             let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
             let block = sunrise_client::health::no_block(damage);
-            let blocked = level
-                .shield_block(hurting, damage, block)
-                .map_or(0.0, |b| b.blocked_damage);
+            let blocked = level.shield_block(hurting, damage, block).map_or(0.0, |b| {
+                container.record_shield_damage(b.shield_damage.max(0) as f32);
+                b.blocked_damage
+            });
             damage -= blocked;
             container.record_block(blocked);
         }
@@ -877,19 +878,39 @@ impl Dragon {
                 damage,
                 self.last_hurt,
                 damage - self.last_hurt,
-                true,
             )
         } else {
             damage
         };
         // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects, so
-        // nothing reduces the hit before Pre.
+        // Armor still runs at its enclosing site with a 0.0 starting reduction before Pre.
+        dealt = container.reduce(Reduction::Armor, dealt, dealt - dealt, dealt);
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);
         container.enter_pre(dealt);
         level.damage_pre(hurting, &mut container);
         dealt = container.capture_inflicted();
-        self.health -= dealt;
-        container.record_health_damage(dealt);
+        // LivingEntity.actuallyHurt: absorption runs after Pre even with 0.0 absorption hearts.
+        let remaining = if container.has_reduction_modifier(Reduction::Absorption) {
+            let modified = container
+                .modified_reduction(
+                    Reduction::Absorption,
+                    sunrise_world::living_damage::java_min_f32(0.0, dealt),
+                )
+                .unwrap();
+            container.record_reduction(Reduction::Absorption, modified);
+            let remaining = sunrise_world::living_damage::java_max_f32(dealt - modified, 0.0);
+            container.record_new_damage(remaining);
+            remaining
+        } else {
+            let remaining = sunrise_world::living_damage::java_max_f32(dealt - 0.0, 0.0);
+            container.record_reduction(Reduction::Absorption, dealt - remaining);
+            container.record_new_damage(remaining);
+            remaining
+        };
+        if remaining != 0.0 {
+            self.health -= remaining;
+            container.record_health_damage(remaining);
+        }
         self.last_hurt = damage + container.pre_change();
         self.invulnerable = container.post_attack_invulnerability_ticks();
         if !window {
@@ -6250,6 +6271,112 @@ mod tests {
         );
         assert_eq!(d.health, 1.0);
         assert!(matches!(d.phase, Phase::Dying { .. }));
+    }
+
+    #[test]
+    fn dragon_records_shield_damage_and_runs_armor_and_absorption_modifiers() {
+        use std::sync::Mutex;
+        use sunrise_client::health::{
+            DamageContainer, DamageHooks, DamageLevel, Hurting, Reduction, ShieldBlock, Victim,
+        };
+        static ARMOR_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static ABSORPTION_SEEN: Mutex<Vec<f32>> = Mutex::new(Vec::new());
+        static POST_SEEN: Mutex<Vec<(f32, f32, f32, f32, f32, f32)>> = Mutex::new(Vec::new());
+        fn on_shield(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: f32,
+            _: bool,
+            block: &mut ShieldBlock,
+        ) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                block.blocked = true;
+                block.blocked_damage = 2.0;
+                block.shield_damage = 5;
+            }
+        }
+        fn on_incoming(
+            _: DamageLevel<'_>,
+            hurting: Hurting<'_>,
+            _: Victim,
+            container: &mut DamageContainer,
+        ) -> bool {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                container.add_reduction_modifier(
+                    Reduction::Armor,
+                    Box::new(|_, taken| {
+                        ARMOR_SEEN.lock().unwrap().push(taken);
+                        1.0
+                    }),
+                );
+            }
+            false
+        }
+        fn on_pre(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
+            let absorb_to = match hurting {
+                Hurting::Dragon(9201, _) => 3.0,
+                Hurting::Dragon(9202, _) => 10.0,
+                _ => return,
+            };
+            container.add_reduction_modifier(
+                Reduction::Absorption,
+                Box::new(move |_, taken| {
+                    ABSORPTION_SEEN.lock().unwrap().push(taken);
+                    absorb_to
+                }),
+            );
+        }
+        fn on_post(_: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
+            if matches!(hurting, Hurting::Dragon(9201 | 9202, _)) {
+                POST_SEEN.lock().unwrap().push((
+                    container.blocked(),
+                    container.shield_damage(),
+                    container.reduction(Reduction::Armor),
+                    container.reduction(Reduction::Absorption),
+                    container.inflicted(),
+                    container.health_damage(),
+                ));
+            }
+        }
+        ARMOR_SEEN.lock().unwrap().clear();
+        ABSORPTION_SEEN.lock().unwrap().clear();
+        POST_SEEN.lock().unwrap().clear();
+        let hooks = DamageHooks {
+            incoming: Some(on_incoming),
+            pre: Some(on_pre),
+            post: Some(on_post),
+            shield: Some(on_shield),
+            ..DamageHooks::NONE
+        };
+        let mut test_level = sunrise_client::health::TestLevel::with_hooks(0, hooks);
+        let level = &mut test_level.level();
+
+        // Hit 1: 10.0 - 2.0 shield = 8.0, Armor modifier takes 1.0 -> 7.0 inflicted,
+        // Pre Absorption modifier receives 0.0 and takes 3.0 -> 4.0 health damage.
+        let mut d1 = dragon_as(9201);
+        assert_eq!(
+            d1.hurt(level, 0, 10.0, HIT, false),
+            Hurt::Landed { full: true }
+        );
+        assert_eq!(d1.health, MAX_HEALTH - 4.0);
+
+        // Hit 2: Pre Absorption modifier absorbs all 7.0 -> 0.0 health damage.
+        let mut d2 = dragon_as(9202);
+        assert_eq!(
+            d2.hurt(level, 0, 10.0, HIT, false),
+            Hurt::Landed { full: true }
+        );
+        assert_eq!(d2.health, MAX_HEALTH);
+
+        assert_eq!(*ARMOR_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(*ABSORPTION_SEEN.lock().unwrap(), [0.0, 0.0]);
+        assert_eq!(
+            *POST_SEEN.lock().unwrap(),
+            [
+                (2.0, 5.0, 1.0, 3.0, 7.0, 4.0),
+                (2.0, 5.0, 1.0, 10.0, 7.0, 0.0),
+            ]
+        );
     }
 
     #[test]
