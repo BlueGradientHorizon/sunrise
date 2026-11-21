@@ -339,13 +339,31 @@ fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
     (helmet, left.0, i32::try_from(left.1).unwrap())
 }
 
+fn assert_isolated_breathing_tick(name: &str, meddle: bool, air: i32, damage: i32) {
+    if crate::game::native_entity_refs::tests::run_fresh_cases(
+        &format!("game::lan_actions::guest_body::tests::{name}"),
+        "SUNRISE_GUEST_BREATHING_CHILD",
+        &["guest"],
+    ) {
+        return;
+    }
+    // The executable installs the breathing listener bridge process-wide.
+    crate::entry::install_client_hooks();
+    assert_eq!(
+        breathing_guest_tick(meddle),
+        (Some("minecraft:turtle_helmet".to_owned()), air, damage)
+    );
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_guest_breathes_with_what_its_listener_answers_and_wrote() {
     // Vanilla keeps the full 300 air on land; the listener took 3 and damaged the chestplate.
-    assert_eq!(
-        breathing_guest_tick(false),
-        (Some("minecraft:turtle_helmet".to_owned()), 297, 5)
+    assert_isolated_breathing_tick(
+        "a_guest_breathes_with_what_its_listener_answers_and_wrote",
+        false,
+        297,
+        5,
     );
 }
 
@@ -354,8 +372,10 @@ fn a_guest_breathes_with_what_its_listener_answers_and_wrote() {
 fn a_guest_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_writes() {
     // The decision read 300; the listener left 200, so the answer is refused rather than
     // recomputed, and the chestplate's edit is undone.
-    assert_eq!(
-        breathing_guest_tick(true),
-        (Some("minecraft:turtle_helmet".to_owned()), 200, 0)
+    assert_isolated_breathing_tick(
+        "a_guest_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_writes",
+        true,
+        200,
+        0,
     );
 }
