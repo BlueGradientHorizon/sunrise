@@ -97,7 +97,7 @@ fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
 #[ignore = "daily"]
 fn a_reconfiguring_client_stops_flat_audio_streams_before_configuration() {
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-    use mod_api::{AudioStream, AudioStreamSource, AudioStreamState, SoundSource, StreamSpec};
+    use mod_api::{AudioStream, AudioStreamState, SoundSource, StreamSpec};
     use sunrise_client::net::{Event, ingress};
 
     struct Silent;

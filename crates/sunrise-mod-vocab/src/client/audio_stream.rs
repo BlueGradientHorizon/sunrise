@@ -283,6 +283,38 @@ impl AudioStreamRef {
     /// through `host`. False, changing nothing, when the client does not currently track
     /// `entity`, its position is not finite, or once the stream has stopped. Stereo streams
     /// accept any tracked entity and play un-spatialized.
+    ///
+    /// A clientbound `Network`-thread payload handler that already holds an `EntityRef` can
+    /// submit [payload work](crate::IPayloadContext::enqueue_work) to the client thread.
+    /// Move the stream handle and entity into the work, not the payload context. The work
+    /// gets a client host when it runs, and `set_entity` checks tracking at that point.
+    ///
+    /// ```
+    /// use mod_api::{AudioStreamRef, EntityRef, IPayloadContext, PayloadWork};
+    /// use std::sync::Arc;
+    ///
+    /// struct Retarget {
+    ///     stream: Arc<AudioStreamRef>,
+    ///     entity: EntityRef,
+    /// }
+    ///
+    /// impl PayloadWork for Retarget {
+    ///     fn run(&self, cx: &mut dyn IPayloadContext) -> Result<(), String> {
+    ///         let host = cx.client_host().map_err(|error| format!("{error:?}"))?;
+    ///         if !self.stream.set_entity(host, self.entity) {
+    ///             eprintln!("audio retarget refused: stream stopped or entity unavailable");
+    ///         }
+    ///         Ok(())
+    ///     }
+    /// }
+    ///
+    /// # fn receive(cx: &mut dyn IPayloadContext, stream: Arc<AudioStreamRef>, entity: EntityRef)
+    /// #     -> Result<(), mod_api::PayloadContextError> {
+    /// // In the clientbound network handler:
+    /// cx.enqueue_work(Arc::new(Retarget { stream, entity }))?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn set_entity(&self, host: &dyn ClientHost, entity: EntityRef) -> bool {
         let Some(at) = host
             .backend()

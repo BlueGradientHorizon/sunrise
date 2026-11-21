@@ -45,9 +45,13 @@ check lifetime and stop when untracked or removed even while muted, and all stre
 configuration re-entry, dimension change, or sound engine stop/reload. NeoForge's `LevelEvent.Unload` \
 in `Minecraft.setLevel` and disconnect precedes the sound stop, so it includes streams opened during \
 teardown.
-- Host-free placement controls: replaced `AudioStreamRef::set_placement` with `set_flat` and \
-`set_position` (callable from any thread with no `ClientHost`) plus `set_entity(host, entity)` (requiring \
-`&dyn ClientHost` only for eager entity resolution).
+- Placement controls: `set_flat` and `set_position` are host-free; `set_entity(host, entity)` needs the \
+client thread's `&dyn ClientHost` to resolve the entity immediately. Vanilla hands work across threads \
+with `Minecraft.execute` and checks the client thread before touching sounds in \
+`ClientPacketListener.handleStopSoundEvent`. A clientbound network payload handler that holds an \
+`EntityRef` can queue work with `IPayloadContext::enqueue_work`, like NeoForge's \
+`MainThreadPayloadHandler` using `IPayloadContext.enqueueWork`, and call `set_entity` on the \
+client thread.
 - Starvation guards: raised the scalar constants `AUDIO_STREAMS_PER_MOD` (32 -> 256) and \
 `AUDIO_STREAMS_TOTAL` (64 -> 1,024), keep counting stopped streams against their owner until the pull \
 worker retires their job, and bound both per-mod and aggregate PCM ring storage \
@@ -67,8 +71,11 @@ and bridge async or network producers through a mod-owned nonblocking buffer dra
 - Replace `stream.set_placement(&placement)` calls with `stream.set_flat()` for `StreamPlacement::Flat` \
 (any thread, no host), `stream.set_position(at)` for `StreamPlacement::At(at)` (any thread, no host), or \
 `stream.set_entity(host, entity)` for `StreamPlacement::Entity(entity)` (client thread with \
-`&dyn ClientHost` for eager entity resolution). In custom `AudioStreamSource` implementations (such as \
-tests), remove `fn push` and update \
+`&dyn ClientHost` for eager entity resolution). From a clientbound network payload handler that holds \
+an `EntityRef`, call `cx.enqueue_work(Arc::new(Retarget { stream, entity }))`, with `stream` shared as \
+`Arc<AudioStreamRef>`. In `Retarget`'s `PayloadWork::run`, get `host` from `cx.client_host()` and call \
+`self.stream.set_entity(host, self.entity)`; handle `false` if the entity or stream is no longer \
+available. In custom `AudioStreamSource` implementations (such as tests), remove `fn push` and update \
 `fn set_placement(&self, placement: &StreamPlacement, entity_pos: Option<[f64; 3]>) -> bool`.
 - Remove `AudioStreamState::Unplaced` and `SpecFault::StereoPositioned` match arms; `AudioStreamState` is \
 now only `Playing` or `Stopped`.
