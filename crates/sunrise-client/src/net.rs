@@ -99,6 +99,7 @@ pub enum Event {
     /// Configuration finished: the play state begins with these registries.
     Joined {
         registries: Arc<Dynamic>,
+        datapacks: crate::datapack_net::Receiver,
         uuid: u128,
         name: String,
     },
@@ -111,7 +112,10 @@ pub enum Event {
     /// the game shows `ServerReconfigScreen` until the server logs it in again.
     Reconfiguring,
     /// The server sent us back to configuration and finished it again.
-    Reconfigured(Arc<Dynamic>),
+    Reconfigured {
+        registries: Arc<Dynamic>,
+        datapacks: crate::datapack_net::Receiver,
+    },
     /// ClientboundResourcePackPushPacket, in configuration or in play.
     PackPush(cfg::ResourcePackPush),
     /// ClientboundResourcePackPopPacket: one pack, or every pack.
@@ -177,10 +181,16 @@ impl Event {
             // configure only inserts/replaces before freezing these snapshots.
             Self::Joined {
                 registries,
-                uuid: _,
+                datapacks,
                 name,
-            } => dynamic(registries).saturating_add(name.capacity()),
-            Self::Reconfigured(registries) => dynamic(registries),
+                ..
+            } => dynamic(registries)
+                .saturating_add(datapacks.owned_heap_bytes())
+                .saturating_add(name.capacity()),
+            Self::Reconfigured {
+                registries,
+                datapacks,
+            } => dynamic(registries).saturating_add(datapacks.owned_heap_bytes()),
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
             }
@@ -1078,7 +1088,7 @@ fn run(
         writer.attach_droppable(queue.clone());
     }
     *shared_writer.lock().unwrap() = Some(writer);
-    let registries = configure(
+    let (registries, datapacks) = configure(
         &mut reader,
         shared_writer,
         configuring,
@@ -1088,11 +1098,13 @@ fn run(
         resources,
         payloads,
     )?;
-    let _ = send.send(Event::Joined {
+    send.send(Event::Joined {
         registries: Arc::new(registries),
+        datapacks,
         uuid: profile.uuid,
         name: profile.name,
-    });
+    })
+    .map_err(|error| Reason::plain(error.to_string()))?;
     receive_play(
         &mut reader,
         shared_writer,
@@ -1179,7 +1191,8 @@ fn receive_play(
             play::Clientbound::StartConfiguration(_) => {
                 payloads.begin_configuration();
                 configuring.store(true, Ordering::Release);
-                let _ = send.send(Event::Reconfiguring);
+                send.send(Event::Reconfiguring)
+                    .map_err(|error| Reason::plain(error.to_string()))?;
                 if let Some(w) = shared_writer.lock().unwrap().as_mut() {
                     w.transition_protocol(
                         sunrise_protocol::payload_negotiation::Phase::Configuration,
@@ -1188,7 +1201,7 @@ fn receive_play(
                     .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
                     configuring.store(true, Ordering::Relaxed);
                 }
-                let registries = configure(
+                let (registries, datapacks) = configure(
                     reader,
                     shared_writer,
                     configuring,
@@ -1198,7 +1211,11 @@ fn receive_play(
                     resources,
                     payloads,
                 )?;
-                let _ = send.send(Event::Reconfigured(Arc::new(registries)));
+                send.send(Event::Reconfigured {
+                    registries: Arc::new(registries),
+                    datapacks,
+                })
+                .map_err(|error| Reason::plain(error.to_string()))?;
             }
             // ClientCommonPacketListenerImpl.handleRequestCookie: the stored
             // cookie (or none) goes straight back.
@@ -1294,14 +1311,14 @@ fn configure(
     cookies: &Cookies,
     resources: &ItemData,
     payloads: &Arc<crate::raw_payloads::Transport>,
-) -> Result<Dynamic, Reason> {
+) -> Result<(Dynamic, crate::datapack_net::Receiver), Reason> {
     let mut registries = Dynamic::default();
     let mut dialog_snapshot = None;
     let mut content_verified = false;
     payloads.begin_configuration();
     let mut negotiation =
         sunrise_protocol::payload_negotiation::Negotiation::new(payloads.local.manifest.clone());
-    crate::datapack_net::clear_received();
+    let mut datapacks = crate::datapack_net::Receiver::default();
     let reply = |p: cfg::Serverbound| -> Result<(), Reason> {
         match writer.lock().unwrap().as_mut() {
             Some(w) => p
@@ -1366,7 +1383,7 @@ fn configure(
                 registries.menu_extra_revision = revision;
             }
             cfg::Clientbound::CustomPayload(p) if p.channel == crate::datapack_net::CHANNEL => {
-                crate::datapack_net::accept_chunk(&p.data).map_err(Reason::plain)?;
+                datapacks.accept_chunk(&p.data).map_err(Reason::plain)?;
             }
             cfg::Clientbound::CustomPayload(p) => {
                 let endpoint = crate::raw_payloads::Endpoint::client(
@@ -1517,7 +1534,7 @@ fn configure(
                         )
                         .map_err(Reason::plain)?;
                 }
-                crate::datapack_net::finish_transfer().map_err(Reason::plain)?;
+                datapacks.finish_transfer().map_err(Reason::plain)?;
                 registries.custom_components = content_verified;
                 payloads
                     .finish_configuration_with(|| {
@@ -1532,7 +1549,7 @@ fn configure(
                         Ok(())
                     })
                     .map_err(Reason::plain)?;
-                return Ok(registries);
+                return Ok((registries, datapacks));
             }
             _ => {}
         }
@@ -2674,7 +2691,7 @@ mod tests {
         let revision = thread
             .join()
             .unwrap()
-            .map(|registries| registries.menu_extra_revision)
+            .map(|(registries, _)| registries.menu_extra_revision)
             .unwrap_or(0);
         drop(writer);
         std::fs::remove_dir_all(root).unwrap();

@@ -402,11 +402,13 @@ impl Game<'_> {
                 },
             )
             .transpose()?;
-        let received = sunrise_client::datapack_net::received();
         let datapack_set = if self.is_logical_server() {
             datapack_registries.as_ref()
         } else {
-            received.as_deref()
+            self.remote
+                .as_ref()
+                .and_then(|remote| remote.datapacks.received())
+                .map(Arc::as_ref)
         };
         let registries = native_data_maps::WorldRegistries::new(
             self.ui

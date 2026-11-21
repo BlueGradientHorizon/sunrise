@@ -172,7 +172,9 @@ pub trait Commands {
 /// The levels service, reached through its host.
 pub trait Levels {
     /// Side: server.
-    /// Loaded server levels, in vanilla dimension order. Empty without a server world.
+    /// Loaded server levels, in creation order: the Overworld first, then the
+    /// other configured levels in registry traversal, then later opens.
+    /// This is the order used for full saves and shutdown. Empty without a server world.
     fn list_levels(&self) -> Vec<LevelRef> {
         crate::world::phase::unprovided(
             "Levels::list_levels",

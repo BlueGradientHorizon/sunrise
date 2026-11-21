@@ -498,6 +498,18 @@ pub struct StreamingUpdate {
     paused: bool,
 }
 
+impl StreamingUpdate {
+    /// Live columns that need to be saved before the plan removes them.
+    pub fn unloading_columns(&self) -> &[(i32, i32)] {
+        &self.far
+    }
+
+    /// Leave the live columns alone when their save could not be submitted.
+    pub fn keep_columns(&mut self) {
+        self.far.clear();
+    }
+}
+
 /// Result of processing generation results, pausing before a late full save.
 pub enum PlanStep {
     Ready(StreamingUpdate),
@@ -1797,6 +1809,11 @@ impl Streaming {
             ("lighting", self.lighting.len()),
             ("meshing", self.meshing.len()),
         ]
+    }
+    /// Request an unload sweep on the next `begin_plan_update`, even if the
+    /// view center and radius did not change and fewer than 8 ticks elapsed.
+    pub fn force_unload_sweep(&mut self) {
+        self.scan_age = 8;
     }
     /// Advance streaming: collect finished work, then schedule more.
     /// Returns meshes ready for upload and columns that were unloaded.

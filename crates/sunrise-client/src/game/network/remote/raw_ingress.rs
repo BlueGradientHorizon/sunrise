@@ -102,9 +102,13 @@ impl Game<'_> {
                 }
                 Event::Joined {
                     registries,
+                    datapacks,
                     name,
                     uuid,
                 } => {
+                    if let Some(remote) = &mut self.remote {
+                        remote.datapacks = datapacks;
+                    }
                     self.set_registries(registries);
                     self.connection_joined();
                     self.close_dialogs();
@@ -151,10 +155,13 @@ impl Game<'_> {
                     self.flush_chat_queue();
                     self.send_chat_acknowledgement();
                     self.close_dialogs();
+                    // clearClientLevel posts Unload before clearing the level.
+                    self.unload_client_level();
                     // The server configuring us now (a proxy's next one)
                     // offers its own far terrain, or none, and announces its
                     // own features again.
                     if let Some(remote) = &mut self.remote {
+                        remote.datapacks = Default::default();
                         remote.viewed.clear();
                         remote.far_terrain = None;
                         remote.quiet_commands = false;
@@ -167,13 +174,7 @@ impl Game<'_> {
                     self.remove_local_player_body();
                     self.set_screen(Screen::Playing);
                     self.capture(false);
-                    // clearClientLevel drops the client level now, so its
-                    // unload comes before the configuration screen, not
-                    // after the next login's load.
                     self.forget_all_remote_columns();
-                    if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
-                        self.native_client_level_unload(&old);
-                    }
                     self.native_lifecycle.begin_close();
                     self.native_lifecycle_world_closed();
                     let ticks = self.ticks;
@@ -183,7 +184,10 @@ impl Game<'_> {
                         r.chat_tree_received = false;
                     }
                 }
-                Event::Reconfigured(registries) => {
+                Event::Reconfigured {
+                    registries,
+                    datapacks,
+                } => {
                     // handleConfigurationStart → clearClientLevel, and the next
                     // ClientPacketListener starts with no players or scoreboard,
                     // no waypoints (its own ClientWaypointManager: a proxy's next
@@ -195,6 +199,7 @@ impl Game<'_> {
                     self.score.board = Default::default();
                     self.clear_waypoints();
                     if let Some(r) = self.remote.as_mut() {
+                        r.datapacks = datapacks;
                         r.clear_attachments();
                         r.players.clear();
                         r.tab_players.clear();

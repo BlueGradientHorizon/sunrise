@@ -3,18 +3,22 @@ use super::Game;
 use mod_api::LevelRef;
 
 impl Game<'_> {
-    /// The datapack registry set of this level's world session, when the level is the open one:
-    /// the server's own, or on a client the one its server sent at the join.
+    /// The server's published set, or the synchronized set the client level gets from its
+    /// connection. ClientLevel has that registry access even before it is installed.
     fn level_datapack_set(
         &self,
         level: LevelRef,
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
-        (self.level_handle_current(level) && level.dimension() == self.native_level_key())
-            .then_some(())?;
         if self.is_logical_server() {
+            (self.level_handle_current(level) && level.dimension() == self.native_level_key())
+                .then_some(())?;
             self.mods.datapack_registries.clone()
         } else {
-            sunrise_client::datapack_net::received()
+            let remote = self.remote.as_ref()?;
+            if self.client_own_level() != Some(level) {
+                remote.constructing(level)?;
+            }
+            remote.datapacks.received().cloned()
         }
     }
 

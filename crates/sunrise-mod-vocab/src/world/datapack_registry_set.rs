@@ -504,6 +504,64 @@ impl DatapackRegistrySet {
     }
 }
 
+/// Charge a synchronized set in the ordered configuration handoff. It is retained by an Arc.
+pub fn queued_datapack_set_bytes(set: &DatapackRegistrySet) -> usize {
+    use sunrise_mod_runtime::byte_channel::btree_node_bytes;
+    let arc = size_of::<DatapackRegistrySet>()
+        + 2 * size_of::<usize>()
+        + 2 * (align_of::<DatapackRegistrySet>().max(align_of::<usize>()) - 1);
+    let registries = set.registries.iter().fold(
+        btree_node_bytes::<String, BTreeMap<String, DatapackEntry>>(set.registries.len()),
+        |bytes, (key, entries)| {
+            let bytes = bytes
+                .saturating_add(key.capacity())
+                .saturating_add(btree_node_bytes::<String, DatapackEntry>(entries.len()));
+            entries.iter().fold(bytes, |bytes, (id, entry)| {
+                let bytes = bytes.saturating_add(id.capacity()).saturating_add(
+                    entry
+                        .values
+                        .capacity()
+                        .saturating_mul(size_of::<(String, DatapackValue)>()),
+                );
+                entry.values.iter().fold(bytes, |bytes, (field, value)| {
+                    let payload = match value {
+                        DatapackValue::Text(text) => text.capacity(),
+                        _ => 0,
+                    };
+                    bytes
+                        .saturating_add(field.capacity())
+                        .saturating_add(payload)
+                })
+            })
+        },
+    );
+    let tags = set.tags.iter().fold(
+        btree_node_bytes::<String, BTreeMap<String, Vec<String>>>(set.tags.len()),
+        |bytes, (key, tags)| {
+            let bytes = bytes
+                .saturating_add(key.capacity())
+                .saturating_add(btree_node_bytes::<String, Vec<String>>(tags.len()));
+            tags.iter().fold(bytes, |bytes, (key, members)| {
+                members.iter().fold(
+                    bytes
+                        .saturating_add(key.capacity())
+                        .saturating_add(members.capacity().saturating_mul(size_of::<String>())),
+                    |bytes, member| bytes.saturating_add(member.capacity()),
+                )
+            })
+        },
+    );
+    let received = set.received_registries.as_ref().map_or(0, |keys| {
+        keys.iter()
+            .fold(btree_node_bytes::<String, ()>(keys.len()), |bytes, key| {
+                bytes.saturating_add(key.capacity())
+            })
+    });
+    arc.saturating_add(registries)
+        .saturating_add(tags)
+        .saturating_add(received)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

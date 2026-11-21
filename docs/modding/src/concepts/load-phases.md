@@ -93,7 +93,7 @@ server loads Common once before its first world; Server configs load and unload 
 A second world does not repeat registration or client setup. Config loading can read settings and
 use the scoped `ConfigFiles` service to read or save its own config files. World handles,
 transactions and other game operations panic with `Config` in the diagnostic.
-Config file polling is not a phase transition, and Server config unloading leaves the World phase.
+Config file polling is not a phase transition. Server config unloading follows `server_stopped` and does not change the API phase.
 
 Attribute bounds are registration data too. `Registrar::widen_attribute_bounds` asks, from a both-side package's
 `register`, join the attribute catalog once when it grows: after the attributes mods declare with

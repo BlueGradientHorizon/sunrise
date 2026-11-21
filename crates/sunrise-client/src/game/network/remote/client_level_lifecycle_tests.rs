@@ -10,6 +10,276 @@ fn tick_ends_need_the_level_the_login_makes() {
     assert!(!client_has_level(true, Some(40)), "reconfiguring");
 }
 
+#[test]
+#[ignore = "daily"]
+fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit() {
+    use crate::game::{
+        native_client_session::tests::logged_client,
+        native_entity_refs::tests::with_client_game,
+        remote::{Received, RemoteDimensionEntry},
+    };
+    use mod_api::{
+        BlockState, ClientHost, ClientLevelLoadEvent, ClientLevelUnloadEvent, DatapackCandidate,
+        DatapackField, DatapackFieldKind, DatapackReadError, DatapackRegistrySet,
+        DatapackRegistrySync, DatapackValue, Hooks, LevelRef, ModEntry, Registrar,
+        RegistrationContext,
+    };
+    use std::sync::{Arc, Mutex};
+    use sunrise_client::{
+        datapack_net,
+        level_loading::Reason,
+        net::{Event, ingress},
+    };
+    use sunrise_protocol::packets::{
+        configuration::CustomPayload,
+        play::{Clientbound, SpawnInfo},
+    };
+
+    struct Notice {
+        kind: &'static str,
+        dimension: String,
+        level: LevelRef,
+        block: Option<BlockState>,
+        power: Option<i64>,
+    }
+    struct Log(Arc<Mutex<Vec<Notice>>>);
+    impl Log {
+        fn record(&self, kind: &'static str, host: &dyn ClientHost, dimension: &str) {
+            let level = host
+                .level(dimension)
+                .expect("the event's level must resolve");
+            let block = level.block_state(host, [3, 70, 5]);
+            let power = level
+                .datapack_handle(host, "levels:spell", "addon:fire")
+                .ok()
+                .and_then(|handle| {
+                    let mut power = None;
+                    level
+                        .datapack_read(host, &handle, &mut |entry| {
+                            if let Some(DatapackValue::Int(value)) = entry.get("power") {
+                                power = Some(*value);
+                            }
+                        })
+                        .ok()?;
+                    power
+                });
+            self.0.lock().unwrap().push(Notice {
+                kind,
+                dimension: dimension.to_owned(),
+                level,
+                block,
+                power,
+            });
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Log {
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            registrar
+                .declare_datapack_registry(
+                    "spell",
+                    DatapackRegistrySync::Required,
+                    vec![DatapackField::required(
+                        "power",
+                        DatapackFieldKind::Int { min: 0, max: 100 },
+                    )],
+                )
+                .unwrap();
+        }
+        fn client_level_load(
+            &self,
+            host: &mut dyn ClientHost,
+            event: &mut ClientLevelLoadEvent<'_>,
+        ) {
+            self.record("load", host, event.dimension);
+        }
+        fn client_level_unload(
+            &self,
+            host: &mut dyn ClientHost,
+            event: &mut ClientLevelUnloadEvent<'_>,
+        ) {
+            self.record("unload", host, event.dimension);
+        }
+    }
+    let log = Arc::new(Mutex::new(Vec::new()));
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("levels", Box::new(Log(log.clone())))].into(),
+        || {
+            with_client_game(|game| {
+                let login = SpawnInfo {
+                    dimension_type: 0,
+                    dimension: "minecraft:overworld".into(),
+                    seed: 0,
+                    game_type: 1,
+                    previous_game_type: None,
+                    debug: false,
+                    flat: true,
+                    last_death: None,
+                    portal_cooldown: 0,
+                    sea_level: 63,
+                };
+                let _server = logged_client(game);
+                let declarations = mod_api::__private::datapack_registry_declarations();
+                let candidate = |power| {
+                    DatapackCandidate::build(
+                        declarations,
+                        &[(
+                            "data/addon/levels/spell/fire.json".into(),
+                            vec![(
+                                "fixture".into(),
+                                format!(r#"{{"power":{power}}}"#).into_bytes(),
+                            )],
+                        )],
+                    )
+                    .unwrap()
+                };
+                let encode = |set: &DatapackRegistrySet| {
+                    set.snapshot(declarations, |_| true).encode().unwrap()
+                };
+                let receiver = |set: &DatapackRegistrySet| {
+                    let mut receiver = datapack_net::Receiver::default();
+                    for chunk in datapack_net::chunks(&encode(set)).unwrap() {
+                        receiver.accept_chunk(&chunk).unwrap();
+                    }
+                    receiver
+                };
+                game.remote.as_mut().unwrap().datapacks =
+                    receiver(&DatapackRegistrySet::first(candidate(17), 900));
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                let overworld = game.level(&login.dimension).unwrap();
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Respawn, Reason::Other);
+                assert_eq!(game.level(&login.dimension), Some(overworld));
+                let mut nether = login.clone();
+                nether.dimension = "minecraft:the_nether".into();
+                game.enter_remote_dimension(&nether, RemoteDimensionEntry::Respawn, Reason::Other);
+                let nether = game.level(&nether.dimension).unwrap();
+                assert_eq!(
+                    log.lock().unwrap()[1].level,
+                    nether,
+                    "constructor handle survives installation"
+                );
+                assert_eq!(
+                    game.level_block_state(overworld, [3, 70, 5]),
+                    None,
+                    "old handle retires after Unload"
+                );
+                assert_eq!(
+                    overworld.datapack_entries(game, "levels:spell"),
+                    None,
+                    "a synchronized registry does not revive a stale level handle"
+                );
+                let old_entry = nether
+                    .datapack_handle(game, "levels:spell", "addon:fire")
+                    .unwrap();
+                let next_set = DatapackRegistrySet::first(candidate(29), 901);
+                let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
+                tx.send(Event::Reconfiguring).unwrap();
+                // The next configuration has already accepted all its registry fragments
+                // and queued the handoff before the game can unload the retiring level.
+                tx.send(Event::Reconfigured {
+                    registries: game.remote.as_ref().unwrap().registries.clone(),
+                    datapacks: receiver(&next_set),
+                })
+                .unwrap();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .backlog
+                    .extend(rx.take_turn().into_iter().map(|receipt| {
+                        let (event, credit) = receipt.into_parts();
+                        Received::Event(event, credit)
+                    }));
+                game.poll_remote_events(true).unwrap();
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                let next = game.level(&login.dimension).unwrap();
+                assert_eq!(nether.datapack_entries(game, "levels:spell"), None);
+                assert_eq!(
+                    next.datapack_read(game, &old_entry, &mut |_| unreachable!()),
+                    Err(DatapackReadError::WrongSession),
+                );
+                let next_entry = next
+                    .datapack_handle(game, "levels:spell", "addon:fire")
+                    .unwrap();
+                let reloaded = next_set.reload(candidate(31)).unwrap();
+                for data in datapack_net::chunks(&encode(&reloaded)).unwrap() {
+                    game.apply_packet(Clientbound::CustomPayload(CustomPayload {
+                        channel: datapack_net::CHANNEL.into(),
+                        data,
+                    }))
+                    .unwrap();
+                }
+                assert_eq!(
+                    next.datapack_read(game, &next_entry, &mut |_| unreachable!()),
+                    Err(DatapackReadError::StaleGeneration),
+                );
+                tx.send(Event::Reconfiguring).unwrap();
+                let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
+                game.remote
+                    .as_mut()
+                    .unwrap()
+                    .backlog
+                    .push_back(Received::Event(event, credit));
+                game.poll_remote_events(true).unwrap();
+                // Disconnecting from the reconfiguration screen must not unload twice.
+                game.leave_server(None).unwrap();
+                let _server = logged_client(game);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                game.leave_server(None).unwrap();
+                let _server = logged_client(game);
+                game.enter_remote_dimension(&login, RemoteDimensionEntry::Login, Reason::Other);
+                game.begin_closing_save(true).unwrap();
+                assert!(game.poll_closing_save().unwrap());
+                game.save_for_exit().unwrap();
+            });
+        },
+    );
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .map(|notice| (notice.kind, notice.dimension.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("load", "minecraft:overworld"),
+            ("load", "minecraft:the_nether"),
+            ("unload", "minecraft:overworld"),
+            ("unload", "minecraft:the_nether"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
+            ("load", "minecraft:overworld"),
+            ("unload", "minecraft:overworld"),
+        ]
+    );
+    assert_eq!(log[0].level, log[2].level);
+    assert_eq!(log[1].level, log[3].level);
+    assert_ne!(log[0].level.epoch(), log[1].level.epoch());
+    assert!(log[0].block.is_none() && log[1].block.is_none());
+    assert_eq!(
+        log.iter().map(|notice| notice.power).collect::<Vec<_>>(),
+        [
+            Some(17),
+            Some(17),
+            Some(17),
+            Some(17),
+            Some(29),
+            Some(31),
+            None,
+            None,
+            None,
+            None,
+        ],
+        "retiring levels see their own configuration and the new level sees its handoff and reload"
+    );
+    assert!(
+        log[2].block.is_some(),
+        "the retiring Overworld still holds the old chunk"
+    );
+}
+
 /// #12148: a proxy moves the player to its next server. The last server's
 /// columns stay until the next Login, but Reconfigured already put in the
 /// next server's biome table, shorter when only the last server had a

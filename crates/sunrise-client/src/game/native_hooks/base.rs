@@ -480,11 +480,9 @@ impl Game<'_> {
     pub(in crate::game) fn native_client_level_load(&mut self, dimension: &str) {
         self.fire_client_level_load(dimension);
     }
-    /// The client dropped its level for `dimension` (`LevelEvent.Unload`
-    /// from `Minecraft.setLevel` and `disconnect`): replaced by another
-    /// dimension's, or on leaving the server. Once for each
-    /// `native_client_level_load`. Not told when the game itself quits.
-    /// Client-side.
+    /// NeoForge's client `LevelEvent.Unload` from `Minecraft.setLevel`,
+    /// `clearClientLevel` or `disconnect`: dimension replacement (after the
+    /// new Load), reconfiguration, ordinary leave or quit. Once per Load.
     pub(in crate::game) fn native_client_level_unload(&mut self, dimension: &str) {
         self.fire_client_level_unload(dimension);
     }
@@ -513,17 +511,6 @@ impl Game<'_> {
     /// illuminating the surrounding block or changing gameplay light.
     pub(in crate::game) fn native_emissive(&self, layers: &mut Vec<(&'static str, &'static str)>) {
         self.fire_emissive(layers);
-    }
-    /// The world's phases, read-only; `error_text` carries the engine's
-    /// own open-failure text, empty otherwise. Server-side. A server loop or final
-    /// save failure fires `WorldCloseFailed` with the error text.
-    pub(in crate::game) fn native_world_lifecycle(
-        &mut self,
-        context: &LifecycleContext,
-        phase: WorldPhase,
-        error_text: &str,
-    ) {
-        self.fire_world_lifecycle(context, phase, error_text);
     }
     /// After admission, collect once before building and sending this player's recipes.
     /// Reload asks once per online player before their recipes are re-sent; none when empty.
@@ -586,34 +573,52 @@ impl Game<'_> {
     /// loaded yet (NeoForge's `ServerAboutToStartEvent`, "called before the
     /// server begins loading anything"). Vanilla's `MinecraftServer.loadLevel`
     /// start. Server-side: the single player server thread once Play is
-    /// pressed, a dedicated server once its settings are read. Each is
-    /// followed by `native_server_started` or
-    /// `native_world_lifecycle`'s `WorldOpenFailed`. `dedicated` tells a dedicated server from the single
-    /// player one.
+    /// pressed, a dedicated server once its network listener has bound. On a successful
+    /// open this is followed by `native_level_load`, `native_server_starting`,
+    /// and `native_server_started`; a failed open skips `native_server_starting`,
+    /// `native_server_started`, and `native_server_stopping`, still runs
+    /// `stopServer` teardown (`native_level_unload` for opened levels), and
+    /// reaches `native_server_stopped`. `dedicated` tells a dedicated server
+    /// from the single player one.
     pub(in crate::game) fn native_server_about_to_start(&mut self, dedicated: bool) {
         self.fire_server_about_to_start(dedicated);
     }
-    /// Before play can be accepted: after the dedicated world loads or at
-    /// the integrated server's early startup notice.
+    /// Fired once on both dedicated and integrated servers after world and
+    /// level loading (`native_level_load`), adopted datapack and text setup,
+    /// and spawn preparation, before accepting play (NeoForge's
+    /// `ServerStartingEvent` at the end of `DedicatedServer.initServer` and
+    /// `IntegratedServer.initServer`). Does not fire if startup fails before
+    /// that point; a failed startup still runs teardown and reaches
+    /// `native_server_stopped`.
     pub(in crate::game) fn native_server_starting(&mut self, dedicated: bool) {
         self.fire_server_starting(dedicated);
     }
-    /// Server teardown has finished, including the final save if possible.
+    /// Fired once at the end of server teardown (NeoForge's
+    /// `ServerStoppedEvent` via `ServerLifecycleHooks.handleServerStopped`),
+    /// after `stopServer` completes (player cleanup, final save attempt for an
+    /// adopted world, network teardown, `native_level_unload` for opened
+    /// levels, and storage release), on both integrated and dedicated servers.
+    /// Always fires once startup has begun, even when startup failed, the tick
+    /// loop errored or panicked, the final save failed, or a shutdown listener
+    /// panicked. Server config unloading follows this notification.
     pub(in crate::game) fn native_server_stopped(&mut self, dedicated: bool) {
         self.fire_server_stopped(dedicated);
     }
     /// The server opened its worlds and is about to tick (NeoForge's
-    /// `ServerStartedEvent`): every level loaded, no player joined. Where
-    /// `WorldOpenReady` fired: the end of the open, before the tick loop.
+    /// `ServerStartedEvent`): every level loaded, no player joined, before the
+    /// tick loop. Fired once per open that succeeds; a failed open skips this
+    /// and still runs teardown to reach `native_server_stopped`. `dedicated`
+    /// tells a dedicated server from the single player one.
     pub(in crate::game) fn native_server_started(&mut self, dedicated: bool) {
         self.fire_server_started(dedicated);
     }
-    /// The server begins teardown (NeoForge's `ServerStoppingEvent`):
-    /// the start of vanilla's `MinecraftServer.stopServer`, with the worlds
-    /// still loaded and the players still connected and not yet saved, so a
-    /// mod can save its own data or tell them. `native_world_lifecycle`'s
-    /// `WorldCloseFinal` follows once the worlds are saved. A server whose loop
-    /// fails still fires this before the final save attempt and `native_server_stopped`.
+    /// Fired once at the start of an orderly server shutdown (NeoForge's
+    /// `ServerStoppingEvent` in `MinecraftServer.runServer`, after the tick
+    /// loop exits normally and before `stopServer`), with the worlds still
+    /// loaded and the players still connected and not yet saved, so a mod can
+    /// save its own data or tell them. Runs only on orderly shutdown: a failed
+    /// open or a tick error/panic skips this and goes straight to `stopServer`
+    /// teardown (`native_level_unload`) and `native_server_stopped`.
     pub(in crate::game) fn native_server_stopping(&mut self, dedicated: bool) {
         self.fire_server_stopping(dedicated);
     }
@@ -3452,10 +3457,11 @@ impl Game<'_> {
     /// `level.close()` in `MinecraftServer.stopServer`), after its last save:
     /// drop what the mod kept for it. A level other than the Overworld closes
     /// once nobody has been in it for 300 ticks, after its chunks' unloads;
-    /// every level still open closes when the server stops, before
-    /// `WorldCloseFinal`, and when its open or its loop fails, before
-    /// `WorldOpenFailed` or `WorldCloseFailed`. Once for each
-    /// `native_level_load`. Don't read its blocks. Server-side.
+    /// every level still open closes during server teardown after the final
+    /// save attempt and network teardown, before storage release and
+    /// `native_server_stopped` (including after a failed open, tick failure, or
+    /// save failure). Once for each `native_level_load`. Don't read its blocks.
+    /// Server-side.
     pub(in crate::game) fn native_level_unload(&mut self, dimension: &str) {
         self.fire_level_unload(dimension);
     }
@@ -3477,7 +3483,7 @@ impl Game<'_> {
     /// memory of what never saved. Its blocks and block entities are there,
     /// but its saved entities join afterwards and its light may not be ready:
     /// change the world from a later tick. The chunks around the spawn come
-    /// before `WorldOpenReady`. Not told of a chunk a client receives.
+    /// before `native_server_started`. Not told of a chunk a client receives.
     /// Server-side.
     pub(in crate::game) fn native_chunk_load(
         &mut self,

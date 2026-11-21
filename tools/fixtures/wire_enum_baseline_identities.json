@@ -133,6 +133,5 @@
   "crate::world::types::TriState",
   "crate::client::camera::UseItem",
   "crate::item::types::UsePhase",
-  "crate::client::world_draw::WorldDepth",
-  "crate::world::types::WorldPhase"
+  "crate::client::world_draw::WorldDepth"
 ]

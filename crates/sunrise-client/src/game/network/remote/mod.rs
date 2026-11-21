@@ -63,6 +63,7 @@ use sunrise_client::{
     streaming::{ChunkGenerator, Proto, Streaming},
     tab_list::SPECTATOR,
     text::Text,
+    world::World,
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_protocol::{
@@ -573,6 +574,12 @@ enum OwnProfile {
     Done(Option<sunrise_client::skins::Textures>),
 }
 
+pub(super) struct ConstructingClientLevel {
+    pub(super) handle: mod_api::LevelRef,
+    pub(super) world: World,
+    pub(super) facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
+}
+
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
@@ -701,6 +708,9 @@ pub(super) struct Remote {
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
     pub(super) heard_level: Option<String>,
+    pub(in crate::game) datapacks: sunrise_client::datapack_net::Receiver,
+    /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
+    pub(super) constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login
     /// or respawn, until the player's section is shown.
     pub(super) level_load: sunrise_client::level_loading::LevelLoadTracker,
@@ -1310,6 +1320,8 @@ impl Game<'_> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
+            datapacks: Default::default(),
+            constructing_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
             predictions: HashMap::new(),
@@ -1564,6 +1576,8 @@ impl Game<'_> {
             respawn_velocity: None,
             loaded_sent: false,
             heard_level: None,
+            datapacks: Default::default(),
+            constructing_level: None,
             level_load: sunrise_client::level_loading::LevelLoadTracker::new(0),
             sent_info: info,
             predictions: HashMap::new(),
@@ -1705,9 +1719,6 @@ impl Game<'_> {
         // Minecraft.disconnect: the client level goes.
         if self.remote.is_some() {
             self.forget_all_remote_columns();
-        }
-        if let Some(old) = self.remote.as_mut().and_then(|r| r.heard_level.take()) {
-            self.native_client_level_unload(&old);
         }
         if self.remote.is_some() {
             self.native_client_disconnecting();
@@ -2489,17 +2500,11 @@ impl Game<'_> {
         entry: RemoteDimensionEntry,
         reason: sunrise_client::level_loading::Reason,
     ) {
-        // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
-        // table may still hold a local world's (a superflat Overworld's).
-        if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
-            sunrise_world::level::register_sea_level(key, spawn.sea_level);
-        }
-        self.track_remote_levels(&spawn.dimension);
         // The replacement player starts with its inventory menu, even if the
         // server switched levels without closing the previous container.
         self.remote_close_local();
         self.set_screen(Screen::Playing);
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.remote.as_mut() else {
             return;
         };
         // handleRespawn keeps the ClientLevel only for the same level key:
@@ -2518,15 +2523,47 @@ impl Game<'_> {
         } else {
             None
         };
-        if !same {
-            self.forget_all_remote_columns();
-        }
-        let r = self.remote.as_mut().unwrap();
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;
         let format = r.level_format(spawn);
-        let (dimension, shape) = (format.dimension, format.shape);
+        let level_key = mod_api::__private::dimension_key(&spawn.dimension);
+        let replacement = if same {
+            None
+        } else {
+            // ClientLevel's constructor posts Load before Minecraft.setLevel unloads
+            // the old level. Give the new level its own handle without retiring the
+            // old one, which must still read its existing chunks during Unload.
+            let epoch = super::native_lifecycle::fresh_epoch();
+            let handle = mod_api::LevelRef::new(epoch, level_key);
+            let mut world = Game::world_for_mods(self.res.facts().air, spawn.seed);
+            world.shape = format.shape;
+            world.game_time = self.world.game_time;
+            world.weather = self.world.weather;
+            r.constructing_level = Some(ConstructingClientLevel {
+                handle,
+                world,
+                facts: format.facts.clone(),
+            });
+            self.native_client_level_load(&spawn.dimension);
+            let level = self
+                .remote
+                .as_mut()
+                .unwrap()
+                .constructing_level
+                .take()
+                .unwrap();
+            self.unload_client_level();
+            self.forget_all_remote_columns();
+            Some(level)
+        };
+        // Keep the retiring level's metadata in place until its Unload has returned.
+        if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
+            sunrise_world::level::register_sea_level(key, spawn.sea_level);
+        }
+        self.track_remote_levels(&spawn.dimension);
+        let r = self.remote.as_mut().unwrap();
+        let dimension = format.dimension;
         r.chunk_format = format.chunk_format;
         r.level_facts = format.facts;
         r.synced_type = format.synced_type;
@@ -2534,7 +2571,7 @@ impl Game<'_> {
         r.resolve_clocks();
         self.world.day_time = r.clock_time(r.default_clock);
         r.level = spawn.dimension.clone();
-        r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
+        r.level_key = level_key;
         r.hashed_seed = spawn.seed;
         r.game_mode = spawn.game_type;
         r.flat = spawn.flat;
@@ -2564,7 +2601,7 @@ impl Game<'_> {
             .last_death
             .as_ref()
             .map(|d| (d.dimension.clone(), d.pos));
-        if !same {
+        if let Some(mut level) = replacement {
             self.clock.reset_client_level_tick_state();
             // A new ClientLevel: Minecraft.setLevel stops every sound.
             self.stop_sounds_for_new_level();
@@ -2576,26 +2613,19 @@ impl Game<'_> {
             streaming.remote = true;
             streaming.radius = self.streaming.radius;
             self.streaming = streaming;
-            let (time, day, weather) = (
-                self.world.game_time,
-                self.world.day_time,
-                self.world.weather,
-            );
-            self.reset_client_world(spawn.seed);
-            // Entity IDs belong to this ClientLevel, not the connection. A
-            // same-level respawn keeps it; a replacement invalidates handles.
-            self.native_lifecycle_open_started();
+            level.world.day_time = self.world.day_time;
+            self.install_client_world(level.world);
+            // A same-level respawn keeps the level; a replacement retires the
+            // old handles and adopts the epoch already given to Load listeners.
+            self.native_lifecycle_open_at(level.handle.epoch());
             self.native_lifecycle_world_ready();
-            self.world.shape = shape;
-            self.world.game_time = time;
-            self.world.day_time = day;
-            self.world.weather = weather;
             self.mobs.clear();
             self.clear_remote_objects();
             self.clear_remote_projectiles();
             self.dropped.clear();
             self.clear_client_particles();
             if let Some(r) = self.remote.as_mut() {
+                r.heard_level = Some(spawn.dimension.clone());
                 r.entities.clear();
                 r.passenger_vehicles.clear();
                 r.lerps.clear();
@@ -2616,15 +2646,6 @@ impl Game<'_> {
             self.pending_uploads.clear();
             if let Some(renderer) = self.renderer.as_mut() {
                 renderer.clear_sections(self.world.layout());
-            }
-            // The new ClientLevel is told before setLevel drops the old one.
-            let old = self
-                .remote
-                .as_mut()
-                .and_then(|r| r.heard_level.replace(spawn.dimension.clone()));
-            self.native_client_level_load(&spawn.dimension);
-            if let Some(old) = old {
-                self.native_client_level_unload(&old);
             }
         }
         self.streaming.relight_resent = relight_resent;
@@ -3421,7 +3442,9 @@ impl Game<'_> {
             C::Ping(p) => self.send(S::Pong(p)),
             // The server's next generation of mod registries: all of it or the connection.
             C::CustomPayload(p) if p.channel == sunrise_client::datapack_net::CHANNEL => {
-                sunrise_client::datapack_net::accept_chunk(&p.data)?;
+                if let Some(remote) = &mut self.remote {
+                    remote.datapacks.accept_chunk(&p.data)?;
+                }
             }
             C::CustomPayload(p)
                 if p.channel == sunrise_client::lan::commands::selector_sync::CHANNEL =>
@@ -10479,6 +10502,15 @@ impl ClientMenu {
 }
 
 impl Remote {
+    pub(super) fn constructing(
+        &self,
+        level: mod_api::LevelRef,
+    ) -> Option<&ConstructingClientLevel> {
+        self.constructing_level
+            .as_ref()
+            .filter(|pending| pending.handle == level)
+    }
+
     /// Project the session address for display once, dropping the memory transport's marker.
     pub(super) fn display_address_for(address: &str) -> Option<String> {
         (address != "local").then(|| sunrise_client::net::shown_address(address))
