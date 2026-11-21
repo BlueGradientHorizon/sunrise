@@ -3,7 +3,8 @@
 
 pub trait Hooks {
     /// Before a player's tick on both logical sides (NeoForge 26.3
-    /// `PlayerTickEvent.Pre`). Non-cancellable, including death-screen ticks.
+    /// `PlayerTickEvent.Pre`). Non-cancellable. On the client, fires through death tick 20,
+    /// but not after the local player is removed.
     /// `player` identifies the ticked player; on the server their state is
     /// acting. Fires before sleep, cooldowns and body work. Players still tick
     /// under `/tick freeze`, but not while the level is paused.
@@ -18,7 +19,8 @@ pub trait Hooks {
     )]
     fn player_tick_pre(player: PlayerRef);
     /// After a player's tick on both logical sides (NeoForge 26.3
-    /// `PlayerTickEvent.Post`). Non-cancellable, including death-screen ticks.
+    /// `PlayerTickEvent.Post`). Non-cancellable. On the client, fires through death tick 20,
+    /// but not after the local player is removed.
     /// `player` is the same identity as in `player_tick_pre`; on the server
     /// their state is acting. Runs after body work and server-side item,
     /// arrow and XP pickups, so reads see the completed tick. Client reads

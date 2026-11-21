@@ -4,7 +4,8 @@ pub trait Hooks {
     /// Override the client view's submersion. Camera fluid reads (`Camera.getFluidInCamera`)
     /// start with the game's fog type after `state_at_viewpoint`. The first-person water overlay
     /// instead asks at the local player's eye with `Water` if the player's tick sampled water
-    /// there, or `Atmospheric` otherwise. Setting `Water` enables that overlay; any other value
+    /// there, or `Atmospheric` otherwise. The sample comes from death tick 20 once the local
+    /// player is removed, until respawn. Setting `Water` enables the overlay; any other value
     /// suppresses it. Set `Atmospheric` to clear submersion or a fluid to force it. Later listeners
     /// see the earlier ones' value.
     ///

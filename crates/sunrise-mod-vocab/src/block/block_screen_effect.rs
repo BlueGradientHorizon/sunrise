@@ -21,7 +21,9 @@ pub trait BlockScreenEffectRenderer: Sync {
     /// Submit this overlay with read-only access to the client. Return `true` to suppress
     /// its vanilla quads, or `false` to leave them after yours. For block and water,
     /// cancellation at extraction still suppresses vanilla quads. For fire, only this
-    /// return value decides once a renderer was selected. Neither borrow outlives the call.
+    /// return value decides once a renderer was selected. A phase refusal discards every
+    /// quad emitted by that submission and leaves the vanilla drawing decision unchanged.
+    /// Neither borrow outlives the call.
     fn submit(&self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool;
 }
 
@@ -89,18 +91,22 @@ pub struct SelectedBlockScreenEffectRenderer {
 }
 
 impl SelectedBlockScreenEffectRenderer {
-    /// Submit the selected overlay under the selecting listener's mod scope.
-    pub fn submit(self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
+    /// Submit under the selecting listener's mod scope, returning no answer on failure.
+    pub fn submit(
+        self,
+        host: &dyn ClientHost,
+        render: BlockScreenEffectRender<'_>,
+    ) -> Option<bool> {
         let _scope = self
             .owner
             .map(|id| crate::mark_mod(id, "block_screen_effect_renderer::submit"));
         match crate::runtime::refusable(crate::runtime::outside_world(), || {
             self.renderer.submit(host, render)
         }) {
-            Ok(replace) => replace,
+            Ok(replace) => Some(replace),
             Err(refusal) => {
-                refusal.report();
-                false
+                log::warn!("native refusal in block_screen_effect_renderer::submit: {refusal}");
+                None
             }
         }
     }

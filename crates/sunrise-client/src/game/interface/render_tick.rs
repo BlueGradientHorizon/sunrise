@@ -449,7 +449,7 @@ impl Game<'_> {
                 continue;
             };
             let mut quads = CameraQuads::new(hand_projection);
-            if custom.renderer.submit(
+            let Some(replace) = custom.renderer.submit(
                 self,
                 block_screen_effect_render(
                     effect,
@@ -459,7 +459,11 @@ impl Game<'_> {
                     self.ui.hide_gui,
                     &mut GameCameraDrawContext::new(self, &mut quads),
                 ),
-            ) {
+            ) else {
+                // Only a finished submission can affect the frame.
+                continue;
+            };
+            if replace {
                 match effect {
                     BlockScreenEffect::Block => effects.block = None,
                     BlockScreenEffect::Water => effects.water = false,

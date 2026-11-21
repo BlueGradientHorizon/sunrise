@@ -129,8 +129,9 @@ without adding quads or suppressing vanilla drawing, select a renderer that subm
 
 Water and fire are extracted only in first person. Water starts with the player's tick-sampled eye fluid,
 which [`camera_submersion`](camera-and-collision-reads.md#the-fluid-the-camera-is-in) can override. The
-sample updates on player ticks even on the death screen. The water event provides the default water
-state at the player's eye block, even if that block is waterlogged.
+sample updates through death tick 20, when the local player is removed from the level. Extraction keeps
+using that last sample until respawn. The water event provides the default water state at the player's
+eye block, even if that block is waterlogged.
 `event.partial_tick` is world interpolation; `event.player_partial_tick` is local-player interpolation,
 which keeps advancing while the level is frozen.
 
@@ -138,8 +139,10 @@ which keeps advancing while the level is frozen.
 and a `CameraDrawContext`. Return `false` to prepend your quads to the vanilla overlay, or `true` to skip
 just that overlay's vanilla quads. Returning `false` does not restore canceled block or water quads. Fire
 is different: canceling with no renderer suppresses vanilla fire, but with a selected renderer that returns
-`false`, vanilla fire still follows. Submission runs in block, water, fire order; HUD camera overlays such
-as the vignette still draw above them.
+`false`, vanilla fire still follows. A phase refusal drops all quads from that submission without
+changing whether the vanilla overlay draws. Each refusal is reported, and the renderer may run again
+on the next frame. Submission runs in block, water, fire order; HUD camera overlays such as the
+vignette still draw above them.
 
 ```rust,ignore
 use mod_api::{

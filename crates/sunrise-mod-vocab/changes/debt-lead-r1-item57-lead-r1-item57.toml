@@ -1,0 +1,23 @@
+ids = [
+    "hook:camera_submersion",
+    "hook:extract_block_screen_effect",
+    "hook:player_tick_pre",
+    "hook:player_tick_post",
+    "method:BlockScreenEffectRenderer::submit",
+]
+why = """
+Vanilla 26.3's Entity.baseTick samples fluids before LocalPlayer.tickDeath removes the entity on
+death tick 20. ClientLevel.tickEntities then skips the removed player, so NeoForge's PlayerTickEvent
+Pre and Post stop with it. The LevelExtractor.extractPlayerState patch still uses the player's last
+eye-fluid sample until respawn. A phase refusal is a Sunrise isolation boundary: the render frame
+does not keep partial quads from a failed submission at NeoForge's ScreenEffectRenderer.submit site.
+"""
+migrate = """
+No signature changes. Keep applying camera_submersion to the eye sample to override first-person
+water eligibility. Do not expect water changes after death tick 20 to refresh that sample or cause
+another player_tick_pre/player_tick_post call. For work needed while the removed player's death
+screen is open, use a screen callback instead of the player tick hooks.
+In BlockScreenEffectRenderer::submit keep returning true to replace vanilla or false to prepend
+your quads. Only a completed submission contributes quads; a phase refusal leaves vanilla drawing
+as extraction decided and does not disable the renderer.
+"""

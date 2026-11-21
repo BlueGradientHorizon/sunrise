@@ -340,6 +340,63 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_refused_renderer_discards_partial_quads_and_runs_again() {
+    use mod_api::__private::{ModPhase, PhaseOwner};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static SUBMISSIONS: AtomicUsize = AtomicUsize::new(0);
+    struct ReadsLevel;
+    #[mod_api::__subscriptions]
+    impl Hooks for ReadsLevel {
+        fn extract_block_screen_effect(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut ExtractBlockScreenEffectEvent<'_>,
+        ) -> Flow {
+            if event.effect == Fire {
+                event.set_custom_renderer(&ReadsLevel);
+            }
+            Flow::Continue
+        }
+    }
+    impl BlockScreenEffectRenderer for ReadsLevel {
+        fn submit(&self, host: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
+            assert!(render.draw.quad(QUAD, marker(Fire)));
+            SUBMISSIONS.fetch_add(1, Ordering::Relaxed);
+            // World-only: in Setup the submission refuses after it has drawn.
+            let _ = host.level("minecraft:overworld");
+            false
+        }
+    }
+
+    with_client_game(|game| {
+        burning_player(game);
+        let water = game
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:water")
+            .unwrap();
+        game.world.set(0, 65, 0, water).unwrap();
+        assert!(sample_eye_in_water(game));
+        let mods = vec![ModEntry::new("reads-level", Box::new(ReadsLevel))];
+        mod_platform::testing::with_mods(mods.into(), || {
+            for phase in [ModPhase::Setup, ModPhase::Setup, ModPhase::World] {
+                let _phase = PhaseOwner::scope(phase);
+                let frame = names(&quads(game));
+                if phase == ModPhase::Setup {
+                    assert_eq!(frame, ["water", "fire", "fire"]);
+                } else {
+                    assert_eq!(frame, ["water", "mod fire", "fire", "fire"]);
+                }
+            }
+            assert_eq!(SUBMISSIONS.load(Ordering::Relaxed), 3);
+        });
+    });
+}
+
 struct Choice(u32);
 impl BlockScreenEffectRenderer for Choice {
     fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
@@ -477,7 +534,7 @@ fn water_extraction_follows_the_tick_sample_at_the_surface() {
 
 #[test]
 #[ignore = "daily"]
-fn a_dead_players_water_overlay_clears_on_the_next_client_tick() {
+fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
     with_client_game(|game| {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "water-overlay").unwrap();
@@ -527,6 +584,30 @@ fn a_dead_players_water_overlay_clears_on_the_next_client_tick() {
             assert!(!overlays.contains(&"water") && !overlays.contains(&"mod water"));
         });
         assert_eq!(dry, None);
+        assert_eq!(game.ui.death_time, 1);
+
+        // Tick 20 still samples before the local player is removed from the level.
+        for _ in 1..19 {
+            game.tick_remote().unwrap();
+        }
+        assert_eq!(game.ui.death_time, 19);
+        game.world.set(8, 65, 8, water).unwrap();
+        game.tick_remote().unwrap();
+        assert_eq!(game.ui.death_time, 20);
+        assert!(names(&quads(game)).contains(&"water"));
+
+        // Extraction still reads that last sample after removal, even as the world ticks.
+        game.world.set(8, 65, 8, air).unwrap();
+        game.tick_remote().unwrap();
+        let still_wet = observe_overlay(Water, || {
+            assert!(
+                names(&quads(game))
+                    .windows(2)
+                    .any(|pair| pair == ["mod water", "water"])
+            );
+        });
+        assert_eq!(still_wet.unwrap().pos, BlockPos::new(8, 65, 8));
+        assert_eq!(game.ui.death_time, 20);
         server.shutdown();
     });
 }
