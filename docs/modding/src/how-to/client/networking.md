@@ -76,12 +76,17 @@ an ended connection or configuration epoch (or a pending disconnect) returns
 `Disconnected`. A refusal never advances a task. Tasks, contexts, connection
 capabilities, and task errors have no `Wire` encoding.
 
-Completion takes effect directly once the callback or payload handler succeeds
-and publishes its deferred sends (including replies), with no transaction-layer
-staging and independently of nested child transactions. Repeated callback
-`context.finish()` calls coalesce, and `fail` wins over `finish`. Handler
-failure or an explicit payload-handler disconnect discards the completion request
-even if the rest of the handler succeeds.
+On the **main thread**, `finish_configuration_task` completes the matching
+running task directly in the configuration session with no transaction-layer
+staging and independently of nested child transactions; the server advances to
+the next task or `FinishConfiguration` on the next tick, after the handler's
+committed replies are queued. On the **network thread**, `finish_configuration_task`
+validates and binds the currently running task turn and publishes completion
+inside the same active-epoch gate after staged replies succeed; handler failure,
+an explicit `disconnect`, or epoch invalidation discards that staged completion.
+In task callbacks (`start`/`tick`), repeated `context.finish()` calls coalesce
+and `fail` wins over `finish`, publishing once the callback succeeds and its
+deferred sends commit.
 
 A refused task payload send returns `Err(ConfigurationTaskError::Payload(_))`
 without failing the task session, so the task can handle it, call

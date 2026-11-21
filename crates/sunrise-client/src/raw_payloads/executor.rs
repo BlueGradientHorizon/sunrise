@@ -109,9 +109,15 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                         After::Work(work) => work.publish().map_err(FailedPublication::Main)?,
                     }
                 }
+                if reason.is_none()
+                    && let Some((session, ordinal)) = finish_task.as_ref()
+                {
+                    session.finish_ordinal_under_epoch(*ordinal);
+                }
                 Ok::<(), FailedPublication>(())
             });
             drop(after);
+            drop(finish_task);
             match result {
                 Some(Err(error)) => {
                     let message = match &error {
@@ -128,10 +134,6 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
                 Some(Ok(())) => {
                     if let Some(reason) = reason {
                         endpoint.disconnect(reason);
-                    } else if incoming.epoch.active()
-                        && let Some((session, task_type)) = finish_task
-                    {
-                        let _ = session.finish_type(&task_type);
                     }
                 }
                 // Phase/connection cancellation cancels the staged disconnect too.
@@ -169,10 +171,7 @@ struct NetworkContext<'a> {
     main: &'a MainQueue,
     after: Vec<Option<After>>,
     disconnect: Option<Text>,
-    finish_task: Option<(
-        Arc<crate::lan::configuration_tasks::Session>,
-        mod_api::Identifier,
-    )>,
+    finish_task: Option<(Arc<crate::lan::configuration_tasks::Session>, usize)>,
 }
 impl IPayloadContext for NetworkContext<'_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -283,8 +282,8 @@ impl IPayloadContext for NetworkContext<'_> {
         if self.finish_task.is_some() {
             return Err(mod_api::ConfigurationTaskError::NotRunning);
         }
-        session.check_running_type(task_type)?;
-        self.finish_task = Some((session, task_type.clone()));
+        let ordinal = session.running_ordinal_for_type(task_type)?;
+        self.finish_task = Some((session, ordinal));
         Ok(())
     }
     fn disconnect(&mut self, reason: Text) {

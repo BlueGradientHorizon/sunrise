@@ -31,6 +31,7 @@ enum Case {
 }
 struct Fixture {
     case: Case,
+    connection: Mutex<Option<mod_api::ConfigurationConnection>>,
     starts: Mutex<Vec<Identifier>>,
     joins: Mutex<Vec<String>>,
     type_reads: AtomicUsize,
@@ -56,9 +57,20 @@ impl IPayloadHandler for Reply {
         let reply = match bytes.0.as_slice() {
             [7] => {
                 assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
-                // Completion is not rolled back when an inner child transaction aborts.
+                let connection = self.0.connection.lock().unwrap().unwrap();
+                // Main-thread completion takes effect directly in the session without
+                // waiting for handler return or transaction close, so it is neither
+                // deferred nor rolled back when an inner child transaction aborts.
                 let child = context.server_host().unwrap().transaction_open();
                 context.finish_configuration_task(&kind("first")).unwrap();
+                assert_eq!(
+                    context.server_host().unwrap().configuration_send_payload(
+                        connection,
+                        &PayloadId(CHANNEL.into()),
+                        PayloadBytes(vec![77]),
+                    ),
+                    Err(ConfigurationTaskError::NotRunning)
+                );
                 assert_eq!(
                     context.finish_configuration_task(&kind("first")),
                     Err(ConfigurationTaskError::NotRunning)
@@ -198,6 +210,7 @@ impl Hooks for Mod {
         if event.name != "ConfigPeer" {
             return;
         }
+        *self.0.connection.lock().unwrap() = Some(event.connection);
         if matches!(self.0.case, Case::Vanilla) {
             assert!(
                 !event
@@ -391,6 +404,7 @@ impl Fixture {
     fn new(case: Case) -> Self {
         Self {
             case,
+            connection: Mutex::new(None),
             starts: Mutex::new(Vec::new()),
             joins: Mutex::new(Vec::new()),
             type_reads: AtomicUsize::new(0),

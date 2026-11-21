@@ -69,10 +69,12 @@ without automatically failing the task session. Replace `connection.finish(host,
 For delayed completion, call `cx.finish_configuration_task(&task_type)` in a server \
 configuration payload handler (main thread or network thread) with the task's `Identifier` \
 (matching NeoForge's `ServerPayloadContext.finishCurrentTask(ConfigurationTask.Type)`), and \
-use `cx.reply(channel, bytes)` to send its reply. Completion takes effect once the handler \
-succeeds and publishes its deferred sends, independently of nested child transactions; \
-handler failure or an explicit handler disconnect discards the request. Custom `IPayloadContext` \
-implementations must implement \
+use `cx.reply(channel, bytes)` to send its reply. On the main thread, completion takes effect \
+directly in the configuration session without transaction staging (the server advances on the \
+next tick after committed replies are queued); on the network thread, completion is bound to \
+the validated task turn and publishes inside the active-epoch gate after staged replies, so \
+handler failure, an explicit disconnect, or epoch invalidation discards it. Custom \
+`IPayloadContext` implementations must implement \
 `finish_configuration_task(&mut self, task_type: &Identifier) -> Result<(), ConfigurationTaskError>` \
 and return `WrongContext` outside server configuration payload handlers.
 

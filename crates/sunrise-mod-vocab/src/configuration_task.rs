@@ -70,6 +70,7 @@ pub struct RegisteredConfigurationTask {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ConfigurationConnection {
+    incarnation: u64,
     id: u64,
 }
 impl ConfigurationConnection {
@@ -150,13 +151,13 @@ pub enum ConfigurationTaskOutcome {
 
 // hidden: the engine makes capabilities after allocating a connection identity.
 #[doc(hidden)]
-pub fn configuration_connection(id: u64) -> ConfigurationConnection {
-    ConfigurationConnection { id }
+pub fn configuration_connection(incarnation: u64, id: u64) -> ConfigurationConnection {
+    ConfigurationConnection { incarnation, id }
 }
 // hidden: the engine resolves and validates a capability before every operation.
 #[doc(hidden)]
-pub fn configuration_connection_id(connection: ConfigurationConnection) -> u64 {
-    connection.id
+pub fn configuration_connection_parts(connection: ConfigurationConnection) -> (u64, u64) {
+    (connection.incarnation, connection.id)
 }
 // hidden: the engine lends the callback its outcome slot.
 #[doc(hidden)]
@@ -199,7 +200,7 @@ mod tests {
         let first = Identifier::parse("demo:first").unwrap();
         let empty = Identifier::from_parts("demo", "").unwrap();
         let mut event = RegisterConfigurationTasksEvent {
-            connection: configuration_connection(1),
+            connection: configuration_connection(1, 1),
             player: 1,
             name: "Peer",
             registration: &mut registration,

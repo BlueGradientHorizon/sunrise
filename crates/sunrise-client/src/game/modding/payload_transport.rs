@@ -102,7 +102,6 @@ impl Game<'_> {
             receiver: &incoming.receiver,
             disconnect: None,
             failure: None,
-            finish_task: None,
         };
         let result = match incoming.body {
             Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
@@ -116,15 +115,7 @@ impl Game<'_> {
         };
         let reason = context.disconnect.take();
         let failure = context.failure.take().or_else(|| result.err());
-        let finish_task = context.finish_task.take();
         context.game.transaction_close(&seal, failure.is_none());
-        if failure.is_none()
-            && reason.is_none()
-            && incoming.epoch.active()
-            && let Some((session, task_type)) = finish_task
-        {
-            let _ = session.finish_type(&task_type);
-        }
         if let Some(error) = failure.as_ref().filter(|_| incoming.raw) {
             // A raw channel's bytes come from any client; one declaring mod's
             // refusal rolls back its own work only, and the next mod still runs.
@@ -156,10 +147,6 @@ struct MainContext<'a, 'resources> {
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
     failure: Option<String>,
-    finish_task: Option<(
-        Arc<sunrise_client::lan::configuration_tasks::Session>,
-        Identifier,
-    )>,
 }
 impl IPayloadContext for MainContext<'_, '_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -258,12 +245,7 @@ impl IPayloadContext for MainContext<'_, '_> {
         {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        if self.finish_task.is_some() {
-            return Err(ConfigurationTaskError::NotRunning);
-        }
-        session.check_running_type(task_type)?;
-        self.finish_task = Some((session, task_type.clone()));
-        Ok(())
+        session.finish_type(task_type)
     }
     fn disconnect(&mut self, reason: Text) {
         self.disconnect = Some(reason);

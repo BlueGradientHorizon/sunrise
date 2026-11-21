@@ -39,6 +39,14 @@ impl ConfigSender {
         self.writer
             .disconnect(cfg::Clientbound::Disconnect(cfg::Disconnect { reason }).encode());
     }
+    #[cfg(test)]
+    pub(crate) fn test_sender(transport: Arc<Transport>) -> (Self, Connection) {
+        let (peer, server) = sunrise_protocol::connection::Pipe::pair();
+        let mut server = Connection::local(server);
+        let peer = Connection::local(peer);
+        let writer = QueuedWriter::new(server.writer.take()).unwrap();
+        (Self { writer, transport }, peer)
+    }
 }
 
 /// The engine's channels that every configuration loop reads itself, kept into play.

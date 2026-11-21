@@ -438,6 +438,7 @@ pub struct Shared {
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
     configuration_requests: Option<Sender<configuration_tasks::ConfigurationRequest>>,
+    lan_incarnation: u64,
     next_configuration_connection: AtomicU64,
     pub config: NetConfig,
     motd: Mutex<String>,
@@ -475,13 +476,14 @@ impl Shared {
     pub fn set_sync(&self, sync: Arc<data::SyncData>) {
         *self.sync.lock().unwrap_or_else(|e| e.into_inner()) = sync;
     }
-    /// Allocate a per-server configuration connection identifier.
-    /// Exhaustion is permanent for this server; never wrap and reuse a token.
+    /// Allocate a per-server configuration connection identifier bound to this
+    /// `Lan` incarnation. Exhaustion is permanent for this server; never wrap and
+    /// reuse a token.
     pub(super) fn next_configuration_connection(&self) -> Option<mod_api::ConfigurationConnection> {
         self.next_configuration_connection
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .ok()
-            .map(mod_api::__private::configuration_connection)
+            .map(|id| mod_api::__private::configuration_connection(self.lan_incarnation, id))
     }
     /// Allocate from the shared network and connectionless actor namespace.
     /// Exhaustion is permanent for this server; never wrap and reuse a token.
@@ -739,12 +741,17 @@ impl Lan {
         let (listen, port, announce) = (config.listen, config.port, config.announce);
         let hide_online_players = config.hide_online_players;
         let enable_status = config.enable_status;
+        static NEXT_LAN_INCARNATION: AtomicU64 = AtomicU64::new(1);
+        let lan_incarnation = NEXT_LAN_INCARNATION
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .map_err(|_| io::Error::other("LAN incarnation identifiers exhausted"))?;
         let shared = Arc::new(Shared {
             payload_local: crate::raw_payloads::Local::capture(crate::raw_payloads::Side::Server)
                 .map_err(io::Error::other)?,
             sync: Mutex::new(sync),
             events: tx,
             configuration_requests: request_tx,
+            lan_incarnation,
             next_configuration_connection: AtomicU64::new(1),
             motd: Mutex::new(config.motd.clone()),
             max_players: AtomicUsize::new(config.max_players),
@@ -766,7 +773,7 @@ impl Lan {
         });
         let mut lan = Self {
             shared,
-            configuration_tasks: configuration_tasks::Tasks::default(),
+            configuration_tasks: configuration_tasks::Tasks::new(lan_incarnation),
             events,
             configuration_requests: request_rx,
             port: 0,
@@ -1148,6 +1155,46 @@ mod tests {
     use super::conn::MEMORY_ADDRESS;
     use super::*;
     use std::{io::Read, time::Instant};
+
+    #[test]
+    fn stale_configuration_connection_cannot_address_replacement_lan_with_same_local_id() {
+        let config = || NetConfig {
+            listen: false,
+            announce: false,
+            ..NetConfig::lan(0, "config-incarnation".into(), 1)
+        };
+        let lan_a =
+            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
+                .unwrap();
+        let mut lan_b =
+            Lan::start_with_configuration_tasks(Arc::new(data::SyncData::empty()), config(), true)
+                .unwrap();
+        let conn_a = lan_a.shared.next_configuration_connection().unwrap();
+        let conn_b = lan_b.shared.next_configuration_connection().unwrap();
+        let (inc_a, local_a) = mod_api::__private::configuration_connection_parts(conn_a);
+        let (inc_b, local_b) = mod_api::__private::configuration_connection_parts(conn_b);
+        assert_eq!(local_a, 1);
+        assert_eq!(local_b, 1);
+        assert_ne!(inc_a, inc_b);
+        assert_ne!(conn_a, conn_b);
+
+        let (sender, _peer) =
+            config_payloads::ConfigSender::test_sender(crate::raw_payloads::Transport::empty());
+        let session = configuration_tasks::Session::new(sender);
+        lan_b
+            .configuration_tasks
+            .insert(&configuration_tasks::ConfigurationRequest {
+                connection: conn_b,
+                player: 1,
+                name: "Peer".into(),
+                session: session.clone(),
+            });
+        assert!(lan_b.configuration_tasks.get(conn_b).is_some());
+        assert!(lan_b.configuration_tasks.get(conn_a).is_none());
+        assert!(lan_b.configuration_tasks.take_task(conn_a, 0).is_none());
+        assert!(lan_b.configuration_tasks.remove(conn_a).is_empty());
+        assert!(lan_b.configuration_tasks.get(conn_b).is_some());
+    }
 
     #[test]
     #[ignore = "daily"]
