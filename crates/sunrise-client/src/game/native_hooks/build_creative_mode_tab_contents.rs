@@ -222,6 +222,12 @@ impl Game<'_> {
     /// The names mod items' parts give the creative search's stacks
     /// (`Item.getName`), which its search matches as their name lines.
     pub(in crate::game) fn refresh_creative_search_names(&mut self) {
+        // Only when the search tab's stacks were made again, not every creative tick.
+        let generation = self.creative_screen.search_generation();
+        if self.creative_search_named == Some(generation) {
+            return;
+        }
+        self.creative_search_named = Some(generation);
         let names = self
             .creative_screen
             .search_items()

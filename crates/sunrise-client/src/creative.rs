@@ -88,6 +88,8 @@ pub struct Creative {
     /// The name a mod item's part gives each search stack (`Item.getName`), by index into
     /// `search_items`; empty while no part names any. Set by the game (`set_search_names`).
     search_names: Vec<Option<crate::text::Text>>,
+    /// Counts `project`s: a new value means new search stacks to name.
+    search_generation: u64,
     search_index: Vec<SearchEntry>,
     /// Definitions from the same catalog snapshot, rendered in the active language.
     holders: Arc<sunrise_items::creative_catalog::Holders>,
@@ -486,6 +488,7 @@ impl Creative {
             },
             search_items: Vec::new(),
             search_names: Vec::new(),
+            search_generation: 0,
             search_index: Vec::new(),
             holders: Default::default(),
             items: Default::default(),
@@ -527,6 +530,7 @@ impl Creative {
         self.tabs = tabs;
         self.search_items = search;
         self.search_names.clear();
+        self.search_generation += 1;
         self.index_search();
     }
 
@@ -807,6 +811,10 @@ impl Creative {
     /// The search tab's stacks.
     pub fn search_items(&self) -> &[ItemStack] {
         &self.search_items
+    }
+    /// Which projection of the search stacks this is: it changes whenever they are made again.
+    pub fn search_generation(&self) -> u64 {
+        self.search_generation
     }
     /// The names mod items' parts give the search stacks (`Item.getName`), by index into
     /// [`Self::search_items`]: the search matches them as the stacks' name lines. Nothing but

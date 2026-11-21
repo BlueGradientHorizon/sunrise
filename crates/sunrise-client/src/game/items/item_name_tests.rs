@@ -77,26 +77,26 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             renamed.data_mut().custom_name = Some(Tag::String("Diary".into()));
             assert_eq!(plain(game.stack_hover_name_text(&renamed)), "Diary");
 
-            // The anvil (`AnvilMenu.createResult`): its box holds the Part's name, which leaves
-            // the stack as it is; the item's base name typed in is a rename.
-            let hover = plain(game.stack_hover_name_text(&named));
+            // The tooltip's and the hotbar's styled name is the same resolved name.
+            assert_eq!(plain(game.styled_stack_name(&labelled)), KEY);
+            assert_eq!(plain(game.styled_stack_name(&single)), "Label");
+
+            // The anvil menu itself (`AnvilMenu.createResult`, as the server runs it): the
+            // Part's name typed back unchanged makes no result; the item's base name, an
+            // edit, renames it; a third name renames it too.
+            let env = game.menu_env();
             let anvil = |name: &str| {
-                sunrise_client::stations::anvil_result(
-                    &game.stations().enchantments,
-                    game.items(),
-                    Some(&named),
-                    None,
-                    Some(name),
-                    &hover,
-                    true,
-                )
+                let mut menu = sunrise_client::menu::Menu::new(sunrise_client::menu::Kind::Anvil);
+                menu.set_slot(&env, 0, Some(named.clone()));
+                menu.anvil_created();
+                menu.rename(&env, name);
+                menu.slot(2).cloned()
             };
-            assert!(
-                anvil(KEY).result.is_none(),
-                "an unchanged name renames nothing"
-            );
-            let renamed = anvil("Paper").result.expect("the base name is a rename");
-            assert_eq!(renamed.custom_name().as_deref(), Some("Paper"));
+            assert_eq!(anvil(KEY), None, "an unchanged name renames nothing");
+            let base = anvil("Paper").expect("the base name is a rename");
+            assert_eq!(base.custom_name().as_deref(), Some("Paper"));
+            let other = anvil("Minutes").expect("another name is a rename");
+            assert_eq!(other.custom_name().as_deref(), Some("Minutes"));
         });
     });
 }

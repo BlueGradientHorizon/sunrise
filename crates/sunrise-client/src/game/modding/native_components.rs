@@ -188,9 +188,11 @@ impl Game<'_> {
     ) -> Option<sunrise_client::text::Text> {
         sunrise_client::stations::item_name_part(&self.loop_context, stack)
     }
-    /// `ItemStack.getStyledHoverName`: the custom name (italic), else the
-    /// name a mod item's Part gives the stack, else vanilla's hover name.
-    /// The Part is asked at most once.
+    /// `ItemStack.getStyledHoverName`: the custom name (italic) or a book's
+    /// title, else the name a mod item's Part gives the stack, else the
+    /// styled name as before (its `item_name`, the item's), so the tooltip
+    /// and the hotbar name a Part's stack as the anvil, commands and the
+    /// searches do. The Part is asked at most once.
     pub(in crate::game) fn styled_stack_name(
         &self,
         stack: &ItemStack,

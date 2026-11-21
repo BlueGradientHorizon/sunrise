@@ -748,12 +748,9 @@ impl Game<'_> {
                         &|k| self.pack.names.display_get(k),
                         &|attribute| self.attribute_style(attribute, false),
                     );
-                    // The name a mod item's Part gives the stack is its name line.
-                    if !sunrise_client::stations::names_itself(stack)
-                        && let Some(name) = self.mod_item_name(stack)
-                        && let Some(first) = lines.first_mut()
-                    {
-                        *first = name.plain();
+                    // The resolved name (a mod item's Part included) is the name line.
+                    if let Some(first) = lines.first_mut() {
+                        *first = self.stack_hover_name_text(stack).plain();
                     }
                     lines
                 })

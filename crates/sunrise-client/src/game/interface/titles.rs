@@ -69,6 +69,7 @@ impl Game<'_> {
         Some(HeldName {
             item: stack.item.to_string(),
             // `Item.getName` of a mod item whose Part names the stack, under a custom name.
+            // `styled_stack_name`'s order, with the hotbar's own default line.
             hover_name: match (!sunrise_client::stations::names_itself(stack))
                 .then(|| self.mod_item_name(stack))
                 .flatten()
