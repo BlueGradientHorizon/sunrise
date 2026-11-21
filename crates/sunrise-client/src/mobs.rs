@@ -3600,6 +3600,8 @@ impl MobWorld<'_> {
 /// and the mob layer reaches it through `MobWorld`.
 pub trait WhoLookup {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who>;
+    /// The identity of a particular live mob, including the one lent out for this tick.
+    fn mob_uuid(&self, id: u32) -> Option<[i32; 4]>;
 }
 /// `Entity.getTeam` of the player and of the mobs on a team.
 #[derive(Clone, Debug, Default)]

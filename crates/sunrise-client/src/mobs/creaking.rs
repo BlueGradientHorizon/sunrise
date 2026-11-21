@@ -181,8 +181,7 @@ pub fn entity_event(m: &mut Mob, event: u8) {
         _ => {}
     }
 }
-/// The heart this creaking is bound to protects it (`isProtector`); a link
-/// read from a save is trusted until the heart resolves it.
+/// `isProtector` compares the live Creaking, resolving the saved link by UUID.
 fn protected(m: &Mob, w: &MobWorld) -> bool {
     let Some([x, y, z]) = m.extra.home else {
         return true;
@@ -193,7 +192,7 @@ fn protected(m: &Mob, w: &MobWorld) -> bool {
     match w.world.block_entities.get(&(x, y, z)) {
         Some(BlockEntity::CreakingHeart(h)) => match h.creaking {
             Some((Some(id), _)) => id == m.id,
-            Some((None, _)) => true,
+            Some((None, uuid)) => w.who_lookup.and_then(|level| level.mob_uuid(m.id)) == Some(uuid),
             None => false,
         },
         _ => false,

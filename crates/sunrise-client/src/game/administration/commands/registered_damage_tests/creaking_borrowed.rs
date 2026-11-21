@@ -84,7 +84,13 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
     if run_fresh_cases(
         "game::commands::world_cmds::registered_damage_tests::creaking_borrowed::borrowed_creaking_hurt_finishes_before_the_tick_continues",
         CASE,
-        &["expiry", "offline", "protector", "cramming"],
+        &[
+            "expiry",
+            "offline",
+            "protector",
+            "mismatched_protector",
+            "cramming",
+        ],
     ) {
         return;
     }
@@ -127,6 +133,14 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
             assert!(game.last_hurt_by_player.contains_key(&mob));
             if case == "offline" {
                 game.last_hurt_by_player.insert(mob, PlayerCredit(0x23));
+            }
+            if case == "mismatched_protector" {
+                let Some(BlockEntity::CreakingHeart(heart)) =
+                    game.world.block_entities.get_mut(&(8, 64, 8))
+                else {
+                    panic!("missing heart");
+                };
+                heart.creaking = Some((None, [86, 0, 0, 99]));
             }
             if case == "expiry" {
                 // Vanilla keeps the reference when the clock goes 1 -> 0. The
@@ -197,8 +211,8 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 (flashes, sways)
             };
             game.tick_creature_entities().unwrap();
-            let reacted = usize::from(case != "offline");
-            let swayed = usize::from(case != "offline" && case != "protector");
+            let reacted = usize::from(!matches!(case.as_str(), "offline" | "mismatched_protector"));
+            let swayed = if case == "protector" { 0 } else { reacted };
             let reaction = live_reaction(game);
             let creaking = game.mob_object(mob).unwrap_or_else(|| {
                 let residents: Vec<_> = game.mobs.iter().map(|m| (m.id, &m.kind.id, m.position)).collect();
@@ -211,6 +225,7 @@ fn borrowed_creaking_hurt_finishes_before_the_tick_continues() {
                 creaking.position,
                 creaking.velocity
             );
+            assert_eq!(creaking.alive(), case != "mismatched_protector");
             let phase = if peer.is_some() { 8 } else { 7 };
             assert_eq!(creaking.extra.ints[0], if reacted != 0 { phase } else { 0 });
             let first = heard.lock().unwrap().reactions.clone();
