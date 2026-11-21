@@ -1052,6 +1052,7 @@ impl LootData {
         };
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: LegacyRandom::new(0),
             biome: None,
@@ -1151,6 +1152,7 @@ impl LootData {
         };
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: random.clone(),
             biome: None,
@@ -1293,6 +1295,7 @@ fn shuffle_and_split(result: &mut Vec<LootStack>, slots: usize, random: &mut imp
 
 struct Context<'a, R> {
     query: std::rc::Rc<query::LootQuery>,
+    place: Option<Arc<LootPlace>>,
     data: &'a LootData,
     random: R,
     biome: Option<&'a str>,

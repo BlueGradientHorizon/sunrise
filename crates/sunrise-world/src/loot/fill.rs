@@ -73,6 +73,7 @@ impl LootData {
         });
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: random.clone(),
             biome: context.biome,

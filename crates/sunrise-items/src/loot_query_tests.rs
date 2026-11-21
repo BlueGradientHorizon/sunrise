@@ -477,6 +477,7 @@ fn queried_ability_tags_use_prepared_item_sets() {
     };
     let context = LootContext {
         query: query::current_query(),
+        place: sunrise_world::loot::current_native_loot_place(),
         items: &items,
         block: "",
         properties: &props,

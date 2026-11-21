@@ -114,7 +114,7 @@ impl<R: RandomSource> LootContext<'_, R> {
             luck: 0.0,
             biome: None,
             seed,
-            place: sunrise_world::loot::current_native_loot_place(),
+            place: self.place.clone(),
         }
     }
 }
@@ -313,6 +313,7 @@ impl<R: RandomSource> sunrise_world::loot::global_modifiers::ModifierRoll
         // The original root's output policy does not filter a raw sub-roll.
         let raw = LootContext {
             query: context.query.clone(),
+            place: context.place.clone(),
             items: context.items,
             block: context.block,
             properties: context.properties,

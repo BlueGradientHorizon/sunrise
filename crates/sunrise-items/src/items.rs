@@ -1744,6 +1744,7 @@ impl Items {
         let empty = sunrise_world::chunk::BlockProperties::new();
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block: "",
             properties: &empty,
@@ -1844,6 +1845,7 @@ impl Items {
         let ask = |_: &mut R, id: &str, level: u32| roll.levels.map_or(level, |ask| ask(id, level));
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block,
             properties,
@@ -1913,6 +1915,7 @@ impl Items {
         let empty = sunrise_world::chunk::BlockProperties::new();
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block: "",
             properties: &empty,
@@ -1954,6 +1957,7 @@ impl Items {
     ) -> Vec<ItemStack> {
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block,
             properties,
@@ -1985,6 +1989,7 @@ impl Items {
         let empty = sunrise_world::chunk::BlockProperties::new();
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block: "",
             properties: &empty,
@@ -2124,6 +2129,7 @@ impl Items {
         let empty = sunrise_world::chunk::BlockProperties::new();
         let ctx = LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items: self,
             block: "",
             properties: &empty,
@@ -2222,6 +2228,7 @@ pub type EntityTarget<'a> = (
 );
 struct LootContext<'a, R> {
     query: std::rc::Rc<sunrise_world::loot::query::LootQuery>,
+    place: Option<Arc<sunrise_world::loot::LootPlace>>,
     items: &'a Items,
     block: &'a str,
     properties: &'a sunrise_world::chunk::BlockProperties,
@@ -4580,6 +4587,7 @@ mod tests {
     ) -> LootContext<'a, LegacyRandom> {
         LootContext {
             query: sunrise_world::loot::query::current_query(),
+            place: sunrise_world::loot::current_native_loot_place(),
             items,
             block,
             properties: props,

@@ -15,7 +15,7 @@ impl<'a, R: RandomSource> Context<'a, R> {
             luck: self.luck,
             biome: self.biome,
             seed,
-            place: current_native_loot_place(),
+            place: self.place.clone(),
         }
     }
 }
@@ -44,6 +44,7 @@ impl LootData {
         };
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: random.clone(),
             biome,
@@ -75,6 +76,7 @@ impl LootData {
         };
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: random.clone(),
             biome,
@@ -97,6 +99,7 @@ impl LootData {
     ) -> Vec<LootStack> {
         let mut c = Context {
             query: query::current_query(),
+            place: current_native_loot_place(),
             data: self,
             random: random.clone(),
             biome: None,
