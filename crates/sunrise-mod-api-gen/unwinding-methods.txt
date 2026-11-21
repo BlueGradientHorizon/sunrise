@@ -921,14 +921,6 @@ player_modes::player_may_fly
 player_modes::player_previous_game_mode
 player_modes::player_set_abilities
 player_modes::player_set_game_mode
-player_original::original_player_dimension
-player_original::original_player_effects
-player_original::original_player_experience
-player_original::original_player_health
-player_original::original_player_inventory_slot
-player_original::original_player_level
-player_original::original_player_position
-player_original::original_player_uuid
 player_progress::player_award_stat
 player_progress::player_reset_stat
 player_progress::player_stat

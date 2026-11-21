@@ -1245,26 +1245,6 @@ impl From<PlayerRef> for EntityRef {
     }
 }
 
-/// The original player lent to `player_clone`. Every read expires when the hook returns;
-/// this is deliberately not a live player or entity handle.
-// exhaustive: its field is private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct OriginalPlayerRef {
-    pub(crate) token: u64,
-}
-
-impl OriginalPlayerRef {
-    /// Read the original's attachment, including nonpersistent and non-copy-on-death data.
-    /// A missing value answers its default without changing the replacement player.
-    pub fn attachment<T: Clone + Send + Sync + 'static>(
-        self,
-        host: &mut dyn crate::Host,
-        key: &crate::AttachmentType<T>,
-    ) -> Result<T, crate::AttachmentError> {
-        key.get(host, crate::Holder::OriginalPlayer(self.token))
-    }
-}
-
 /// The collision flags left by a player's last `Entity.move`.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

@@ -170,25 +170,42 @@ over-budget render generation does not change the client's synced copy.
 
 ## Copying on respawn and conversion
 
-`copy_on_death` requires a codec. Player respawn copies opted-in entries via their
-encoded representation, including raw entries of an absent mod; other entries are
-removed. A mob's conversion (a villager struck into a witch, a zombie villager cured, a
-piglin zombified, a tadpole grown) copies every entry with a codec, raw entries of an absent
-mod included, to the new mob through its encoded form, over what its construction set; entries
-without a codec stay on the removed mob. A cancelled `living_conversion_pre` copies nothing,
-`living_conversion_post` sees the copy, and the copy is not synced on its own (the new mob's
-spawn carries its synced entries).
+`copy_on_death` requires a codec. On death respawn, only opted-in (`copy_on_death`)
+entries with a codec — including raw entries of an absent mod — are copied to the
+replacement via their encoded representation; other entries stay only on the retained old
+player. On return from the End after credits (`was_death = false`), every serializable
+entry (any entry with a codec, including raw entries of an absent mod) is copied to the
+replacement via its encoded representation, while entries without a codec stay only on
+the retained old player. In both cases the copy runs even when no mod subscribes to
+`player_clone`, and the replacement starts from fresh encoded entries rather than sharing
+decoded instances with the old player. A mob's conversion (a villager struck into a witch,
+a zombie villager cured, a piglin zombified, a tadpole grown) copies every entry with a
+codec, raw entries of an absent mod included, to the new mob through its encoded form,
+over what its construction set; entries without a codec stay on the removed mob. A
+cancelled `living_conversion_pre` copies nothing, `living_conversion_post` sees the copy,
+and the copy is not synced on its own (the new mob's spawn carries its synced entries).
 
 ## Reading the original player
 
-`player_clone` supplies `event.original: OriginalPlayerRef` alongside the replacement's
-`event.player` UUID. During that hook, `event.original.attachment(host, &COUNTER)` reads
-the old value even when `copy_on_death` is false or the type has no codec;
-`COUNTER.get(host, Holder::Player(event.player))` reads the replacement's retained value
-or fresh default. This works on death and on return from the End.
-The original's `position`, `dimension`, `level`, and `inventory_slot` methods read the
-same pre-copy player. Inventory slot numbers are 0–35 for the main inventory,
-100–103 for boots through helmet, and -106 for the off hand. Every original read expires
-when the hook returns; keeping the handle does not keep the old player alive.
-The snapshot retains shared attachment bindings, not a deep freeze of interior mutability.
-With no `player_clone` listener, no original snapshot is allocated.
+`player_clone` supplies `event.original: OriginalPlayer<'_>` alongside the replacement's
+`event.player` UUID. During that hook, `event.original.attachment(&COUNTER)` reads the old
+player's value even when `copy_on_death` is false or the type has no codec, inserting its
+default on the old player if absent; `COUNTER.get(host, Holder::Player(event.player))` reads
+the replacement's retained value or fresh default. This works on death and on return from
+the End. The original's `has_attachment`, `existing_attachment` (decoding and caching a
+saved entry once without inserting a default), `with_decoded_attachment`, `set_attachment`,
+and `remove_attachment` follow normal attachment-holder semantics on the retained old player
+without touching the replacement, and participate in `host.transaction` so an aborted
+transaction rolls back writes, removals, default insertions and decode caching on both
+holders together. The replacement is already assigned its final respawn level, including
+any `player_respawn_position` redirect. It has not been placed or published in the bulk
+attachment index yet. Requery after placement: a bulk write token for the old player is
+stale even though the replacement reuses that player's UUID.
+
+The same `OriginalPlayer<'_>` view exposes `uuid`, `position`, `dimension`, `level`,
+`health`, `experience`, `effects`, `persistent_data`, and `with_inventory` for the pre-copy
+player. `with_inventory` borrows an `InventoryView` using vanilla `Inventory` slot numbering:
+0–35 for the main inventory (0–8 hotbar), 36–39 for boots through helmet, 40 for the off
+hand, 41 for body, and 42 for saddle. Rust's borrow checker binds `event.original` to the
+callback lifetime, preventing the view from outliving `player_clone`. With no `player_clone`
+listener, no original player state is retained.

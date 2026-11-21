@@ -108,12 +108,47 @@ and also covers `/say` and `/me`. With no listener nothing is asked or allocated
 `chat_recipient` fails instead of reentering the hook or sending an unchecked line. The server's log keeps every
 broadcast line, hidden or not.
 
-`player.respawn(host)` presses the Respawn button for a dead player, as their client's does (`PERFORM_RESPAWN`): they
-are placed at their respawn point or the world spawn and `player_respawned` is heard. Call it outside every player's
-hook (from `server_tick`, say). It returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
+`player.respawn(host)` makes the same request as the client's Respawn button (`PERFORM_RESPAWN`). Call it outside
+player hooks, for example from `server_tick`. `Ok(())` means the request was accepted, not that the replacement is
+already placed. In a transaction, the server begins the respawn only after the outermost scope commits. It may still
+wait for destination chunks. Use `player_respawned` to act on the placed replacement:
+
+```rust,ignore
+use mod_api::{Hooks, PlayerRespawnedEvent, ServerHost, Text};
+
+struct WelcomeBack;
+
+#[mod_api::sunrise_mod]
+impl Hooks for WelcomeBack {
+    fn player_respawned(&self, host: &mut dyn ServerHost, event: &mut PlayerRespawnedEvent<'_>) {
+        if event.end_conquered {
+            return; // This notice is only for a return after death.
+        }
+        if let Some(player) = host.player(event.player) {
+            player.tell(host, Text::translate("example.respawn.welcome_back", Vec::new()));
+        }
+    }
+}
+```
+
+`player_respawn_position` runs with the removed original before cloning. Use `event.from_end_fight` there and
+`event.end_conquered` in `player_respawned` to distinguish the return after the End credits from a death respawn.
+Both causes replace the player, so neither calls `entity_travel_to_dimension` or `player_changed_dimension`.
+An ordinary End portal exit teleports the same player and runs the travel hooks, not the respawn hooks.
+The player keeps ticking in the End while the destination is being resolved. The travel veto sees the final
+level, including the world spawn if the saved block is missing, and refusing it leaves the player in the End.
+An exit to a point in the End itself sends a position update with the usual pitch clamp; it does not fire
+`player_changed_dimension` or the command-only `player_teleported` hook.
+
+To change the saved point copied to the replacement, use `event.player.set_respawn_config(host, Some(config))`
+inside `player_respawn_position` and set `*event.copy_original_spawn_position = true`. This works even
+on the removed player after death. It does not change the destination of this respawn: edit the event's
+`level`, `position`, `yaw` and `pitch` for that.
+
+`player.respawn(host)` returns `Result<(), RespawnRefusal>`, and each refusal changes nothing, checked in
 this order: `Client`, `InPlayerHook` (a player's state is swapped in), `Stale` (no player on this server behind the
 handle), `NoConnection` (a fake player, or the world's own player in a single-player world, which respawns through its
-own screen) and `Alive` (health above 0 and the game not won: the case the button ignores; a player who has won the game and is watching the End poem is respawned even alive, on the next server tick, as the button does).
+own screen) and `Alive` (health above 0 and the game not won: the case the button ignores; a player who has won the game and is watching the End poem is respawned even alive, as the button does).
 
 ## Player rules and sleep
 
@@ -124,7 +159,7 @@ Reads accept `Host`; writes accept `ServerHost`.
 | `may_use_item_at(host, pos, face, stack)` | Applies `Player.mayUseItemAt`: builders may use the item; adventure and spectator players need matching `can_place_on`. |
 | `can_harm(host, other)` | Applies `ServerPlayer.canHarmPlayer`, including the `pvp` rule and teams. |
 | `respawn_config(host)` | Reads the respawn point; `Some(None)` means no point is set. |
-| `set_respawn_config(host, config)` | Sets the point as `/spawnpoint` does, including the `player_set_spawn` veto. Refuses stale, unavailable or dead players, unknown dimensions, non-finite yaw and canceled changes. |
+| `set_respawn_config(host, config)` | Sets the point as `/spawnpoint` does, including the `player_set_spawn` veto. Refuses stale, unavailable or dead players (except the original in `player_respawn_position`), unknown dimensions, non-finite yaw and canceled changes. |
 | `text_filtering(host)` | Reads the option announced by the player's client. |
 | `sleep_ignored(host)` | Reads the sleep-count exclusion setting. |
 | `counts_for_sleep(host)` | Reports whether the player counts toward the night skip. |

@@ -236,8 +236,6 @@ impl Game<'_> {
         };
         let spectator = host.hub.guests[gi].spectator();
         let permission = host.hub.guests[gi].permission;
-        let won_game = matches!(packet, S::ClientCommand(ref c) if c.action == 0)
-            && host.play.get(&conn).is_some_and(|p| p.won_game);
         match packet {
             S::PlayerAction(a) => match a.action {
                 0 => {
@@ -1070,14 +1068,7 @@ impl Game<'_> {
                 self.guest_try_suggestions(conn);
             }
             S::PlaceRecipe(p) => self.lan_place_recipe(conn, &p),
-            // handleClientCommand: PERFORM_RESPAWN after the poem leaves the End
-            // (the next server tick sends the player on).
-            S::ClientCommand(c) if c.action == 0 && won_game => {
-                let Some(host) = self.lan.as_mut() else {
-                    return;
-                };
-                host.play.entry(conn).or_default().respawn_requested = true;
-            }
+            // handleClientCommand: PERFORM_RESPAWN after the poem or on death.
             S::ClientCommand(c) if c.action == 0 => self.guest_respawn(conn),
             // ServerStatsCounter.sendStats.
             S::ClientCommand(c) if c.action == 1 => {

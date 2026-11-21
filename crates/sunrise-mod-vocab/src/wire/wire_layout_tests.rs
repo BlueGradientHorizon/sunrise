@@ -676,9 +676,3 @@ fn every_game_mode_pose_animation_and_connection_case_has_declared_tag_type() {
     fields(ConnectionKind::Wall, (1u32,));
     fields(ConnectionKind::Bars, (2u32,));
 }
-
-#[test]
-fn original_player_identity_has_declared_field_bytes() {
-    let original = crate::__private::game::original_player_ref(0x1234_5678);
-    fields(original, (0x1234_5678u64,));
-}

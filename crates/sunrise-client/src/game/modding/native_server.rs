@@ -957,12 +957,14 @@ impl Game<'_> {
                 self.lan_acting_entity?,
             ));
         }
-        if let Some(guest) = self.lan.as_ref().and_then(|host| {
-            host.hub.guests.simulation_iter().find(|guest| {
-                guest.placed
-                    && guest.participates_online()
-                    && guest.uuid == uuid
-                    && !self.lan_guest_swaps.contains(&guest.conn)
+        if let Some(guest) = self.cloning_guest(uuid).or_else(|| {
+            self.lan.as_ref().and_then(|host| {
+                host.hub.guests.simulation_iter().find(|guest| {
+                    guest.placed
+                        && guest.participates_online()
+                        && guest.uuid == uuid
+                        && !self.lan_guest_swaps.contains(&guest.conn)
+                })
             })
         }) {
             return Some((PlayerRead::Guest(guest), guest.entity_id as u32));
@@ -1338,14 +1340,23 @@ impl Game<'_> {
         ))
     }
 
-    /// A connected player's record, including one displaced by a nested turn.
+    /// A connected player's record, including a body removed for respawn or displaced by a turn.
     pub(super) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
         (self.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
-        self.lan
-            .as_ref()?
-            .hub
-            .online_players()
-            .find(|g| g.uuid == player.uuid() && g.entity_id as u32 == player.entity().id())
+        let guests = &self.lan.as_ref()?.hub.guests;
+        let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
+        (guest.joined() && guest.participates_online()).then_some(guest)
+    }
+
+    pub(super) fn cloning_guest(&self, uuid: u128) -> Option<&Guest> {
+        let &(_, conn, _) = self
+            .player_state
+            .cloning_players
+            .iter()
+            .rev()
+            .find(|&&(player, _, _)| player == uuid)?;
+        self.command_guest(conn)
+            .filter(|_| !self.lan_guest_swaps.contains(&conn))
     }
 
     /// The stable name of a connected or acting player. None for a stale or
@@ -1694,9 +1705,10 @@ impl Game<'_> {
         }))
     }
     /// `ServerPlayer.setRespawnPosition`, as `/spawnpoint` sets it (the
-    /// same `set_respawn_point`): `config`, or none for None. False for a
-    /// stale, unavailable or dead player, a dimension the game doesn't
-    /// have, a yaw that isn't finite and a change a mod canceled.
+    /// same `set_respawn_point`): `config`, or none for None. The removed
+    /// original is writable here during the respawn-position callback, even
+    /// after death. Otherwise dead players, stale handles, unknown levels,
+    /// non-finite yaw and canceled changes are refused.
     pub(super) fn player_set_respawn_config(
         &mut self,
         player: PlayerRef,
@@ -1718,8 +1730,24 @@ impl Game<'_> {
             }
             None => None,
         };
-        let mut set = false;
-        self.native_as_player_handle(player, |game| set = game.set_respawn_point(stored)) && set
+        // The cloning scope lends the removed original to PlayerRespawnPositionEvent.
+        // Allow this write without publishing the player or relaxing other dead-player writes.
+        match self.player_handle_read(player) {
+            Some(PlayerRead::Acting { .. }) => {
+                let mut set = false;
+                self.native_as_acting(|game| set = game.set_respawn_point(stored)) && set
+            }
+            Some(PlayerRead::Guest(guest))
+                if !guest.dead
+                    || self
+                        .cloning_guest(guest.uuid)
+                        .is_some_and(|original| original.conn == guest.conn) =>
+            {
+                let conn = guest.conn;
+                self.as_guest(conn, |game| game.set_respawn_point(stored)) == Some(true)
+            }
+            _ => false,
+        }
     }
     /// The ping the Tab list shows (`ServerCommonPacketListenerImpl.latency`, kept by the
     /// connection's keep-alives): 0 for a fake player and for an acting player with no known
@@ -2069,7 +2097,8 @@ impl Game<'_> {
     }
 
     fn native_player_holder(&self, uuid: u128) -> Option<&Guest> {
-        self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id())
+        self.cloning_guest(uuid)
+            .or_else(|| self.lan.as_ref()?.hub.holder_guest(uuid, self.dim.id()))
     }
 
     /// Resolve a UUID-based item place in the acting state or a parked guest's own record.
