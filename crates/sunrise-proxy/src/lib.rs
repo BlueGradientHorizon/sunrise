@@ -435,6 +435,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn proxy_environment_prefers_scheme_over_all_and_uppercase_over_lowercase() {
+        let mut values = HashMap::from([
+            ("HTTP_PROXY", "http://upper.example"),
+            ("http_proxy", "http://lower.example"),
+            ("https_proxy", " socks5h://secure.example "),
+            ("ALL_PROXY", "http://all.example"),
+            ("all_proxy", "http://all-lower.example"),
+        ]);
+        let selected = |scheme, values: &HashMap<&str, &str>| {
+            env_proxy(scheme, |name| values.get(name).map(OsString::from))
+                .unwrap()
+                .map(|(_, value)| value)
+        };
+        assert_eq!(
+            selected("http", &values).as_deref(),
+            Some("http://upper.example")
+        );
+        assert_eq!(
+            selected("https", &values).as_deref(),
+            Some("socks5h://secure.example")
+        );
+        values.insert("HTTPS_PROXY", "http://secure-upper.example");
+        assert_eq!(
+            selected("https", &values).as_deref(),
+            Some("http://secure-upper.example")
+        );
+        values.insert("HTTP_PROXY", " ");
+        assert_eq!(
+            selected("http", &values).as_deref(),
+            Some("http://lower.example")
+        );
+        values.remove("http_proxy");
+        assert_eq!(
+            selected("http", &values).as_deref(),
+            Some("http://all.example")
+        );
+        values.remove("ALL_PROXY");
+        assert_eq!(
+            selected("http", &values).as_deref(),
+            Some("http://all-lower.example")
+        );
+        values.remove("all_proxy");
+        assert_eq!(selected("http", &values), None);
+    }
+
     fn bypasses(url: &str, no_proxy: &str) -> bool {
         bypasses_proxy(&url::Url::parse(url).unwrap(), no_proxy)
     }
@@ -458,6 +504,7 @@ mod tests {
         ));
         assert!(!bypasses("https://edge.forgecdn.net", "modrinth.com"));
         assert!(!bypasses("https://modrinth.com", ""));
+        assert!(!bypasses("http://192.0.2.10/", "192.0.2.0/24"));
     }
 
     #[test]
