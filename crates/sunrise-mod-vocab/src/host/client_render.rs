@@ -116,9 +116,10 @@ pub trait ClientRenderClientHost {
     fn dynamic_texture_budget(&self) -> Result<DynamicTextureBudget, DynamicTextureError>;
     /// The resolver's blended colour at `pos` in the current client level, as opaque ARGB.
     /// Like `ClientLevel.getBlockTint` (`BiomeColors.getAverageGrassColor` and its counterparts),
-    /// this samples a square at the block's height using the client's biome blend radius and
-    /// biome colours. Use [`ColorResolver::Grass`] or [`ColorResolver::Foliage`] without looking up
-    /// a block state or a model. For a specific block or fluid face, use [`Self::block_tint_color`].
+    /// this samples a square at the block's height using the client's biome blend radius and the
+    /// same biome colours as the mesher, including updates from [`Self::refresh_biome_colors`].
+    /// Use [`ColorResolver::Grass`] or [`ColorResolver::Foliage`] without looking up a block state or
+    /// a model. For a specific block or fluid face, use [`Self::block_tint_color`].
     /// Returns [`LevelReadError::Unavailable`] outside the World phase or when the host has
     /// no client level to read.
     #[access(WorldOnly)]

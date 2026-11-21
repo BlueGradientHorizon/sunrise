@@ -47,7 +47,7 @@ impl Game<'_> {
             pos,
             resolver,
             &self.tint_region(pos),
-            world_biomes!(self),
+            self.mesh_biomes(),
             self.streaming.biome_zoom,
             self.streaming.biome_blend,
         ))
@@ -528,6 +528,79 @@ mod quad_on_tests {
                 "{uv:?}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod biome_tint_tests {
+    use crate::game::native_entity_refs::tests::with_client_game;
+    use mod_api::{
+        __private::{ModPhase, PhaseOwner},
+        Authority, BiomeColorsEvent, ClientHost, ColorResolver, Hooks, ModEntry,
+    };
+    use std::sync::Arc;
+    use sunrise_client::chunk::Chunk;
+
+    #[test]
+    #[ignore = "daily"]
+    fn biome_tint_reads_refreshed_colours_with_stock_server_biomes() {
+        const GRASS: u32 = 0xAD_248B;
+        const FOLIAGE: u32 = 0x34_D1EF;
+
+        struct Seasons;
+        #[mod_api::__subscriptions]
+        impl Hooks for Seasons {
+            fn biome_colors(&self, _: &dyn ClientHost, event: &mut BiomeColorsEvent<'_>) {
+                if event.biome == "minecraft:plains" {
+                    event.colors.grass = GRASS;
+                    event.colors.foliage = FOLIAGE;
+                }
+            }
+        }
+
+        let mods = vec![ModEntry::new("test_seasons", Box::new(Seasons))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_client_game(|game| {
+                // The replay fixture opens a client level without connecting to a server.
+                game.init_remote_for_replay().unwrap();
+                game.native_lifecycle.begin_open(Authority::RemoteClient);
+                let _phase = PhaseOwner::scope(ModPhase::World);
+                let plains_id = game.res.biomes().id("minecraft:plains");
+                let mut chunk = Chunk::empty(0, 0);
+                for qy in 0..chunk.sections.len() as i32 * 4 {
+                    for qz in 0..4 {
+                        for qx in 0..4 {
+                            chunk.set_biome_cell(qx, qy, qz, plains_id);
+                        }
+                    }
+                }
+                game.world.chunks.insert((0, 0), Arc::new(chunk));
+                game.streaming.biome_blend = 1;
+
+                // Stock server biome definitions do not install a world-specific table.
+                assert!(game.world_biomes.is_none());
+                let pos = [8, 64, 8]; // The whole blend square samples this plains chunk.
+                let host: &mut dyn ClientHost = game;
+                assert_ne!(
+                    host.biome_tint(pos, ColorResolver::Grass),
+                    Ok(0xFF00_0000 | GRASS)
+                );
+                host.refresh_biome_colors();
+                assert_eq!(
+                    host.biome_tint(pos, ColorResolver::Grass),
+                    Ok(0xFF00_0000 | GRASS)
+                );
+                assert_eq!(
+                    host.biome_tint(pos, ColorResolver::Foliage),
+                    Ok(0xFF00_0000 | FOLIAGE)
+                );
+
+                assert!(game.world_biomes.is_none());
+                let worker = game.worker_context();
+                let plains = worker.biomes.get(plains_id);
+                assert_eq!((plains.grass, plains.foliage), (GRASS, FOLIAGE));
+            });
+        });
     }
 }
 

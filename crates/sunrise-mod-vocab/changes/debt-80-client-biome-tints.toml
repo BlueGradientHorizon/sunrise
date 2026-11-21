@@ -22,7 +22,9 @@ colormap PNGs and exposing unblended tints that disagreed with what players see.
 carries only water_colors (one 0xRRGGBB biome JSON water colour per column, 0 where unloaded), the
 server loads biomes without requiring colormap textures, and client mods read blended biome tints
 with BlockAndTintGetter::block_tint in block tint callbacks or the new ClientHost::biome_tint on the
-current client level. Neither biome query looks at a block model or its tint sources.
+current client level. The client query uses the mesher's current biome table, including updates
+from refresh_biome_colors on a server with stock biome definitions. Neither biome query looks at a
+block model or its tint sources.
 """
 migrate = """
 - Replace reads of `column_blocks.tints[i * 3 + 2]` with `column_blocks.water_colors[i]` (`0xRRGGBB`,

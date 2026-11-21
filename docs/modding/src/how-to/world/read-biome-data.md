@@ -40,8 +40,9 @@ fn grass_tint(host: &dyn ClientHost, pos: [i32; 3]) -> Result<u32, LevelReadErro
 Pass `ColorResolver::Grass`, `Foliage`, `DryFoliage`, `Water` or a resolver registered in
 `register_color_resolvers`. The result is opaque ARGB (`0xFF00_0000 | rgb`), averaged over the
 client's biome blend radius, as in vanilla's `BiomeColors.getAverageGrassColor` and related
-methods. The host returns `LevelReadError::Unavailable` outside the World phase or when it has
-no client level to read.
+methods. It uses the mesher's biome colours, including updates from `refresh_biome_colors`.
+The host returns `LevelReadError::Unavailable` outside the World phase or when it has no client
+level to read.
 
 In a `BlockTintSource` callback (`color_in_world`, `color_as_terrain_particle`), make the same
 query on the meshing region passed to the callback with `BlockAndTintGetter::block_tint`:

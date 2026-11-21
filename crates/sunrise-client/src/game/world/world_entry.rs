@@ -216,13 +216,18 @@ impl Game<'_> {
         }
     }
 
+    /// The biome colours used by the mesher and client tint queries. On a
+    /// world without its own table, a colour refresh updates the pack's table.
+    pub(super) fn mesh_biomes(&self) -> &Arc<Biomes> {
+        self.world_biomes
+            .as_ref()
+            .unwrap_or(&self.pack.context.biomes)
+    }
+
     /// What the chunk and far-terrain workers mesh with: the pack's context,
     /// over the world's biomes when it has its own.
     pub(super) fn worker_context(&self) -> Arc<WorkerContext> {
-        match &self.world_biomes {
-            Some(table) => self.pack.context_with(table.clone()),
-            None => self.pack.context.clone(),
-        }
+        self.pack.context_with(self.mesh_biomes().clone())
     }
     pub(super) fn pack_files(&self) -> sunrise_world::loot::PackOverlay<'_> {
         pack_files(&self.world_tables)
