@@ -1243,6 +1243,9 @@ impl PlayerMotion {
         hit.pending = self.in_combat(level, resources, rules, &mut hit, |combat, state| {
             Ok(combat.hurt_until_helmet(state, amount)?)
         })?;
+        if let Some(pending) = &mut hit.pending {
+            pending.record_shield_damage(hit.shield_damage as f32);
+        }
         Ok(hit)
     }
     /// Select the inner hit before synchronous ordinary equipment wear.
@@ -1808,7 +1811,6 @@ impl ServerDamageEnvironment<Attributes> for Environment<'_> {
         self.phase("entity-damage")
     }
     fn damage_pre(&mut self, container: &mut DamageContainer) -> io::Result<()> {
-        container.record_shield_damage(self.shield_damage as f32);
         let source = self
             .level
             .attack()
@@ -2296,22 +2298,24 @@ mod tests {
 
     #[test]
     fn player_post_records_fresh_hit_decision() {
-        use sunrise_world::living_damage::DamageValues;
-        static SEEN: std::sync::Mutex<Vec<super::DamageContainer>> =
-            std::sync::Mutex::new(Vec::new());
+        struct Observed {
+            should_cause_side_effects: bool,
+            health_damage: f32,
+            post_attack_invulnerability_ticks: i32,
+            invulnerability_reduction: f32,
+        }
+        static SEEN: std::sync::Mutex<Vec<Observed>> = std::sync::Mutex::new(Vec::new());
         fn post(
             _: super::DamageLevel<'_>,
             _: super::Hurting<'_>,
             container: &super::DamageContainer,
         ) {
-            // Converting to plain values and back must preserve the damage decision.
-            let values = DamageValues::from(container);
-            assert_eq!(
-                values.should_cause_side_effects,
-                container.should_cause_side_effects()
-            );
-            assert_eq!(super::DamageContainer::from(values), *container);
-            SEEN.lock().unwrap().push(container.clone());
+            SEEN.lock().unwrap().push(Observed {
+                should_cause_side_effects: container.should_cause_side_effects(),
+                health_damage: container.health_damage(),
+                post_attack_invulnerability_ticks: container.post_attack_invulnerability_ticks(),
+                invulnerability_reduction: container.reduction(super::Reduction::Invulnerability),
+            });
         }
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
@@ -2349,13 +2353,18 @@ mod tests {
         assert_eq!(seen.len(), 2, "the refused hit must not fire Post");
         let flags: Vec<_> = seen
             .iter()
-            .map(|hit| hit.should_cause_side_effects())
+            .map(|hit| hit.should_cause_side_effects)
             .collect();
         assert_eq!(flags, [true, false]);
+        let invuln: Vec<_> = seen
+            .iter()
+            .map(|hit| hit.invulnerability_reduction)
+            .collect();
+        assert_eq!(invuln, [0.0, 2.0]);
         // Both first hits deal 2 and leave 20 ticks: neither value determines freshness.
         for hit in &seen[..2] {
-            assert_eq!(hit.health_damage(), 2.0);
-            assert_eq!(hit.post_attack_invulnerability_ticks(), 20);
+            assert_eq!(hit.health_damage, 2.0);
+            assert_eq!(hit.post_attack_invulnerability_ticks, 20);
         }
     }
 
@@ -2515,11 +2524,19 @@ mod tests {
                 9003 => container.set_new_damage(-5.0),
                 9004 => container.set_new_damage(f32::NAN),
                 9005 => {
-                    use sunrise_world::living_damage::{Reduction, ReductionChange};
-                    container.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(1.0));
-                    container.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(2.0));
-                    container
-                        .add_reduction_modifier(Reduction::Absorption, ReductionChange::Scale(0.5));
+                    use sunrise_world::living_damage::Reduction;
+                    container.add_reduction_modifier(
+                        Reduction::Armor,
+                        Box::new(|_: &DamageContainer, v: f32| v + 1.0),
+                    );
+                    container.add_reduction_modifier(
+                        Reduction::Armor,
+                        Box::new(|_: &DamageContainer, v: f32| v * 2.0),
+                    );
+                    container.add_reduction_modifier(
+                        Reduction::Absorption,
+                        Box::new(|_: &DamageContainer, v: f32| v * 0.5),
+                    );
                 }
                 _ => {}
             }

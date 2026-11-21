@@ -4055,24 +4055,29 @@ impl Mob {
         if amount < 0.0 {
             amount = 0.0;
         }
+        container.record_new_damage(amount);
         // LivingEntity.applyItemBlocking: no mob raises a blocking item, but a native
         // mod may block for it.
-        let blocked = if amount > 0.0 {
-            level
-                .shield_block(
-                    crate::health::Hurting::Mob(self, &source),
-                    amount,
-                    crate::health::no_block(amount),
-                )
-                .map_or(0.0, |b| b.blocked_damage)
-        } else {
-            0.0
-        };
+        let mut blocked = 0.0;
+        if amount > 0.0
+            && let Some(b) = level.shield_block(
+                crate::health::Hurting::Mob(self, &source),
+                amount,
+                crate::health::no_block(amount),
+            )
+        {
+            blocked = b.blocked_damage;
+            if b.blocked {
+                container.record_shield_damage(b.shield_damage.max(0) as f32);
+            }
+        }
         amount -= blocked;
         container.record_block(blocked);
+        container.record_new_damage(amount);
         // #damages_helmet: falling anvils, blocks and stalactites.
         if source.kind.damages_helmet() && self.extra.head_id().is_some() {
             amount *= 0.75;
+            container.record_new_damage(amount);
         }
         // LivingEntity.hurtServer: `#freeze_hurts_extra_types` take five times.
         if source.kind.is_freezing()
@@ -4082,9 +4087,11 @@ impl Mob {
             )
         {
             amount *= 5.0;
+            container.record_new_damage(amount);
         }
         if !amount.is_finite() {
             amount = f32::MAX;
+            container.record_new_damage(amount);
         }
         // LivingEntity.hurtServer: inside the hurt cooldown a hit is compared
         // with `lastHurt` by this incoming amount, before armor and Resistance,
@@ -4092,11 +4099,19 @@ impl Mob {
         let incoming = amount;
         // `#bypasses_cooldown` skips the comparison.
         let cooldown = self.invulnerable as f32 > 10.0 && !source.kind.bypasses_cooldown();
+        container.record_should_cause_side_effects(!cooldown);
         if cooldown {
             if incoming <= self.last_hurt {
                 return false;
             }
-            amount = incoming - self.last_hurt;
+            container.set_post_attack_invulnerability_ticks(self.invulnerable);
+            amount = container.reduce(
+                Reduction::Invulnerability,
+                incoming,
+                self.last_hurt,
+                incoming - self.last_hurt,
+                true,
+            );
         }
         // LivingEntity.getDamageAfterArmorAbsorb asks `hurtArmor` *before*
         // `CombatRules.getDamageAfterAbsorb`, so a worn piece wears by the
@@ -4189,16 +4204,7 @@ impl Mob {
         let absorbed = self.wolf_armor_absorbs(&source);
         let mut knock = true;
         let window = cooldown;
-        container.record_should_cause_side_effects(!window);
-        if window {
-            container.record_reduction(Reduction::Invulnerability, self.last_hurt);
-        }
         let mut dealt = amount;
-        // The cooldown the hit leaves: what is left of it within it, else vanilla's 20 or
-        // what `LivingIncomingDamageEvent` set.
-        if window {
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
-        }
         // Wolf.actuallyHurt keeps a hit its armor takes away from LivingEntity.actuallyHurt.
         if !absorbed {
             container.enter_pre(dealt);
@@ -4209,8 +4215,7 @@ impl Mob {
         if absorbed {
             self.hurt_wolf_armor(dealt);
         } else {
-            through = self.soak_hit(dealt, &source, &container);
-            container.record_reduction(Reduction::Absorption, dealt - through);
+            through = self.soak_hit(dealt, &source, &mut container);
             self.health -= through;
         }
         // `lastHurt` takes what Pre left: vanilla's value plus what Pre
@@ -4681,9 +4686,9 @@ impl Mob {
     }
     /// [`Mob::soak_absorption`] for a hit from `source`: `LivingEntity.actuallyHurt`
     /// credits a `ServerPlayer` attacker with the absorbed damage in tenths.
-    fn soak_hit(&mut self, damage: f32, source: &Damage, container: &DamageContainer) -> f32 {
+    fn soak_hit(&mut self, damage: f32, source: &Damage, container: &mut DamageContainer) -> f32 {
         let through = self.soak_absorption(damage, container);
-        let absorbed = damage - through;
+        let absorbed = damage.min(container.reduction(Reduction::Absorption));
         if absorbed > 0.0
             && absorbed < 3.402_823_5e37
             && matches!(source.attacker, Some(Who::Player))
@@ -4697,24 +4702,41 @@ impl Mob {
     /// `LivingEntity.actuallyHurt`: the absorption amount takes the damage first;
     /// what is left reaches the health.
     /// A modifier registered for the absorption reduction (`container`) changes what the
-    /// hearts take, within the damage and the hearts there are.
-    pub fn soak_absorption(&mut self, damage: f32, container: &DamageContainer) -> f32 {
-        let mut through = (damage - self.absorption).max(0.0);
-        if let Some(taken) = container.modified_reduction(
-            Reduction::Absorption,
-            damage - through,
-            damage.min(self.absorption),
-        ) {
-            through = damage - taken;
-        }
-        let left = self.absorption - (damage - through);
+    /// hearts take, matching NeoForge's unclamped `Reduction::Absorption` step.
+    pub fn soak_absorption(&mut self, damage: f32, container: &mut DamageContainer) -> f32 {
+        let positive = |v: f32| {
+            if v.is_nan() {
+                v
+            } else if v <= 0.0 {
+                0.0
+            } else {
+                v
+            }
+        };
+        let (remaining, left) = if container.has_reduction_modifier(Reduction::Absorption) {
+            let hearts = self.absorption;
+            let modified = container
+                .modified_reduction(Reduction::Absorption, damage.min(hearts))
+                .unwrap();
+            container.record_reduction(Reduction::Absorption, modified);
+            let remaining = positive(damage - modified);
+            container.record_new_damage(remaining);
+            let absorbed = damage.min(modified);
+            (remaining, positive(hearts - absorbed))
+        } else {
+            let remaining = positive(damage - self.absorption);
+            let absorbed = damage - remaining;
+            container.record_reduction(Reduction::Absorption, absorbed);
+            container.record_new_damage(remaining);
+            (remaining, self.absorption - absorbed)
+        };
         // LivingEntity.setAbsorptionAmount clamps the remainder to the attribute maximum.
         self.absorption = if left < 0.0 {
             0.0
         } else {
             left.min(armor::max_absorption(self))
         };
-        through
+        remaining
     }
     /// `LivingEntity.checkTotemDeathProtection`: the first hand with a
     /// `death_protection` stack uses one item up, the mob survives at 1 health

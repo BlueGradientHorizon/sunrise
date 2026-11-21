@@ -26,34 +26,15 @@ pub enum Reduction {
     InnateResistance,
 }
 const REDUCTIONS: usize = 6;
-/// How a modifier changes what a reduction took (NeoForge's `IReductionsModifier`, as owned data).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ReductionChange {
-    /// Take this much more off (less when negative).
-    Add(f32),
-    /// Take this many times as much.
-    Scale(f32),
-    /// Take at least this much.
-    AtLeast(f32),
-    /// Take at most this much.
-    AtMost(f32),
-}
-impl ReductionChange {
-    fn apply(self, taken: f32) -> f32 {
-        match self {
-            Self::Add(by) => taken + by,
-            Self::Scale(by) => taken * by,
-            Self::AtLeast(least) => taken.max(least),
-            Self::AtMost(most) => taken.min(most),
-        }
-    }
-}
+/// A per-hit reduction modifier callback (NeoForge's `IReductionFunction`).
+/// Receives the live container at that reduction stage and the current reduction value
+/// (vanilla's or the preceding modifier's output) and returns the new reduction value.
+pub type ReductionModifier = Box<dyn FnMut(&DamageContainer, f32) -> f32>;
 /// One hit's damage sequence from `hurtServer` to the health, as NeoForge's
 /// `DamageContainer` carries it: the damage that came in, what blocking, the cooldown and
 /// each reduction took, the damage `LivingDamageEvent.Pre` left and what the health lost.
 /// Numeric values are 0 until the step that sets them has run; side effects are false until
 /// `hurtServer` decides whether the hit is fresh.
-#[derive(Clone, Debug, PartialEq)]
 pub struct DamageContainer {
     original: f32,
     new_damage: f32,
@@ -63,61 +44,30 @@ pub struct DamageContainer {
     should_cause_side_effects: bool,
     reductions: [f32; REDUCTIONS],
     /// The modifiers registered for this hit, in the order they were added.
-    reduction_modifiers: Vec<(Reduction, ReductionChange)>,
+    reduction_modifiers: Vec<(Reduction, ReductionModifier)>,
     entered_pre: f32,
     inflicted: f32,
     health_damage: f32,
 }
-/// A hit's damage sequence as plain values, field for field.
-#[derive(Clone, Debug, PartialEq)]
-pub struct DamageValues {
-    pub original: f32,
-    pub new_damage: f32,
-    pub blocked: f32,
-    pub shield_damage: f32,
-    pub post_attack_invulnerability_ticks: i32,
-    pub should_cause_side_effects: bool,
-    pub reductions: [f32; 6],
-    pub reduction_modifiers: Vec<(Reduction, ReductionChange)>,
-    pub entered_pre: f32,
-    pub inflicted: f32,
-    pub health_damage: f32,
-}
 
-impl From<&DamageContainer> for DamageValues {
-    fn from(d: &DamageContainer) -> Self {
-        Self {
-            original: d.original,
-            new_damage: d.new_damage,
-            blocked: d.blocked,
-            shield_damage: d.shield_damage,
-            post_attack_invulnerability_ticks: d.post_attack_invulnerability_ticks,
-            should_cause_side_effects: d.should_cause_side_effects,
-            reductions: d.reductions,
-            reduction_modifiers: d.reduction_modifiers.clone(),
-            entered_pre: d.entered_pre,
-            inflicted: d.inflicted,
-            health_damage: d.health_damage,
-        }
-    }
-}
-
-/// A damage sequence from its values.
-impl From<DamageValues> for DamageContainer {
-    fn from(v: DamageValues) -> Self {
-        Self {
-            original: v.original,
-            new_damage: v.new_damage,
-            blocked: v.blocked,
-            shield_damage: v.shield_damage,
-            post_attack_invulnerability_ticks: v.post_attack_invulnerability_ticks,
-            should_cause_side_effects: v.should_cause_side_effects,
-            reductions: v.reductions,
-            reduction_modifiers: v.reduction_modifiers,
-            entered_pre: v.entered_pre,
-            inflicted: v.inflicted,
-            health_damage: v.health_damage,
-        }
+impl std::fmt::Debug for DamageContainer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DamageContainer")
+            .field("original", &self.original)
+            .field("new_damage", &self.new_damage)
+            .field("blocked", &self.blocked)
+            .field("shield_damage", &self.shield_damage)
+            .field(
+                "post_attack_invulnerability_ticks",
+                &self.post_attack_invulnerability_ticks,
+            )
+            .field("should_cause_side_effects", &self.should_cause_side_effects)
+            .field("reductions", &self.reductions)
+            .field("reduction_modifiers_len", &self.reduction_modifiers.len())
+            .field("entered_pre", &self.entered_pre)
+            .field("inflicted", &self.inflicted)
+            .field("health_damage", &self.health_damage)
+            .finish()
     }
 }
 
@@ -147,10 +97,15 @@ impl DamageContainer {
     pub fn new_damage(&self) -> f32 {
         self.new_damage
     }
-    /// Change the damage the sequence goes on with (`setNewDamage`). Set in
-    /// `LivingDamageEvent.Pre`, it is what the absorption hearts and the health take: 0 or
-    /// less takes nothing, and a value that is not a number is put back as it was.
+    /// Change the damage the sequence goes on with (`setNewDamage`). Negative values are
+    /// clamped to `0.0` immediately; `NaN` is preserved so `hurtServer` maps it to
+    /// `f32::MAX` and `LivingDamageEvent.Pre` reverts it to the pre-event value.
     pub fn set_new_damage(&mut self, damage: f32) {
+        self.new_damage = positive(damage);
+    }
+    /// The damage sequence: vanilla's intermediate damage update without clamping.
+    #[doc(hidden)]
+    pub fn record_new_damage(&mut self, damage: f32) {
         self.new_damage = damage;
     }
     /// The damage a blocking item stopped (`getBlockedDamage`).
@@ -207,16 +162,15 @@ impl DamageContainer {
         self.shield_damage = durability;
     }
     /// Change what `reduction` takes off this hit, as NeoForge's
-    /// `DamageContainer.addReductionModifier` does. Add it from `living_incoming_damage`: it
+    /// `DamageContainer.addModifier` does. Add it from `living_incoming_damage`: it
     /// applies when the step that makes `reduction` runs, to the amount it took, and the
     /// recorded reduction and the damage the sequence goes on with are the changed ones.
-    /// Modifiers on one reduction apply in the order they were added, each to the last one's
-    /// result; the changed amount stays between 0 and what there was to take (the damage
-    /// that reached the step, and for the absorption hearts what they hold), and one that
-    /// is not a number leaves the amount as it was. A step the hit skips (a source that
+    /// Modifiers on one reduction apply in the order they were added, each receiving the
+    /// live container and the preceding reduction value; the resulting damage is floored
+    /// at `0.0` (`max(new_damage - modified, 0)`). A step the hit skips (a source that
     /// bypasses armor, no Resistance effect, ...) runs no modifier. They last for this hit.
-    pub fn add_reduction_modifier(&mut self, reduction: Reduction, change: ReductionChange) {
-        self.reduction_modifiers.push((reduction, change));
+    pub fn add_reduction_modifier(&mut self, reduction: Reduction, modifier: ReductionModifier) {
+        self.reduction_modifiers.push((reduction, modifier));
     }
     /// The damage sequence: whether a modifier is registered for `reduction`.
     #[doc(hidden)]
@@ -230,19 +184,34 @@ impl DamageContainer {
     pub fn record_reduction(&mut self, reduction: Reduction, amount: f32) {
         self.reductions[reduction as usize] = amount;
     }
-    /// The registered modifiers applied to `taken`, kept within 0 and `limit`; none when
-    /// no modifier applies or the result is not a number.
+    /// The registered modifiers applied in insertion order to `taken`; none when no
+    /// modifier is registered for `reduction`.
     #[doc(hidden)]
-    pub fn modified_reduction(&self, reduction: Reduction, taken: f32, limit: f32) -> Option<f32> {
-        let mut changes = self
-            .reduction_modifiers
-            .iter()
-            .filter(|(r, _)| *r == reduction)
-            .map(|(_, change)| change)
-            .peekable();
-        changes.peek()?;
-        let modified = changes.fold(taken, |amount, change| change.apply(amount));
-        (!modified.is_nan()).then(|| modified.clamp(0.0, limit.max(0.0)))
+    pub fn modified_reduction(&mut self, reduction: Reduction, taken: f32) -> Option<f32> {
+        if !self.has_reduction_modifier(reduction) {
+            return None;
+        }
+        struct Restore<'a> {
+            container: &'a mut DamageContainer,
+            modifiers: Vec<(Reduction, ReductionModifier)>,
+        }
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.container.reduction_modifiers = std::mem::take(&mut self.modifiers);
+            }
+        }
+        let modifiers = std::mem::take(&mut self.reduction_modifiers);
+        let mut guard = Restore {
+            container: self,
+            modifiers,
+        };
+        let mut modified = taken;
+        for (r, modifier) in &mut guard.modifiers {
+            if *r == reduction {
+                modified = modifier(guard.container, modified);
+            }
+        }
+        Some(modified)
     }
     /// The damage sequence: `reduction` took `taken` off `before`, leaving `after`. Records
     /// what it took and returns the damage the sequence goes on with. `ran` is whether the
@@ -257,18 +226,16 @@ impl DamageContainer {
         after: f32,
         ran: bool,
     ) -> f32 {
-        match ran
-            .then(|| self.modified_reduction(reduction, taken, before))
-            .flatten()
-        {
-            Some(modified) => {
-                self.record_reduction(reduction, modified);
-                before - modified
-            }
-            None => {
-                self.record_reduction(reduction, taken);
-                after
-            }
+        self.new_damage = before;
+        if ran && let Some(modified) = self.modified_reduction(reduction, taken) {
+            self.record_reduction(reduction, modified);
+            let next = positive(before - modified);
+            self.new_damage = next;
+            next
+        } else {
+            self.record_reduction(reduction, taken);
+            self.new_damage = after;
+            after
         }
     }
     /// The damage sequence, before `LivingDamageEvent.Pre`: the damage it is told.
@@ -430,6 +397,7 @@ fn after_magic_reductions(
             Reduction::Enchantments,
             after_armor - magic.mob_effects - magic.damage,
         );
+        container.record_new_damage(magic.damage);
         return magic.damage;
     }
     let after_effects = container.reduce(
@@ -467,22 +435,25 @@ pub(crate) fn actually_hurt_after_armor<W: DamageWorld>(
     container.enter_pre(magic_damage);
     world.damage_pre(container)?;
     let damage = container.capture_inflicted();
-    let mut remaining = positive(damage - world.absorption()?);
-    let mut absorption = world.absorption()? - (damage - remaining);
-    if container.has_reduction_modifier(Reduction::Absorption) {
+    let (remaining, absorbed) = if container.has_reduction_modifier(Reduction::Absorption) {
         let hearts = world.absorption()?;
-        if let Some(modified) = container.modified_reduction(
-            Reduction::Absorption,
-            damage - remaining,
-            damage.min(hearts),
-        ) {
-            remaining = damage - modified;
-            absorption = hearts - modified;
-        }
-    }
-    world.set_absorption(absorption)?;
-    let absorbed = damage - remaining;
-    container.record_reduction(Reduction::Absorption, absorbed);
+        let modified = container
+            .modified_reduction(Reduction::Absorption, damage.min(hearts))
+            .unwrap();
+        container.record_reduction(Reduction::Absorption, modified);
+        let remaining = positive(damage - modified);
+        container.record_new_damage(remaining);
+        let absorbed = damage.min(modified);
+        world.set_absorption(positive(hearts - absorbed))?;
+        (remaining, absorbed)
+    } else {
+        let remaining = positive(damage - world.absorption()?);
+        let absorbed = damage - remaining;
+        world.set_absorption(world.absorption()? - absorbed)?;
+        container.record_reduction(Reduction::Absorption, absorbed);
+        container.record_new_damage(remaining);
+        (remaining, absorbed)
+    };
     if absorbed > 0.0 && absorbed < STAT_LIMIT {
         if player {
             world.award_self(DamageStat::Absorbed, stat_amount(absorbed))?;
@@ -627,15 +598,27 @@ mod tests {
     fn several_modifiers_on_one_reduction_apply_in_the_order_added() {
         // Armor took 10: x0.5 then +2 is 7, +2 then x0.5 is 6.
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(0.5));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(2.0));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v * 0.5),
+        );
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v + 2.0),
+        );
         hit(&mut target, &mut c, 20.0);
         // 13 goes on: Resistance takes 3.25, protection half of 9.75.
         assert_eq!(reductions(&c), [7.0, 3.25, 4.875, 0.0, 0.0]);
         assert_eq!(c.health_damage(), 4.875);
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(2.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(0.5));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v + 2.0),
+        );
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v * 0.5),
+        );
         hit(&mut target, &mut c, 20.0);
         // 14 goes on: Resistance takes 3.5, protection half of 10.5.
         assert_eq!(reductions(&c), [6.0, 3.5, 5.25, 0.0, 0.0]);
@@ -644,10 +627,22 @@ mod tests {
     #[test]
     fn modifiers_on_different_reductions_each_change_their_own() {
         let (mut target, mut c) = (Target::new(3.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::AtMost(4.0));
-        c.add_reduction_modifier(Reduction::MobEffects, ReductionChange::Add(1.0));
-        c.add_reduction_modifier(Reduction::Enchantments, ReductionChange::Add(1.0));
-        c.add_reduction_modifier(Reduction::Absorption, ReductionChange::Scale(0.5));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v.min(4.0)),
+        );
+        c.add_reduction_modifier(
+            Reduction::MobEffects,
+            Box::new(|_: &DamageContainer, v: f32| v + 1.0),
+        );
+        c.add_reduction_modifier(
+            Reduction::Enchantments,
+            Box::new(|_: &DamageContainer, v: f32| v + 1.0),
+        );
+        c.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, v: f32| v * 0.5),
+        );
         hit(&mut target, &mut c, 20.0);
         // Armor 4 leaves 16; Resistance 4 + 1 leaves 11; protection half of 11 is 5.5, + 1 is
         // 6.5, leaving 4.5; the 3 hearts' 3 halved is 1.5, so 3 reaches the health.
@@ -663,46 +658,123 @@ mod tests {
     fn a_changed_resistance_changes_what_the_enchantments_start_from() {
         // Resistance took 2.5 of 10: x2 is 5, so 5 goes on and protection takes half of it.
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::MobEffects, ReductionChange::Scale(2.0));
+        c.add_reduction_modifier(
+            Reduction::MobEffects,
+            Box::new(|_: &DamageContainer, v: f32| v * 2.0),
+        );
         hit(&mut target, &mut c, 20.0);
         assert_eq!(reductions(&c), [10.0, 5.0, 2.5, 0.0, 0.0]);
         assert_eq!(c.health_damage(), 2.5);
     }
     #[test]
-    fn a_modified_amount_stays_within_what_there_was_to_take() {
-        // Armor could take at most the 20, so nothing is left; a negative result takes none.
+    fn unclamped_reductions_follow_neoforge_semantics() {
+        // Over-limit armor reduction records `modified` verbatim while flooring resulting damage at 0.
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(100.0));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v + 100.0),
+        );
         hit(&mut target, &mut c, 20.0);
-        assert_eq!(c.reduction(Reduction::Armor), 20.0);
+        assert_eq!(c.reduction(Reduction::Armor), 110.0);
+        assert_eq!(c.new_damage(), 0.0);
         assert_eq!(c.health_damage(), 0.0);
         assert_eq!(target.health, 100.0);
+        // Negative armor reduction increases the damage passed to later stages.
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(-100.0));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v - 20.0),
+        );
         hit(&mut target, &mut c, 20.0);
-        // Armor took none, so 20 goes on: Resistance 5, protection half of 15.
-        assert_eq!(reductions(&c), [0.0, 5.0, 7.5, 0.0, 0.0]);
-        // A modified absorption never takes more than the hearts hold.
+        // Armor records -10, so 30 goes on: Resistance 7.5, protection half of 22.5 = 11.25.
+        assert_eq!(reductions(&c), [-10.0, 7.5, 11.25, 0.0, 0.0]);
+        assert_eq!(c.health_damage(), 11.25);
+        assert_eq!(target.health, 88.75);
+        // Over-limit absorption records `modified` verbatim, floors remaining damage at 0,
+        // and deducts `damage.min(modified)` from hearts floored at 0.
         let (mut target, mut c) = (Target::new(2.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Absorption, ReductionChange::Add(50.0));
+        c.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, v: f32| v + 50.0),
+        );
         hit(&mut target, &mut c, 20.0);
-        assert_eq!(c.reduction(Reduction::Absorption), 2.0);
+        assert_eq!(c.reduction(Reduction::Absorption), 52.0);
         assert_eq!(target.absorption, 0.0);
-        assert_eq!(c.health_damage(), 1.75);
+        assert_eq!(c.new_damage(), 0.0);
+        assert_eq!(c.health_damage(), 0.0);
+        assert_eq!(target.health, 100.0);
+        // Absorption modifier between hearts and damage: records 3.0 verbatim, leaves 0.75 health
+        // damage, and deducts min(3.75, 3.0) = 3.0 from 2.0 hearts floored at 0.0.
+        let (mut target, mut c) = (Target::new(2.0), DamageContainer::new(20.0));
+        c.add_reduction_modifier(
+            Reduction::Absorption,
+            Box::new(|_: &DamageContainer, _: f32| 3.0),
+        );
+        hit(&mut target, &mut c, 20.0);
+        assert_eq!(c.reduction(Reduction::Absorption), 3.0);
+        assert_eq!(target.absorption, 0.0);
+        assert_eq!(c.new_damage(), 0.75);
+        assert_eq!(c.health_damage(), 0.75);
+        assert_eq!(target.health, 99.25);
     }
     #[test]
-    fn a_modifier_that_is_not_a_number_changes_nothing() {
+    fn a_nan_modifier_is_recorded_verbatim_without_fallback() {
         let (mut target, mut c) = (Target::new(0.0), DamageContainer::new(20.0));
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(f32::NAN));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, _: f32| f32::NAN),
+        );
         hit(&mut target, &mut c, 20.0);
-        assert_eq!(reductions(&c), [10.0, 2.5, 3.75, 0.0, 0.0]);
+        assert!(c.reduction(Reduction::Armor).is_nan());
+        assert!(c.new_damage().is_nan());
+    }
+    #[test]
+    fn reduction_closures_observe_live_container_stage() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let (mut target, mut c) = (Target::new(3.0), DamageContainer::new(20.0));
+        for &(stage, prev) in &[
+            (Reduction::Armor, Reduction::Armor),
+            (Reduction::MobEffects, Reduction::Armor),
+            (Reduction::Enchantments, Reduction::MobEffects),
+            (Reduction::Absorption, Reduction::Enchantments),
+        ] {
+            let log = Rc::clone(&seen);
+            c.add_reduction_modifier(
+                stage,
+                Box::new(move |container: &DamageContainer, taken: f32| {
+                    log.borrow_mut().push((
+                        stage,
+                        container.original(),
+                        container.new_damage(),
+                        container.reduction(prev),
+                        taken,
+                    ));
+                    taken
+                }),
+            );
+        }
+        hit(&mut target, &mut c, 20.0);
+        assert_eq!(
+            *seen.borrow(),
+            vec![
+                (Reduction::Armor, 20.0, 20.0, 0.0, 10.0),
+                (Reduction::MobEffects, 20.0, 10.0, 10.0, 2.5),
+                (Reduction::Enchantments, 20.0, 7.5, 2.5, 3.75),
+                (Reduction::Absorption, 20.0, 3.75, 3.75, 3.0),
+            ]
+        );
     }
     #[test]
     fn a_skipped_step_runs_no_modifier() {
         let mut target = Target::new(0.0);
         target.bypass_armor = true;
         let mut c = DamageContainer::new(20.0);
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(5.0));
+        c.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v + 5.0),
+        );
         hit(&mut target, &mut c, 20.0);
         // Armor took nothing and the 20 went on: Resistance 5, protection half of 15.
         assert_eq!(reductions(&c), [0.0, 5.0, 7.5, 0.0, 0.0]);
@@ -711,7 +783,10 @@ mod tests {
     fn modifiers_last_for_their_own_hit() {
         let mut target = Target::new(0.0);
         let mut first = DamageContainer::new(20.0);
-        first.add_reduction_modifier(Reduction::Armor, ReductionChange::Add(5.0));
+        first.add_reduction_modifier(
+            Reduction::Armor,
+            Box::new(|_: &DamageContainer, v: f32| v + 5.0),
+        );
         hit(&mut target, &mut first, 20.0);
         assert_eq!(first.reduction(Reduction::Armor), 15.0);
         let mut second = DamageContainer::new(20.0);
@@ -737,25 +812,12 @@ mod tests {
         let mut container = DamageContainer::new(5.0);
         container.enter_pre(5.0);
         container.set_new_damage(-1.0);
+        assert_eq!(container.new_damage(), 0.0);
         assert_eq!(container.capture_inflicted(), 0.0);
         assert_eq!(container.pre_change(), -5.0);
         container.set_new_damage(f32::NAN);
+        assert!(container.new_damage().is_nan());
         assert_eq!(container.capture_inflicted(), 5.0);
         assert_eq!(container.pre_change(), 0.0);
-    }
-    #[test]
-    fn modifiers_cross_as_plain_values() {
-        let mut c = DamageContainer::new(8.0);
-        c.add_reduction_modifier(Reduction::Armor, ReductionChange::Scale(2.0));
-        c.add_reduction_modifier(Reduction::Absorption, ReductionChange::AtLeast(1.0));
-        let values = DamageValues::from(&c);
-        assert_eq!(
-            values.reduction_modifiers,
-            [
-                (Reduction::Armor, ReductionChange::Scale(2.0)),
-                (Reduction::Absorption, ReductionChange::AtLeast(1.0)),
-            ]
-        );
-        assert_eq!(DamageContainer::from(values), c);
     }
 }

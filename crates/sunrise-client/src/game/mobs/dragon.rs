@@ -863,6 +863,7 @@ impl Dragon {
         if !damage.is_finite() {
             damage = f32::MAX;
         }
+        container.record_new_damage(damage);
         // LivingEntity.hurtServer: within the cooldown only what exceeds the last hit.
         let window = self.invulnerable > 10;
         container.record_should_cause_side_effects(!window);
@@ -870,6 +871,7 @@ impl Dragon {
             if damage <= self.last_hurt {
                 return Hurt::Landed { full: false };
             }
+            container.set_post_attack_invulnerability_ticks(self.invulnerable);
             container.reduce(
                 Reduction::Invulnerability,
                 damage,
@@ -880,9 +882,6 @@ impl Dragon {
         } else {
             damage
         };
-        if window {
-            container.set_post_attack_invulnerability_ticks(self.invulnerable);
-        }
         // LivingEntity.actuallyHurt: the dragon wears no armor and takes no effects, so
         // nothing reduces the hit before Pre.
         let hurting = sunrise_client::health::Hurting::Dragon(self.id as i32, source);

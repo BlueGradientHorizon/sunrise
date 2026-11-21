@@ -147,7 +147,7 @@ fn after_pre<S>(s: &mut HurtState<S>, container: &DamageContainer, cooldown: i32
 /// and the block left. It owns no borrow, so a caller can wear the helmet on a world
 /// [`hurt_until_helmet`] could not reach, then resume with [`hurt_after_helmet`], which runs
 /// none of that again.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct PendingHurt<U> {
     pub(crate) container: DamageContainer,
     damage: f32,
@@ -160,6 +160,11 @@ impl<U> PendingHurt<U> {
     /// What `hurtHelmet` is given, if the source damages a helmet and one is worn.
     pub fn helmet_damage(&self) -> Option<f32> {
         self.helmet.then_some(self.damage)
+    }
+    /// The damage sequence: the durability the raised blocking item lost.
+    #[doc(hidden)]
+    pub fn record_shield_damage(&mut self, durability: f32) {
+        self.container.record_shield_damage(durability);
     }
 }
 pub fn hurt_server<W: HurtWorld>(
@@ -209,13 +214,16 @@ pub fn hurt_until_helmet<W: HurtWorld>(
     if damage < 0.0 {
         damage = 0.0;
     }
+    container.record_new_damage(damage);
     let original = damage;
     let item = w.use_item(s)?;
     let blocked_amount = w.apply_blocking(s, damage)?;
     damage -= blocked_amount;
     container.record_block(blocked_amount);
+    container.record_new_damage(damage);
     if w.tag(s, HurtTag::Freezing)? && w.freeze_hurts_extra(s)? {
         damage *= 5.0;
+        container.record_new_damage(damage);
     }
     let helmet = w.tag(s, HurtTag::DamagesHelmet)? && !w.helmet_empty(s)?;
     Ok(Some(PendingHurt {
@@ -254,9 +262,11 @@ pub fn select_equipment_hurt<W: HurtWorld>(
 ) -> Result<Option<SelectedHurt<W::UseItem>>, W::Error> {
     if hit.helmet {
         hit.damage *= 0.75;
+        hit.container.record_new_damage(hit.damage);
     }
     if !hit.damage.is_finite() {
         hit.damage = f32::MAX;
+        hit.container.record_new_damage(hit.damage);
     }
     let fresh = !(s.cooldown as f32 > 10.0 && !w.tag(s, HurtTag::BypassesCooldown)?);
     hit.container.record_should_cause_side_effects(fresh);
@@ -269,6 +279,9 @@ pub fn select_equipment_hurt<W: HurtWorld>(
         if hit.damage <= s.last_hurt {
             return Ok(None);
         }
+        let cooldown = s.cooldown;
+        hit.container
+            .set_post_attack_invulnerability_ticks(cooldown);
         let dealt = hit.container.reduce(
             Reduction::Invulnerability,
             hit.damage,
@@ -276,9 +289,6 @@ pub fn select_equipment_hurt<W: HurtWorld>(
             hit.damage - s.last_hurt,
             true,
         );
-        let cooldown = s.cooldown;
-        hit.container
-            .set_post_attack_invulnerability_ticks(cooldown);
         (dealt, cooldown)
     };
     Ok(Some(SelectedHurt {
