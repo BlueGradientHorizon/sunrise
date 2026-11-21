@@ -2115,6 +2115,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn revision_two_blockless_menu_syncs_only_encodable_indices() {
+        use sunrise_client::lan::menu::input::PICKUP;
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
 
         const LAST: usize = u16::MAX as usize;
@@ -2218,19 +2219,28 @@ mod tests {
                     hub.resend_menu(1, window, &game.world);
                     assert_snapshot("explicit resend", i32::MAX);
                     let state = hub.guests[0].menu.as_ref().unwrap().state;
-                    hub.inventory_clicked(
+                    // The live native click route resends in prepare_click, before answer_click.
+                    game.lan_guest_packet(
                         1,
-                        &play::ContainerClick {
+                        S::ContainerClick(play::ContainerClick {
                             container: window,
                             state: (state - 1) & 0x7FFF,
                             slot: -999,
                             button: 0,
-                            input: sunrise_client::lan::menu::input::PICKUP,
+                            input: PICKUP,
                             changed: vec![],
                             carried: None,
-                        },
-                        &game.world,
-                        &[],
+                        }),
+                    );
+                    assert_eq!(
+                        game.lan.as_ref().unwrap().hub.native_menu_events,
+                        [NativeMenuEvent::Click {
+                            uuid: 123,
+                            window,
+                            slot: -999,
+                            button: 0,
+                            mode: PICKUP,
+                        }]
                     );
                     assert_snapshot("stale click", i32::MAX);
                 })
