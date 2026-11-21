@@ -247,7 +247,7 @@ impl CallbackOwner {
 
     /// Whether this callback is still enabled for this session.
     pub fn is_enabled(&self) -> bool {
-        enabled_opt(self.index, &self.poisoned)
+        enabled_opt(self.index, Some(&self.poisoned))
     }
 
     /// Invoke retained code with its owner's enablement, attribution and panic policy.
@@ -260,7 +260,7 @@ impl CallbackOwner {
         call_opt(
             self.id,
             self.index,
-            &self.poisoned,
+            Some(&self.poisoned),
             kind,
             operation,
             Invocation::Isolated,
@@ -280,7 +280,7 @@ impl CallbackOwner {
         call_opt(
             self.id,
             self.index,
-            &self.poisoned,
+            Some(&self.poisoned),
             kind,
             operation,
             Invocation::Listener,
@@ -294,7 +294,7 @@ impl CallbackOwner {
         let _ = call_opt(
             self.id,
             self.index,
-            &self.poisoned,
+            Some(&self.poisoned),
             kind,
             operation,
             Invocation::Dispose,
@@ -324,11 +324,12 @@ impl CallbackOwner {
 }
 
 pub(crate) fn enabled(index: usize, poisoned: &AtomicBool) -> bool {
-    enabled_opt(Some(index), poisoned)
+    enabled_opt(Some(index), Some(poisoned))
 }
 
-fn enabled_opt(index: Option<usize>, poisoned: &AtomicBool) -> bool {
-    index.is_none_or(crate::mod_index_on) && !poisoned.load(Ordering::Acquire)
+fn enabled_opt(index: Option<usize>, poisoned: Option<&AtomicBool>) -> bool {
+    index.is_none_or(crate::mod_index_on)
+        && poisoned.is_none_or(|flag| !flag.load(Ordering::Acquire))
 }
 
 pub(crate) fn call<T>(
@@ -342,11 +343,51 @@ pub(crate) fn call<T>(
     call_opt(
         owner,
         Some(index),
-        poisoned,
+        Some(poisoned),
         kind,
         operation,
         Invocation::Isolated,
         invoke,
+    )
+}
+
+/// Invoke mod code with shared owner attribution and panic containment without flipping
+/// any process-wide poison bit.
+pub(crate) fn call_unpoisoned<T>(
+    owner: &'static str,
+    index: usize,
+    kind: &'static str,
+    operation: &'static str,
+    invoke: impl FnOnce() -> T,
+) -> Result<T, String> {
+    call_opt(
+        owner,
+        Some(index),
+        None,
+        kind,
+        operation,
+        Invocation::Isolated,
+        invoke,
+    )
+}
+
+/// Dispose of a call-owned mod value with shared owner attribution and panic containment
+/// without flipping any process-wide poison bit, even if ordinary calls are disabled.
+pub(crate) fn dispose_unpoisoned<T>(
+    owner: &'static str,
+    index: usize,
+    kind: &'static str,
+    operation: &'static str,
+    value: T,
+) -> Result<(), String> {
+    call_opt(
+        owner,
+        Some(index),
+        None,
+        kind,
+        operation,
+        Invocation::Dispose,
+        || drop(value),
     )
 }
 
@@ -364,7 +405,7 @@ fn run_scheduled<T>(
 ) -> Result<T, ScheduledFailure> {
     let _guard = crate::mark_mod(owner, operation);
     match contain_unwind(|| {
-        if state.is_some_and(|(index, poisoned)| enabled_opt(index, poisoned)) {
+        if state.is_some_and(|(index, poisoned)| enabled_opt(index, Some(poisoned))) {
             invoke().map(Some)
         } else {
             // Captures also belong to the owner if the callable is discarded without running.
@@ -390,7 +431,7 @@ fn run_scheduled<T>(
 fn call_opt<T>(
     owner: &'static str,
     index: Option<usize>,
-    poisoned: &AtomicBool,
+    poisoned: Option<&AtomicBool>,
     kind: &'static str,
     operation: &'static str,
     invocation: Invocation,
@@ -404,8 +445,8 @@ fn call_opt<T>(
     let _guard = crate::mark_mod(owner, operation);
     let contained = RetainedCallbackScope(RETAINED_CALLBACK.replace(true));
     let scope = PanicScope::enter();
-    // A refusal by the phase gate refuses this call and nothing more; a real panic disables
-    // this callback for the session, logs loudly and notifies the client error toast queue.
+    // A refusal by the phase gate refuses this call and nothing more; a real panic
+    // logs loudly, and disables the callback for the session only when a poison flag is supplied.
     let result = catch_unwind(AssertUnwindSafe(|| {
         if invocation == Invocation::Listener {
             Ok(invoke())
@@ -437,11 +478,15 @@ fn call_opt<T>(
                 drop(contained);
                 std::panic::resume_unwind(payload);
             }
-            let first = !poisoned.swap(true, Ordering::AcqRel);
             let msg = scope
                 .take_message()
                 .unwrap_or_else(|| panic_payload_text(payload.as_ref()));
             drop_contained(payload);
+            let Some(poisoned) = poisoned else {
+                log::error!("mod {owner}: {kind} callback ({operation}) panicked: {msg}");
+                return Err(format!("{kind} callback panicked: {msg}"));
+            };
+            let first = !poisoned.swap(true, Ordering::AcqRel);
             // Disposal is mandatory. Each instance's destructor is run at most once,
             // but even an already disabled implementation can panic again while dropping.
             if !first && invocation != Invocation::Dispose {

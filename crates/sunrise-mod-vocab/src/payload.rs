@@ -256,8 +256,11 @@ pub enum PayloadHandleError {
 /// names the channel and fails instead of silently dropping the malformed message. For a raw
 /// channel (`PayloadRegistrar::play_raw`) a failure logs the owner and the
 /// channel, drops only that delivery and rolls back its staged effects (a staged disconnect
-/// included); the other owners' copies still run. A successful handler's explicit disconnect
-/// and a main-queue refusal disconnect either way.
+/// included); the other owners' copies still run. A panic follows the same per-connection
+/// failure rules (rolling back staged work and closing the session for declared channels, or
+/// rolling back and logging for raw channels) without disabling the handler for other
+/// connections. A successful handler's explicit disconnect and a main-queue refusal disconnect
+/// either way.
 pub trait IPayloadHandler: Send + Sync + 'static {
     /// Handle exact application bytes using connection-derived context.
     fn handle(
@@ -268,6 +271,9 @@ pub trait IPayloadHandler: Send + Sync + 'static {
 }
 
 /// Work scheduled on the logical receiving main thread.
+/// A panic in `run` or `Drop` stays on this connection and does not disable the handler for
+/// other connections; cancelled or discarded work is disposed under the owning mod's panic
+/// attribution.
 pub trait PayloadWork: Send + Sync + 'static {
     /// Execute with the same connection-derived context and transaction rules.
     fn run(&self, context: &mut dyn IPayloadContext) -> Result<(), String>;

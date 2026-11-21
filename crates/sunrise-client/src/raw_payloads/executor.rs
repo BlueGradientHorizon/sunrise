@@ -60,7 +60,7 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         let epoch = incoming.epoch.clone();
         let prepared = match main.prepare(incoming) {
             Ok(prepared) => prepared,
-            Err(error) => {
+            Err((error, _)) => {
                 endpoint.disconnect(failure(&format!("payload main refused: {error:?}")));
                 return;
             }
@@ -87,51 +87,55 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         main,
         after: Vec::new(),
         disconnect: None,
+        failure: None,
     };
-    match incoming.receiver.handle(bytes, &mut context) {
-        Err(mod_api::PayloadHandleError::Failed(error)) => {
-            // Drop reservations and staged work before reporting failure; publish no partial actions.
-            drop(context);
-            handler_failed(&incoming, endpoint, &error);
-        }
-        Ok(()) => {
-            let reason = context.disconnect.take();
-            let mut after = std::mem::take(&mut context.after);
-            drop(context);
-            let result = incoming.epoch.with_active(|| {
-                // Never consume the container here: an early error must not drop
-                // remaining opaque Work captures while the epoch gate is held.
-                for action in &mut after {
-                    match action.take().unwrap() {
-                        After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
-                        After::Work(work) => work.publish().map_err(FailedPublication::Main)?,
-                    }
-                }
-                Ok::<(), FailedPublication>(())
-            });
-            drop(after);
-            match result {
-                Some(Err(error)) => {
-                    let message = match &error {
-                        FailedPublication::Reply(error) => {
-                            format!("payload {} reply refused: {error:?}", incoming.id.0)
-                        }
-                        FailedPublication::Main(error) => {
-                            format!("payload main refused: {:?}", error.reason())
-                        }
-                    };
-                    drop(error);
-                    endpoint.disconnect(failure(&message));
-                }
-                Some(Ok(())) => {
-                    if let Some(reason) = reason {
-                        endpoint.disconnect(reason);
-                    }
-                }
-                // Phase/connection cancellation cancels the staged disconnect too.
-                None => {}
+    let result = incoming.receiver.handle(bytes, &mut context);
+    let failure_error = context.failure.take().or_else(|| {
+        result
+            .err()
+            .map(|mod_api::PayloadHandleError::Failed(error)| error)
+    });
+    if let Some(error) = failure_error {
+        // Drop reservations and staged work before reporting failure; publish no partial actions.
+        drop(context);
+        handler_failed(&incoming, endpoint, &error);
+        return;
+    }
+    let reason = context.disconnect.take();
+    let mut after = std::mem::take(&mut context.after);
+    drop(context);
+    let result = incoming.epoch.with_active(|| {
+        // Never consume the container here: an early error must not drop
+        // remaining opaque Work captures while the epoch gate is held.
+        for action in &mut after {
+            match action.take().unwrap() {
+                After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
+                After::Work(work) => work.publish().map_err(FailedPublication::Main)?,
             }
         }
+        Ok::<(), FailedPublication>(())
+    });
+    drop(after);
+    match result {
+        Some(Err(error)) => {
+            let message = match &error {
+                FailedPublication::Reply(error) => {
+                    format!("payload {} reply refused: {error:?}", incoming.id.0)
+                }
+                FailedPublication::Main(error) => {
+                    format!("payload main refused: {:?}", error.reason())
+                }
+            };
+            drop(error);
+            endpoint.disconnect(failure(&message));
+        }
+        Some(Ok(())) => {
+            if let Some(reason) = reason {
+                endpoint.disconnect(reason);
+            }
+        }
+        // Phase/connection cancellation cancels the staged disconnect too.
+        None => {}
     }
 }
 fn handler_failed(incoming: &Incoming, endpoint: &Endpoint, error: &str) {
@@ -163,6 +167,7 @@ struct NetworkContext<'a> {
     main: &'a MainQueue,
     after: Vec<Option<After>>,
     disconnect: Option<Text>,
+    failure: Option<String>,
 }
 impl IPayloadContext for NetworkContext<'_> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
@@ -235,7 +240,7 @@ impl IPayloadContext for NetworkContext<'_> {
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<u32, PayloadSendError> {
-        if self.disconnect.is_some() || !self.incoming.epoch.active() {
+        if self.disconnect.is_some() || self.failure.is_some() || !self.incoming.epoch.active() {
             return Err(PayloadSendError::Disconnected);
         }
         if self.endpoint.side() != Side::Server {
@@ -256,11 +261,30 @@ impl IPayloadContext for NetworkContext<'_> {
         &mut self,
         work: Arc<dyn PayloadWork>,
     ) -> Result<PayloadWorkStatus, PayloadContextError> {
-        if self.disconnect.is_some() {
+        if self.disconnect.is_some() || self.failure.is_some() {
+            if let Err(error) = self.incoming.receiver.dispose_work(work) {
+                self.failure.get_or_insert(error);
+            }
             return Err(PayloadContextError::Disconnected);
         }
-        let work = self.incoming.work(self.endpoint.transport(), work)?;
-        let prepared = self.main.prepare(work)?;
+        let work = match self.incoming.work(self.endpoint.transport(), work) {
+            Ok(work) => work,
+            Err((error, drop_err)) => {
+                if let Some(drop_err) = drop_err {
+                    self.failure.get_or_insert(drop_err);
+                }
+                return Err(error);
+            }
+        };
+        let prepared = match self.main.prepare(work) {
+            Ok(prepared) => prepared,
+            Err((error, drop_err)) => {
+                if let Some(drop_err) = drop_err {
+                    self.failure.get_or_insert(drop_err);
+                }
+                return Err(error);
+            }
+        };
         self.after.push(Some(After::Work(prepared)));
         #[cfg(any(test, feature = "test-payload-probe"))]
         super::staging_probe::prepared(&self.incoming.id.0, true);

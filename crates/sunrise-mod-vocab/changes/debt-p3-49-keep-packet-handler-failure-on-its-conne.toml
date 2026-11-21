@@ -1,0 +1,3 @@
+ids = ["behaviour:payload_handler_connection_isolation"]
+why = "Keep packet handler and call-owned PayloadWork failures scoped to the failing connection (or delivery for raw channels) without setting a process-wide panic poison bit, matching vanilla PacketProcessor/PacketUtils and NeoForge NetworkRegistry/ClientNetworkRegistry/IPayloadHandler/IPayloadContext. Call-owned PayloadWork is disposed under its owning mod's panic attribution across normal completion, panics, queue refusal, and cancellation."
+migrate = "No code change needed: handlers and PayloadWork implementations keep the same signatures, and a single connection's panic no longer mutes the handler for other connections."

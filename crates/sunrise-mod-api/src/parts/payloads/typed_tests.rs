@@ -346,42 +346,220 @@ fn a_typed_id_has_one_declaration_in_one_protocol() {
 }
 
 #[test]
-fn a_callback_that_panicked_is_never_invoked_again() {
-    static CALLS: Mutex<u32> = Mutex::new(0);
-    let mut registrar = PartRegistrar::new("test");
-    (&mut registrar as &mut dyn Registrar)
-        .payload_handlers()
-        .registrar("1")
-        .play_to_server_typed::<Counter>(PayloadId("test:panics".into()), |_, _| {
-            *CALLS.lock().unwrap() += 1;
-            panic!("the handler panics");
-        });
+fn a_panicking_callback_fails_only_that_call_without_disabling_other_connections() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct PanickingRaw {
+        calls: Arc<AtomicUsize>,
+    }
+    impl IPayloadHandler for PanickingRaw {
+        fn handle(
+            &self,
+            payload: PayloadBytes,
+            _: &mut dyn IPayloadContext,
+        ) -> Result<(), PayloadHandleError> {
+            assert!(mod_vocab::__private::game::retained_callback_active());
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            if payload.0 == [13] {
+                panic!("raw handler panics");
+            }
+            Ok(())
+        }
+    }
+
+    let server_calls = Arc::new(AtomicUsize::new(0));
+    let client_calls = Arc::new(AtomicUsize::new(0));
+    let raw_calls = Arc::new(AtomicUsize::new(0));
+    let mut registrar = PartRegistrar::new("payload_panic_isolated");
+    {
+        let r = &mut registrar as &mut dyn Registrar;
+        let mut payloads = r.payload_handlers();
+        let mut view = payloads.registrar("1");
+        let server = server_calls.clone();
+        let client = client_calls.clone();
+        view.play_bidirectional_typed::<Counter>(
+            PayloadId("test:panics_both".into()),
+            move |value, _| {
+                assert!(mod_vocab::__private::game::retained_callback_active());
+                server.fetch_add(1, Ordering::SeqCst);
+                if value.counter == 13 {
+                    panic!("server handler panics");
+                }
+                Ok(())
+            },
+            move |value, _| {
+                assert!(mod_vocab::__private::game::retained_callback_active());
+                client.fetch_add(1, Ordering::SeqCst);
+                if value.counter == 13 {
+                    panic!("client handler panics");
+                }
+                Ok(())
+            },
+        );
+        view.play_raw(
+            PayloadId("test:panics_raw".into()),
+            Some(Arc::new(PanickingRaw {
+                calls: raw_calls.clone(),
+            })),
+        );
+    }
     let table = frozen(&registrar);
-    let receiver = || {
+    let check =
+        |label: &str,
+         calls: &AtomicUsize,
+         resolve: &dyn Fn() -> mod_vocab::__private::game::PayloadReceiver| {
+            let first = resolve();
+            assert!(first.enabled(), "{label} receiver starts enabled");
+            let PayloadHandleError::Failed(error) = first
+                .handle(PayloadBytes(vec![13]), &mut Unreached)
+                .unwrap_err();
+            assert!(error.contains("panicked"), "{label}: {error}");
+            assert!(
+                !error.contains("disabled"),
+                "{label} panic must not claim the callback is disabled: {error}"
+            );
+            // The handler stays enabled for both this receiver and any later connection's receiver.
+            for receiver in [first, resolve()] {
+                assert!(receiver.enabled(), "{label} must stay enabled after panic");
+                assert_eq!(
+                    receiver.handle(PayloadBytes(vec![7]), &mut Unreached),
+                    Ok(()),
+                    "{label} healthy delivery must still run after another call panicked"
+                );
+            }
+            assert_eq!(calls.load(Ordering::SeqCst), 3, "{label} call count");
+        };
+
+    check("server", &server_calls, &|| {
         table
             .handler(
-                "test:panics",
+                "test:panics_both",
                 PayloadProtocol::Play,
                 PayloadDirection::ToServer,
             )
             .unwrap()
-    };
-    let first = receiver();
-    assert!(first.enabled());
-    let error = first
-        .handle(PayloadBytes(vec![7]), &mut Unreached)
-        .unwrap_err();
-    let PayloadHandleError::Failed(error) = error;
-    assert!(error.contains("panicked"), "{error}");
-    // Disabled for this connection and for one that resolves the callback later.
-    for receiver in [first, receiver()] {
-        assert!(!receiver.enabled());
-        assert_eq!(
-            receiver.handle(PayloadBytes(vec![7]), &mut Unreached),
-            Err(PayloadHandleError::Failed(
-                "payload owner is disabled".into()
-            ))
-        );
+    });
+    check("client", &client_calls, &|| {
+        table
+            .handler(
+                "test:panics_both",
+                PayloadProtocol::Play,
+                PayloadDirection::ToClient,
+            )
+            .unwrap()
+    });
+    check("raw", &raw_calls, &|| {
+        let mut receivers = table.raw_receivers("test:panics_raw");
+        assert_eq!(receivers.len(), 1);
+        receivers.pop().unwrap()
+    });
+
+    let notices = mod_vocab::__private::game::take_callback_panic_notices();
+    assert!(
+        !notices.iter().any(|n| n.mod_id == "payload_panic_isolated"),
+        "payload panics must not queue a session-disabled notice: {notices:?}"
+    );
+}
+
+#[test]
+fn call_owned_payload_work_is_disposed_under_owner_attribution_without_global_poison() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    struct Work {
+        panic_run: bool,
+        panic_drop: bool,
+        ran: Arc<AtomicUsize>,
+        dropped: Arc<AtomicUsize>,
+        retained_on_drop: Arc<AtomicBool>,
     }
-    assert_eq!(*CALLS.lock().unwrap(), 1);
+    impl PayloadWork for Work {
+        fn run(&self, _: &mut dyn IPayloadContext) -> Result<(), String> {
+            assert!(mod_vocab::__private::game::retained_callback_active());
+            self.ran.fetch_add(1, Ordering::SeqCst);
+            if self.panic_run {
+                panic!("work run panicked");
+            }
+            Ok(())
+        }
+    }
+    impl Drop for Work {
+        fn drop(&mut self) {
+            self.retained_on_drop.store(
+                mod_vocab::__private::game::retained_callback_active(),
+                Ordering::SeqCst,
+            );
+            self.dropped.fetch_add(1, Ordering::SeqCst);
+            if self.panic_drop {
+                panic!("work drop panicked");
+            }
+        }
+    }
+
+    let mut registrar = PartRegistrar::new("payload_work_disposal");
+    (&mut registrar as &mut dyn Registrar)
+        .payload_handlers()
+        .registrar("1")
+        .play_to_server_typed::<Counter>(PayloadId("test:work".into()), ignore);
+    let table = frozen(&registrar);
+    let receiver = table
+        .handler(
+            "test:work",
+            PayloadProtocol::Play,
+            PayloadDirection::ToServer,
+        )
+        .unwrap();
+
+    let make = |panic_run, panic_drop| {
+        let ran = Arc::new(AtomicUsize::new(0));
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let retained_on_drop = Arc::new(AtomicBool::new(false));
+        let work: Arc<dyn PayloadWork> = Arc::new(Work {
+            panic_run,
+            panic_drop,
+            ran: ran.clone(),
+            dropped: dropped.clone(),
+            retained_on_drop: retained_on_drop.clone(),
+        });
+        (work, ran, dropped, retained_on_drop)
+    };
+
+    // 1. Work returns Ok, but its Drop panics: contained under owner attribution, no poison.
+    let (work, ran, dropped, retained) = make(false, true);
+    let err = receiver.run_work(work, &mut Unreached).unwrap_err();
+    assert!(err.contains("work drop panicked"), "{err}");
+    assert_eq!(ran.load(Ordering::SeqCst), 1);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(retained.load(Ordering::SeqCst));
+    assert!(receiver.enabled());
+
+    // 2. Both run and Drop panic: separate containment prevents double-panic abort.
+    let (work, ran, dropped, retained) = make(true, true);
+    let err = receiver.run_work(work, &mut Unreached).unwrap_err();
+    assert!(err.contains("work run panicked"), "{err}");
+    assert_eq!(ran.load(Ordering::SeqCst), 1);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(retained.load(Ordering::SeqCst));
+    assert!(receiver.enabled());
+
+    // 3. Cancelled/discarded work disposed without running: Drop still contained and attributed.
+    let (work, ran, dropped, retained) = make(false, true);
+    let err = receiver.dispose_work(work).unwrap_err();
+    assert!(err.contains("work drop panicked"), "{err}");
+    assert_eq!(ran.load(Ordering::SeqCst), 0);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(retained.load(Ordering::SeqCst));
+    assert!(receiver.enabled());
+
+    // 4. Subsequent healthy work on the same receiver still runs cleanly.
+    let (work, ran, dropped, retained) = make(false, false);
+    assert_eq!(receiver.run_work(work, &mut Unreached), Ok(()));
+    assert_eq!(ran.load(Ordering::SeqCst), 1);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert!(retained.load(Ordering::SeqCst));
+
+    let notices = mod_vocab::__private::game::take_callback_panic_notices();
+    assert!(
+        !notices.iter().any(|n| n.mod_id == "payload_work_disposal"),
+        "payload work panics must not queue a session-disabled notice: {notices:?}"
+    );
 }

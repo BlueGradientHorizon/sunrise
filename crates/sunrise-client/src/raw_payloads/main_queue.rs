@@ -36,7 +36,10 @@ impl FailedMain {
     }
 }
 impl MainQueue {
-    pub(crate) fn prepare(&self, incoming: Incoming) -> Result<PreparedMain, PayloadContextError> {
+    pub(crate) fn prepare(
+        &self,
+        incoming: Incoming,
+    ) -> Result<PreparedMain, (PayloadContextError, Option<String>)> {
         let refusal = |reason| match reason {
             Refusal::Pressure => PayloadContextError::Backpressure,
             Refusal::Closed => PayloadContextError::Disconnected,
@@ -45,7 +48,13 @@ impl MainQueue {
             Self::Client(events) => events
                 .prepare(Event::RawPayload(Box::new(incoming)))
                 .map(PreparedMain::Client)
-                .map_err(|error| refusal(error.reason)),
+                .map_err(|mut error| {
+                    let drop_err = match &mut error.value {
+                        Event::RawPayload(incoming) => incoming.dispose_body().err(),
+                        _ => None,
+                    };
+                    (refusal(error.reason), drop_err)
+                }),
             Self::Server {
                 events,
                 endpoint,
@@ -57,7 +66,13 @@ impl MainQueue {
                     incoming,
                 })))
                 .map(PreparedMain::Server)
-                .map_err(|error| refusal(error.reason)),
+                .map_err(|mut error| {
+                    let drop_err = match &mut error.value {
+                        NetEvent::RawPayload(delivery) => delivery.incoming.dispose_body().err(),
+                        _ => None,
+                    };
+                    (refusal(error.reason), drop_err)
+                }),
         }
     }
 }

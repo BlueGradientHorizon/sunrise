@@ -90,11 +90,12 @@ impl Game<'_> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    pub(super) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
+    pub(super) fn run_payload(&mut self, endpoint: Endpoint, mut incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }
         let seal = self.transaction_open();
+        let body = std::mem::replace(&mut incoming.body, Body::Payload(PayloadBytes(Vec::new())));
         let mut context = MainContext {
             game: self,
             epoch: &incoming.epoch,
@@ -103,7 +104,7 @@ impl Game<'_> {
             disconnect: None,
             failure: None,
         };
-        let result = match incoming.body {
+        let result = match body {
             Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
                 .receiver
                 .handle(bytes, &mut context)
@@ -111,7 +112,7 @@ impl Game<'_> {
             Body::Payload(_) => {
                 Err("payload was not dispatched on its declared network executor".into())
             }
-            Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
+            Body::Work(work) => incoming.receiver.run_work(work, &mut context),
         };
         let reason = context.disconnect.take();
         let failure = context.failure.take().or_else(|| result.err());
@@ -266,12 +267,15 @@ impl IPayloadContext for MainContext<'_, '_> {
         &mut self,
         work: Arc<dyn PayloadWork>,
     ) -> Result<PayloadWorkStatus, PayloadContextError> {
-        if !self.epoch.active() || self.disconnect.is_some() {
+        if !self.epoch.active() || self.disconnect.is_some() || self.failure.is_some() {
+            if let Err(error) = self.receiver.dispose_work(work) {
+                self.failure.get_or_insert(error);
+            }
             return Err(PayloadContextError::Disconnected);
         }
         let receiver = self.receiver.clone();
-        if let Err(error) = receiver.run_work(work.as_ref(), self) {
-            self.failure = Some(error);
+        if let Err(error) = receiver.run_work(work, self) {
+            self.failure.get_or_insert(error);
             return Err(PayloadContextError::Disconnected);
         }
         Ok(PayloadWorkStatus::Complete)

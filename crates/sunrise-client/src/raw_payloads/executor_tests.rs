@@ -376,3 +376,319 @@ fn disabled_owner_refuses_before_entering_its_native_handler() {
         assert_eq!(reply_count(&*out), 0);
     });
 }
+
+#[test]
+fn a_network_handler_panic_fails_only_its_connection_and_disposes_staged_work() {
+    mod_platform::__private::initialize().unwrap();
+    struct AttributedWork {
+        panic_on_drop: bool,
+        drops: Arc<AtomicUsize>,
+        drop_calls: Arc<Mutex<Vec<Option<mod_api::content::crash::ModCall>>>>,
+    }
+    impl PayloadWork for AttributedWork {
+        fn run(&self, _: &mut dyn IPayloadContext) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    impl Drop for AttributedWork {
+        fn drop(&mut self) {
+            self.drop_calls
+                .lock()
+                .unwrap()
+                .push(mod_api::content::crash::current_native_call());
+            self.drops.fetch_add(1, Ordering::SeqCst);
+            if self.panic_on_drop {
+                panic!("staged work drop panicked");
+            }
+        }
+    }
+    struct PerConnectionHandler {
+        calls: AtomicUsize,
+        drops: Arc<AtomicUsize>,
+        drop_calls: Arc<Mutex<Vec<Option<mod_api::content::crash::ModCall>>>>,
+    }
+    impl IPayloadHandler for PerConnectionHandler {
+        fn handle(
+            &self,
+            payload: PayloadBytes,
+            ctx: &mut dyn IPayloadContext,
+        ) -> Result<(), mod_api::PayloadHandleError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let fail = payload.0 == [13];
+            assert_eq!(
+                ctx.enqueue_work(Arc::new(AttributedWork {
+                    panic_on_drop: fail,
+                    drops: self.drops.clone(),
+                    drop_calls: self.drop_calls.clone(),
+                })),
+                Ok(PayloadWorkStatus::Queued)
+            );
+            ctx.reply(&PayloadId(CHANNEL.into()), PayloadBytes(vec![1]))
+                .unwrap();
+            if fail {
+                panic!("connection-local handler panic");
+            }
+            Ok(())
+        }
+    }
+    struct Reg(Arc<PerConnectionHandler>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Reg {
+        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            registrar
+                .payload_handlers()
+                .registrar("1")
+                .executes_on(HandlerThread::Network)
+                .play_bidirectional(
+                    PayloadId(CHANNEL.into()),
+                    self.0.clone(),
+                    Some(self.0.clone()),
+                );
+        }
+    }
+
+    let handler = Arc::new(PerConnectionHandler {
+        calls: AtomicUsize::new(0),
+        drops: Arc::default(),
+        drop_calls: Arc::default(),
+    });
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new(
+            "executor_probe",
+            Box::new(Reg(handler.clone())),
+        )]
+        .into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            let local = Local::capture(Side::Server).unwrap();
+            let connect = |conn_id: u32| {
+                let transport = Transport::new(local.clone(), Side::Server);
+                transport
+                    .accept(transport.local.manifest.entries())
+                    .unwrap();
+                transport.finish_configuration().unwrap();
+                let (sender, out) = PlayerSender::payload_executor_test_sender(transport.clone());
+                let endpoint = Endpoint::server(sender);
+                (transport, endpoint, out, conn_id)
+            };
+            let (events, receiver) = crate::lan::event_channel();
+            let (first, first_endpoint, first_out, first_id) = connect(1);
+            let (second, second_endpoint, second_out, second_id) = connect(2);
+            let incoming = |transport: &Arc<Transport>, byte: u8| {
+                Incoming::new(
+                    transport,
+                    negotiation::Phase::Play,
+                    sunrise_protocol::packets::custom_payload::CustomPayload {
+                        channel: CHANNEL.into(),
+                        data: vec![byte],
+                    },
+                )
+                .unwrap()
+            };
+
+            let bad = incoming(&first, 13);
+            let bad_lease = Arc::downgrade(&bad.lease);
+            dispatch(
+                bad,
+                first_endpoint.clone(),
+                MainQueue::Server {
+                    events: events.clone(),
+                    endpoint: first_endpoint.clone(),
+                    conn: Some(first_id),
+                },
+            );
+            assert!(first.closed(), "panicking connection must disconnect");
+            assert!(bad_lease.upgrade().is_none());
+            assert_eq!(events.stats().queued_items, 0);
+            assert_eq!(events.stats().reserved_bytes, 0);
+            assert_eq!(reply_count(&first_out), 0);
+            assert!(first_out().iter().any(|pkt| {
+                pkt.windows(b"executor_probe".len())
+                    .any(|w| w == b"executor_probe")
+            }));
+            assert_eq!(handler.drops.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                handler.drop_calls.lock().unwrap()[0],
+                Some(mod_api::content::crash::ModCall {
+                    id: "executor_probe",
+                    hook: "payload work drop",
+                    part: None,
+                })
+            );
+
+            // Second connection on the same Local still invokes the same handler cleanly.
+            let good = incoming(&second, 7);
+            let good_lease = Arc::downgrade(&good.lease);
+            dispatch(
+                good,
+                second_endpoint.clone(),
+                MainQueue::Server {
+                    events: events.clone(),
+                    endpoint: second_endpoint.clone(),
+                    conn: Some(second_id),
+                },
+            );
+            assert!(!second.closed(), "other connection must stay open");
+            assert_eq!(handler.calls.load(Ordering::SeqCst), 2);
+            assert_eq!(reply_count(&second_out), 1);
+            assert_eq!(events.stats().queued_items, 1);
+            drop(receiver.take_turn());
+            assert_eq!(handler.drops.load(Ordering::SeqCst), 2);
+            assert!(good_lease.upgrade().is_none());
+            assert_eq!(events.stats().reserved_bytes, 0);
+        },
+    );
+}
+
+#[test]
+fn a_panicking_work_destructor_on_refused_enqueue_fails_only_that_connection() {
+    mod_platform::__private::initialize().unwrap();
+    struct PanickingWork {
+        panic_on_drop: bool,
+        drop_calls: Arc<Mutex<Vec<Option<mod_api::content::crash::ModCall>>>>,
+    }
+    impl PayloadWork for PanickingWork {
+        fn run(&self, _: &mut dyn IPayloadContext) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    impl Drop for PanickingWork {
+        fn drop(&mut self) {
+            self.drop_calls
+                .lock()
+                .unwrap()
+                .push(mod_api::content::crash::current_native_call());
+            if self.panic_on_drop {
+                panic!("refused work drop panicked");
+            }
+        }
+    }
+    struct IgnoresRefusal {
+        drop_calls: Arc<Mutex<Vec<Option<mod_api::content::crash::ModCall>>>>,
+    }
+    impl IPayloadHandler for IgnoresRefusal {
+        fn handle(
+            &self,
+            payload: PayloadBytes,
+            ctx: &mut dyn IPayloadContext,
+        ) -> Result<(), mod_api::PayloadHandleError> {
+            let panic_on_drop = payload.0 == [13];
+            let result = ctx.enqueue_work(Arc::new(PanickingWork {
+                panic_on_drop,
+                drop_calls: self.drop_calls.clone(),
+            }));
+            if panic_on_drop {
+                assert_eq!(result, Err(PayloadContextError::Backpressure));
+            } else {
+                assert_eq!(result, Ok(PayloadWorkStatus::Queued));
+            }
+            // Even if the handler ignores the backpressure error and stages a reply,
+            // a panicking work destructor must still fail this connection and publish nothing.
+            ctx.reply(&PayloadId(CHANNEL.into()), PayloadBytes(vec![1]))
+                .unwrap();
+            Ok(())
+        }
+    }
+    struct Reg(Arc<IgnoresRefusal>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Reg {
+        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            registrar
+                .payload_handlers()
+                .registrar("1")
+                .executes_on(HandlerThread::Network)
+                .play_bidirectional(
+                    PayloadId(CHANNEL.into()),
+                    self.0.clone(),
+                    Some(self.0.clone()),
+                );
+        }
+    }
+
+    let drop_calls = Arc::new(Mutex::new(Vec::new()));
+    let handler = Arc::new(IgnoresRefusal {
+        drop_calls: drop_calls.clone(),
+    });
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("executor_probe", Box::new(Reg(handler)))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            let local = Local::capture(Side::Server).unwrap();
+            let connect = || {
+                let transport = Transport::new(local.clone(), Side::Server);
+                transport
+                    .accept(transport.local.manifest.entries())
+                    .unwrap();
+                transport.finish_configuration().unwrap();
+                let (sender, out) = PlayerSender::payload_executor_test_sender(transport.clone());
+                let endpoint = Endpoint::server(sender);
+                (transport, endpoint, out)
+            };
+
+            let (pressure_events, _pressure_rx) = crate::lan::event_channel_with_capacity(
+                sunrise_mod_runtime::byte_channel::message_overhead::<NetEvent>(),
+            );
+            let (first, first_endpoint, first_out) = connect();
+            let bad = Incoming::new(
+                &first,
+                negotiation::Phase::Play,
+                sunrise_protocol::packets::custom_payload::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: vec![13],
+                },
+            )
+            .unwrap();
+            dispatch(
+                bad,
+                first_endpoint.clone(),
+                MainQueue::Server {
+                    events: pressure_events.clone(),
+                    endpoint: first_endpoint,
+                    conn: Some(1),
+                },
+            );
+            assert!(
+                first.closed(),
+                "panicking work destructor must fail connection"
+            );
+            assert_eq!(reply_count(&first_out), 0);
+            assert_eq!(pressure_events.stats().reserved_bytes, 0);
+            assert_eq!(
+                drop_calls.lock().unwrap()[0],
+                Some(mod_api::content::crash::ModCall {
+                    id: "executor_probe",
+                    hook: "payload work drop",
+                    part: None,
+                })
+            );
+
+            // Second connection on the same Local with a healthy queue still succeeds.
+            let (ok_events, ok_rx) = crate::lan::event_channel();
+            let (second, second_endpoint, second_out) = connect();
+            let good = Incoming::new(
+                &second,
+                negotiation::Phase::Play,
+                sunrise_protocol::packets::custom_payload::CustomPayload {
+                    channel: CHANNEL.into(),
+                    data: vec![7],
+                },
+            )
+            .unwrap();
+            dispatch(
+                good,
+                second_endpoint.clone(),
+                MainQueue::Server {
+                    events: ok_events.clone(),
+                    endpoint: second_endpoint,
+                    conn: Some(2),
+                },
+            );
+            assert!(!second.closed());
+            assert_eq!(reply_count(&second_out), 1);
+            assert_eq!(ok_events.stats().queued_items, 1);
+            drop(ok_rx.take_turn());
+        },
+    );
+}

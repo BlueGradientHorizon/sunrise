@@ -14,10 +14,6 @@ pub(crate) struct Registered {
     pub(crate) server: Option<Arc<dyn IPayloadHandler>>,
     pub(crate) client: Option<Arc<dyn IPayloadHandler>>,
     pub(crate) client_thread: HandlerThread,
-    /// Set once the server callback panicked: it is never invoked again, on any connection.
-    pub(crate) server_panicked: Arc<std::sync::atomic::AtomicBool>,
-    /// The same for the client callback.
-    pub(crate) client_panicked: Arc<std::sync::atomic::AtomicBool>,
 }
 
 // no wire: frozen process-local registration storage contains callback trait objects and owning-mod identities.
@@ -80,8 +76,6 @@ pub(crate) struct RawRegistered {
     pub(crate) owner: &'static str,
     pub(crate) owner_index: usize,
     pub(crate) server: Option<Arc<dyn IPayloadHandler>>,
-    /// Set once the server callback panicked: it is never invoked again.
-    pub(crate) panicked: Arc<std::sync::atomic::AtomicBool>,
 }
 
 // no wire: resolved process-local callback and its owning mod's live enable guard.
@@ -95,8 +89,6 @@ pub struct PayloadReceiver {
     /// Its chosen executor.
     pub thread: HandlerThread,
     owner_index: usize,
-    /// Shared by every connection's receiver of this callback.
-    panicked: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl PayloadReceiver {
@@ -105,14 +97,13 @@ impl PayloadReceiver {
         self.owner
     }
     /// Recheck the owner without scanning registrations or resolving the id again: off when
-    /// its mod is off or this callback panicked.
+    /// its mod is off.
     pub fn enabled(&self) -> bool {
         crate::mod_index_on(self.owner_index)
-            && !self.panicked.load(std::sync::atomic::Ordering::Acquire)
     }
     /// Invoke only this owner. The caller owns the root transaction and handles
-    /// a native panic as `Failed`, never as retryable contention. A panic disables
-    /// this callback for every connection; later calls refuse without running it.
+    /// a native panic as `Failed`, never as retryable contention. A panic stays
+    /// on this call's connection and does not poison the handler for other connections.
     pub fn handle(
         &self,
         bytes: crate::PayloadBytes,
@@ -122,18 +113,32 @@ impl PayloadReceiver {
             .map_err(crate::PayloadHandleError::Failed)?
     }
     /// Scheduled work retains its original receiving owner and enable guard.
+    /// `work` is disposed under the same owner after running (or if the owner is disabled),
+    /// so a panicking destructor cannot unwind into the engine or double-panic if `run` panicked.
     pub fn run_work(
         &self,
-        work: &dyn crate::PayloadWork,
+        work: Arc<dyn crate::PayloadWork>,
         context: &mut dyn crate::IPayloadContext,
     ) -> Result<(), String> {
-        self.call("payload work", || work.run(context))?
+        let result = self.call("payload work", || work.run(context));
+        let dropped = self.dispose_work(work);
+        result?.and(dropped)
     }
-    fn call<T>(&self, operation: &'static str, call: impl FnOnce() -> T) -> Result<T, String> {
-        crate::callback_owner::call(
+    /// Dispose of a call-owned work value under its owning mod's panic attribution, even
+    /// when ordinary calls are disabled.
+    pub fn dispose_work(&self, work: Arc<dyn crate::PayloadWork>) -> Result<(), String> {
+        crate::callback_owner::dispose_unpoisoned(
             self.owner,
             self.owner_index,
-            &self.panicked,
+            "payload",
+            "payload work drop",
+            work,
+        )
+    }
+    fn call<T>(&self, operation: &'static str, call: impl FnOnce() -> T) -> Result<T, String> {
+        crate::callback_owner::call_unpoisoned(
+            self.owner,
+            self.owner_index,
             "payload",
             operation,
             call,
@@ -173,14 +178,12 @@ impl Payloads {
                 thread: entry.client_thread,
                 owner_index: entry.owner_index,
                 owner: entry.owner,
-                panicked: entry.client_panicked.clone(),
             }),
             PayloadDirection::ToServer => entry.server.clone().map(|handler| PayloadReceiver {
                 handler,
                 thread: entry.declaration.thread,
                 owner_index: entry.owner_index,
                 owner: entry.owner,
-                panicked: entry.server_panicked.clone(),
             }),
             PayloadDirection::Bidirectional => None,
         }
@@ -235,7 +238,6 @@ impl Payloads {
                         owner: owner.owner,
                         thread: HandlerThread::Main,
                         owner_index: owner.owner_index,
-                        panicked: owner.panicked.clone(),
                     })
                 })
                 .collect()

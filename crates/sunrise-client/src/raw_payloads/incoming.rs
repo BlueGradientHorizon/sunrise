@@ -189,21 +189,36 @@ impl Incoming {
         }
         Ok(Classified::Raw(deliveries))
     }
-    /// Reserve before cloning the channel or retaining the guest's work resource.
-    pub fn work(
+    /// Dispose of any call-owned work under its owning mod's panic attribution.
+    pub fn dispose_body(&mut self) -> Result<(), String> {
+        let body = std::mem::replace(&mut self.body, Body::Payload(PayloadBytes(Vec::new())));
+        match body {
+            Body::Work(work) => self.receiver.dispose_work(work),
+            Body::Payload(_) => Ok(()),
+        }
+    }
+    /// Reserve before cloning the channel or retaining the mod's work resource.
+    pub(super) fn work(
         &self,
         transport: &Transport,
         work: Arc<dyn PayloadWork>,
-    ) -> Result<Self, PayloadContextError> {
+    ) -> Result<Self, (PayloadContextError, Option<String>)> {
         if !self.epoch.active() {
-            return Err(PayloadContextError::Disconnected);
+            return Err((
+                PayloadContextError::Disconnected,
+                self.receiver.dispose_work(work).err(),
+            ));
         }
-        let lease = transport
-            .reserve_ingress(self.id.0.len())
-            .map_err(|error| match error {
-                PayloadSendError::Backpressure => PayloadContextError::Backpressure,
-                _ => PayloadContextError::Disconnected,
-            })?;
+        let lease = match transport.reserve_ingress(self.id.0.len()) {
+            Ok(lease) => lease,
+            Err(error) => {
+                let error = match error {
+                    PayloadSendError::Backpressure => PayloadContextError::Backpressure,
+                    _ => PayloadContextError::Disconnected,
+                };
+                return Err((error, self.receiver.dispose_work(work).err()));
+            }
+        };
         Ok(Self {
             epoch: self.epoch.clone(),
             id: self.id.clone(),
@@ -215,5 +230,10 @@ impl Incoming {
             raw: self.raw,
             turn: None,
         })
+    }
+}
+impl Drop for Incoming {
+    fn drop(&mut self) {
+        let _ = self.dispose_body();
     }
 }

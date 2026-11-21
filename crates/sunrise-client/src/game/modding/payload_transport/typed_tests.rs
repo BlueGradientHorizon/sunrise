@@ -403,12 +403,33 @@ fn lan(game: &mut super::Game<'_>) {
         Some(full),
         "the failed handler's write was rolled back"
     );
-    // The panicked callback is disabled: a later message on it is refused at ingress, as for
-    // a disabled owner, and the session ends without running it.
+    // A panic fails only the connection that triggered it; both an existing connection
+    // and a later connection still reach the same handler.
+    send(&mut witness, UP, empty(7).to_vec());
+    assert_eq!(await_reply(&mut witness, DOWN), empty(8));
     let mut later = super::sender_tests::connect_peer(port, "TypedLater");
     send(&mut later, UP, empty(7).to_vec());
-    await_disconnect(&mut later, DOWN);
-    assert_eq!(SERVER.lock().unwrap().len(), seen.len());
+    assert_eq!(await_reply(&mut later, DOWN), empty(8));
+    let seen_after: Vec<_> = SERVER
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(id, counter, _)| (*id, *counter))
+        .collect();
+    assert_eq!(
+        seen_after,
+        [
+            (UP, 7),
+            (UP, 1),
+            (OTHER, 2),
+            (UP, 3),
+            (UP, 7),
+            (UP, 13),
+            (OTHER, 4),
+            (UP, 7),
+            (UP, 7),
+        ]
+    );
 }
 
 /// Send `data` on `channel` from a TCP peer in play.

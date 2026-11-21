@@ -186,13 +186,17 @@ fn register(r: &mut dyn Registrar) {
   `EncodeFailed` for a value the peer could not decode (a bound or the allocation budget),
   before anything is queued; `WrongProtocol` for a send in a phase the id is not declared in. A
   received body that is not one value of the type closes the session, naming the mod, and the
-  handler does not run. A handler that panics is disabled: its transaction rolls back, nothing it
-  staged is sent, the session closes, and it is not called again.
+  handler does not run. A handler or scheduled `PayloadWork` that panics fails only that
+  connection: its transaction rolls back, nothing it staged is sent, its call-owned work is
+  disposed under the owning mod's panic attribution, and that session closes; other connections
+  keep using the handler normally.
 - **Raw channel failures stay local.** A raw channel (`play_raw`) carries bytes from any client,
-  so a declaring mod's handler that returns `Failed` does not close the session: the game logs the mod and the channel, rolls back that delivery's staged
-  work (a staged disconnect included), and still delivers the other declaring mods' copies. A
-  handler that succeeds and asks to disconnect still disconnects, and so does a refusal by the
-  main thread's work queue. A typed payload's failure closes the session as above.
+  so a declaring mod's handler that returns `Failed` or panics does not close the session and
+  does not disable the handler for later messages or connections: the game logs the mod and the
+  channel, rolls back that delivery's staged work (a staged disconnect included), and still
+  delivers the other declaring mods' copies. A handler that succeeds and asks to disconnect
+  still disconnects, and so does a refusal by the main thread's work queue. A typed payload's
+  failure closes the session as above.
 
 ## Syncing remote item cooldowns
 

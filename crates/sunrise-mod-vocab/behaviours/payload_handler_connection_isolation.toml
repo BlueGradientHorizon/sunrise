@@ -1,0 +1,9 @@
+version = 1
+doc = "A panic in a payload handler or call-owned PayloadWork fails only that connection (or only that delivery for play_raw) without disabling the handler for other connections. Staged replies, writes, and work roll back, and call-owned PayloadWork is disposed under its owning mod's panic attribution."
+tests = [
+    "crates/sunrise-mod-api/src/parts/payloads/typed_tests.rs::a_panicking_callback_fails_only_that_call_without_disabling_other_connections",
+    "crates/sunrise-mod-api/src/parts/payloads/typed_tests.rs::call_owned_payload_work_is_disposed_under_owner_attribution_without_global_poison",
+    "crates/sunrise-client/src/raw_payloads/executor_tests.rs::a_network_handler_panic_fails_only_its_connection_and_disposes_staged_work",
+    "crates/sunrise-client/src/raw_payloads/executor_tests.rs::a_panicking_work_destructor_on_refused_enqueue_fails_only_that_connection",
+    "crates/sunrise-client/src/raw_payloads/raw_channel_tests.rs::network_raw_failures_drop_only_the_failing_copy",
+]
