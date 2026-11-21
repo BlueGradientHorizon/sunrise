@@ -1154,7 +1154,7 @@ pub(in crate::game) mod tests {
             if guest.conn == 1 {
                 guest.brand = "sunrise".into();
             }
-            guest.position = [0.0, 64.0, 0.0];
+            guest.position = [1.0, 2.0, 3.0];
         });
         let typed = mod_api::__private::decode_particle_map(
             "test:measured",
@@ -1163,7 +1163,7 @@ pub(in crate::game) mod tests {
         .unwrap()
         .unwrap();
         let options = ParticleOptions::typed(typed).unwrap();
-        let at = [0.0, 64.0, 0.0];
+        let at = [1.0, 2.0, 3.0];
         send_hub_level_particles(&hub, &options, at, [0.25, 0.5, 1.0], 2.0, 2, None);
         assert!(vanilla.try_recv().is_err());
         let mut packet = level_particles(&sunrise);
