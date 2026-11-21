@@ -458,13 +458,13 @@ the parent's own `sunrise-stage` judges the mod API, never the candidate's: buil
 own folder and target, no inherited compiler wrapper or job token), it exports both trees, its export of the parent
 must equal the parent's signed `surface.json`, and it diffs the two exports. A tree it cannot read is refused. A patch requires an identical mod API; a
 minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
-minor refuses them too. For content mods, this check only compares the SDK's `content_api` version string, which
-must stay the same within a line. It does not check the manifest or content schema declarations: removing an
-accepted key without changing `content_api`, for example, passes the check.
-[#3817](https://github.com/sunrise-org/sunrise/issues/3817) closes this gap by exporting those declarations for
-comparison. The first release of a line has no API restriction. No label, change
-note or dispatch option overrides the check. This compares declarations, not behaviour: a vanilla parity fix is
-allowed in a patch even when a mod can observe it.
+minor refuses them too. For content mods, the SDK's `content_api` version string must stay the same within a line.
+Until [#3817](https://github.com/sunrise-org/sunrise/issues/3817) exports the declarations for comparison, the check
+also refuses any patch or minor whose tree changes the manifest or mod-content readers listed in
+`tools/ci/nightly.py` (`CONTENT_SCHEMA_PATHS`). The refusal names every changed file. Even a legitimate fix in one
+of those files cannot ship in a patch or minor until #3817. The first release of a line has no API restriction.
+No label, change note or dispatch option overrides the check. The mod API surface comparison judges declarations,
+not behaviour: a vanilla parity fix that leaves the surface and these content files alone can ship in a patch.
 
 Within a line, the candidate must descend from its previous stable tag and may not bring in commits from
 `main`'s first-parent history that are absent from that tag. Backport fixes by cherry-pick; merging a backport PR

@@ -763,6 +763,35 @@ def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> No
                          "cherry-pick fixes on this line or use a new major")
 
 
+# Until #3817 exports the content declarations, guard the owning manifest and mod-content readers,
+# not the vanilla pack codecs or the native-only tables (which already pin an exact build).
+CONTENT_SCHEMA_PATHS = (
+    "crates/sunrise-mod-package/src/manifest.rs",
+    "crates/sunrise-mod-package/src/manifest/hash.rs",
+    "crates/sunrise-mod-package/src/manifest/jar.rs",
+    "crates/sunrise-mod-package/src/manifest/runtime_files.rs",
+    "crates/sunrise-mod-package/src/content.rs",
+    "crates/sunrise-mod-package/src/content/entity_sounds.rs",
+    "crates/sunrise-mod-package/src/content/entity_type.rs",
+    "crates/sunrise-mod-package/src/content/fluid_interaction.rs",
+    "crates/sunrise-client/src/mod_content.rs",
+    "crates/sunrise-client/src/mod_content/load_conditions.rs",
+    "crates/sunrise-client/src/mod_content_biomes.rs",
+    "crates/sunrise-client/src/mod_content_carvers.rs",
+    "crates/sunrise-client-render/src/connected/files.rs",
+    "crates/sunrise-world/src/conditions.rs",
+)
+
+
+def require_unchanged_content_schema(sha: str, tag: str, old_sha: str, old_tag: str) -> None:
+    changed = subprocess.run(["git", "diff", "--name-only", "-z", "--no-renames", old_sha, sha, "--",
+                              *CONTENT_SCHEMA_PATHS], cwd=REPOSITORY, check=True, capture_output=True, text=True).stdout
+    if changed:
+        paths = ", ".join(changed.removesuffix("\0").split("\0"))
+        raise SystemExit(f"::error::refused: {tag} changes content declaration files since {old_tag}: {paths}. "
+                         "Patches and minors cannot change these files until #3817.")
+
+
 def unpack(sha: str, into: Path) -> None:
     """The tree of `sha`, extracted into the new folder `into`: no checkout, worktree or repository of its own."""
     into.mkdir()
@@ -806,6 +835,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
         raise SystemExit(f"::error::refused: a break-glass release is a patch of {old_tag}, not {tag}")
     if same_line:
         require_stable_lineage(sha, tag, old_sha, old_tag)
+        require_unchanged_content_schema(sha, tag, old_sha, old_tag)
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         before, after = work / "before.json", work / "after.json"
