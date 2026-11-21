@@ -63,28 +63,6 @@ impl DirtySections {
     }
 }
 
-/// How a connection-group change notifies connected clients.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConnectionGroupNotify {
-    /// Do not record in [`World::connection_group_log`] (client apply or local-only update).
-    None,
-    /// Explicit mod write: always broadcast to negotiated holders.
-    Explicit,
-    /// Automatic clear from a block replacement: broadcast only when the paired block update at
-    /// the same position is also sent.
-    OnBlockSend,
-}
-
-/// One entry in [`World::connection_group_log`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ConnectionGroupLogEntry {
-    pub pos: (i32, i32, i32),
-    pub group: Option<u64>,
-    /// When true (automatic clear on block replacement), only broadcast if the paired block
-    /// update at `pos` is also sent in the same broadcast pass.
-    pub require_block_send: bool,
-}
-
 pub struct World {
     // Initialized only for a logical server level, then borrowed by every AI worker.
     path_type_cache: OnceLock<path_type_cache::PathTypeCache>,
@@ -175,12 +153,14 @@ pub struct World {
     /// Writes of this tick's block events and block entities, held out of
     /// the log while it is sent: they go out with the next tick's.
     pub block_log_held: Vec<(i32, i32, i32)>,
-    /// Connection-group writes since the log was last drained, kept only while the world is open
-    /// to the network (mirrored with `block_log`).
-    pub connection_group_log: Option<Vec<ConnectionGroupLogEntry>>,
-    /// Connection-group writes of this tick's block events and block entities, held out of
+    /// Positions with explicit `LevelRef::set_connection_group` writes since the log was last
+    /// drained, kept only while the world is open to the network (mirrored with `block_log`).
+    /// Automatic clears on block replacement are never logged here: clients derive the
+    /// authoritative group when the block change itself is sent.
+    pub connection_group_log: Option<Vec<(i32, i32, i32)>>,
+    /// Connection-group positions written after `tick_blocks`' broadcast, held out of
     /// `connection_group_log` while it is sent so they never outrun held block writes.
-    pub connection_group_log_held: Vec<ConnectionGroupLogEntry>,
+    pub connection_group_log_held: Vec<(i32, i32, i32)>,
     /// Every write since the mobs last ticked (position, old and new state),
     /// for `ServerLevel.sendBlockUpdated`'s path recomputing; kept only while
     /// the mobs of this world tick (`game/mobs/creatures/mod.rs`).
@@ -568,6 +548,7 @@ impl World {
         let chunk = Arc::make_mut(chunk);
         match group {
             Some(g) => {
+                chunk.has_held_connection_groups = true;
                 chunk.connection_groups.insert(cell, g);
             }
             None => {
@@ -576,37 +557,9 @@ impl World {
         }
         true
     }
-    /// Mark affected sections for remesh (without relighting or marking the chunk unsaved) and
-    /// log the connection-group change for connected clients according to `notify`.
-    pub fn publish_connection_group(
-        &mut self,
-        x: i32,
-        y: i32,
-        z: i32,
-        group: Option<u64>,
-        notify: ConnectionGroupNotify,
-    ) {
-        let Some(chunk) = self.chunks.get(&(x >> 4, z >> 4)) else {
-            return;
-        };
-        let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
-        match notify {
-            ConnectionGroupNotify::None => {}
-            ConnectionGroupNotify::Explicit | ConnectionGroupNotify::OnBlockSend => {
-                if let Some(log) = &mut self.connection_group_log {
-                    log.push(ConnectionGroupLogEntry {
-                        pos: (x, y, z),
-                        group,
-                        require_block_send: notify == ConnectionGroupNotify::OnBlockSend,
-                    });
-                }
-            }
-        }
-        self.mark_remesh_at(x, y, z, min_y, sections, false);
-    }
     /// Set or clear the connection group at `(x, y, z)`, marking affected sections for remesh
-    /// (without relighting or marking the chunk unsaved) and logging the change for connected
-    /// clients according to `notify`.
+    /// (without relighting or marking the chunk unsaved) and, when `notify` is true, recording
+    /// `(x, y, z)` in `connection_group_log` for connected clients.
     /// Returns `false` if the chunk is unloaded, `y` is out of height, or the group was unchanged.
     pub fn set_connection_group(
         &mut self,
@@ -614,23 +567,48 @@ impl World {
         y: i32,
         z: i32,
         group: Option<u64>,
-        notify: ConnectionGroupNotify,
+        notify: bool,
     ) -> bool {
         if !self.set_connection_group_stored(x, y, z, group) {
             return false;
         }
-        self.publish_connection_group(x, y, z, group, notify);
+        if notify && let Some(log) = &mut self.connection_group_log {
+            log.push((x, y, z));
+        }
+        if let Some(chunk) = self.chunks.get(&(x >> 4, z >> 4)) {
+            let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
+            self.mark_remesh_at(x, y, z, min_y, sections, false);
+        }
+        true
+    }
+    /// Clear any connection group at `(x, y, z)` due to an automatic block replacement. Never
+    /// logs a new entry (clients derive the authoritative group when the block change is sent);
+    /// if a same-tick explicit write at `(x, y, z)` is still queued in `connection_group_log`,
+    /// drops it so an unsent replacement never leaks a stale value or a premature `None`.
+    /// Marks affected sections for remesh when a group was removed.
+    pub fn clear_connection_group_automatic(&mut self, x: i32, y: i32, z: i32) -> bool {
+        if !self.set_connection_group_stored(x, y, z, None) {
+            return false;
+        }
+        if let Some(log) = &mut self.connection_group_log {
+            log.retain(|&p| p != (x, y, z));
+        }
+        if let Some(chunk) = self.chunks.get(&(x >> 4, z >> 4)) {
+            let (min_y, sections) = (chunk.min_y(), chunk.sections.len() as i32);
+            self.mark_remesh_at(x, y, z, min_y, sections, false);
+        }
         true
     }
     /// Apply a server-sent chunk snapshot of connection groups on a client world, marking only
     /// sections whose group actually changed (added, updated, or removed) for remesh. Ignores
-    /// unloaded chunks or out-of-height entries.
+    /// unloaded chunks or out-of-height entries. Local `x`/`z` bounds (`0..16`) are guaranteed by
+    /// [`sunrise_protocol::connection_groups::ChunkEntry`].
     pub fn apply_chunk_connection_groups(
         &mut self,
         cx: i32,
         cz: i32,
         replace: bool,
-        entries: impl IntoIterator<Item = (u8, i32, u8, u64)>,
+        entries: impl IntoIterator<Item = sunrise_protocol::connection_groups::ChunkEntry>,
     ) {
         let Some(chunk) = self.chunks.get_mut(&(cx, cz)) else {
             return;
@@ -639,12 +617,13 @@ impl World {
         let mut touched: Vec<(i32, i32, i32)> = Vec::new();
         if replace {
             let mut next = FxHashMap::default();
-            for (lx, y, lz, group) in entries {
-                if lx < 16
-                    && lz < 16
-                    && let Some(cell) = chunk.dynamic_cell(i32::from(lx), y, i32::from(lz))
-                {
-                    next.insert(cell, group);
+            for entry in entries {
+                if let Some(cell) = chunk.dynamic_cell(
+                    i32::from(entry.local_x()),
+                    entry.y(),
+                    i32::from(entry.local_z()),
+                ) {
+                    next.insert(cell, entry.group());
                 }
             }
             for (&cell, &old_group) in &chunk.connection_groups {
@@ -660,20 +639,24 @@ impl World {
                 }
             }
             if !touched.is_empty() {
-                Arc::make_mut(chunk).connection_groups = next;
+                let chunk = Arc::make_mut(chunk);
+                if !next.is_empty() {
+                    chunk.has_held_connection_groups = true;
+                }
+                chunk.connection_groups = next;
             }
         } else {
-            for (lx, y, lz, group) in entries {
-                if lx >= 16 || lz >= 16 {
-                    continue;
-                }
+            for entry in entries {
+                let (lx, y, lz) = (entry.local_x(), entry.y(), entry.local_z());
                 let Some(cell) = chunk.dynamic_cell(i32::from(lx), y, i32::from(lz)) else {
                     continue;
                 };
-                if chunk.connection_groups.get(&cell).copied() == Some(group) {
+                if chunk.connection_groups.get(&cell).copied() == Some(entry.group()) {
                     continue;
                 }
-                Arc::make_mut(chunk).connection_groups.insert(cell, group);
+                let chunk = Arc::make_mut(chunk);
+                chunk.has_held_connection_groups = true;
+                chunk.connection_groups.insert(cell, entry.group());
                 touched.push((cx * 16 + i32::from(lx), y, cz * 16 + i32::from(lz)));
             }
         }
@@ -1033,9 +1016,10 @@ impl Default for HealthRules {
 
 #[cfg(test)]
 mod tests {
-    use super::{ConnectionGroupLogEntry, ConnectionGroupNotify, DirtySections, Weather, World};
+    use super::{DirtySections, Weather, World};
     use crate::chunk::{Chunk, MIN_Y, SECTIONS};
     use std::sync::Arc;
+    use sunrise_protocol::connection_groups::ChunkEntry;
     use sunrise_world::registry::BlockStateId;
 
     #[test]
@@ -1236,26 +1220,23 @@ mod tests {
         world.chunks.insert((0, 1), Arc::new(Chunk::empty(0, 1)));
         world.chunks.insert((1, 1), Arc::new(Chunk::empty(1, 1)));
 
-        // Unloaded chunk and out-of-height return false without logging or dirtying.
-        assert!(!world.set_connection_group(32, 64, 0, Some(1), ConnectionGroupNotify::Explicit));
-        assert!(!world.set_connection_group(15, 999, 15, Some(1), ConnectionGroupNotify::Explicit));
+        // Unloaded chunk and out-of-height return false without logging, setting the sticky bit,
+        // or dirtying.
+        assert!(!world.set_connection_group(32, 64, 0, Some(1), true));
+        assert!(!world.set_connection_group(15, 999, 15, Some(1), true));
+        assert!(!world.chunks[&(0, 0)].has_held_connection_groups);
         assert!(world.connection_group_log.as_ref().unwrap().is_empty());
         assert!(world.dirty_sections.is_empty());
 
-        // Setting group 0 (valid u64 value) succeeds, logs, and marks remesh across borders without
-        // touching dirty_light, light_edits, or modified.
-        assert!(world.set_connection_group(15, 64, 15, Some(0), ConnectionGroupNotify::Explicit));
+        // Setting group 0 (valid u64 value) succeeds, sets the sticky chunk bit, logs, and marks
+        // remesh across borders without touching dirty_light, light_edits, or modified.
+        assert!(world.set_connection_group(15, 64, 15, Some(0), true));
+        assert!(world.chunks[&(0, 0)].has_held_connection_groups);
         assert_eq!(world.connection_group(15, 64, 15), Some(0));
-        assert!(!world.set_connection_group(15, 64, 15, Some(0), ConnectionGroupNotify::Explicit));
+        assert!(!world.set_connection_group(15, 64, 15, Some(0), true));
         assert_eq!(
             world.connection_group_log.as_deref(),
-            Some(
-                &[ConnectionGroupLogEntry {
-                    pos: (15, 64, 15),
-                    group: Some(0),
-                    require_block_send: false,
-                }][..]
-            )
+            Some(&[(15, 64, 15)][..])
         );
         let sy = (64 - MIN_Y) >> 4;
         assert!(world.dirty_sections.contains(&(0, sy, 0)));
@@ -1267,36 +1248,30 @@ mod tests {
         assert!(world.light_edits.is_empty());
         assert!(world.modified.is_empty());
 
-        // Clearing logs None and marks remesh; clearing again is a no-op.
-        world.connection_group_log.as_mut().unwrap().clear();
-        assert!(world.set_connection_group(15, 64, 15, None, ConnectionGroupNotify::OnBlockSend));
+        // Automatic clear removes storage and drops any pending same-tick explicit write for that
+        // cell from connection_group_log while keeping the sticky bit; repeating it is a no-op.
+        assert!(world.clear_connection_group_automatic(15, 64, 15));
         assert_eq!(world.connection_group(15, 64, 15), None);
-        assert!(!world.set_connection_group(15, 64, 15, None, ConnectionGroupNotify::OnBlockSend));
-        assert_eq!(
-            world.connection_group_log.as_deref(),
-            Some(
-                &[ConnectionGroupLogEntry {
-                    pos: (15, 64, 15),
-                    group: None,
-                    require_block_send: true,
-                }][..]
-            )
-        );
+        assert!(world.chunks[&(0, 0)].has_held_connection_groups);
+        assert!(!world.clear_connection_group_automatic(15, 64, 15));
+        assert!(world.connection_group_log.as_ref().unwrap().is_empty());
 
         // apply_chunk_connection_groups replaces and remeshes only changed cells, never dirtying
         // identical entries on either replace or merge.
         world.dirty_sections.clear();
-        world.apply_chunk_connection_groups(0, 0, true, [(1, 64, 1, 42)]);
+        let entry_42 = ChunkEntry::new(1, 64, 1, 42).unwrap();
+        let entry_99 = ChunkEntry::new(2, 80, 2, 99).unwrap();
+        world.apply_chunk_connection_groups(0, 0, true, [entry_42]);
         assert_eq!(world.connection_group(1, 64, 1), Some(42));
         assert!(world.dirty_sections.contains(&(0, sy, 0)));
 
         world.dirty_sections.clear();
-        world.apply_chunk_connection_groups(0, 0, true, [(1, 64, 1, 42)]);
+        world.apply_chunk_connection_groups(0, 0, true, [entry_42]);
         assert!(world.dirty_sections.is_empty());
-        world.apply_chunk_connection_groups(0, 0, false, [(1, 64, 1, 42)]);
+        world.apply_chunk_connection_groups(0, 0, false, [entry_42]);
         assert!(world.dirty_sections.is_empty());
 
-        world.apply_chunk_connection_groups(0, 0, true, [(2, 80, 2, 99)]);
+        world.apply_chunk_connection_groups(0, 0, true, [entry_99]);
         assert_eq!(world.connection_group(1, 64, 1), None);
         assert_eq!(world.connection_group(2, 80, 2), Some(99));
         assert!(world.dirty_sections.contains(&(0, sy, 0)));

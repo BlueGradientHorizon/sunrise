@@ -98,6 +98,7 @@ impl ViewedWorld {
                     let key = (p.x, p.z);
                     if let Some(old) = self.world.chunks.get(&key) {
                         chunk.connection_groups = old.connection_groups.clone();
+                        chunk.has_held_connection_groups = old.has_held_connection_groups;
                     }
                     self.world.install_light_column(chunk);
                     self.unload_block_entities(key);

@@ -23,12 +23,60 @@ pub const MAX_ENTRIES: usize = 16_384;
 
 /// A single entry in a chunk-scoped connection-group snapshot:
 /// `(local_x 0..16, world_y, local_z 0..16, group)`.
+///
+/// Local `x` and `z` are stored as packed 4-bit nibbles (`(local_x << 4) | local_z`) so every
+/// `ChunkEntry` guarantees `local_x < 16 && local_z < 16` by construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChunkEntry {
-    pub local_x: u8,
-    pub y: i32,
-    pub local_z: u8,
-    pub group: u64,
+    xz: u8,
+    y: i32,
+    group: u64,
+}
+
+impl ChunkEntry {
+    /// Construct an entry, refusing `local_x >= 16` or `local_z >= 16`.
+    pub fn new(local_x: u8, y: i32, local_z: u8, group: u64) -> Result<Self> {
+        if local_x >= 16 || local_z >= 16 {
+            return Err(Error::new(format!(
+                "connection groups: local coord ({local_x}, {local_z}) out of 0..16"
+            )));
+        }
+        Ok(Self {
+            xz: (local_x << 4) | local_z,
+            y,
+            group,
+        })
+    }
+
+    /// Construct an entry from already-packed 4-bit nibbles `(local_x << 4) | local_z`.
+    #[inline]
+    pub const fn from_packed(xz: u8, y: i32, group: u64) -> Self {
+        Self { xz, y, group }
+    }
+
+    /// Chunk-local X coordinate (`0..16`).
+    #[inline]
+    pub const fn local_x(self) -> u8 {
+        self.xz >> 4
+    }
+
+    /// World Y coordinate.
+    #[inline]
+    pub const fn y(self) -> i32 {
+        self.y
+    }
+
+    /// Chunk-local Z coordinate (`0..16`).
+    #[inline]
+    pub const fn local_z(self) -> u8 {
+        self.xz & 15
+    }
+
+    /// Mod-published connection group identifier.
+    #[inline]
+    pub const fn group(self) -> u64 {
+        self.group
+    }
 }
 
 /// An incremental group update at a world block position: `Some(g)` sets, `None` clears.
@@ -56,7 +104,7 @@ pub enum Message {
 const KIND_CHUNK: u8 = 0;
 const KIND_UPDATE: u8 = 1;
 
-/// Encode one message. Refuses lists longer than [`MAX_ENTRIES`] or out-of-range local coords.
+/// Encode one message. Refuses lists longer than [`MAX_ENTRIES`].
 pub fn encode(message: &Message) -> Result<Vec<u8>> {
     let mut w = Writer::new();
     match message {
@@ -78,13 +126,7 @@ pub fn encode(message: &Message) -> Result<Vec<u8>> {
             w.bool(*replace);
             w.varint(entries.len() as i32);
             for e in entries {
-                if e.local_x >= 16 || e.local_z >= 16 {
-                    return Err(Error::new(format!(
-                        "connection groups: local coord ({}, {}) out of 0..16",
-                        e.local_x, e.local_z
-                    )));
-                }
-                w.u8((e.local_x << 4) | e.local_z);
+                w.u8(e.xz);
                 w.varint(e.y);
                 w.i64(e.group as i64);
             }
@@ -130,12 +172,7 @@ pub fn decode(data: &[u8]) -> Result<Message> {
                 let xz = r.u8()?;
                 let y = r.varint()?;
                 let group = r.i64()? as u64;
-                entries.push(ChunkEntry {
-                    local_x: xz >> 4,
-                    y,
-                    local_z: xz & 15,
-                    group,
-                });
+                entries.push(ChunkEntry::from_packed(xz, y, group));
             }
             Message::Chunk {
                 cx,
@@ -186,21 +223,33 @@ mod tests {
             cz: 7,
             replace: true,
             entries: vec![
-                ChunkEntry {
-                    local_x: 0,
-                    y: -64,
-                    local_z: 15,
-                    group: 0,
-                },
-                ChunkEntry {
-                    local_x: 15,
-                    y: 319,
-                    local_z: 0,
-                    group: u64::MAX,
-                },
+                ChunkEntry::new(0, -64, 15, 0).unwrap(),
+                ChunkEntry::new(15, 319, 0, u64::MAX).unwrap(),
             ],
         };
         assert_eq!(decode(&encode(&chunk).unwrap()).unwrap(), chunk);
+        let decoded = decode(&encode(&chunk).unwrap()).unwrap();
+        let Message::Chunk { entries, .. } = decoded else {
+            panic!("expected chunk message");
+        };
+        assert_eq!(
+            (
+                entries[0].local_x(),
+                entries[0].y(),
+                entries[0].local_z(),
+                entries[0].group()
+            ),
+            (0, -64, 15, 0)
+        );
+        assert_eq!(
+            (
+                entries[1].local_x(),
+                entries[1].y(),
+                entries[1].local_z(),
+                entries[1].group()
+            ),
+            (15, 319, 0, u64::MAX)
+        );
 
         let update = Message::Update {
             entries: vec![
@@ -231,17 +280,7 @@ mod tests {
         oversized.varint((MAX_ENTRIES + 1) as i32);
         assert!(decode(&oversized.data).is_err());
 
-        let bad_local = Message::Chunk {
-            cx: 0,
-            cz: 0,
-            replace: true,
-            entries: vec![ChunkEntry {
-                local_x: 16,
-                y: 0,
-                local_z: 0,
-                group: 1,
-            }],
-        };
-        assert!(encode(&bad_local).is_err());
+        assert!(ChunkEntry::new(16, 0, 0, 1).is_err());
+        assert!(ChunkEntry::new(0, 0, 16, 1).is_err());
     }
 }

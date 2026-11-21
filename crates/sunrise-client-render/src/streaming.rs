@@ -1333,6 +1333,7 @@ impl Streaming {
         };
         if !self.lit.contains(&key) {
             chunk.connection_groups = old.connection_groups.clone();
+            chunk.has_held_connection_groups = old.has_held_connection_groups;
             return self.insert_remote(world, chunk);
         }
         take_resent_column(world, key, &old, chunk, self.relight_resent);
@@ -3547,6 +3548,7 @@ fn take_resent_column(
     // Keep previously synced connection groups until the authoritative snapshot or delta for this
     // resend applies, so unchanged sections whose group was cleared still dirty on arrival.
     chunk.connection_groups = old.connection_groups.clone();
+    chunk.has_held_connection_groups = old.has_held_connection_groups;
     world.install_light_column(chunk);
     world.revision = world.revision.wrapping_add(1);
     // A section with new biomes and the same blocks remeshes now (its tint), with its neighbours, whose tint
@@ -5098,18 +5100,20 @@ mod tests {
     fn resent_column_preserves_groups_so_clear_in_unchanged_section_still_dirties() {
         let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
         let mut old = resident_column(&mut world, 0x50);
-        // Section P (y = 64) holds a connection group; section Q (y = 80) will be bulk-edited.
+        // Clone the baseline without connection groups, then edit a non-adjacent section Q
+        // (y = 104) while section P (y = 64) holds a connection group.
+        let mut resent = old.clone();
+        resent.set(5, 104, 5, 2);
         old.set_connection_group(3, 64, 4, Some(42));
         world.install_light_column(old.clone());
-        let mut resent = Chunk::empty(2, -3);
-        resent.set(5, 80, 5, 2);
+        world.dirty_sections.clear();
         take_resent_column(&mut world, (2, -3), &old, resent, true);
 
         let sy_p = (64 - crate::chunk::MIN_Y) >> 4;
-        let sy_q = (80 - crate::chunk::MIN_Y) >> 4;
-        assert_ne!(sy_p, sy_q);
-        // Resend dirtied section Q (block edit) but preserved section P's group until the
-        // authoritative group snapshot arrives.
+        let sy_q = (104 - crate::chunk::MIN_Y) >> 4;
+        assert!((sy_q - sy_p).abs() > 1);
+        // Resend dirtied section Q (block edit) but preserved section P's group (and left P
+        // clean) until the authoritative group snapshot arrives.
         assert!(world.dirty_sections.contains(&(2, sy_q, -3)));
         assert!(!world.dirty_sections.contains(&(2, sy_p, -3)));
         assert_eq!(

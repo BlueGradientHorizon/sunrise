@@ -2,7 +2,7 @@
 //! the players sent those chunks, and, wrapped with the level, to the players whose client views
 //! it (`viewed_levels`).
 use super::{Guest, Hub};
-use crate::{chunk::Chunk, fast_hash::FxHashSet, lan::viewed_levels::send::Runs, world::World};
+use crate::{chunk::Chunk, lan::viewed_levels::send::Runs, world::World};
 use sunrise_protocol::{
     connection_groups::{self, ChunkEntry, UpdateEntry},
     packets::{
@@ -14,7 +14,7 @@ use sunrise_protocol::{
 
 fn encode_payload(msg: &connection_groups::Message) -> Vec<u8> {
     let data = connection_groups::encode(msg)
-        .expect("connection_groups::Message batches are capped at MAX_ENTRIES with 0..16 coords");
+        .expect("connection_groups::Message batches are capped at MAX_ENTRIES");
     C::CustomPayload(CustomPayload {
         channel: connection_groups::CHANNEL.into(),
         data,
@@ -47,15 +47,10 @@ pub(in crate::lan) fn encode_chunk_connection_groups(
         .iter()
         .map(|(&cell, &group)| {
             let (local_x, y, local_z) = chunk.dynamic_cell_coords(cell);
-            ChunkEntry {
-                local_x,
-                y,
-                local_z,
-                group,
-            }
+            ChunkEntry::from_packed((local_x << 4) | local_z, y, group)
         })
         .collect();
-    entries.sort_unstable_by_key(|e| (e.y, e.local_z, e.local_x));
+    entries.sort_unstable_by_key(|e| (e.y(), e.local_z(), e.local_x()));
     entries
         .chunks(connection_groups::MAX_ENTRIES)
         .enumerate()
@@ -187,21 +182,23 @@ impl Hub {
                 }
                 let body = self.encoder.body_in(chunk, world);
                 self.send_to_holders(&holders, &body);
-                let cg_holders: Vec<_> = holders
-                    .iter()
-                    .copied()
-                    .filter(|&(i, _)| self.guests[i].negotiated_connection_groups())
-                    .collect();
-                if !cg_holders.is_empty() {
-                    for packet in encode_chunk_connection_groups(chunk, true) {
-                        self.send_to_holders(&cg_holders, &packet);
+                if chunk.has_held_connection_groups {
+                    let cg_holders: Vec<_> = holders
+                        .iter()
+                        .copied()
+                        .filter(|&(i, _)| self.guests[i].negotiated_connection_groups())
+                        .collect();
+                    if !cg_holders.is_empty() {
+                        for packet in encode_chunk_connection_groups(chunk, true) {
+                            self.send_to_holders(&cg_holders, &packet);
+                        }
                     }
                 }
             }
         }
-        let mut sent_blocks: FxHashSet<(i32, i32, i32)> = Default::default();
+        let mut block_group_positions: Vec<(i32, i32, i32)> = Vec::new();
         let Some(log) = world.block_log.as_mut() else {
-            self.broadcast_connection_group_changes(world, &bulk, &sent_blocks);
+            self.broadcast_connection_group_changes(world, &bulk, block_group_positions);
             return;
         };
         if !bulk.is_empty() {
@@ -232,7 +229,16 @@ impl Hub {
                 if holders.is_empty() {
                     continue;
                 }
-                sent_blocks.extend(positions.iter().copied());
+                if world
+                    .chunks
+                    .get(&(sx, sz))
+                    .is_some_and(|c| c.has_held_connection_groups)
+                    && holders
+                        .iter()
+                        .any(|&(i, _)| self.guests[i].negotiated_connection_groups())
+                {
+                    block_group_positions.extend(positions.iter().copied());
+                }
                 let packet = if positions.len() == 1 {
                     let (x, y, z) = positions[0];
                     C::BlockUpdate(play::BlockUpdate {
@@ -289,58 +295,46 @@ impl Hub {
                 }
             }
         }
-        self.broadcast_connection_group_changes(world, &bulk, &sent_blocks);
+        self.broadcast_connection_group_changes(world, &bulk, block_group_positions);
     }
 
-    /// Broadcast incremental connection-group edits/clears logged in `world.connection_group_log`
-    /// to negotiated holders (both in-level guests and viewed-level viewers) that hold each
-    /// entry's chunk.
+    /// Broadcast incremental connection-group updates for explicitly logged writes in
+    /// `world.connection_group_log` and for sent block changes in chunks that have held a group
+    /// (`block_group_positions`), reading each position's authoritative group from `world` at send
+    /// time. Routed to negotiated holders (both in-level guests and viewed-level viewers).
     fn broadcast_connection_group_changes(
         &self,
         world: &mut World,
         bulk: &[(i32, i32)],
-        sent_blocks: &FxHashSet<(i32, i32, i32)>,
+        mut positions: Vec<(i32, i32, i32)>,
     ) {
-        let Some(log) = world.connection_group_log.as_mut() else {
-            return;
-        };
-        if log.is_empty() {
-            return;
+        if let Some(log) = world.connection_group_log.as_mut()
+            && !log.is_empty()
+        {
+            positions.extend(log.drain(..));
         }
-        // Collapse repeated writes to the same position, keeping the last value. Entries in bulk-
-        // resent chunks were already covered by the authoritative chunk snapshot above. An
-        // automatic clear whose paired block write was not sent to clients (e.g. `NONE` or
-        // `UPDATE_INVISIBLE`) is not sent, and drops any superseded earlier write to that cell in
-        // the same pass so stale groups are never published.
-        let mut latest: std::collections::BTreeMap<(i32, i32, i32), Option<u64>> =
-            Default::default();
-        for entry in log.drain(..) {
-            if bulk
-                .binary_search(&(entry.pos.0 >> 4, entry.pos.2 >> 4))
-                .is_ok()
-            {
-                continue;
-            }
-            if entry.require_block_send && !sent_blocks.contains(&entry.pos) {
-                latest.remove(&entry.pos);
-                continue;
-            }
-            latest.insert(entry.pos, entry.group);
-        }
-        if latest.is_empty() {
+        if positions.is_empty() {
             return;
         }
-        // Group by chunk so we only send to negotiated holders that hold that chunk.
+        positions.sort_unstable();
+        positions.dedup();
+        // Group by chunk so we only send to negotiated holders that hold that chunk. Positions in
+        // bulk-resent chunks were already covered by the authoritative chunk snapshot above.
         let mut by_chunk: std::collections::BTreeMap<(i32, i32), Vec<UpdateEntry>> =
             Default::default();
-        for ((x, y, z), group) in latest {
-            by_chunk
-                .entry((x >> 4, z >> 4))
-                .or_default()
-                .push(UpdateEntry {
-                    pos: [x, y, z],
-                    group,
-                });
+        for (x, y, z) in positions {
+            let key = (x >> 4, z >> 4);
+            if bulk.binary_search(&key).is_ok() {
+                continue;
+            }
+            let group = world.connection_group(x, y, z);
+            by_chunk.entry(key).or_default().push(UpdateEntry {
+                pos: [x, y, z],
+                group,
+            });
+        }
+        if by_chunk.is_empty() {
+            return;
         }
         // Batch per guest so one packet (or `sunrise:levels` run) covers all chunks that guest
         // holds in this level. (`Level` is not `Ord`, so key by guest index; each guest holds at

@@ -733,6 +733,11 @@ pub struct Chunk {
     /// synced to Sunrise clients over `sunrise:connection_groups`; dropped with the chunk and
     /// never saved to disk.
     pub connection_groups: crate::fast_hash::FxHashMap<u32, u64>,
+    /// Sticky bit set on the first non-empty connection group written to this chunk and dropped
+    /// with the chunk. While false, block broadcasts and bulk resends pay zero connection-group
+    /// sync cost; while true, block changes in this chunk derive and send their authoritative
+    /// group at broadcast time.
+    pub has_held_connection_groups: bool,
 }
 impl Chunk {
     /// An all-air chunk in the current `layout`.
@@ -770,6 +775,7 @@ impl Chunk {
             dynamic_emission: Default::default(),
             dynamic_pending: false,
             connection_groups: Default::default(),
+            has_held_connection_groups: false,
         }
     }
     /// The [`Self::dynamic_emission`] / [`Self::connection_groups`] key of the cell at `y`
@@ -806,7 +812,10 @@ impl Chunk {
     ) -> Option<bool> {
         let cell = self.dynamic_cell(x, y, z)?;
         let changed = match group {
-            Some(g) => self.connection_groups.insert(cell, g) != Some(g),
+            Some(g) => {
+                self.has_held_connection_groups = true;
+                self.connection_groups.insert(cell, g) != Some(g)
+            }
             None => self.connection_groups.remove(&cell).is_some(),
         };
         Some(changed)

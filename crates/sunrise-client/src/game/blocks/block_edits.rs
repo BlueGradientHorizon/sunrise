@@ -45,6 +45,16 @@ impl Game<'_> {
         };
         let tags = [&self.res.items().block_tags, &world_items.block_tags];
         let facts = self.res.facts();
+        let journaled_groups: Vec<((i32, i32, i32), BlockStateId)> = if self.transactions.is_empty()
+        {
+            Vec::new()
+        } else {
+            self.transactions
+                .journaled_connection_group_positions()
+                .into_iter()
+                .map(|pos| (pos, self.world.block(pos.0, pos.1, pos.2)))
+                .collect()
+        };
         let watched = std::mem::take(&mut self.world.watched);
         let out = self.world.edit_runs(
             &runs,
@@ -65,11 +75,22 @@ impl Game<'_> {
             },
         );
         self.world.watched = watched;
-        if !out.grouped_changes.is_empty() {
+        if !out.grouped_changes.is_empty() || !journaled_groups.is_empty() {
             let behaviours = self.res.behaviours();
             for &((x, y, z), old, new) in &out.grouped_changes {
                 if !behaviours.keeps_connection_group(BlockStateId(old), BlockStateId(new)) {
-                    let _ = self.world.set_connection_group_stored(x, y, z, None);
+                    let _ = self.world.clear_connection_group_automatic(x, y, z);
+                    self.transactions
+                        .reconcile_bulk_connection_group_clear((x, y, z));
+                }
+            }
+            for (pos, before) in journaled_groups {
+                let after = self.world.block(pos.0, pos.1, pos.2);
+                if after != before && !behaviours.keeps_connection_group(before, after) {
+                    let _ = self
+                        .world
+                        .clear_connection_group_automatic(pos.0, pos.1, pos.2);
+                    self.transactions.reconcile_bulk_connection_group_clear(pos);
                 }
             }
         }

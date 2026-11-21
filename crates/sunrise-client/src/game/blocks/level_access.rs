@@ -52,13 +52,9 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn on_block_replaced(&mut self, pos: BlockPos) {
         if !self.client_side {
-            self.world.set_connection_group(
-                pos.x,
-                pos.y,
-                pos.z,
-                None,
-                sunrise_client::world::ConnectionGroupNotify::OnBlockSend,
-            );
+            let _ = self
+                .world
+                .clear_connection_group_automatic(pos.x, pos.y, pos.z);
         }
     }
     fn observe_block_changed(

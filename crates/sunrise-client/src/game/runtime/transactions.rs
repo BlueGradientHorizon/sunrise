@@ -101,6 +101,34 @@ impl OpenTransactions {
         }
     }
 
+    /// Positions with a connection-group restore baseline in any open transaction frame.
+    pub(super) fn journaled_connection_group_positions(&self) -> Vec<Pos> {
+        let mut out = Vec::new();
+        for level in self.iter() {
+            for &pos in level.connection_groups.keys() {
+                if !out.contains(&pos) {
+                    out.push(pos);
+                }
+            }
+        }
+        out
+    }
+
+    /// A permanent bulk edit (`edit_blocks`) replaced the block at `pos` and cleared its
+    /// connection group. Update every open transaction frame's restore baseline for `pos` to
+    /// `None` and drop any earlier deferred `After::ConnectionGroup(pos, _)` so neither commit
+    /// nor abort resurrects a group from before the bulk replacement.
+    pub(super) fn reconcile_bulk_connection_group_clear(&mut self, pos: Pos) {
+        for level in self.iter_mut() {
+            if let Some(was) = level.connection_groups.get_mut(&pos) {
+                *was = None;
+            }
+            level
+                .after
+                .retain(|after| !matches!(after, After::ConnectionGroup(p, _) if *p == pos));
+        }
+    }
+
     /// The journaled-write epoch.
     pub(in crate::game) fn writes(&self) -> u64 {
         self.writes
@@ -1202,13 +1230,9 @@ impl Game<'_> {
         group: Option<u64>,
     ) -> bool {
         let Some(level) = self.transactions.last_mut() else {
-            return self.world.set_connection_group(
-                pos[0],
-                pos[1],
-                pos[2],
-                group,
-                sunrise_client::world::ConnectionGroupNotify::Explicit,
-            );
+            return self
+                .world
+                .set_connection_group(pos[0], pos[1], pos[2], group, true);
         };
         let key = (pos[0], pos[1], pos[2]);
         let old = self.world.connection_group(pos[0], pos[1], pos[2]);
@@ -1547,13 +1571,9 @@ impl Game<'_> {
                 // Each storage tells the world once, after every write.
                 After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
                 After::ConnectionGroup(pos, group) => {
-                    let _ = self.world.set_connection_group(
-                        pos.0,
-                        pos.1,
-                        pos.2,
-                        group,
-                        sunrise_client::world::ConnectionGroupNotify::Explicit,
-                    );
+                    let _ = self
+                        .world
+                        .set_connection_group(pos.0, pos.1, pos.2, group, true);
                     explicit_group_since_block.insert(pos);
                 }
                 After::Block(pos, clears_group) => {
@@ -1567,18 +1587,11 @@ impl Game<'_> {
                     if !told.insert(Err(pos)) {
                         // A later replacing block write to `pos` after an earlier explicit
                         // `set_connection_group` clears that group as live `on_block_replaced`
-                        // would.
+                        // would (storage + local remesh only; never logged).
                         if clears_group && explicit_group_since_block.remove(&pos) {
-                            let notify = if flags & flags::UPDATE_CLIENTS != 0
-                                && flags & flags::UPDATE_INVISIBLE == 0
-                            {
-                                sunrise_client::world::ConnectionGroupNotify::Explicit
-                            } else {
-                                sunrise_client::world::ConnectionGroupNotify::OnBlockSend
-                            };
                             let _ = self
                                 .world
-                                .set_connection_group(pos.0, pos.1, pos.2, None, notify);
+                                .clear_connection_group_automatic(pos.0, pos.1, pos.2);
                         }
                         continue;
                     }
@@ -1601,13 +1614,9 @@ impl Game<'_> {
                         // before replaying the block write so any hook on the replay can still set
                         // a new group.
                         if clear_connection_group && net_keeps_group {
-                            let _ = self.world.set_connection_group(
-                                pos.0,
-                                pos.1,
-                                pos.2,
-                                None,
-                                sunrise_client::world::ConnectionGroupNotify::OnBlockSend,
-                            );
+                            let _ = self
+                                .world
+                                .clear_connection_group_automatic(pos.0, pos.1, pos.2);
                         }
                         // The stored state back, so the one real write sees the change.
                         self.world.set_stored(pos.0, pos.1, pos.2, was);
@@ -1621,16 +1630,9 @@ impl Game<'_> {
                             let _ = self.level_set_with_flags(pos, now, flags);
                         }
                     } else if clear_connection_group {
-                        let notify = if flags & flags::UPDATE_CLIENTS != 0
-                            && flags & flags::UPDATE_INVISIBLE == 0
-                        {
-                            sunrise_client::world::ConnectionGroupNotify::Explicit
-                        } else {
-                            sunrise_client::world::ConnectionGroupNotify::None
-                        };
                         let _ = self
                             .world
-                            .set_connection_group(pos.0, pos.1, pos.2, None, notify);
+                            .clear_connection_group_automatic(pos.0, pos.1, pos.2);
                     }
                 }
                 After::Biome(key) if !biome_columns.insert(key) => {}

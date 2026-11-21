@@ -924,12 +924,7 @@ mod tests {
             cx: 1,
             cz: -2,
             replace: true,
-            entries: vec![ChunkEntry {
-                local_x: 3,
-                y: 64,
-                local_z: 4,
-                group: 99,
-            }],
+            entries: vec![ChunkEntry::new(3, 64, 4, 99).unwrap()],
         })
         .unwrap();
         let valid = Clientbound::CustomPayload(CustomPayload {

@@ -128,7 +128,8 @@ level.set_connection_group(host, pos, Some(tank_controller_id))?;
 - **Sync and transactions.** The server syncs connection groups to Sunrise clients with chunk loads, bulk chunk
   resends, viewed levels (`sunrise:levels`), and incremental updates (skipping vanilla clients) and remeshes
   affected sections and chunk borders. Writes inside a Host transaction are tentative: aborting restores the
-  previous group quietly, and committing replays block and connection-group writes in order.
+  previous group quietly, and committing publishes the final block and connection-group state per position
+  (including any clear caused by an intermediate replacing block write).
 
 ## What it joins, and what it does not
 
