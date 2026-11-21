@@ -121,13 +121,30 @@ impl Game<'_> {
 
     /// `ClientPacketListener.handleBundlePacket`: use one main-thread turn, so
     /// the chunk decoder/frame quota cannot split a bundle at a column packet.
-    fn handle_play_bundle(
-        &mut self,
-        members: Vec<sunrise_client::net::ingress::Prepared<Event>>,
-    ) -> Result<bool> {
-        for member in members {
-            if !member.consume(|event| self.handle_remote_event(event))? || self.remote.is_none() {
-                return Ok(false);
+    fn handle_play_bundle(&mut self, bundle: sunrise_client::net::CompletedBundle) -> Result<bool> {
+        use sunrise_client::net::BundleStep;
+        let sunrise_client::net::CompletedBundle { packets, driver } = bundle;
+        for packet in packets {
+            match driver.step(packet) {
+                BundleStep::Event(event) => {
+                    let transfer = matches!(event, Event::Transfer { .. });
+                    if !self.handle_remote_event(event)? || self.remote.is_none() {
+                        return Ok(false);
+                    }
+                    if transfer {
+                        break;
+                    }
+                }
+                BundleStep::Main(work) => {
+                    for incoming in work {
+                        self.run_payload(driver.endpoint().clone(), incoming);
+                        if driver.closing() {
+                            return Ok(true);
+                        }
+                    }
+                }
+                BundleStep::Continue => {}
+                BundleStep::Stop => break,
             }
         }
         Ok(true)
@@ -306,8 +323,7 @@ impl Game<'_> {
                 self.leave_server(Some(Text::literal(reason)))?;
                 return Ok(false);
             }
-            Event::Bundle(members) => return self.handle_play_bundle(members),
-            Event::BundledIo(io) => io.run(),
+            Event::Bundle(bundle) => return self.handle_play_bundle(*bundle),
             Event::RawPayload(incoming) => {
                 if let Some(remote) = self.remote.as_ref() {
                     self.run_payload(remote.session.payload_endpoint(), *incoming);

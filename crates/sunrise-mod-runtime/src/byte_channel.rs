@@ -138,6 +138,17 @@ impl<T> Sender<T> {
     /// Charges owned heap bytes plus inline value and node overhead immediately.
     /// Never waits for capacity. The future value must fit this declared charge.
     pub fn reserve(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
+        self.reserve_with(owned_bytes, false)
+    }
+
+    /// Reserve a protocol-ordered record independently of the watermark, while
+    /// accounting for all its bytes. The caller must bound outstanding records
+    /// separately (for example, one terminal notice or one rendezvous).
+    pub fn reserve_ordered(&self, owned_bytes: usize) -> Result<Permit<T>, ReserveError> {
+        self.reserve_with(owned_bytes, true)
+    }
+
+    fn reserve_with(&self, owned_bytes: usize, ordered: bool) -> Result<Permit<T>, ReserveError> {
         let mut state = self.0.lock();
         if !state.receiver_alive {
             return Err(ReserveError::Disconnected);
@@ -145,11 +156,16 @@ impl<T> Sender<T> {
         let charge = owned_bytes
             .checked_add(message_overhead::<T>())
             .ok_or(ReserveError::Full)?;
-        if charge > self.0.capacity - state.stats.reserved_bytes {
+        let reserved = state
+            .stats
+            .reserved_bytes
+            .checked_add(charge)
+            .ok_or(ReserveError::Full)?;
+        if !ordered && reserved > self.0.capacity {
             return Err(ReserveError::Full);
         }
         state.pending_bytes += charge;
-        state.stats.reserved_bytes += charge;
+        state.stats.reserved_bytes = reserved;
         state.stats.peak_reserved_bytes = state
             .stats
             .peak_reserved_bytes

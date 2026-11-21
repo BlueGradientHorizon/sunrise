@@ -2217,6 +2217,9 @@ pub(crate) mod tests {
     mod chat_window_and_input_tests {
         include!("chat_window_and_input_tests.rs");
     }
+    mod play_bundle_tests {
+        include!("play_bundle_tests.rs");
+    }
     mod chunk_storage_tests {
         include!("chunk_storage_tests.rs");
     }
@@ -2422,6 +2425,19 @@ pub(crate) mod tests {
         sunrise_protocol::connection::ConnReader,
         sunrise_protocol::connection::ConnWriter,
     ) {
+        connect_play_test(game, |_, _| {})
+    }
+
+    fn connect_play_test(
+        game: &mut super::Game<'_>,
+        configure: impl FnOnce(
+            &mut sunrise_protocol::connection::ConnReader,
+            &mut sunrise_protocol::connection::ConnWriter,
+        ),
+    ) -> (
+        sunrise_protocol::connection::ConnReader,
+        sunrise_protocol::connection::ConnWriter,
+    ) {
         use super::super::execution_role::ExecutionRole;
         use sunrise_protocol::{
             connection::{Connection, Pipe},
@@ -2456,6 +2472,7 @@ pub(crate) mod tests {
         ));
         reader.recv().unwrap();
         reader.recv().unwrap();
+        configure(&mut reader, &mut writer);
         writer
             .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
             .unwrap();

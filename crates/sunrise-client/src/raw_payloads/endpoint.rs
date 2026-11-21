@@ -20,6 +20,7 @@ enum Target {
         configuring: Arc<AtomicBool>,
         transport: Arc<Transport>,
         events: crate::net::ingress::Producer<Event>,
+        bundle_close: Option<crate::net::BundleClose>,
     },
     Server(PlayerSender),
     Configuration(ConfigSender),
@@ -82,7 +83,14 @@ impl Endpoint {
             configuring,
             transport,
             events,
+            bundle_close: None,
         })
+    }
+    pub(crate) fn in_bundle(mut self, close: crate::net::BundleClose) -> Self {
+        if let Target::Client { bundle_close, .. } = &mut self.0 {
+            *bundle_close = Some(close);
+        }
+        self
     }
     pub fn server(sender: PlayerSender) -> Self {
         Self(Target::Server(sender))
@@ -244,16 +252,34 @@ impl Endpoint {
                 &[&format!("invalid payload disconnect reason: {error:?}")],
             )
         });
+        if let Target::Client {
+            bundle_close: Some(close),
+            ..
+        } = &self.0
+        {
+            close.mod_disconnect(reason.plain());
+            return;
+        }
         self.transport().close();
         match &self.0 {
-            Target::Client { writer, events, .. } => {
-                let _ = events.send(Event::Disconnected {
+            Target::Client {
+                writer,
+                configuring,
+                events,
+                ..
+            } => {
+                let writer = writer.lock().unwrap();
+                let _ = events.send_ordered(Event::Disconnected {
                     reason: reason.plain(),
                     key: None,
                     from_server: false,
                 });
-                if let Some(writer) = writer.lock().unwrap().as_ref() {
-                    writer.shutdown();
+                if let Some(writer) = writer.as_ref() {
+                    if configuring.load(Ordering::Acquire) {
+                        writer.shutdown();
+                    } else {
+                        writer.close_after_pending();
+                    }
                 }
             }
             Target::Server(sender) => {
