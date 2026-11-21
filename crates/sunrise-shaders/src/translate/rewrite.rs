@@ -709,7 +709,7 @@ impl Stage<'_> {
                 _ if !fragment && VERTEX_INPUTS.iter().any(|b| t.starts_with(b)) => {
                     Some(format!("hz_{}", &t[3..]))
                 }
-                _ if old && LATER_KEYWORDS.contains(&t) => Some(format!("hz_kw_{t}")),
+                _ if old => self.later_keyword(t),
                 _ => None,
             };
             out.push_str(replaced.as_deref().unwrap_or(t));
@@ -719,6 +719,16 @@ impl Stage<'_> {
 }
 
 impl Stage<'_> {
+    /// A global's `name` as the rewrite writes it: a word that became a keyword after GLSL 1.x,
+    /// which old packs use as a name, renamed (from `#version 400` on, it can't be a name).
+    pub(super) fn written_name(&self, name: &str) -> String {
+        self.later_keyword(name).unwrap_or_else(|| name.to_owned())
+    }
+
+    fn later_keyword(&self, t: &str) -> Option<String> {
+        LATER_KEYWORDS.contains(&t).then(|| format!("hz_kw_{t}"))
+    }
+
     /// The length of a lowered global array is still a constant expression. Naga attempts a
     /// runtime load before resolving `.length()`, so retain the declared size explicitly.
     fn runtime_array_length(&self, i: usize) -> Option<(&str, usize)> {

@@ -16,8 +16,9 @@
 /// a jitter, the world drawn into part of its buffers) puts both at the same place, one that
 /// widens it puts them apart across the line. Then the stroke keeps the pack's width, and a
 /// stroke with one drawn over it (the high contrast outline's black one) is widened by how
-/// much wider than that one the game draws it, so it still shows around it. A line program
-/// that writes images or buffers isn't run again, and the game widens its line.
+/// much wider than that one the game draws it, so it still shows around it. Each run starts
+/// with the pack's globals as the first did. A line program that declares images or buffers
+/// isn't run again, and the game widens its line.
 pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     let declarations =
         "layout(location = 0) in vec3 hz_l_start;\nlayout(location = 1) in vec3 hz_l_end;\n\
@@ -51,6 +52,10 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     // and the pack widened the line, to the side of `hz_l_s`; the game then adds only what this
     // stroke has over the one drawn on it. Otherwise the game widens it to the side of its
     // corner. Both corners of an end share the pack's every other move, and its `w`.
+    // Half a pixel: a pack that only places its line runs the same code on the same inputs for
+    // both corners, so they are 0 apart, rounding far below that; and a line the pack draws
+    // less than half a pixel wide covers a pixel centre only where one lies near it, gaps
+    // the game's width doesn't leave.
     let after = "    {\n        \
          vec4 hz_l_a = hz_ModelViewProjectionMatrix * vec4(hz_l_start, 1.0);\n        \
          vec4 hz_l_b = hz_ModelViewProjectionMatrix * vec4(hz_l_end, 1.0);\n        \

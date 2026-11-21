@@ -17,6 +17,9 @@ const SIZE: u32 = 64;
 const OUTSIDE: [u8; 4] = [0; 4];
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const WHITE: [u8; 4] = [255; 4];
+/// Storage a vertex stage writes: only `a_line_program_that_writes_an_image_is_widened_by_the_game`
+/// needs it.
+const VERTEX_STORAGE: wgpu::Features = wgpu::Features::VERTEX_WRITABLE_STORAGE;
 
 /// A pack whose line program is `line_vsh` (setting `color`) and draws `color` into
 /// colortex2; its final copies colortex2 to the screen.
@@ -212,18 +215,14 @@ fn wrong_pixels_of(
     let _gpu = crate::gfx::test_gpu::lock();
     let gpu = Fixture::new()?;
     // A line program writing an image needs storage written by a vertex stage, as the game's
-    // device has it (`surface_setup.rs`).
-    let storage = wgpu::Features::VERTEX_WRITABLE_STORAGE;
-    if !gpu.adapter.features().contains(storage) {
-        eprintln!("Line side test skipped: no vertex writable storage");
-        return None;
-    }
+    // device has it where the adapter does (`surface_setup.rs`); only that case needs it.
+    let storage = gpu.adapter.features() & VERTEX_STORAGE;
     let (device, queue) = pollster::block_on(gpu.adapter.request_device(&wgpu::DeviceDescriptor {
         required_features: storage,
         required_limits: gpu.adapter.limits(),
         ..Default::default()
     }))
-    .expect("GPU device with vertex writable storage");
+    .expect("GPU device for the line side cases");
     let gpu = Fixture {
         adapter: gpu.adapter,
         device,
@@ -341,21 +340,45 @@ fn a_line_program_that_maps_the_frame_into_a_quarter_is_widened_by_the_game() {
     assert_none_wrong(wrong);
 }
 
-/// A line the pack widens to 0.8 pixels keeps the pack's width (0.4 to each side, which no
-/// pixel centre of the horizontal and vertical edges is within): its two sides are past half a
-/// pixel apart.
+/// A line the pack widens to 0.6 pixels keeps the pack's width (0.3 to each side, which no
+/// pixel centre of the horizontal and vertical edges is within, and only those on the
+/// diagonal's own line): its two sides are past half a pixel apart.
 #[test]
 fn a_line_widened_by_a_little_keeps_the_packs_width() {
-    let wrong = wrong_pixels(&widening(0.8), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.4, WHITE)]);
+    let wrong = wrong_pixels(&widening(0.6), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(0.3, WHITE)]);
     assert_none_wrong(wrong);
 }
 
-/// A line the pack widens to 0.2 pixels, its sides less than half a pixel apart, is the game's
-/// to widen: 3 pixels to each side, give or take the pack's 0.1, which no pixel centre is
-/// within.
+/// A line the pack widens to 0.4 pixels, its sides less than half a pixel apart, is the game's
+/// to widen: 3 pixels to each side, plus the pack's 0.2, as the pack puts each corner on the
+/// side the game widens it to (`a_line_program_that_writes_an_image_is_widened_by_the_game`).
+/// No pixel centre is between 3 and 3.2 pixels from an edge.
 #[test]
 fn a_line_widened_by_less_than_half_a_pixel_is_widened_by_the_game() {
-    let wrong = wrong_pixels(&widening(0.2), &[(0xFFFF_FFFF, 6.0)], 0.0, &[(3.0, WHITE)]);
+    let vsh = widening(0.4).replacen(
+        "if (offset.x < 0.0) offset = -offset;",
+        "offset = -offset;",
+        1,
+    );
+    let wrong = wrong_pixels(&vsh, &[(0xFFFF_FFFF, 6.0)], 0.0, &[(3.2, WHITE)]);
+    assert_none_wrong(wrong);
+}
+
+/// A widening line program whose globals it reads before writing them (one with an
+/// initializer, one without, which a function of its adds to, and one whose initializer reads
+/// that one) draws the line its single run draws, 4 pixels wide, though the game runs it three
+/// times for each vertex: each run starts from the globals' first values.
+#[test]
+fn a_line_program_reading_its_globals_draws_its_single_runs_line() {
+    let vsh = widening_with(4.0, [0.0; 2], "    t *= 2.0;\n    count();\n")
+        .replacen(
+            "varying vec4 color;\n",
+            "varying vec4 color;\nfloat t = 0.5;\nfloat acc;\nfloat first = acc + 1.0;\n\
+             void count() { acc += 1.0; }\n",
+            1,
+        )
+        .replacen("* 4.0 / screen", "* 4.0 * t * acc * first / screen", 1);
+    let wrong = wrong_pixels(&vsh, &[(0xFFFF_FFFF, 6.0)], 0.0, &[(2.0, WHITE)]);
     assert_none_wrong(wrong);
 }
 
@@ -391,12 +414,24 @@ fn a_line_with_an_end_near_or_behind_the_camera_keeps_the_games_width() {
     assert_none_wrong(wrong);
 }
 
-/// A line program that writes an image is run once per vertex, so its writes aren't repeated,
-/// and the game can't tell that it widens its line: it widens it too, by its 6 pixels on top of
-/// the pack's 4. The pack puts each corner on the side the game widens it to (an even corner
-/// to the right of the line's direction on screen), so the two add up: 3 + 2 to each side.
+/// A line program that declares an image (this one writes it) is run once per vertex, so its
+/// writes aren't repeated, and the game can't tell that it widens its line: it widens it too,
+/// by its 6 pixels on top of the pack's 4. The pack puts each corner on the side the game
+/// widens it to (an even corner to the right of the line's direction on screen), so the two
+/// add up: 3 + 2 to each side. Skipped on an adapter without vertex writable storage.
 #[test]
 fn a_line_program_that_writes_an_image_is_widened_by_the_game() {
+    {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some(gpu) = Fixture::new() else { return };
+        if !gpu.adapter.features().contains(VERTEX_STORAGE) {
+            eprintln!(
+                "a_line_program_that_writes_an_image_is_widened_by_the_game skipped: \
+                 no vertex writable storage"
+            );
+            return;
+        }
+    }
     let extra = "    imageStore(colorimg5, ivec2(gl_VertexID, 0), vec4(1.0));\n";
     let vsh = widening_with(4.0, [0.0; 2], extra)
         .replacen(

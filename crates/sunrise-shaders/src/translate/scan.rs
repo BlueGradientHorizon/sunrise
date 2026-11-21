@@ -87,6 +87,10 @@ pub(super) struct Stage<'p> {
     pub(super) replaced: HashMap<usize, String>,
     /// Globals whose initializer runs in our `main` (`g = hz_init_g();`), in order.
     pub(super) inits: Vec<String>,
+    /// Globals without an initializer or `const` (`T g;`): the `;` that ends each one's
+    /// declaration, its name and its type, for a stage run again to set it back to its first
+    /// value (`hz_zero_g`, a global of ours declared after it and never written).
+    pub(super) uninitialized: Vec<(usize, String, String)>,
     /// Authored global names; automatic core matrix inputs must not hide them.
     pub(super) globals: BTreeSet<String>,
     /// Their captured array size constants and declarator ends: `.length()` stays type-only.
@@ -351,6 +355,7 @@ impl<'p> Stage<'p> {
             paged_maps: false,
             replaced: HashMap::new(),
             inits: Vec::new(),
+            uninitialized: Vec::new(),
             globals: BTreeSet::new(),
             runtime_array_lengths: HashMap::new(),
             errors: Vec::new(),
@@ -887,7 +892,7 @@ impl<'p> Stage<'p> {
     pub(super) fn initializer(&mut self, words: &[usize], to: usize) {
         let text = |i: usize| self.tokens[i];
         let Some(eq) = words.iter().position(|&i| text(i) == "=") else {
-            return;
+            return self.uninitialized(words, to);
         };
         // Declarators, split at top-level commas: (first word, `=` if any, end).
         let mut declarators = Vec::new();
@@ -1062,6 +1067,46 @@ impl<'p> Stage<'p> {
         }
         self.replaced.extend(replaced);
         self.inits.extend(names);
+    }
+
+    /// A global `T a, b[2];` with neither storage nor an initializer (`uninitialized`): its
+    /// declarators, with the type written as `hz_init_*` returns it. Not `precision`'s
+    /// statement; `invariant gl_Position;` has no declarator after its "type".
+    fn uninitialized(&mut self, words: &[usize], to: usize) {
+        let text = |i: usize| self.tokens[i];
+        let mut k = 0;
+        while words.get(k).is_some_and(|&i| QUALIFIERS.contains(&text(i))) {
+            k += 1;
+        }
+        let Some(&ty_at) = words.get(k) else { return };
+        if text(ty_at) == "precision" {
+            return;
+        }
+        // `T[2] a`: the dimensions after the type are the type's.
+        let mut ty = text(ty_at).to_owned();
+        let mut j = k + 1;
+        while words.get(j).is_some_and(|&i| text(i) == "[") {
+            while let Some(&i) = words.get(j) {
+                ty.push_str(text(i));
+                j += 1;
+                if text(i) == "]" {
+                    break;
+                }
+            }
+        }
+        // No `(` here: a global statement with one before any `=` is a prototype (`global`).
+        for declarator in words[j..].split(|&i| text(i) == ",") {
+            let Some((&name, array)) = declarator.split_first() else {
+                continue;
+            };
+            let array: String = array.iter().map(|&i| text(i)).collect();
+            let ty = format!(
+                "{}{}",
+                reversed_array_dimensions(&ty),
+                reversed_array_dimensions(&array)
+            );
+            self.uninitialized.push((to, text(name).to_owned(), ty));
+        }
     }
 
     /// `layout(std430, binding = n) buffer Name {`: an SSBO, in set 4 at its binding. Its

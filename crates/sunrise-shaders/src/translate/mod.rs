@@ -176,8 +176,9 @@ pub struct GbuffersInputs {
     /// run the pack's vertex stage for another vertex: set `hz_vertex_index` and call
     /// `hz_vertex()`, which runs `body`, the pack's `main` and leaves that vertex's
     /// `gl_Position` in wgpu's clip space, and its outputs; so they call it for this vertex
-    /// last. Only where `hz_vertex_reruns` (a constant): a stage that declares images or
-    /// buffers may write them, would write again, and isn't run twice.
+    /// last. Each run starts with the pack's globals as the first did. Only where
+    /// `hz_vertex_reruns` (a constant): a stage that declares images or buffers may write
+    /// them, would write again, and isn't run twice.
     pub after: String,
     /// The alpha test applied to output 0 (`gl_FragData[0]`, `gl_FragColor`), the loader's
     /// (3.2 `alphaTest.<program>`): `None` keeps every fragment. With `parts`, solid terrain's.
@@ -408,6 +409,18 @@ fn translate(
     f.gbuffers = gbuffers.is_some();
     v.paged_maps = gbuffers.is_some_and(|g| g.paged_maps);
     f.paged_maps = v.paged_maps;
+    // A vertex stage the game's `after` runs again starts each run with the pack's globals as
+    // the first run does: an uninitialized one from `hz_zero_<name>`, of its type and never
+    // written, declared after it; one with an initializer from `hz_init_*`, as always.
+    let run_again = gbuffers.is_some_and(|g| g.after.contains("hz_vertex()"));
+    if run_again {
+        let mut zeros: BTreeMap<usize, String> = BTreeMap::new();
+        for (end, name, ty) in &v.uninitialized {
+            let text = zeros.entry(*end).or_insert_with(|| ";".to_owned());
+            write!(text, " {ty} hz_zero_{name};").unwrap();
+        }
+        v.replaced.extend(zeros);
+    }
     let mut errors: Vec<Error> = v
         .errors
         .drain(..)
@@ -655,6 +668,12 @@ fn translate(
         writeln!(vertex_main, "    {name} = {value};").unwrap();
     }
     vertex_main.push_str(fog);
+    if run_again {
+        for (_, name, _) in &v.uninitialized {
+            let global = v.written_name(name);
+            writeln!(vertex_main, "    {global} = hz_zero_{name};").unwrap();
+        }
+    }
     for name in &v.inits {
         writeln!(vertex_main, "    {name} = hz_init_{name}();").unwrap();
     }
@@ -1841,7 +1860,7 @@ mod tests {
         }
     }
 
-    /// A gbuffers vertex stage that writes an image or a buffer isn't run again for another
+    /// A gbuffers vertex stage that declares an image or a buffer isn't run again for another
     /// vertex (`hz_vertex_reruns` is false): its writes would be repeated. Others may be.
     #[test]
     fn a_vertex_stage_writing_images_or_buffers_is_not_run_again() {
@@ -1885,6 +1904,88 @@ mod tests {
             "layout(std430, binding = 0) buffer Counts { uint n; };",
             "n = uint(gl_VertexID);"
         ));
+    }
+
+    /// A gbuffers vertex stage the game's `after` runs again starts each run with the pack's
+    /// globals as the first run does: `hz_vertex()` sets each one without an initializer back
+    /// to its first value, whatever its type, and each one with an initializer from it, before
+    /// the pack's `main` (which reads them before writing them here), so `b`'s initializer
+    /// reads `acc` at its first value. A stage the game runs once doesn't.
+    #[test]
+    fn a_vertex_stage_run_again_starts_from_its_globals_first_values() {
+        let vsh = "#version 130\nprecision highp float;\ninvariant gl_Position;\n\
+                   struct Pair { float x; };\nfloat t = 0.5;\nfloat acc;\nfloat b = acc + 1.0;\n\
+                   highp float u, w[2];\nfloat grid[2][3];\nfloat[2] row;\n\
+                   float[2][3] cells, sample;\nPair pair;\n\
+                   void count() { acc += 1.0; }\nvoid main() {\n    t *= 2.0;\n    count();\n    \
+                   u += 1.0;\n    w[1] += 1.0;\n    grid[1][2] += 1.0;\n    row[1] += 1.0;\n    \
+                   cells[1][2] += 1.0;\n    sample[0][1] += 1.0;\n    \
+                   pair.x += 1.0;\n    \
+                   gl_Position = vec4(t * acc * b * u * w[1], grid[1][2] * row[1] * cells[1][2], \
+                   sample[0][1], pair.x);\n}\n";
+        let files = [
+            ("shaders/gbuffers_line.vsh", vsh),
+            (
+                "shaders/gbuffers_line.fsh",
+                "#version 430\nvoid main() { gl_FragData[0] = vec4(1.0); }",
+            ),
+        ];
+        let pack = Pack::from_zip_bytes("line-globals.zip", zip(&files)).unwrap();
+        let macros = Macros::standard();
+        let vertex = preprocess(&pack, "gbuffers_line.vsh", &macros);
+        let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
+        // The globals `hz_vertex()` itself stores to, before it calls the pack's `main`.
+        let set = |after: &str| {
+            let inputs = GbuffersInputs {
+                body: "hz_Vertex = vec4(0.25, 0.5, -2.0, float(gl_VertexIndex));".into(),
+                after: after.into(),
+                ..Default::default()
+            };
+            let program = translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let module = &program.vertex;
+            let (_, f) = (module.functions.iter())
+                .find(|(_, f)| f.name.as_deref() == Some("hz_vertex"))
+                .expect("hz_vertex");
+            let mut names = Vec::new();
+            for statement in f.body.iter() {
+                match *statement {
+                    naga::Statement::Call { function, .. }
+                        if module.functions[function].name.as_deref() == Some("hz_main") =>
+                    {
+                        break;
+                    }
+                    naga::Statement::Store { pointer, .. } => {
+                        if let naga::Expression::GlobalVariable(g) = f.expressions[pointer] {
+                            names.extend(module.global_variables[g].name.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            names
+        };
+        let again = set("    hz_vertex_index = 1u;\n    hz_vertex();\n");
+        let reset = [
+            "acc",
+            "u",
+            "w",
+            "grid",
+            "row",
+            "cells",
+            "hz_kw_sample",
+            "pair",
+        ];
+        for name in reset.iter().chain(&["t", "b"]) {
+            assert!(again.iter().any(|n| n == name), "{name}: {again:?}");
+        }
+        // `b`'s initializer reads `acc` set back.
+        let at = |name: &str| again.iter().position(|n| n == name);
+        assert!(at("acc") < at("b"), "{again:?}");
+        let once = set("");
+        for name in reset {
+            assert!(!once.iter().any(|n| n == name), "{name}: {once:?}");
+        }
     }
 
     /// A line program that reads the game's `vaPosition` and `vaNormal` without declaring them
