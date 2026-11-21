@@ -705,7 +705,19 @@ mod tests {
                     regular.slide.origin = Some(past);
                     error.slide.origin = Some(past);
 
-                    let rect = game.gui.atlas.sprites["toast/system"];
+                    let rect = *game
+                        .gui
+                        .atlas
+                        .sprites
+                        .entry("toast/system".into())
+                        .or_insert(sunrise_client::hud::Rect {
+                            u0: 0.25,
+                            v0: 0.25,
+                            u1: 0.5,
+                            v1: 0.5,
+                            w: 160,
+                            h: 32,
+                        });
                     let has_toast = |batch: &HudBatch, y| {
                         batch.vertices.iter().any(|vertex| {
                             vertex.uv == [rect.u0, rect.v0]

@@ -50,7 +50,8 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::content::crash::{ModCall, enter_native_mod};
+    use mod_api::content::crash::ModCall;
+    use mod_platform::content::crash::enter_native_mod;
 
     #[test]
     fn each_calling_mod_is_counted_on_its_own_and_no_mod_opens_nothing() {
