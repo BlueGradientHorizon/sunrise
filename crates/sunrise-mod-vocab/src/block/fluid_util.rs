@@ -249,8 +249,8 @@ pub fn try_place_fluid(
 
 /// NeoForge's `DispenseFluidContainer`: a dispenser's answer for a fluid container, which a
 /// container's [`dispense_item`](crate::ItemPart::dispense_item) part returns (it is no default:
-/// vanilla's buckets keep their own behaviours). `event.stack` runs in a two-slot copy whose
-/// item may change ([`ItemPlace::ScratchSlots`]), reached one item at a time
+/// vanilla's buckets keep their own behaviours). `event.stack` runs in a lent two-slot copy whose
+/// item may change ([`HostTransaction::scratch_slots`]), reached one item at a time
 /// ([`ItemPlace::OneByOne`]): the container's handler sees one container, and an empty one may
 /// become a full one of another item. It picks up from the block in front first
 /// ([`try_pickup_fluid`], its `FLUIDS` reached from the dispenser's side), and places a bucket
@@ -272,26 +272,18 @@ pub fn dispense_container(
     let front = [x + dx, y + dy, z + dz];
     let side = Some(event.facing.opposite());
     let stack = event.stack.clone();
-    let moved = host.transaction(|host, tx| {
-        let copy = host
-            .scratch_slots(tx, stack.clone())
-            .ok()
-            .flatten()
-            .ok_or(())?;
+    let moved = host.scratch_slots(stack.clone(), |host, _tx, copy| {
         // The container's handler sees one container at a time, whatever the stack.
         let one = ItemPlace::OneByOne(Box::new(copy.clone()));
         let item = one.capability(host, &ITEM_FLUIDS).ok_or(())?;
         let transferred = try_pickup_fluid(host, &item, None, level, front, side).is_some()
             || try_place_fluid(host, &item, None, level, front, false).is_some();
-        match transferred {
-            true => host.scratch_take_slots(tx, &copy).ok_or(()),
-            false => Err(()),
-        }
+        transferred.then_some(()).ok_or(())
     });
     let left = match moved {
         // The changed container went into the first slot: a single one, replaced in place.
-        Ok((first, None)) => Ok(first),
-        Ok((_, Some(changed))) => {
+        Ok(((), (first, None))) => Ok(first),
+        Ok(((), (_, Some(changed)))) => {
             host.dispense_with_remainder(event.dimension, event.pos, event.facing, stack, changed)
         }
         Err(_) => host.dispense_default(event.dimension, event.pos, event.facing, stack),

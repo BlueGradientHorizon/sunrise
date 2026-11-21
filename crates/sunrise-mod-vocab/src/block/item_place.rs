@@ -18,6 +18,41 @@ use crate::{
 };
 use std::{fmt::Debug, marker::PhantomData, num::NonZeroU32};
 
+// no wire: process-local token for a transaction-scoped lent scratch slot.
+// exhaustive: its fields are private, so mods cannot build or destructure it.
+/// An opaque handle to a scratch item place lent for one
+/// [`HostTransaction::scratch_stack`] or [`HostTransaction::scratch_slots`] scope.
+///
+/// It is bound to the owning host's journal and cannot cross Wire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ScratchSlot {
+    journal: usize,
+    id: u64,
+}
+
+impl ScratchSlot {
+    /// Mints a scratch slot token scoped to `journal` and `id`.
+    // hidden: a game-side helper, not part of the mod surface.
+    #[doc(hidden)]
+    pub fn new(journal: usize, id: u64) -> Self {
+        Self { journal, id }
+    }
+
+    /// The owning journal's identity.
+    // hidden: a game-side helper, not part of the mod surface.
+    #[doc(hidden)]
+    pub fn journal(self) -> usize {
+        self.journal
+    }
+
+    /// The scratch slot's sequence id within its journal.
+    // hidden: a game-side helper, not part of the mod surface.
+    #[doc(hidden)]
+    pub fn id(self) -> u64 {
+        self.id
+    }
+}
+
 /// Where a stack lives.
 // no wire: preserves stable explicit variant tags (Equipment is 9) and interns Mod.provider into a bounded static string.
 #[non_exhaustive]
@@ -111,14 +146,17 @@ pub enum ItemPlace {
         /// The provider's own key for the place.
         key: u64,
     },
-    /// A stack outside the world (`ItemAccess.forStack`): a crafting result, a preview, a stack
-    /// about to be given. [`ItemsServerHost::scratch_stack`](crate::prelude::ItemsServerHost::scratch_stack)
-    /// makes one in a transaction and
-    /// [`scratch_take`](crate::prelude::ItemsServerHost::scratch_take) takes it back out. It
-    /// lives until the outermost transaction closes; an abort puts it back as it was, or drops
-    /// it if the aborted transaction made it. A write never changes its item, only its count and
-    /// components, as `StackItemAccess`: what doesn't fit, or is another item, is refused.
-    Scratch(u64),
+    /// A stack outside the world (`ItemAccess.forStack`), or a two-slot copy whose item may
+    /// change (`DispenseFluidContainer`): a crafting result, a preview, a stack about to be
+    /// given, or a dispensed fluid container. [`HostTransaction::scratch_stack`] lends a
+    /// single-slot place (whose writes keep the same item and refuse what doesn't fit or is
+    /// another item, as `StackItemAccess`), and [`HostTransaction::scratch_slots`] lends a
+    /// two-slot place whose first slot holds the stack and whose second slot catches what
+    /// doesn't fit (`forHandlerIndex`, as a changed item split off a stack does).
+    ///
+    /// The place lives only for the scope of that callback; its final stack or slots are
+    /// returned on commit, and an abort restores or drops it. It cannot cross Wire.
+    Scratch(ScratchSlot),
     /// The place inside, where an insert goes into that slot only
     /// (`ItemAccess.forHandlerIndexStrict`): around a [`BlockEntity`](Self::BlockEntity),
     /// [`EntitySlot`](Self::EntitySlot) or [`Nested`](Self::Nested) slot, what doesn't fit is
@@ -141,16 +179,6 @@ pub enum ItemPlace {
         /// The place the player reaches.
         inner: Box<ItemPlace>,
     },
-    /// A stack outside the world whose item may change: a private two-slot copy, as
-    /// `DispenseFluidContainer` runs a dispensed container, so an empty bucket can become a
-    /// full one. [`ItemsServerHost::scratch_slots`](crate::prelude::ItemsServerHost::scratch_slots)
-    /// makes one in a transaction with the stack in its first slot, and
-    /// [`scratch_take_slots`](crate::prelude::ItemsServerHost::scratch_take_slots) takes both
-    /// slots back out. Reads and extracts are the first slot's; an insert fills the first slot
-    /// where it is empty or holds the same item and components, and what doesn't fit goes to
-    /// the second (`forHandlerIndex`), as a changed item split off a stack does. It lives and
-    /// aborts as a [`Scratch`](Self::Scratch) stack does.
-    ScratchSlots(u64),
 }
 
 impl Clone for ItemPlace {
@@ -232,8 +260,7 @@ impl Clone for ItemPlace {
                         key: *key,
                     };
                 }
-                Self::Scratch(id) => break Self::Scratch(*id),
-                Self::ScratchSlots(id) => break Self::ScratchSlots(*id),
+                Self::Scratch(slot) => break Self::Scratch(*slot),
             }
         };
         for link in links.into_iter().rev() {
@@ -261,7 +288,7 @@ impl Drop for ItemPlace {
             | Self::OneByOne(inner)
             | Self::InfiniteMaterials { inner, .. }
             | Self::Nested { parent: inner, .. } => {
-                std::mem::replace(inner, Box::new(Self::Scratch(0)))
+                std::mem::replace(inner, Box::new(Self::ItemEntity { id: 0 }))
             }
             _ => return,
         };
@@ -270,7 +297,7 @@ impl Drop for ItemPlace {
         | Self::InfiniteMaterials { inner, .. }
         | Self::Nested { parent: inner, .. } = &mut *current
         {
-            let next = std::mem::replace(inner, Box::new(Self::Scratch(0)));
+            let next = std::mem::replace(inner, Box::new(Self::ItemEntity { id: 0 }));
             current = next;
         }
     }
@@ -598,8 +625,9 @@ impl ItemPlace {
     /// none, as `forInfiniteMaterials`); an item entity's dropped beside it at the root commit; a
     /// block entity's, an entity's or an item's slot's into that container's other slots
     /// (`forHandlerIndex`, refused instead around [`Strict`](Self::Strict)); a mod's place's
-    /// where its [`PlaceProvider`] puts it; a [`Scratch`](Self::Scratch) stack's nowhere; a
-    /// [`ScratchSlots`](Self::ScratchSlots) stack's into its second slot. A player-backed place whose
+    /// where its [`PlaceProvider`] puts it; a [`Scratch`](Self::Scratch) stack's nowhere when lent
+    /// by [`HostTransaction::scratch_stack`] and into its second slot when lent by
+    /// [`HostTransaction::scratch_slots`]. A player-backed place whose
     /// player is in another level than the hook's (not a creative one) takes only what fits their
     /// inventory, and nothing is dropped: the rest stays the caller's, and [`exchange`](Self::exchange)
     /// rolls back when it cannot insert the whole replacement.

@@ -647,8 +647,6 @@ fn every_item_place_case_has_declared_tag_and_field_types() {
         },
         (9u32, 29u32, EquipmentSlot::Saddle),
     );
-    fields(ItemPlace::Scratch(41), (10u32, 41u64));
-    fields(ItemPlace::ScratchSlots(43), (14u32, 43u64));
     let parent = Box::new(ItemPlace::ItemEntity { id: 71 });
     fields(ItemPlace::Strict(parent.clone()), (11u32, parent.clone()));
     fields(ItemPlace::OneByOne(parent.clone()), (12u32, parent.clone()));
@@ -662,6 +660,27 @@ fn every_item_place_case_has_declared_tag_and_field_types() {
     // The other four holder cases are exercised in handle_records above.
     fields(AttachmentHolder::Level(level), (4u32, level));
     fields(AttachmentRowError::StaleHolder, (1u32,));
+}
+
+#[test]
+fn scratch_item_place_cannot_cross_wire() {
+    let slot = ScratchSlot::new(1, 41);
+    let mut out = Writer::new();
+    out.put(&ItemPlace::Scratch(slot));
+    assert!(matches!(out.error(), Some(WireError::Invalid(_))));
+
+    let mut wrapped = Writer::new();
+    wrapped.put(&ItemPlace::OneByOne(Box::new(ItemPlace::Scratch(slot))));
+    assert!(matches!(wrapped.error(), Some(WireError::Invalid(_))));
+
+    for tag in [10u32, 14] {
+        let mut raw = Writer::new();
+        raw.put(&(tag, 41u64));
+        assert_eq!(
+            Reader::decode::<ItemPlace>(raw.bytes()),
+            Err(WireError::Tag(tag))
+        );
+    }
 }
 
 #[test]

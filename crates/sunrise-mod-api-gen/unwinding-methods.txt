@@ -465,10 +465,6 @@ items::item_resource_use_duration
 items::max_damage
 items::max_stack_size
 items::potions
-items::scratch_slots
-items::scratch_stack
-items::scratch_take
-items::scratch_take_slots
 keys::biome_key
 keys::biome_key_id
 keys::block_entity_type_key_id
