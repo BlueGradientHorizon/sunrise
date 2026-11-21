@@ -298,6 +298,7 @@ impl ScreenBuild {
 pub(super) struct ScreenState {
     pub(super) observed: Option<ObservedScreen>,
     pub(super) build: ScreenBuildState,
+    pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
     /// A mod's `ScreenOpening::Vanilla` answer is opening its screen: that
     /// change fires no screen hook again.
     pub(super) replacing: bool,

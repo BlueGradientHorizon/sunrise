@@ -178,7 +178,13 @@ impl Game<'_> {
 impl Game<'_> {
     /// `ScreenEvent.Render.Post`, after the screen's drawing and tooltips,
     /// including when Pre cancelled. Gameplay overlays keep their exclusions.
-    pub(super) fn draw_screen_with_post_hook(&self, batch: &mut HudBatch) {
+    pub(super) fn draw_screen_with_post_hook(&mut self, batch: &mut HudBatch) {
+        if self.screen != Screen::Playing
+            && self.server_packs.prompt.is_none()
+            && self.book.is_none()
+        {
+            self.draw_mounted_screen_widgets(batch);
+        }
         if let Some(view) = self.screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }
@@ -193,7 +199,10 @@ impl Game<'_> {
     }
     /// `draw_screen_with_post_hook` for the title's own screen, once a frame,
     /// after it has drawn and before the toasts.
-    pub(super) fn draw_title_screen_with_post_hook(&self, batch: &mut HudBatch) {
+    pub(super) fn draw_title_screen_with_post_hook(&mut self, batch: &mut HudBatch) {
+        if self.screen == Screen::Playing && !self.screen_over_playing() && !self.remote_loading() {
+            self.draw_mounted_screen_widgets(batch);
+        }
         if let Some(view) = self.title_screen_render_view(batch) {
             self.screen_render_end(batch, &view);
         }

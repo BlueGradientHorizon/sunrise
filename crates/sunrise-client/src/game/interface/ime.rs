@@ -41,6 +41,9 @@ impl HeldKeyText {
 impl Game<'_> {
     /// Whether a text box has focus right now (the fields `ime_commit` can fill).
     pub(super) fn text_field_focused(&mut self) -> bool {
+        if self.mounted_widget_captures_input() {
+            return true;
+        }
         if self.dialog_open() {
             return self.dialog_has_text_field();
         }
@@ -192,6 +195,13 @@ impl Game<'_> {
     /// A committed character into the focused text box.
     fn ime_type(&mut self, text: &str) {
         if !self.text_field_focused() {
+            return;
+        }
+        if self.mounted_widget_captures_input() {
+            let modifiers = super::glfw_modifiers(self.modifiers);
+            for c in text.chars() {
+                let _ = self.mounted_widget_char_typed(c, modifiers);
+            }
             return;
         }
         if self.dialog_type(text) {

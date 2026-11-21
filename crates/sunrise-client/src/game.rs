@@ -2010,6 +2010,8 @@ mod screen_info;
 mod screen_render_phase_tests;
 #[path = "game/interface/screen_room.rs"]
 mod screen_room;
+#[path = "game/interface/screen_widgets.rs"]
+mod screen_widgets;
 #[path = "game/interface/screens.rs"]
 mod screens;
 #[path = "game/runtime/screenshot_sequence.rs"]

@@ -1,0 +1,1067 @@
+//! Mounted screen widgets (`ScreenEvent.Init.Post` / `Screen.addRenderableWidget`):
+//! engine-owned buttons, local `EditBox` text fields, and custom [`ScreenWidget`]
+//! instances with synchronous callback execution via temporary ownership extraction.
+
+use crate::game::{Game, Screen, api_values::TryIntoEngine, host::draw::GameDrawContext};
+use mod_api::{
+    __private::game::CallbackOwner,
+    ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
+    client::widgets::{
+        Button, ButtonPress, ButtonState, TextField, TextFieldCallback, is_allowed_chat_character,
+    },
+};
+use sunrise_client::{
+    clipboard::EditShortcut,
+    hud::HudBatch,
+    keybinds,
+    text::{DARK_GRAY, Style, Text},
+    ui::{self, EditBox},
+    widgets::Narratable,
+};
+use winit::keyboard::KeyCode;
+
+/// Mounted widgets attached to the currently open screen during `Hooks::screen_init_post`.
+pub(super) struct MountedScreenWidgets {
+    pub(super) generation: u64,
+    next_id: u64,
+    pub(super) entries: Vec<Option<MountedWidgetEntry>>,
+    pub(super) focused: Option<usize>,
+    pub(super) dragging: Option<(usize, i32)>,
+}
+
+impl Default for MountedScreenWidgets {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            next_id: 1,
+            entries: Vec::new(),
+            focused: None,
+            dragging: None,
+        }
+    }
+}
+
+impl Drop for MountedScreenWidgets {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+
+impl MountedScreenWidgets {
+    /// Bump the screen-widget generation, clear focus/drag state, and dispose all entries.
+    pub(super) fn clear(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.focused = None;
+        self.dragging = None;
+        let entries = std::mem::take(&mut self.entries);
+        for entry in entries.into_iter().flatten() {
+            entry.dispose();
+        }
+    }
+
+    fn clear_links_for(&mut self, idx: usize) {
+        if self.focused == Some(idx) {
+            self.focused = None;
+        }
+        if self.dragging.is_some_and(|(drag_idx, _)| drag_idx == idx) {
+            self.dragging = None;
+        }
+    }
+}
+
+/// One widget mounted on the active screen, owned by the engine with per-widget panic isolation.
+pub(super) struct MountedWidgetEntry {
+    pub(super) id: ScreenWidgetId,
+    pub(super) owner: CallbackOwner,
+    pub(super) disabled: bool,
+    pub(super) kind: MountedWidgetKind,
+}
+
+/// Engine representation of each mounted widget variant.
+pub(super) enum MountedWidgetKind {
+    Button {
+        state: ButtonState,
+        on_press: Option<Box<ButtonPress>>,
+    },
+    TextField {
+        edit_box: EditBox,
+        hint: Option<Text>,
+        active: bool,
+        visible: bool,
+        on_change: Option<Box<TextFieldCallback>>,
+        on_submit: Option<Box<TextFieldCallback>>,
+    },
+    Custom(Box<dyn ScreenWidget>),
+}
+
+impl MountedWidgetEntry {
+    fn dispose(self) {
+        let Self { owner, kind, .. } = self;
+        owner.dispose("screen widget", "screen_widget_drop", kind);
+    }
+
+    fn can_focus(&mut self) -> bool {
+        if self.disabled || !self.owner.is_enabled() {
+            self.disabled = true;
+            return false;
+        }
+        match &self.kind {
+            MountedWidgetKind::Button { state, .. } => state.visible && state.active,
+            MountedWidgetKind::TextField {
+                active, visible, ..
+            } => *visible && *active,
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &self.owner,
+                &mut self.disabled,
+                "screen_widget_focusable",
+                || widget.visible() && widget.active(),
+            )
+            .unwrap_or(false),
+        }
+    }
+
+    fn apply_focus(&mut self, focused: bool) -> bool {
+        if self.disabled || !self.owner.is_enabled() {
+            self.disabled = true;
+            return false;
+        }
+        match &mut self.kind {
+            MountedWidgetKind::Button { .. } => true,
+            MountedWidgetKind::TextField { edit_box, .. } => {
+                edit_box.focused = focused;
+                if focused {
+                    edit_box.reset_blink();
+                }
+                true
+            }
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &self.owner,
+                &mut self.disabled,
+                "screen_widget_focus",
+                || widget.set_focused(focused),
+            )
+            .is_some(),
+        }
+    }
+}
+
+/// Registrar passed to `Hooks::screen_init_post` (`ScreenEvent.Init.Post`).
+struct ScreenWidgetMount {
+    next_id: u64,
+    entries: Vec<MountedWidgetEntry>,
+    initial_focus: Option<ScreenWidgetId>,
+}
+
+impl Drop for ScreenWidgetMount {
+    fn drop(&mut self) {
+        for entry in std::mem::take(&mut self.entries) {
+            entry.dispose();
+        }
+    }
+}
+
+impl ScreenWidgetMount {
+    fn new(next_id: u64) -> Self {
+        Self {
+            next_id: next_id.max(1),
+            entries: Vec::new(),
+            initial_focus: None,
+        }
+    }
+
+    fn alloc_id(&mut self) -> ScreenWidgetId {
+        let raw = self.next_id;
+        self.next_id = self.next_id.saturating_add(1).max(1);
+        ScreenWidgetId::from_raw(raw)
+    }
+}
+
+impl ScreenWidgets for ScreenWidgetMount {
+    fn add_button(&mut self, button: Button) -> ScreenWidgetId {
+        let (state, on_press) = button.into_parts();
+        let id = self.alloc_id();
+        self.entries.push(MountedWidgetEntry {
+            id,
+            owner: widget_callback_owner(),
+            disabled: false,
+            kind: MountedWidgetKind::Button { state, on_press },
+        });
+        id
+    }
+
+    fn add_text_field(&mut self, field: TextField) -> ScreenWidgetId {
+        let parts = field.into_parts();
+        let [x, y, w, h] = parts.rect;
+        let mut edit_box = EditBox::new(x, y, w, h);
+        edit_box.max_length = parts.max_length;
+        edit_box.bordered = parts.bordered;
+        edit_box.editable = parts.editable;
+        edit_box.focused = false;
+        edit_box.set_value(&parts.value);
+        // `EditBox.setHint`: an unstyled hint takes `DEFAULT_HINT_STYLE` (`DARK_GRAY`).
+        let hint = parts.hint.and_then(|hint| {
+            let text: Text = hint.try_into_engine(&()).ok()?;
+            let unstyled = text.spans.iter().all(|span| span.style == Style::default());
+            Some(if unstyled {
+                text.with_color(DARK_GRAY)
+            } else {
+                text
+            })
+        });
+        let id = self.alloc_id();
+        self.entries.push(MountedWidgetEntry {
+            id,
+            owner: widget_callback_owner(),
+            disabled: false,
+            kind: MountedWidgetKind::TextField {
+                edit_box,
+                hint,
+                active: parts.active,
+                visible: parts.visible,
+                on_change: parts.on_change,
+                on_submit: parts.on_submit,
+            },
+        });
+        id
+    }
+
+    fn add_widget(&mut self, widget: Box<dyn ScreenWidget>) -> ScreenWidgetId {
+        let id = self.alloc_id();
+        self.entries.push(MountedWidgetEntry {
+            id,
+            owner: widget_callback_owner(),
+            disabled: false,
+            kind: MountedWidgetKind::Custom(widget),
+        });
+        id
+    }
+
+    fn set_initial_focus(&mut self, id: ScreenWidgetId) -> bool {
+        let Some(entry) = self.entries.iter_mut().find(|entry| entry.id == id) else {
+            return false;
+        };
+        if !entry.can_focus() {
+            return false;
+        }
+        self.initial_focus = Some(id);
+        true
+    }
+
+    fn remove(&mut self, id: ScreenWidgetId) -> bool {
+        let Some(pos) = self.entries.iter().position(|entry| entry.id == id) else {
+            return false;
+        };
+        let entry = self.entries.remove(pos);
+        if self.initial_focus == Some(id) {
+            self.initial_focus = None;
+        }
+        entry.dispose();
+        true
+    }
+}
+
+fn widget_callback_owner() -> CallbackOwner {
+    CallbackOwner::for_mod(mod_api::content::crash::current_native_mod().unwrap_or("sunrise"))
+}
+
+fn call_owner<R>(
+    owner: &CallbackOwner,
+    disabled: &mut bool,
+    operation: &'static str,
+    invoke: impl FnOnce() -> R,
+) -> Option<R> {
+    if *disabled || !owner.is_enabled() {
+        *disabled = true;
+        return None;
+    }
+    match owner.call("screen widget", operation, invoke) {
+        Ok(value) => Some(value),
+        Err(_) => {
+            if !owner.is_enabled() {
+                *disabled = true;
+            }
+            None
+        }
+    }
+}
+
+fn point_in_rect(mouse: [f32; 2], rect: [f32; 4]) -> bool {
+    let [mx, my] = mouse;
+    let [x, y, w, h] = rect;
+    w > 0.0 && h > 0.0 && mx >= x && my >= y && mx < x + w && my < y + h
+}
+
+impl Game<'_> {
+    /// Dispose previous mounted widgets and run `ScreenEvent.Init.Post` to mount the current
+    /// screen's widgets and apply any requested initial focus.
+    pub(super) fn init_screen_widgets(&mut self, view: &ScreenView<'_>) {
+        self.clear_screen_widgets();
+        if !mod_api::__private::listened(mod_api::HookId::ScreenInitPost) {
+            return;
+        }
+        let mut mount = ScreenWidgetMount::new(self.screen_state.widgets.next_id);
+        self.native_screen_init_post(view, &mut mount);
+        self.screen_state.widgets.next_id = mount.next_id;
+        let entries = std::mem::take(&mut mount.entries);
+        let initial_focus = mount
+            .initial_focus
+            .and_then(|id| entries.iter().position(|entry| entry.id == id));
+        self.screen_state.widgets.entries = entries.into_iter().map(Some).collect();
+        if let Some(idx) = initial_focus {
+            self.set_mounted_widget_focus(Some(idx));
+        }
+    }
+
+    /// Clear and dispose all mounted widgets for the current screen.
+    pub(super) fn clear_screen_widgets(&mut self) {
+        self.screen_state.widgets.clear();
+    }
+
+    /// Remove focus from any currently focused mounted widget.
+    pub(super) fn clear_mounted_widget_focus(&mut self) {
+        self.set_mounted_widget_focus(None);
+    }
+
+    fn set_mounted_widget_focus(&mut self, target: Option<usize>) {
+        let previous = self.screen_state.widgets.focused;
+        if previous == target {
+            return;
+        }
+        self.screen_state.widgets.focused = target;
+        if let Some(old_idx) = previous {
+            let disabled = self
+                .screen_state
+                .widgets
+                .entries
+                .get_mut(old_idx)
+                .and_then(Option::as_mut)
+                .is_some_and(|entry| {
+                    entry.apply_focus(false);
+                    entry.disabled
+                });
+            if disabled {
+                self.screen_state.widgets.clear_links_for(old_idx);
+            }
+        }
+        if let Some(new_idx) = target {
+            let ok = self
+                .screen_state
+                .widgets
+                .entries
+                .get_mut(new_idx)
+                .and_then(Option::as_mut)
+                .is_some_and(|entry| entry.apply_focus(true));
+            if !ok {
+                self.screen_state.widgets.clear_links_for(new_idx);
+            }
+        }
+    }
+
+    /// Temporarily extract mounted widget `idx` so its callback can receive `&mut dyn ClientHost`
+    /// and execute screen transitions synchronously (`Gui.setScreen` / `Button.onPress`).
+    /// If the screen's widget generation changed during `f`, the extracted entry is disposed
+    /// instead of restored onto the new screen.
+    pub(super) fn with_mounted_widget<R>(
+        &mut self,
+        idx: usize,
+        f: impl FnOnce(&mut Self, &mut MountedWidgetEntry) -> R,
+    ) -> Option<R> {
+        let generation = self.screen_state.widgets.generation;
+        let mut entry = self.screen_state.widgets.entries.get_mut(idx)?.take()?;
+        if entry.disabled || !entry.owner.is_enabled() {
+            entry.disabled = true;
+            self.screen_state.widgets.clear_links_for(idx);
+            self.screen_state.widgets.entries[idx] = Some(entry);
+            return None;
+        }
+        let result = f(self, &mut entry);
+        if self.screen_state.widgets.generation == generation {
+            if entry.disabled || !entry.owner.is_enabled() {
+                entry.disabled = true;
+                self.screen_state.widgets.clear_links_for(idx);
+            }
+            if let Some(slot) = self.screen_state.widgets.entries.get_mut(idx) {
+                *slot = Some(entry);
+            } else {
+                entry.dispose();
+            }
+        } else {
+            entry.dispose();
+        }
+        Some(result)
+    }
+
+    /// Draw every visible mounted widget on the open screen right before `ScreenEvent.Render.Post`.
+    pub(super) fn draw_mounted_screen_widgets(&mut self, batch: &mut HudBatch) {
+        let len = self.screen_state.widgets.entries.len();
+        if len == 0 {
+            return;
+        }
+        let mouse = self.cursor();
+        let partial_tick = self.clock.fraction() as f32;
+        let focused_idx = self.screen_state.widgets.focused;
+        let generation = self.screen_state.widgets.generation;
+        for idx in 0..len {
+            if self.screen_state.widgets.generation != generation {
+                break;
+            }
+            let Some(mut entry) = self.screen_state.widgets.entries[idx].take() else {
+                continue;
+            };
+            let focused = focused_idx == Some(idx);
+            if !entry.disabled && entry.owner.is_enabled() {
+                match &mut entry.kind {
+                    MountedWidgetKind::Button { state, .. } => {
+                        if state.visible {
+                            let hovered = point_in_rect(mouse, state.rect);
+                            let label: Text = state.label.try_into_engine(&()).unwrap_or_default();
+                            ui::button_as(
+                                batch,
+                                &self.gui.atlas,
+                                state.rect,
+                                &label,
+                                state.active,
+                                hovered || focused,
+                                state.sprites.as_ref(),
+                                |rect| Narratable::button(label.plain(), rect, state.active),
+                            );
+                        }
+                    }
+                    MountedWidgetKind::TextField {
+                        edit_box,
+                        hint,
+                        active,
+                        visible,
+                        ..
+                    } => {
+                        if *visible {
+                            edit_box.focused = focused && *active;
+                            edit_box.draw(batch, &self.gui.atlas, None);
+                            if let Some(hint) = hint
+                                && edit_box.value.is_empty()
+                                && !edit_box.focused
+                            {
+                                let color = if edit_box.editable {
+                                    edit_box.text_color
+                                } else {
+                                    edit_box.text_color_uneditable
+                                };
+                                batch.text_styled(
+                                    &self.gui.atlas,
+                                    hint,
+                                    edit_box.text_x(),
+                                    edit_box.text_y(),
+                                    color,
+                                    true,
+                                );
+                            }
+                        }
+                    }
+                    MountedWidgetKind::Custom(widget) => {
+                        let paint = batch.paint_checkpoint();
+                        let outcome = call_owner(
+                            &entry.owner,
+                            &mut entry.disabled,
+                            "screen_widget_render",
+                            || {
+                                if !widget.visible() {
+                                    return;
+                                }
+                                let hovered = point_in_rect(mouse, widget.bounds());
+                                let host: &Game<'_> = &*self;
+                                let mut draw = GameDrawContext::new(host, batch);
+                                widget.render(
+                                    host,
+                                    &mut draw,
+                                    mouse,
+                                    hovered,
+                                    focused,
+                                    partial_tick,
+                                );
+                            },
+                        );
+                        if outcome.is_none() {
+                            paint.discard(batch);
+                        }
+                    }
+                }
+            }
+            if self.screen_state.widgets.generation == generation {
+                if entry.disabled || !entry.owner.is_enabled() {
+                    entry.disabled = true;
+                    self.screen_state.widgets.clear_links_for(idx);
+                }
+                if let Some(slot) = self.screen_state.widgets.entries.get_mut(idx) {
+                    *slot = Some(entry);
+                } else {
+                    entry.dispose();
+                }
+            } else {
+                entry.dispose();
+                break;
+            }
+        }
+    }
+
+    /// Dispatch a mouse click to mounted widgets in insertion order
+    /// (`ContainerEventHandler.getChildAt` / `AbstractWidget.mouseClicked`).
+    pub(super) fn mounted_widget_mouse_clicked(
+        &mut self,
+        mouse: [f32; 2],
+        button: i32,
+        modifiers: u32,
+        double_click: bool,
+    ) -> bool {
+        let len = self.screen_state.widgets.entries.len();
+        if len == 0 {
+            return false;
+        }
+        let generation = self.screen_state.widgets.generation;
+        for idx in 0..len {
+            if self.screen_state.widgets.generation != generation {
+                return false;
+            }
+            enum Hit {
+                Miss,
+                Button,
+                TextField,
+                Custom,
+            }
+            let (hit, disabled) = match self.screen_state.widgets.entries[idx].as_mut() {
+                Some(entry) if !entry.disabled && entry.owner.is_enabled() => match &entry.kind {
+                    MountedWidgetKind::Button { state, .. } => {
+                        if state.visible && state.active && point_in_rect(mouse, state.rect) {
+                            (Hit::Button, false)
+                        } else {
+                            (Hit::Miss, false)
+                        }
+                    }
+                    MountedWidgetKind::TextField {
+                        edit_box,
+                        active,
+                        visible,
+                        ..
+                    } => {
+                        let rect = [edit_box.x, edit_box.y, edit_box.width, edit_box.height];
+                        if *visible && *active && point_in_rect(mouse, rect) {
+                            (Hit::TextField, false)
+                        } else {
+                            (Hit::Miss, false)
+                        }
+                    }
+                    MountedWidgetKind::Custom(widget) => {
+                        let over = call_owner(
+                            &entry.owner,
+                            &mut entry.disabled,
+                            "screen_widget_hit_test",
+                            || {
+                                widget.visible()
+                                    && widget.active()
+                                    && point_in_rect(mouse, widget.bounds())
+                            },
+                        )
+                        .unwrap_or(false);
+                        (if over { Hit::Custom } else { Hit::Miss }, entry.disabled)
+                    }
+                },
+                _ => (Hit::Miss, false),
+            };
+            if disabled {
+                self.screen_state.widgets.clear_links_for(idx);
+            }
+            match hit {
+                Hit::Miss => continue,
+                Hit::Button => {
+                    if button != 0 {
+                        continue;
+                    }
+                    self.set_mounted_widget_focus(Some(idx));
+                    self.audio.play_button_click();
+                    let _ = self.with_mounted_widget(idx, |game, entry| {
+                        if let MountedWidgetKind::Button { state, on_press } = &mut entry.kind
+                            && let Some(callback) = on_press.as_mut()
+                        {
+                            call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
+                                callback(state, game);
+                            });
+                        }
+                    });
+                    return true;
+                }
+                Hit::TextField => {
+                    if button != 0 {
+                        continue;
+                    }
+                    self.set_mounted_widget_focus(Some(idx));
+                    let shift = (modifiers & 1) != 0;
+                    if let Some(Some(entry)) = self.screen_state.widgets.entries.get_mut(idx)
+                        && let MountedWidgetKind::TextField { edit_box, .. } = &mut entry.kind
+                    {
+                        edit_box.click(&self.gui.atlas, mouse[0], shift, double_click);
+                    }
+                    self.screen_state.widgets.dragging = Some((idx, button));
+                    return true;
+                }
+                Hit::Custom => {
+                    let handled = self
+                        .with_mounted_widget(idx, |game, entry| {
+                            if let MountedWidgetKind::Custom(widget) = &mut entry.kind {
+                                call_owner(
+                                    &entry.owner,
+                                    &mut entry.disabled,
+                                    "screen_widget_mouse_clicked",
+                                    || {
+                                        widget.mouse_clicked(
+                                            game,
+                                            mouse,
+                                            button,
+                                            modifiers,
+                                            double_click,
+                                        )
+                                    },
+                                )
+                                .unwrap_or(false)
+                            } else {
+                                false
+                            }
+                        })
+                        .unwrap_or(false);
+                    if self.screen_state.widgets.generation != generation {
+                        return handled;
+                    }
+                    if handled {
+                        self.set_mounted_widget_focus(Some(idx));
+                        if button == 0 {
+                            self.screen_state.widgets.dragging = Some((idx, button));
+                        }
+                        return true;
+                    }
+                }
+            }
+        }
+        self.clear_mounted_widget_focus();
+        false
+    }
+
+    /// Dispatch a mouse release to the mounted widget currently being dragged.
+    pub(super) fn mounted_widget_mouse_released(
+        &mut self,
+        mouse: [f32; 2],
+        button: i32,
+        modifiers: u32,
+    ) -> bool {
+        let Some((idx, drag_button)) = self.screen_state.widgets.dragging else {
+            return false;
+        };
+        if drag_button != button {
+            return false;
+        }
+        self.screen_state.widgets.dragging = None;
+        self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
+            MountedWidgetKind::TextField {
+                active, visible, ..
+            } => *active && *visible,
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_mouse_released",
+                || widget.mouse_released(game, mouse, button, modifiers),
+            )
+            .unwrap_or(false),
+            MountedWidgetKind::Button { .. } => false,
+        })
+        .unwrap_or(false)
+    }
+
+    /// Dispatch pointer dragging to the mounted widget currently being dragged.
+    pub(super) fn mounted_widget_mouse_dragged(
+        &mut self,
+        mouse: [f32; 2],
+        button: i32,
+        delta: [f32; 2],
+        modifiers: u32,
+    ) -> bool {
+        let Some((idx, drag_button)) = self.screen_state.widgets.dragging else {
+            return false;
+        };
+        if drag_button != button {
+            return false;
+        }
+        self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
+            MountedWidgetKind::TextField {
+                edit_box,
+                active,
+                visible,
+                ..
+            } => {
+                if !*active || !*visible {
+                    return false;
+                }
+                edit_box.drag_to(&game.gui.atlas, mouse[0]);
+                true
+            }
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_mouse_dragged",
+                || widget.mouse_dragged(game, mouse, button, delta, modifiers),
+            )
+            .unwrap_or(false),
+            MountedWidgetKind::Button { .. } => false,
+        })
+        .unwrap_or(false)
+    }
+
+    /// Dispatch a mouse wheel scroll to visible mounted custom widgets under `mouse`.
+    pub(super) fn mounted_widget_mouse_scrolled(
+        &mut self,
+        mouse: [f32; 2],
+        scroll: [f64; 2],
+        modifiers: u32,
+    ) -> bool {
+        let len = self.screen_state.widgets.entries.len();
+        if len == 0 {
+            return false;
+        }
+        let generation = self.screen_state.widgets.generation;
+        for idx in 0..len {
+            if self.screen_state.widgets.generation != generation {
+                return false;
+            }
+            let is_custom = matches!(
+                self.screen_state.widgets.entries[idx].as_ref(),
+                Some(entry)
+                    if !entry.disabled
+                        && entry.owner.is_enabled()
+                        && matches!(entry.kind, MountedWidgetKind::Custom(_))
+            );
+            if !is_custom {
+                continue;
+            }
+            let handled = self
+                .with_mounted_widget(idx, |game, entry| {
+                    if let MountedWidgetKind::Custom(widget) = &mut entry.kind {
+                        call_owner(
+                            &entry.owner,
+                            &mut entry.disabled,
+                            "screen_widget_mouse_scrolled",
+                            || {
+                                if widget.visible()
+                                    && widget.active()
+                                    && point_in_rect(mouse, widget.bounds())
+                                {
+                                    widget.mouse_scrolled(game, mouse, scroll, modifiers)
+                                } else {
+                                    false
+                                }
+                            },
+                        )
+                        .unwrap_or(false)
+                    } else {
+                        false
+                    }
+                })
+                .unwrap_or(false);
+            if self.screen_state.widgets.generation != generation {
+                return handled;
+            }
+            if handled {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Dispatch a key press to the focused mounted widget, plus Tab / Shift+Tab focus cycling.
+    /// Escape is never swallowed so vanilla `Screen.keyPressed`'s `shouldCloseOnEsc` always wins.
+    pub(super) fn mounted_widget_key_pressed(
+        &mut self,
+        key: KeyCode,
+        repeat: bool,
+        modifiers: u32,
+    ) -> bool {
+        if self.screen_state.widgets.entries.is_empty() || key == KeyCode::Escape {
+            return false;
+        }
+        if let Some(idx) = self.screen_state.widgets.focused {
+            let handled = self
+                .with_mounted_widget(idx, |game, entry| match &mut entry.kind {
+                    MountedWidgetKind::Button { state, on_press } => {
+                        if !state.visible
+                            || !state.active
+                            || !matches!(
+                                key,
+                                KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space
+                            )
+                        {
+                            return false;
+                        }
+                        game.audio.play_button_click();
+                        if let Some(callback) = on_press.as_mut() {
+                            call_owner(&entry.owner, &mut entry.disabled, "button_press", || {
+                                callback(state, game);
+                            });
+                        }
+                        true
+                    }
+                    MountedWidgetKind::TextField {
+                        edit_box,
+                        active,
+                        visible,
+                        on_change,
+                        on_submit,
+                        ..
+                    } => {
+                        if !*visible || !*active {
+                            return false;
+                        }
+                        if matches!(key, KeyCode::Enter | KeyCode::NumpadEnter) {
+                            if let Some(callback) = on_submit.as_mut() {
+                                let value = edit_box.value.as_str();
+                                call_owner(
+                                    &entry.owner,
+                                    &mut entry.disabled,
+                                    "text_field_submit",
+                                    || callback(value, game),
+                                );
+                                return true;
+                            }
+                            return false;
+                        }
+                        let shift = (modifiers & 1) != 0;
+                        let alt = (modifiers & 4) != 0;
+                        let ctrl_or_cmd = if cfg!(target_os = "macos") {
+                            (modifiers & 8) != 0
+                        } else {
+                            (modifiers & 2) != 0
+                        };
+                        if ctrl_or_cmd && !shift && !alt {
+                            let shortcut = match key {
+                                KeyCode::KeyA => Some(EditShortcut::SelectAll),
+                                KeyCode::KeyC => Some(EditShortcut::Copy),
+                                KeyCode::KeyV => Some(EditShortcut::Paste),
+                                KeyCode::KeyX => Some(EditShortcut::Cut),
+                                _ => None,
+                            };
+                            if let Some(shortcut) = shortcut {
+                                let changed = edit_box.shortcut(shortcut, &mut game.clipboard);
+                                if changed && let Some(callback) = on_change.as_mut() {
+                                    let value = edit_box.value.as_str();
+                                    call_owner(
+                                        &entry.owner,
+                                        &mut entry.disabled,
+                                        "text_field_change",
+                                        || callback(value, game),
+                                    );
+                                }
+                                return true;
+                            }
+                        }
+                        if key == KeyCode::KeyA {
+                            return false;
+                        }
+                        let track_change = matches!(key, KeyCode::Backspace | KeyCode::Delete);
+                        let before = track_change.then(|| edit_box.value.clone());
+                        let handled = edit_box.key(key, ctrl_or_cmd, shift);
+                        if handled
+                            && let Some(before) = before
+                            && edit_box.value != before
+                            && let Some(callback) = on_change.as_mut()
+                        {
+                            let value = edit_box.value.as_str();
+                            call_owner(
+                                &entry.owner,
+                                &mut entry.disabled,
+                                "text_field_change",
+                                || callback(value, game),
+                            );
+                        }
+                        handled
+                    }
+                    MountedWidgetKind::Custom(widget) => {
+                        let Some(name) = keybinds::key_name(key) else {
+                            return false;
+                        };
+                        call_owner(
+                            &entry.owner,
+                            &mut entry.disabled,
+                            "screen_widget_key_pressed",
+                            || {
+                                if widget.visible() && widget.active() {
+                                    widget.key_pressed(game, name, repeat, modifiers)
+                                } else {
+                                    false
+                                }
+                            },
+                        )
+                        .unwrap_or(false)
+                    }
+                })
+                .unwrap_or(false);
+            if handled {
+                return true;
+            }
+        }
+        if key == KeyCode::Tab
+            && (self.screen == Screen::Mod || self.screen_state.widgets.focused.is_some())
+        {
+            return self.cycle_mounted_widget_focus((modifiers & 1) != 0);
+        }
+        false
+    }
+
+    fn cycle_mounted_widget_focus(&mut self, backward: bool) -> bool {
+        let mut focusable = Vec::new();
+        let mut disabled = Vec::new();
+        for (idx, slot) in self.screen_state.widgets.entries.iter_mut().enumerate() {
+            if let Some(entry) = slot.as_mut() {
+                if entry.can_focus() {
+                    focusable.push(idx);
+                } else if entry.disabled {
+                    disabled.push(idx);
+                }
+            }
+        }
+        for idx in disabled {
+            self.screen_state.widgets.clear_links_for(idx);
+        }
+        if focusable.is_empty() {
+            return false;
+        }
+        let next = match self
+            .screen_state
+            .widgets
+            .focused
+            .and_then(|cur| focusable.iter().position(|&idx| idx == cur))
+        {
+            Some(pos) => {
+                let next_pos = if backward {
+                    if pos == 0 {
+                        focusable.len() - 1
+                    } else {
+                        pos - 1
+                    }
+                } else {
+                    (pos + 1) % focusable.len()
+                };
+                focusable[next_pos]
+            }
+            None => {
+                if backward {
+                    focusable[focusable.len() - 1]
+                } else {
+                    focusable[0]
+                }
+            }
+        };
+        self.set_mounted_widget_focus(Some(next));
+        true
+    }
+
+    /// Dispatch a key release to the focused mounted custom widget.
+    pub(super) fn mounted_widget_key_released(&mut self, key: KeyCode, modifiers: u32) -> bool {
+        let Some(idx) = self.screen_state.widgets.focused else {
+            return false;
+        };
+        let Some(name) = keybinds::key_name(key) else {
+            return false;
+        };
+        self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_key_released",
+                || {
+                    if widget.visible() && widget.active() {
+                        widget.key_released(game, name, modifiers)
+                    } else {
+                        false
+                    }
+                },
+            )
+            .unwrap_or(false),
+            _ => false,
+        })
+        .unwrap_or(false)
+    }
+
+    /// Dispatch a typed or IME-committed character to the focused mounted widget.
+    pub(super) fn mounted_widget_char_typed(&mut self, c: char, modifiers: u32) -> bool {
+        let Some(idx) = self.screen_state.widgets.focused else {
+            return false;
+        };
+        self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
+            MountedWidgetKind::TextField {
+                edit_box,
+                active,
+                visible,
+                on_change,
+                ..
+            } => {
+                if !*visible || !*active || !edit_box.editable || !is_allowed_chat_character(c) {
+                    return false;
+                }
+                let mut buf = [0u8; 4];
+                let text = c.encode_utf8(&mut buf);
+                let before = edit_box.value.clone();
+                edit_box.insert_text(text);
+                if edit_box.value != before
+                    && let Some(callback) = on_change.as_mut()
+                {
+                    let value = edit_box.value.as_str();
+                    call_owner(
+                        &entry.owner,
+                        &mut entry.disabled,
+                        "text_field_change",
+                        || callback(value, game),
+                    );
+                }
+                true
+            }
+            MountedWidgetKind::Custom(widget) => call_owner(
+                &entry.owner,
+                &mut entry.disabled,
+                "screen_widget_char_typed",
+                || {
+                    if widget.visible() && widget.active() {
+                        widget.char_typed(game, c, modifiers)
+                    } else {
+                        false
+                    }
+                },
+            )
+            .unwrap_or(false),
+            MountedWidgetKind::Button { .. } => false,
+        })
+        .unwrap_or(false)
+    }
+
+    /// Whether the focused mounted widget captures text input (`Screen.isInputCaptured` /
+    /// `EditBox.canConsumeInput`).
+    pub(super) fn mounted_widget_captures_input(&self) -> bool {
+        let Some(idx) = self.screen_state.widgets.focused else {
+            return false;
+        };
+        let Some(Some(entry)) = self.screen_state.widgets.entries.get(idx) else {
+            return false;
+        };
+        if entry.disabled || !entry.owner.is_enabled() {
+            return false;
+        }
+        match &entry.kind {
+            MountedWidgetKind::TextField {
+                edit_box,
+                active,
+                visible,
+                ..
+            } => *active && *visible && edit_box.editable,
+            MountedWidgetKind::Custom(widget) => entry
+                .owner
+                .call("screen widget", "screen_widget_captures_input", || {
+                    widget.visible() && widget.active() && widget.captures_input()
+                })
+                .unwrap_or(false),
+            MountedWidgetKind::Button { .. } => false,
+        }
+    }
+}

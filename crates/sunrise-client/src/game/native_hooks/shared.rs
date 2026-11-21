@@ -301,6 +301,7 @@ impl Game<'_> {
     /// What `set_screen` does once the hooks have answered: `screen` opens,
     /// and the mod `owner`'s own screen when one answered `ModScreen`.
     fn apply_screen(&mut self, screen: Screen, owner: Option<&str>) {
+        self.clear_screen_widgets();
         // `before` may already have closed it. Overlays that keep Inventory
         // underneath don't pass through this replacement path.
         if screen != Screen::Inventory && self.active_native_screen().is_some() {
@@ -435,8 +436,11 @@ impl Game<'_> {
         self.build_screen();
         // Told here, so the frame's `observe_screen` sees no change to announce.
         self.screen_state.observed = self.observed_now();
-        let none = self.screen_change_view(Screen::Playing);
-        self.native_screen_init_post(&screen_view_with_id(&none, id), &mut NoopScreenWidgets);
+        let observed = self.observe_view(screen_view_with_id(
+            &self.screen_change_view(Screen::Playing),
+            id,
+        ));
+        self.init_screen_widgets(&observed.view());
         true
     }
 
@@ -507,13 +511,16 @@ impl Game<'_> {
     }
     /// `screen_init_post` for what shows now, once a change was told to the
     /// frame's observer: a title screen, a mod's, or the game's own.
-    fn shown_init_post(&self) {
-        let view = self.screen_change_view(self.screen);
-        let id = match &self.title {
-            Some(title) if self.screen == Screen::Playing => title.mode.id(),
-            _ => view.id,
+    fn shown_init_post(&mut self) {
+        let observed = {
+            let view = self.screen_change_view(self.screen);
+            let id = match &self.title {
+                Some(title) if self.screen == Screen::Playing => title.mode.id(),
+                _ => view.id,
+            };
+            self.observe_view(screen_view_with_id(&view, id))
         };
-        self.native_screen_init_post(&screen_view_with_id(&view, id), &mut NoopScreenWidgets);
+        self.init_screen_widgets(&observed.view());
     }
 
     /// Shows `title`, as `Minecraft.setScreen(new TitleScreen())` (or the
@@ -540,6 +547,7 @@ impl Game<'_> {
             self.title_change(None);
         }
         self.title = None;
+        self.clear_screen_widgets();
         self.build_screen();
         self.screen_state.observed = self.observed_now();
     }
@@ -616,39 +624,18 @@ impl Game<'_> {
                 );
             }
             if let Some(new) = &current {
-                self.native_screen_init_post(&new.view(), &mut NoopScreenWidgets);
+                self.init_screen_widgets(&new.view());
+            } else {
+                self.clear_screen_widgets();
             }
-        } else if let (Some(old), Some(new)) = (&self.screen_state.observed, &current)
-            && old.rect != new.rect
+        } else if matches!(
+            (&self.screen_state.observed, &current),
+            (Some(old), Some(new)) if old.rect != new.rect
+        ) && let Some(new) = &current
         {
-            self.native_screen_init_post(&new.view(), &mut NoopScreenWidgets);
+            self.init_screen_widgets(&new.view());
         }
         self.screen_state.observed = current;
-    }
-}
-
-/// Temporary no-op widget registrar until the screen widget store lands.
-struct NoopScreenWidgets;
-
-impl mod_api::ScreenWidgets for NoopScreenWidgets {
-    fn add_button(&mut self, _button: mod_api::Button) -> mod_api::ScreenWidgetId {
-        mod_api::ScreenWidgetId::from_raw(0)
-    }
-
-    fn add_text_field(&mut self, _field: mod_api::TextField) -> mod_api::ScreenWidgetId {
-        mod_api::ScreenWidgetId::from_raw(0)
-    }
-
-    fn add_widget(&mut self, _widget: Box<dyn mod_api::ScreenWidget>) -> mod_api::ScreenWidgetId {
-        mod_api::ScreenWidgetId::from_raw(0)
-    }
-
-    fn set_initial_focus(&mut self, _id: mod_api::ScreenWidgetId) -> bool {
-        false
-    }
-
-    fn remove(&mut self, _id: mod_api::ScreenWidgetId) -> bool {
-        false
     }
 }
 
