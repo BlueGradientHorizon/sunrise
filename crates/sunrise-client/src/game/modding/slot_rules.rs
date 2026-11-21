@@ -7,7 +7,7 @@ use super::*;
 use crate::game::api_values::TryIntoApi;
 use sunrise_client::{
     containers::ModMenuType,
-    menu::{Asked, Kind, Menu, SlotContext, SlotRules},
+    menu::{Asked, Kind, LiveSlotRules, SlotContext, SlotRules},
 };
 
 impl SlotRules for Game<'_> {
@@ -85,14 +85,49 @@ impl Game<'_> {
         pos: [i32; 3],
         items: &[Option<ItemStack>],
     ) -> (bool, Asked) {
-        let mut view = Menu::new(Kind::Mod(menu));
-        view.set_registry_id(Some(menu.id));
-        view.set_block_pos(Some(pos));
-        view.load_container(&self.menu_env(), items);
-        for (i, held) in self.inventory.iter().enumerate() {
-            view.set_player_item(i, held.clone());
-        }
-        view.load_slot(slot, Some(stack.clone()));
-        view.ask_pickup(&self.menu_env(), slot)
+        let env = self.menu_env();
+        let main = &items[..items.len().min(menu.slots)];
+        let (grid, computed_result) = match menu.crafting {
+            Some(c) => {
+                let grid = main.get(c.grid_slots()).unwrap_or_default();
+                let found = env
+                    .recipes
+                    .find_with(env.loop_context, grid, c.size, &|id| {
+                        env.maps
+                            .and_then(|maps| maps.state(id))
+                            .map(|(_, scale)| scale)
+                    })
+                    .and_then(|(id, crafted)| {
+                        if env.limited_crafting {
+                            let is_special = env.recipes.recipe(id).is_some_and(|r| r.is_special());
+                            let known = env.known_recipes.is_some_and(|book| book.knows(id));
+                            if !is_special && !known {
+                                return None;
+                            }
+                        }
+                        Some(crafted)
+                    });
+                (grid, [found])
+            }
+            None => (&[][..], [None]),
+        };
+        let result = if menu.crafting.is_some() {
+            &computed_result[..]
+        } else {
+            &[][..]
+        };
+        let rules = LiveSlotRules {
+            kind: Kind::Mod(menu),
+            registry_id: Some(menu.id),
+            pos: Some(pos),
+            main,
+            main_second: &[],
+            grid,
+            result,
+            container_limit: None,
+            crafter_disabled: false,
+            creative: self.instabuild(),
+        };
+        rules.ask_pickup(&env, slot, Some(stack))
     }
 }

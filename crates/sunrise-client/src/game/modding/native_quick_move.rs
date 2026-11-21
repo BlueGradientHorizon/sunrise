@@ -356,12 +356,12 @@ impl Game<'_> {
             return (true, Asked::default());
         };
         let held = match at {
-            MenuSlot::Container(k) => m.items.get(k).cloned().flatten(),
-            MenuSlot::Inventory(i) => self.inventory.get(i).cloned().flatten(),
+            MenuSlot::Container(k) => m.items.get(k).and_then(Option::as_ref),
+            MenuSlot::Inventory(i) => self.inventory.get(i).and_then(Option::as_ref),
         };
         match (menu_type, held.filter(|s| s.count > 0)) {
             (Some(t), Some(stack)) => {
-                self.mod_menu_slot_gives(t, slot, &stack, [pos.0, pos.1, pos.2], &m.items)
+                self.mod_menu_slot_gives(t, slot, stack, [pos.0, pos.1, pos.2], &m.items)
             }
             _ => (true, Asked::default()),
         }

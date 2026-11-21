@@ -1,0 +1,2 @@
+sunrise-client game::slot_rules_tests::live_slot_queries_read_live_siblings_limits_acting_armor_and_stale_handles lib daily resources
+sunrise-client game::slot_rules_tests::mod_menu_slot_gives_reuses_recorded_answer_in_click_asked lib daily resources
