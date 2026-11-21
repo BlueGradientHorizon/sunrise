@@ -130,29 +130,54 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
 #[ignore = "daily"]
 fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("bound", Box::new(BoundBookMod))].into();
-    mod_platform::testing::with_mods(mods, || {
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
-            game.open_native_screen(
-                (i32::MIN, 0, 0),
-                None,
-                7,
-                "bound:menu",
-                Some(sunrise_protocol::menu_extra::Message {
-                    window: 7,
-                    pos: None,
-                    data: Vec::new(),
-                }),
-            );
-            assert_eq!(
-                game.mod_screen
-                    .as_ref()
-                    .and_then(|screen| screen.block.as_deref()),
-                Some("bound:menu")
-            );
-            assert_eq!(game.native_hidden_slots("bound:menu", None, 3), vec![2]);
-        });
-    });
+    sunrise_client::containers::with_mod_menu_types(
+        [(
+            "bound:menu".into(),
+            "bound".into(),
+            3,
+            0,
+            vec![1],
+            vec![0],
+            None,
+            None,
+            true,
+            None,
+        )],
+        || {
+            mod_platform::testing::with_mods(mods, || {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    mod_api::__private::resolve_menus(["bound:menu"]).unwrap();
+                    game.open_native_screen(
+                        (i32::MIN, 0, 0),
+                        None,
+                        7,
+                        "bound:menu",
+                        Some(sunrise_protocol::menu_extra::Message {
+                            window: 7,
+                            pos: None,
+                            data: Vec::new(),
+                        }),
+                    );
+                    let opened = game
+                        .mod_screen
+                        .as_ref()
+                        .expect("blockless book screen opens");
+                    assert_eq!(opened.window, 7);
+                    assert_eq!(opened.menu, "bound:menu");
+                    assert_eq!(opened.block, None);
+                    assert_eq!(
+                        opened
+                            .screen
+                            .recipe_book
+                            .as_ref()
+                            .map(mod_api::RecipeBookTypeKey::as_str),
+                        Some("bound:book")
+                    );
+                    assert_eq!(game.native_hidden_slots("bound:menu", None, 3), vec![2]);
+                });
+            });
+        },
+    );
 }
 
 const STONE: &str = "minecraft:stone";

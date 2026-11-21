@@ -56,6 +56,15 @@ use sunrise_world::{
 /// `Vertex::normal` of a baked-colour quad of an `entitySolid` model: the render type culls
 /// back faces, which the entity pipelines here do not, so `entity.wgsl` discards them.
 pub const CULL_BACK: [i8; 4] = [0, 0, 0, 1];
+const _: () = {
+    assert!(CtmFace::ALL.len() == 6);
+    assert!(CtmFace::Down as u8 == ModelDirection::Down as u8);
+    assert!(CtmFace::Up as u8 == ModelDirection::Up as u8);
+    assert!(CtmFace::North as u8 == ModelDirection::North as u8);
+    assert!(CtmFace::South as u8 == ModelDirection::South as u8);
+    assert!(CtmFace::West as u8 == ModelDirection::West as u8);
+    assert!(CtmFace::East as u8 == ModelDirection::East as u8);
+};
 /// `Vertex::normal.w` of a shaded quad of an `entityCutoutCull` model (the bat): shaded by the
 /// normal like -127, and `entity.wgsl` also discards its back-facing pixels.
 pub const SHADED_CULL_W: i8 = -126;
@@ -2623,10 +2632,12 @@ impl Mesher<'_> {
         };
         let neighbour = |n: [i32; 3]| pad.blocks[(cell as isize + step_index(n)) as usize];
         let fused = face.fusion.and_then(|rule| {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
             fusion.pick(
                 rule,
                 id,
-                CtmFace::ALL[q.facing as usize],
+                ctm_face,
                 q.tint_index,
                 neighbour,
                 |s| {
@@ -2643,11 +2654,13 @@ impl Mesher<'_> {
         } else if connected.is_empty() {
             Pick::Keep
         } else {
+            let ctm_face = CtmFace::from_direction_index(q.facing as u8)
+                .expect("a model quad faces one of the six directions");
             let tints = &*tints;
             connected.pick(
                 id,
                 face.layer as u16,
-                CtmFace::ALL[q.facing as usize],
+                ctm_face,
                 [world.x, world.y, world.z],
                 FaceNeighbours {
                     state: neighbour,
@@ -2660,7 +2673,7 @@ impl Mesher<'_> {
                     // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
                     texture: || {
                         if state.pane {
-                            Some(CtmAxes::cube(CtmFace::ALL[q.facing as usize]))
+                            Some(CtmAxes::cube(ctm_face))
                         } else {
                             CtmAxes::texture(&q.positions, &q.uv)
                         }
