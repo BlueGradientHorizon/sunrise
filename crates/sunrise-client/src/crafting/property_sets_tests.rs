@@ -21,6 +21,8 @@ impl mod_api::Hooks for Sets {
                 vec!["minecraft:emerald", "minecraft:air", "missing:item"],
             ),
             ("foreign:input", vec!["minecraft:diamond"]),
+            ("minecraft:custom_input", vec!["minecraft:emerald"]),
+            ("BAD:input", vec!["minecraft:diamond"]),
             ("minecraft:furnace_input", vec!["minecraft:diamond"]),
         ] {
             event.additions.push(mod_api::RecipePropertyAddition::new(
@@ -50,7 +52,7 @@ impl mod_api::Hooks for Extend {
 }
 
 #[test]
-fn custom_sets_survive_dispatch_and_sync_but_new_foreign_keys_do_not() {
+fn valid_namespaced_custom_sets_survive_dispatch_and_sync_while_invalid_keys_do_not() {
     let context = LoadContext::new(
         DataLoadOrigin::ServerDataLoad,
         Arc::new(LoadInputs::new(
@@ -67,8 +69,23 @@ fn custom_sets_survive_dispatch_and_sync_but_new_foreign_keys_do_not() {
         .into(),
         || {
             let resolved = ResolvedSources::resolve(vec![], &context).unwrap();
-            assert!(resolved.property_additions.get("foreign:input").is_none());
-            assert!(resolved.property_additions.get("pot:foreign_new").is_none());
+            assert!(
+                resolved
+                    .property_additions
+                    .adds("foreign:input", "minecraft:diamond")
+            );
+            assert!(
+                resolved
+                    .property_additions
+                    .adds("pot:foreign_new", "minecraft:diamond")
+            );
+            assert!(
+                resolved
+                    .property_additions
+                    .adds("minecraft:custom_input", "minecraft:emerald")
+            );
+            assert!(resolved.property_additions.get("custom_input").is_none());
+            assert!(resolved.property_additions.get("BAD:input").is_none());
             assert!(
                 !resolved
                     .property_additions
@@ -99,12 +116,39 @@ fn custom_sets_survive_dispatch_and_sync_but_new_foreign_keys_do_not() {
                 packet
                     .properties
                     .iter()
+                    .find(|(key, _)| key == "foreign:input")
+                    .unwrap()
+                    .1,
+                vec![2]
+            );
+            assert_eq!(
+                packet
+                    .properties
+                    .iter()
+                    .find(|(key, _)| key == "pot:foreign_new")
+                    .unwrap()
+                    .1,
+                vec![2]
+            );
+            assert_eq!(
+                packet
+                    .properties
+                    .iter()
+                    .find(|(key, _)| key == "minecraft:custom_input")
+                    .unwrap()
+                    .1,
+                vec![1]
+            );
+            assert_eq!(
+                packet
+                    .properties
+                    .iter()
                     .find(|(key, _)| key == "minecraft:furnace_input")
                     .unwrap()
                     .1,
                 vec![2]
             );
-            assert_eq!(packet.properties.len(), 10);
+            assert_eq!(packet.properties.len(), 13);
         },
     );
 }

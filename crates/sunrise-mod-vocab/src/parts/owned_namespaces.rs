@@ -31,11 +31,6 @@ pub fn declaration_id(owner: &str, name: &str) -> Result<String, String> {
         .map_err(|error| format!("mod {owner} declares {error}"))
 }
 
-// Removed in P3-04 step 3 once Part registrar callers use declaration_id.
-pub fn owned_declaration_id(owner: &str, name: &str) -> Result<String, String> {
-    declaration_id(owner, name)
-}
-
 fn validate_declaration_id(id: String) -> Result<String, DeclarationError> {
     if crate::Identifier::parse_namespaced(&id).is_none() {
         return Err(DeclarationError::InvalidId { id });

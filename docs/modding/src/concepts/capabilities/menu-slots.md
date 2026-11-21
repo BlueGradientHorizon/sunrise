@@ -18,12 +18,10 @@ quick-move items into a locally hidden slot, and the slot's acceptance rules sti
 
 `Hooks::recipe_property_sets` runs once after recipes resolve for each load and again after
 `/reload`. Add `RecipePropertyAddition::new("mymod:cooking_pot_input", items)` to its
-`event.additions`: a key in the listener's manifest-owned namespaces creates a set. Ownership
-uses the package ID plus the manifest's `namespaces`, so a package named
-`ported_farmersdelight` with `namespaces = ["farmersdelight"]` can create
-`farmersdelight:cooking_pot_input`. A later listener may extend an existing set but cannot
-create a new foreign key. Invalid keys, unknown vanilla keys and air are skipped with a
-warning; unregistered items do not participate in acceptance or network sync.
+`event.additions`: any valid namespaced key (including non-vanilla `minecraft:` keys) creates
+or extends a custom set, and bare keys name vanilla sets. Invalid keys, unknown bare vanilla
+keys and air are skipped with a warning; unregistered items do not participate in acceptance
+or network sync.
 
 Attach a `MenuPart` to the registered menu type and filter its input slot with the same set:
 

@@ -977,9 +977,10 @@ check it already passes at join: a client without the mod cannot join. A save ke
 the mod is there; once it is gone, the load clamps the base into the bounds and logs it, once per attribute in each
 world load.
 
-A code mod can declare a datapack registry of its own with `Registrar::declare_datapack_registry(path, sync,
-fields)` (NeoForge's `DataPackRegistryEvent.NewRegistry`).
-`path` lands in the mod's namespace (`spell` of `example` is `example:spell`), and `fields` is a flat record
+A code mod can declare a datapack registry with `Registrar::declare_datapack_registry(path, sync,
+fields)` (NeoForge's `NewDatapackRegistryEvent`).
+A bare `path` uses the mod's namespace (`spell` of `example` is `example:spell`), while an explicit
+valid `namespace:path` keeps its namespace (built-in and duplicate registry keys refuse), and `fields` is a flat record
 schema: `Bool`, `Int { min, max }`, `Float { min, max }`, `Text { max_len }`, `Identifier` or `Reference { registry }`,
 each required or given a default. Entry `addon:fire` is `data/addon/example/spell/fire.json`
 (`DatapackRegistryDeclaration::entry_file`), the registry's namespace being a folder as NeoForge's modded

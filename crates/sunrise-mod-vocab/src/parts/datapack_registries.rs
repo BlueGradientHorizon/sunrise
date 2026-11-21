@@ -35,10 +35,11 @@ pub fn install_process_datapack_registry_declarations(
 /// Registration of mod-owned datapack registries
 /// ([`Registrar::declare_datapack_registry`](DatapackRegistriesRegistrar::declare_datapack_registry)).
 pub trait DatapackRegistriesRegistrar {
-    /// Declare a datapack registry of the mod's own (NeoForge's
-    /// `DataPackRegistryEvent.NewRegistry`): `path` in the mod's namespace
-    /// (`spell` of `example` is `example:spell`), the flat record `fields` an
-    /// entry has, and how clients receive the entries.
+    /// Declare a datapack registry (NeoForge's `NewDatapackRegistryEvent`): a
+    /// bare `path` uses the declaring mod's namespace (`spell` of `example` is
+    /// `example:spell`), an explicit valid `namespace:path` keeps its
+    /// namespace, `fields` is the flat record an entry has, and `sync` sets how
+    /// clients receive the entries.
     ///
     /// Entries are JSON files in data packs: entry `addon:fire` of
     /// `example:spell` is `data/addon/example/spell/fire.json`
@@ -48,11 +49,10 @@ pub trait DatapackRegistriesRegistrar {
     /// entry; a default never stands in for invalid data.
     ///
     /// Only both-side packages may declare datapack registries. Refused,
-    /// naming the mod: a key outside the mod's namespace (a vanilla
-    /// registry's included), a malformed key, a duplicate (of this mod's or
-    /// another's, caught where the declarations join), an empty or repeated
-    /// field name, unusable bounds, or a default that is not a value of its
-    /// field inside its bounds.
+    /// naming the mod: a malformed key, a built-in registry key or duplicate
+    /// (of this mod's or another's, caught where the declarations join), an
+    /// empty or repeated field name, unusable bounds, or a default that is not
+    /// a value of its field inside its bounds.
     fn declare_datapack_registry(
         &mut self,
         path: &str,

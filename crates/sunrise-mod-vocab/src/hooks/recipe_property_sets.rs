@@ -9,12 +9,11 @@ pub trait Hooks {
     /// items stay in. Called once per load, after the recipes are resolved, with
     /// the `DataLoadContext` of the load that owns them (`origin()`
     /// `ServerDataLoad` on a server, `ClientPreload` on a client's own load),
-    /// and again after `/reload`. A new namespaced key creates a set when its
-    /// namespace belongs to the listener's manifest (its ID or `namespaces`).
-    /// Later listeners may extend existing sets. Invalid or foreign new keys,
-    /// unknown vanilla keys, and air are logged and skipped; unknown items are
-    /// ignored. Custom sets are synced to clients alongside vanilla sets. The
-    /// answer must be the same every time.
+    /// and again after `/reload`. Any valid namespaced key creates or extends a
+    /// custom set (including non-vanilla `minecraft:` keys); bare keys name
+    /// vanilla sets. Invalid keys, unknown bare vanilla keys, and air are logged
+    /// and skipped; unknown items are ignored. Custom sets are synced to clients
+    /// alongside vanilla sets. The answer must be the same every time.
     /// A client without this mod predicts vanilla here; the server corrects it.
     #[hook(
         side = "both",
@@ -23,7 +22,8 @@ pub trait Hooks {
         collect_validator = "crate::item::crafting::validate_recipe_properties",
         context = "data_load",
         target = "sunrise_client_lib::crafting::native_hooks::native_recipe_property_sets",
-        neoforge = "RegisterRecipePropertiesEvent"
+        neoforge = "RegisterRecipePropertiesEvent",
+        version = 2
     )]
     fn recipe_property_sets(additions: &mut Vec<RecipePropertyAddition>);
 }

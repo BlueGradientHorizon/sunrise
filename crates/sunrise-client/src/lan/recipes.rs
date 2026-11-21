@@ -867,6 +867,9 @@ mod content_tests {
                 .push(add("minecraft:no_such_set", &["minecraft:dirt"]));
             event
                 .additions
+                .push(add("unknown_bare_set", &["minecraft:dirt"]));
+            event
+                .additions
                 .push(add("brewing_reagent", &["minecraft:diamond"]));
         }
     }
@@ -892,6 +895,8 @@ mod content_tests {
             assert!(!added.adds("furnace_input", "minecraft:air"));
             assert!(added.adds("brewing_reagent", "minecraft:diamond"));
             assert!(added.get("no_such_set").is_none());
+            assert!(added.adds("minecraft:no_such_set", "minecraft:dirt"));
+            assert!(added.get("unknown_bare_set").is_none());
             assert!(!added.adds("smoker_input", "minecraft:emerald"));
         });
     }

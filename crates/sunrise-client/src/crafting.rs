@@ -1479,10 +1479,16 @@ impl PropertyAdditions {
         native_hooks::native_recipe_property_sets(context, &mut asked);
         let mut sets = HashMap::<String, HashSet<String>>::new();
         for addition in asked {
-            let key = addition
-                .set
-                .strip_prefix("minecraft:")
-                .unwrap_or(&addition.set);
+            let key = match addition.set.strip_prefix("minecraft:") {
+                Some(vanilla)
+                    if crate::lan::recipes::PROPERTY_SETS
+                        .iter()
+                        .any(|(set, ..)| *set == vanilla) =>
+                {
+                    vanilla
+                }
+                _ => addition.set.as_str(),
+            };
             if !key.contains(':')
                 && !crate::lan::recipes::PROPERTY_SETS
                     .iter()

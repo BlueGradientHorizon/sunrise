@@ -15,9 +15,10 @@ impl PartRegistrar {
             .is_ok_and(|names| names.iter().any(|known| known == id))
     }
 
-    // Removed in P3-04 step 3 once Part registrar callers use declaration_id.
-    pub(crate) fn owned_declaration_id(&self, name: &str) -> Result<String, String> {
-        self.declaration_id(name)
+    /// Whether the startup snapshot already has a built-in registry keyed by `registry`.
+    pub(crate) fn has_builtin_registry(&self, registry: &str) -> bool {
+        use mod_vocab::__private::game::RegistrationContextNew;
+        crate::RegistrationContext::new().registry(registry).is_ok()
     }
 }
 

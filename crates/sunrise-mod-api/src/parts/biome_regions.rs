@@ -9,7 +9,7 @@ impl BiomeRegionsRegistrar for PartRegistrar {
     ) -> Result<(), crate::BiomeRegionError> {
         let result = (|| {
             let id = self
-                .owned_declaration_id(path)
+                .declaration_id(path)
                 .map_err(|_| crate::BiomeRegionError::InvalidId)?;
             if self.biome_regions.iter().any(|d| d.id == id) {
                 return Err(crate::BiomeRegionError::Duplicate);
@@ -67,11 +67,12 @@ pub mod tests {
             registrar.declare_biome_region("ruby:highlands", region(5)),
             Err(BiomeRegionError::Duplicate)
         );
-        // The id stays in the declaring mod's namespace and is well formed.
-        assert_eq!(
-            registrar.declare_biome_region("foreign:highlands", region(5)),
-            Err(BiomeRegionError::InvalidId)
-        );
+        // Explicit valid namespaces are kept under the declaring mod; malformed ids refuse.
+        registrar
+            .declare_biome_region("foreign:highlands", region(5))
+            .unwrap();
+        assert_eq!(registrar.biome_regions[1].mod_id, "ruby");
+        assert_eq!(registrar.biome_regions[1].id, "foreign:highlands");
         assert_eq!(
             registrar.declare_biome_region("High Lands", region(5)),
             Err(BiomeRegionError::InvalidId)
@@ -81,9 +82,9 @@ pub mod tests {
             registrar.declare_biome_region("light", region(0)),
             Err(BiomeRegionError::InvalidWeight)
         );
-        // The refusals name the mod; the good declaration stands.
-        assert_eq!(registrar.biome_regions.len(), 1);
-        assert_eq!(registrar.refused.len(), 4);
+        // The refusals name the mod; the good declarations stand.
+        assert_eq!(registrar.biome_regions.len(), 2);
+        assert_eq!(registrar.refused.len(), 3);
         assert!(
             registrar
                 .refused
