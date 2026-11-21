@@ -97,8 +97,11 @@ and some are waiting for Ludovic:
   closed. Upstream's legacy checksum pins never authorize a Sunrise archive. The real private key
   exists only as the secret `RELEASE_SIGNING_KEY`; dry runs receive no release secrets
   and sign with an ephemeral test key instead. To rotate, first ship the next public key in
-  `release-keys.txt` (and a new `verifier@X.Y.Z`, pinned in `packaging/server/install.sh` and `install.ps1`), then enable `RELEASE_SIGNING_KEY_NEXT` for overlapping signatures before
-  replacing the primary secret and eventually retiring the old public key. Nightly title,
+  `release-keys.txt` (and a new `verifier@X.Y.Z`, pinned in `packaging/server/install.sh` and `install.ps1`), with
+  its private half set as whichever of `RELEASE_SIGNING_KEY` and `RELEASE_SIGNING_KEY_NEXT` is empty
+  (`tools/ci/new_release_key.sh` sets it), so releases are signed with both; then retire the old key's secret and
+  public key and pin a verifier built without it ([release-flow.md](release-flow.md#signed-checksums), "Rotating the
+  key"). Nightly title,
   channel and exact-version signature binding remain unchanged.
 - **Upstream release machinery needs the council.** The workflows, the release and signing tools, the update-checking code
   and the installers are listed in `.github/CODEOWNERS`. Once main's protection requires code owners' reviews, a
@@ -133,9 +136,9 @@ and some are waiting for Ludovic:
   which removes anything a pull request left in the work folder by accident, but
   not a deliberate attack. The protection is review: only agents and maintainers push to this repository, and a
   maintainer reads a fork's change before it merges.
-- **The first install** with `packaging/server/install.sh` or `install.ps1` trusts the script itself. The script
-  downloads `sunrise-verify` from the `verifier@X.Y.Z` release it pins and refuses it unless its SHA-256 is the
-  one pinned in the script. The verifier then checks `SHA256SUMS.sig` (a Nightly's `SHA256SUMS.v2.sig`, for its
+- **The first install** with `packaging/server/install.sh` or `install.ps1` from a GitHub release (the default)
+  trusts the script itself. The script downloads `sunrise-verify` from the `verifier@X.Y.Z` release it pins and
+  refuses it unless its SHA-256 is the one pinned in the script. The verifier then checks `SHA256SUMS.sig` (a Nightly's `SHA256SUMS.v2.sig`, for its
   own version) against the release keys built into it, then the archive against `SHA256SUMS`. Any failure stops
   the install with its cause; nothing falls back to GitHub's SHA-256. So the anchor is the pin on main, fetched
   over HTTPS: it changes only by pull request, written by `tools/ci/pin_verifier.py` after `gh attestation verify`
@@ -143,7 +146,8 @@ and some are waiting for Ludovic:
   (docs/release-flow.md, "The install scripts' verifier"). The verifier binaries are not code-signed, so macOS
   Gatekeeper and Windows SmartScreen don't vouch for them; the pin does. `--insecure-checksum-only`
   (`-InsecureChecksumOnly`) skips the signature, with a loud warning, for CI fixtures; no install command in these
-  docs uses it.
+  docs uses it. `install.sh --archive FILE` installs an archive already on the machine (a build of your own) and
+  checks nothing: checking it is up to whoever brought it.
 
 ## Reporting a security problem
 
