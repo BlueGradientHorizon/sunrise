@@ -2017,7 +2017,7 @@ impl Game<'_> {
     /// Build the merged entities before the events, without extra level-random
     /// draws. Each block owns only its contribution to a merged stack: canceling
     /// it cannot take another block's loot. Unedited contributions rejoin their
-    /// original entity; edited or added entities spawn exactly as returned.
+    /// original entity, and separate entities respect the edited list order.
     fn spawn_explosion_drops(&mut self, drops: ExplosionDrops) {
         if !mod_api::__private::listened(mod_api::HookId::BlockDrops) {
             for (pos, stack) in drops.stacks {
@@ -2032,17 +2032,22 @@ impl Game<'_> {
                 .map(|(pos, stack)| level.block_drop_item(pos, stack))
                 .collect()
         });
-        let mut merged: Vec<Option<super::spill::BlockItemDrop>> = vec![None; items.len()];
-        let mut edited = Vec::new();
+        // The prefix keeps the vanilla group slots; new or edited entities get their own slots.
+        let mut joins: Vec<(usize, Option<super::spill::BlockItemDrop>)> =
+            (0..items.len()).map(|group| (group, None)).collect();
+        let mut block_joins = Vec::new();
+        let mut order_slots = Vec::new();
+        let mut reordered_any = false;
         for block in drops.blocks {
             let mut originals: Vec<_> = block
                 .pieces
-                .into_iter()
-                .map(|piece| {
-                    let mut item = items[piece.group].clone();
+                .iter()
+                .enumerate()
+                .filter_map(|(index, piece)| {
+                    let mut item = items[piece.group].clone()?;
                     item.stack.count = piece.count;
                     item.origin_group = Some(piece.group);
-                    (piece, item)
+                    Some((index, item))
                 })
                 .collect();
             let dropped = self.with_level(|_, level, _| {
@@ -2059,15 +2064,39 @@ impl Game<'_> {
                     },
                 )
             });
+            block_joins.clear();
+            let mut previous = None;
+            let mut edited_order = false;
             for item in dropped.items {
-                if let Some(index) = originals.iter().position(|(_, original)| *original == item) {
-                    let (piece, _) = originals.swap_remove(index);
-                    match &mut merged[piece.group] {
+                let join = if let Some(index) =
+                    originals.iter().position(|(_, original)| *original == item)
+                {
+                    let (piece_index, _) = originals.swap_remove(index);
+                    edited_order |= previous.is_some_and(|previous| previous > piece_index);
+                    previous = Some(piece_index);
+                    let group = block.pieces[piece_index].group;
+                    match &mut joins[group].1 {
                         Some(existing) => existing.stack.count += item.stack.count,
                         slot @ None => *slot = Some(item),
                     }
+                    group
                 } else {
-                    edited.push(item);
+                    edited_order = true;
+                    let join = joins.len();
+                    joins.push((join, Some(item)));
+                    join
+                };
+                block_joins.push(join);
+            }
+            // Apply this block's edited order to the slots it shares or adds, without
+            // moving unrelated groups. Without edits, use vanilla's merged group order.
+            if edited_order && block_joins.len() > 1 {
+                reordered_any = true;
+                order_slots.clear();
+                order_slots.extend(block_joins.iter().map(|&join| joins[join].0));
+                order_slots.sort_unstable();
+                for (&join, &slot) in block_joins.iter().zip(&order_slots) {
+                    joins[join].0 = slot;
                 }
             }
             // Keep the blast path's zero base XP; the event may award some.
@@ -2078,17 +2107,20 @@ impl Game<'_> {
         // Pass each surviving merged group's prepared capture to `add_item_drop` at most once so
         // unchanged groups match `pop_resource` bit-for-bit, sole in-place edits keep their
         // prepared RNG, and splits never duplicate a capture or UUID.
-        let mut claimed: Vec<bool> = merged.iter().map(Option::is_some).collect();
-        for item in merged.into_iter().flatten() {
-            self.add_item_drop(item);
-        }
-        for mut item in edited {
+        let (merged, edited) = joins.split_at_mut(items.len());
+        let mut claimed: Vec<_> = merged.iter().map(|(_, item)| item.is_some()).collect();
+        for item in edited.iter_mut().filter_map(|(_, item)| item.as_mut()) {
             let keep_random = item
                 .origin_group
                 .is_some_and(|group| !std::mem::replace(&mut claimed[group], true));
             if !keep_random {
                 item.random = None;
             }
+        }
+        if reordered_any {
+            joins.sort_unstable_by_key(|(slot, _)| *slot);
+        }
+        for item in joins.into_iter().filter_map(|(_, item)| item) {
             self.add_item_drop(item);
         }
     }
@@ -2312,12 +2344,15 @@ mod tests {
                     && event.block_entity_data.is_none(),
                 "a blast and an untagged break give no breaker entity or block entity"
             );
-            assert_eq!(event.drops.len(), 1);
-            let (first_item, first_count) = {
+            let first_item = if event.pos.x == 5 {
+                assert!(event.drops.is_empty(), "the drop rule is off");
+                None
+            } else {
+                assert_eq!(event.drops.len(), 1);
                 let first = event.drops.get(0).unwrap().stack().unwrap();
-                (first.item(), first.count())
+                assert_eq!(first.count(), 1, "only this block's contribution");
+                Some(first.item())
             };
-            assert_eq!(first_count, 1, "only this block's contribution");
             match self.mode {
                 DropProbeMode::Observe => {}
                 DropProbeMode::InPlaceOne => {
@@ -2329,11 +2364,13 @@ mod tests {
                     event.drops.get_mut(0).unwrap().set_pickup_delay(33);
                 }
                 DropProbeMode::CancelAndReplace => {
-                    assert_eq!(
-                        mod_api::__private::item_key_id(first_item).unwrap(),
-                        "minecraft:diamond",
-                        "loot modifiers ran first"
-                    );
+                    if let Some(item) = first_item {
+                        assert_eq!(
+                            mod_api::__private::item_key_id(item),
+                            Some("minecraft:diamond"),
+                            "loot modifiers ran first"
+                        );
+                    }
                     event.experience = 5;
                     if matches!(event.pos.x, 1 | 4) {
                         return mod_api::Flow::Cancel;
@@ -2356,6 +2393,216 @@ mod tests {
             }
             mod_api::Flow::Continue
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn disabled_block_drops_draw_offsets_without_constructing_items() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use std::sync::{Arc, Mutex};
+        use sunrise_client::random_source::{record_seeds, replay_seeds};
+
+        struct Observe(Arc<Mutex<Vec<usize>>>);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Observe {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut mod_api::BlockDropsEvent<'_>,
+            ) -> mod_api::Flow {
+                self.0.lock().unwrap().push(event.drops.len());
+                mod_api::Flow::Continue
+            }
+        }
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            assert!(
+                game.ui
+                    .rules
+                    .set("block_drops", sunrise_client::gamerules::Value::Bool(false))
+            );
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:dirt")
+                .unwrap();
+            let pos = [2, 64, 1];
+            let run = |game: &mut Game<'_>, explosion| {
+                game.world.random.set_seed(7);
+                let stack = ItemStack::new("minecraft:dirt", 1);
+                if explosion {
+                    game.spawn_explosion_drops(ExplosionDrops {
+                        stacks: vec![(pos, stack)],
+                        blocks: vec![ExplosionBlockDrops {
+                            pos,
+                            state,
+                            pieces: vec![ExplosionDropPiece { group: 0, count: 1 }],
+                        }],
+                    });
+                } else {
+                    let dropped = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            BlockPos::new(pos[0], pos[1], pos[2]),
+                            state,
+                            None,
+                            None,
+                            super::super::spill::BlockDropEntity::None,
+                            vec![stack],
+                            Some(0),
+                        )
+                    });
+                    assert!(dropped.items.is_empty());
+                }
+                assert!(game.dropped.is_empty());
+                game.world.random.next_int()
+            };
+            let mut vanilla = LegacyRandom::new(7);
+            for _ in 0..3 {
+                vanilla.next_double();
+            }
+            let expected = vanilla.next_int();
+            for explosion in [false, true] {
+                let (baseline, seeds) = record_seeds(|| run(game, explosion));
+                assert_eq!(
+                    baseline, expected,
+                    "three offsets, even with drops disabled"
+                );
+                assert!(seeds.complete(), "no entity RNG seed without a listener");
+                let seen = Arc::new(Mutex::new(Vec::new()));
+                mod_platform::testing::with_mods(
+                    vec![mod_api::ModEntry::new(
+                        "observe",
+                        Box::new(Observe(seen.clone())),
+                    )]
+                    .into(),
+                    || {
+                        let after = replay_seeds(seeds.clone(), || run(game, explosion));
+                        assert_eq!(after, baseline);
+                        assert!(
+                            seeds.complete(),
+                            "a no-op listener must not construct an item"
+                        );
+                    },
+                );
+                assert_eq!(*seen.lock().unwrap(), [0], "the listener sees no captures");
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn explosion_items_join_in_the_edited_drop_order() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use std::sync::{Arc, Mutex};
+
+        struct Reorder {
+            insert: bool,
+            joined: Arc<Mutex<Vec<String>>>,
+        }
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Reorder {
+            fn block_drops(
+                &self,
+                _: &dyn mod_api::LevelHost,
+                event: &mut mod_api::BlockDropsEvent<'_>,
+            ) -> mod_api::Flow {
+                if self.insert {
+                    let stack = mod_api::ItemStack::new(
+                        mod_api::__private::item_key("minecraft:emerald").unwrap(),
+                        1,
+                    )
+                    .unwrap();
+                    assert!(
+                        event
+                            .drops
+                            .insert(0, ItemDrop::new(stack, [2.5, 64.5, 1.5], [0.0; 3], 10))
+                            .unwrap()
+                    );
+                } else {
+                    assert!(event.drops.swap(0, 1));
+                }
+                mod_api::Flow::Continue
+            }
+            fn entity_join_level(
+                &self,
+                host: &mut dyn mod_api::ServerHost,
+                event: &mut mod_api::EntityJoinLevelEvent<'_>,
+            ) -> mod_api::Flow {
+                if event.kind == "minecraft:item" {
+                    let item = host
+                        .item_entity(host.entity(event.entity).unwrap())
+                        .unwrap();
+                    let name = item
+                        .with_stack(host, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_owned()
+                        })
+                        .unwrap();
+                    self.joined.lock().unwrap().push(name);
+                }
+                mod_api::Flow::Continue
+            }
+        }
+
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:dirt")
+                .unwrap();
+            let pos = [2, 64, 1];
+            for (insert, expected) in [
+                (false, &["minecraft:diamond", "minecraft:dirt"][..]),
+                (
+                    true,
+                    &["minecraft:emerald", "minecraft:dirt", "minecraft:diamond"][..],
+                ),
+            ] {
+                let joined = Arc::new(Mutex::new(Vec::new()));
+                mod_platform::testing::with_mods(
+                    vec![mod_api::ModEntry::new(
+                        "reorder",
+                        Box::new(Reorder {
+                            insert,
+                            joined: joined.clone(),
+                        }),
+                    )]
+                    .into(),
+                    || {
+                        game.spawn_explosion_drops(ExplosionDrops {
+                            stacks: vec![
+                                (pos, ItemStack::new("minecraft:dirt", 1)),
+                                (pos, ItemStack::new("minecraft:diamond", 1)),
+                            ],
+                            blocks: vec![ExplosionBlockDrops {
+                                pos,
+                                state,
+                                pieces: vec![
+                                    ExplosionDropPiece { group: 0, count: 1 },
+                                    ExplosionDropPiece { group: 1, count: 1 },
+                                ],
+                            }],
+                        })
+                    },
+                );
+                let names = joined.lock().unwrap();
+                assert!(
+                    names
+                        .iter()
+                        .map(String::as_str)
+                        .eq(expected.iter().copied()),
+                    "{names:?}"
+                );
+            }
+        });
     }
 
     /// A no-op listener preserves cross-block merging and level-random draws.

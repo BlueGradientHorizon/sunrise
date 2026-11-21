@@ -560,6 +560,17 @@ pub(super) fn pop_position(
     ]
 }
 
+/// `Block.popResource` draws the level offsets even when the rule prevents
+/// constructing (or capturing) an item entity.
+pub(super) fn admitted_pop_position(
+    random: &mut impl RandomSource,
+    pos: [i32; 3],
+    block_drops: bool,
+) -> Option<[f64; 3]> {
+    let at = pop_position(random, pos);
+    block_drops.then_some(at)
+}
+
 /// `Block.popResourceFromFace`'s position and motion: an item on the clicked
 /// face, moved off that face and jittered across the other two axes.
 pub(super) fn pop_position_from_face(
@@ -669,11 +680,8 @@ pub(in crate::game) struct RemovalOutputs {
 
 impl GameLevel<'_> {
     fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        let at = pop_position(&mut self.world.random, pos);
-        // `Block.popResource` draws its three offsets, then its private
-        // overload reads `GameRules.BLOCK_DROPS` and pops nothing while it is
-        // off: the level random advances either way.
-        if self.rules.block_drops {
+        if let Some(at) = admitted_pop_position(&mut self.world.random, pos, self.rules.block_drops)
+        {
             self.spill.spawns.push(Spawn {
                 random: None,
                 stack,
@@ -897,7 +905,7 @@ impl GameLevel<'_> {
         let items = stacks
             .into_iter()
             .filter(|stack| &*stack.item != "minecraft:air" && stack.count > 0)
-            .map(|stack| self.block_drop_item([pos.x, pos.y, pos.z], stack))
+            .filter_map(|stack| self.block_drop_item([pos.x, pos.y, pos.z], stack))
             .collect();
         // `tryDropExperience` samples before the silk touch effect zeroes the
         // part/vanilla starting amount before the global break_block event; a
@@ -929,11 +937,15 @@ impl GameLevel<'_> {
             },
         )
     }
-    /// Build item entities only after vanilla has finished merging stacks.
-    pub(super) fn block_drop_item(&mut self, at: [i32; 3], stack: ItemStack) -> BlockItemDrop {
-        let position = pop_position(&mut self.world.random, at);
+    /// Capture the item entity only if `Block.popResource` would construct it.
+    pub(super) fn block_drop_item(
+        &mut self,
+        at: [i32; 3],
+        stack: ItemStack,
+    ) -> Option<BlockItemDrop> {
+        let position = admitted_pop_position(&mut self.world.random, at, self.rules.block_drops)?;
         let random = prepare_item_random(None);
-        BlockItemDrop {
+        Some(BlockItemDrop {
             random: Some(random),
             stack,
             position,
@@ -941,7 +953,7 @@ impl GameLevel<'_> {
             pickup_delay: 10,
             state: DropState::default(),
             origin_group: None,
-        }
+        })
     }
     /// The one event/filter boundary for prepared block item entities and XP.
     /// Explosions supply their merged entities, keeping that caller's zero

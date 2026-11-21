@@ -176,21 +176,19 @@ impl Game<'_> {
         .flatten();
         Some((entity, data))
     }
-    /// `Block.dropResources` for a player's break (`block_dropped`), lending the saved data of
-    /// the block entity the removal took (`live`, from [`Self::live_block_entity`]) to the
-    /// `block_drops` event as `block_entity_data`. `at` is the position and the state after the
-    /// removal; `who` the breaker's UUID, their tool and the pre-removal block entity; `loot`
+    /// `Block.dropResources` for a player's break (`block_dropped`), lending the saved data
+    /// captured before removing the original block entity. `at` is the position and broken
+    /// state; `who` the breaker's UUID, their tool and the block entity's payload; `loot`
     /// the stacks and an experience override.
     pub(in crate::game) fn player_block_dropped(
         &mut self,
         at: ([i32; 3], BlockStateId),
-        who: (Option<u128>, Option<&ItemStack>, Option<LiveBlockEntity>),
+        who: (Option<u128>, Option<&ItemStack>, Option<&Compound>),
         loot: (Vec<ItemStack>, Option<u32>),
     ) -> crate::game::spill::BlockDrops {
         let ([x, y, z], state) = at;
-        let (breaker, tool, live) = who;
-        let block_entity_data = live.and_then(|(_, data)| data);
-        let block_entity = match block_entity_data.as_ref() {
+        let (breaker, tool, block_entity_data) = who;
+        let block_entity = match block_entity_data {
             Some(data) => crate::game::spill::BlockDropEntity::Removed(data),
             None => crate::game::spill::BlockDropEntity::None,
         };

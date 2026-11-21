@@ -542,6 +542,71 @@ fn put_chest(game: &mut super::Game<'_>, pos: [i32; 3]) {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn block_drops_lends_the_saved_only_pot_payload() {
+    use super::spill;
+    use mod_api::{Compound, Tag};
+
+    struct Observe(Arc<Mutex<Vec<(bool, Option<Compound>)>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn block_drops(
+            &self,
+            _: &dyn mod_api::LevelHost,
+            event: &mut mod_api::BlockDropsEvent<'_>,
+        ) -> Flow {
+            self.0.lock().unwrap().push((
+                event.block_entity.is_some(),
+                event.block_entity_data.cloned(),
+            ));
+            Flow::Continue
+        }
+    }
+
+    with_game(|game| {
+        let player = with_player(
+            game,
+            GameMode::Survival,
+            Some(ItemStack::new("minecraft:diamond_pickaxe", 1)),
+        );
+        let [x, y, z] = [7, 64, 4];
+        let pot = [x, y, z];
+        place(game, pot, "minecraft:decorated_pot");
+        let item = Tag::compound([
+            ("id", Tag::String("minecraft:diamond".into())),
+            ("count", Tag::Int(3)),
+        ]);
+        spill::put_saved_entity(
+            &mut game.world,
+            pot,
+            Tag::compound([
+                ("id", Tag::String("minecraft:decorated_pot".into())),
+                ("x", Tag::Int(x)),
+                ("y", Tag::Int(y)),
+                ("z", Tag::Int(z)),
+                ("keepPacked", Tag::Byte(0)),
+                ("item", item.clone()),
+            ]),
+        );
+        assert!(game.world.block_entities.get(&(x, y, z)).is_none());
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "pot-probe",
+                Box::new(Observe(seen.clone())),
+            )]
+            .into(),
+            || assert!(game.player_destroy_block(player, pot, false)),
+        );
+        assert_eq!(block(game, pot), "minecraft:air");
+        assert!(spill::saved_entity(&game.world, pot).is_none());
+        let mut payload = Compound::new();
+        payload.insert("item".into(), item);
+        assert_eq!(*seen.lock().unwrap(), [(false, Some(payload))]);
+    });
+}
+
 /// A player's survival break names the player as `breaker` and `breaker_entity`, lends the
 /// breaking tool as `ItemStackView` and the removed chest's saved data (including `CustomName`)
 /// via `block_entity_data`, and does not expose a temporary `block_entity` handle for the

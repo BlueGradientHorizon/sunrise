@@ -33,9 +33,14 @@ block entity is still genuinely resident in the world (level-side and mob
 breaks); it is `None` for explosions, blocks without one, and a player's break
 whose removal has already taken the block entity out of the world. On a player's
 break, `block_entity_data` is `Option<&Compound>` carrying the removed block
-entity's read-only stored data (including `CustomName`, so a listener can copy a
-chest's name onto its drop). That data is dropped automatically when the event
-ends, including on unwind; copy anything you need to retain.
+entity's read-only payload, without its identity or position. This includes
+entities stored only in the chunk, such as decorated pots, and preserves
+`CustomName` so a listener can copy a chest's name onto its drop. Copy anything
+you need to retain past the event.
+
+With the `block_drops` rule off, the level still draws the drop positions, but
+no item entities are constructed, so the hook starts with an empty list. No
+items or experience spawn after the event.
 
 ## Explosions
 
@@ -282,7 +287,9 @@ step runs as a blast's does, in vanilla's order:
    causing entity.
 3. The drops of the whole call are merged (a stack is offered to every earlier
    pile, up to 16 a pile; the rest starts a pile at that block) and popped
-   after the last block, in the order the piles began.
+   after the last block, in the order the piles began if no listener edits the
+   drops. An edited `block_drops` list sets the join order of its entries; a
+   merged group shared by several blocks still joins only once.
 4. With `fire`, a third of the cells left air above a solid block catch fire,
    under `None` too.
 

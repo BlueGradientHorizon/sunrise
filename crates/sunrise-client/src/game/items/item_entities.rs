@@ -845,18 +845,13 @@ impl Game<'_> {
 
     /// Block.popResource
     pub(super) fn pop_resource(&mut self, pos: [i32; 3], stack: ItemStack) {
-        // Block.popResource: Mth.nextDouble offsets from the level random; the
-        // motion is `new ItemEntity(..)`'s own, from the item's random.
-        let p = spill::pop_position(&mut self.world.random, pos);
-        // Block.popResource draws its offsets before the private overload checks the gamerule.
-        if !self
+        let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS)
-        {
-            return;
+            .bool_at(sunrise_client::gamerules::vanilla::BLOCK_DROPS);
+        if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
+            self.spawn_item_own(stack, at, 10);
         }
-        self.spawn_item_own(stack, p, 10);
     }
 
     /// `Containers.dropItemStack`: a crafting remainder leaves from inside the

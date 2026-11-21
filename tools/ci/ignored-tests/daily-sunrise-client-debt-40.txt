@@ -1,4 +1,7 @@
+sunrise-client game::explosion::tests::disabled_block_drops_draw_offsets_without_constructing_items lib daily resources
+sunrise-client game::explosion::tests::explosion_items_join_in_the_edited_drop_order lib daily resources
 sunrise-client game::native_player_destroyed_block_tests::block_drops_ignores_a_replacement_block_entity_placed_after_removal lib daily resources
+sunrise-client game::native_player_destroyed_block_tests::block_drops_lends_the_saved_only_pot_payload lib daily resources
 sunrise-client game::spill::tests::block_drops_dispatches_with_empty_or_unrepresentable_tool lib daily resources
 sunrise-client game::spill::tests::block_drops_per_edit_rejection_and_random_preservation lib daily resources
 sunrise-client game::stations::tests::item_tooltip_invalid_edit_keeps_other_listeners_lines lib daily resources
