@@ -108,18 +108,8 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
         if text.len() as u64 > KEY_LIMIT {
             return Err(format!("{KEY_ENV} is too large for a Minisign key"));
         }
-        match secret_env(PASSPHRASE_ENV)? {
-            Some(password) if !password.is_empty() => {
-                SecretKey::from_box(text.to_string().into(), Some(password.to_string()))
-            }
-            None => SecretKey::from_unencrypted_box(text.to_string().into()),
-            Some(_) => return Err(format!("{PASSPHRASE_ENV} must be nonempty text when set")),
-        }
-        .map_err(|_| {
-            format!(
-                "could not unlock the Minisign key in {KEY_ENV}; check the key and {PASSPHRASE_ENV}"
-            )
-        })?
+        let password = secret_env(PASSPHRASE_ENV)?;
+        unlock_ci_key(&text, password.as_ref().map(|text| text.as_str()))?
     } else {
         let key_path = match key_file {
             Some(path) => PathBuf::from(path),
@@ -158,6 +148,31 @@ pub(crate) fn sign(args: &[String]) -> Result<(), String> {
     into.write_new(&sidecar, &signature.to_bytes())?;
     println!("Wrote {}", into.path().join(sidecar).display());
     Ok(())
+}
+
+fn unlock_ci_key(text: &str, password: Option<&str>) -> Result<SecretKey, String> {
+    // Actions supplies an empty value for a secret that was not configured.
+    match password.filter(|password| !password.is_empty()) {
+        Some(password) => SecretKey::from_box(text.to_owned().into(), Some(password.to_owned())),
+        None => SecretKey::from_unencrypted_box(text.to_owned().into()),
+    }
+    .map_err(|_| {
+        format!(
+            "could not unlock the Minisign key in {KEY_ENV}; check the key and {PASSPHRASE_ENV}"
+        )
+    })
+}
+
+#[cfg(test)]
+#[test]
+fn an_empty_ci_passphrase_unlocks_a_passwordless_key() {
+    let pair = KeyPair::generate_unencrypted_keypair().unwrap();
+    let text = Zeroizing::new(pair.sk.to_box(None).unwrap().into_string());
+    let key = unlock_ci_key(&text, Some("")).unwrap();
+    assert_eq!(
+        PublicKey::from_secret_key(&key).unwrap().to_base64(),
+        pair.pk.to_base64()
+    );
 }
 
 // Keep our buffers guarded for their whole life. Neither Minisign's owned arguments and

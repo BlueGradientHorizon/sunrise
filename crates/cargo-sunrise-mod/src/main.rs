@@ -98,7 +98,7 @@ fn main() -> ExitCode {
         }),
         Some("build") => build_command(entry, &args[1..]).map(drop),
         Some("publish") => publish::run(entry, &args[1..]),
-        Some("release") => release::plan::run(Path::new("."), &args[1..]),
+        Some("release") => release::run(Path::new("."), &args[1..]),
         Some("keygen") => signing::keygen(&args[1..]),
         Some("sign") => signing::sign(&args[1..]),
         Some("run") => run(&args[1..]).map_err(|e| e.to_string()),
@@ -521,6 +521,19 @@ fn new_native(
         ("src/lib.rs", include_str!("../template/native/lib.rs")),
         (MANIFEST, manifest.as_str()),
         (".gitignore", include_str!("../template/gitignore")),
+        ("README.md", include_str!("../template/native/README.md")),
+        (
+            ".github/workflows/release.yml",
+            include_str!("../template/native/release.yml"),
+        ),
+        (
+            ".github/workflows/sunrise-release-jobs.yml",
+            include_str!("../template/native/sunrise-release-jobs.yml"),
+        ),
+        (
+            ".github/actions/sunrise-release-tool/action.yml",
+            include_str!("../template/native/release-tool.yml"),
+        ),
     ];
     for (file, text) in files {
         let to = dir.join(file);
@@ -1018,6 +1031,7 @@ mod tests {
         ];
         new(&new_args, &offline).unwrap();
         assert!(!path.join("Cargo.toml").exists());
+        assert!(!path.join(".github").exists());
         let smod = build_in(&path).unwrap();
         assert_eq!(smod, path.join("target/sunrise-mod/gems.smod"));
         let package = Package::read(&smod).unwrap();
@@ -1185,6 +1199,21 @@ mod tests {
             commit.into(),
         ];
         assert_eq!(new(&args, &offline).unwrap(), Some(path.clone()));
+        for file in [
+            "README.md",
+            ".github/workflows/release.yml",
+            ".github/workflows/sunrise-release-jobs.yml",
+            ".github/actions/sunrise-release-tool/action.yml",
+        ] {
+            assert!(path.join(file).is_file(), "template missing {file}");
+        }
+        let github_files: Vec<_> = std::fs::read_dir(path.join(".github"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(github_files.len(), 2);
+        assert!(github_files.contains(&"actions".into()));
+        assert!(github_files.contains(&"workflows".into()));
         // The template writes none of the fields the tool derives.
         let text = std::fs::read_to_string(path.join(MANIFEST)).unwrap();
         for key in ["api", "capabilities", "mixins"] {
@@ -1230,7 +1259,10 @@ mod tests {
         assert_eq!(bundle.manifest.id, "machine_mod");
         assert_eq!(bundle.facts().api, format!("native-1/{commit}/{rev}"));
         let names: Vec<_> = bundle.files.keys().map(String::as_str).collect();
-        assert_eq!(names, ["Cargo.toml", "src/lib.rs", "sunrise-mod.toml"]);
+        assert_eq!(
+            names,
+            ["Cargo.toml", "README.md", "src/lib.rs", "sunrise-mod.toml"]
+        );
         assert!(path.join("sunrise-mod.toml").is_file());
         for old in [
             "api",

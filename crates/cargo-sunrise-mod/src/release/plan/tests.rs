@@ -195,6 +195,27 @@ fn a_nonstandalone_project_gets_one_source_only_job() {
     assert!(source.archive.is_none() && plan.descriptor.is_none());
 }
 
+#[test]
+fn mod_dependencies_plan_a_source_only_release() {
+    let scratch = tempfile::tempdir().unwrap();
+    let at = scratch.path().join(ID);
+    project(&at);
+    let releases = stable_list(&[(GAME_TAG, SOURCE)]);
+    let path = at.join(sunrise_mod_package::manifest::MANIFEST);
+    let text = fs::read_to_string(&path).unwrap();
+    for dependency in ["'1'", "{version = '1', optional = true}"] {
+        fs::write(
+            &path,
+            format!("{text}\n[dependencies]\nbase_mod = {dependency}\n"),
+        )
+        .unwrap();
+        assert!(matches!(
+            initial(&at, "v0.1.0", &releases).unwrap().mode,
+            Mode::SourceOnly { .. }
+        ));
+    }
+}
+
 struct Registry {
     _dir: tempfile::TempDir,
     checkout: registry::Checkout,
