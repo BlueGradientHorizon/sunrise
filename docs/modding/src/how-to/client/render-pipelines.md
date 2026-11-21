@@ -81,9 +81,11 @@ event.register(
 | Required (`RenderPipeline::new`) | The load fails with a message naming each required pipeline and why. Startup cannot finish with a broken required pipeline. A failed resource reload keeps the previous resources, so handles from before it still draw. |
 | Optional (`.optional()`) | The log has one line naming the pipeline and why. It resolves to `RenderPipelineError::Invalid`, and every other pipeline builds and draws. |
 
-Client resource pack recovery resets the saved selection before reloading, and only runs if an
-optional pack was selected. Required packs and mod content still load; if recovery fails, the error
-is reported and the optional selection stays cleared.
+Client resource pack recovery only runs if an optional pack was selected. It clears and saves the
+failing selection before reloading the required packs and mod content. If recovery fails, the
+error is reported and that selection stays cleared. If the player has already committed a newer
+selection during startup, the queued load uses it instead. Create World's data-pack editor is
+unaffected.
 
 A load cannot build a pipeline when its shader file is missing, the file is refused, or the GPU
 rejects the shader. The game never panics over a pipeline's shader.

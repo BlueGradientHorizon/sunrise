@@ -47,8 +47,10 @@ pub enum PackPosition {
 /// reload read the same logical directory without extracting it.
 ///
 /// The repository id is `mod/<location>`. Optional packs remain unselected until
-/// the player selects them. Always-active packs cannot be disabled; `position`
-/// determines their default priority (later resource layers win).
+/// the player selects them. Startup recovery does not clear a newer selection
+/// the player committed while a client resource load was in progress.
+/// Always-active packs cannot be disabled; `position` determines their default
+/// priority (later resource layers win).
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
