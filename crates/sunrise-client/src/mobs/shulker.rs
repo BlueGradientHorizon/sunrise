@@ -1455,6 +1455,11 @@ mod tests {
 mod saved_bytes_tests {
     use super::*;
 
+    const SHULKER_MOTION_WITNESS_26_3: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tools/witness/26.3/shulker_motion.json"
+    ));
+
     fn shulker_types() -> std::collections::HashMap<String, std::sync::Arc<crate::mobs::MobType>> {
         let mut kind = crate::mobs::sensor_scan_tests::kind();
         let k = std::sync::Arc::make_mut(&mut kind);
@@ -1463,27 +1468,83 @@ mod saved_bytes_tests {
         [("minecraft:shulker".into(), kind)].into()
     }
 
-    /// `Shulker.getDeltaMovement` is always zero, so a loaded `Motion` is dropped, and only
-    /// `finalizeSpawn` sets the yaw: a loaded `Rotation` keeps its yaw.
+    fn shulker_motion_witness_26_3() -> serde_json::Value {
+        let value: serde_json::Value = serde_json::from_str(SHULKER_MOTION_WITNESS_26_3).unwrap();
+        assert_eq!(value["minecraft"].as_str(), Some("26.3"));
+        value
+    }
+
+    fn hex_u64_vec3(value: &serde_json::Value) -> [u64; 3] {
+        let items = value.as_array().unwrap();
+        assert_eq!(items.len(), 3);
+        std::array::from_fn(|i| u64::from_str_radix(items[i].as_str().unwrap(), 16).unwrap())
+    }
+
+    fn hex_u32_vec2(value: &serde_json::Value) -> [u32; 2] {
+        let items = value.as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        std::array::from_fn(|i| u32::from_str_radix(items[i].as_str().unwrap(), 16).unwrap())
+    }
+
+    fn mob_motion_bits(m: &Mob) -> [u64; 3] {
+        [
+            m.velocity.x.to_bits(),
+            m.velocity.y.to_bits(),
+            m.velocity.z.to_bits(),
+        ]
+    }
+
+    fn mob_rotation_bits(m: &Mob) -> [u32; 2] {
+        [m.yaw.to_bits(), m.head_pitch.to_bits()]
+    }
+
+    /// Vanilla 26.3 witness (`tools/witness/26.3/shulker_motion.json`): a loaded shulker matches vanilla 26.3 motion and rotation bits.
     #[test]
     fn a_loaded_shulker_has_no_motion_and_keeps_its_yaw() {
         use crate::entity_nbt::mob_from_nbt;
-        let tag = sunrise_core::nbt::parse_snbt(
-            r#"{id:"minecraft:shulker",Pos:[0.5d,64d,0.5d],NoAI:1b,Motion:[0.1d,0.25d,-0.3d],Rotation:[45f,10f]}"#,
-        )
-        .unwrap()
-        .0;
-        let m = mob_from_nbt(&tag, &shulker_types(), 1, None).unwrap();
-        assert_eq!(m.velocity, Vec3::ZERO);
-        assert_eq!(m.yaw, 45.0);
+        let witness = shulker_motion_witness_26_3();
+        let types = shulker_types();
+        let cases = witness["loaded_cases"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            let name = case["name"].as_str().unwrap();
+            let snbt = case["nbt"].as_str().unwrap();
+            let tag = sunrise_core::nbt::parse_snbt(snbt).unwrap().0;
+            let m = mob_from_nbt(&tag, &types, 1, None).unwrap();
+            let after_load = &case["after_load"];
+            assert_eq!(
+                mob_motion_bits(&m),
+                hex_u64_vec3(&after_load["motion_bits"]),
+                "26.3 loaded motion mismatch for {name}"
+            );
+            assert_eq!(
+                mob_rotation_bits(&m),
+                hex_u32_vec2(&after_load["rotation_bits"]),
+                "26.3 loaded rotation mismatch for {name}"
+            );
+        }
     }
 
-    /// A NoAI shulker in flowing water: the current never moves its motion off zero, and its
-    /// loaded yaw stays.
+    /// Vanilla 26.3 witness (`tools/witness/26.3/shulker_motion.json`): a NoAI shulker in flowing water matches vanilla 26.3 motion and rotation bits on every tick.
     #[test]
     #[ignore = "daily"]
     fn a_noai_shulker_in_flowing_water_keeps_zero_motion() {
         use std::sync::Arc;
+        use sunrise_core::nbt::Tag;
+        let witness = shulker_motion_witness_26_3();
+        let case = &witness["flowing_water_case"];
+        let levels: Vec<i64> = case["trough_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_i64().unwrap())
+            .collect();
+        let shulker_index = case["shulker_trough_index"].as_u64().unwrap() as i32;
+        let input_motion = hex_u64_vec3(&case["input_motion_bits"]);
+        let input_rotation = hex_u32_vec2(&case["input_rotation_bits"]);
+        let ticks = case["ticks"].as_array().unwrap();
+        assert!(ticks.len() > 1);
+        assert_eq!(ticks[0]["tick"].as_u64(), Some(0));
         let ran = super::super::world::with_built_test_world(
             &[],
             |world, registry| {
@@ -1491,43 +1552,69 @@ mod saved_bytes_tests {
                     .chunks
                     .insert((0, 0), Arc::new(crate::chunk::Chunk::empty(0, 0)));
                 let stone = registry.default_state("minecraft:stone").unwrap();
-                use sunrise_core::nbt::Tag;
-                let flowing = registry
-                    .saved_state_id(&Tag::compound([
-                        ("id", Tag::String("minecraft:water".into())),
-                        (
-                            "properties",
-                            Tag::compound([("level", Tag::String("3".into()))]),
-                        ),
-                    ]))
-                    .unwrap();
-                for x in 0..8 {
-                    for z in 0..8 {
+                for x in 0..16 {
+                    for z in 0..16 {
                         world.set(x, 63, z, stone).unwrap();
                     }
                 }
-                // A wall on one side, so the flow out of the other three does not cancel.
-                world.set(4, 64, 4, flowing).unwrap();
-                world.set(5, 64, 4, stone).unwrap();
+                // Build the same steady-state 1-wide stone trough recorded in the 26.3 witness.
+                for x in 1..=(levels.len() as i32 + 2) {
+                    world.set(x, 64, 3, stone).unwrap();
+                    world.set(x, 64, 5, stone).unwrap();
+                }
+                world.set(1, 64, 4, stone).unwrap();
+                for (offset, level) in levels.iter().enumerate() {
+                    let level = level.to_string();
+                    let water = registry
+                        .saved_state_id(&Tag::compound([
+                            ("id", Tag::String("minecraft:water".into())),
+                            (
+                                "properties",
+                                Tag::compound([("level", Tag::String(level.as_str().into()))]),
+                            ),
+                        ]))
+                        .unwrap();
+                    world.set(2 + offset as i32, 64, 4, water).unwrap();
+                }
             },
             |w, types| {
                 let kind = Arc::new(types.types["minecraft:shulker"].clone());
-                let mut m = Mob::new(1, kind, Vec3::new(4.5, 64.0, 4.5), 45.0);
-                m.no_ai = true;
+                let pos = Vec3::new(f64::from(2 + shulker_index) + 0.5, 64.0, 4.5);
+                let mut m = Mob::new(1, kind, pos, f32::from_bits(input_rotation[0]));
+                m.head_pitch = f32::from_bits(input_rotation[1]);
+                m.no_ai = case["no_ai"].as_bool().unwrap();
                 m.persistent = true;
-                m.velocity = Vec3::new(0.1, 0.25, -0.3);
+                m.velocity = Vec3::new(
+                    f64::from_bits(input_motion[0]),
+                    f64::from_bits(input_motion[1]),
+                    f64::from_bits(input_motion[2]),
+                );
+                let pushed = w.pushed_by_currents(m.bounds(), Vec3::ZERO);
+                assert_ne!(
+                    [pushed.x.to_bits(), pushed.y.to_bits(), pushed.z.to_bits()],
+                    [0.0_f64.to_bits(); 3]
+                );
                 let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
-                for _ in 0..5 {
+                for row in &ticks[1..] {
+                    let tick = row["tick"].as_u64().unwrap();
                     assert!(super::super::ai::tick(
                         &mut m,
                         w,
                         &mut level.level(),
                         &mut events
                     ));
-                    assert!(m.fluids.in_water);
-                    assert_eq!(m.velocity, Vec3::ZERO);
+                    assert!(m.fluids.in_water, "tick {tick}: shulker must be in water");
+                    assert_eq!(
+                        mob_motion_bits(&m),
+                        hex_u64_vec3(&row["motion_bits"]),
+                        "26.3 water motion mismatch at tick {tick}"
+                    );
+                    assert_eq!(
+                        mob_rotation_bits(&m),
+                        hex_u32_vec2(&row["rotation_bits"]),
+                        "26.3 water rotation mismatch at tick {tick}"
+                    );
                 }
-                assert_eq!(m.yaw, 45.0);
             },
         );
         assert!(ran, "vanilla data is missing");

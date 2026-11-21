@@ -22,6 +22,7 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import zipfile
@@ -195,6 +196,8 @@ def main():
                         help='leave out the sync_randoms steps: the control in which their fields differ run to run')
     parser.add_argument('--groups-file', type=Path,
                         help='run these generated [name, ops] groups after the common setup instead of the corpus')
+    parser.add_argument('--record-shulker-motion', nargs='?', const=lab.ROOT / 'tools/witness/26.3/shulker_motion.json',
+                        type=Path, help='record the 26.3 shulker motion/yaw witness from VanillaCommandExecOracle only')
     args = parser.parse_args()
     build = args.work_dir.resolve() if args.work_dir else lab.LOCAL / 'command-exec-parity'
     build.mkdir(parents=True, exist_ok=True)
@@ -511,6 +514,9 @@ def main():
         # Generated scripts (tools/parity_fuzz.py): the common setup, then the file's [name, ops] groups only.
         groups = [('setup', corpus_module.group_setup()),
                   *[(name, ops) for name, ops in json.loads(args.groups_file.read_text(encoding='utf-8'))]]
+    if args.record_shulker_motion:
+        groups = [('setup', corpus_module.group_setup()),
+                  (corpus_module.SHULKER_MOTION_GROUP, corpus_module.shulker_motion_and_yaw())]
     script = assemble(groups, args.unsynced_randoms)
     # docs/parity-workflow.md "Randoms that repeat": both engines' unseeded randoms repeat for a script that syncs them.
     synced = any(op['op'] == 'sync_randoms' for op in script)
@@ -573,7 +579,7 @@ def main():
                 any(len(r.get('bits', [])) != 3 or
                     any(re.fullmatch(r'[0-9a-f]{1,16}', b) is None for b in r['bits']) for r in direct)):
             sys.exit('Java direct underwater reference prerequisite failed')
-    if args.reference_only:
+    if args.reference_only or args.record_shulker_motion:
         reference = [json.loads(line) for line in (build / 'vanilla.jsonl').read_text().splitlines()]
         recorded = [op for op in script if op['op'] in ('player_state', 'player_loop', 'map_state', 'frame_map_state', 'mob_anger', 'projectile_saved_type', 'raid_state', 'menu_state', 'craft_menu_state', 'map_files', 'merchant_state', 'merchant_saved_stats') or
                     (op['op'] == 'cmd' and op.get('record', True)) or
@@ -592,6 +598,10 @@ def main():
                 sys.exit(f'Java callback guard failed: {op}: {row.get("results")}')
             if 'expect_map' in op and row.get('messages') != [[[op['expect_map'], [None, False, False, False, False, False]]]]:
                 sys.exit(f'Java map prerequisite failed: {op}: {row}')
+        if args.record_shulker_motion:
+            write_shulker_motion_witness(args.record_shulker_motion, reference, lock, jars['server'])
+            print(f'Recorded 26.3 shulker motion witness: {args.record_shulker_motion}')
+            return
         print(f'Java reference: {len(reference)} records, fixture guards passed')
         return
 
@@ -898,6 +908,92 @@ def compare(v, r, comparison=None):
             return None
         return 'results'
     return None
+
+
+def write_shulker_motion_witness(path, reference, lock, server_jar):
+    # Extract exact vanilla 26.3 Motion and Rotation SNBT + IEEE-754 bits from /data get records.
+    readings = {}
+    prefix = ' has the following entity data: '
+    for row in reference:
+        match = re.fullmatch(r'/data get entity (\S+) (Motion|Rotation)', row['cmd'])
+        if not match:
+            continue
+        uid, field = match.groups()
+        if len(row['messages']) != 1:
+            sys.exit(f'unexpected /data get message count for {row["cmd"]}: {row["messages"]}')
+        text = ''.join(span[0] for span in row['messages'][0])
+        if prefix not in text:
+            sys.exit(f'missing entity data prefix for {row["cmd"]}: {text!r}')
+        snbt = text.split(prefix, 1)[1]
+        readings.setdefault((uid, field), []).append(snbt)
+
+    def parse_vector(snbt, count, suffix, fmt):
+        if not (snbt.startswith('[') and snbt.endswith(']')):
+            sys.exit(f'expected SNBT list, got {snbt!r}')
+        parts = [p.strip() for p in snbt[1:-1].split(',')]
+        if len(parts) != count or any(not p.lower().endswith(suffix) for p in parts):
+            sys.exit(f'expected {count} {suffix}-suffixed values, got {snbt!r}')
+        return [struct.pack(fmt, float(p[:-1])).hex() for p in parts]
+
+    def sample(uid, idx):
+        motion_snbt = readings[(uid, 'Motion')][idx]
+        rotation_snbt = readings[(uid, 'Rotation')][idx]
+        return {
+            'motion_snbt': motion_snbt,
+            'motion_bits': parse_vector(motion_snbt, 3, 'd', '>d'),
+            'rotation_snbt': rotation_snbt,
+            'rotation_bits': parse_vector(rotation_snbt, 2, 'f', '>f'),
+        }
+
+    loaded_cases = []
+    for case in corpus_module.SHULKER_MOTION_LOADED_CASES:
+        uid = corpus_module.shulker_motion_uuid(case['uuid_index'])
+        want = 2 if case['no_ai'] else 1
+        for field in ('Motion', 'Rotation'):
+            if len(readings.get((uid, field), [])) != want:
+                sys.exit(f'expected {want} {field} readings for {case["name"]}, got {readings.get((uid, field))}')
+        entry = {
+            'name': case['name'],
+            'no_ai': case['no_ai'],
+            'nbt': case['nbt'],
+            'input_motion_bits': [struct.pack('>d', v).hex() for v in case['motion']],
+            'input_rotation_bits': [struct.pack('>f', v).hex() for v in case['rotation']],
+            'after_load': sample(uid, 0),
+        }
+        if case['no_ai']:
+            entry['after_ticks'] = {'ticks': corpus_module.SHULKER_MOTION_WATER_CASE['ticks'], **sample(uid, 1)}
+        loaded_cases.append(entry)
+
+    water = corpus_module.SHULKER_MOTION_WATER_CASE
+    water_uid = corpus_module.shulker_motion_uuid(water['uuid_index'])
+    want_water = water['ticks'] + 1
+    for field in ('Motion', 'Rotation'):
+        if len(readings.get((water_uid, field), [])) != want_water:
+            sys.exit(f'expected {want_water} {field} readings for {water["name"]}, got {readings.get((water_uid, field))}')
+    water_case = {
+        'name': water['name'],
+        'no_ai': water['no_ai'],
+        'trough_levels': list(water['trough_levels']),
+        'shulker_trough_index': water['shulker_trough_index'],
+        'input_motion_bits': [struct.pack('>d', v).hex() for v in water['motion']],
+        'input_rotation_bits': [struct.pack('>f', v).hex() for v in water['rotation']],
+        'ticks': [{'tick': tick, **sample(water_uid, tick)} for tick in range(want_water)],
+    }
+
+    witness = {
+        'schema': 1,
+        'minecraft': lock['minecraft']['version'],
+        'oracle': 'VanillaCommandExecOracle',
+        'group': corpus_module.SHULKER_MOTION_GROUP,
+        'command': 'python3 tools/test_command_exec_parity.py --record-shulker-motion',
+        'server_jar_sha256': lab.digest(server_jar, 'sha256'),
+        'java': subprocess.check_output(['java', '--version'], text=True).splitlines()[0],
+        'loaded_cases': loaded_cases,
+        'flowing_water_case': water_case,
+    }
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(witness, indent=2) + '\n', encoding='utf-8')
 
 
 def render(record):
