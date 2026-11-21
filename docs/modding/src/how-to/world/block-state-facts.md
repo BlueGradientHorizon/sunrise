@@ -7,8 +7,7 @@ pair without a host. Pass `BlockState` directly to metadata and fact queries.
 Read facts without a world position on either side through `host.block_states()` (import
 `HostBlockStates`). Inside a level callback with no `Host` (such as `BlockPart::random_tick`),
 call `level.block_states()` on the view: it is the same service over the game's loaded tables.
-Basic fact queries and matching allocate nothing; `definition` copies the property data for the
-caller.
+Basic fact queries, matching and `definition` allocate nothing; `definition` borrows the property data.
 
 With `let metadata = host.block_states()`, `state.property(&metadata, "facing")` borrows the
 serialized value from immutable metadata. `state.with(&metadata, "facing", "east")` returns a
@@ -33,13 +32,29 @@ known state reads as `Ok(None)`; unavailable metadata, invalid states and refuse
 | `map_color_rgba(packed) -> Option<[u8; 4]>` | `MapColor.getColorFromPackedId`: decode a map pixel to `[red, green, blue, alpha]`; ID 0 and undefined IDs decode to transparent RGBA; `None` means no game backend |
 | `block_class(state, class: BlockClass) -> Result<Option<bool>, LevelReadError>` | Java `instanceof` on the block's vanilla class, subclasses included: `Stair`, `Entity` (`EntityBlock`), `IronBars`, `StainedGlassPane`, `TrapDoor`. See below |
 | `states_of(block) -> Option<BlockStateRange>` | `StateDefinition.getPossibleStates`, as owned values in canonical local-ordinal order |
-| `definition(block)` | Property names and legal serialized values |
+| `definition(block) -> Option<StateProperties<'_>>` | Borrowed property names and legal serialized values |
 | `matches(state, block, constraints)` | Partial property match with typed invalid-property and invalid-value errors |
 
 `map_color` returns an unshaded palette ID. Pass a packed map pixel to `map_color_rgba`, or pack an ID with
 `id * 4 + shade` (0–3). The shade scales each RGB channel by 180, 220, 255 or 135 out of 255, rounding down.
 
-Use `StateConstraint` for each partial constraint; `StateMatchError` identifies an invalid property or value by index. `StateProperty` describes a property's legal values. These types are shared by state-definition services.
+Use `StateConstraint` for each partial constraint; `StateMatchError` identifies an invalid property or value by index.
+
+`definition(block)` returns `None` for an unknown block or unavailable tables. A known block without
+properties returns an empty `StateProperties<'_>` view. Use `properties.iter()` to read each
+`StateProperty<'_>` in property-name order. Its `name: &str` and `values: &[String]` borrow the
+loaded table, keeping its value order. The view is tied to the host (or level view), not the temporary
+service returned by `block_states()`. For example, to check whether `facing` accepts `north`
+without copying the definition:
+
+```rust,ignore
+let allows_north = host.block_states().definition(block).is_some_and(|properties| {
+    properties.iter().any(|p| p.name == "facing" && p.values.iter().any(|v| v == "north"))
+});
+```
+
+Copy a property's name with `.to_owned()` and values with `.to_vec()` only if you need them
+after that borrow ends.
 
 The conductor query uses the same exported predicate as redstone, not render solidity. It returns
 `None` for shulker boxes because their collision bounds depend on the live block entity. To query a
@@ -104,8 +119,10 @@ are published.
 
 Import `HostFluidStates` to reach `host.fluid_states()` on either owning side.
 `definition(key)` returns `Some(FluidDefinition::World { default, properties })` for a world fluid,
-`Some(FluidDefinition::TankOnly)` for a registered tank-only fluid, and `None` without a loaded registry.
-The properties and typed default come from the loaded preparation, not a second vanilla table.
+`Some(FluidDefinition::TankOnly)` for a registered tank-only fluid, and `None` for an unknown key or
+without a loaded registry. The typed default and borrowed `StateProperties<'_>` come from the loaded
+preparation. A world fluid without properties (such as `minecraft:empty`) still returns `World`,
+with an empty view.
 These metadata reads are available in setup, reload and world callbacks after the fluid keys resolve,
 not during registration or configuration.
 
@@ -139,5 +156,5 @@ What depends on a position is on `LevelRef`, not in this service: `fluid_tick_de
 `FluidState::matches(constraints)` is a pure local check of carried vanilla fields. Unknown properties
 or noncanonical serialized values return false. A falling source remains a source; a flowing state
 of level 8 remains flowing. Empty constraints match any state. Validate separately for indexed errors.
-Neither matching nor validation allocates; explicitly copying a definition may allocate.
+Neither matching nor validation allocates, and reading the definition lends its properties without copying.
 Unresolved saved tank identities remain `FluidIdentity::Unresolved(handle)`, not world states or tank-only keys.

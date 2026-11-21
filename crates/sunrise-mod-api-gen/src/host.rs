@@ -1542,13 +1542,14 @@ mod tests {
         assert!(code.contains(
             "backend_mut_of(host).map_or_else(|| Err(crate::NoBackend::no_backend()), |backend| backend.level_attempt(self))"
         ));
-        // A key's name is read with an owned answer.
-        let key = entry("fn block_key_id(&self, key: BlockKey) -> String;");
+        // The registry name borrows the host and is absent without a backend.
+        let key = entry("fn block_key_id(&self, key: BlockKey) -> Option<&str>;");
         let (handle, code) = handle_method(&key, Tier::Backend, &handles)
             .unwrap()
             .unwrap();
         assert_eq!(handle, "BlockKey");
-        assert!(code.contains("backend_of(host).expect("));
+        assert!(code.contains("pub fn id (self , host : & dyn Host) -> Option < & str >"));
+        assert!(code.contains("backend_of(host)?.block_key_id(self)"));
     }
 
     #[test]

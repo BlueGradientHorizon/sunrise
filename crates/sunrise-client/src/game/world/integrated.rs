@@ -475,13 +475,13 @@ impl Game<'_> {
                 Arc::new(OwnerProfile::new(move || {
                     sunrise_client::skins::fetch_own_properties(id)
                         .into_iter()
-                        .map(|(name, value, signature)| {
-                            sunrise_protocol::packets::login::Property {
+                        .map(
+                            |(name, value, signature)| sunrise_core::profile::AccountProperty {
                                 name,
                                 value,
                                 signature,
-                            }
-                        })
+                            },
+                        )
                         .collect()
                 }))
             }),
@@ -1714,20 +1714,13 @@ pub(super) mod tests {
             });
             let local = game.client_session().client_server().unwrap();
             assert!(local.integrated_local);
-            assert_eq!(local.name.as_deref(), Some("First world"));
+            assert_eq!(local.name, Some("First world"));
             assert_eq!(local.address, None);
-            assert_eq!(local.save_folder.as_deref(), Some("first_world"));
+            assert_eq!(local.save_folder, Some("first_world"));
             game.integrated.as_mut().unwrap().world_name = "Renamed world".into();
-            assert_eq!(
-                game.client_session()
-                    .client_server()
-                    .unwrap()
-                    .name
-                    .as_deref(),
-                Some("Renamed world")
-            );
             let renamed = game.client_session().client_server().unwrap();
-            assert_eq!(renamed.save_folder, local.save_folder);
+            assert_eq!(renamed.name, Some("Renamed world"));
+            assert_eq!(renamed.save_folder, Some("first_world"));
             game.integrated.take();
             let guest = game.client_session().client_server().unwrap();
             assert!(!guest.integrated_local);

@@ -2915,7 +2915,7 @@ impl Hub {
             self.guests.update(i, |g| {
                 let size = batch.len();
                 // The single-player window shares the sections it is sent (handoff.rs).
-                let memory = g.address == super::conn::MEMORY_ADDRESS;
+                let memory = g.address() == super::conn::MEMORY_ADDRESS;
                 if size > 0 {
                     g.batch_quota -= size as f32;
                     g.send(&C::ChunkBatchStart(sunrise_protocol::packets::Empty));
@@ -3023,7 +3023,7 @@ impl Hub {
         let g = &self.guests[i];
         // The integrated server's own player, still on the loading screen.
         // LAN guests and a client that has loaded keep the quota above.
-        let burst = g.address == super::conn::MEMORY_ADDRESS && !g.loaded;
+        let burst = g.address() == super::conn::MEMORY_ADDRESS && !g.loaded;
         let near_take = if burst { g.chunk_queue.len() } else { budget };
         // ChunkStatus.LIGHT needs its neighbours at INITIALIZE_LIGHT: a
         // column whose light layers would leave one out waits for it.
@@ -5220,10 +5220,10 @@ fn shared_flags(sneaking: bool, sprinting: bool, body: &BodyFlags) -> i8 {
 /// in with, or for the integrated server's owner (who logs in with none) the
 /// signed-in account's, once fetched (`IntegratedServer.getSingleplayerProfile`).
 fn listed_properties(
-    logged_in: &[sunrise_protocol::packets::login::Property],
+    logged_in: &[sunrise_core::profile::AccountProperty],
     owner: bool,
     profile: Option<&super::OwnerProfile>,
-) -> Vec<sunrise_protocol::packets::login::Property> {
+) -> Vec<sunrise_core::profile::AccountProperty> {
     match profile {
         Some(profile) if owner && logged_in.is_empty() => profile.properties().to_vec(),
         _ => logged_in.to_vec(),
@@ -7401,8 +7401,8 @@ mod tests {
         assert_eq!(maximum_flying_ticks(1.0E-6), i32::MAX);
     }
 
-    fn textures(value: &str) -> sunrise_protocol::packets::login::Property {
-        sunrise_protocol::packets::login::Property {
+    fn textures(value: &str) -> sunrise_core::profile::AccountProperty {
+        sunrise_core::profile::AccountProperty {
             name: "textures".into(),
             value: value.into(),
             signature: Some("c2lnbmVk".into()),
@@ -7765,7 +7765,7 @@ mod tests {
             hub.guests.update(0, |g| {
                 g.chunks_per_tick = 64.0;
                 g.batch_quota = 0.0;
-                g.address = crate::lan::conn::MEMORY_ADDRESS;
+                g.set_address(crate::lan::conn::MEMORY_ADDRESS);
                 g.loaded = false;
             });
         }
@@ -7806,7 +7806,7 @@ mod tests {
         assert_eq!(loaded.len(), 64, "PlayerLoaded puts the cap back");
 
         hub.guests.update(0, |g| {
-            g.address = "127.0.0.1:25565".parse().unwrap();
+            g.set_address("127.0.0.1:25565".parse().unwrap());
         });
         hub.guests.update(0, |g| {
             g.loaded = false;
@@ -7820,7 +7820,7 @@ mod tests {
         assert_eq!(socket.len(), 64, "a socket guest keeps the quota");
 
         hub.guests.update(0, |g| {
-            g.address = crate::lan::conn::MEMORY_ADDRESS;
+            g.set_address(crate::lan::conn::MEMORY_ADDRESS);
         });
         hub.guests.update(0, |g| {
             g.loaded = true;

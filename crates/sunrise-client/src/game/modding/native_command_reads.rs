@@ -5,7 +5,7 @@ use super::Game;
 use super::api_values::TryIntoApi;
 use mod_api::{
     AdvancementDisplay, AdvancementFrame, AdvancementInfo, CommandArgument, CommandInvocation,
-    GameProfile, Identifier, PlayerRef, ProfileProperty,
+    GameProfile, Identifier, PlayerRef,
 };
 use sunrise_client::advancements::{Advancement, Frame, Tree};
 
@@ -27,27 +27,17 @@ impl Game<'_> {
 
     /// `ServerPlayer.getGameProfile`: the name `player_name` reads, and the properties the
     /// player logged in with. None for a stale or unavailable player.
-    pub(super) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile> {
+    pub(super) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>> {
         let name = self.player_name(player)?;
         let properties = self
-            .lan
-            .as_ref()
-            .and_then(|host| {
-                host.hub
-                    .online_players()
-                    .find(|guest| guest.uuid == player.uuid())
-            })
-            .map(|guest| {
-                guest
-                    .properties
-                    .iter()
-                    .map(|p| {
-                        ProfileProperty::new(p.name.clone(), p.value.clone(), p.signature.clone())
-                    })
-                    .collect()
-            })
+            .online_player_record(player)
+            .map(|guest| guest.properties.as_slice())
             .unwrap_or_default();
-        Some(GameProfile::new(player.uuid(), name, properties))
+        Some(mod_api::__private::game::game_profile(
+            player.uuid(),
+            name,
+            properties,
+        ))
     }
 
     /// `ServerAdvancementManager.get(id)` over the loaded tree, read once on first use and
@@ -254,31 +244,66 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_profile_keeps_its_login_properties() {
+        use sunrise_core::profile::AccountProperty;
+
         super::super::native_guest_turn_tests::with_guests(|game| {
-            let stored = sunrise_protocol::packets::login::Property {
-                name: "textures".into(),
-                value: "e30=".into(),
-                signature: Some("sig".into()),
-            };
             game.lan
                 .as_mut()
                 .unwrap()
                 .hub
-                .update_guest(12, |guest| guest.properties = vec![stored])
+                .update_guest(12, |guest| {
+                    guest.properties = vec![
+                        AccountProperty {
+                            name: "textures".into(),
+                            value: "e30=".into(),
+                            signature: Some("sig".into()),
+                        },
+                        AccountProperty {
+                            name: "extra".into(),
+                            value: "plain".into(),
+                            signature: None,
+                        },
+                    ];
+                })
                 .unwrap();
             let player = game.player(12).unwrap();
-            assert_eq!(
-                game.player_profile(player),
-                Some(GameProfile::new(
-                    12,
-                    "guest12".into(),
-                    vec![ProfileProperty::new(
-                        "textures".into(),
-                        "e30=".into(),
-                        Some("sig".into())
-                    )],
-                ))
+            let check = |game: &Game<'_>| {
+                let profile = player.profile(game).unwrap();
+                assert_eq!(profile.uuid, 12);
+                assert_eq!(profile.name, "guest12");
+                let mut properties = profile.properties();
+                let signed = properties.next().unwrap();
+                assert_eq!(
+                    (signed.name, signed.value, signed.signature),
+                    ("textures", "e30=", Some("sig"))
+                );
+                let unsigned = properties.next().unwrap();
+                assert_eq!(
+                    (unsigned.name, unsigned.value, unsigned.signature),
+                    ("extra", "plain", None)
+                );
+                assert!(properties.next().is_none());
+            };
+            check(game);
+            game.as_guest(12, |game| {
+                check(game);
+                game.as_guest(13, |game| check(game)).unwrap();
+            })
+            .unwrap();
+
+            let offline = game.player(13).unwrap().profile(game).unwrap();
+            assert_eq!((offline.uuid, offline.name), (13, "guest13"));
+            assert!(offline.properties().next().is_none());
+
+            let entity = player.entity();
+            let stale = mod_api::__private::game::player_ref(
+                mod_api::EntityRef::new(
+                    mod_api::WorldEpoch::new(entity.epoch().get() + 1),
+                    entity.id(),
+                ),
+                12,
             );
+            assert!(stale.profile(game).is_none());
         });
     }
 }

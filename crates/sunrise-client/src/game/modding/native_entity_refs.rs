@@ -212,8 +212,8 @@ impl Game<'_> {
         Some(LevelRef::new(epoch, remote.level_key))
     }
     /// The name of a dimension's key.
-    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<String> {
-        mod_api::__private::dimension_id(key).map(str::to_owned)
+    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
+        mod_api::__private::dimension_id(key)
     }
     /// The key of the level in place: on a client the level it shows, which
     /// `Dim` may have no name for.
@@ -3040,7 +3040,7 @@ pub(super) mod tests {
                             .item()
                             .id(game))
                         .unwrap(),
-                    "minecraft:stone"
+                    Some("minecraft:stone")
                 );
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
                 // The loaded walking speed is the movement speed's base.
@@ -3106,7 +3106,7 @@ pub(super) mod tests {
             assert_eq!(other.position(game), Some([3.0, 64.0, 5.0]));
             assert_eq!(other.uuid(game), Some(13));
             assert_eq!(
-                other.kind(game).map(|kind| kind.id(game)).as_deref(),
+                other.kind(game).and_then(|kind| kind.id(game)).as_deref(),
                 Some("minecraft:player")
             );
             let living = game.living(other).unwrap();
@@ -3114,7 +3114,7 @@ pub(super) mod tests {
                 living
                     .with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))
                     .unwrap(),
-                "minecraft:stone"
+                Some("minecraft:stone")
             );
             let player = game.player(13).unwrap();
             assert_eq!(player.fields().entity, other);
@@ -3221,7 +3221,7 @@ pub(super) mod tests {
             assert_eq!(game.entity_position(found[0]), Some([1.0, 0.0, 0.0]));
             assert_eq!(
                 game.entity_kind(found[0])
-                    .map(|kind| kind.id(game))
+                    .and_then(|kind| kind.id(game))
                     .as_deref(),
                 Some("minecraft:armor_stand")
             );

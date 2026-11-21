@@ -4,7 +4,7 @@
 use super::{Game, PackResources, Resources, WorldRest, api_values::TryIntoEngine};
 use mod_api::{
     BlockKey, BlockSoundType, BlockState, BlockStateRange, FluidDefinition, FluidKey, FluidState,
-    FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperty,
+    FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperties,
     WeatheringAge,
 };
 use sunrise_client::items::ItemStack;
@@ -37,20 +37,15 @@ impl<'a> BlockTables<'a> {
     pub(in crate::game) fn fluid_state_definition(
         &self,
         fluid: FluidKey,
-    ) -> Option<FluidDefinition> {
+    ) -> Option<FluidDefinition<'a>> {
         let id = mod_api::__private::fluid_id(fluid)?;
         let Some(definition) = self.res.behaviours().fluid_definitions().get(id) else {
             return Some(FluidDefinition::TankOnly);
         };
         let default = super::native_world_read::api_fluid_state(definition.default)?;
-        let properties = definition
-            .properties
-            .iter()
-            .map(|(name, values)| StateProperty::new(name.clone(), values.clone()))
-            .collect();
         Some(FluidDefinition::World {
             default,
-            properties,
+            properties: StateProperties::of(&definition.properties),
         })
     }
 
@@ -292,20 +287,15 @@ impl<'a> BlockTables<'a> {
         mod_api::__private::block_state_range(block).ok()
     }
 
-    /// The properties of a resolved block, copied for the mod as plain data.
+    /// The properties of a resolved block, borrowed from the command registry.
     pub(in crate::game) fn block_state_definition(
         &self,
         block: BlockKey,
-    ) -> Option<Vec<StateProperty>> {
+    ) -> Option<StateProperties<'a>> {
         let default = super::api_values::default_state(block)?;
         let state = self.pack.assets.registry.state(default)?;
         let properties = self.pack.block_registries.blocks.get(&state.name)?;
-        Some(
-            properties
-                .iter()
-                .map(|(name, values)| StateProperty::new(name.clone(), values.clone()))
-                .collect(),
-        )
+        Some(StateProperties::of(properties))
     }
 
     /// Match against the existing command registry definitions without allocating on the call.

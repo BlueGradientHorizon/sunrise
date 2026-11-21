@@ -57,7 +57,7 @@ fn fresh_fake_player_kind_has_player_id() {
     host.level.entity(20, "minecraft:player");
     let player = host.player(1).unwrap();
     let kind = player.entity().kind(&host).unwrap();
-    assert_eq!(kind.id(&host), "minecraft:player");
+    assert_eq!(kind.id(&host).as_deref(), Some("minecraft:player"));
 }
 
 #[test]

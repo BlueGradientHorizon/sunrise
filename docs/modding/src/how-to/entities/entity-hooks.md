@@ -34,6 +34,15 @@ Use `project()` when you need components or an owned stack after the callback. F
 server-side attacker's live weapon, use `with_weapon_item`; for the weapon recorded by a
 projectile, see [Death sources and weapons](../items/death-loot-context.md).
 
+## Checking an entity's tags
+
+In a server hook that gives you an entity and a host, use
+`entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` to match a
+scoreboard tag without allocating. To read all tags, the
+[borrowed view](../../concepts/parts/entity-parts-and-mob-goals.md#entity-tags)
+yields UTF-16 slices in saved order. Choose checked or lossy conversion explicitly
+when you need UTF-8.
+
 ## Opening a container
 
 `player_container_open` runs synchronously after a successful open. Failed opens and opening the player's

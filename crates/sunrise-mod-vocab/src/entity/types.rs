@@ -1,6 +1,7 @@
 // Types that lived in the API root before the domain split.
 use crate::item::item_stack::read_stack_view;
 use crate::*;
+use sunrise_core::profile::AccountProperty;
 
 /// Why an entity type's attribute declaration or addition was refused
 /// ([`Registrar::declare_entity_attributes`](EntityAttributesRegistrar::declare_entity_attributes),
@@ -48,8 +49,8 @@ pub struct EffectKey(pub(crate) u32);
 
 /// An entity type (`minecraft:zombie`) in the built-in entity-type registry, in
 /// registration order. Returned by `EntityRef::kind`; Copy/Eq comparisons do not
-/// allocate. Request `key.id(host)` for its namespaced name (an owned diagnostic
-/// string). A key stays valid until the game exits.
+/// allocate. `key.id(host)` pins its namespaced name, if available, without
+/// copying the text. A key stays valid until the game exits.
 // no wire: the manual scalar codec validates host slots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: incoming scalar slots are checked against the host's registry
@@ -325,7 +326,7 @@ pub enum ModifierLifetime {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ActiveEffect {
-    /// The effect's load-owned registry key; `id.id(host)` reads its canonical name.
+    /// The effect's load-owned registry key; `id.id(host)` borrows its canonical name if available.
     pub id: EffectKey,
     /// The ticks left; -1 is infinite.
     pub duration: i32,
@@ -1276,24 +1277,41 @@ pub struct PlayerFood {
     pub exhaustion: f32,
 }
 
-/// A player's game profile (authlib's `GameProfile`): the UUID, the name and the signed
-/// properties the server received at login, such as `textures` (the skin).
-#[derive(Clone, Debug, PartialEq, Eq)]
+// no wire: borrows the connected player's profile from the host.
+/// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
+/// properties, such as `textures` (the skin).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct GameProfile {
+pub struct GameProfile<'a> {
     /// The player's UUID.
     pub uuid: u128,
-    /// The player's name.
-    pub name: String,
-    /// The profile's properties in login order; empty for an offline-mode player.
-    pub properties: Vec<ProfileProperty>,
+    /// The player's name, borrowed from the host.
+    pub name: &'a str,
+    properties: &'a [AccountProperty],
 }
 
-impl GameProfile {
-    /// A profile from its UUID, name and properties.
-    pub fn new(uuid: u128, name: String, properties: Vec<ProfileProperty>) -> Self {
-        Self {
+impl<'a> GameProfile<'a> {
+    /// Read the profile's properties in login order without copying the text.
+    /// An offline-mode player has no properties.
+    pub fn properties(&self) -> impl ExactSizeIterator<Item = ProfileProperty<'a>> + use<'a> {
+        self.properties.iter().map(|property| ProfileProperty {
+            name: &property.name,
+            value: &property.value,
+            signature: property.signature.as_deref(),
+        })
+    }
+}
+
+pub(crate) mod profile_adapter {
+    use super::{AccountProperty, GameProfile};
+
+    /// Lend the player's login properties from the game record.
+    pub fn game_profile<'a>(
+        uuid: u128,
+        name: &'a str,
+        properties: &'a [AccountProperty],
+    ) -> GameProfile<'a> {
+        GameProfile {
             uuid,
             name,
             properties,
@@ -1301,28 +1319,17 @@ impl GameProfile {
     }
 }
 
-/// One property of a [`GameProfile`] (authlib's `Property`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+// no wire: borrows one login property's strings from the host.
+/// One borrowed property of a [`GameProfile`] (authlib's `Property`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ProfileProperty {
+pub struct ProfileProperty<'a> {
     /// The property's name, such as `textures`.
-    pub name: String,
+    pub name: &'a str,
     /// Its value, as the session server sent it (base64 for `textures`).
-    pub value: String,
+    pub value: &'a str,
     /// The session server's signature, when the value is signed.
-    pub signature: Option<String>,
-}
-
-impl ProfileProperty {
-    /// A property from its name, value and optional signature.
-    pub fn new(name: String, value: String, signature: Option<String>) -> Self {
-        Self {
-            name,
-            value,
-            signature,
-        }
-    }
+    pub signature: Option<&'a str>,
 }
 
 // no wire: An in-process result of a native menu open, not a transported payload.

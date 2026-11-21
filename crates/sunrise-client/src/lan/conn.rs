@@ -915,7 +915,7 @@ fn authenticate(
     name: &str,
     address: std::net::SocketAddr,
     user: &str,
-) -> Result<Result<(u128, Vec<login::Property>), String>, String> {
+) -> Result<Result<(u128, Vec<sunrise_core::profile::AccountProperty>), String>, String> {
     let e = |e: sunrise_protocol::Error| e.to_string();
     let mut challenge = [0u8; 4];
     sunrise_protocol::crypto::random_bytes(&mut challenge).map_err(e)?;
@@ -1123,7 +1123,7 @@ struct Parts {
     payload_transport: Arc<Transport>,
     uuid: u128,
     name: String,
-    properties: Vec<login::Property>,
+    properties: Vec<sunrise_core::profile::AccountProperty>,
     info: ClientInformation,
     brand: String,
     datapack_offer: Option<Vec<u8>>,
@@ -1136,7 +1136,7 @@ fn login_and_configure(
     uuid: u128,
     name: &str,
     user: &str,
-    properties: Vec<login::Property>,
+    properties: Vec<sunrise_core::profile::AccountProperty>,
 ) -> Result<Option<Parts>, String> {
     let e = |e: sunrise_protocol::Error| e.to_string();
     // ServerLoginPacketListenerImpl: memory connections are not compressed.
@@ -2499,7 +2499,7 @@ mod tests {
         accept_code_of_conduct(&mut io, "Be kind.", &mut info, &transport, &mut negotiation)
             .unwrap();
         let announced = io.channels.announced.as_ref().map(|list| list.list());
-        assert_eq!(announced, Some(vec!["voicechat:secret".to_owned()]));
+        assert_eq!(announced.unwrap().as_ref(), ["voicechat:secret"]);
     }
 
     #[test]

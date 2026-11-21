@@ -25,6 +25,19 @@ and never ask this hook. Server interaction checks remain reach-only.
 The existing family traversal order is retained; exact vanilla section and
 within-section insertion ordering is a separate engine correction.
 
+## Entity tags
+
+On the server, `entity.tags(host)` lends an `EntityTags<'_>` view of the entity's scoreboard
+tags, not its entity-type registry tags. A live entity without tags gives an empty view;
+a stale handle, client or snapshot without live tags gives `None`. A goal can read its own
+mob's tags and the tags of other live mobs lent to the tick.
+
+Use `entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` to compare
+without allocating. `tags.iter_utf16()` yields each tag's exact UTF-16 code units in saved
+order. Use `String::from_utf16(units)` to reject unpaired surrogates,
+`String::from_utf16_lossy(units)` for the same replacement characters as `/tag ... list`,
+or `units.to_vec()` to keep the exact units after the host borrow ends.
+
 ## Goals
 
 `r.entity_part("minecraft:zombie", ZombieGoals)` attaches an `EntityPart` to one entity type, a mod's

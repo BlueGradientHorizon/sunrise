@@ -576,6 +576,8 @@ enum OwnProfile {
 pub(super) struct Remote {
     pub(super) professions: Arc<sunrise_client::mobs::villager::ResolvedProfessions>,
     pub session: Session,
+    /// Display-only address computed at connection setup. Never holds the raw friend invite.
+    pub(super) display_address: Option<String>,
     pub brand: String,
     pub(super) recipe_viewer: crate::game::recipe_book::ViewerChannels,
     /// This connection's configured feature flags, carried through reconfiguration.
@@ -1246,6 +1248,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "unknown".into(),
             recipe_viewer: Default::default(),
@@ -1502,6 +1505,7 @@ impl Game<'_> {
         self.remote = Some(Remote {
             selector_metadata_supported: true,
             professions: self.client_professions()?,
+            display_address: Remote::display_address_for(&session.address),
             session,
             brand: "sunrise-studio".into(),
             recipe_viewer: Default::default(),
@@ -10475,6 +10479,11 @@ impl ClientMenu {
 }
 
 impl Remote {
+    /// Project the session address for display once, dropping the memory transport's marker.
+    pub(super) fn display_address_for(address: &str) -> Option<String> {
+        (address != "local").then(|| sunrise_client::net::shown_address(address))
+    }
+
     /// The interpolation a boat or other object `id` had toward the server's
     /// position, taken out: its target, rotation and steps to go.
     pub(super) fn take_object_lerp(

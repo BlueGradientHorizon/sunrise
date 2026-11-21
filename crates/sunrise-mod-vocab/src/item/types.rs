@@ -46,7 +46,8 @@ impl ItemKey {
 }
 
 /// A menu type (`minecraft:generic_9x3`) in the built-in menu registry, in
-/// registration order. A key stays valid until the game exits.
+/// registration order. A key stays valid until the game exits; `key.id(host)`
+/// pins its namespaced name, if available.
 // no wire: decoding validates the u32 slot with MenuKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the load-owned table creates keys
@@ -55,6 +56,7 @@ pub struct MenuKey(pub(crate) u32);
 /// An enchantment (`minecraft:sharpness`) in the data-loaded enchantment
 /// registry, in registry order. Keys keep their identity across reloads; a
 /// reload changes which entries the table lists, not what an existing slot names.
+/// `key.id(host)` pins the name, if available, independently of a later reload.
 // no wire: decoding validates the u32 slot with EnchantmentKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the load-owned table creates keys

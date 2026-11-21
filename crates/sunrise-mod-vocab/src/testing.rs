@@ -633,15 +633,12 @@ impl crate::prelude::EntityIdentityBackend for FakeHost {
     }
 }
 impl crate::prelude::KeysBackend for FakeHost {
-    fn entity_type_key_id(&self, key: crate::EntityTypeKey) -> String {
+    fn entity_type_key_id(&self, key: crate::EntityTypeKey) -> Option<crate::RegistryName> {
         crate::content::registry_keys::entity_type_key_id(key)
-            .expect("fake entity type key belongs to its load")
     }
 
-    fn item_key_id(&self, key: crate::ItemKey) -> String {
+    fn item_key_id(&self, key: crate::ItemKey) -> Option<&str> {
         crate::content::registry_keys::item_id(key)
-            .expect("fake item key belongs to its load")
-            .to_owned()
     }
 }
 impl crate::prelude::PlayerInventoryBackend for FakeHost {
@@ -678,8 +675,8 @@ impl crate::prelude::PlayerModesBackend for FakeHost {
     }
 }
 impl crate::prelude::PlayerSessionBackend for FakeHost {
-    fn player_name(&self, player: PlayerRef) -> Option<String> {
-        Some(self.players.get(player.uuid())?.name.clone())
+    fn player_name(&self, player: PlayerRef) -> Option<&str> {
+        Some(&self.players.get(player.uuid())?.name)
     }
 }
 impl crate::prelude::PlayerWorldBackend for FakeHost {

@@ -9,6 +9,7 @@ use crate::{
 };
 use std::{
     collections::VecDeque,
+    net::SocketAddr,
     sync::{
         Arc,
         atomic::{AtomicI32, AtomicU64, Ordering},
@@ -126,12 +127,12 @@ struct GuestInit {
     conn: u32,
     uuid: u128,
     name: String,
-    properties: Vec<sunrise_protocol::packets::login::Property>,
+    properties: Vec<sunrise_core::profile::AccountProperty>,
     info: ClientInformation,
     brand: String,
     sender: PlayerSender,
     latency: Arc<AtomicI32>,
-    address: std::net::SocketAddr,
+    address: SocketAddr,
     expected: bool,
 }
 
@@ -170,8 +171,8 @@ pub struct Guest {
     pub residency: crate::join_seq::residency::member::Member,
     pub kind: GuestKind,
     pub conn: u32,
-    /// The client's address (IP bans, `list`).
-    pub address: std::net::SocketAddr,
+    address: SocketAddr,
+    ip_address: String,
     /// The hub tick of the player's last action (ServerPlayer.lastActionTime),
     /// for player-idle-timeout.
     pub last_action_tick: u64,
@@ -205,7 +206,7 @@ pub struct Guest {
     pub uuid: u128,
     pub name: String,
     /// The profile's properties, for the player list (skins).
-    pub properties: Vec<sunrise_protocol::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     pub entity_id: i32,
     pub sender: PlayerSender,
     pub latency: Arc<AtomicI32>,
@@ -562,6 +563,22 @@ pub struct Guest {
 }
 
 impl Guest {
+    /// The client's socket address, including the port.
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
+
+    /// The client's IP address as text, without the port.
+    pub fn ip_address(&self) -> &str {
+        &self.ip_address
+    }
+
+    /// Replaces the address and keeps its cached IP text in sync.
+    pub fn set_address(&mut self, address: SocketAddr) {
+        self.address = address;
+        self.ip_address = address.ip().to_string();
+    }
+
     /// Allocate the next protocol window and a non-reusable menu identity.
     pub fn next_menu_window(&mut self) -> i32 {
         self.next_window = self.next_window % 100 + 1;
@@ -699,6 +716,7 @@ impl Guest {
             kind,
             conn: j.conn,
             address: j.address,
+            ip_address: j.address.ip().to_string(),
             last_action_tick: 0,
             chat_index: 0,
             chain: Default::default(),

@@ -103,13 +103,13 @@ impl fmt::Display for BlockEntityPartError {
             Self::VanillaType { kind } => write!(
                 f,
                 "cannot attach a native block entity Part to vanilla type {}",
-                crate::content::registry_keys::block_entity_type_display_name(*kind)
+                crate::content::registry_keys::block_entity_type_display_name(*kind).as_str()
             ),
             Self::Duplicate { kind, part } => {
                 write!(
                     f,
                     "Part {part} is attached to type {} twice",
-                    crate::content::registry_keys::block_entity_type_display_name(*kind)
+                    crate::content::registry_keys::block_entity_type_display_name(*kind).as_str()
                 )
             }
         }

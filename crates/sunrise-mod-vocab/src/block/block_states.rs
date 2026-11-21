@@ -1,26 +1,50 @@
 //! Immutable block metadata and registry facts (`host.block_states()`).
 //! Queries consume owned API block states, never world numeric IDs. Both sides read the
-//! game's published tables; definitions are copied out and property values are borrowed.
+//! game's published tables and borrow their property definitions.
 use crate::{
     BlockKey, BlockMetadata, BlockSoundType, BlockState, BlockStateError, BlockStateRange, Host,
     LevelReadError, host::block_states::BlockStatesBackend,
 };
 
+// no wire: borrows a name and values from the host's state definition.
 /// One property and its legal values in a state definition.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct StateProperty {
-    /// Property name.
-    pub name: String,
-    /// Legal serialized values.
-    pub values: Vec<String>,
+pub struct StateProperty<'a> {
+    /// Property name as serialized.
+    pub name: &'a str,
+    /// Legal serialized values in definition order.
+    pub values: &'a [String],
 }
 
-impl StateProperty {
-    /// Construct a definition entry from a property name and legal values.
-    pub fn new(name: String, values: Vec<String>) -> Self {
-        Self { name, values }
+// no wire: borrows the host's resident property definitions.
+/// A borrowed view of the properties of a block or world fluid, in property-name order.
+// exhaustive: its field is private
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StateProperties<'a>(&'a [(String, Vec<String>)]);
+
+impl<'a> StateProperties<'a> {
+    /// Lend the game's ordered property slice.
+    #[doc(hidden)]
+    pub fn of(properties: &'a [(String, Vec<String>)]) -> Self {
+        Self(properties)
+    }
+
+    /// Read each property in definition order without copying its name or values.
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = StateProperty<'a>> + use<'a> {
+        self.0
+            .iter()
+            .map(|(name, values)| StateProperty { name, values })
+    }
+
+    /// The number of properties.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether this definition has no properties.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -131,6 +155,13 @@ impl<'a> BlockStates<'a> {
     pub fn backend(&self) -> &'a dyn BlockStatesBackend {
         self.backend
     }
+
+    /// Borrow the block's property names and legal values from the host's tables. An unknown
+    /// block or unavailable tables return `None`; a known block without properties returns an
+    /// empty view.
+    pub fn definition(&self, block: crate::BlockKey) -> Option<StateProperties<'a>> {
+        self.backend.block_state_definition(block)
+    }
 }
 
 /// The reads of a level view with no block tables: the one place that says what such a view answers,
@@ -231,7 +262,7 @@ impl BlockStatesBackend for NoBlockTables {
     fn block_states_of(&self, _: BlockKey) -> Option<BlockStateRange> {
         None
     }
-    fn block_state_definition(&self, _: BlockKey) -> Option<Vec<StateProperty>> {
+    fn block_state_definition(&self, _: BlockKey) -> Option<StateProperties<'_>> {
         None
     }
     fn block_state_matches(
@@ -242,7 +273,7 @@ impl BlockStatesBackend for NoBlockTables {
     ) -> Option<Result<bool, StateMatchError>> {
         None
     }
-    fn fluid_state_definition(&self, _: crate::FluidKey) -> Option<crate::FluidDefinition> {
+    fn fluid_state_definition(&self, _: crate::FluidKey) -> Option<crate::FluidDefinition<'_>> {
         None
     }
     fn fluid_type_properties(&self, _: crate::FluidKey) -> Option<crate::FluidTypeProperties> {
@@ -413,11 +444,6 @@ impl BlockStates<'_> {
     pub fn is_redstone_conductor(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_redstone_conductor(state)
     }
-    /// The block's property names and legal serialized values. None without resolved tables.
-    pub fn definition(&self, block: crate::BlockKey) -> Option<Vec<StateProperty>> {
-        self.backend.block_state_definition(block)
-    }
-
     /// Match a state against a block and partial property constraints. Unknown properties and
     /// values are errors even when the state belongs to a different block. None means the
     /// owning thread has no resolved tables or the state is unknown.
@@ -462,5 +488,6 @@ mod tests {
         assert_eq!(facts.map_color(state), None);
         assert_eq!(facts.map_color_rgba(6), None);
         assert_eq!(facts.states_of(crate::BlockKey(0)), None);
+        assert_eq!(facts.definition(crate::BlockKey(0)), None);
     }
 }

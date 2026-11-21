@@ -2,8 +2,9 @@
 //! server's data packs and mods' files gave a registry entry, after every pack was applied.
 use crate::{
     Backend, BiomeKey, BlockEntityTypeKey, BlockKey, DataMapType, EffectKey, EnchantmentKey,
-    EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey, Tag,
+    EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey, RegistryName, Tag,
 };
+use entry::EntryName;
 
 /// A data map a mod registers and reads, typed (NeoForge's `DataMapType<R, T>`): its id, the
 /// registry its entries are in (through [`DataMap::Entry`]), and how a value decodes.
@@ -69,12 +70,28 @@ pub trait DataMapEntry: entry::Entry {}
 mod entry {
     use super::*;
 
+    pub enum EntryName<'a> {
+        Borrowed(&'a str),
+        Pinned(RegistryName),
+        Owned(String),
+    }
+
+    impl EntryName<'_> {
+        pub(super) fn as_str(&self) -> &str {
+            match self {
+                Self::Borrowed(id) => id,
+                Self::Pinned(id) => id.as_str(),
+                Self::Owned(id) => id,
+            }
+        }
+    }
+
     /// The registry an entry is in, and its id there through the game's backend.
     pub trait Entry {
         /// The registry's id.
         const REGISTRY: &'static str;
         /// The entry's full registry id.
-        fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError>;
+        fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError>;
     }
 }
 
@@ -84,8 +101,8 @@ macro_rules! typed_entries {
         impl DataMapEntry for $key {}
         impl entry::Entry for $key {
             const REGISTRY: &'static str = $registry;
-            fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError> {
-                key_id_result(backend.$id(*self))
+            fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
+                backend.$id(*self).into_result()
             }
         }
         impl $key {
@@ -96,6 +113,8 @@ macro_rules! typed_entries {
             /// gives this entry no value. A present value is decoded into an owned `M::Value`
             /// that can outlive the host borrow. A refused decode is [`DataMapError::Undecodable`],
             /// not an absent value.
+            /// A key that this host cannot name returns `DataMapError::InvalidKey`
+            /// when its registry is available to the host.
             ///
             /// Server side: the server merges the maps when its data loads, on a world's first
             /// open and after every `/reload`, and a read sees the last load whole, never a mix
@@ -111,24 +130,27 @@ macro_rules! typed_entries {
         }
     )+};
 }
-trait KeyIdResult {
-    fn into_result(self) -> Result<String, DataMapError>;
+trait KeyIdResult<'a> {
+    fn into_result(self) -> Result<EntryName<'a>, DataMapError>;
 }
-impl KeyIdResult for String {
-    fn into_result(self) -> Result<String, DataMapError> {
-        Ok(self)
+impl<'a> KeyIdResult<'a> for Option<&'a str> {
+    fn into_result(self) -> Result<EntryName<'a>, DataMapError> {
+        self.map(EntryName::Borrowed)
+            .ok_or(DataMapError::InvalidKey)
     }
 }
-impl KeyIdResult for Result<String, crate::GameEventKeyError> {
-    fn into_result(self) -> Result<String, DataMapError> {
-        self.map_err(|error| match error {
+impl<'a> KeyIdResult<'a> for Option<RegistryName> {
+    fn into_result(self) -> Result<EntryName<'a>, DataMapError> {
+        self.map(EntryName::Pinned).ok_or(DataMapError::InvalidKey)
+    }
+}
+impl<'a> KeyIdResult<'a> for Result<RegistryName, crate::GameEventKeyError> {
+    fn into_result(self) -> Result<EntryName<'a>, DataMapError> {
+        self.map(EntryName::Pinned).map_err(|error| match error {
             crate::GameEventKeyError::Unavailable => DataMapError::Unavailable,
             crate::GameEventKeyError::InvalidKey => DataMapError::InvalidKey,
         })
     }
-}
-fn key_id_result(value: impl KeyIdResult) -> Result<String, DataMapError> {
-    value.into_result()
 }
 typed_entries! {
     crate::GameEventKey => "minecraft:game_event", game_event_key_id;
@@ -143,11 +165,14 @@ typed_entries! {
 impl DataMapEntry for BiomeKey {}
 impl entry::Entry for BiomeKey {
     const REGISTRY: &'static str = "minecraft:worldgen/biome";
-    fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError> {
-        backend.biome_key_id(*self).map_err(|error| match error {
-            crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
-            crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
-        })
+    fn id<'a>(&self, backend: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
+        backend
+            .biome_key_id(*self)
+            .map(EntryName::Borrowed)
+            .map_err(|error| match error {
+                crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
+                crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
+            })
     }
 }
 impl BiomeKey {
@@ -164,8 +189,8 @@ impl BiomeKey {
 impl DataMapEntry for ProfessionKey {}
 impl entry::Entry for ProfessionKey {
     const REGISTRY: &'static str = "minecraft:villager_profession";
-    fn id(&self, _: &dyn Backend) -> Result<String, DataMapError> {
-        Ok(self.0.to_string())
+    fn id<'a>(&self, _: &'a dyn Backend) -> Result<EntryName<'a>, DataMapError> {
+        Ok(EntryName::Owned(self.0.to_string()))
     }
 }
 impl ProfessionKey {
@@ -194,7 +219,7 @@ pub enum DataMapError {
     /// The value could not be represented as NBT, or a typed read's [`DataMap::decode`]
     /// refused it.
     Undecodable,
-    /// The key is expired, belongs to another world, or was never issued by this generation.
+    /// The key has no registry name in this host, or belongs to another world or generation.
     InvalidKey,
 }
 impl NoBackend for DataMapError {
@@ -212,7 +237,7 @@ fn data<M: DataMap>(
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     let id = entry::Entry::id(entry, backend)?;
     let registry = <M::Entry as entry::Entry>::REGISTRY;
-    match backend.data_map_value(registry, &id, map.id())? {
+    match backend.data_map_value(registry, id.as_str(), map.id())? {
         Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
         None => Ok(None),
     }
@@ -296,11 +321,13 @@ mod tests {
         }
     }
     impl crate::host::keys::KeysBackend for Maps {
-        fn item_key_id(&self, key: ItemKey) -> String {
-            ["test:coal", "test:stick", "test:air"][key.0 as usize].into()
+        fn item_key_id(&self, key: ItemKey) -> Option<&str> {
+            ["test:coal", "test:stick", "test:air"]
+                .get(key.0 as usize)
+                .copied()
         }
-        fn block_key_id(&self, key: BlockKey) -> String {
-            ["test:stone", "test:dirt"][key.0 as usize].into()
+        fn block_key_id(&self, key: BlockKey) -> Option<&str> {
+            ["test:stone", "test:dirt"].get(key.0 as usize).copied()
         }
     }
     impl Host for Maps {
@@ -367,6 +394,7 @@ mod tests {
         assert_eq!(ItemKey(2).data(&maps, &Emc), Ok(None));
         assert_eq!(BlockKey(1).data(&maps, &Hardness), Ok(None));
         assert_eq!(ItemKey(1).data(&maps, &Emc), Err(DataMapError::Undecodable));
+        assert_eq!(ItemKey(3).data(&maps, &Emc), Err(DataMapError::InvalidKey));
         assert_eq!(
             ItemKey(0).data(&maps, &Unregistered),
             Err(DataMapError::UnknownType)

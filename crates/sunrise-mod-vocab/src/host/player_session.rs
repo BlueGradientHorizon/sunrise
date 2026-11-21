@@ -9,20 +9,22 @@ pub trait PlayerSessionBackend {
     /// Side: server.
     /// The IP address the player connects from, without the port. Displaced connected
     /// players keep their address; an acting player with no known connection
-    /// has an empty address. None for a stale or unavailable player.
+    /// has an empty address. None for a stale or unavailable player. The text
+    /// borrows the host; copy it only to keep it beyond that borrow.
     #[access(WorldOnly)]
-    fn player_address(&self, player: PlayerRef) -> Option<String>;
+    fn player_address(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
-    /// The stable name of a connected or acting player. None for a stale or
-    /// unavailable player; displaced online players retain their identity.
+    /// The stable name of a connected or acting player, borrowed from the host.
+    /// None for a stale or unavailable player; displaced online players retain their identity.
     #[access(WorldOnly)]
-    fn player_name(&self, player: PlayerRef) -> Option<String>;
+    fn player_name(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// `ServerPlayer.getGameProfile`: the UUID, name and login properties (skin
-    /// `textures` included) of a connected or acting player. An offline-mode
-    /// player has no properties. None for a stale or unavailable player.
+    /// `textures` included) of a connected or acting player, borrowed from the host.
+    /// Displaced online players keep their profile. An offline-mode player has no
+    /// properties. None for a stale or unavailable player.
     #[access(WorldOnly)]
-    fn player_profile(&self, player: PlayerRef) -> Option<GameProfile>;
+    fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>>;
     /// Side: server.
     /// The player's permission level, 0 to 4 (`Player.permissions()`,
     /// `PlayerList.getProfilePermissions`): an op's level, the
@@ -49,17 +51,19 @@ pub trait PlayerSessionBackend {
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
+    /// The brand borrows the host.
     #[access(WorldOnly)]
-    fn player_client_brand(&self, player: PlayerRef) -> Option<String>;
+    fn player_client_brand(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
-    /// The plugin channels the player's client announced in `minecraft:register`, less those
-    /// it withdrew in `minecraft:unregister`, during configuration and play, in announcement
-    /// order (Bukkit's `Player.getListeningPluginChannels`). Malformed entries are skipped and
-    /// at most 128 channels of up to 64 bytes are kept. Empty for a client that announced
-    /// none and for an acting player with no known connection; None for a stale or
-    /// unavailable player.
+    /// A shared snapshot, in announcement order, of the plugin channels the client announced
+    /// with `minecraft:register` and has not withdrawn with `minecraft:unregister`, during
+    /// configuration and play (Bukkit's `Player.getListeningPluginChannels`). Malformed
+    /// entries are skipped and at most 128 channels of up to 64 bytes are kept. Empty for a
+    /// client that announced none and for an acting player with no known connection; None
+    /// for a stale or unavailable player. A snapshot can outlive the host borrow and does
+    /// not change when the client registers or unregisters channels later.
     #[access(WorldOnly)]
-    fn player_announced_channels(&self, player: PlayerRef) -> Option<Vec<String>>;
+    fn player_announced_channels(&self, player: PlayerRef) -> Option<Arc<[String]>>;
     /// Side: server.
     /// Whether `viewer`'s client is shown the player `target` by the rules players are tracked
     /// with (`ServerPlayer.broadcastToPlayer`; Paper's `Player.canSee`): a spectator is seen
@@ -88,10 +92,11 @@ pub trait PlayerSessionBackend {
     #[access(WorldOnly)]
     fn player_hidden(&self, player: PlayerRef) -> Result<Option<u8>, PlayerWorldRefusal>;
     /// Side: server.
-    /// The name `player_set_nickname` set for that player, `None` when there is none. Refuses
-    /// with `PlayerWorldRefusal`: `Client`, and `Stale` for a stale or offline player.
+    /// The name `player_set_nickname` set for that player, borrowed from the host,
+    /// `None` when there is none. Refuses with `PlayerWorldRefusal`: `Client`,
+    /// and `Stale` for a stale or offline player.
     #[access(WorldOnly)]
-    fn player_nickname(&self, player: PlayerRef) -> Result<Option<String>, PlayerWorldRefusal>;
+    fn player_nickname(&self, player: PlayerRef) -> Result<Option<&str>, PlayerWorldRefusal>;
 }
 /// The handles' writes of the `player_session` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

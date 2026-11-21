@@ -1,19 +1,19 @@
 //! Read-only fluid-state definitions from the owning host's loaded registry.
 use crate::{
-    Backend, BackendRef, BlockState, FluidKey, FluidState, Host, StateConstraint, StateProperty,
+    Backend, BackendRef, BlockState, FluidKey, FluidState, Host, StateConstraint, StateProperties,
 };
 
+// no wire: world definitions borrow the host's resident properties.
 /// A registered fluid's world-state definition, or an identity used only in tanks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum FluidDefinition {
+pub enum FluidDefinition<'a> {
     /// A world fluid's default and legal serialized property values.
     World {
         /// Default world state.
         default: FluidState,
-        /// Property names and legal values.
-        properties: Vec<StateProperty>,
+        /// Borrowed property names and legal values, empty for a world fluid with no properties.
+        properties: StateProperties<'a>,
     },
     /// A registered fluid without world states.
     TankOnly,
@@ -97,12 +97,15 @@ impl<H: Host + ?Sized> HostFluidStates for H {
         }
     }
 }
-impl FluidStates<'_> {
-    /// The definition, or none without a resolved registry. Missing prepared world
-    /// definitions fail resource loading; they are never reported as tank-only.
-    pub fn definition(&self, fluid: FluidKey) -> Option<FluidDefinition> {
+impl<'a> FluidStates<'a> {
+    /// The fluid's definition with properties borrowed from the host's tables, or `None`
+    /// for an unknown key or unavailable registry. Missing prepared world definitions fail
+    /// resource loading; they are never reported as tank-only.
+    pub fn definition(&self, fluid: FluidKey) -> Option<FluidDefinition<'a>> {
         self.backend?.fluid_state_definition(fluid)
     }
+}
+impl FluidStates<'_> {
     /// The fluid's type properties, or none without a resolved registry or for a key it
     /// doesn't hold. Resolve a name with `Host::fluid_key`, which is none for an unknown one.
     pub fn type_properties(&self, fluid: FluidKey) -> Option<FluidTypeProperties> {

@@ -36,7 +36,7 @@ use mod_api::{
 };
 use serde_json::{Map, Value, json};
 use std::sync::{
-    Mutex, PoisonError,
+    LazyLock, Mutex, PoisonError,
     atomic::{AtomicBool, Ordering},
 };
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -1238,11 +1238,11 @@ impl Game<'_> {
 
     /// The stable name of a connected or acting player. None for a stale or
     /// unavailable player; displaced online players retain their identity.
-    pub(super) fn player_name(&self, player: PlayerRef) -> Option<String> {
+    pub(super) fn player_name(&self, player: PlayerRef) -> Option<&str> {
         if self.native_acting_player() == Some(player) {
-            return self.lan_acting_name.clone();
+            return self.lan_acting_name.as_deref();
         }
-        Some(self.online_player_record(player)?.name.clone())
+        Some(&self.online_player_record(player)?.name)
     }
 
     /// The dimension key of an online player (`ServerPlayer.level().dimension()`):
@@ -1300,30 +1300,31 @@ impl Game<'_> {
     /// The IP address the player connects from, without the port. Displaced connected
     /// players keep their address; an acting player with no known connection
     /// has an empty address. None for a stale or unavailable player.
-    pub(super) fn player_address(&self, player: PlayerRef) -> Option<String> {
+    pub(super) fn player_address(&self, player: PlayerRef) -> Option<&str> {
         if let Some(guest) = self.online_player_record(player) {
-            return Some(guest.address.ip().to_string());
+            return Some(guest.ip_address());
         }
-        (self.native_acting_player() == Some(player)).then(String::new)
+        (self.native_acting_player() == Some(player)).then_some("")
     }
 
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`),
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
-    pub(super) fn player_client_brand(&self, player: PlayerRef) -> Option<String> {
+    pub(super) fn player_client_brand(&self, player: PlayerRef) -> Option<&str> {
         if let Some(guest) = self.online_player_record(player) {
-            return Some(guest.brand.clone());
+            return Some(&guest.brand);
         }
-        (self.native_acting_player() == Some(player)).then(String::new)
+        (self.native_acting_player() == Some(player)).then_some("")
     }
 
-    /// The plugin channels the player's client announced (`minecraft:register` less
-    /// `minecraft:unregister`), kept by its connection from configuration on.
-    pub(super) fn player_announced_channels(&self, player: PlayerRef) -> Option<Vec<String>> {
+    /// A snapshot of the plugin channels the player's client announced (`minecraft:register`
+    /// less `minecraft:unregister`), kept by its connection from configuration on.
+    pub(super) fn player_announced_channels(&self, player: PlayerRef) -> Option<Arc<[String]>> {
+        static EMPTY: LazyLock<Arc<[String]>> = LazyLock::new(Arc::default);
         if let Some(guest) = self.online_player_record(player) {
             return Some(guest.sender.announced.list());
         }
-        (self.native_acting_player() == Some(player)).then(Vec::new)
+        (self.native_acting_player() == Some(player)).then(|| Arc::clone(&EMPTY))
     }
 
     /// Validate identity without requiring a live body: sending to an online
@@ -1649,7 +1650,7 @@ impl Game<'_> {
     pub(super) fn player_nickname(
         &self,
         player: PlayerRef,
-    ) -> Result<Option<String>, mod_api::PlayerWorldRefusal> {
+    ) -> Result<Option<&str>, mod_api::PlayerWorldRefusal> {
         use mod_api::PlayerWorldRefusal as Refusal;
         if !self.is_logical_server() {
             return Err(Refusal::Client);
@@ -1659,7 +1660,7 @@ impl Game<'_> {
         if !hub.online_players().any(|g| g.uuid == uuid) {
             return Err(Refusal::Stale);
         }
-        Ok(hub.nicknames.get(&uuid).cloned())
+        Ok(hub.nicknames.get(&uuid).map(String::as_str))
     }
     /// Hides that player (a vanish) from the players below permission
     /// `level`, or shows them again (None): from the next tick those players

@@ -168,7 +168,7 @@ mod tests {
                     read.count(),
                     read.damage()
                 )),
-                Some(("minecraft:diamond_pickaxe".to_owned(), 1, 17))
+                Some((Some("minecraft:diamond_pickaxe"), 1, 17))
             );
             let mut changed = stack;
             changed.damage = 21;

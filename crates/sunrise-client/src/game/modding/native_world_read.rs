@@ -695,9 +695,12 @@ mod tests {
                     .unwrap();
                 assert_eq!(
                     tags.items(oak_tag)
-                        .map(|keys| keys.into_iter().map(|key| key.id(host)).collect::<Vec<_>>())
+                        .and_then(|keys| keys
+                            .into_iter()
+                            .map(|key| key.id(host))
+                            .collect::<Option<Vec<_>>>())
                         .as_deref(),
-                    Some(&oak[..])
+                    Some(&oak.each_ref().map(String::as_str)[..])
                 );
                 let item = host
                     .item_key(&mod_api::Identifier::parse("minecraft:oak_log").unwrap())

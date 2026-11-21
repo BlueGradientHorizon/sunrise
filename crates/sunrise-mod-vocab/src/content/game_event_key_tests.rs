@@ -1,4 +1,4 @@
-use crate::{DataMap, DataMapError, GameEventKey, GameEventKeyError, Host, Tag};
+use crate::{DataMap, DataMapError, GameEventKey, GameEventKeyError, Host, RegistryName, Tag};
 struct Frequencies;
 impl DataMap for Frequencies {
     type Entry = GameEventKey;
@@ -16,10 +16,10 @@ impl DataMap for Frequencies {
 }
 struct Maps;
 impl crate::host::keys::KeysBackend for Maps {
-    fn game_event_key_id(&self, key: GameEventKey) -> Result<String, GameEventKeyError> {
+    fn game_event_key_id(&self, key: GameEventKey) -> Result<RegistryName, GameEventKeyError> {
         match key.0 {
-            0 => Ok("minecraft:step".into()),
-            1 => Ok("minecraft:swim".into()),
+            0 => Ok(RegistryName::from_static("minecraft:step")),
+            1 => Ok(RegistryName::from_static("minecraft:swim")),
             _ => Err(GameEventKeyError::InvalidKey),
         }
     }
@@ -50,12 +50,12 @@ impl Host for Bare {}
 crate::impl_host_areas!(Bare);
 #[test]
 fn game_event_data_reads_exact_frequency_missing_and_invalid_slots() {
-    assert_eq!(GameEventKey(0).id(&Maps), Ok("minecraft:step".into()));
+    assert_eq!(GameEventKey(0).id(&Maps).as_deref(), Ok("minecraft:step"));
     assert_eq!(GameEventKey(0).data(&Maps, &Frequencies), Ok(Some(7)));
     assert_eq!(GameEventKey(1).data(&Maps, &Frequencies), Ok(None));
     assert_eq!(
-        GameEventKey(u32::MAX).id(&Maps),
-        Err(GameEventKeyError::InvalidKey)
+        GameEventKey(u32::MAX).id(&Maps).as_deref(),
+        Err(&GameEventKeyError::InvalidKey)
     );
     assert_eq!(
         GameEventKey(u32::MAX).data(&Maps, &Frequencies),
@@ -66,8 +66,8 @@ fn game_event_data_reads_exact_frequency_missing_and_invalid_slots() {
         Err(DataMapError::Unavailable)
     );
     assert_eq!(
-        GameEventKey(0).id(&Bare),
-        Err(GameEventKeyError::Unavailable)
+        GameEventKey(0).id(&Bare).as_deref(),
+        Err(&GameEventKeyError::Unavailable)
     );
     assert!(matches!(
         crate::wire::Reader::decode::<GameEventKey>(&u32::MAX.to_le_bytes()),

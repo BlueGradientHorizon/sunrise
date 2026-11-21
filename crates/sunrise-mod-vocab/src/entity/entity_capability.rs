@@ -41,7 +41,7 @@ pub const ENTITY_ITEMS: EntityCapabilityKey<dyn ResourceHandler<ItemResource>> =
     EntityCapabilityKey {
         name: "sunrise:entity_items",
         default: Some(|host, entity, ()| {
-            if !builtin_player_inventory_type(&entity.kind(host)?.id(host)) {
+            if !builtin_player_inventory_type(entity.kind(host)?.id(host)?.as_str()) {
                 if let Some(size) = backend_of(host)?.entity_container_size(entity.id()) {
                     return Some(Box::new(ContainerItems { entity, size }));
                 }
@@ -111,7 +111,7 @@ impl EntityRef {
         let table = host.capability_providers();
         let kind = table
             .provided(ProvidedBy::Entity, key.name)
-            .then(|| self.kind(host).map(|kind| kind.id(host)))
+            .then(|| self.kind(host)?.id(host))
             .flatten();
         crate::answered(
             crate::ask_providers(
@@ -263,8 +263,10 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
             // `Mob.canEquip`: only what its `equippable` names for this kind,
             // one of it (`ArmorSlot.getMaxStackSize`).
             Some(slot)
-                if resource
-                    .is_some_and(|item| !equips(host, item, slot, &kind_of(host, self.entity))) =>
+                if resource.is_some_and(|item| {
+                    let name = self.entity.kind(host).and_then(|kind| kind.id(host));
+                    !equips(host, item, slot, name.as_deref().unwrap_or_default())
+                }) =>
             {
                 0
             }
@@ -297,14 +299,6 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         self.place(host, index)
             .map_or(0, |place| place.extract(host, tx, resource, amount))
     }
-}
-
-/// The entity type `entity` is (`minecraft:zombie`), empty where the handle no longer reads.
-fn kind_of(host: &dyn Host, entity: EntityRef) -> String {
-    entity
-        .kind(host)
-        .map(|kind| kind.id(host))
-        .unwrap_or_default()
 }
 
 /// The player inventory's slots, by `Inventory`'s numbers (`PlayerInventoryWrapper`).

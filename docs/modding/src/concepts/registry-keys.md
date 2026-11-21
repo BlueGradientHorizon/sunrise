@@ -9,8 +9,11 @@ Request existing entries inside `Hooks::register` with `r.block_key(id)`,
 - An unknown request refuses the load with the requesting mod and canonical ID, even if
   you never attach the key to a Part.
 - Keys are opaque `u32` slots, not engine numeric IDs.
-- `key.id(host)` returns an owned canonical `String` for diagnostics. It needs a game-backed
-  host; an invalid slot is a boundary error, not an empty name.
+- Block, item, effect, fluid, block-entity-type and dimension keys return a borrowed canonical
+  name (`Option<&str>`) from `key.id(host)`. Compare with `Some("minecraft:stone")`; `None`
+  means the host cannot name the slot. Use `.map(str::to_owned)` only to keep the text after
+  the host borrow. Biome keys [borrow from the current world registry](../how-to/items/data-maps.md)
+  and return a `Result` instead.
 
 Keys identify entries for the running mod load, not persistent data. Persist canonical identifiers
 and property strings rather than registration slots or state ordinals. Reload preserves key identity;
@@ -43,17 +46,29 @@ There is no separate equipment-only type read.
 After the registry is available, resolve the type keys your Part needs once and
 retain them. `host.entity_type_keys()` enumerates built-in and content types in
 registry order, then native general types by declaring mod and type id.
-`key.id(host)` explicitly requests its canonical namespaced name. Name resolution returns an
-owned diagnostic string and can allocate. Persist the name, never the scalar slot.
+`key.id(host)` explicitly pins its canonical namespaced name as `Option<RegistryName>`.
+Persist the name, never the scalar slot.
 For example, retain the zombie key at setup, then compare
 `entity.kind(host) == Some(zombie_key)` in a predicate.
 
 The key derives `Wire` through its scalar slot: host decoding checks the registered
 slot.
 
-This is a clean break from `Option<String>`: callers that need textual names must
-request `.id(host)` explicitly. `UnspawnedMobRef::kind` keeps its separate scoped
-`Identifier`/error contract, and block-entity type reads keep `BlockEntityTypeKey`.
+`UnspawnedMobRef::kind` has a separate scoped `Identifier`/error contract,
+and block-entity type reads use `BlockEntityTypeKey`.
+
+## Pinned registry names
+
+`EntityTypeKey`, `MenuKey` and `EnchantmentKey` return `Option<RegistryName>` from
+`key.id(host)`. `None` means the host has no backend or no name for the slot.
+`GameEventKey::id(host)` returns `Result<RegistryName, GameEventKeyError>` instead.
+
+A `RegistryName` borrows resident text or keeps its registry snapshot alive; it
+holds no registry lock and does not borrow the host. Use `name.as_str()` to borrow
+its text or compare `key.id(host).as_deref() == Some("minecraft:zombie")` without a
+copy. The pinned text remains readable across reloads; it does not reflect a later
+registry publication. Bind the snapshot before borrowing it if the text is used beyond the
+current expression. For persistent storage, copy just the text with `name.as_str().to_owned()`.
 
 ## Block states
 
@@ -128,10 +143,10 @@ work on the client and the server.
 ```rust
 fn resolve(host: &dyn mod_api::Host) {
     if let Some(block) = host.block_key("minecraft:stone") {
-        assert_eq!(block.id(host), "minecraft:stone");
+        assert_eq!(block.id(host), Some("minecraft:stone"));
     }
     if let Some(effect) = host.effect_key("minecraft:speed") {
-        assert_eq!(effect.id(host), "minecraft:speed");
+        assert_eq!(effect.id(host), Some("minecraft:speed"));
     }
     assert!(host.block_key("test:missing_block").is_none());
     assert!(host.effect_key("test:missing_effect").is_none());

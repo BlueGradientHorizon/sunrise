@@ -150,7 +150,11 @@ mod tests {
             let items = tags.items(key("test:items"));
             self.0.lock().unwrap().push(Seen {
                 cause: event.cause,
-                items: items.map(|keys| keys.into_iter().map(|key| key.id(host)).collect()),
+                items: items.and_then(|keys| {
+                    keys.into_iter()
+                        .map(|key| key.id(host).map(str::to_owned))
+                        .collect()
+                }),
                 fluids: tags.fluids(key("test:fluids")).map(|keys| keys.len()),
                 stone_in_block_tag: host.block_in_tag(block_key("minecraft:stone"), "test:blocks"),
                 dirt_in_block_tag: host.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
