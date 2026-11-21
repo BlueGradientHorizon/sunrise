@@ -196,7 +196,7 @@ pub fn generate<T: Toolchain>(
         )
     })?;
     // Project owns the original API declaration and source-policy boundary.
-    let project = api::Project::read(bundle).map_err(|e| e.to_string())?;
+    api::Project::read(bundle).map_err(|e| e.to_string())?;
     let destination = bundle.dir.join("Cargo.lock");
     if destination.exists() && !update {
         return Err(
@@ -207,56 +207,10 @@ pub fn generate<T: Toolchain>(
     let work = tempfile::tempdir_in(super::root()).map_err(|e| e.to_string())?;
     stage(bundle, work.path())?;
     let seed = super::registry_lock::RegistryLock::parse(&game(&native.sunrise)?)?;
-    fs::write(
-        work.path().join("Cargo.lock"),
-        seed.seed("version=4\npackage=[]\n")?,
-    )
-    .map_err(|e| e.to_string())?;
     let rust = rust()?;
-    // `cargo update --workspace` keeps a seeded package's version where the mod's requirements
-    // allow it and drops the seeded packages the mod doesn't reach; `generate-lockfile` would
-    // ignore the seed.
-    let mut command = super::cargo(&rust, work.path(), "update");
-    command.arg("--workspace");
-    super::run(command, "Resolving registry dependency pins", |_| {})?;
-    let text = super::read_lock(work.path())?;
-    let resolved = super::registry_lock::RegistryLock::parse(&text)?;
-    if let Some((game, id)) = seed.moved_pins(&resolved).next() {
-        use crate::host::{tr, trf};
-        let requirements: BTreeSet<_> = super::crates::dependency_tables(&project.cargo)
-            .flatten()
-            .filter_map(|(key, dep)| {
-                let get = |field| dep.get(field).and_then(toml::Value::as_str);
-                if get("package").unwrap_or(key) != id.name || dep.get("path").is_some() {
-                    return None;
-                }
-                let written = dep.as_str().or_else(|| get("version"))?;
-                let req = semver::VersionReq::parse(written).ok()?;
-                (req.matches(&id.version) && !req.matches(&game.version))
-                    .then(|| format!("{key} = {written:?}"))
-            })
-            .collect();
-        let cause = if requirements.is_empty() {
-            tr("a transitive dependency excludes the game's version").to_owned()
-        } else {
-            trf(
-                "the requirement in Cargo.toml excludes the game's version: {requirements}",
-                &[(
-                    "requirements",
-                    &requirements.into_iter().collect::<Vec<_>>().join(", "),
-                )],
-            )
-        };
-        return Err(trf(
-            "{crate}: the game locks {game}, but native-lock resolved {resolved}; {cause}. Relax the requirement to allow the game's version, or target a game build that locks a new enough version.",
-            &[
-                ("crate", &id.name),
-                ("game", &game.version.to_string()),
-                ("resolved", &id.version.to_string()),
-                ("cause", &cause),
-            ],
-        ));
-    }
+    let text = super::registry_resolve::resolve(work.path(), &seed, &seed, None, |subcommand| {
+        super::cargo(&rust, work.path(), subcommand)
+    })?;
     // Refusals and resolution errors above never mutate the existing lock.
     let mut pending = tempfile::NamedTempFile::new_in(&bundle.dir).map_err(|e| e.to_string())?;
     pending
@@ -400,7 +354,7 @@ mod tests {
         let bundle = fixture(input.path());
         for (name, version, dependency) in [
             ("zipish", "1.0.0", "getrandom='0.4'"),
-            ("zipish-new", "1.0.0", "getrandom='=0.4.4'"),
+            ("zipish", "1.0.1", "getrandom='=0.4.4'"),
             ("getrandom", "0.4.3", "libc='0.2'"),
             ("getrandom", "0.4.4", "libc='0.2'"),
             ("libc", "0.2.190", ""),
@@ -531,11 +485,11 @@ mod tests {
                 format!(
                     "{original}\n[target.'cfg(unix)'.build-dependencies]\nnewer={{package='libc',version='=0.2.191'}}\n"
                 ),
-                ["libc", "0.2.190", "0.2.191", "newer = \"=0.2.191\""],
+                ["libc", "0.2.190", "0.2.191", "=0.2.191"],
             ),
             (
-                original.replace("zipish='1'", "zipish-new='1'"),
-                ["getrandom", "0.4.3", "0.4.4", "transitive"],
+                original.replace("zipish='1'", "zipish='=1.0.1'"),
+                ["getrandom", "0.4.3", "0.4.4", "zipish v1.0.1"],
             ),
         ] {
             fs::write(&manifest, cargo).unwrap();

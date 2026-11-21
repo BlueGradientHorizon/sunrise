@@ -114,11 +114,11 @@ impl RegistryLock {
 
     /// Returns the registry pins in `resolved` that moved a version this lock already supplies.
     /// SDK-local identities are a separate source, checked by `check_pins`.
-    pub(super) fn moved_pins<'a>(
-        &'a self,
-        resolved: &'a Self,
-    ) -> impl Iterator<Item = (&'a Identity, &'a Identity)> {
-        resolved.packages.keys().filter_map(|id| {
+    pub(super) fn moved_pins<'game, 'resolved>(
+        &'game self,
+        resolved: &'resolved Self,
+    ) -> impl Iterator<Item = (&'game Identity, &'resolved Identity)> {
+        resolved.packages.keys().filter_map(move |id| {
             (!self.packages.contains_key(id))
                 .then(|| {
                     self.packages.keys().find(|game| {
