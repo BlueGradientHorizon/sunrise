@@ -732,6 +732,7 @@ fn native_project_rejects_a_content_only_version() {
     );
 }
 
+const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 const REQUIREMENT_BUILD: &str = "0123456789abcdef0123456789abcdef01234567";
 
 fn package_for_requirement_review(files: &Path, cargo: &str, helper: &str) -> Entry {
@@ -770,9 +771,11 @@ fn write_requirement_review_game_lock(sdk_data: &Path) {
         ("syn", "3.0.6"),
         ("serde_json", "1.0.151"),
         ("log", "0.4.34"),
+        ("parser", "3.1.0"),
+        ("zero", "0.0.1"),
     ] {
         lock.push_str(&format!(
-            "[[package]]\nname='{name}'\nversion='{version}'\nsource='registry+https://github.com/rust-lang/crates.io-index'\n"
+            "[[package]]\nname='{name}'\nversion='{version}'\nsource='{CRATES_IO}'\n"
         ));
     }
     std::fs::write(build.join("Cargo.lock"), lock).unwrap();
@@ -792,7 +795,7 @@ fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_depe
     );
     let base = std::slice::from_ref(&old);
     let mut review = review(base, base, "ludovic111");
-    review.check_native_requirements(base, base, files.path(), Some(sdk.path()));
+    review.check_native_requirements(base, base, files.path(), Some(sdk.path()), CRATES_IO);
     assert!(
         review.warnings.is_empty() && review.notes.is_empty(),
         "{review:?}"
@@ -801,19 +804,47 @@ fn native_requirement_review_warns_on_an_edited_row_and_follows_target_path_depe
     let mut edited = old.clone();
     edited.versions[0].changelog = "A note about this version.".into();
     let head = &[edited];
-    review.check_native_requirements(base, head, files.path(), Some(sdk.path()));
+    review.check_native_requirements(base, head, files.path(), Some(sdk.path()), CRATES_IO);
     assert!(
         review.errors.is_empty() && review.notes.is_empty(),
         "{review:?}"
     );
-    assert_eq!(
-        review.warnings,
-        [
-            "coords_hud 0.1.0: \"Cargo.toml\" requires syn \"3.0.10\"; game build 0123456789ab locks 3.0.5, 3.0.6. This mod cannot build with the game's version of syn; loosen the requirement unless the other version is needed.",
-            "coords_hud 0.1.0: \"src/helper/Cargo.toml\" requires log \">0.4.34, <0.5\"; game build 0123456789ab locks 0.4.34. This mod cannot build with the game's version of log; loosen the requirement unless the other version is needed.",
-            "coords_hud 0.1.0: \"src/helper/Cargo.toml\" requires serde_json \"=1.0.154\"; game build 0123456789ab locks 1.0.151. This mod cannot build with the game's version of serde_json; loosen the requirement unless the other version is needed.",
-        ]
+    assert_eq!(review.warnings.len(), 3, "{review:?}");
+    for (warning, (manifest, name, req, pins)) in review.warnings.iter().zip([
+        ("Cargo.toml", "syn", "3.0.10", "3.0.5, 3.0.6"),
+        ("src/helper/Cargo.toml", "log", ">0.4.34, <0.5", "0.4.34"),
+        ("src/helper/Cargo.toml", "serde_json", "=1.0.154", "1.0.151"),
+    ]) {
+        for fact in [
+            "coords_hud 0.1.0",
+            manifest,
+            name,
+            req,
+            pins,
+            &REQUIREMENT_BUILD[..12],
+        ] {
+            assert!(warning.contains(fact), "missing {fact}: {warning}");
+        }
+    }
+    assert!(!review.warnings[0].contains("2.0.119"), "{review:?}");
+
+    // A valid archive at the wrong digest path must not be attributed to the edited row.
+    let mut wrong_hash = head[0].clone();
+    wrong_hash.versions[0].sha256 = "f".repeat(64);
+    std::fs::copy(
+        files.path().join(&head[0].versions[0].sha256),
+        files.path().join(&wrong_hash.versions[0].sha256),
+    )
+    .unwrap();
+    let mut skipped = Review::default();
+    skipped.check_native_requirements(
+        base,
+        &[wrong_hash],
+        files.path(),
+        Some(sdk.path()),
+        CRATES_IO,
     );
+    assert!(skipped.warnings.is_empty(), "{skipped:?}");
 }
 
 #[test]
@@ -824,14 +855,14 @@ fn native_requirement_review_accepts_game_pins_even_if_the_mod_lock_is_ahead() {
     let entry = package_for_requirement_review(
         files.path(),
         "[package]\nname='coords_hud'\nversion='0.1.0'\n[dependencies]\n\
-         serde_json='1'\nsyn='>=4'\nlog='0.5'\nextra='1'\n\
+         serde_json='1'\nsyn='>=4'\nlog='0.5'\nextra='1'\nparser='>=2, <3'\nzero='0.0.2'\n\
          matching_syn={package='syn',version='>=2.0.119, <3.0.5'}\n\
          upstream={package='serde_json',version='1.0.154',git='https://example.invalid/serde'}\n\
          alternate={package='log',version='0.4.35',registry='other'}\n",
         "[package]\nname='unused'\nversion='0.1.0'\n[dependencies]\nsyn='3.0.10'\n",
     );
     let mut review = Review::default();
-    review.check_native_requirements(&[], &[entry], files.path(), Some(sdk.path()));
+    review.check_native_requirements(&[], &[entry], files.path(), Some(sdk.path()), CRATES_IO);
     assert_eq!(review, Review::default());
 }
 
@@ -850,17 +881,15 @@ fn native_requirement_review_notes_a_missing_game_lock_once_per_build() {
     head.push(other);
     for sdk_data in [None, Some(sdk.path())] {
         let mut review = Review::default();
-        review.check_native_requirements(&[], &head, files.path(), sdk_data);
+        review.check_native_requirements(&[], &head, files.path(), sdk_data, CRATES_IO);
         assert!(
             review.warnings.is_empty() && review.errors.is_empty(),
             "{review:?}"
         );
-        assert_eq!(
-            review.notes,
-            [format!(
-                "build {REQUIREMENT_BUILD}: native dependency requirements were not compared (game Cargo.lock unavailable)"
-            )]
-        );
+        assert_eq!(review.notes.len(), 1, "{review:?}");
+        for fact in [REQUIREMENT_BUILD, "not compared", "Cargo.lock"] {
+            assert!(review.notes[0].contains(fact), "missing {fact}: {review:?}");
+        }
     }
 }
 

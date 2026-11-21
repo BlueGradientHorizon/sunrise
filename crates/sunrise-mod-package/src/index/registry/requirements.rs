@@ -1,14 +1,12 @@
 //! Advisory check of the packaged Cargo requirements against the pinned game's crates.io versions.
 use super::{Entry, Kind, Review, hex64, read_regular};
-use crate::index::MAX_FILE;
-use semver::{Version, VersionReq};
+use crate::index::{MAX_FILE, sha256};
+use semver::{Comparator, Op, Prerelease, Version, VersionReq};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Read, Seek};
 use std::path::{Component, Path, PathBuf};
 
-// Cargo's lockfile source ID for the default registry, independent of its transport.
-const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 const MAX_GAME_LOCK_BYTES: u64 = 16 << 20;
 
 #[derive(Deserialize)]
@@ -26,12 +24,14 @@ struct Pin {
 impl Review {
     /// Check only new or edited native version rows. Unreadable inputs don't turn this advisory
     /// into a refusal; the registry's package checks still own validation of the listed files.
+    /// `crates_io_source` is the canonical Cargo source ID supplied by the registry tool.
     pub fn check_native_requirements(
         &mut self,
         base: &[Entry],
         head: &[Entry],
         files: &Path,
         sdk_data: Option<&Path>,
+        crates_io_source: &str,
     ) {
         let mut locks = BTreeMap::new();
         for entry in head.iter().filter(|entry| entry.kind == Kind::NativeMod) {
@@ -42,6 +42,9 @@ impl Review {
                 let Ok(bytes) = read_regular(files, Path::new(&row.sha256), MAX_FILE) else {
                     continue;
                 };
+                if sha256(&bytes) != row.sha256 {
+                    continue;
+                }
                 let Ok(mut zip) = zip::ZipArchive::new(Cursor::new(bytes)) else {
                     continue;
                 };
@@ -53,7 +56,7 @@ impl Review {
                 };
                 let build = native.sunrise;
                 let pins = locks.entry(build.clone()).or_insert_with(|| {
-                    let pins = sdk_data.and_then(|dir| game_pins(dir, &build));
+                    let pins = sdk_data.and_then(|dir| game_pins(dir, &build, crates_io_source));
                     if pins.is_none() {
                         self.notes.push(format!(
                             "build {build}: native dependency requirements were not compared (game Cargo.lock unavailable)"
@@ -75,13 +78,17 @@ impl Review {
 
 /// Read only the locked crates.io names and versions. The SDK supplies this file; the mod's own
 /// lockfile has no bearing on whether its Cargo requirements admit the game's versions.
-fn game_pins(sdk_data: &Path, build: &str) -> Option<BTreeMap<String, BTreeSet<Version>>> {
+fn game_pins(
+    sdk_data: &Path,
+    build: &str,
+    crates_io_source: &str,
+) -> Option<BTreeMap<String, BTreeSet<Version>>> {
     let path = Path::new(build).join("Cargo.lock");
     let bytes = read_regular(sdk_data, &path, MAX_GAME_LOCK_BYTES).ok()?;
     let lock = toml::from_slice::<Lock>(&bytes).ok()?;
     let mut pins = BTreeMap::<_, BTreeSet<_>>::new();
     for pin in lock.package {
-        if pin.source.as_deref() == Some(CRATES_IO) {
+        if pin.source.as_deref() == Some(crates_io_source) {
             pins.entry(pin.name).or_default().insert(pin.version);
         }
     }
@@ -169,11 +176,7 @@ fn manifest_conflicts<R: Read + Seek>(
             }
             let compatible: Vec<_> = game
                 .iter()
-                .filter(|pin| {
-                    requirement.comparators.iter().any(|cmp| {
-                        cmp.major == pin.major && (pin.major != 0 || cmp.minor == Some(pin.minor))
-                    })
-                })
+                .filter(|pin| overlaps_caret(&requirement, pin))
                 .map(Version::to_string)
                 .collect();
             if !compatible.is_empty() {
@@ -204,4 +207,46 @@ fn local_path(dir: &Path, path: &str) -> Option<PathBuf> {
         }
     }
     Some(inside)
+}
+
+/// Without the registry index, check whether any version could satisfy both requirements.
+fn overlaps_caret(requirement: &VersionReq, pin: &Version) -> bool {
+    let game = Comparator {
+        op: Op::Caret,
+        major: pin.major,
+        minor: Some(pin.minor),
+        patch: Some(pin.patch),
+        pre: pin.pre.clone(),
+    };
+    let matches = |version: Version| game.matches(&version) && requirement.matches(&version);
+    // The first matching stable version must be on or immediately after a comparison boundary.
+    // Partial comparators cover a whole major or minor; advance the last specified component.
+    std::iter::once(&game)
+        .chain(&requirement.comparators)
+        .any(|cmp| {
+            let (major, minor, patch) = (cmp.major, cmp.minor.unwrap_or(0), cmp.patch.unwrap_or(0));
+            let next = cmp
+                .patch
+                .and_then(|patch| patch.checked_add(1))
+                .map(|patch| Version::new(major, minor, patch))
+                .or_else(|| {
+                    cmp.minor
+                        .and_then(|minor| minor.checked_add(1))
+                        .map(|minor| Version::new(major, minor, 0))
+                })
+                .or_else(|| major.checked_add(1).map(|major| Version::new(major, 0, 0)));
+            matches(Version::new(major, minor, patch))
+                || next.is_some_and(matches)
+                // A prerelease can only match on a triple with an explicit prerelease comparator.
+                || (!cmp.pre.is_empty()
+                    && ["0".into(), cmp.pre.to_string(), format!("{}.0", cmp.pre)]
+                        .iter()
+                        .any(|pre| {
+                            Prerelease::new(pre).is_ok_and(|pre| {
+                                let mut version = Version::new(major, minor, patch);
+                                version.pre = pre;
+                                matches(version)
+                            })
+                        }))
+        })
 }

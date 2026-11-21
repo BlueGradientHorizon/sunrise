@@ -149,7 +149,13 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 binary_checks: binary_checks(sdk_data),
             };
             if let Some(files) = files {
-                review.check_native_requirements(&base.entries, &head.entries, files, sdk_data);
+                review.check_native_requirements(
+                    &base.entries,
+                    &head.entries,
+                    files,
+                    sdk_data,
+                    sunrise_addresses::CARGO_CRATES_IO_SOURCE,
+                );
                 match registry::candidate(&head, &sources) {
                     Ok(mut index) => {
                         if let Err(error) =
