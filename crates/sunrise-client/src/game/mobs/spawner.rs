@@ -269,9 +269,7 @@ impl Game<'_> {
                         };
                         sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, reason, group);
                         for m in cx.created {
-                            let bounds = m.bounds();
-                            l.pending.borrow_mut().push(bounds);
-                            l.pending_ids.borrow_mut().push((m.kind.id.clone(), bounds));
+                            l.record_pending(&m);
                             l.spawned.borrow_mut().push(m);
                         }
                     }
@@ -286,7 +284,7 @@ impl Game<'_> {
                 mob.head_yaw = 0.0;
                 mob.previous_head_yaw = 0.0;
             }
-            let bounds = mob.bounds();
+            let bounds = l.record_pending(&mob);
             let key = mob.id;
             planned.push(Planned::Finalized(mob, r.equipment.cloned()));
             (bounds, key)
@@ -323,13 +321,11 @@ impl Game<'_> {
                 0,
                 Some(self.pack.assets.registry),
             )?;
-            let bounds = mob.bounds();
+            let bounds = l.record_pending(&mob);
             let key = l.provisional_id();
             planned.push(Planned::Loaded(tag, r.equipment.cloned(), key));
             (bounds, key)
         };
-        l.pending.borrow_mut().push(bounds);
-        l.pending_ids.borrow_mut().push((r.id.to_owned(), bounds));
         Some(SpawnerAdded {
             id: key,
             bounds,

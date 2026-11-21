@@ -22,7 +22,7 @@ use sunrise_client::{
     },
 };
 use sunrise_core::{
-    geometry::{Aabb, Vec3},
+    geometry::{Aabb, COLLISION_EPSILON, ShapeOp, Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
@@ -335,10 +335,8 @@ pub(super) struct GameLevel<'g, 'a> {
     /// `nearest` by square, built when a spawn start first asks with more
     /// than [`PLAYERS_SCANNED`] players.
     pub(super) player_squares: std::cell::OnceCell<PlayerSquares>,
-    /// Boxes of the mobs this pass created, not yet in the game's list.
-    pub(super) pending: std::cell::RefCell<Vec<Aabb>>,
-    /// The types and boxes of what a spawner created this tick.
-    pub(super) pending_ids: std::cell::RefCell<Vec<(String, Aabb)>>,
+    /// Mobs accepted during this pass, not yet inserted in the game's lists.
+    pending: std::cell::RefCell<Vec<PendingMob>>,
     /// The mobs this pass's finalizeSpawn calls made (jockeys and mounts),
     /// and the chicken-jockey links on mobs already in the game's list, both
     /// applied by [`Game::add_spawned`].
@@ -372,17 +370,25 @@ struct Checked {
     provisional: u32,
 }
 const SCANNED_QUERIES: u32 = 8;
-/// A mob not removed: its index in `Game::mobs`, box, alive, and whether
-/// it is a living shulker.
-type MobBox = (usize, Aabb, bool, bool);
+struct PendingMob {
+    kind: std::sync::Arc<MobType>,
+    bounds: Aabb,
+    collidable: bool,
+}
+/// A mob not removed: its index in `Game::mobs`, box, and whether
+/// `EntitySelector.CAN_BE_COLLIDED_WITH` counts it.
+type MobBox = (usize, Aabb, bool);
 fn mob_box(i: usize, m: &Mob) -> MobBox {
-    let alive = m.alive();
-    (
-        i,
-        m.bounds(),
-        alive,
-        alive && m.species() == Species::Shulker,
-    )
+    (i, m.bounds(), mob_collidable_for_spawn(m))
+}
+/// `canBeCollidedWith(null)` is distinct from pushing and from blocksBuilding.
+fn mob_collidable_for_spawn(mob: &Mob) -> bool {
+    mob.alive()
+        && match mob.species() {
+            Species::Shulker => true,
+            Species::HappyGhast => sunrise_client::mobs::happy_ghast::on_still_timeout(mob),
+            _ => false,
+        }
 }
 /// The boxes of the game's mobs not removed, and a grid over them.
 pub(super) struct MobBoxes {
@@ -430,6 +436,19 @@ impl GameLevel<'_, '_> {
                 .get_or_init(|| MobBoxes::new(&self.game.mobs))
                 .near(area),
         )
+    }
+    /// Vanilla adds the mob before checking another position, even when our
+    /// pass defers insertion. Keep its current box and collision predicate.
+    pub(super) fn record_pending(&self, mob: &Mob) -> Aabb {
+        let bounds = mob.bounds();
+        if !mob.removed {
+            self.pending.borrow_mut().push(PendingMob {
+                kind: mob.kind.clone(),
+                bounds,
+                collidable: mob_collidable_for_spawn(mob),
+            });
+        }
+        bounds
     }
     fn biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
         Some(world_biomes!(self.game).get(self.game.world.noise_biome(x, y, z)?))
@@ -502,20 +521,16 @@ impl GameLevel<'_, '_> {
                 };
                 sunrise_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
                 for m in cx.created {
-                    let bounds = m.bounds();
-                    self.pending.borrow_mut().push(bounds);
-                    self.pending_ids
-                        .borrow_mut()
-                        .push((m.kind.id.clone(), bounds));
+                    self.record_pending(&m);
                     self.spawned.borrow_mut().push(m);
                 }
             }
         }
-        let bounds = mob.bounds();
         let vanilla = spawn_selection::max_cluster_size(r.species);
         let cluster_size = self
             .game
             .spawn_cluster_size(&mut mob, r.reason, None, vanilla);
+        let bounds = self.record_pending(&mob);
         pending.push(mob);
         Some(Spawned {
             bounds,
@@ -569,25 +584,7 @@ impl sunrise_client::mobs::finalize::FinalizeLevel for PassLevel<'_, '_, '_> {
         self.l.game.spawning_monsters()
     }
     fn no_collision(&self, bounds: Aabb) -> bool {
-        // The same answer the pass's `GameLevel` gives: block collisions with
-        // the shulkers in the level and the pass's own adds.
-        let mut scene = SceneCollisions {
-            world: &self.l.game.world,
-            binding: self.l.w.collision,
-            subject: None,
-        };
-        let grown = bounds.inflate(Vec3::new(1e-7, 1e-7, 1e-7));
-        no_collision_empty(&mut scene, bounds)
-            && !self
-                .l
-                .mobs_near(grown)
-                .any(|(_, b, _, shulker)| shulker && b.intersects(grown))
-            && !self
-                .l
-                .pending_ids
-                .borrow()
-                .iter()
-                .any(|(id, b)| id == "minecraft:shulker" && b.intersects(grown))
+        self.l.no_collision(bounds)
     }
     fn free_chicken(&self, bounds: Aabb) -> Option<u32> {
         self.l.game.finalize_free_chicken(bounds)
@@ -865,33 +862,53 @@ impl NaturalLevel for GameLevel<'_, '_> {
             && self.within_world_border((cx << 4).wrapping_add(15), (cz << 4).wrapping_add(15))
     }
     fn no_collision(&self, bounds: Aabb) -> bool {
-        let mut scene = SceneCollisions {
-            world: &self.game.world,
-            binding: self.w.collision,
-            subject: None,
-        };
-        // getEntityCollisions(null, box): living shulkers are solid.
-        let grown = bounds.inflate(Vec3::new(1e-7, 1e-7, 1e-7));
-        no_collision_empty(&mut scene, bounds)
-            && !self
-                .mobs_near(grown)
-                .any(|(_, b, _, shulker)| shulker && b.intersects(grown))
-            && !self
-                .pending_ids
-                .borrow()
-                .iter()
-                .any(|(id, b)| id == "minecraft:shulker" && b.intersects(grown))
+        self.game.no_spawn_collision(bounds, |query| {
+            self.mobs_near(query)
+                .any(|(_, b, collidable)| collidable && b.intersects(query))
+                || self
+                    .pending
+                    .borrow()
+                    .iter()
+                    .any(|mob| mob.collidable && mob.bounds.intersects(query))
+        })
     }
+    /// `EntityGetter.isUnobstructed`: the fresh mob cannot already have a
+    /// shared root vehicle or be a candidate in the level's entity query.
     fn unobstructed(&self, bounds: Aabb) -> bool {
-        let player = self
+        let Ok(shape) = VoxelShape::from_box(bounds) else {
+            return false;
+        };
+        let Some(query) = shape.bounds() else {
+            return true;
+        };
+        let obstructs = |b: Aabb| {
+            b.intersects(query)
+                && VoxelShape::from_box(b).is_ok_and(|other| {
+                    shape
+                        .join_is_not_empty(&other, ShapeOp::AND)
+                        .unwrap_or(false)
+                })
+        };
+        let entities = crate::game::entity::entity_lists_of!(self.game);
+        !self
             .players
             .iter()
-            .any(|p| p.alive && !p.spectator && p.bounds.intersects(bounds));
-        !player
-            && !self.pending.borrow().iter().any(|b| b.intersects(bounds))
+            .any(|p| !p.spectator && obstructs(p.bounds))
             && !self
-                .mobs_near(bounds)
-                .any(|(_, b, alive, _)| alive && b.intersects(bounds))
+                .pending
+                .borrow()
+                .iter()
+                .any(|mob| obstructs(mob.bounds))
+            && !self.mobs_near(query).any(|(_, b, _)| obstructs(b))
+            && !entities
+                .non_mob_building_blocker_boxes(
+                    entities
+                        .carts
+                        .iter()
+                        .map(crate::game::minecarts::Minecart::bounds),
+                    &self.game.crystals,
+                )
+                .any(obstructs)
     }
     fn spawn_mobs(&self) -> bool {
         self.game
@@ -946,10 +963,10 @@ impl sunrise_client::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
             .filter(|&(i, b, ..)| self.game.mobs[i].kind.id == id && b.intersects(bounds))
             .count();
         let pending = self
-            .pending_ids
+            .pending
             .borrow()
             .iter()
-            .filter(|(k, b)| k == id && b.intersects(bounds))
+            .filter(|mob| mob.kind.id == id && mob.bounds.intersects(bounds))
             .count();
         mobs + pending
     }
@@ -965,6 +982,42 @@ fn spawn_cost_types(biomes: &sunrise_client::biome::Biomes) -> Vec<&str> {
     types
 }
 impl<'a> Game<'a> {
+    /// `CollisionGetter.noCollision(AABB)`: with no source there is no border
+    /// shape. `EntityGetter.getEntityCollisions` queries the inflated area.
+    pub(super) fn no_spawn_collision(
+        &self,
+        bounds: Aabb,
+        mob_collision: impl FnOnce(Aabb) -> bool,
+    ) -> bool {
+        let mut scene = SceneCollisions {
+            world: &self.world,
+            binding: self.res.collision(),
+            subject: None,
+        };
+        if !no_collision_empty(&mut scene, bounds) {
+            return false;
+        }
+        if bounds.average_size() < COLLISION_EPSILON {
+            return true;
+        }
+        let query = bounds.inflate(Vec3::new(
+            COLLISION_EPSILON,
+            COLLISION_EPSILON,
+            COLLISION_EPSILON,
+        ));
+        !self
+            .boats
+            .iter()
+            .any(|boat| boat.bounds().intersects(query))
+            && !mob_collision(query)
+    }
+
+    pub(super) fn live_spawn_mob_collision(&self, query: Aabb) -> bool {
+        self.mobs.iter().any(|mob| {
+            !mob.removed && mob_collidable_for_spawn(mob) && mob.bounds().intersects(query)
+        })
+    }
+
     /// The natural spawning policy of the level `dimension`: vanilla's until a
     /// mod sets one.
     pub(super) fn spawn_policy(&self, dimension: mod_api::DimensionKey) -> SpawnPolicy {
@@ -987,7 +1040,6 @@ impl<'a> Game<'a> {
             nearest,
             player_squares: Default::default(),
             pending: Default::default(),
-            pending_ids: Default::default(),
             spawned: Default::default(),
             rides: Default::default(),
             provisional: Default::default(),
@@ -1303,11 +1355,7 @@ impl<'a> Game<'a> {
                         continue;
                     }
                     let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LevelRandom| {
-                        let spawned = l.finalize_spawned(r, &mut pending, rng);
-                        if let Some(s) = &spawned {
-                            l.pending.borrow_mut().push(s.bounds);
-                        }
-                        spawned
+                        l.finalize_spawned(r, &mut pending, rng)
                     };
                     sunrise_threads::work::set_chunk(chunk.0, chunk.1);
                     spawn_selection::spawn_for_chunk(
@@ -2123,11 +2171,7 @@ mod tests {
                 let mut state = SpawnState::new(&natural, 289, players, &[], |_, _| true);
                 let mut pending = Vec::new();
                 let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LegacyRandom| {
-                    let spawned = l.finalize_spawned(r, &mut pending, rng);
-                    if let Some(s) = &spawned {
-                        l.pending.borrow_mut().push(s.bounds);
-                    }
-                    spawned
+                    l.finalize_spawned(r, &mut pending, rng)
                 };
                 spawn_selection::spawn_category_for_position(
                     &natural,

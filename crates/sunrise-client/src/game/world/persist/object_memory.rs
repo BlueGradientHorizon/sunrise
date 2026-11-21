@@ -247,6 +247,7 @@ impl Game<'_> {
                 join: Default::default(),
                 id: self.next_entity,
                 state,
+                blocks_building: false,
                 // DATA_START_POS is not persisted by vanilla.
                 start_pos: sunrise_core::position::BlockPos::default(),
                 position,
