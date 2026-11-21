@@ -363,6 +363,69 @@ fn a_registered_type_without_a_tick_part_is_not_woken_or_changed() {
 
 #[test]
 #[ignore = "daily"]
+fn chunk_save_reloads_reordered_slotless_items() {
+    use sunrise_client::save;
+
+    const NAME: &str =
+        "game::native_hooks::block_entity_tick::tests::chunk_save_reloads_reordered_slotless_items";
+    if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_ORDER", &["run"]) {
+        return;
+    }
+    with_ticker(|game, _| {
+        let subject = place_subject(game, KIND);
+        let item = |slot| {
+            Tag::compound([
+                ("Slot", Tag::Byte(slot)),
+                ("id", Tag::String("minecraft:stone".into())),
+                ("count", Tag::Int(1)),
+            ])
+        };
+        let initial = Tag::List(vec![item(1), item(0)]);
+        let reordered = Tag::List(vec![item(0), item(1)]);
+        let write_items = |game: &mut Game<'_>, subject: BlockEntityRef, items: Tag| {
+            let mut access = access(game, subject);
+            let mut scope = BlockEntityTickScope::new(&mut access);
+            assert_eq!(
+                scope.with_view(|mut view| view.set_nbt("Items".into(), Some(items))),
+                Some(true)
+            );
+            subject.set_changed(scope.host()).unwrap();
+        };
+        let save_reload = |game: &Game<'_>| {
+            let snapshots = game.with_entities([game.world.chunks.get(&CHUNK).unwrap()]);
+            let registry = game.pack.assets.registry;
+            let biomes = game.res.biomes();
+            let encoded = save::encode(&snapshots[0], registry, biomes, game.res.items());
+            save::decode(&encoded, registry, biomes).unwrap()
+        };
+
+        write_items(game, subject, initial.clone());
+        let mut loaded = save_reload(game);
+        let BlockEntity::Mod(entity) = &loaded.block_entities[0].1 else {
+            panic!("expected slotless mod block entity");
+        };
+        assert!(entity.items.is_empty());
+        assert_eq!(entity.nbt.get(&"Items".into()), Some(&initial));
+        game.world.install_chunk_block_entities(&mut loaded);
+        game.world.chunks.insert(CHUNK, Arc::new(loaded));
+        game.world.modified.clear();
+        let pos = [POS.0, POS.1, POS.2];
+        let subject = game
+            .block_entity(game.level(game.dim.id()).unwrap(), pos)
+            .unwrap();
+        write_items(game, subject, reordered.clone());
+
+        let reloaded = save_reload(game);
+        let BlockEntity::Mod(entity) = &reloaded.block_entities[0].1 else {
+            panic!("expected slotless mod block entity");
+        };
+        assert!(entity.items.is_empty());
+        assert_eq!(entity.nbt.get(&"Items".into()), Some(&reordered));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots() {
     const NAME: &str = "game::native_hooks::block_entity_tick::tests::set_nbt_items_follows_declared_slot_count_and_clears_decoded_slots";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_ITEMS_NBT", &["run"]) {
