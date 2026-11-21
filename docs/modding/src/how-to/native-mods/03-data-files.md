@@ -29,8 +29,9 @@ normal resource packs.
 Both prepare contexts lend converted IDs through `context.list()` and bytes through
 `context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
 an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
-its message. `error.resource()` borrows the failing resource ID, and
-`std::error::Error::source(&error)` exposes its original cause. Registration still returns typed
+its formatted message. If validation produces only a message, define a typed validation error
+or use `std::io::Error::other(message)` as the cause. `error.resource()` borrows the failing
+resource ID, and `std::error::Error::source(&error)` exposes its cause. Registration still returns typed
 `ReloadOrderError` values for dependency and listener failures. No listener applies until every
 prepare succeeds.
 

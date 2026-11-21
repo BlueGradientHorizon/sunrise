@@ -752,11 +752,12 @@ impl ItemEntityRef {
     pub fn entity(self) -> EntityRef {
         self.0
     }
-    /// Read `ItemEntity.getItem` on the server, without copying the stack. During a mod
-    /// block-entity tick this sees the latest proposed replacement, if any.
+    /// Read the live `ItemEntity.getItem` on the server, without copying the stack.
+    /// This sees earlier writes, including those in an open transaction. Aborting that
+    /// transaction rolls back its journaled writes.
     ///
-    /// Returns `Some` of `read`'s result, or `None` without calling it if the handle is stale,
-    /// the stack is unavailable or the item has a proposed removal. Use
+    /// Returns `Some` of `read`'s result, or `None` without calling it if the item was
+    /// removed, the handle is stale, or the stack is unavailable. Use
     /// [`ItemStackView::project`] to read components or keep an owned stack past the callback.
     pub fn with_stack<R>(
         self,
