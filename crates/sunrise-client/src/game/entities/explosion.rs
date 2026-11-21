@@ -58,33 +58,41 @@ fn explosion_join_order(count: usize, orders: Vec<([i32; 3], Vec<usize>)>) -> Ve
     let mut incoming = vec![0; count];
     let mut visited = vec![false; count];
     let mut search = Vec::new();
+    let mut constrain = |before: usize, next: usize| {
+        if after[before].contains(&next) {
+            return true;
+        }
+        visited.fill(false);
+        search.clear();
+        search.push(next);
+        while let Some(node) = search.pop() {
+            if node == before {
+                return false;
+            }
+            if !std::mem::replace(&mut visited[node], true) {
+                search.extend(after[node].iter().copied());
+            }
+        }
+        after[before].push(next);
+        incoming[next] += 1;
+        true
+    };
     for (pos, order) in orders {
+        let mut conflict = false;
         for pair in order.windows(2) {
-            let (before, next) = (pair[0], pair[1]);
-            if after[before].contains(&next) {
-                continue;
-            }
-            visited.fill(false);
-            search.clear();
-            search.push(next);
-            let mut cycle = false;
-            while let Some(node) = search.pop() {
-                if node == before {
-                    cycle = true;
-                    break;
-                }
-                if !std::mem::replace(&mut visited[node], true) {
-                    search.extend(after[node].iter().copied());
+            conflict |= !constrain(pair[0], pair[1]);
+        }
+        if conflict {
+            // Adjacent edges imply the entire order only if they all survived. Keep the
+            // compatible non-adjacent relationships too, even across a refused edge.
+            for (i, &before) in order.iter().enumerate() {
+                for &next in order.iter().skip(i + 2) {
+                    constrain(before, next);
                 }
             }
-            if cycle {
-                log::warn!(
-                    "block_drops at {pos:?}: explosion join order conflicts with an earlier block's drop order"
-                );
-            } else {
-                after[before].push(next);
-                incoming[next] += 1;
-            }
+            log::warn!(
+                "block_drops at {pos:?}: explosion join order conflicts with an earlier block's drop order"
+            );
         }
     }
     let mut ready: BinaryHeap<_> = incoming
@@ -2721,6 +2729,19 @@ mod tests {
             let vanilla = run(game, false);
             assert_eq!(run(game, true), vanilla);
         });
+    }
+
+    #[test]
+    fn explosion_join_order_keeps_compatible_pairs_from_a_conflicting_edit() {
+        // The first block insists on C before B. Reject the second block's B-before-C
+        // request but keep B-before-A and C-before-A, even though A was the first slot.
+        assert_eq!(
+            explosion_join_order(
+                3,
+                vec![([1, 64, 1], vec![2, 1]), ([2, 64, 1], vec![1, 2, 0])]
+            ),
+            [2, 1, 0]
+        );
     }
 
     #[test]
