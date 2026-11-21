@@ -163,7 +163,6 @@ impl Event {
         8 * std::mem::size_of::<(Self, ingress::ReceiveLease<Self>, usize, usize)>();
 
     fn packet_bytes(packet: &play::Clientbound) -> usize {
-        use sunrise_protocol::retained::OwnedHeap;
         std::mem::size_of::<play::Clientbound>().saturating_add(packet.owned_heap_bytes())
     }
 
