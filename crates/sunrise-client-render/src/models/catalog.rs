@@ -211,7 +211,7 @@ fn bake_standalone_model(
 ) -> std::result::Result<BakedModel, String> {
     let dependencies = &entry.registration.dependencies;
     let library = models
-        .block_library(root, dependencies.clone())
+        .standalone_library(root, dependencies)
         .map_err(|error| error.to_string())?;
     let mut combined = BakedModel {
         ambient_occlusion: true,
@@ -477,14 +477,8 @@ impl StateModels {
                 choices.push(CompiledChoices::new(&definition)?);
             }
         }
-        let names: Vec<String> = variants.iter().map(|(name, _, _)| name.clone()).collect();
-        let library = match models.block_library(root, names.clone()) {
-            Ok(library) => library,
-            Err(e) => {
-                log::warn!("Sunrise: block models incomplete ({e}); using the missing model");
-                models.block_library_or_missing(root, names)?
-            }
-        };
+        let names = variants.iter().map(|(name, _, _)| name.clone()).collect();
+        let library = models.block_library(root, names)?;
         let resolved: Vec<_> = variants
             .iter()
             .map(|(name, ..)| library.resolve(name))
@@ -556,9 +550,9 @@ impl StateModels {
     /// Bakes `names`, models no blockstate needs to name (vanilla's
     /// standalone models, NeoForge's `ModelEvent.RegisterStandalone`), as
     /// they are, unturned, for [`Self::standalone`]. One a block state
-    /// already bakes unturned is shared. A model that doesn't read (missing,
-    /// or a parent missing) is logged and left out, as a missing blockstate
-    /// is; the others still bake.
+    /// already bakes unturned is shared. Missing or rejected parents use the
+    /// missing model at that link. A missing or rejected registered file is
+    /// logged and left out; the others still bake.
     pub(crate) fn bake_standalone(
         &mut self,
         root: &crate::resource_source::ResourceSource,
@@ -579,7 +573,7 @@ impl StateModels {
                 continue;
             }
             let model = models
-                .block_library(root, vec![name.clone()])
+                .standalone_library(root, std::slice::from_ref(name))
                 .and_then(|library| bake_variant(sprites, &library, name, [0; 3], false));
             match model {
                 Ok(model) => {
@@ -967,6 +961,78 @@ mod tests {
     }
 
     #[test]
+    fn blockstates_use_the_parsed_generation_for_rejected_models() -> Result<()> {
+        use crate::resource_source::ResourceSource;
+        use sunrise_core::nbt::Tag;
+        use sunrise_world::DATA_VERSION;
+
+        let fixture = Fixture(tempfile::tempdir()?.keep());
+        let source = ResourceSource::directory(fixture.0.clone());
+        let definition = fixture.0.join("assets/demo/blockstates/panel.json");
+        fs::create_dir_all(definition.parent().unwrap())?;
+        fs::write(
+            definition,
+            br#"{"variants":{"":[{"model":"demo:block/rejected"},{"model":"demo:block/child"}]}}"#,
+        )?;
+        fixture.write("demo:block/rejected", r#"{"loader":"demo:unregistered"}"#);
+        fixture.write(
+            "demo:block/child",
+            r##"{"parent":"demo:block/rejected","textures":{"side":"demo:block/stone"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"up":{"texture":"#side"}}}]}"##,
+        );
+        let parsed = ParsedModels::load(&source);
+        // A later edit is visible only to the next resource generation, not to discovery.
+        fixture.write("demo:block/rejected", r#"{"elements": []}"#);
+        let registry = BlockRegistry::from_nbt(&Tag::compound([
+            ("DataVersion", Tag::Int(DATA_VERSION)),
+            (
+                "states",
+                Tag::List(vec![
+                    BlockState {
+                        name: "demo:panel".into(),
+                        properties: Default::default(),
+                    }
+                    .to_nbt(),
+                ]),
+            ),
+            ("defaults", Tag::compound([("demo:panel", Tag::Int(0))])),
+        ]))?;
+        let facts = BTreeMap::from([(
+            "demo:panel".into(),
+            serde_json::json!({"schema": {}, "states": [{}]}),
+        )]);
+        let models = StateModels::from_facts_with_models(
+            &source,
+            &registry,
+            &["demo:panel"],
+            &mut Sprites::new(source.clone()),
+            &facts,
+            &parsed,
+        )?;
+        let slots = models.state_slots(BlockStateId(0)).unwrap();
+        assert_eq!(slots.len(), 2);
+        let model = |name: &str| {
+            slots
+                .iter()
+                .map(|slot| &models.baked[*slot as usize])
+                .find(|(variant, _)| variant.model == name)
+                .map(|(_, model)| model)
+                .unwrap()
+        };
+        let missing = &model("demo:block/rejected").faces;
+        assert_eq!(missing.len(), 6);
+        assert!(
+            missing
+                .iter()
+                .all(|f| f.quad.material.sprite == "minecraft:missingno")
+        );
+        let child = &model("demo:block/child").faces;
+        assert_eq!(child.len(), 1);
+        assert_eq!(child[0].quad.facing, Direction::Up);
+        assert_eq!(child[0].quad.material.sprite, "demo:block/stone");
+        Ok(())
+    }
+
+    #[test]
     fn standalone_models_bake_once_and_skip_what_does_not_read() -> Result<()> {
         let fixture = Fixture(
             std::env::temp_dir().join(format!("sunrise-standalone-{}", std::process::id())),
@@ -1008,11 +1074,14 @@ mod tests {
         let cog = models.standalone("lanef:block/cog").expect("baked");
         assert_eq!(cog.faces.len(), 2);
         assert_ne!(cog.faces[0].layer, shaft.faces[0].layer, "its own texture");
-        assert!(models.standalone("lanef:block/orphan").is_none());
+        assert_eq!(
+            models.standalone("lanef:block/orphan").unwrap().faces.len(),
+            6
+        );
         assert!(models.standalone("lanef:block/absent").is_none());
         assert!(models.standalone("lanef:block/unnamed").is_none());
         // Named twice, baked once.
-        assert_eq!(models.baked.len(), 2);
+        assert_eq!(models.baked.len(), 3);
         // Without a parsed library, the files are read directly.
         let mut direct = StateModels::default();
         direct.bake_standalone(
