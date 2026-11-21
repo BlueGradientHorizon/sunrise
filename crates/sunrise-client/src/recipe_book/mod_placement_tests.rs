@@ -317,3 +317,92 @@ fn non_simple_placement_accepts_empty_display_order_with_candidates() {
     ));
     validate_batch(&batch(Some(value)), &Registry).unwrap();
 }
+
+#[test]
+fn deep_native_declarations_are_stack_safe_across_index_compile_drop_and_send() {
+    use crate::recipe_book::{
+        ModBookIndex,
+        placement_sync::{
+            BorrowedCategory, BorrowedDisplayEntry, Refusal, decode_catalogue,
+            encode_borrowed_catalogue, encode_catalogue,
+        },
+    };
+    const DEPTH: usize = 4000;
+    let wrap = |mut leaf: mod_api::Ingredient| {
+        for _ in 0..DEPTH {
+            let mut parent = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
+            parent.children = Some((Shape::Compound, vec![leaf]));
+            leaf = parent;
+        }
+        batch(Some(PlacementInfo {
+            cells: vec![Some(leaf)],
+            shape: None,
+        }))
+    };
+
+    // Valid deep declaration: validate, build index, compile placement, send refusal, drop.
+    let valid = wrap(mod_api::Ingredient::of(vec!["minecraft:stone".into()]));
+    let index = ModBookIndex::build(valid, &Registry).unwrap();
+    let category = index.category("demo:category").unwrap();
+    let compiled = compile("demo", "demo:pot", &category.displays[0], &layout())
+        .unwrap()
+        .unwrap();
+    let cloned_plan = compiled.clone();
+    drop(cloned_plan);
+    drop(compiled);
+    let borrowed = vec![BorrowedCategory {
+        category,
+        displays: category
+            .displays
+            .iter()
+            .map(|entry| BorrowedDisplayEntry {
+                recipe: entry.recipe.as_str(),
+                displays: entry.displays.clone(),
+                placement: entry.placement.as_ref(),
+            })
+            .collect(),
+    }];
+    assert_eq!(encode_borrowed_catalogue(&borrowed), Err(Refusal::TooLarge));
+    drop(borrowed);
+    let cloned_category = category.clone();
+    assert_eq!(encode_catalogue(&[cloned_category]), Err(Refusal::TooLarge));
+    drop(index);
+
+    // Invalid deep declaration: rejected during ModBookIndex::build and dropped without overflow.
+    let invalid = wrap(mod_api::Ingredient::of(vec!["demo:missing".into()]));
+    assert!(matches!(
+        ModBookIndex::build(invalid, &Registry),
+        Err(DisplayLoadError::InvalidPlacement(_))
+    ));
+
+    // Deep composite with a custom leaf projects flat on the send path and round-trips.
+    let mut custom_leaf = mod_api::Ingredient::of(vec!["minecraft:stone".into()]);
+    custom_leaf.custom = Some(
+        mod_api::__private::bind_ingredient_predicate(
+            "demo",
+            0,
+            mod_api::IngredientDefinition::new(vec!["minecraft:stone".into()], |_, _| true),
+        )
+        .1,
+    );
+    let custom_index = ModBookIndex::build(wrap(custom_leaf), &Registry).unwrap();
+    let custom_category = custom_index.category("demo:category").unwrap();
+    let custom_borrowed = vec![BorrowedCategory {
+        category: custom_category,
+        displays: custom_category
+            .displays
+            .iter()
+            .map(|entry| BorrowedDisplayEntry {
+                recipe: entry.recipe.as_str(),
+                displays: entry.displays.clone(),
+                placement: entry.placement.as_ref(),
+            })
+            .collect(),
+    }];
+    let bytes = encode_borrowed_catalogue(&custom_borrowed).unwrap();
+    drop(custom_borrowed);
+    let decoded = decode_catalogue(&bytes).unwrap();
+    let client_index = ModBookIndex::build(decoded, &Registry).unwrap();
+    drop(client_index);
+    drop(custom_index);
+}

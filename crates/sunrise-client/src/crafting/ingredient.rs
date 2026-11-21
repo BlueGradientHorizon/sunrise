@@ -27,7 +27,7 @@ pub(super) fn ingredient_kind(o: &serde_json::Map<String, Value>) -> Option<&str
 
 /// A set of accepted items (expanded from an item, list or tag), and the
 /// items in its `HolderSet` order, with built-in component and display rules.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct Ingredient {
     /// Full candidate set; a non-simple predicate tests each concrete stack.
@@ -106,12 +106,16 @@ impl Ingredient {
 
     /// Whether item membership fully determines shapeless matching.
     pub fn is_simple(&self) -> bool {
-        self.rule.is_none()
-            && self.custom.is_none()
-            && self
-                .children
-                .as_ref()
-                .is_none_or(|(_, kids)| kids.iter().all(Self::is_simple))
+        let mut pending = vec![self];
+        while let Some(node) = pending.pop() {
+            if node.rule.is_some() || node.custom.is_some() {
+                return false;
+            }
+            if let Some((_, kids)) = &node.children {
+                pending.extend(kids);
+            }
+        }
+        true
     }
 
     /// The items of a list, in order.
@@ -218,6 +222,70 @@ impl Ingredient {
         }
         ingredient.order = order;
         Some(ingredient)
+    }
+}
+impl Clone for Ingredient {
+    fn clone(&self) -> Self {
+        let clone_leaf = |node: &Self| Self {
+            items: node.items.clone(),
+            order: node.order.clone(),
+            custom: node.custom.clone(),
+            children: None,
+            rule: node.rule.clone(),
+            compiled: node.compiled.clone(),
+            display: node.display.clone(),
+            shown: node.shown.clone(),
+            component_defaults: node.component_defaults.clone(),
+        };
+        let Some((root_shape, root_kids)) = &self.children else {
+            return clone_leaf(self);
+        };
+        let mut stack: Vec<(&Self, Shape, std::slice::Iter<'_, Self>, Vec<Self>)> = vec![(
+            self,
+            root_shape.clone(),
+            root_kids.iter(),
+            Vec::with_capacity(root_kids.len()),
+        )];
+        loop {
+            let next = stack.last_mut().expect("non-empty clone stack").2.next();
+            if let Some(child) = next {
+                if let Some((shape, kids)) = &child.children {
+                    stack.push((
+                        child,
+                        shape.clone(),
+                        kids.iter(),
+                        Vec::with_capacity(kids.len()),
+                    ));
+                } else {
+                    stack
+                        .last_mut()
+                        .expect("non-empty clone stack")
+                        .3
+                        .push(clone_leaf(child));
+                }
+            } else {
+                let (node, shape, _, children) = stack.pop().expect("non-empty clone stack");
+                let mut cloned = clone_leaf(node);
+                cloned.children = Some((shape, children));
+                if let Some(parent) = stack.last_mut() {
+                    parent.3.push(cloned);
+                } else {
+                    return cloned;
+                }
+            }
+        }
+    }
+}
+impl Drop for Ingredient {
+    fn drop(&mut self) {
+        let Some((_, mut stack)) = self.children.take() else {
+            return;
+        };
+        while let Some(mut node) = stack.pop() {
+            if let Some((_, mut kids)) = node.children.take() {
+                stack.append(&mut kids);
+            }
+        }
     }
 }
 

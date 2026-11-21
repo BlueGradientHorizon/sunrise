@@ -75,94 +75,207 @@ fn full_order(items: &HashSet<String>, existing: &[String]) -> Vec<String> {
     order
 }
 
-impl StaticIngredient {
-    fn project(value: &Ingredient) -> Option<Self> {
-        if value.items.is_empty() {
-            return None;
-        }
-        if has_custom(value) {
-            return Some(Self {
-                items: value.items.clone(),
-                order: full_order(&value.items, &value.order),
-                children: None,
-                rule: None,
-                display: value.display.clone(),
-            });
-        }
-        Some(Self::static_tree(value))
+fn write_projected_ingredient(out: &mut mod_api::wire::Writer, value: &Ingredient) {
+    if out.error().is_some() {
+        return;
     }
+    if has_custom(value) {
+        let order = full_order(&value.items, &value.order);
+        out.record(|out| {
+            out.put(&value.items);
+            out.put(&order);
+            out.put(&0u8);
+            out.put(&0u8);
+            out.put(&value.display);
+        });
+        return;
+    }
+    write_static_ingredient(out, value);
+}
 
-    fn static_tree(value: &Ingredient) -> Self {
-        Self {
-            items: value.items.clone(),
-            order: value.order.clone(),
-            children: value.children.as_ref().map(|(shape, children)| {
-                (
-                    shape.clone(),
-                    children.iter().map(Self::static_tree).collect(),
-                )
-            }),
-            rule: value.rule.clone(),
-            display: value.display.clone(),
+fn write_static_ingredient(out: &mut mod_api::wire::Writer, value: &Ingredient) {
+    if out.error().is_some() {
+        return;
+    }
+    out.record(|out| {
+        out.put(&value.items);
+        out.put(&value.order);
+        match &value.children {
+            None => out.put(&0u8),
+            Some((shape, children)) => {
+                out.put(&1u8);
+                out.put(shape);
+                out.put_len(children.len());
+                for child in children {
+                    if out.error().is_some() {
+                        return;
+                    }
+                    write_static_ingredient(out, child);
+                }
+            }
         }
+        out.put(&value.rule);
+        out.put(&value.display);
+    });
+}
+
+fn write_cells(out: &mut mod_api::wire::Writer, info: &PlacementInfo) {
+    if out.error().is_some() {
+        return;
+    }
+    // Match PlacementInfo.createFromOptionals / Ingredient.isEmpty: an empty
+    // candidate set collapses placement to NOT_PLACEABLE while keeping displays.
+    let collapsed = info
+        .cells
+        .iter()
+        .flatten()
+        .any(|ingredient| ingredient.items.is_empty());
+    out.record(|out| {
+        if collapsed {
+            out.put_len(0);
+            out.put(&0u8);
+            return;
+        }
+        out.put_len(info.cells.len());
+        for cell in &info.cells {
+            if out.error().is_some() {
+                return;
+            }
+            match cell {
+                None => out.put(&0u8),
+                Some(ingredient) => {
+                    out.put(&1u8);
+                    write_projected_ingredient(out, ingredient);
+                }
+            }
+        }
+        out.put(&info.shape);
+    });
+}
+
+fn write_category_header(out: &mut mod_api::wire::Writer, category: &RecipeBookCategory) {
+    out.put(&category.id);
+    out.put(&category.recipe_type);
+    out.put(&category.icon);
+    out.put(&category.secondary_icon);
+    out.put(&category.target_menu);
+    out.put(&category.book);
+    out.put(&category.search_group);
+}
+
+fn write_entry(
+    out: &mut mod_api::wire::Writer,
+    recipe: &str,
+    displays: &[RecipeBookDisplay],
+    placement: Option<&PlacementInfo>,
+) {
+    if out.error().is_some() {
+        return;
+    }
+    out.record(|out| {
+        out.put(recipe);
+        out.put(displays);
+        match placement {
+            None => out.put(&0u8),
+            Some(info) => {
+                out.put(&1u8);
+                write_cells(out, info);
+            }
+        }
+    });
+}
+
+pub(super) fn write_categories(
+    out: &mut mod_api::wire::Writer,
+    declarations: &[RecipeBookCategory],
+) {
+    out.put_len(declarations.len());
+    for category in declarations {
+        if out.error().is_some() {
+            return;
+        }
+        out.record(|out| {
+            write_category_header(out, category);
+            out.put_len(category.displays.len());
+            for entry in &category.displays {
+                if out.error().is_some() {
+                    return;
+                }
+                write_entry(
+                    out,
+                    &entry.recipe,
+                    &entry.displays,
+                    entry.placement.as_ref(),
+                );
+            }
+        });
+    }
+}
+
+pub(super) fn write_borrowed_categories(
+    out: &mut mod_api::wire::Writer,
+    declarations: &[super::BorrowedCategory<'_>],
+) {
+    out.put_len(declarations.len());
+    for borrowed in declarations {
+        if out.error().is_some() {
+            return;
+        }
+        out.record(|out| {
+            write_category_header(out, borrowed.category);
+            out.put_len(borrowed.displays.len());
+            for entry in &borrowed.displays {
+                if out.error().is_some() {
+                    return;
+                }
+                write_entry(out, entry.recipe, &entry.displays, entry.placement);
+            }
+        });
     }
 }
 
 impl From<StaticIngredient> for Ingredient {
-    fn from(value: StaticIngredient) -> Self {
-        Self {
-            items: value.items,
-            order: value.order,
+    fn from(mut value: StaticIngredient) -> Self {
+        let leaf = |node: StaticIngredient| Self {
+            items: node.items,
+            order: node.order,
             custom: None,
-            children: value
-                .children
-                .map(|(shape, children)| (shape, children.into_iter().map(Into::into).collect())),
-            rule: value.rule,
-            display: value.display,
-        }
-    }
-}
-
-impl From<&RecipeBookCategory> for Category {
-    fn from(value: &RecipeBookCategory) -> Self {
-        Self {
-            id: value.id.clone(),
-            recipe_type: value.recipe_type.clone(),
-            icon: value.icon.clone(),
-            secondary_icon: value.secondary_icon.clone(),
-            target_menu: value.target_menu.clone(),
-            book: value.book.clone(),
-            search_group: value.search_group.clone(),
-            displays: value
-                .displays
-                .iter()
-                .map(|entry| Entry {
-                    recipe: entry.recipe.clone(),
-                    displays: entry.displays.clone(),
-                    placement: entry.placement.as_ref().map(|info| {
-                        let cells = info
-                            .cells
-                            .iter()
-                            .map(|cell| match cell {
-                                None => Some(None),
-                                Some(ingredient) => StaticIngredient::project(ingredient).map(Some),
-                            })
-                            .collect::<Option<_>>();
-                        // Match PlacementInfo.createFromOptionals / Ingredient.isEmpty: an empty
-                        // candidate set collapses placement to NOT_PLACEABLE while keeping displays.
-                        cells.map_or(
-                            Cells {
-                                cells: Vec::new(),
-                                shape: None,
-                            },
-                            |cells| Cells {
-                                cells,
-                                shape: info.shape,
-                            },
-                        )
-                    }),
-                })
-                .collect(),
+            children: None,
+            rule: node.rule,
+            display: node.display,
+        };
+        let Some((root_shape, root_kids)) = value.children.take() else {
+            return leaf(value);
+        };
+        let mut stack: Vec<(
+            StaticIngredient,
+            Shape,
+            std::vec::IntoIter<StaticIngredient>,
+            Vec<Self>,
+        )> = vec![(value, root_shape, root_kids.into_iter(), Vec::new())];
+        loop {
+            let next = stack.last_mut().expect("non-empty decode stack").2.next();
+            if let Some(mut child) = next {
+                if let Some((shape, kids)) = child.children.take() {
+                    let cap = kids.len();
+                    stack.push((child, shape, kids.into_iter(), Vec::with_capacity(cap)));
+                } else {
+                    stack
+                        .last_mut()
+                        .expect("non-empty decode stack")
+                        .3
+                        .push(leaf(child));
+                }
+            } else {
+                let (node, shape, _, children) = stack.pop().expect("non-empty decode stack");
+                let mut converted = leaf(node);
+                converted.children = Some((shape, children));
+                if let Some(parent) = stack.last_mut() {
+                    parent.3.push(converted);
+                } else {
+                    return converted;
+                }
+            }
         }
     }
 }
