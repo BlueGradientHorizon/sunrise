@@ -1469,6 +1469,7 @@ fn jigsaw_packets_round_trip() {
 // Expected bytes hand-derived from the 26.3 codecs (javap of the jar, not captured from a run):
 // `FriendlyByteBuf.writeLongArray` (VarInt length, big-endian longs) + `writeEnum` (VarInt
 // ordinal); `ByteBufCodecs.registry` ids in a VarInt-counted collection.
+// Bytes confirmed against vanilla 26.3 STREAM_CODECs by tools/test_debug_packet_codec_parity.py.
 #[test]
 fn debug_sample_is_a_long_array_and_a_type() {
     let payload = [
