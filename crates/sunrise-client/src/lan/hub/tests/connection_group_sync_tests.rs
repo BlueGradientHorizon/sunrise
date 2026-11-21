@@ -186,6 +186,44 @@ fn chunk_send_delivers_connection_groups_after_batch_only_to_negotiated_guests()
 }
 
 #[test]
+fn authoritative_block_correction_sends_current_group_after_the_block() {
+    let (hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
+    let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+    world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+    let pos = [1, 64, 2];
+    let sunrise = hub.guests[0].conn;
+
+    hub.send_authoritative_block(sunrise, &world, pos);
+    assert!(matches!(
+        decode_packets(&rx_sunrise).as_slice(),
+        [C::BlockUpdate(_)]
+    ));
+
+    assert!(world.set_connection_group(1, 64, 2, Some(17), true));
+    for group in [Some(17), None] {
+        if group.is_none() {
+            assert!(world.clear_connection_group_automatic(1, 64, 2));
+        }
+        hub.send_authoritative_block(sunrise, &world, pos);
+        hub.send_authoritative_block(hub.guests[1].conn, &world, pos);
+        let packets = decode_packets(&rx_sunrise);
+        assert!(
+            matches!(packets.as_slice(), [C::BlockUpdate(block), C::CustomPayload(_)] if block.pos == pos)
+        );
+        assert_eq!(
+            group_messages(&packets),
+            [Message::Update {
+                entries: vec![UpdateEntry { pos, group }],
+            }]
+        );
+        assert!(matches!(
+            decode_packets(&rx_vanilla).as_slice(),
+            [C::BlockUpdate(_)]
+        ));
+    }
+}
+
+#[test]
 fn incremental_updates_dedup_wire_order_auto_clear_filter_and_bulk_resend() {
     let (mut hub, rx_sunrise, rx_vanilla) = hub_with_sunrise_and_vanilla();
     let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);

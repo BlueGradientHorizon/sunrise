@@ -4700,17 +4700,11 @@ impl Hub {
             }
         }
         for pos @ [x, y, z] in positions {
-            let state = ctx.world.block(x, y, z);
-            self.send_to(
-                conn,
-                &C::BlockUpdate(play::BlockUpdate {
-                    pos,
-                    state: state.0 as i32,
-                }),
-            );
+            self.send_authoritative_block(conn, ctx.world, pos);
             let Some(entity) = ctx.world.block_entities.get(&(x, y, z)) else {
                 continue;
             };
+            let state = ctx.world.block(x, y, z);
             let Some(tag) = self.encoder.update_tag((x, y, z), state.0, entity) else {
                 continue;
             };
