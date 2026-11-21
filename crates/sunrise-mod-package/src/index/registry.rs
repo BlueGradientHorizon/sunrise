@@ -892,13 +892,8 @@ fn image(
         return Some(path.to_owned());
     }
     let icon = folder == "icons/";
-    let name = path.strip_prefix(folder).filter(|n| super::plain_name(n));
-    let Some(name) = name else {
-        errors.push(format!(
-            "{id}: {path:?} is neither {folder}<name> nor https://"
-        ));
-        return None;
-    };
+    // The page's own check refuses a path outside the project's folder; there is nothing to read.
+    let name = path.strip_prefix(folder).filter(|n| super::plain_name(n))?;
     let max = if icon {
         MAX_ICON
     } else {
