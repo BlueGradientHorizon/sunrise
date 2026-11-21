@@ -752,8 +752,12 @@ mod tests {
                 _: &RegistrationContext,
                 event: &mut RegisterItemTintSourcesEvent<'_>,
             ) {
-                event.register(id("minecraft:constant"), |_| Ok(|_, _| 0xFF11_1111));
-                event.register(id("minecraft:custom_tint"), |_| Ok(|_, _| 0xFF22_2222));
+                event.register(id("minecraft:constant"), |_| {
+                    Ok(|_: &dyn ClientHost, _: &ItemTintInput<'_>| 0xFF11_1111)
+                });
+                event.register(id("minecraft:custom_tint"), |_| {
+                    Ok(|_: &dyn ClientHost, _: &ItemTintInput<'_>| 0xFF22_2222)
+                });
             }
         }
         struct Second;
@@ -764,7 +768,9 @@ mod tests {
                 _: &RegistrationContext,
                 event: &mut RegisterItemTintSourcesEvent<'_>,
             ) {
-                event.register(id("minecraft:constant"), |_| Ok(|_, _| 0xFF33_3333));
+                event.register(id("minecraft:constant"), |_| {
+                    Ok(|_: &dyn ClientHost, _: &ItemTintInput<'_>| 0xFF33_3333)
+                });
             }
         }
 
@@ -1195,7 +1201,11 @@ mod tests {
                         return Err("expected spin".into());
                     }
                     children.add_field("child", "model")?;
-                    Ok(|_, _, _| {})
+                    Ok(
+                        |_: &dyn ClientHost,
+                         _: &mod_api::ItemModelUpdateInput<'_>,
+                         _: &mut Vec<mod_api::ItemModelLayer>| {},
+                    )
                 });
             }
         }

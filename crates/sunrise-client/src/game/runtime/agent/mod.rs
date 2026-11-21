@@ -1736,6 +1736,7 @@ impl Game<'_> {
                         break;
                     }
                 }
+                let editing_preset = self.preset_editor_title().is_some();
                 let title = self.title.as_mut().ok_or("no title screen")?;
                 if let Some(field) = &field {
                     match &mut title.mode {
@@ -1768,7 +1769,7 @@ impl Game<'_> {
                         }
                     }
                 }
-                if self.preset_editor_title().is_some() {
+                if editing_preset {
                     if text != "\\b" {
                         self.screen_chars_typed(Some(text));
                     }

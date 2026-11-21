@@ -1618,7 +1618,11 @@ mod tests {
                     move |_, children| {
                         decodes.fetch_add(1, Ordering::Relaxed);
                         children.add_named_models()?;
-                        Ok(|_, _, _| {})
+                        Ok(
+                            |_: &dyn mod_api::ClientHost,
+                             _: &mod_api::ItemModelUpdateInput<'_>,
+                             _: &mut Vec<mod_api::ItemModelLayer>| {},
+                        )
                     },
                 );
             }

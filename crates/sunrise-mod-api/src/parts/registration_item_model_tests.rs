@@ -38,7 +38,9 @@ impl Hooks for Selected {
                 },
                 |_: &dyn ClientHost, input: &ItemModelPropertyInput<'_>| {
                     (input.bundle_selected >= 0).then(|| {
-                        format!("{}:{}", input.bundle_selected, input.stack.count()).into()
+                        format!("{}:{}", input.bundle_selected, input.stack.count())
+                            .as_str()
+                            .into()
                     })
                 },
             ))

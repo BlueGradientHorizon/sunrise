@@ -194,6 +194,7 @@ pub fn new_preset_editor_draft<'a>(
 
 #[cfg(test)]
 mod tests {
+    use super::new_preset_editor_context;
     use crate::*;
 
     struct TestEditor {

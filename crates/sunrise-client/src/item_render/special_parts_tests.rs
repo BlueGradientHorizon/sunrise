@@ -672,15 +672,17 @@ fn a_disabled_override_never_reveals_the_builtin_decoder() {
         ),
     )]);
     let first = renderer(temp.path(), 2, 2, &factories);
-    assert!(first.decode_definition(ITEM, None).is_ok());
-    let failure = first.decode_definition(ITEM, Some(&factories)).unwrap_err();
+    let providers = registered_providers::ItemProviderTables {
+        special: Some(&factories),
+        ..Default::default()
+    };
+    assert!(first.decode_definition(ITEM, &Default::default()).is_ok());
+    let failure = first.decode_definition(ITEM, &providers).unwrap_err();
     assert!(failure.to_string().contains("override decoder panicked"));
 
     let reloaded = renderer(temp.path(), 2, 2, &factories);
     for generation in [&first, &reloaded] {
-        let failure = generation
-            .decode_definition(ITEM, Some(&factories))
-            .unwrap_err();
+        let failure = generation.decode_definition(ITEM, &providers).unwrap_err();
         assert!(failure.to_string().contains("owner is disabled"));
     }
     assert_eq!(calls.load(Ordering::Relaxed), 1);

@@ -1180,7 +1180,11 @@ mod tests {
             event: &mut mod_api::RegisterRangeSelectItemModelPropertyEvent<'_>,
         ) {
             event.register(mod_api::Identifier::parse("example:fill").unwrap(), |_| {
-                Ok(|_, input| input.stack.count() as f32 / 64.0)
+                Ok(
+                    |_: &dyn ClientHost, input: &mod_api::ItemModelPropertyInput<'_>| {
+                        input.stack.count() as f32 / 64.0
+                    },
+                )
             });
         }
     }
@@ -1283,7 +1287,7 @@ mod tests {
                             } else {
                                 "dig"
                             }
-                            .to_owned(),
+                            .into(),
                         )
                     },
                 ))
@@ -1424,10 +1428,15 @@ mod tests {
                         Some(sunrise_core::nbt::Tag::Long(v)) => *v as u32,
                         _ => 0,
                     };
-                    Ok(move |_, input| match input.stack.count() {
-                        1 => low,
-                        _ => 0xFF11_2233,
-                    })
+                    Ok(
+                        move |_: &dyn ClientHost, input: &mod_api::ItemTintInput<'_>| match input
+                            .stack
+                            .count()
+                        {
+                            1 => low,
+                            _ => 0xFF11_2233,
+                        },
+                    )
                 },
             );
         }
@@ -1448,34 +1457,41 @@ mod tests {
                 mod_api::Identifier::parse("cellmod:cell").unwrap(),
                 |_, children| {
                     children.add_named_models()?;
-                    Ok(|_, input, layers| {
-                        let place = match input.context.display {
-                            mod_api::ItemDisplayContext::Gui => "gui",
-                            _ => "ground",
-                        };
-                        let fill = if input.stack.count() > 1 {
-                            "full"
-                        } else {
-                            "empty"
-                        };
-                        layers.push(mod_api::ItemModelLayer::new(format!("{place}/{fill}")));
-                        layers.push(
-                            mod_api::ItemModelLayer::new(format!("seed {}", input.context.seed))
+                    Ok(
+                        |_: &dyn ClientHost,
+                         input: &mod_api::ItemModelUpdateInput<'_>,
+                         layers: &mut Vec<mod_api::ItemModelLayer>| {
+                            let place = match input.context.display {
+                                mod_api::ItemDisplayContext::Gui => "gui",
+                                _ => "ground",
+                            };
+                            let fill = if input.stack.count() > 1 {
+                                "full"
+                            } else {
+                                "empty"
+                            };
+                            layers.push(mod_api::ItemModelLayer::new(format!("{place}/{fill}")));
+                            layers.push(
+                                mod_api::ItemModelLayer::new(format!(
+                                    "seed {}",
+                                    input.context.seed
+                                ))
                                 .with_item_transform(mod_api::ItemTransformMode::None),
-                        );
-                        if let Some(owner) = &input.context.owner {
-                            layers.push(mod_api::ItemModelLayer::new(format!(
-                                "owner {}",
-                                owner.entity_type
-                            )));
-                        }
-                        if let Some(level) = &input.context.level {
-                            layers.push(mod_api::ItemModelLayer::new(format!(
-                                "level {}",
-                                level.dimension
-                            )));
-                        }
-                    })
+                            );
+                            if let Some(owner) = &input.context.owner {
+                                layers.push(mod_api::ItemModelLayer::new(format!(
+                                    "owner {}",
+                                    owner.entity_type
+                                )));
+                            }
+                            if let Some(level) = &input.context.level {
+                                layers.push(mod_api::ItemModelLayer::new(format!(
+                                    "level {}",
+                                    level.dimension
+                                )));
+                            }
+                        },
+                    )
                 },
             );
         }
