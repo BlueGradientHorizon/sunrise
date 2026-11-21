@@ -397,6 +397,23 @@ fn a_signature_cannot_hide_a_workspace_type_behind_a_private_glob_import() {
 }
 
 #[test]
+fn a_private_glob_through_a_local_module_alias_cannot_hide_a_workspace_type() {
+    let edited = "mod inner { pub(super) type Alias = engine::Secret; }\nuse self::inner as h;\nuse h::*;\npub fn leak() -> Alias { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the glob-imported local type alias must be expanded");
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
+}
+
+#[test]
+fn a_glob_through_a_local_module_alias_cannot_import_an_invisible_type() {
+    let edited = "mod inner { type Option = engine::Secret; }\nuse self::inner as h;\nuse h::*;\npub fn safe() -> Option<u8> { unimplemented!() }\n/// A colour.";
+    try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .expect("the child module's private Option is not visible in the importing module");
+}
+
+#[test]
 fn a_renamed_workspace_dependency_glob_cannot_hide_a_type() {
     let edited = "mod imported { use engine::*; pub fn leak() -> Secret { unimplemented!() } }\npub use imported::leak;\n/// A colour.";
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)

@@ -1,7 +1,7 @@
 //! The Rust items a set of crates' signatures name, found as rustc finds them: through each
 //! module's items, `use`s and glob imports, into the crates `sunrise-mod-api` builds on.
 use std::{collections::HashMap, fs, path::Path};
-use syn::{Attribute, Item, Meta, UseTree};
+use syn::{Attribute, Item, Meta, UseTree, Visibility};
 
 fn target_cfg(name: &str) -> Option<String> {
     let environment = format!("CARGO_CFG_{}", name.to_ascii_uppercase());
@@ -408,7 +408,7 @@ impl<'a> Index<'a> {
                 m.path.join("::")
             ));
         }
-        let found = self.lookup(module, name, namespace, &mut Vec::new());
+        let found = self.lookup(module, name, namespace, module, &mut vec![module]);
         self.depth = self.depth.saturating_sub(1);
         found?.ok_or_else(|| {
             let m = &self.modules[module];
@@ -421,23 +421,25 @@ impl<'a> Index<'a> {
         module: usize,
         name: &str,
         namespace: Namespace,
+        importer: usize,
         seen: &mut Vec<usize>,
     ) -> Result<Option<Found>, String> {
-        if seen.contains(&module) {
-            return Ok(None);
-        }
-        seen.push(module);
         let items = &self.modules[module].items;
-        if let Some(item) = items.iter().position(|item| {
-            default_build(definition_attrs(item)) && defines(item, name, namespace)
+        if let Some((item, visibility)) = items.iter().enumerate().find_map(|(position, item)| {
+            let (attrs, visibility) = definition(item)?;
+            (default_build(attrs) && defines(item, name, namespace))
+                .then_some((position, visibility))
         }) {
-            return Ok(Some(Found::Item(ItemId { module, item })));
+            return Ok(self
+                .visible_from(module, visibility, importer)
+                .then_some(Found::Item(ItemId { module, item })));
         }
         let mut named = Vec::new();
         let mut globs = Vec::new();
         for item in items {
             if let Item::Use(item) = item
                 && default_build(&item.attrs)
+                && self.visible_from(module, &item.vis, importer)
             {
                 uses(
                     &item.tree,
@@ -470,20 +472,44 @@ impl<'a> Index<'a> {
             }
         }
         for glob in globs {
-            if let Some((krate, path)) = self.absolute(module, &glob)
-                && let Ok(target) = self.module(krate, &path)
-                && let Some(found) = self.lookup(target, name, namespace, seen)?
-            {
-                if let Some(external) = external_named.take() {
-                    // Without indexing the external crate, its named binding could be either a
-                    // value or a type. Preserve it so the API boundary can fail closed if a glob
-                    // also supplies a type with this name.
-                    return Ok(Some(external));
-                }
-                return Ok(Some(found));
+            let Some(target) = self.resolve_module_path(module, &glob)? else {
+                continue;
+            };
+            if seen.contains(&target) {
+                continue;
+            }
+            seen.push(target);
+            let found = self.lookup(target, name, namespace, importer, seen);
+            seen.pop();
+            if let Some(found) = found? {
+                // An opaque named import may still take precedence over a globbed type.
+                return Ok(external_named.or(Some(found)));
             }
         }
         Ok(external_named)
+    }
+
+    /// A restricted item is visible only in the named module and its descendants.
+    fn visible_from(&self, module: usize, visibility: &Visibility, importer: usize) -> bool {
+        let scope = &self.modules[module];
+        let importer = &self.modules[importer];
+        match visibility {
+            Visibility::Public(_) => true,
+            Visibility::Inherited => {
+                scope.krate == importer.krate && importer.path.starts_with(&scope.path)
+            }
+            Visibility::Restricted(visibility) => {
+                let path = visibility
+                    .path
+                    .segments
+                    .iter()
+                    .map(|segment| segment.ident.to_string())
+                    .collect::<Vec<_>>();
+                self.absolute(module, &path).is_some_and(|(krate, path)| {
+                    krate == importer.krate && importer.path.starts_with(&path)
+                })
+            }
+        }
     }
 
     /// What the path `path`, written in `module`, names.
@@ -671,17 +697,18 @@ fn is_type_item_named(item: &Item, name: &str) -> bool {
     }
 }
 
-fn definition_attrs(item: &Item) -> &[Attribute] {
-    match item {
-        Item::Const(item) => &item.attrs,
-        Item::Enum(item) => &item.attrs,
-        Item::Struct(item) => &item.attrs,
-        Item::Static(item) => &item.attrs,
-        Item::Trait(item) => &item.attrs,
-        Item::Type(item) => &item.attrs,
-        Item::Union(item) => &item.attrs,
-        _ => &[],
-    }
+fn definition(item: &Item) -> Option<(&[Attribute], &Visibility)> {
+    let (attrs, visibility) = match item {
+        Item::Const(item) => (&item.attrs, &item.vis),
+        Item::Enum(item) => (&item.attrs, &item.vis),
+        Item::Struct(item) => (&item.attrs, &item.vis),
+        Item::Static(item) => (&item.attrs, &item.vis),
+        Item::Trait(item) => (&item.attrs, &item.vis),
+        Item::Type(item) => (&item.attrs, &item.vis),
+        Item::Union(item) => (&item.attrs, &item.vis),
+        _ => return None,
+    };
+    Some((attrs, visibility))
 }
 
 /// Each path `tree` imports, with the name it binds (`None` for a glob).
