@@ -12,9 +12,9 @@ item being drawn.
 | Feature | Registration / Hook | Decode input | Runtime callback input | Answer |
 | --- | --- | --- | --- | --- |
 | Item tint source (`tints`) | `Hooks::register_item_tint_sources` via `event.register(id, decode)` | `&Tag` (tint JSON object) | `ItemTintInput { stack, bundle_selected }` | `u32` (ARGB colour) |
-| Custom item model type | `Hooks::register_item_models` via `event.register(id, decode)` | `&Tag` + `&mut dyn ItemModelChildren` | `ItemModelUpdateInput { stack, bundle_selected, context }` + `&mut Vec<ItemModelLayer>` | Push `ItemModelLayer` values |
+| Custom item model type | `Hooks::register_item_models` via `event.register(id, decode)` | `&ItemModelConfig` + `&mut dyn ItemModelChildren` | `ItemModelUpdateInput { stack, bundle_selected, context }` + `&mut Vec<ItemModelLayer>` | Push `ItemModelLayer` values |
 | Numeric `range_dispatch` property | `Hooks::register_range_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`range_dispatch` JSON object) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `f32` |
-| Categorical `select` property | `Hooks::register_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`select` JSON object) + per-case `when` decoder (`&Tag -> Result<SelectCaseKey, String>`) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `Option<SelectCaseKey>` |
+| Categorical `select` property | `Hooks::register_select_item_model_property` via `event.register(id, decode)` | `&Tag` (`select` JSON object) + per-case `when` decoder (`&Tag -> Result<T, String>`) | `ItemModelPropertyInput { stack, bundle_selected, context }` | `Option<T>` |
 | Conditional `condition` property | `Hooks::item_model_property` | none | `ItemModelPropertyEvent { property, stack, bundle_selected, value }` | `event.value: &mut bool` |
 
 ## Bind providers at registration
@@ -23,18 +23,23 @@ For item tint sources, custom item model types, range-select properties, and sel
 properties, register a decode-time factory once at client startup (before resources
 load) with `event.register(id, decode)`.
 
-On each resource load and reload, the game converts each matching JSON node into a
-borrowed `Tag` once and invokes `decode(&Tag)`. Parse configuration fields with
-`Tag::get` there and return `Ok(eval)` — the bound closure invoked per stack during
-item resolution with `&dyn ClientHost` and the borrowed input struct. Resolving a
-stack never re-parses or clones JSON configuration.
+On each resource load and reload, tint and property factories read their JSON configuration
+as `&Tag`. A custom model factory instead reads its original JSON through `ItemModelConfig::field`
+or `ItemModelConfig::decode`, chooses which fields and children to decode, and may opt in to the
+standard `transformation` with `children.use_transformation()?`. A replacement may ignore unknown
+fields or give `transformation` a different meaning. Each factory returns a closure invoked per
+stack with `&dyn ClientHost` and a borrowed input. Resolving a stack never re-parses configuration.
+
+For a `select`, use the same key type `T` in the case decoder and evaluator. An array in `when`
+is tried as a list of keys first, then as one key if the list does not decode. Empty lists and
+duplicate keys are rejected. The selected case draws on equality; otherwise the fallback draws.
 
 ```rust,ignore
 use mod_api::prelude::*;
 use mod_api::{
     Identifier, ItemModelLayer, ItemTransformMode, RegisterItemModelsEvent,
     RegisterItemTintSourcesEvent, RegisterRangeSelectItemModelPropertyEvent,
-    RegisterSelectItemModelPropertyEvent, RegistrationContext, SelectCaseKey, Tag,
+    RegisterSelectItemModelPropertyEvent, RegistrationContext, Tag,
 };
 
 fn register_item_tint_sources(
@@ -62,7 +67,7 @@ fn register_item_models(
     event.register(
         Identifier::parse("example:charge").unwrap(),
         |_config, children| {
-            children.add_named_models("models")?;
+            children.add_named_models()?;
             Ok(|_host, input, layers| {
                 let name = if input.stack.count() > 1 { "full" } else { "empty" };
                 layers.push(
@@ -91,10 +96,10 @@ fn register_select_item_model_property(
     event.register(Identifier::parse("example:mode").unwrap(), |_config| {
         Ok((
             |when: &Tag| match when {
-                Tag::String(mode) => Ok(SelectCaseKey::new(mode.clone())),
+                Tag::String(mode) => Ok(mode.clone()),
                 _ => Err("expected string mode".into()),
             },
-            |_host, _input| Some(SelectCaseKey::new("dig".to_owned())),
+            |_host, _input| Some("dig".to_owned()),
         ))
     });
 }
@@ -109,7 +114,7 @@ fn register_select_item_model_property(
   definition decode, so registering a vanilla identifier overrides that built-in.
 - Returning `Err(reason)` from `decode` rejects the enclosing item definition with a
   diagnostic without falling back to a built-in, and does not disable the provider.
-- A panic in a decoder or per-stack callback disables that mod's callback for the
+- A panic in a decoder, per-stack callback or select key equality disables that mod's callback for the
   session, logs an error, and shows an error toast naming the mod.
 
 ## Conditional properties (`item_model_property`)

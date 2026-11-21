@@ -18,6 +18,12 @@ Customize on Create World. The preset itself comes from the enabled data packs'
 preset to `data/minecraft/tags/worldgen/world_preset/normal.json` to offer it in Create
 World's type selector; unlisted presets remain hidden.
 
+Put editor-specific input and drawing in the bound `PresetEditor`. Generic screen hooks can identify
+its screen as `world_preset_editor`. Input first reaches the corresponding screen Pre hook; characters
+from a key, the input method, or the control socket reach `PresetEditor::char_typed` independently of
+key cancellation. An unhandled character reaches CharacterTyped.Post; an unhandled key reaches
+KeyPressed.Post after the editor and the normal title controls decline it.
+
 ```rust,ignore
 struct IslandsEditor;
 

@@ -333,31 +333,37 @@ fn registered_select_property_picks_the_case_the_mod_answers_per_stack() {
             property: &RegisteredSelectProperty,
             stack: &StackView,
             _ctx: &Context,
-        ) -> Option<RegisteredSelectKey> {
+            keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
+        ) -> Option<usize> {
             assert_eq!(property.payload.downcast_ref::<&str>(), Some(&"mode"));
-            match stack.count {
-                1 => Some(RegisteredSelectKey::new("dig".to_owned())),
-                2 => Some(RegisteredSelectKey::new("build".to_owned())),
-                3 => Some(RegisteredSelectKey::new("unlisted".to_owned())),
-                _ => None,
-            }
+            let chosen = match stack.count {
+                1 => "dig",
+                2 => "build",
+                3 => "unlisted",
+                _ => return None,
+            };
+            Iterator::find_map(keys, |(i, key)| {
+                (key.downcast_ref::<String>().unwrap() == chosen).then_some(i)
+            })
         }
     }
-    let load_select =
-        |kind: &str, _fields: &Map<String, Value>| -> std::result::Result<_, String> {
-            if kind != "selecttest:mode" {
-                return Ok(None);
-            }
-            Ok(Some(RegisteredSelectProperty::new(
-                Arc::new("mode"),
-                |value| {
-                    value
-                        .as_str()
-                        .map(|s| RegisteredSelectKey::new(s.to_owned()))
-                        .ok_or_else(|| "expected string".to_owned())
-                },
-            )))
-        };
+    let load_select = |kind: &str,
+                       _fields: &Map<String, Value>|
+     -> std::result::Result<_, String> {
+        if kind != "selecttest:mode" {
+            return Ok(None);
+        }
+        Ok(Some(RegisteredSelectProperty::new(
+            Arc::new("mode"),
+            |value| {
+                value
+                    .as_str()
+                    .map(|s| RegisteredSelectKey::new(s.to_owned()))
+                    .ok_or_else(|| SelectCaseDecodeError::Mismatch("expected string".to_owned()))
+            },
+            |a, b| Ok(a.downcast_ref::<String>() == b.downcast_ref::<String>()),
+        )))
+    };
     let decoders = ItemModelDecoders {
         select_property: Some(&load_select),
         ..Default::default()
@@ -514,6 +520,7 @@ fn registered_node_draws_the_models_the_mod_answers_per_stack() {
             _ => Vec::new(),
         };
         Ok(Some(DecodedItemModel {
+            transformation: None,
             model: RegisteredItemModel(Arc::new(glow)),
             models,
         }))

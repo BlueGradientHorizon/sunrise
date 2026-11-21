@@ -243,12 +243,16 @@ fn registered_tint_model_range_and_select_decoders_override_builtins() {
     let custom_model = RegisteredItemModel(Arc::new("model"));
     let custom_fluid = RegisteredItemModel(Arc::new("fluid"));
     let custom_range = RegisteredRangeProperty(Arc::new("range"));
-    let custom_select = RegisteredSelectProperty::new(Arc::new("select"), |value| {
-        value
-            .as_str()
-            .map(|s| RegisteredSelectKey::new(s.to_owned()))
-            .ok_or_else(|| "expected string".to_owned())
-    });
+    let custom_select = RegisteredSelectProperty::new(
+        Arc::new("select"),
+        |value| {
+            value
+                .as_str()
+                .map(|s| RegisteredSelectKey::new(s.to_owned()))
+                .ok_or_else(|| SelectCaseDecodeError::Mismatch("expected string".to_owned()))
+        },
+        |a, b| Ok(a.downcast_ref::<String>() == b.downcast_ref::<String>()),
+    );
 
     let load_tint = |kind: &str, _: &Map<String, Value>| -> std::result::Result<_, String> {
         Ok((kind == "minecraft:constant").then(|| custom_tint.clone()))
@@ -259,10 +263,12 @@ fn registered_tint_model_range_and_select_decoders_override_builtins() {
      -> std::result::Result<_, String> {
         match kind {
             "minecraft:model" => Ok(Some(DecodedItemModel {
+                transformation: None,
                 model: custom_model.clone(),
                 models: Vec::new(),
             })),
             "neoforge:fluid_container" => Ok(Some(DecodedItemModel {
+                transformation: None,
                 model: custom_fluid.clone(),
                 models: Vec::new(),
             })),

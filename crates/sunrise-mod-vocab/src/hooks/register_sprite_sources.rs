@@ -72,11 +72,9 @@ of a texture any pack has, a player's retexture included. It is borrowed for the
 
 Each entry is asked once per atlas each time the client prepares its resources, and the answer is kept
 for everything that reads the atlas, so a source that counts or varies its answers is still seen as one
-answer. Sprite sources run in the game's blocks, items and GUI atlas definitions (`assets/minecraft/atlases/blocks.json`,
-`items.json` and `gui.json`: the sprites block and item models name, and the GUI's own, which `DrawContext::sprite` and
-`gui_sprite` find by id: `minecraft:container/slot`, a mod's `mymod:panel`) and in the definition of an atlas a mod
-registered (`register_texture_atlases`); an atlas is asked under its own id, so two atlases sharing a
-definition each get their own question. Each atlas keeps its own sprites, by its own id: when the blocks
+answer. Sprite sources run in every client atlas that lists them (including blocks, items, GUI and
+particles, and atlases declared by `register_texture_atlases`). Each atlas is asked under its own id, so
+two atlases sharing a definition each get their own question. Each atlas keeps its own sprites, by its own id: when the blocks
 and items atlases both list an id, a model's material is the items atlas's, and `texture_sprites` finds
 the blocks atlas's sprite of that id (and every sprite a source made in the blocks atlas, though no model
 names it) after `texture_atlas_stitched`. A sprite only the items atlas lists has no block array to be found

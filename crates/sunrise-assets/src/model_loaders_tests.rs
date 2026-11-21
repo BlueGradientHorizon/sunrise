@@ -31,12 +31,12 @@ impl LoaderGeometry for Fixed {
         _: &str,
         _: &Value,
         _: &BTreeMap<String, String>,
-    ) -> Option<Vec<LoaderQuad>> {
+    ) -> Result<Option<Vec<LoaderQuad>>, String> {
         if loader != self.id {
-            return None;
+            return Ok(None);
         }
         self.calls.fetch_add(1, Ordering::Relaxed);
-        Some(self.quads.clone())
+        Ok(Some(self.quads.clone()))
     }
 }
 
@@ -78,7 +78,12 @@ const BASE: &str = r#"{"textures":{"side":"block/post"}}"#;
 #[test]
 fn custom_loader_decodes_statelessly_and_canonicalizes_default_namespace() {
     let kept = CuboidModel::from_json(r#"{"loader":"asmtest:kept","width":3}"#).unwrap();
-    let Some(Loader::Custom { kind, config }) = kept.loader else {
+    let Some(Loader::Custom {
+        kind,
+        config,
+        optional: false,
+    }) = kept.loader
+    else {
         panic!("a custom loader decodes as Loader::Custom");
     };
     assert_eq!(kind, "asmtest:kept");
@@ -141,34 +146,68 @@ fn loader_quads_turn_with_the_variant_and_take_the_models_textures() {
 }
 
 #[test]
-fn unknown_loader_yields_none_while_registered_empty_loader_yields_registered_empty() {
-    let loaders = Arc::new(Fixed::new("asmtest:empty", Vec::new()));
+fn an_absent_optional_loader_uses_cuboids_but_required_and_refused_loaders_use_missing() {
+    struct Outcomes;
+    impl LoaderGeometry for Outcomes {
+        fn quads(
+            &self,
+            loader: &str,
+            _: &str,
+            _: &Value,
+            _: &BTreeMap<String, String>,
+        ) -> Result<Option<Vec<LoaderQuad>>, String> {
+            match loader {
+                "asmtest:empty" => Ok(Some(Vec::new())),
+                "asmtest:refuses" => Err("invalid loader configuration".to_owned()),
+                _ => Ok(None),
+            }
+        }
+    }
     let library = library(
         &[
             (
-                "t:unknown",
-                r##"{"loader":"asmtest:unregistered","textures":{"side":"block/post"},
-                    "elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"up":{"texture":"#side"}}}]}"##,
+                "t:base",
+                r##"{"textures":{"side":"block/post"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"up":{"texture":"#side"}}}]}"##,
+            ),
+            (
+                "t:optional",
+                r#"{"parent":"t:base","loader":{"id":"asmtest:absent","optional":true}}"#,
+            ),
+            (
+                "t:required",
+                r#"{"parent":"t:base","loader":"asmtest:absent"}"#,
+            ),
+            (
+                "t:default_required",
+                r#"{"parent":"t:base","loader":{"id":"asmtest:absent"}}"#,
+            ),
+            (
+                "t:refused",
+                r#"{"parent":"t:base","loader":{"id":"asmtest:refuses","optional":true}}"#,
             ),
             (
                 "t:empty",
                 r#"{"loader":"asmtest:empty","textures":{"side":"block/post"}}"#,
             ),
         ],
-        loaders.clone(),
+        Arc::new(Outcomes),
     );
-    let resolved_unknown = library.resolve("t:unknown").unwrap();
-    assert!(resolved_unknown.loader().is_none());
-    let quads = bake(&library, "t:unknown", [0, 0, 0]);
-    assert_eq!(quads.len(), 1, "the element's face only");
-    assert_eq!(loaders.calls.load(Ordering::Relaxed), 0);
-
-    let resolved_empty = library.resolve("t:empty").unwrap();
-    assert!(matches!(
-        resolved_empty.loader(),
-        Some(ResolvedLoader::Registered(q)) if q.is_empty()
-    ));
-    assert_eq!(loaders.calls.load(Ordering::Relaxed), 1);
+    let optional = bake(&library, "t:optional", [0; 3]);
+    assert_eq!(optional.len(), 1);
+    assert_eq!(optional[0].material.sprite, "minecraft:block/post");
+    for name in ["t:required", "t:default_required", "t:refused"] {
+        assert!(library.resolve_required(name).is_err());
+        let missing = bake(&library, name, [0; 3]);
+        assert_eq!(missing.len(), 6);
+        assert!(
+            missing
+                .iter()
+                .all(|quad| quad.material.sprite == "minecraft:missingno")
+        );
+    }
+    let empty = library.resolve_required("t:empty").unwrap();
+    assert!(matches!(empty.loader(), Some(ResolvedLoader::Registered(q)) if q.is_empty()));
+    assert!(bake(&library, "t:empty", [0; 3]).is_empty());
 }
 
 #[test]
@@ -181,9 +220,9 @@ fn inherited_loader_geometry_is_cached_per_model_identity() {
             model: &str,
             _: &Value,
             textures: &BTreeMap<String, String>,
-        ) -> Option<Vec<LoaderQuad>> {
+        ) -> Result<Option<Vec<LoaderQuad>>, String> {
             if loader != "asmtest:named" {
-                return None;
+                return Ok(None);
             }
             self.0
                 .lock()
@@ -191,7 +230,7 @@ fn inherited_loader_geometry_is_cached_per_model_identity() {
                 .push((model.to_owned(), textures.clone()));
             let mut quad = post("side");
             quad.tint_index = if model == "t:parent" { 1 } else { 7 };
-            Some(vec![quad])
+            Ok(Some(vec![quad]))
         }
     }
     let callbacks = Arc::new(Named(std::sync::Mutex::new(Vec::new())));
@@ -230,9 +269,9 @@ fn resolve_with_textures_caches_loader_quads_per_effective_texture_map() {
             _: &str,
             _: &Value,
             textures: &BTreeMap<String, String>,
-        ) -> Option<Vec<LoaderQuad>> {
+        ) -> Result<Option<Vec<LoaderQuad>>, String> {
             if loader != "asmtest:tex_tint" {
-                return None;
+                return Ok(None);
             }
             let sprite = textures.get("side").cloned().unwrap_or_default();
             self.0.lock().unwrap().push(sprite.clone());
@@ -242,7 +281,7 @@ fn resolve_with_textures_caches_loader_quads_per_effective_texture_map() {
             } else {
                 20
             };
-            Some(vec![quad])
+            Ok(Some(vec![quad]))
         }
     }
 

@@ -769,7 +769,7 @@ pub(super) fn stage_pack(
     let block_entity_shapes = res.block_entity_render().shapes_for(&source);
     let waypoint_styles = sunrise_client::locator_bar::WaypointStyles::load(&source);
     let armor_stand_assets = super::armor_stands::ArmorStandAssets::load(&source, None);
-    let frame_models = super::frames::bake_frames(&source);
+    let frame_models = super::frames::bake_frames(pack.render.model_library.as_deref().ok());
     progress.set(3);
     Ok(StagedPack {
         root,

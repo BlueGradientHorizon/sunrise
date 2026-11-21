@@ -345,7 +345,7 @@ fn transformation(v: &Value) -> Result<Mat4> {
         .scale(scale)
         .rotate(right))
 }
-fn optional_transformation(m: &Map<String, Value>) -> Result<Option<Mat4>> {
+pub fn optional_transformation(m: &Map<String, Value>) -> Result<Option<Mat4>> {
     get(m, "transformation").map(transformation).transpose()
 }
 /// `ARGB.as8BitChannel`: `Mth.floor(value * 255.0F)`.
@@ -377,6 +377,7 @@ pub type TintSourceLoader<'a> = dyn Fn(&str, &Map<String, Value>) -> std::result
 #[derive(Clone, Debug)]
 pub struct DecodedItemModel {
     pub model: RegisteredItemModel,
+    pub transformation: Option<Mat4>,
     pub models: Vec<(String, ItemModelNode)>,
 }
 
@@ -463,48 +464,43 @@ impl PartialEq for RegisteredRangeProperty {
     }
 }
 
-trait RegisteredSelectKeyOps: std::any::Any + std::fmt::Debug + Send + Sync {
-    fn as_any(&self) -> &dyn std::any::Any;
-    fn dyn_eq(&self, other: &dyn RegisteredSelectKeyOps) -> bool;
-}
-
-impl<T: Eq + std::fmt::Debug + Send + Sync + 'static> RegisteredSelectKeyOps for T {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn dyn_eq(&self, other: &dyn RegisteredSelectKeyOps) -> bool {
-        other
-            .as_any()
-            .downcast_ref::<T>()
-            .is_some_and(|rhs| self == rhs)
-    }
-}
-
-/// A type-erased `when` case value decoded by a [`RegisteredSelectProperty`] and compared by
-/// equality against the property's per-stack result.
+/// A type-erased `when` case value. Only its provider may compare the underlying value,
+/// inside its callback boundary.
 #[derive(Clone, Debug)]
-pub struct RegisteredSelectKey(Arc<dyn RegisteredSelectKeyOps>);
+pub struct RegisteredSelectKey(Arc<dyn std::any::Any + Send + Sync>);
 
 impl RegisteredSelectKey {
-    pub fn new<T: Eq + std::fmt::Debug + Send + Sync + 'static>(value: T) -> Self {
+    pub fn new<T: Send + Sync + 'static>(value: T) -> Self {
         Self(Arc::new(value))
     }
 
     pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
-        self.0.as_any().downcast_ref::<T>()
+        self.0.downcast_ref::<T>()
     }
 }
 
-impl PartialEq for RegisteredSelectKey {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.dyn_eq(&*other.0)
+/// Only a codec mismatch may try the scalar branch of the compact-list codec.
+#[derive(Debug)]
+pub enum SelectCaseDecodeError {
+    Mismatch(String),
+    Callback(String),
+}
+
+impl From<SelectCaseDecodeError> for DecodeError {
+    fn from(error: SelectCaseDecodeError) -> Self {
+        match error {
+            SelectCaseDecodeError::Mismatch(reason) | SelectCaseDecodeError::Callback(reason) => {
+                Self(reason)
+            }
+        }
     }
 }
-impl Eq for RegisteredSelectKey {}
 
 type RegisteredSelectCaseDecoder =
-    dyn Fn(&Value) -> std::result::Result<RegisteredSelectKey, String> + Send + Sync;
+    dyn Fn(&Value) -> std::result::Result<RegisteredSelectKey, SelectCaseDecodeError> + Send + Sync;
+type RegisteredSelectCaseEquality = dyn Fn(&RegisteredSelectKey, &RegisteredSelectKey) -> std::result::Result<bool, String>
+    + Send
+    + Sync;
 
 /// A registered `select` categorical property bound at decode time. The payload is opaque to
 /// assets; the decoder and draw host agree on its type, and `decode_case` validates and decodes
@@ -513,19 +509,34 @@ type RegisteredSelectCaseDecoder =
 pub struct RegisteredSelectProperty {
     pub payload: Arc<dyn std::any::Any + Send + Sync>,
     decode_case: Arc<RegisteredSelectCaseDecoder>,
+    case_eq: Arc<RegisteredSelectCaseEquality>,
 }
 impl RegisteredSelectProperty {
-    pub fn new<C>(payload: Arc<dyn std::any::Any + Send + Sync>, decode_case: C) -> Self
-    where
-        C: Fn(&Value) -> std::result::Result<RegisteredSelectKey, String> + Send + Sync + 'static,
-    {
+    pub fn new(
+        payload: Arc<dyn std::any::Any + Send + Sync>,
+        decode_case: impl Fn(&Value) -> std::result::Result<RegisteredSelectKey, SelectCaseDecodeError>
+        + Send
+        + Sync
+        + 'static,
+        case_eq: impl Fn(
+            &RegisteredSelectKey,
+            &RegisteredSelectKey,
+        ) -> std::result::Result<bool, String>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
         Self {
             payload,
             decode_case: Arc::new(decode_case),
+            case_eq: Arc::new(case_eq),
         }
     }
 
-    pub fn decode_case(&self, value: &Value) -> std::result::Result<RegisteredSelectKey, String> {
+    pub fn decode_case(
+        &self,
+        value: &Value,
+    ) -> std::result::Result<RegisteredSelectKey, SelectCaseDecodeError> {
         (self.decode_case)(value)
     }
 }
@@ -642,7 +653,7 @@ pub enum ItemModelNode {
 }
 /// One `when` value on a [`SwitchCase`]: canonical JSON for built-in properties, or a typed
 /// [`RegisteredSelectKey`] decoded by a registered select property's case decoder.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum SwitchCaseValue {
     Json(Value),
     Registered(RegisteredSelectKey),
@@ -672,7 +683,7 @@ impl ItemModelNode {
         {
             return Ok(Self::Registered {
                 model: decoded.model,
-                transformation: optional_transformation(m)?,
+                transformation: decoded.transformation,
                 models: decoded.models,
             });
         }
@@ -736,8 +747,19 @@ impl ItemModelNode {
                 }
                 let mut seen: Vec<&SwitchCaseValue> = Vec::new();
                 for value in cases.iter().flat_map(|c| &c.values) {
-                    if seen.contains(&value) {
-                        return Err(err("duplicate case conditions"));
+                    for &previous in &seen {
+                        let equal = match (previous, value, &property) {
+                            (SwitchCaseValue::Json(a), SwitchCaseValue::Json(b), _) => a == b,
+                            (
+                                SwitchCaseValue::Registered(a),
+                                SwitchCaseValue::Registered(b),
+                                SelectProperty::Registered(bound),
+                            ) => (bound.case_eq)(a, b).map_err(DecodeError)?,
+                            _ => unreachable!("all cases of a select use the same decoder"),
+                        };
+                        if equal {
+                            return Err(err("duplicate case conditions"));
+                        }
                     }
                     seen.push(value);
                 }
@@ -854,17 +876,32 @@ impl SwitchCase {
     ) -> Result<Self> {
         let m = object(v)?;
         let when = required(m, "when")?;
-        // `compactListCodec`: a list, or one value; the list must not be empty.
-        let raw: Vec<&Value> = match when {
-            Value::Array(a) if !a.is_empty() => a.iter().collect(),
-            Value::Array(_) => return Err(err("list must have contents")),
-            single => vec![single],
+        // `compactListCodec` tries the list codec first, then the original value as one key.
+        // An empty list decodes successfully and is then rejected by the nonempty check.
+        let decode = |value: &Value| match property {
+            SelectProperty::Registered(bound) => {
+                bound.decode_case(value).map(SwitchCaseValue::Registered)
+            }
+            _ => property
+                .decode_value(value)
+                .map_err(|e| SelectCaseDecodeError::Mismatch(e.0)),
+        };
+        let values = if let Value::Array(array) = when {
+            match array
+                .iter()
+                .map(decode)
+                .collect::<std::result::Result<Vec<_>, _>>()
+            {
+                Ok(values) if values.is_empty() => return Err(err("list must have contents")),
+                Ok(values) => values,
+                Err(SelectCaseDecodeError::Mismatch(_)) => vec![decode(when)?],
+                Err(error) => return Err(error.into()),
+            }
+        } else {
+            vec![decode(when)?]
         };
         Ok(Self {
-            values: raw
-                .into_iter()
-                .map(|v| property.decode_value(v))
-                .collect::<Result<_>>()?,
+            values,
             model: ItemModelNode::decode_with(required(m, "model")?, decoders)?,
         })
     }
@@ -1044,15 +1081,8 @@ impl SelectProperty {
             _ => return Err(err("unknown select property")),
         }))
     }
-    /// A `when` value in canonical form (identifiers normalised, or parsed through a registered
-    /// property's case decoder).
+    /// A built-in `when` value in canonical form (identifiers normalised).
     fn decode_value(&self, v: &Value) -> Result<SwitchCaseValue> {
-        if let Self::Registered(property) = self {
-            return property
-                .decode_case(v)
-                .map(SwitchCaseValue::Registered)
-                .map_err(DecodeError);
-        }
         Ok(SwitchCaseValue::Json(match self {
             Self::Registered(_) => unreachable!(),
             Self::CustomModelData(_) | Self::BlockState(_) | Self::LocalTime { .. } => {
@@ -1369,14 +1399,15 @@ pub trait ItemEnv {
     ) -> f32 {
         0.0
     }
-    /// A mod's bound categorical `select` property, `None` (the fallback) when no
-    /// mod answers.
+    /// Evaluate and compare a bound categorical `select` property in its callback boundary.
+    /// Return the selected case index or `None` to use the fallback.
     fn item_model_select_property(
         &self,
         _property: &RegisteredSelectProperty,
         _stack: &StackView,
         _ctx: &Context,
-    ) -> Option<RegisteredSelectKey> {
+        _keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
+    ) -> Option<usize> {
         None
     }
     /// A mod's bound tint source for `stack`: ARGB, white when no mod answers.
@@ -1757,13 +1788,26 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
                 fallback,
             } => {
                 let child = compose(parent, transformation);
-                let value = self.select_value(property);
-                let chosen = value.and_then(|v| {
-                    cases
-                        .iter()
-                        .find(|c| c.values.contains(&v))
-                        .map(|c| &c.model)
-                });
+                let chosen = if let SelectProperty::Registered(property) = property {
+                    let mut keys = cases.iter().enumerate().flat_map(|(index, case)| {
+                        case.values.iter().filter_map(move |value| match value {
+                            SwitchCaseValue::Registered(key) => Some((index, key)),
+                            SwitchCaseValue::Json(_) => None,
+                        })
+                    });
+                    self.env
+                        .item_model_select_property(property, self.stack, self.ctx, &mut keys)
+                        .and_then(|index| cases.get(index))
+                } else {
+                    self.select_value(property).and_then(|v| {
+                        cases.iter().find(|c| {
+                            c.values.iter().any(
+                                |key| matches!(key, SwitchCaseValue::Json(value) if value == &v),
+                            )
+                        })
+                    })
+                }
+                .map(|case| &case.model);
                 match (chosen, fallback) {
                     (Some(m), _) => self.node(m, &child, display_transform),
                     (None, Some(f)) => self.node(f, &child, display_transform),
@@ -2011,15 +2055,9 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
             }
         }
     }
-    fn select_value(&self, property: &SelectProperty) -> Option<SwitchCaseValue> {
+    fn select_value(&self, property: &SelectProperty) -> Option<Value> {
         let owner = self.ctx.owner;
-        if let SelectProperty::Registered(property) = property {
-            return self
-                .env
-                .item_model_select_property(property, self.stack, self.ctx)
-                .map(SwitchCaseValue::Registered);
-        }
-        let json = match property {
+        match property {
             SelectProperty::Registered(_) => unreachable!(),
             SelectProperty::CustomModelData(i) => self
                 .component("minecraft:custom_model_data")
@@ -2077,8 +2115,7 @@ impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
                 self.ctx.level.map(|l| Value::String(l.dimension.clone()))
             }
             SelectProperty::Component(component) => self.component(component).cloned(),
-        };
-        json.map(SwitchCaseValue::Json)
+        }
     }
     fn numeric(&self, property: &NumericProperty) -> f32 {
         let owner = self.ctx.owner;

@@ -50,11 +50,12 @@ per load.
 
 Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted. Duplicate registrations and
 collisions with `neoforge:composite` or `neoforge:obj` are logged as registration errors and the first
-registration stands. Returning `Err(reason)` logs a warning naming the mod and model without disabling the
-loader; panicking disables that loader callback for the session and surfaces an error toast. A quad with a
-position or UV that isn't finite, or a texture key the model doesn't define, is skipped by itself with a
-reason. A `loader` no mod registered is logged as an error naming it and the model, which then draws only
-its elements."#]
+registration stands. A loader ID written as a string, or as an object with `id` and no `optional` flag,
+is required. When the loader is absent, only `"loader": {"id":"example:pillar","optional":true}` uses
+ordinary cuboid geometry. A required loader that is absent or a present loader that returns `Err(reason)`
+uses the missing model and logs the error. An empty successful quad list is not an error. Panicking also
+disables that loader callback for the session and surfaces an error toast. A quad with a position or UV
+that isn't finite, or a texture key the model doesn't define, is skipped by itself with a reason."#]
     #[hook(
         receiver = "associated",
         dispatch = "flat",

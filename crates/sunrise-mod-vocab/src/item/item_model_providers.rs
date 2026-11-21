@@ -104,14 +104,48 @@ pub trait ItemModelChildren {
     fn add_named_models(&mut self) -> Result<Vec<String>, String>;
     /// Bind a plain `minecraft:model` leaf referencing `model` under `name`.
     fn add_model(&mut self, name: &str, model: Identifier) -> Result<(), String>;
+    /// Decode and apply the standard optional `transformation` field to this node and its layers.
+    /// Do not call this if your model does not use that field or gives it another meaning.
+    fn use_transformation(&mut self) -> Result<(), String>;
 }
 
-/// A decode-time factory bound at `register_item_models` that parses an item model node's JSON
-/// object (as a [`Tag`]), declares any child models on [`ItemModelChildren`], and returns the
-/// per-stack update callback.
+/// A borrowed view of the original JSON object passed to a registered item model's decoder.
+// no wire: borrowed item model configuration during resource load.
+// exhaustive: engine constructs the view; its field is private.
+pub struct ItemModelConfig<'a> {
+    fields: &'a serde_json::Map<String, serde_json::Value>,
+}
+
+#[doc(hidden)]
+pub fn new_item_model_config(
+    fields: &serde_json::Map<String, serde_json::Value>,
+) -> ItemModelConfig<'_> {
+    ItemModelConfig { fields }
+}
+
+impl<'a> ItemModelConfig<'a> {
+    /// Deserialize a field if present, borrowing from the JSON when `T` supports it.
+    /// An explicit JSON `null` is passed to `T`; `Ok(None)` means the field is absent.
+    pub fn field<T: serde::Deserialize<'a>>(&self, name: &str) -> Result<Option<T>, String> {
+        self.fields
+            .get(name)
+            .map(T::deserialize)
+            .transpose()
+            .map_err(|reason| format!("item model field {name:?}: {reason}"))
+    }
+
+    /// Deserialize the entire object, for schemas that need to inspect arbitrary field names.
+    pub fn decode<T: serde::Deserialize<'a>>(&self) -> Result<T, String> {
+        T::deserialize(self.fields).map_err(|reason| reason.to_string())
+    }
+}
+
+/// A decode-time factory bound at `register_item_models` that reads an item model's JSON object,
+/// declares its children and optional standard transformation, and returns the per-stack callback.
 // no wire: retained process-local item model decoder callback.
-pub type ItemModelDecoder =
-    dyn Fn(&Tag, &mut dyn ItemModelChildren) -> Result<Arc<ItemModelFn>, String> + Send + Sync;
+pub type ItemModelDecoder = dyn Fn(&ItemModelConfig<'_>, &mut dyn ItemModelChildren) -> Result<Arc<ItemModelFn>, String>
+    + Send
+    + Sync;
 
 /// A staged item model decoder; dispatch attributes it to the registering mod.
 // no wire: retained process-local item model decoder registration.
@@ -133,14 +167,17 @@ impl RegisterItemModelsEvent<'_> {
     /// `LateBoundIdMapper`), and registering a built-in vanilla or engine item model type id
     /// overrides that built-in when decoding item definitions.
     ///
-    /// `decode` runs once per matching node on each resource load and reload with the node's JSON
-    /// object converted to a [`Tag`] and an [`ItemModelChildren`] builder for decoding child item
-    /// models from any schema (`models` array, `on_true`/`on_false`, `model` id, named `models`
-    /// map, etc.), returning the bound per-stack layer callback (or `Err(reason)` to refuse the
-    /// enclosing item definition without falling back to a built-in).
+    /// `decode` runs once per matching node on each resource load and reload with a borrowed
+    /// [`ItemModelConfig`] and an [`ItemModelChildren`] builder. Your decoder owns the schema:
+    /// only the fields it requests are decoded. It can opt into the standard transformation and
+    /// decode any children recursively, then return its per-stack layer callback. Returning
+    /// `Err(reason)` rejects the item definition without falling back to a built-in.
     pub fn register<D, F>(&mut self, id: Identifier, decode: D)
     where
-        D: Fn(&Tag, &mut dyn ItemModelChildren) -> Result<F, String> + Send + Sync + 'static,
+        D: Fn(&ItemModelConfig<'_>, &mut dyn ItemModelChildren) -> Result<F, String>
+            + Send
+            + Sync
+            + 'static,
         F: Fn(&dyn ClientHost, &ItemModelUpdateInput<'_>, &mut Vec<ItemModelLayer>)
             + Send
             + Sync
@@ -270,10 +307,16 @@ impl Eq for SelectCaseKey {}
 pub type SelectCaseDecoder = dyn Fn(&Tag) -> Result<SelectCaseKey, String> + Send + Sync;
 
 /// A bound categorical `select` property instance produced at item definition decode time and
-/// invoked per stack (`SelectItemModelProperty.get`).
+/// invoked per stack (`SelectItemModelProperty.get`). Returns the index of the first matching
+/// case without allocating a type-erased key for the stack.
 // no wire: retained process-local select item model property callback.
-pub type SelectPropertyFn =
-    dyn Fn(&dyn ClientHost, &ItemModelPropertyInput<'_>) -> Option<SelectCaseKey> + Send + Sync;
+pub type SelectPropertyFn = dyn Fn(
+        &dyn ClientHost,
+        &ItemModelPropertyInput<'_>,
+        &mut dyn Iterator<Item = (usize, &SelectCaseKey)>,
+    ) -> Option<usize>
+    + Send
+    + Sync;
 
 /// A decode-time factory bound at `register_select_item_model_property` that parses a `select`
 /// node's JSON object (as a [`Tag`]) once at resource load and returns both its `when` case
@@ -306,8 +349,10 @@ impl RegisterSelectItemModelPropertyEvent<'_> {
     /// node's JSON object converted to a [`Tag`], returning a pair `(decode_case, eval)`:
     /// `decode_case` validates and decodes each `cases[*].when` entry (as a [`Tag`]) into the
     /// property's case type `T`, and `eval` evaluates the stack into `Option<T>` for equality
-    /// comparison against the decoded `when` values. Returning `Err(reason)` from `decode` or
-    /// `decode_case` refuses the enclosing item definition without falling back to a built-in.
+    /// comparison against the decoded `when` values. Arrays try a list of keys before the single
+    /// key codec. Returning `Err(reason)` from `decode`, or from both attempts by `decode_case`,
+    /// refuses the item definition. A panic, including in `T::eq`, disables this provider for the
+    /// session; on draw the select uses its fallback.
     pub fn register<T, D, C, F>(&mut self, id: Identifier, decode: D)
     where
         T: Eq + std::fmt::Debug + Send + Sync + 'static,
@@ -321,8 +366,15 @@ impl RegisterSelectItemModelPropertyEvent<'_> {
                 let (decode_case, eval) = decode(config)?;
                 let case_decoder: Arc<SelectCaseDecoder> =
                     Arc::new(move |when| decode_case(when).map(SelectCaseKey::new));
-                let property_fn: Arc<SelectPropertyFn> =
-                    Arc::new(move |host, input| eval(host, input).map(SelectCaseKey::new));
+                let property_fn: Arc<SelectPropertyFn> = Arc::new(move |host, input, cases| {
+                    let value = eval(host, input)?;
+                    for (index, key) in cases {
+                        if key.downcast_ref::<T>().is_some_and(|key| key == &value) {
+                            return Some(index);
+                        }
+                    }
+                    None
+                });
                 Ok((case_decoder, property_fn))
             }),
         });

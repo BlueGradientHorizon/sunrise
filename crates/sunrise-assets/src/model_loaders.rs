@@ -30,8 +30,8 @@ pub struct LoaderQuad {
 /// textures)` in a library. `model` names the model for the log and `textures` carries its
 /// resolved texture slots (`slot -> sprite identifier`).
 ///
-/// Returns `None` when no loader is registered for `loader` (unknown loader), and `Some(quads)`
-/// when a registered loader handled the model (even if it produced zero quads or refused/failed).
+/// Returns `Ok(None)` when no provider is registered, `Ok(Some(quads))` when a provider
+/// successfully handled the model (including zero quads), or `Err(reason)` when it failed.
 pub trait LoaderGeometry: Send + Sync {
     fn quads(
         &self,
@@ -39,5 +39,5 @@ pub trait LoaderGeometry: Send + Sync {
         model: &str,
         config: &Value,
         textures: &BTreeMap<String, String>,
-    ) -> Option<Vec<LoaderQuad>>;
+    ) -> Result<Option<Vec<LoaderQuad>>, String>;
 }

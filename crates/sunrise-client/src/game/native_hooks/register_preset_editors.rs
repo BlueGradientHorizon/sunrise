@@ -10,7 +10,7 @@ impl Game<'_> {
         Self::fire_register_preset_editors(context, editors);
     }
 
-    pub(super) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
+    pub(in crate::game) fn preset_editor_title(&self) -> Option<&sunrise_client::title::Title> {
         if self.screen != Screen::Playing || self.screen_over_playing() || self.remote_loading() {
             return None;
         }
@@ -43,7 +43,8 @@ mod tests {
     use super::*;
     use mod_api::{
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
-        RegisterPresetEditorsEvent, ScreenKeyPressedPreEvent, ScreenRenderPostEvent,
+        RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
+        ScreenKeyPressedPostEvent, ScreenKeyPressedPreEvent, ScreenRenderPostEvent,
     };
     use std::sync::{
         Mutex,
@@ -131,9 +132,43 @@ mod tests {
         clicks: Arc<AtomicUsize>,
         keys: Arc<AtomicUsize>,
         typed: Arc<Mutex<String>>,
+        char_post: Arc<Mutex<String>>,
+        key_post: Arc<Mutex<Vec<String>>>,
     }
     #[mod_api::__subscriptions]
     impl Hooks for EditorMod {
+        fn screen_char_typed_pre(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenCharTypedPreEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.screen.id == "world_preset_editor" && event.c == '!' {
+                mod_api::Flow::Cancel
+            } else {
+                mod_api::Flow::Continue
+            }
+        }
+        fn screen_char_typed_post(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenCharTypedPostEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.screen.id == "world_preset_editor" {
+                self.char_post.lock().unwrap().push(event.c);
+            }
+            mod_api::Flow::Continue
+        }
+        fn screen_key_pressed_post(
+            &self,
+            _: &dyn mod_api::ClientHost,
+            event: &mut ScreenKeyPressedPostEvent<'_>,
+        ) -> mod_api::Flow {
+            if event.screen.id == "world_preset_editor" {
+                self.key_post.lock().unwrap().push(event.key.to_owned());
+            }
+            mod_api::Flow::Continue
+        }
+
         fn register_preset_editors(
             &self,
             _: &mod_api::RegistrationContext,
@@ -197,6 +232,8 @@ mod tests {
         let clicks = Arc::new(AtomicUsize::new(0));
         let keys = Arc::new(AtomicUsize::new(0));
         let typed = Arc::new(Mutex::new(String::new()));
+        let char_post = Arc::new(Mutex::new(String::new()));
+        let key_post = Arc::new(Mutex::new(Vec::new()));
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
                 "example",
@@ -204,11 +241,15 @@ mod tests {
                     clicks: Arc::clone(&clicks),
                     keys: Arc::clone(&keys),
                     typed: Arc::clone(&typed),
+                    char_post: Arc::clone(&char_post),
+                    key_post: Arc::clone(&key_post),
                 }),
             )]
             .into(),
             || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let _window =
+                        crate::game::native_hooks::particle_count_tests::frame_scene(game);
                     use mod_api::__private::game::RegistrationContextNew;
                     let mut editors = Vec::new();
                     Game::native_register_preset_editors(
@@ -274,24 +315,24 @@ mod tests {
                     game.native_screen_render_post(&mut batch, &view);
                     assert!(batch.vertices.len() > after_editor_vertices);
                     assert!(game.preset_editor_mouse_clicked(MouseButton::Left));
-                    // Consumed char returns Ok; declined char returns Err rather than falling
-                    // through to title.type_text.
-                    assert!(game.type_chars_into_screen("a").is_ok());
-                    assert!(game.type_chars_into_screen("x").is_err());
-                    // Control `key` routes to the preset editor even with no world loaded,
-                    // delivering Tab to `PresetEditor::key_pressed` ahead of `key_focus_key`.
+                    // IME and the socket both send characters independently of the key path.
+                    game.handle_window_event_inner(
+                        &NoopLoop,
+                        winit::event::WindowEvent::Ime(winit::event::Ime::Commit("é!x".into())),
+                        None,
+                    );
                     let (reply, _) = std::sync::mpsc::channel();
+                    game.control_command("type Ωx", &reply, &NoopLoop).unwrap();
+                    // Tab is consumed by the editor; Q is declined by both the editor and its widgets.
                     game.control_command("key tab tap", &reply, &NoopLoop)
                         .unwrap();
+                    game.preset_editor_key_pressed(&NoopLoop, KeyCode::KeyQ, false)
+                        .unwrap();
+                    assert_eq!(*key_post.lock().unwrap(), ["key.keyboard.q"]);
                     assert_eq!(keys.load(Ordering::Relaxed), 1);
                     assert_eq!(clicks.load(Ordering::Relaxed), 1);
-                    assert_eq!(
-                        typed
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .as_str(),
-                        "a"
-                    );
+                    assert_eq!(char_post.lock().unwrap().as_str(), "xx");
+                    assert_eq!(typed.lock().unwrap().as_str(), "éΩ");
                     let after_click = game.preset_editor_dimensions().unwrap();
                     assert_eq!(
                         after_click
@@ -302,15 +343,11 @@ mod tests {
                             "minecraft:the_nether".into()
                         ))
                     );
-                    let mut canceled = false;
-                    game.native_screen_key_pressed_pre(
-                        &view,
-                        "key.keyboard.space",
-                        false,
-                        0,
-                        &mut canceled,
-                    );
-                    assert!(canceled);
+                    game.preset_editor_key_pressed(&NoopLoop, KeyCode::Space, false)
+                        .unwrap();
+                    game.screen_chars_typed(Some("z"));
+                    assert_eq!(typed.lock().unwrap().as_str(), "éΩz");
+                    assert_eq!(*key_post.lock().unwrap(), ["key.keyboard.q"]);
                     let dimensions = game.preset_editor_dimensions().unwrap();
                     assert_eq!(
                         dimensions

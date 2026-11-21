@@ -4,7 +4,7 @@ pub trait Hooks {
     /// Register the item model node types a mod adds (NeoForge's `RegisterItemModelsEvent`). Asked
     /// once at start on the client, before resources load. Use [`RegisterItemModelsEvent::register`]
     /// to bind each type identifier directly to its decode-time factory, which parses the node's
-    /// JSON object once on each load/reload, declares any nested child item models through
+    /// JSON object through [`ItemModelConfig`] once on each load/reload, declares any nested child item models through
     /// [`ItemModelChildren`], and returns the per-stack callback that pushes [`ItemModelLayer`]
     /// choices referencing those child keys. Any valid [`Identifier`] (including `minecraft:`) is
     /// accepted; a later registration for the same id replaces the earlier one (last-writer-wins),
@@ -15,7 +15,8 @@ pub trait Hooks {
 An item definition (`assets/<namespace>/items/<path>.json`) is a tree of model nodes: vanilla's `minecraft:model`,
 `condition`, `select`, `range_dispatch`, `composite`, `special` and the rest. A mod adds a node type of its own
 (NeoForge's `RegisterItemModelsEvent`) once at client startup in `Hooks::register_item_models` via
-`event.register(id, decode)`: `decode` parses the node's JSON object (as a `Tag`) once on each load and reload,
+`event.register(id, decode)`: `decode` owns the node's schema and reads its original JSON object through
+`ItemModelConfig::field` or `ItemModelConfig::decode` once on each load and reload. It
 declares nested child item models on `children: &mut dyn ItemModelChildren` (`add_named_models`, `add_field`,
 `add_list`, `add_object`, or `add_model`), and returns the bound per-stack callback.
 
@@ -31,7 +32,7 @@ fn register_item_models(
     event.register(
         Identifier::parse("example:charge").unwrap(),
         |_config, children| {
-            children.add_named_models("models")?;
+            children.add_named_models()?;
             Ok(|_host, input, layers| {
                 let name = if input.stack.count() > 1 { "full" } else { "empty" };
                 layers.push(ItemModelLayer::new(name));
@@ -47,7 +48,7 @@ fn register_item_models(
              "full": {"type": "minecraft:model", "model": "example:item/cell_full"}}}}
 ```
 
-The node's `transformation` applies to every model it draws. A key not declared on `children` draws nothing.
+Call `children.use_transformation()?` to decode the standard `transformation` field and apply it to every model the node draws. Otherwise no standard transform is read; your schema can use the name for something else. A key not declared on `children` draws nothing.
 A layer also owns whose display transform its models draw under: `ItemModelLayer::new` keeps each model's
 own transform for the display context (a hand, a screen, the ground), while
 `.with_item_transform(ItemTransformMode::None)` draws its models, and every model nested under them, with no

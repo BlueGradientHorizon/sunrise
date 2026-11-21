@@ -74,9 +74,9 @@ impl Game<'_> {
         }
     }
 
-    /// Allow the input method only while a text box has focus.
+    /// Allow the input method while a text box has focus or a bound preset editor takes text.
     pub(super) fn sync_ime(&mut self) {
-        let want = self.text_field_focused();
+        let want = self.text_field_focused() || self.preset_editor_title().is_some();
         if want != self.ime_allowed
             && let Some(window) = &self.window
         {
@@ -179,6 +179,10 @@ impl Game<'_> {
         }
         // Dialogs have their own fields; the other topmost prompts take no text.
         if self.prompt_open() && !self.dialog_open() {
+            return;
+        }
+        if self.preset_editor_title().is_some() {
+            self.screen_committed_chars(text);
             return;
         }
         let text: String = text.chars().filter(|c| !c.is_control()).collect();

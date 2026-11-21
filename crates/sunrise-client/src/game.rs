@@ -11531,7 +11531,7 @@ impl Game<'_> {
             event: key_event, ..
         } = &event
             && key_event.state == ElementState::Pressed
-            && self.text_field_focused()
+            && (self.text_field_focused() || self.preset_editor_title().is_some())
             && sunrise_client::preedit::should_suppress_key()
         {
             return;
@@ -11547,6 +11547,10 @@ impl Game<'_> {
             && matches!(key_event.physical_key, PhysicalKey::Unidentified(_))
             && let Some(text) = key_event.text.as_deref()
         {
+            if self.preset_editor_title().is_some() {
+                self.screen_chars_typed(Some(text));
+                return;
+            }
             let text: String = text.chars().filter(|c| !c.is_control()).collect();
             if !text.is_empty() && self.text_field_focused() && self.types_text() {
                 self.screen_text_each(&text, |game, c| {
@@ -11763,12 +11767,21 @@ impl Game<'_> {
         } = &mut event
             && key_event.state == ElementState::Pressed
         {
+            if let PhysicalKey::Code(key) = key_event.physical_key
+                && self.preset_editor_title().is_some()
+            {
+                let result = self.preset_editor_key_pressed(event_loop, key, key_event.repeat);
+                self.screen_chars_typed(key_event.text.as_deref());
+                if let Err(error) = result {
+                    self.error = Some(error);
+                    event_loop.exit();
+                }
+                return;
+            }
             let title_text = control::title_owns_text(&self.screen, self.title.is_some());
             if self.screen_hooks_open()
                 && self.screen != Screen::Options
-                && (!title_text
-                    || self.preset_editor_title().is_some()
-                    || self.title.as_mut().is_some_and(|t| t.has_caret_field()))
+                && (!title_text || self.title.as_mut().is_some_and(|t| t.has_caret_field()))
             {
                 typed = key_event.text.take().map(|text| text.to_string());
             }
@@ -11809,25 +11822,6 @@ impl Game<'_> {
                 }
                 return;
             }
-        }
-        // A bound world preset editor handles keys before menu focus navigation
-        // (`key_focus_key`), while still letting printable characters flow through
-        // `screen_chars_typed` (`ScreenCharTypedPre` -> `PresetEditor::char_typed`
-        // -> `ScreenCharTypedPost`) just like any other screen.
-        if let WindowEvent::KeyboardInput {
-            event: key_event, ..
-        } = &event
-            && key_event.state == ElementState::Pressed
-            && self.preset_editor_key_pressed(key_event.physical_key)
-        {
-            if let Some(text) = typed.as_deref() {
-                self.screen_chars_typed(Some(text));
-            } else if self.types_text()
-                && let Some(text) = key_event.text.as_deref()
-            {
-                let _ = self.preset_editor_type_text(text);
-            }
-            return;
         }
         // Screen.keyPressed: Tab, the arrows and Enter move and press the
         // menu's focus, unless the focused widget or the screen keeps them.
@@ -12771,13 +12765,6 @@ impl Game<'_> {
                                     t.refresh_servers();
                                 }
                             }
-                            _ if self.preset_editor_title().is_some() => {
-                                if self.types_text()
-                                    && let Some(text) = event.text.as_deref()
-                                {
-                                    let _ = self.preset_editor_type_text(text);
-                                }
-                            }
                             _ => self.title_edit(event.text.as_deref(), false),
                         }
                     }
@@ -13137,6 +13124,7 @@ impl<'a> Game<'a> {
                     pack.source.clone(),
                 ),
                 None,
+                pack.render.model_library.as_deref().ok(),
             )
         })?;
         let world = Game::world_for_mods(res.facts().air, 0);

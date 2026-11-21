@@ -99,6 +99,10 @@ ids = [
     "trait:ItemModelChildren",
     "type:ItemModelFn",
     "type:ItemModelDecoder",
+    "type:ItemModelConfig",
+    "method:ItemModelConfig::field",
+    "method:ItemModelConfig::decode",
+    "method:ItemModelChildren::use_transformation",
 
     # Range-select item model properties (Step 5)
     "hook:register_range_select_item_model_property",
@@ -133,7 +137,11 @@ ids = [
     "type:RegisterPresetEditorsEvent.editors",
     "handle:RegisterPresetEditorsEvent::register",
     "type:PresetEditor",
+    "type:PresetEditor.preset",
+    "type:PresetEditor.screen",
     "trait:PresetEditor",
+    "hook:screen_char_typed_post",
+    "hook:screen_key_pressed_post",
     "type:PresetEditorContext",
     "handle:PresetEditorContext::preset",
     "handle:PresetEditorContext::dimensions",
@@ -154,10 +162,11 @@ Matches NeoForge 26.3 and vanilla 26.3 registration contracts directly:
 - Model loaders (`ModelEvent.RegisterLoaders`) and block-state definitions (`RegisterBlockStateModels`) bind callbacks at startup and invoke only the registered provider once per matching asset during resource load/reload; `ModelLoaderQuad` and `BlockStateModelPick` are now process-local (`// no wire`).
 - Atlas sprite sources (`RegisterSpriteSourcesEvent`, `SpriteSources`) bind callbacks directly with borrowed `&dyn ResourceReader`, accept any canonical `<namespace>:<path>` including `minecraft:` with last-writer-wins replacement ahead of vanilla built-ins, and make `SpriteSourceOutput` process-local (`// no wire`).
 - JSON keyframe animation types (`RegisterJsonAnimationTypesEvent`, `EntityAnimationLoader`) bind target apply/convert closures and interpolation closures directly into parsed `AnimationHolder` channels (`AnimationTarget::Custom(BoundAnimationTarget)`, `Interpolation::Custom(BoundInterpolation)`), making `AnimationHolder::bake` infallible and removing `AnimationTypes`, `TypedKeyframeAnimation`, `JsonAnimationType`, `RegisteredAnimationType`, `AnimationError`, and `AnimationHolder`'s `Wire` encoding.
-- Item tint sources (`RegisterColorHandlersEvent.ItemTintSources`), item models (`RegisterItemModelsEvent`), range-select properties (`RegisterRangeSelectItemModelPropertyEvent`), and select properties (`RegisterSelectItemModelPropertyEvent`) bind decode-time factories evaluated once per JSON node at resource load/reload, returning per-stack closures evaluated directly with zero per-frame JSON reparsing and full `LateBoundIdMapper` override parity (including `minecraft:` built-in overrides). Item model decoders also receive `&mut dyn ItemModelChildren` to declare nested child item models from arbitrary JSON schemas (e.g. overriding `minecraft:composite`'s `"models": [...]` array), and select property decoders return both a per-case `when` value decoder (`&Tag -> Result<SelectCaseKey, String>`) and the per-stack evaluator (`-> Option<SelectCaseKey>`), supporting typed `when` values beyond strings.
+- Item tint sources (`RegisterColorHandlersEvent.ItemTintSources`), item models (`RegisterItemModelsEvent`), range-select properties (`RegisterRangeSelectItemModelPropertyEvent`), and select properties (`RegisterSelectItemModelPropertyEvent`) bind decode-time factories evaluated once per JSON node at resource load/reload, returning per-stack closures evaluated directly with zero per-frame JSON reparsing and full `LateBoundIdMapper` override parity (including `minecraft:` built-in overrides). Item model decoders also receive `&mut dyn ItemModelChildren` to declare nested child item models from arbitrary JSON schemas (e.g. overriding `minecraft:composite`'s `"models": [...]` array), and select property decoders return both a per-case `when` value decoder (`&Tag -> Result<T, String>`) and the per-stack evaluator (`-> Option<T>`). Vanilla `ItemModels.CODEC` delegates to the selected decoder, which now reads lossless JSON and opts in to the standard transformation. Vanilla `SelectItemModel.SwitchCase.codec` tries lists before scalar values (including array-shaped keys); custom equality is contained in the owning callback during both validation and rendering, without allocating an erased key per stack.
 - World-preset editors (`RegisterPresetEditorsEvent`, vanilla `PresetEditor`) bind factory closures constructing live `Box<dyn PresetEditor>` instances driven directly by the `world_preset_editor` screen with borrowed `PresetEditorContext` and `PresetEditorDraft`, replacing the data-only `PresetEditor` struct and `ScreensClientHost::preset_editor`, and allowing `minecraft:` overrides (e.g. `minecraft:flat`, `minecraft:single_biome_surface`).
+- NeoForge `UnbakedModelParser.Deserializer` distinguishes absent optional model loaders from missing required loaders and refuses broken custom models. Vanilla `ItemFrameRenderer.submit` uses the shared model resolver; startup and reload now bake frames from the same resource library as items. `SpriteSourceList.list` runs registered sources in every listed atlas. NeoForge `KeyboardHandler` fires screen Post only for unhandled input, including key presses and composed characters in bound preset editors.
 - All bound callbacks run through `CallbackOwner` panic containment: returning `Err(reason)` logs a warning/error without disabling the callback; panicking disables that callback for the session, logs an error, and surfaces an in-game error toast naming the mod.
-- Also aligns `create_skull_models` with NeoForge `EntityRenderersEvent.CreateSkullModels` (accepting any canonical `<namespace>:<path>` outside the seven built-in vanilla skull types), replaces bespoke item-model config serialization with `Tag` conversion, and removes the dead `has_sprite_source` flag from `sunrise-assets`."""
+- Also aligns `create_skull_models` with NeoForge `EntityRenderersEvent.CreateSkullModels` (accepting any canonical `<namespace>:<path>` outside the seven built-in vanilla skull types), uses `Tag` for tint and property configuration, and removes the dead `has_sprite_source` flag from `sunrise-assets`."""
 migrate = """
 Rebuild native mods against this SDK and migrate each registration hook from bare string pushes + second-pass hooks to bound providers:
 
@@ -175,11 +184,15 @@ Rebuild native mods against this SDK and migrate each registration hook from bar
 
 5. Item tint sources, item models, range-select properties, and select properties (all version 2; `Hooks::item_tint_source`, `Hooks::item_model_update`, `Hooks::item_model_range_property`, and `Hooks::item_model_select_property` removed):
    - `Hooks::register_item_tint_sources`: replace `event.sources.push(id)` and `Hooks::item_tint_source` with `event.register(id, |config| Ok(move |host, input| argb))`, reading `input.stack` and `input.bundle_selected`.
-   - `Hooks::register_item_models`: replace `event.models.push(id)` and `Hooks::item_model_update` with `event.register(id, |config, children| { children.add_named_models("models")?; Ok(move |host, input, layers| { layers.push(...); }) })`, reading `input.stack`, `input.bundle_selected`, and `input.context` (`&ItemModelContext`). Use `children.add_field`, `add_list`, `add_object`, `add_named_models`, or `add_model` to register child item models from any JSON schema (including vanilla replacement schemas).
+   - `Hooks::register_item_models`: replace `event.models.push(id)` and `Hooks::item_model_update` with `event.register(id, |config, children| { children.add_named_models()?; Ok(move |host, input, layers| { layers.push(...); }) })`, reading `input.stack`, `input.bundle_selected`, and `input.context` (`&ItemModelContext`). Use `children.add_field`, `add_list`, `add_object`, `add_named_models`, or `add_model` to register child item models from any JSON schema (including vanilla replacement schemas).
    - `Hooks::register_range_select_item_model_property`: replace `event.properties.push(id)` and `Hooks::item_model_range_property` with `event.register(id, |config| Ok(move |host, input| value))`, reading `input.stack`, `input.bundle_selected`, and `input.context`.
-   - `Hooks::register_select_item_model_property`: replace `event.properties.push(id)` and `Hooks::item_model_select_property` with `event.register(id, |config| Ok((|when| ..., move |host, input| Some(SelectCaseKey::new(case)))))`, decoding each `when` entry into a typed `SelectCaseKey` once at load and returning `Option<SelectCaseKey>` per stack.
-   Parse JSON config fields once from `&Tag` inside the decode closure and capture the parsed state in the returned per-stack closure.
+   - `Hooks::register_select_item_model_property`: replace `event.properties.push(id)` and `Hooks::item_model_select_property` with `event.register(id, |config| Ok((|when| ..., move |host, input| Some(case))))`, decoding each `when` into the same concrete key type once at load and returning `Option<T>` per stack.
+   For an item model node, replace `config.get("field")` on `&Tag` with `config.field::<T>("field")?` or `config.decode::<MyConfig>()?` using a Serde `Deserialize` type. Call `children.use_transformation()?` if the schema accepts the standard optional `transformation`; omit it for an absent or custom field. Tint and property node configuration still uses `&Tag`. Capture the parsed state in the returned closure.
 
 6. World-preset editors (`Hooks::register_preset_editors`, version 2; `ScreensClientHost::preset_editor` removed):
-   Replace `event.editors.push(PresetEditor { preset, screen })` and `host.preset_editor()` with `event.register(Identifier::parse(preset).expect("valid identifier"), |ctx| Ok(Box::new(MyEditor)))`. Implement the `PresetEditor` trait (`title`, `render`, `mouse_clicked`, `key_pressed`, `char_typed`), inspect `ctx.preset()`, `ctx.dimensions()`, and `ctx.seed()` on open, and mutate dimensions through `draft.set_dimensions(...)` (or `host.preset_editor_dimensions()` / `host.set_preset_editor_dimensions(...)` in screen hooks).
+   Replace `event.editors.push(PresetEditor { preset, screen })` and `host.preset_editor()` with `event.register(Identifier::parse(preset).expect("valid identifier"), |ctx| Ok(Box::new(MyEditor)))`. Implement the `PresetEditor` trait (`title`, `render`, `mouse_clicked`, `key_pressed`, `char_typed`), inspect `ctx.preset()`, `ctx.dimensions()`, and `ctx.seed()` on open, and mutate dimensions through `draft.set_dimensions(...)` (or `host.preset_editor_dimensions()` / `host.set_preset_editor_dimensions(...)` in screen hooks). Move branching on `host.preset_editor().screen` into the registered `PresetEditor` instance's own render and input methods. For generic screen hooks, replace the old editor-specific screen ID with `world_preset_editor`. A declined key or character can now reach the matching Post hook; handle it in the editor to consume it.
+
+7. Skull models (`create_skull_models`): no edit for existing valid registrations. `minecraft:` is now accepted for new kinds too; built-in vanilla skull kinds remain reserved and duplicate registrations are errors.
+
+8. Model JSON: use `"loader": {"id":"yourmod:loader","optional":true}` if the model should render cuboids when the provider is absent. A string ID is required by default; a present provider returning `Err(reason)` always yields the missing model.
 """

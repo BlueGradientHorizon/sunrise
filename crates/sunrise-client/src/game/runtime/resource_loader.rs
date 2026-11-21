@@ -64,6 +64,7 @@ impl GameCpuResources {
     pub(super) fn load(
         resources: &sunrise_assets::resource_source::ResourceRoot,
         document: Option<&sunrise_client::mobs::EntityModelDocument>,
+        model_library: Option<&sunrise_assets::resolve::ModelLibrary>,
     ) -> Result<Self> {
         let root = resources.prepared();
         let owned_document;
@@ -91,7 +92,7 @@ impl GameCpuResources {
                 paintings::PaintingVariants::load(root)
             });
             let frames = named_scope(scope, "game_cpu.frames", move || {
-                frames::bake_frames(resources.source())
+                frames::bake_frames(model_library)
             });
             let armor_stand_assets = named_scope(scope, "game_cpu.armor_stands", move || {
                 armor_stands::ArmorStandAssets::load(resources.source(), document)

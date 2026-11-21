@@ -140,7 +140,8 @@ impl ItemEnv for Env<'_, '_> {
         property: &RegisteredSelectProperty,
         stack: &StackView,
         ctx: &sunrise_assets::item_model::Context<'_>,
-    ) -> Option<RegisteredSelectKey> {
+        keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
+    ) -> Option<usize> {
         let Some(bound) = property
             .payload
             .downcast_ref::<item_render::BoundSelectProperty>()
@@ -159,15 +160,7 @@ impl ItemEnv for Env<'_, '_> {
             bundle_selected: stack.bundle_selected,
             context: &context,
         };
-        bound
-            .owner
-            .call(
-                "item model select property",
-                "item_model_select_property",
-                || (bound.eval)(self.game, &input),
-            )
-            .unwrap_or(None)
-            .map(RegisteredSelectKey::new)
+        bound.select(self.game, &input, keys)
     }
     fn item_tint_source(&self, source: &RegisteredTintSource, stack: &StackView) -> i32 {
         let Some(bound) = source.0.downcast_ref::<item_render::BoundTintSource>() else {
@@ -1355,17 +1348,16 @@ mod tests {
                 let env = Env { game };
                 let one = StackView::new("minecraft:stick", 1);
                 let two = StackView::new("minecraft:stick", 2);
+                let dig = bound.decode_case(&serde_json::json!("dig")).unwrap();
+                let build = bound.decode_case(&serde_json::json!("build")).unwrap();
+                let keys = [(0, &dig), (1, &build)];
                 assert_eq!(
-                    env.item_model_select_property(&bound, &one, &ctx),
-                    Some(RegisteredSelectKey::new(mod_api::SelectCaseKey::new(
-                        "dig".to_owned()
-                    )))
+                    env.item_model_select_property(&bound, &one, &ctx, &mut keys.into_iter()),
+                    Some(0)
                 );
                 assert_eq!(
-                    env.item_model_select_property(&bound, &two, &ctx),
-                    Some(RegisteredSelectKey::new(mod_api::SelectCaseKey::new(
-                        "build".to_owned()
-                    )))
+                    env.item_model_select_property(&bound, &two, &ctx, &mut keys.into_iter()),
+                    Some(1)
                 );
             });
         });

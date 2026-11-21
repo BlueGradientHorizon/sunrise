@@ -91,6 +91,7 @@ pub enum Loader {
     /// table without a global pre-registration list.
     Custom {
         kind: String,
+        optional: bool,
         config: Arc<serde_json::Value>,
     },
 }
@@ -320,8 +321,19 @@ fn visibility(obj: &Object<'_>) -> Result<BTreeMap<String, bool>> {
 }
 impl Loader {
     fn decode(raw: &RawValue, obj: &Object<'_>) -> Result<Self> {
-        let name = primitive_string(raw)?;
-        let canonical = identifier(&name).unwrap_or_else(|_| name.clone());
+        let (name, optional) = if raw.get().starts_with('{') {
+            let declaration = object(raw)?;
+            let id = primitive_string(required(&declaration, "id")?)?;
+            let optional = declaration
+                .get("optional")
+                .map(|value| boolean(value))
+                .transpose()?
+                .unwrap_or(false);
+            (id, optional)
+        } else {
+            (primitive_string(raw)?, false)
+        };
+        let canonical = identifier(&name)?;
         match canonical.as_str() {
             "neoforge:composite" => {
                 let mut children = Vec::new();
@@ -364,6 +376,7 @@ impl Loader {
                 }
                 Ok(Self::Custom {
                     kind: canonical,
+                    optional,
                     config: Arc::new(serde_json::Value::Object(config)),
                 })
             }

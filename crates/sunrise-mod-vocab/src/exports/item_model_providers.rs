@@ -1,6 +1,6 @@
 pub use item::item_model_providers::{
-    ItemModelChildren, ItemModelDecoder, ItemModelFn, ItemModelPropertyInput, ItemModelUpdateInput,
-    ItemTintInput, ItemTintSourceDecoder, ItemTintSourceFn,
+    ItemModelChildren, ItemModelConfig, ItemModelDecoder, ItemModelFn, ItemModelPropertyInput,
+    ItemModelUpdateInput, ItemTintInput, ItemTintSourceDecoder, ItemTintSourceFn,
 };
 use item::item_model_providers::{
     ItemModelRegistration, ItemTintSourceRegistration, RangeSelectPropertyRegistration,
@@ -14,7 +14,7 @@ mod __private {
     mod game {
         pub use crate::item::item_model_providers::{
             ItemModelRegistration, ItemTintSourceRegistration, RangeSelectPropertyRegistration,
-            SelectPropertyRegistration,
+            SelectPropertyRegistration, new_item_model_config,
         };
     }
 }

@@ -10,11 +10,11 @@ use super::SpecialModelFactories;
 use mod_api::{
     __private::game::{
         CallbackOwner, ItemModelRegistration, ItemTintSourceRegistration,
-        RangeSelectPropertyRegistration, SelectPropertyRegistration,
+        RangeSelectPropertyRegistration, SelectPropertyRegistration, new_item_model_config,
     },
     Answered, Identifier, ItemModelChildren, ItemModelDecoder, ItemModelFn, ItemTintSourceDecoder,
-    ItemTintSourceFn, RangeSelectPropertyDecoder, RangeSelectPropertyFn, SelectPropertyDecoder,
-    SelectPropertyFn,
+    ItemTintSourceFn, RangeSelectPropertyDecoder, RangeSelectPropertyFn, SelectCaseKey,
+    SelectPropertyDecoder, SelectPropertyFn,
 };
 use serde_json::{Map, Value};
 use std::{
@@ -25,7 +25,8 @@ use sunrise_assets::{
     DecodeError,
     item_model::{
         DecodedItemModel, ItemModelNode, ModelLeaf, RegisteredItemModel, RegisteredRangeProperty,
-        RegisteredSelectKey, RegisteredSelectProperty, RegisteredTintSource,
+        RegisteredSelectKey, RegisteredSelectProperty, RegisteredTintSource, SelectCaseDecodeError,
+        optional_transformation,
     },
 };
 use sunrise_core::nbt::Tag;
@@ -66,7 +67,30 @@ pub struct BoundRangeProperty {
 pub struct BoundSelectProperty {
     pub kind: Box<str>,
     pub owner: Arc<CallbackOwner>,
-    pub eval: Arc<SelectPropertyFn>,
+    eval: Arc<SelectPropertyFn>,
+}
+
+impl BoundSelectProperty {
+    pub fn select(
+        &self,
+        host: &dyn mod_api::ClientHost,
+        input: &mod_api::ItemModelPropertyInput<'_>,
+        keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
+    ) -> Option<usize> {
+        self.owner
+            .call(
+                "item model select property",
+                "item_model_select_property",
+                || {
+                    let mut keys = Iterator::filter_map(keys, |(index, key)| {
+                        key.downcast_ref::<SelectCaseKey>().map(|key| (index, key))
+                    });
+                    (self.eval)(host, input, &mut keys)
+                },
+            )
+            .ok()
+            .flatten()
+    }
 }
 
 /// Decode-time provider tables passed into [`super::ItemRenderer::decode_definition`].
@@ -448,6 +472,7 @@ struct ChildrenBuilder<'a> {
     decode_child: &'a dyn Fn(&Value) -> Result<ItemModelNode, DecodeError>,
     models: Vec<(String, ItemModelNode)>,
     next_generated: usize,
+    transformation: Option<sunrise_assets::math::Mat4>,
 }
 
 impl ChildrenBuilder<'_> {
@@ -509,6 +534,11 @@ impl ItemModelChildren for ChildrenBuilder<'_> {
         self.add_object("models")
     }
 
+    fn use_transformation(&mut self) -> Result<(), String> {
+        self.transformation = optional_transformation(self.fields).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     fn add_model(&mut self, name: &str, model: Identifier) -> Result<(), String> {
         self.insert(
             name.to_owned(),
@@ -531,15 +561,14 @@ pub fn decode_item_model(
     let Some(entry) = factories.and_then(|table| table.get(kind)) else {
         return Ok(None);
     };
-    let config = sunrise_core::json_nbt::json_to_compound(fields)
-        .map(Tag::Compound)
-        .map_err(|error| format!("item model {kind}: its JSON doesn't convert to NBT: {error}"))?;
+    let config = new_item_model_config(fields);
     let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
     let mut children = ChildrenBuilder {
         fields,
         decode_child,
         models: Vec::new(),
         next_generated: 0,
+        transformation: None,
     };
     match entry.owner.call("item model", "decode", || {
         (entry.decode)(&config, &mut children)
@@ -550,6 +579,7 @@ pub fn decode_item_model(
                 owner: Arc::clone(&entry.owner),
                 eval,
             })),
+            transformation: children.transformation,
             models: children.models,
         })),
         Ok(Err(reason)) => Err(format!(
@@ -612,16 +642,16 @@ pub fn decode_select_property(
     let case_kind = kind_owned.clone();
     let bound = BoundSelectProperty {
         kind: kind_owned,
-        owner,
+        owner: Arc::clone(&owner),
         eval,
     };
     Ok(Some(RegisteredSelectProperty::new(
         Arc::new(bound),
         move |value| {
             let tag = sunrise_core::json_nbt::json_to_tag(value).map_err(|error| {
-                format!(
+                SelectCaseDecodeError::Mismatch(format!(
                     "item model select property {case_kind}: case value doesn't convert to NBT: {error}"
-                )
+                ))
             })?;
             let _phase =
                 mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
@@ -629,12 +659,21 @@ pub fn decode_select_property(
                 (decode_case)(&tag)
             }) {
                 Ok(Ok(key)) => Ok(RegisteredSelectKey::new(key)),
-                Ok(Err(reason)) => Err(format!(
+                Ok(Err(reason)) => Err(SelectCaseDecodeError::Mismatch(format!(
                     "mod {} item model select property {case_kind} refused case: {reason}",
                     case_owner.id()
-                )),
-                Err(error) => Err(format!("item model select property {case_kind}: {error}")),
+                ))),
+                Err(error) => Err(SelectCaseDecodeError::Callback(format!(
+                    "item model select property {case_kind}: {error}"
+                ))),
             }
+        },
+        move |left, right| {
+            let _phase =
+                mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
+            owner.call("item model select property", "compare_case", || {
+                left.downcast_ref::<SelectCaseKey>() == right.downcast_ref::<SelectCaseKey>()
+            })
         },
     )))
 }
@@ -694,7 +733,10 @@ mod tests {
         RegistrationContext,
         testing::FakeHost,
     };
-    use sunrise_assets::item_model::{ItemModelNode, TintSource};
+    use sunrise_assets::item_model::{
+        ClientItem, Context, DisplayContext, ItemEnv, ItemModelNode, ItemModels, LayerContent,
+        StackView, TintSource,
+    };
 
     fn id(text: &str) -> Identifier {
         Identifier::parse(text).unwrap()
@@ -889,10 +931,7 @@ mod tests {
     #[test]
     fn replacing_vanilla_composite_decodes_unmodified_vanilla_array_schema() {
         use mod_api::{ItemModelLayer, RegisterItemModelsEvent};
-        use sunrise_assets::item_model::{
-            Context, DisplayContext, ItemEnv, ItemModels, LayerContent, LayerTransform,
-            ModelChoice, StackView,
-        };
+        use sunrise_assets::item_model::{LayerTransform, ModelChoice};
 
         struct CompositeOverride;
         #[mod_api::__subscriptions]
@@ -903,6 +942,7 @@ mod tests {
                 event: &mut RegisterItemModelsEvent<'_>,
             ) {
                 event.register(id("minecraft:composite"), |_, children| {
+                    children.use_transformation()?;
                     let names = children.add_list("models")?;
                     Ok(
                         move |_: &dyn ClientHost,
@@ -960,7 +1000,7 @@ mod tests {
             };
             // Unmodified vanilla minecraft:composite JSON: `models` is an array.
             let item = decode_definition_without_specials(
-                r#"{"model":{"type":"minecraft:composite","models":[
+                r#"{"model":{"type":"minecraft:composite","transformation":[1,0,0,1,0,1,0,2,0,0,1,3,0,0,0,1],"models":[
                     {"type":"minecraft:model","model":"minecraft:item/stick"},
                     {"type":"minecraft:model","model":"minecraft:item/apple"}
                 ]}}"#,
@@ -984,6 +1024,12 @@ mod tests {
                 },
                 &LocalEnv,
             );
+            assert!(
+                resolved
+                    .layers
+                    .iter()
+                    .all(|layer| layer.transform.rows().map(|row| row[3]) == [1.0, 2.0, 3.0, 1.0])
+            );
             let layer_models: Vec<&str> = resolved
                 .layers
                 .iter()
@@ -999,14 +1045,61 @@ mod tests {
         });
     }
 
+    struct SelectEnv;
+    impl ItemEnv for SelectEnv {
+        fn item_model_select_property(
+            &self,
+            property: &RegisteredSelectProperty,
+            stack: &StackView,
+            _ctx: &Context,
+            keys: &mut dyn Iterator<Item = (usize, &RegisteredSelectKey)>,
+        ) -> Option<usize> {
+            let bound = property.payload.downcast_ref::<BoundSelectProperty>()?;
+            let api_stack = ItemStack::new(item_key(0), stack.count as u32).unwrap();
+            let ctx = mod_api::ItemModelContext {
+                display: mod_api::ItemDisplayContext::Gui,
+                owner: None,
+                level: None,
+                seed: 0,
+            };
+            let input = mod_api::ItemModelPropertyInput {
+                stack: &api_stack,
+                bundle_selected: -1,
+                context: &ctx,
+            };
+            bound.select(&FakeHost::new(), &input, keys)
+        }
+    }
+
+    fn selected_model(item: ClientItem, count: i32) -> String {
+        let mut defs = ItemModels::default();
+        defs.definitions.insert("minecraft:stick".into(), item);
+        let mut stack = StackView::new("minecraft:stick", count);
+        stack.patch.insert(
+            "minecraft:item_model".into(),
+            Some(serde_json::json!("minecraft:stick")),
+        );
+        let resolved = defs.resolve(
+            &stack,
+            &Context {
+                display: DisplayContext::Gui,
+                owner: None,
+                level: None,
+                seed: 0,
+            },
+            &SelectEnv,
+        );
+        match &resolved.layers[0].content {
+            LayerContent::Model { model } => model.clone(),
+            other => panic!("expected model layer, got {other:?}"),
+        }
+    }
+
     /// A registered replacement for `minecraft:component` supplies a typed case decoder so
     /// non-string vanilla `when` values (such as integers) decode and match cleanly.
     #[test]
     fn replacing_vanilla_component_select_supports_typed_numeric_when_cases() {
         use mod_api::RegisterSelectItemModelPropertyEvent;
-        use sunrise_assets::item_model::{
-            Context, DisplayContext, ItemEnv, ItemModels, LayerContent, StackView,
-        };
 
         struct ComponentOverride;
         #[mod_api::__subscriptions]
@@ -1028,31 +1121,6 @@ mod tests {
                     };
                     Ok((decode_case, eval))
                 });
-            }
-        }
-
-        struct LocalEnv;
-        impl ItemEnv for LocalEnv {
-            fn item_model_select_property(
-                &self,
-                property: &RegisteredSelectProperty,
-                stack: &StackView,
-                _ctx: &Context,
-            ) -> Option<RegisteredSelectKey> {
-                let bound = property.payload.downcast_ref::<BoundSelectProperty>()?;
-                let api_stack = ItemStack::new(item_key(0), stack.count as u32).unwrap();
-                let ctx = mod_api::ItemModelContext {
-                    display: mod_api::ItemDisplayContext::Gui,
-                    owner: None,
-                    level: None,
-                    seed: 0,
-                };
-                let input = mod_api::ItemModelPropertyInput {
-                    stack: &api_stack,
-                    bundle_selected: -1,
-                    context: &ctx,
-                };
-                (bound.eval)(&FakeHost::new(), &input).map(RegisteredSelectKey::new)
             }
         }
 
@@ -1096,32 +1164,196 @@ mod tests {
                 )
                 .is_err()
             );
-            let mut defs = ItemModels::default();
-            defs.definitions.insert("minecraft:stick".into(), item);
-            let resolve_count = |count: i32| {
-                let mut stack = StackView::new("minecraft:stick", count);
-                stack.patch.insert(
-                    "minecraft:item_model".into(),
-                    Some(serde_json::json!("minecraft:stick")),
-                );
-                let resolved = defs.resolve(
-                    &stack,
-                    &Context {
-                        display: DisplayContext::Gui,
-                        owner: None,
-                        level: None,
-                        seed: 0,
-                    },
-                    &LocalEnv,
-                );
-                match &resolved.layers[0].content {
-                    LayerContent::Model { model } => model.clone(),
-                    other => panic!("expected model layer, got {other:?}"),
-                }
-            };
-            assert_eq!(resolve_count(1), "minecraft:item/stick");
-            assert_eq!(resolve_count(2), "minecraft:item/apple");
-            assert_eq!(resolve_count(4), "minecraft:item/bone");
+            assert_eq!(selected_model(item.clone(), 1), "minecraft:item/stick");
+            assert_eq!(selected_model(item.clone(), 2), "minecraft:item/apple");
+            assert_eq!(selected_model(item, 4), "minecraft:item/bone");
         });
+    }
+
+    #[test]
+    fn replacement_item_model_owns_its_input_schema() {
+        use mod_api::RegisterItemModelsEvent;
+
+        struct EmptyOverride;
+        #[mod_api::__subscriptions]
+        impl Hooks for EmptyOverride {
+            fn register_item_models(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterItemModelsEvent<'_>,
+            ) {
+                event.register(id("minecraft:empty"), |config, children| {
+                    #[derive(serde::Deserialize)]
+                    struct Config<'a> {
+                        transformation: &'a str,
+                    }
+                    let config: Config<'_> = config.decode()?;
+                    if config.transformation != "spin" {
+                        return Err("expected spin".into());
+                    }
+                    children.add_field("child", "model")?;
+                    Ok(|_, _, _| {})
+                });
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("schema_test", Box::new(EmptyOverride))].into(),
+            || {
+                let mut registered = Vec::new();
+                mod_api::dispatch_register_item_models(
+                    &RegistrationContext::new(),
+                    &mut registered,
+                );
+                let (factories, _) = bind_item_model_factories(registered);
+                let providers = ItemProviderTables {
+                    item_model: Some(&factories),
+                    ..Default::default()
+                };
+                let item = decode_definition_without_specials(
+                    r#"{"model":{"type":"minecraft:empty","transformation":"spin","ignored":null,
+                    "model":{"type":"minecraft:model","model":"minecraft:item/apple"}}}"#,
+                    &providers,
+                )
+                .unwrap();
+                let ItemModelNode::Registered {
+                    transformation,
+                    models,
+                    ..
+                } = item.model
+                else {
+                    panic!("expected replacement model");
+                };
+                assert!(transformation.is_none());
+                assert!(matches!(&models[..], [(name, ItemModelNode::Model(leaf))]
+                if name == "child" && leaf.model == "minecraft:item/apple"));
+            },
+        );
+    }
+
+    #[test]
+    fn a_select_supports_both_single_array_keys_and_arrays_of_keys() {
+        use mod_api::RegisterSelectItemModelPropertyEvent;
+
+        struct VectorCases;
+        #[mod_api::__subscriptions]
+        impl Hooks for VectorCases {
+            fn register_select_item_model_property(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterSelectItemModelPropertyEvent<'_>,
+            ) {
+                event.register(id("selecttest:vector"), |_| {
+                    Ok((
+                        |when: &Tag| match when {
+                            Tag::List(values) => match values.as_slice() {
+                                [Tag::Byte(x), Tag::Byte(y)] => Ok([*x, *y]),
+                                _ => Err("expected two coordinates".into()),
+                            },
+                            _ => Err("expected vector".into()),
+                        },
+                        |_: &dyn ClientHost, input: &mod_api::ItemModelPropertyInput<'_>| {
+                            let count = input.stack.count() as i8;
+                            Some([count, count + 1])
+                        },
+                    ))
+                });
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("vector_cases", Box::new(VectorCases))].into(),
+            || {
+                let mut registered = Vec::new();
+                mod_api::dispatch_register_select_item_model_property(
+                    &RegistrationContext::new(),
+                    &mut registered,
+                );
+                let (factories, _) = bind_select_property_factories(registered);
+                let providers = ItemProviderTables {
+                    select_property: Some(&factories),
+                    ..Default::default()
+                };
+                let item = decode_definition_without_specials(
+                r#"{"model":{"type":"minecraft:select","property":"selecttest:vector","cases":[
+                    {"when":[1,2],"model":{"type":"minecraft:model","model":"minecraft:item/stick"}},
+                    {"when":[[2,3],[3,4]],"model":{"type":"minecraft:model","model":"minecraft:item/apple"}}],
+                    "fallback":{"type":"minecraft:model","model":"minecraft:item/bone"}}}"#,
+                &providers,
+            ).unwrap();
+                assert_eq!(selected_model(item.clone(), 1), "minecraft:item/stick");
+                assert_eq!(selected_model(item.clone(), 2), "minecraft:item/apple");
+                assert_eq!(selected_model(item.clone(), 3), "minecraft:item/apple");
+                assert_eq!(selected_model(item, 4), "minecraft:item/bone");
+            },
+        );
+    }
+
+    #[test]
+    fn a_select_key_equality_panic_is_contained_during_load_and_draw() {
+        use mod_api::RegisterSelectItemModelPropertyEvent;
+
+        #[derive(Debug)]
+        struct PanicKey;
+        impl PartialEq for PanicKey {
+            fn eq(&self, _: &Self) -> bool {
+                panic!("arbitrary mod equality")
+            }
+        }
+        impl Eq for PanicKey {}
+
+        struct PanicCases;
+        #[mod_api::__subscriptions]
+        impl Hooks for PanicCases {
+            fn register_select_item_model_property(
+                &self,
+                _: &RegistrationContext,
+                event: &mut RegisterSelectItemModelPropertyEvent<'_>,
+            ) {
+                for id_str in ["selecttest:panic_in_load", "selecttest:panic_in_draw"] {
+                    event.register(id(id_str), |_| {
+                        Ok((
+                            |_: &Tag| Ok(PanicKey),
+                            |_: &dyn ClientHost, _: &mod_api::ItemModelPropertyInput<'_>| {
+                                Some(PanicKey)
+                            },
+                        ))
+                    });
+                }
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("eq_panicker", Box::new(PanicCases))].into(),
+            || {
+                let mut registered = Vec::new();
+                mod_api::dispatch_register_select_item_model_property(
+                    &RegistrationContext::new(),
+                    &mut registered,
+                );
+                let (factories, _) = bind_select_property_factories(registered);
+                let providers = ItemProviderTables {
+                    select_property: Some(&factories),
+                    ..Default::default()
+                };
+                let broken = r#"{"model":{"type":"minecraft:select","property":"selecttest:panic_in_load",
+                "cases":[{"when":[1,2],"model":{"type":"minecraft:empty"}}]}}"#;
+                let error = decode_definition_without_specials(broken, &providers)
+                    .unwrap_err()
+                    .to_string();
+                assert!(
+                    error.contains("eq_panicker") && error.contains("panicked"),
+                    "{error}"
+                );
+                assert!(!factories["selecttest:panic_in_load"].owner.is_enabled());
+                assert!(factories["selecttest:panic_in_draw"].owner.is_enabled());
+                let item = decode_definition_without_specials(
+                r#"{"model":{"type":"minecraft:select","property":"selecttest:panic_in_draw",
+                    "cases":[{"when":1,"model":{"type":"minecraft:model","model":"minecraft:item/apple"}}],
+                    "fallback":{"type":"minecraft:model","model":"minecraft:item/bone"}}}"#,
+                &providers,
+            ).unwrap();
+                assert_eq!(selected_model(item.clone(), 1), "minecraft:item/bone");
+                assert!(!factories["selecttest:panic_in_draw"].owner.is_enabled());
+                assert_eq!(selected_model(item, 1), "minecraft:item/bone");
+            },
+        );
     }
 }

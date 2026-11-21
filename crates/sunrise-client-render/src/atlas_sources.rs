@@ -638,20 +638,15 @@ impl ResourceReader for LoadResources {
 }
 
 /// The sprites `sources` list for `atlas`, each entry of a registered type asked once with a
-/// reader of the load's resources that lasts that one call; `asked` false leaves such entries
-/// unanswered.
+/// reader of the load's resources that lasts that one call.
 fn list_atlas(
     source: &crate::resource_source::ResourceSource,
     textures: &[String],
     mods: &dyn ModSources,
     atlas: &Identifier,
     sources: &[SpriteSource],
-    asked: bool,
 ) -> Listed {
     list(sources, textures, &mut |kind, config| {
-        if !asked {
-            return Vec::new();
-        }
         let resources = Arc::new(LoadResources(Mutex::new(Some(source.clone()))));
         let reader: Arc<dyn ResourceReader> = resources.clone();
         let outputs = mods.ask(atlas, kind, config, &reader);
@@ -684,39 +679,29 @@ pub fn registered(
             let sources = definition(source, mods, definition_id)?;
             Some((
                 (*atlas).clone(),
-                list_atlas(source, &textures, mods, atlas, &sources, true),
+                list_atlas(source, &textures, mods, atlas, &sources),
             ))
         })
         .collect()
 }
 
-/// The game atlases whose registered source types are asked: the blocks, items and GUI atlases.
-const ASKED_ATLASES: [&str; 3] = ["minecraft:blocks", "minecraft:items", "minecraft:gui"];
-
-/// Every atlas definition of a resource tree with the sprites its merged definition lists, from one
-/// listing of the textures. The registered types of mods are asked for the game's blocks, items and
-/// GUI atlases (`SpriteSource.run` runs a source of any registered type in any atlas), each
-/// entry once; every other definition lists its built-in sources. One load has one listing
-/// ([`shared`]), which the block sprites, the item masks, the HUD atlas and the glint atlas all
-/// read. The atlases a mod registers are asked by [`registered`].
+/// Every atlas definition of a resource tree with the sprites its merged definition lists.
+/// Each registered source is run for every client atlas that lists it (`SpriteSourceList.list`).
+/// The block sprites, item masks, HUD atlas and glint atlas read this shared listing; atlases
+/// registered by mods are listed under their own IDs by [`registered`].
 #[derive(Debug, Default)]
 pub struct Listing {
     atlases: BTreeMap<String, Listed>,
 }
 impl Listing {
-    /// The listing of `source`, asking `mods` for each entry of a registered type in an atlas
-    /// the game has that mods may add sprites to (blocks, items and GUI).
+    /// The listing of `source`, asking `mods` for each entry of a registered type.
     pub fn build(source: &crate::resource_source::ResourceSource, mods: &dyn ModSources) -> Self {
         let textures = sorted_textures(source);
         let atlases = atlases(source, mods, &|_| true)
             .into_iter()
             .filter_map(|(atlas, sources)| {
                 let id = Identifier::parse(&atlas).ok()?;
-                let asked = ASKED_ATLASES.contains(&atlas.as_str());
-                Some((
-                    atlas,
-                    list_atlas(source, &textures, mods, &id, &sources, asked),
-                ))
+                Some((atlas, list_atlas(source, &textures, mods, &id, &sources)))
             })
             .collect();
         Self { atlases }
@@ -1383,10 +1368,8 @@ mod tests {
     }
 
     /// An atlas a mod registered is listed under its own id from its definition, and two atlases
-    /// sharing one definition are each asked, with their own id and answer; a definition that is
-    /// no game atlas's and that no mod's atlas registered, whatever its namespace, is asked of
-    /// nobody, and a definition only registered atlases use (here one of the game's reserved
-    /// namespace) is not an atlas of the game.
+    /// sharing one definition are each asked, with their own id and answer. A separate listing
+    /// uses the IDs of the resource definitions, not the registered atlas IDs.
     #[test]
     fn registered_atlases_are_asked_by_their_own_id() {
         use sunrise_assets::resource_source::Resource;
@@ -1426,8 +1409,6 @@ mod tests {
             listed[&second].sprites.keys().collect::<Vec<_>>(),
             ["demo:from_second"]
         );
-        // The game's listing asks nobody about either definition: neither is an atlas it has.
-        Listing::build(&source, &mods);
         let mut asked = mods.asked.lock().unwrap().clone();
         asked.sort();
         assert_eq!(

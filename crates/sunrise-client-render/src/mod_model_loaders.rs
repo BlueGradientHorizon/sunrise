@@ -101,13 +101,15 @@ impl LoaderGeometry for ModLoaders {
         model: &str,
         config: &Value,
         textures: &BTreeMap<String, String>,
-    ) -> Option<Vec<LoaderQuad>> {
-        let loaders = active_loaders()?;
-        let entry = loaders.get(loader)?;
-        let Ok(config) = sunrise_core::json_nbt::json_to_tag(config) else {
-            log::warn!("model {model}: loader {loader}: its JSON doesn't convert to NBT; no quads");
-            return Some(Vec::new());
+    ) -> Result<Option<Vec<LoaderQuad>>, String> {
+        let Some(loaders) = active_loaders() else {
+            return Ok(None);
         };
+        let Some(entry) = loaders.get(loader) else {
+            return Ok(None);
+        };
+        let config = sunrise_core::json_nbt::json_to_tag(config)
+            .map_err(|reason| format!("loader {loader}: {reason}"))?;
         let _phase =
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         let input = ModelLoaderInput {
@@ -115,24 +117,17 @@ impl LoaderGeometry for ModLoaders {
             config: &config,
             textures,
         };
-        let quads = match entry
+        let quads = entry
             .owner
             .call("model loader", "bake_model_loader", || (entry.bake)(&input))
-        {
-            Ok(Ok(quads)) => checked(loader, model, quads),
-            Ok(Err(reason)) => {
-                log::warn!(
-                    "model {model}: mod {} loader {loader} refused it: {reason}",
+            .map_err(|reason| format!("loader {loader}: {reason}"))?
+            .map_err(|reason| {
+                format!(
+                    "mod {} loader {loader} refused it: {reason}",
                     entry.owner.id()
-                );
-                Vec::new()
-            }
-            Err(error) => {
-                log::warn!("model {model}: loader {loader}: {error}");
-                Vec::new()
-            }
-        };
-        Some(quads)
+                )
+            })?;
+        Ok(Some(checked(loader, model, quads)))
     }
 }
 
@@ -382,6 +377,7 @@ mod tests {
                     &serde_json::json!({"loader": "minecraft:rendtest_first"}),
                     &textures,
                 )
+                .unwrap()
                 .unwrap();
             assert_eq!(baked.len(), 1);
             assert_eq!(baked[0].positions[0][0], 0.25, "first registration wins");
@@ -392,6 +388,7 @@ mod tests {
                     &serde_json::json!({"loader": "rendtest:"}),
                     &textures,
                 )
+                .unwrap()
                 .unwrap();
             assert_eq!(empty_path.len(), 1);
             assert_eq!(empty_path[0].positions[0][0], 0.5);
@@ -403,6 +400,7 @@ mod tests {
                         &serde_json::json!({}),
                         &textures,
                     )
+                    .unwrap()
                     .is_none()
             );
         });
@@ -470,9 +468,10 @@ mod tests {
             let cfg = serde_json::json!({});
 
             let _ = take_callback_panic_notices();
-            assert_eq!(
-                ModLoaders.quads("rendtest:panics", "t:p", &cfg, &textures),
-                Some(Vec::new())
+            assert!(
+                ModLoaders
+                    .quads("rendtest:panics", "t:p", &cfg, &textures)
+                    .is_err()
             );
             assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
             let notices = take_callback_panic_notices();
@@ -481,21 +480,24 @@ mod tests {
                 "expected panic notice, got {notices:?}"
             );
             // Disabled after panic: second call does not invoke the callback again.
-            assert_eq!(
-                ModLoaders.quads("rendtest:panics", "t:p", &cfg, &textures),
-                Some(Vec::new())
+            assert!(
+                ModLoaders
+                    .quads("rendtest:panics", "t:p", &cfg, &textures)
+                    .is_err()
             );
             assert_eq!(panic_calls.load(Ordering::Relaxed), 1);
 
             // Non-panic Err does not latch or queue a panic notice.
-            assert_eq!(
-                ModLoaders.quads("rendtest:flaky", "t:f", &cfg, &textures),
-                Some(Vec::new())
+            assert!(
+                ModLoaders
+                    .quads("rendtest:flaky", "t:f", &cfg, &textures)
+                    .is_err()
             );
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 1);
             assert!(take_callback_panic_notices().is_empty());
             let recovered = ModLoaders
                 .quads("rendtest:flaky", "t:f", &cfg, &textures)
+                .unwrap()
                 .unwrap();
             assert_eq!(flaky_calls.load(Ordering::Relaxed), 2);
             assert_eq!(recovered.len(), 1);

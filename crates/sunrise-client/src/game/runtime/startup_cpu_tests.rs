@@ -68,17 +68,76 @@ fn worker_prepares_owned_models_and_inventory_before_handoff() {
     }]}"#,
     )
     .unwrap();
+    use std::collections::BTreeMap;
+    use sunrise_assets::{
+        model_loaders::{LoaderGeometry, LoaderQuad},
+        resource_source::{Resource, ResourceRoot},
+    };
+    use sunrise_client::model_library::ParsedModels;
+    struct FrameLoader;
+    impl LoaderGeometry for FrameLoader {
+        fn quads(
+            &self,
+            loader: &str,
+            _: &str,
+            _: &serde_json::Value,
+            _: &BTreeMap<String, String>,
+        ) -> std::result::Result<Option<Vec<LoaderQuad>>, String> {
+            assert_eq!(loader, "example:frame_loader");
+            Ok(Some(vec![LoaderQuad {
+                positions: [
+                    [0.75, 0.0, 0.5],
+                    [0.25, 0.0, 0.5],
+                    [0.25, 1.0, 0.5],
+                    [0.75, 1.0, 0.5],
+                ],
+                uvs: [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]],
+                texture: "frame".into(),
+                cull: None,
+                tint_index: -1,
+                shade: true,
+            }]))
+        }
+    }
+    let models = |root: &ResourceRoot, sprite: &str| {
+        let source = root.source().extended(BTreeMap::from([
+            (
+                "assets/minecraft/models/block/item_frame.json".into(),
+                Resource::bytes(br#"{"parent":"example:block/frame"}"#.to_vec()),
+            ),
+            (
+                "assets/example/models/block/frame.json".into(),
+                Resource::bytes(
+                    format!(
+                        r#"{{"loader":"example:frame_loader","textures":{{"frame":"{sprite}"}}}}"#
+                    )
+                    .into_bytes(),
+                ),
+            ),
+        ]));
+        let library = ParsedModels::load(&source).into_item_library().unwrap();
+        Arc::into_inner(library)
+            .unwrap()
+            .with_loaders(Arc::new(FrameLoader))
+    };
     let worker_root = root.clone();
     let prepared = std::thread::spawn(move || {
-        GameCpuResources::load(
-            &sunrise_assets::resource_source::ResourceRoot::directory(worker_root),
-            None,
-        )
-        .map_err(|error| error.to_string())
+        let root = ResourceRoot::directory(worker_root);
+        let library = models(&root, "example:block/startup_frame");
+        GameCpuResources::load(&root, None, Some(&library)).map_err(|error| error.to_string())
     })
     .join()
     .unwrap()
     .unwrap();
+    assert_eq!(prepared.frame_model.len(), 1);
+    assert_eq!(prepared.frame_model[0].2, "example:block/startup_frame");
+    let reloaded = models(
+        &ResourceRoot::directory(root.clone()),
+        "example:block/reloaded_frame",
+    );
+    let [frame, ..] = frames::bake_frames(Some(&reloaded));
+    assert_eq!(frame.len(), 1);
+    assert_eq!(frame[0].2, "example:block/reloaded_frame");
     std::fs::remove_dir_all(&root).unwrap();
     assert!(prepared.crystal_model.is_some());
     assert!(prepared.cushion_model.is_some());
@@ -106,7 +165,8 @@ fn worker_prepares_owned_models_and_inventory_before_handoff() {
     assert!(
         GameCpuResources::load(
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
-            None
+            None,
+            None,
         )
         .is_err()
     );
