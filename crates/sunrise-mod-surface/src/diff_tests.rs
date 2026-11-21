@@ -758,11 +758,11 @@ fn an_impl_gained_is_additive_and_one_lost_breaks_by_name() {
     );
 }
 
-fn wired(wire: bool, form: Option<&str>) -> Surface {
+fn wired(wire: bool, form: Option<&str>, shape: Option<&str>) -> Surface {
     types(vec![Type::new(
         "type:Id",
         "",
-        None,
+        shape.map(str::to_owned),
         TypeContract {
             wire,
             wire_form: form.map(str::to_owned),
@@ -775,9 +775,9 @@ fn wired(wire: bool, form: Option<&str>) -> Surface {
 
 #[test]
 fn a_wire_change_adds_when_a_type_starts_crossing_and_is_conditional_otherwise() {
-    let none = wired(false, None);
-    let derive = wired(true, Some("derive"));
-    let via = wired(true, Some("via:u32"));
+    let none = wired(false, None, None);
+    let derive = wired(true, Some("derive"), Some("aaaa"));
+    let via = wired(true, Some("via:u32"), Some("aaaa"));
     let class_and_lines = |a: &Surface, b: &Surface| {
         let d = diff(a, b);
         let (_, _, class, what, _) = only(&d);
@@ -1138,15 +1138,11 @@ fn a_struct_gaining_non_exhaustive_is_conditional_whatever_else_changed() {
 
 #[test]
 fn a_wire_layout_change_is_conditional() {
-    let at = |shape: &str| {
-        let mut s = types(vec![structure("Pos", false, &[("x", "i32")])]);
-        s.types[0].shape = Some(shape.into());
-        s
-    };
+    let at = |shape: &str| wired(true, Some("derive"), Some(shape));
     assert_eq!(
         only(&diff(&at("aaaa"), &at("bbbb"))),
         (
-            "type:Pos",
+            "type:Id",
             ChangeKind::Changed,
             Class::Conditional,
             vec!["wire layout: `aaaa` → `bbbb`: affects users of this encoding"],
