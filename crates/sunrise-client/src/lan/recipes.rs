@@ -47,7 +47,13 @@ impl BookIngredient {
     fn from_parsed(parsed: &ParsedIngredient) -> Self {
         match &parsed.tag {
             Some(tag) => Self::Tag(sunrise_client::crafting::qualified(tag)),
-            None => Self::Items(parsed.order.clone()),
+            None => Self::Items(
+                parsed
+                    .content_candidates()
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect(),
+            ),
         }
     }
 }
@@ -536,6 +542,10 @@ impl ContentPart {
         }
         let mut part: Self = serde_json::from_slice(data).map_err(|error| error.to_string())?;
         for (id, recipe) in &mut part.recipes {
+            if sunrise_core::identifier::Identifier::parse_namespaced(id).is_none() {
+                part.refused = Some(format!("invalid recipe id {id:?}"));
+                break;
+            }
             if let Err(error) = sunrise_items::recipe_sources::decode_type(recipe) {
                 part.refused = Some(format!("recipe {id}: {error}"));
                 break;
@@ -545,8 +555,8 @@ impl ContentPart {
     }
 }
 
-/// The payloads for `types`' recipes among `sources` (`recipe_sources::sources`,
-/// vanilla's ids bare), ids made whole (`minecraft:<name>`). With no type
+/// Frame the already-selected recipes, with ids made whole (`minecraft:<name>`).
+/// With no type
 /// asked for: nothing, or with `reset` (this server sent recipes before) one
 /// last part with no types, which puts its clients back on their own. A
 /// recipe too big for a payload of its own is left out.
@@ -563,10 +573,7 @@ pub fn encode_content(types: &[String], sources: &[(String, Value)], reset: bool
     let mut out = Vec::new();
     let mut part: Vec<(String, Value)> = Vec::new();
     let mut size = 0;
-    for (name, v) in sources {
-        if !crate::crafting::mod_kinds::file_has_type(v, types) {
-            continue;
-        }
+    for (name, v) in sources.iter().filter(|_| !types.is_empty()) {
         let id = if name.contains(':') {
             name.clone()
         } else {
@@ -797,10 +804,18 @@ mod content_tests {
             &load(EngineDataLoadOrigin::ServerDataLoad),
         )
         .unwrap();
-        let recipe = normalize_ingredients(&resolved.recipes[0]).unwrap();
+        let projections = book_projections(&resolved).unwrap();
+        let BookRecipeKind::Shapeless { ingredients, .. } =
+            &projections.recipes["fixture:display"].kind
+        else {
+            panic!("expected a shapeless display");
+        };
         assert_eq!(
-            recipe["ingredients"],
-            json!([["minecraft:diamond_sword"], ["minecraft:apple"]])
+            ingredients,
+            &[
+                BookIngredient::Items(vec!["minecraft:diamond_sword".into()]),
+                BookIngredient::Items(vec!["minecraft:apple".into()]),
+            ]
         );
     }
 
@@ -1007,30 +1022,37 @@ mod content_tests {
             .unwrap();
             assert_eq!(&*tables.by_type["minecraft:crafting"][2].json, &shapeless);
 
+            let projections = book_projections(&resolved).unwrap();
+            let BookRecipeKind::Shapeless { ingredients, .. } =
+                &projections.recipes[&crate::crafting::qualified(&loaded_shapeless.name)].kind
+            else {
+                panic!("expected a shapeless display");
+            };
             assert_eq!(
-                normalize_ingredients(loaded_shapeless).unwrap(),
-                json!({
-                    "type": "minecraft:crafting_shapeless",
-                    "ingredients": [["minecraft:emerald", "minecraft:lapis_lazuli", "minecraft:stone"]],
-                    "result": {"id": "minecraft:stick", "count": 1}
-                })
+                ingredients,
+                &[BookIngredient::Items(vec![
+                    "minecraft:emerald".into(),
+                    "minecraft:lapis_lazuli".into(),
+                    "minecraft:stone".into(),
+                ])]
             );
+            let BookRecipeKind::Shaped { cells, .. } =
+                &projections.recipes[&crate::crafting::qualified(&loaded_shaped.name)].kind
+            else {
+                panic!("expected a shaped display");
+            };
+            let candidates = BookIngredient::Items(vec![
+                "minecraft:emerald".into(),
+                "minecraft:lapis_lazuli".into(),
+            ]);
             assert_eq!(
-                normalize_ingredients(loaded_banner).unwrap(),
-                json!({
-                    "type": "minecraft:crafting_special_bannerduplicate",
-                    "banner": ["minecraft:emerald", "minecraft:lapis_lazuli"],
-                    "result": {"id": "minecraft:white_banner"}
-                })
-            );
-            assert_eq!(
-                normalize_ingredients(loaded_shaped).unwrap(),
-                json!({
-                    "type": "minecraft:crafting_shaped",
-                    "pattern": ["AA", "A "],
-                    "key": {"A": ["minecraft:emerald", "minecraft:lapis_lazuli"]},
-                    "result": {"id": "minecraft:stick", "count": 1}
-                })
+                cells,
+                &[
+                    Some(candidates.clone()),
+                    Some(candidates.clone()),
+                    Some(candidates),
+                    None
+                ]
             );
             assert_eq!(loaded_shapeless.file(), &shapeless);
             assert_eq!(*calls.load.lock().unwrap(), once);
@@ -1206,7 +1228,7 @@ mod content_tests {
             .unwrap();
             assert_eq!(calls.load.lock().unwrap().len(), expected_calls);
             let root = tempfile::tempdir().unwrap();
-            crate::crafting::Recipes::from_resolved(
+            let tables = crate::crafting::Recipes::from_resolved(
                 root.path(),
                 &items,
                 &sunrise_world::loot::PackOverlay::NONE,
@@ -1214,22 +1236,163 @@ mod content_tests {
             )
             .unwrap();
             let _ = crate::stations::StationRecipes::from_sources(root.path(), &items, &resolved);
-            let shaped = normalize_ingredients(&resolved.recipes[0]).unwrap();
+            let types = [
+                "minecraft:crafting",
+                "minecraft:smelting",
+                "minecraft:stonecutting",
+                "minecraft:smithing",
+            ]
+            .map(str::to_owned);
+            let sent = tables.recipe_content(&types);
+            let candidates = json!(["minecraft:emerald", "minecraft:lapis_lazuli"]);
+            assert_eq!(sent[0].1["key"]["a"], candidates);
+            assert_eq!(sent[9].1["shapes"]["star"], candidates);
+            assert_eq!(sent[16].1["addition"], candidates);
+            let received = encode_content(&types, &sent, false)
+                .into_iter()
+                .flat_map(|body| ContentPart::decode(&body).unwrap().recipes)
+                .collect();
+            let (client, _) = crate::crafting::Recipes::empty()
+                .with_recipe_content(&items, received, &types)
+                .unwrap();
             assert_eq!(
-                shaped["key"]["a"],
-                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
-            );
-            let star = normalize_ingredients(&resolved.recipes[9]).unwrap();
-            assert_eq!(
-                star["shapes"]["star"],
-                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
-            );
-            let trim = normalize_ingredients(&resolved.recipes[16]).unwrap();
-            assert_eq!(
-                trim["addition"],
-                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
+                client
+                    .by_type
+                    .values()
+                    .map(|entries| entries.len())
+                    .sum::<usize>(),
+                17
             );
             assert_eq!(calls.load.lock().unwrap().len(), expected_calls);
+        });
+    }
+
+    #[test]
+    fn recipe_content_join_and_reload_keep_server_candidates_and_local_predicates() {
+        use crate::crafting::Recipes;
+        use crate::items::{ItemStack, Items};
+        use sunrise_world::{loot::PackOverlay, native_load_context::LoopSide};
+        let calls = Arc::new(AspectCalls::default());
+        let mods = vec![mod_api::ModEntry::new(
+            "aspects",
+            Box::new(AspectListener(calls.clone())),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            let root = tempfile::tempdir().unwrap();
+            let items = Items::for_tests(Default::default());
+            let client_load = load(EngineDataLoadOrigin::ClientPreload);
+            let server_load = load(EngineDataLoadOrigin::ServerDataLoad);
+            let aspect = json!({"type":"mymod:aspect", "aspect":"plain"});
+            let local = Recipes::from_sources(
+                root.path(),
+                &items,
+                &PackOverlay::NONE,
+                vec![(
+                    "fixture:local".to_owned(),
+                    json!({
+                        "type":"minecraft:smelting", "ingredient": aspect,
+                        "result":{"id":"minecraft:gold_ingot"}
+                    }),
+                )],
+                &client_load,
+            )
+            .unwrap();
+            let kind = "minecraft:crafting";
+            let id = "fixture:server";
+            let mut recipient = PlayerRecipeSync::default();
+            for (candidate, not_candidate, output_count) in [
+                ("minecraft:emerald", "minecraft:lapis_lazuli", 2),
+                ("minecraft:lapis_lazuli", "minecraft:emerald", 3),
+            ] {
+                let server = Recipes::from_sources(root.path(), &items, &PackOverlay::NONE, vec![(
+                    id.to_owned(), json!({
+                        "type":"minecraft:crafting_shapeless",
+                        "category":"equipment", "group":"from_sync",
+                        "ingredients":[{"type":"neoforge:intersection", "children":[aspect, candidate]}],
+                        "result":{"id":"minecraft:iron_sword", "count": output_count,
+                            "components":{"minecraft:damage":7}},
+                    }),
+                )], &server_load).unwrap();
+                let types = [kind.to_owned()];
+                let sources = server.recipe_content(&types);
+                recipient.replace(true, types.to_vec(), &sources);
+                let parts: Vec<_> = recipient
+                    .payloads
+                    .iter()
+                    .map(|body| ContentPart::decode(body).unwrap())
+                    .collect();
+                assert_eq!(
+                    parts.last().unwrap().last.as_deref(),
+                    Some(types.as_slice())
+                );
+                let received = parts.into_iter().flat_map(|part| part.recipes).collect();
+                let (client, index) = local.with_recipe_content(&items, received, &types).unwrap();
+                assert_eq!(index.first_display(id), Some(1));
+                assert_eq!(
+                    client.meta[id],
+                    ("equipment".to_owned(), "from_sync".to_owned())
+                );
+                let server_context = server_load.loop_context(LoopSide::Server, []);
+                let client_context = client_load.loop_context(LoopSide::Client, []);
+                let grid = |item, count| [Some(ItemStack::new(item, count))];
+                assert!(
+                    server
+                        .craft(&server_context, &grid(candidate, 1), 1)
+                        .is_none()
+                );
+                assert_eq!(
+                    server
+                        .craft(&server_context, &grid(candidate, 3), 1)
+                        .unwrap()
+                        .count,
+                    output_count
+                );
+                let made = client
+                    .craft(&client_context, &grid(candidate, 1), 1)
+                    .unwrap();
+                assert_eq!(
+                    (&*made.item, made.count, made.damage),
+                    ("minecraft:iron_sword", output_count, 7)
+                );
+                assert!(
+                    client
+                        .craft(&client_context, &grid(not_candidate, 1), 1)
+                        .is_none()
+                );
+                assert!(
+                    client
+                        .cook(
+                            &client_context,
+                            "minecraft:smelting",
+                            &ItemStack::new("minecraft:emerald", 1)
+                        )
+                        .is_none()
+                );
+                assert_eq!(
+                    &*client
+                        .cook(
+                            &client_context,
+                            "minecraft:smelting",
+                            &ItemStack::new("minecraft:emerald", 3)
+                        )
+                        .unwrap()
+                        .result
+                        .item,
+                    "minecraft:gold_ingot"
+                );
+                assert_eq!(
+                    client.by_type["minecraft:crafting"][0].json["ingredients"],
+                    json!([[candidate]])
+                );
+            }
+            assert_eq!(
+                *calls.load.lock().unwrap(),
+                [
+                    (DataLoadOrigin::ClientPreload, "plain".into()),
+                    (DataLoadOrigin::ServerDataLoad, "plain".into()),
+                    (DataLoadOrigin::ServerDataLoad, "plain".into()),
+                ]
+            );
         });
     }
 
@@ -1243,14 +1406,10 @@ mod content_tests {
     }
 
     #[test]
-    fn content_keeps_the_asked_types_and_ends_with_them() {
+    fn content_frames_the_selected_recipes_and_ends_with_their_types() {
         mod_platform::testing::with_recipe_types(&["mymod:crusher"], || {
             let sources = vec![
                 ("furnace".to_owned(), json!({"type": "minecraft:smelting"})),
-                (
-                    "stick".to_owned(),
-                    json!({"type": "minecraft:crafting_shaped"}),
-                ),
                 ("mymod:crush".to_owned(), json!({"type": "mymod:crusher"})),
             ];
             assert!(encode_content(&[], &sources, false).is_empty());
@@ -1435,15 +1594,12 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
             for recipe in &sources.recipes {
                 if recipe.name != "fixture:placeable" {
                     assert!(!recipe.has_placement_candidates());
-                    let projected = normalize_ingredients(recipe).unwrap();
-                    // `item` on a typed predicate is metadata, not a candidate.
-                    if source.is_object() {
-                        if recipe.file()["type"] == "minecraft:smithing_transform" {
-                            assert_eq!(projected["addition"], json!([]));
-                        } else {
-                            assert_eq!(projected["ingredient"], json!([]));
-                        }
-                    }
+                    assert!(
+                        !book_projections(&sources)
+                            .unwrap()
+                            .displays
+                            .contains(&crate::crafting::qualified(&recipe.name))
+                    );
                 }
             }
         }

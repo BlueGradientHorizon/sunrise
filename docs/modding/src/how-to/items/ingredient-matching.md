@@ -7,3 +7,8 @@ The predicate takes `(&dyn LoopContext, IngredientStack<'_>)` and returns `true`
 The predicate runs as its defining mod on the side testing the recipe. It can run many times while crafting and placing and cannot edit the game. Give the same answer for the same inputs. `Ingredient::test(host, stack)` uses the host's loop context and calls the bound predicate only after any nonempty candidate list accepts the item's ID. A disabled owner rejects without running the predicate; another mod is not asked. An empty custom list has no item filter for manual matching, but contributes no placement candidates; an empty ordinary tag never matches.
 
 `Ingredient`, `Recipe`, `RecipeRule`, `FireworkShapeIngredient`, `PlacementInfo`, `RecipeBookCategory` and `RecipeBookDisplayEntry` remain available in-process but do not implement `Wire`: they can contain native predicates. For a typed payload, derive `Wire` on a separate struct containing the data you need, such as recipe IDs, item IDs or `RecipeBookDisplay` values. Keep the resolved ingredients on the matching side. For recipe-book synchronization the game sends display data and static placement requirements (projecting non-empty custom ingredients to their candidate item sets, and collapsing only empty candidate sets to `PlacementInfo::NOT_PLACEABLE`), never the predicates. The server rechecks live stacks on a placement request.
+
+When a mod asks `datapack_sync` to send a vanilla recipe type in full, the
+receiving client sees an item list for each ingredient, using the server's
+resolved candidates. A bound predicate stays on the server. Do not use the
+client's candidate check to make authoritative crafting or placement decisions.

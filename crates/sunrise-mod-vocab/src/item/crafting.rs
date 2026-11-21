@@ -212,9 +212,9 @@ impl Drop for Ingredient {
 // no wire: a recipe snapshot may include ingredients backed by native predicates.
 /// A recipe in force (`RecipeManager.getAllRecipesFor`), whatever its type
 /// (vanilla's or a mod's own): its typed parts, and its file for whatever a
-/// mod's own type keeps there. `json` is the data-pack file's JSON, read by a
-/// mod at reload; host parsing helpers accept JSON text. Bound predicates live in the
-/// parsed ingredients alone. This snapshot is in-process; send data-only values instead.
+/// mod's own type keeps there. The host parsing helpers accept JSON text.
+/// Bound predicates live in the parsed ingredients alone. This snapshot is in-process;
+/// send data-only values instead.
 ///
 /// A recipe the game could not parse (an ingredient it cannot read, no
 /// result) is not in force and is not listed.
@@ -250,7 +250,9 @@ pub struct Recipe {
     /// shaped, shapeless, cooking and mod-defined types. The ingredient roles,
     /// bounds and templates come from the game's canonical parse.
     pub rule: Option<RecipeRule>,
-    /// The recipe's file, as the data pack wrote it.
+    /// The locally loaded recipe's file. For a server-synced recipe, this is
+    /// what its serializer sent: resolved item lists for vanilla serializers,
+    /// or the registered mod serializer's written JSON for its own kinds.
     pub json: Arc<Value>,
 }
 impl Recipe {
