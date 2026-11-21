@@ -1371,13 +1371,13 @@ impl Game<'_> {
         let authoritative =
             motion.context.side() == sunrise_world::native_load_context::LoopSide::Server;
         motion.record_move(
-            position,
-            bounds(position),
-            wanted,
-            moved,
-            authoritative,
-            sunrise_client::motion::BodyMotion::entity_context(id, position),
-            None,
+            sunrise_client::motion::BodyCollision {
+                footprint: (position, bounds(position)),
+                movement: (wanted, moved),
+                authoritative,
+                context: sunrise_client::motion::BodyMotion::entity_context(id, position),
+                subject: None,
+            },
             ground,
         );
         let effect = motion.legacy_contact(position, ground);

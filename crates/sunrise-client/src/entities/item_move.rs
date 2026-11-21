@@ -175,13 +175,13 @@ impl ItemEntity {
                     side: None,
                 }
                 .record_move(
-                    self.position,
-                    self.bounds(),
-                    wanted,
-                    moved,
-                    authoritative,
-                    self.collision_context(),
-                    None,
+                    crate::motion::BodyCollision {
+                        footprint: (self.position, self.bounds()),
+                        movement: (wanted, moved),
+                        authoritative,
+                        context: self.collision_context(),
+                        subject: None,
+                    },
                     &mut self.ground,
                 );
             }

@@ -276,13 +276,13 @@ impl PrimedTnt {
         let authoritative = context.side() == sunrise_world::native_load_context::LoopSide::Server;
         if !gate.skipped() {
             motion.record_move(
-                self.position,
-                self.bounds(),
-                wanted,
-                moved,
-                authoritative,
-                self.collision_context(),
-                Some(self.powder_snow_subject()),
+                sunrise_client::motion::BodyCollision {
+                    footprint: (self.position, self.bounds()),
+                    movement: (wanted, moved),
+                    authoritative,
+                    context: self.collision_context(),
+                    subject: Some(self.powder_snow_subject()),
+                },
                 &mut self.ground,
             );
         }

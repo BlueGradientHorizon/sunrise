@@ -369,45 +369,88 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
                         .registry
                         .default_state("minecraft:glass")
                         .unwrap();
-                    for (id, fall, survives) in [(71, 0.0, true), (72, 3.5, false)] {
-                        game.world = World::new(game.res.facts().air, 1);
-                        game.world
-                            .chunks
-                            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                        game.world.set(4, 63, 4, glass).unwrap();
-                        game.carts.clear();
-                        game.carts.push(Minecart::new(
-                            id,
-                            CartKind::Tnt,
-                            Vec3::new(4.5, 64.25, 4.5),
-                        ));
-                        // Work on the same joined row that the tick lends out.
-                        let mut cart = game.carts[0].clone();
-                        cart.fall_distance = fall;
-                        cart.velocity = Vec3::new(0.0, -1.0, 0.0);
-                        part.calls.lock().unwrap().clear();
-                        let result = sunrise_client::block_contact::in_level(
-                            game.tick,
-                            Some(game.dim.id()),
-                            || game.move_cart(&mut cart, Vec3::new(0.0, -1.0, 0.0)),
-                        );
-                        assert_eq!(cart.position.y.to_bits(), 64.0_f64.to_bits());
-                        assert_eq!(result, survives);
-                        assert_eq!(game.carts.iter().any(|cart| cart.id == id), survives);
-                        let calls = part.calls.lock().unwrap();
-                        if survives {
-                            assert_eq!(
-                                *calls,
-                                [(
-                                    false,
-                                    id as i32,
-                                    "minecraft:tnt_minecart".to_owned(),
-                                    [4, 63, 4]
-                                )]
+                    use crate::game::piston_push::Lid;
+                    use mod_api::MoveCause;
+                    use sunrise_core::geometry::Aabb;
+
+                    for mover in [
+                        None,
+                        Some(MoveCause::SelfMovement),
+                        Some(MoveCause::Piston),
+                        Some(MoveCause::ShulkerBox),
+                    ] {
+                        for (id, fall, survives) in [(71, 0.0, true), (72, 3.5, false)] {
+                            game.world = World::new(game.res.facts().air, 1);
+                            game.world
+                                .chunks
+                                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                            game.world.set(4, 63, 4, glass).unwrap();
+                            game.carts.clear();
+                            let mut cart =
+                                Minecart::new(id, CartKind::Tnt, Vec3::new(4.5, 64.25, 4.5));
+                            cart.fall_distance = fall;
+                            cart.velocity = Vec3::new(0.0, -1.0, 0.0);
+                            game.carts.push(cart);
+                            part.calls.lock().unwrap().clear();
+                            let mut tick_cart = None;
+                            sunrise_client::block_contact::in_level(
+                                game.tick,
+                                Some(game.dim.id()),
+                                || {
+                                    match mover {
+                                        None => {
+                                            // The tick moves a clone of its joined resident row.
+                                            let mut cart = game.carts[0].clone();
+                                            assert_eq!(
+                                                game.move_cart(
+                                                    &mut cart,
+                                                    Vec3::new(0.0, -0.5, 0.0)
+                                                ),
+                                                survives
+                                            );
+                                            tick_cart = Some(cart);
+                                        }
+                                        Some(MoveCause::ShulkerBox) => game.lid_push(
+                                            Lid::Box,
+                                            Aabb::new(
+                                                Vec3::new(4.0, 64.5, 4.0),
+                                                Vec3::new(5.0, 65.0, 5.0),
+                                            ),
+                                            Vec3::new(0.0, -0.5, 0.0),
+                                        ),
+                                        Some(cause) => {
+                                            let entity = game.entity(id).unwrap();
+                                            assert!(
+                                                entity
+                                                    .move_by(game, [0.0, -0.5, 0.0], cause)
+                                                    .is_some()
+                                            );
+                                        }
+                                    }
+                                },
                             );
-                            assert!(cart.velocity.y > 0.0);
-                        } else {
-                            assert!(calls.is_empty());
+                            assert_eq!(
+                                game.carts.iter().any(|cart| cart.id == id),
+                                survives,
+                                "{mover:?}"
+                            );
+                            let calls = part.calls.lock().unwrap();
+                            if survives {
+                                let cart = tick_cart.as_ref().unwrap_or(&game.carts[0]);
+                                assert_eq!(cart.position.y.to_bits(), 64.0_f64.to_bits());
+                                assert_eq!(
+                                    *calls,
+                                    [(
+                                        false,
+                                        id as i32,
+                                        "minecraft:tnt_minecart".to_owned(),
+                                        [4, 63, 4]
+                                    )]
+                                );
+                                assert!(cart.velocity.y > 0.0);
+                            } else {
+                                assert!(calls.is_empty(), "{mover:?}");
+                            }
                         }
                     }
                 });
