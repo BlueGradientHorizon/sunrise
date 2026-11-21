@@ -183,15 +183,17 @@ not blocks, and uses the segment and exclusions you supply, not vanilla's pick p
 For example, filter the ray using a shared read from the same client host:
 
 ```rust,ignore
-let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |hit| {
-    hit.entity.kind(host) == Some(wanted_kind)
+let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |entity| {
+    entity.kind(host) == Some(wanted_kind)
 })?;
 ```
 
-`Ok(None)` means no hit passed the predicate, not that the read was refused. The
-predicate sees all geometric hits in spatial traversal order; on an exact
-squared-distance tie the first visited wins. See [entity rays](../world/spawning.md#finding-the-nearest-entity-hit)
-for the geometry and when to keep the ordered all-hit query.
+`Ok(None)` means no accepted candidate was hit, not that the read was refused. The
+predicate runs on each non-excluded candidate `EntityRef` in spatial traversal order
+before its box is read and clipped (`ProjectileUtil.getEntityHitResult`); on an exact
+squared-distance tie the first visited hit wins. See
+[entity rays](../world/spawning.md#finding-the-nearest-entity-hit) for the geometry
+and when to keep the ordered all-hit query.
 
 A client `EntityRef` supports `bounding_box(host)`, `eye_height(host)` and
 `eye_position(host)`. For the local player these use the current predicted body and pose;

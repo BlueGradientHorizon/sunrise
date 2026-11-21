@@ -368,6 +368,32 @@ pub(crate) fn invoke<T>(
     })
 }
 
+/// Registered codecs use the diagnostic fence independently of gameplay hook switches.
+/// Each invocation site owns its own panic disablement.
+pub(crate) fn invoke_registered_codec<T>(
+    mod_id: &'static str,
+    operation: &'static str,
+    poisoned: &std::sync::atomic::AtomicBool,
+    call: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    use std::sync::atomic::Ordering;
+    if poisoned.load(Ordering::Acquire) {
+        return Err(format!("mod {mod_id}: {operation} disabled after a panic"));
+    }
+    let _owner = mark_mod(mod_id, operation);
+    contain_callback(call, |payload| {
+        if !poisoned.swap(true, Ordering::AcqRel) {
+            log_and_queue_panic(operation, mod_id, payload);
+        }
+    })
+    .ok_or_else(|| format!("mod {mod_id}: {operation} panicked"))?
+    .map_err(|reason| {
+        let reason = format!("mod {mod_id}: {operation} refused: {reason}");
+        log::warn!("{reason}");
+        reason
+    })
+}
+
 /// Run a callback with the crash hook deferred to its owning diagnostic policy.
 #[inline]
 pub(crate) fn contain_callback<T>(

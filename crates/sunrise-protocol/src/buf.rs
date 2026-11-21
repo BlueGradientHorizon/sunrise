@@ -29,6 +29,7 @@ pub fn check_network_nbt(tag: &Tag) -> Result<()> {
 pub struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
+    names: Option<&'a dyn crate::item::Names>,
     payload_codecs: Option<&'a crate::packets::custom_payload::PayloadCodecs>,
 }
 impl<'a> Reader<'a> {
@@ -36,6 +37,7 @@ impl<'a> Reader<'a> {
         Self {
             data,
             pos: 0,
+            names: None,
             payload_codecs: None,
         }
     }
@@ -47,8 +49,38 @@ impl<'a> Reader<'a> {
         Self {
             data,
             pos: 0,
+            names: None,
             payload_codecs: Some(codecs),
         }
+    }
+    /// Use the peer's synchronized registry IDs when decoding stream values.
+    pub fn with_names(mut self, names: &'a dyn crate::item::Names) -> Self {
+        self.names = Some(names);
+        self
+    }
+    pub(crate) fn consume_effect_kind(
+        &self,
+        id: i32,
+    ) -> Option<crate::item::consume_effects::Kind> {
+        match self.names {
+            Some(names) => names.consume_effect_kind(id),
+            None => crate::item::consume_effects::builtin_name(id)
+                .map(|_| crate::item::consume_effects::Kind::Builtin(id)),
+        }
+    }
+    pub(crate) fn consume_effect_admissions(
+        &self,
+    ) -> Option<&'a crate::item::consume_effects::AdmissionLookup<'a>> {
+        self.names?.consume_effect_admissions()
+    }
+
+    pub fn subreader(&mut self, size: usize) -> Result<Self> {
+        Ok(Self {
+            data: self.bytes(size)?,
+            pos: 0,
+            names: self.names,
+            payload_codecs: self.payload_codecs,
+        })
     }
     pub(crate) fn payload_codecs(&self) -> Option<&crate::packets::custom_payload::PayloadCodecs> {
         self.payload_codecs
@@ -62,6 +94,9 @@ impl<'a> Reader<'a> {
     /// The bytes read since `start` (a `position()`).
     pub fn since(&self, start: usize) -> &'a [u8] {
         &self.data[start.min(self.pos)..self.pos]
+    }
+    pub(crate) fn unread(&self) -> &'a [u8] {
+        &self.data[self.pos..]
     }
     pub fn rest(&mut self) -> &'a [u8] {
         let rest = &self.data[self.pos..];

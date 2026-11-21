@@ -758,8 +758,12 @@ impl Game<'_> {
 
     fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
-            .unwrap_or(false)
+        if !sunrise_protocol::item::custom::permitted_with_names(
+            stack,
+            r.registries.custom_components,
+            &*r.registries,
+        )
+        .unwrap_or(false)
         {
             log::warn!("Dropping a stack with unnegotiated custom components");
             return None;
@@ -769,6 +773,76 @@ impl Game<'_> {
             &r.builtin,
             &r.registries,
         ))
+    }
+
+    pub(super) fn to_network_projecting(
+        &self,
+        s: &Option<ItemStack>,
+        projected: &dyn Fn(&sunrise_world::component_value::consume_effects::Admitted),
+    ) -> Option<Stack> {
+        let r = self.remote.as_ref()?;
+        // A stack as the server sent it, only its count changed: its own
+        // components go back, as a vanilla client keeps them.
+        let effect_mapping = r
+            .registries
+            .consume_effect_codecs
+            .as_ref()
+            .map(|snapshot| snapshot.identity());
+        let source = s.as_ref()?;
+        if let Some(patch) = source.wire_patch_for(effect_mapping) {
+            let mut out = Stack::new(self.item_id(&source.item), source.count as i32);
+            let safe = r.registries.custom_components
+                || sunrise_protocol::item::custom::entries().next().is_none()
+                || sunrise_protocol::item::WirePatch::decode_reader(
+                    sunrise_protocol::buf::Reader::new(&patch).with_names(&*r.registries),
+                )
+                .and_then(|(added, removed)| {
+                    let decoded = Stack {
+                        added,
+                        removed,
+                        ..Stack::new(out.item, out.count)
+                    };
+                    sunrise_protocol::item::custom::permitted_with_names(
+                        &decoded,
+                        false,
+                        &*r.registries,
+                    )
+                })
+                .unwrap_or(false);
+            if safe {
+                out.wire = sunrise_protocol::item::WirePatch(Some(patch));
+                return Some(out);
+            }
+            log::warn!("Cannot send cached custom components to this peer");
+        }
+        let mut wire = sunrise_client::lan::guest::stack_to_network_projecting(
+            |name| self.item_id(name),
+            // Built-in first, as a hub's `SyncData::id` does: potions are one.
+            |registry, name| {
+                if registry == sunrise_protocol::item::consume_effects::REGISTRY {
+                    return r.registries.consume_effect_id(name);
+                }
+                r.builtin
+                    .get(registry)
+                    .and_then(|ids| ids.id(name))
+                    .or_else(|| r.registries.id(registry, name))
+                    .or_else(|| {
+                        (r.registries.custom_components
+                            && registry == "minecraft:data_component_type")
+                            .then(|| sunrise_protocol::item::custom::id(name))
+                            .flatten()
+                    })
+            },
+            s,
+            projected,
+        )?;
+        sunrise_client::lan::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            self.items(),
+            &r.builtin,
+        );
+        Some(wire)
     }
 
     /// `HashedStack.create` with the connection's registries (the client's
@@ -785,11 +859,32 @@ impl Game<'_> {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
+        let projected = std::cell::RefCell::new(Vec::new());
         let stack = self
-            .to_network(s)
+            .to_network_projecting(s, &|effect| projected.borrow_mut().push(effect.clone()))
             .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
-        Hashed::create(&stack, &names)
-            .map(Some)
+        let projected = projected.into_inner();
+        let hash = if let Some(data) = s.as_ref().and_then(ItemStack::data) {
+            Hashed::create_with_admitted(&stack, &names, &|name, bytes| {
+                let matches =
+                    |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                        &effect.name == name && effect.wire.as_ref() == bytes
+                    };
+                if stack.wire.0.is_some() {
+                    data.wire
+                        .admitted_effects()
+                        .iter()
+                        .find(|effect| matches(effect))
+                        .cloned()
+                } else {
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                }
+            })
+        } else {
+            Hashed::create(&stack, &names)
+        };
+        hash.map(Some)
             .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 

@@ -131,26 +131,21 @@ impl Game<'_> {
             return;
         }
         self.consume_held();
-        let remainder = sunrise_client::item_sync::use_remainder(stack, info.use_remainder.clone());
-        self.apply_use_remainder(remainder.as_deref(), stack.count);
+        self.apply_use_remainder(stack);
     }
     /// `ItemStack.applyAfterUseComponentSideEffects` uses the stack captured
     /// before the item handler, even when that handler changes the hand.
     pub(super) fn apply_after_use_components(&mut self, stack: &ItemStack) {
-        let remainder = self
-            .items()
-            .get(&stack.item)
-            .and_then(|info| info.use_remainder.clone());
-        let remainder = sunrise_client::item_sync::use_remainder(stack, remainder);
-        self.apply_use_remainder(remainder.as_deref(), stack.count);
+        self.apply_use_remainder(stack);
         self.apply_use_cooldown(stack);
     }
-    fn apply_use_remainder(&mut self, remainder: Option<&str>, count_before: u32) {
-        if self.creative || self.held().map_or(0, |stack| stack.count) >= count_before {
+    fn apply_use_remainder(&mut self, used: &ItemStack) {
+        if self.creative || self.held().map_or(0, |stack| stack.count) >= used.count {
             return;
         }
-        if let Some(remainder) = remainder {
-            let remainder = ItemStack::new(remainder, 1);
+        if let Some(remainder) =
+            sunrise_client::item_sync::use_remainder(used, self.items().get(&used.item))
+        {
             if self.held().is_none() {
                 *self.held_mut() = Some(remainder);
             } else if let Some(rest) = self.add_stack_to_inventory(remainder) {
@@ -192,16 +187,6 @@ impl Game<'_> {
         let Some(consumable) = self.consumable(&decision.stack) else {
             return false;
         };
-        let remainder = self
-            .items()
-            .get(&decision.stack.item)
-            .and_then(|info| info.use_remainder.as_deref())
-            .map(std::sync::Arc::<str>::from);
-        let remainder = sunrise_client::item_sync::use_remainder(
-            &decision.stack,
-            remainder.map(|value| value.to_string()),
-        )
-        .map(std::sync::Arc::<str>::from);
         let failures = mod_api::runtime::isolated_failures();
         let result: Result<bool, ()> = mod_api::run_transaction(self, |game, _| {
             {
@@ -272,7 +257,8 @@ impl Game<'_> {
                 return Ok(false);
             };
             let position = m.position;
-            Ok(decision.finish(m, position, remainder))
+            let info = game.res.items().get(&decision.stack.item);
+            Ok(decision.finish(m, position, info))
         });
         result.unwrap_or(false)
     }

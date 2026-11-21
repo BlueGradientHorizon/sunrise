@@ -19,9 +19,11 @@ match place.with_stack(host, |stack| stack.project()) {
 }
 ```
 
-Native reads use storage already present: they do not load chunks, initialize a player or
-unpack pending loot. An item entity's place sees live state, including earlier writes in
-the same transaction.
+Native reads do not load chunks or initialize a player; reading a chest vehicle's
+`ItemPlace::EntitySlot` unpacks its pending loot table without a player, matching vanilla
+`ContainerEntity.getChestVehicleItem`. The fill adds loot only to free slots and preserves
+any items already there. An item entity's place sees live state, including earlier writes
+in the same transaction.
 For a provider-backed or decoded place, the view lends the value produced for that read. A
 provider-backed menu slot reads its live backing, not the menu's display copy. A dropped
 item narrowed to an `ItemEntityRef` has its own
@@ -122,20 +124,22 @@ copy. It never includes pending edits and returns `None` if projection is refuse
 `editor.set` stages a value; `editor.remove(&descriptor)` clears an override so the item
 inherits its default. To remove the component even if the item has a default, use a
 `!id` entry with `editor.apply_components(&patch)`, or `editor.clear_damage()` for damage.
-`apply_components` merges without dropping unrelated overrides and refuses a malformed or
-conflicting damage patch before staging any of it. `editor.copy_component_from(&other, id)`
+`apply_components` merges without dropping unrelated overrides and refuses a malformed
+damage patch before staging any of it. `editor.copy_component_from(&other, id)`
 copies the source stack's own value or removal; if the source inherits, the target inherits too.
 
-For a player's slot (including armour and off hand), hand, or a mob's or armour stand's
-`ItemPlace::Equipment`, the game resolves the slot before calling the editor. An empty or
-unreadable slot (`ItemPlaceEditError::NotHeld`), an unavailable backend, or a closed transaction
-(`Unavailable`) refuses before calling the editor. After the callback, the game validates the
-changed overrides together, including the resulting stack limits. If it returns `Stack(error)`,
-none of the edits were applied. Unchanged overrides are not rewritten. The usual inventory,
-menu and equipment sync sends the change without replaying equip sounds, events or attribute
-effects. Aborting this transaction or an enclosing one restores the previous stack.
+For a player's slot (including armour and off hand), hand, open menu cursor (`PlayerCursor`),
+or a mob's or armour stand's `ItemPlace::Equipment`, the game resolves the slot before calling
+the editor. An empty or unreadable slot (`ItemPlaceEditError::NotHeld`), an unavailable backend,
+or a closed transaction (`Unavailable`) refuses before the editor runs. After the callback, the
+game validates the changed overrides together, including the resulting stack limits. If it returns
+`Stack(error)`, none of the edits were applied. Unchanged overrides are not rewritten. The usual
+inventory, menu, cursor and equipment sync sends the change, including synchronized component
+overrides, without replaying equip sounds,
+events or attribute effects. Aborting this transaction or an enclosing one restores the previous
+stack.
 
-`Strict` keeps the same edit behavior. Cursors, `OneByOne` and `InfiniteMaterials` refuse with
+`Strict` keeps the same edit behavior. `OneByOne` and `InfiniteMaterials` refuse with
 `UnsupportedPlace` before the callback; other places use their ordinary exchange rules.
 To change an item or count, use the appropriate transactional slot write or transfer instead.
 

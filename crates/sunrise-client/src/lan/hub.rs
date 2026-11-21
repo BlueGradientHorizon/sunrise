@@ -11,7 +11,7 @@ use super::{
     data::SyncData,
     entity::{Entities, EntityState},
     equipment_cache,
-    guest::{Guest, InboxItem, SentEffect, stack_to_network},
+    guest::{Guest, InboxItem, SentEffect, stack_to_network_projecting},
 };
 use crate::{
     chunk::Chunk,
@@ -871,6 +871,14 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
+        self.stack_projecting(s, &|_| ())
+    }
+
+    pub(super) fn stack_projecting(
+        &mut self,
+        s: &Option<ItemStack>,
+        projected: &dyn Fn(&sunrise_world::component_value::consume_effects::Admitted),
+    ) -> Option<sunrise_protocol::item::Stack> {
         let source = s.as_ref()?;
         let item = source.item.clone();
         let id = self.item_id(&item);
@@ -886,7 +894,12 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        let mut wire = stack_to_network(item_id, |registry, name| sync.id(registry, name), s)?;
+        let mut wire = stack_to_network_projecting(
+            item_id,
+            |registry, name| sync.id(registry, name),
+            s,
+            projected,
+        )?;
         super::guest::canonicalize_stack_patch(
             &mut wire,
             source,

@@ -117,9 +117,9 @@ impl Hooks for Edit {
                 .edit
                 .remove(host, &absent, CreativeTabVisibility::Both),
             Err(CreativeTabEditError::Stack(
-                mod_api::StackWriteError::DamageExceeded {
-                    maximum: i32::MAX as u32
-                }
+                mod_api::StackWriteError::InvalidComponents {
+                    reason: mod_api::StackError::InvalidDamage,
+                },
             )),
         );
         assert_eq!(

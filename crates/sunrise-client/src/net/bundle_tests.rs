@@ -13,6 +13,7 @@ fn play_reader(
     std::thread::spawn(move || {
         receive_play(
             &mut reader,
+            Arc::default(),
             &writer,
             &Arc::new(AtomicBool::new(false)),
             &Arc::new(Language::new()),
@@ -71,7 +72,11 @@ fn malformed_metadata_aborts_the_open_bundle_and_refunds_its_prefix() {
     .join()
     .unwrap()
     .unwrap_err();
-    assert_eq!(error.key.as_deref(), Some("multiplayer.disconnect.invalid_packet"), "{error:?}");
+    assert_eq!(
+        error.key.as_deref(),
+        Some("multiplayer.disconnect.invalid_packet"),
+        "{error:?}"
+    );
     assert!(
         events.try_recv_owned().is_err(),
         "neither the spawn nor a standalone DecodeError may escape"

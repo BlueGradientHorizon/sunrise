@@ -6,6 +6,10 @@ pub trait Hooks {
     /// interleaved with built-in effects. `stack` is the read-only snapshot
     /// before consumption shrinks it, including components. `user` is the
     /// player or mob consuming it. An unclaimed kind does nothing.
+    /// Register a custom kind's save codec and Wire value with
+    /// `Registrar::register_consume_effect_type` before placing it in a stack
+    /// that will be sent to a client. A registered kind's `data` holds the
+    /// canonical fields returned by its save codec, with their exact NBT types.
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_consume_effect",
         dispatch = "flat",

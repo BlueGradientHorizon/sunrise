@@ -549,3 +549,144 @@ fn client_menu_close_and_button_click_reach_the_server() {
         assert!(sent(&mut reader).is_none());
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn retained_effects_rebind_on_reconfiguration_and_refusals_do_not_block_clicks() {
+    use crate::game::native_entity_refs::tests::with_game;
+    use std::sync::Arc;
+    use sunrise_core::{nbt::Tag, vanilla_bytes::Writer};
+    use sunrise_protocol::{
+        buf::{Codec, Reader},
+        item::{Component, Hashed, Slot, Stack, component, consume_effects as stream},
+        packets::{
+            configuration::{RegistryData, RegistryEntry},
+            play,
+        },
+        registry::{Dynamic, SyncedNames},
+    };
+    use sunrise_world::component_value::consume_effects::{self, Type};
+
+    consume_effects::with_test_registry(|| {
+        consume_effects::install(
+            ["reconfigure:first", "reconfigure:second"]
+                .into_iter()
+                .map(|name| {
+                    (
+                        Arc::from(name),
+                        Type {
+                            schema: 17,
+                            load: Box::new(|_| {
+                                unreachable!("a retained network value must not reload NBT")
+                            }),
+                            read: Box::new(|bytes, project| {
+                                let byte = *bytes.first().ok_or("missing charge")?;
+                                // Emulate the mod save adapter refusing a value but consuming its Wire byte.
+                                Ok((
+                                    1,
+                                    (project && byte != 0xff).then(|| {
+                                        [("charge".into(), Tag::Int(i32::from(byte)))].into()
+                                    }),
+                                ))
+                            }),
+                        },
+                    )
+                })
+                .collect(),
+        )
+        .unwrap();
+        let configure = |swap: bool| {
+            let mut entries: Vec<_> = stream::configuration()
+                .map(|(id, schema)| RegistryEntry {
+                    id: id.into(),
+                    data: Some(Tag::Long(schema as i64)),
+                })
+                .collect();
+            if swap {
+                entries.swap(5, 6);
+            }
+            let mut registry = Dynamic::default();
+            registry
+                .add_consume_effects(RegistryData {
+                    registry: stream::REGISTRY.into(),
+                    entries,
+                })
+                .unwrap();
+            Arc::new(registry)
+        };
+        with_game(|game| {
+            let (mut reader, _writer) = connect_menu_test(game);
+            spawn_menu_test(game);
+            let item = game.item_id("minecraft:stone");
+            let protection = |count, bytes| {
+                let mut stack = Stack::new(item, count);
+                stack
+                    .added
+                    .push((component::DEATH_PROTECTION, Component::Raw(bytes)));
+                stack
+            };
+            let receive = |stack, mapping: &Dynamic| {
+                let mut wire = Writer::new();
+                Slot::write(&Some(stack), &mut wire);
+                Slot::read(&mut Reader::new(&wire.data).with_names(mapping)).unwrap()
+            };
+            let old = configure(false);
+            game.set_registries(old.clone());
+            let retained = game.to_stack(&receive(protection(2, vec![1, 5, 7]), &old));
+            assert!(retained.as_ref().unwrap().wire_patch().is_some());
+            let new = configure(true);
+            game.set_registries(new.clone());
+            let sent = game.to_network(&retained).unwrap();
+            assert_eq!(
+                sent.component(component::DEATH_PROTECTION),
+                Some(&Component::Raw(vec![1, 6, 7]))
+            );
+            let expected_hash = |stack, game: &crate::game::Game<'_>| {
+                let names = SyncedNames {
+                    builtin: &game.remote.as_ref().unwrap().builtin,
+                    dynamic: &new,
+                };
+                Hashed::create(&stack, &names).unwrap()
+            };
+            assert_eq!(
+                game.hashed_stack(&retained).unwrap(),
+                Some(expected_hash(protection(2, vec![1, 6, 7]), game))
+            );
+            assert_ne!(
+                game.hashed_stack(&retained).unwrap(),
+                Some(expected_hash(protection(2, vec![1, 5, 7]), game))
+            );
+
+            // The refused custom effect precedes a valid built-in. It must not poison
+            // structural framing or either side's hash of the ordinary survivor.
+            let received = receive(protection(2, vec![2, 6, 0xff, 2]), &new);
+            let projected = expected_hash(protection(2, vec![1, 2]), game);
+            assert_eq!(expected_hash(received.clone().unwrap(), game), projected);
+            game.carried = game.to_stack(&received);
+            assert_eq!(game.hashed_stack(&game.carried).unwrap(), Some(projected));
+            let menu = game
+                .local_player()
+                .and_then(|player| game.player_container_menu(player))
+                .unwrap();
+            assert!(menu.click(
+                game,
+                &[mod_api::MenuClick::Pickup {
+                    slot: Some(36),
+                    button: mod_api::MouseButton::Left
+                }]
+            ));
+            let (id, body) = reader.recv().unwrap();
+            let play::Serverbound::ContainerClick(click) =
+                play::Serverbound::decode(id, &body).unwrap()
+            else {
+                panic!("expected an ordinary click with the admitted projection");
+            };
+            assert_eq!(click.slot, 36);
+            assert!(click.carried.is_none());
+            assert_eq!(
+                click.changed,
+                vec![(36, Some(expected_hash(protection(2, vec![1, 2]), game)))]
+            );
+        });
+    });
+}

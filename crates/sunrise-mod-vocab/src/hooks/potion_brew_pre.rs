@@ -14,7 +14,8 @@ pub trait Hooks {
         contract = "cancel",
         out = "cancel",
         neoforge = "PotionBrewEvent.Pre",
-        cancellable = true
+        cancellable = true,
+        version = 2
     )]
     fn potion_brew_pre(pos: [i32; 3], stacks: &mut [Option<ItemStack>; 5], cancel: &mut bool);
 }

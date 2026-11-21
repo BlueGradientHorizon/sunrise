@@ -124,10 +124,11 @@ impl Game<'_> {
         if self.carts.iter().any(container) {
             return self.edit_cart_slots(id, |slots| edit(slots, position));
         }
+        self.unpack_loot(super::container_loot::LootTarget::Boat(id), None);
+        let i = self.boats.iter().position(|b| b.id == id && b.chest)?;
         if let Some(super::BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
             return Some(edit(open, position));
         }
-        let i = self.boats.iter().position(|b| b.id == id)?;
         Some(self.boats.update(i, |b| edit(&mut b.items, position)))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
@@ -221,7 +222,9 @@ impl Game<'_> {
         let tag = sunrise_client::command::args::normalize(tag);
         self.res.mob_data().entity_has(&tag, entity_type)
     }
-    /// Lend a native place's stack without encoding components or initializing storage.
+    /// Lend a native place's stack without encoding components. Reading a chest vehicle's
+    /// `EntitySlot` unpacks its pending loot table without a player
+    /// (`ContainerEntity.getChestVehicleItem`).
     pub(super) fn game_stack(
         &mut self,
         place: &ItemPlace,
@@ -230,9 +233,10 @@ impl Game<'_> {
         super::native_living_refs::lend_equipment(self.game_stack_source(place)?, read)
     }
 
-    /// Borrow the stack in a native place without initializing a player or container.
-    /// Equipment overlays are only applied when the caller projects a complete stack.
-    fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
+    /// Borrow the stack in a native place without initializing a player. Reading a chest
+    /// vehicle's `EntitySlot` unpacks its pending loot table without a player; equipment
+    /// overlays are only applied when the caller projects a complete stack.
+    fn game_stack_source(&mut self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_held(*id).map(EquipmentRead::resident);
         }
@@ -248,6 +252,15 @@ impl Game<'_> {
                     .map(|entity| EquipmentRead::resident(&entity.stack));
             }
             ItemPlace::EntitySlot { entity, slot } => {
+                if self
+                    .carts
+                    .iter()
+                    .any(|c| c.id == *entity && c.kind.slots() > 0)
+                {
+                    self.unpack_loot(super::container_loot::LootTarget::Cart(*entity), None);
+                } else if self.boats.iter().any(|b| b.id == *entity && b.chest) {
+                    self.unpack_loot(super::container_loot::LootTarget::Boat(*entity), None);
+                }
                 let vehicle = self
                     .carts
                     .iter()
@@ -313,13 +326,11 @@ impl Game<'_> {
             ItemPlace::PlayerCursor { menu } => {
                 let guest = self.native_menu_guest(*menu)?;
                 if self.lan_acting == Some(guest.conn) {
-                    self.native_live_acting_body()?;
                     self.carried.as_ref()
-                } else if !guest.dead {
-                    guest.carried.as_ref()
                 } else {
-                    None
+                    guest.carried.as_ref()
                 }
+                .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
             }
             _ => None,
         }?;
@@ -467,6 +478,44 @@ impl Game<'_> {
                         slot.stack_mut(&mut self.inventory, &mut self.armor, &mut self.offhand),
                         patch,
                     );
+                }
+            }
+            ItemPlace::PlayerCursor { menu } => {
+                let guest = self
+                    .native_menu_guest(menu)
+                    .ok_or(ItemPlaceEditError::NotHeld)?;
+                let player = guest.uuid;
+                let (parked, carried) = if self.lan_acting == Some(guest.conn) {
+                    (None, &self.carried)
+                } else {
+                    (
+                        Some(
+                            self.guest_index(guest.conn)
+                                .ok_or(ItemPlaceEditError::NotHeld)?,
+                        ),
+                        &guest.carried,
+                    )
+                };
+                let held = carried
+                    .as_ref()
+                    .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
+                    .ok_or(ItemPlaceEditError::NotHeld)?;
+                let Some((patch, _)) = prepare(EquipmentRead::resident(held), world_items!(self))?
+                else {
+                    return Ok(());
+                };
+                if let Some(index) = parked {
+                    self.journal_parked_player(index);
+                    let host = self.lan.as_mut().expect("resolved guest");
+                    host.hub.guests.update(index, |guest| {
+                        apply(
+                            guest.carried.as_mut().expect("prepared cursor stack"),
+                            patch,
+                        );
+                    });
+                } else {
+                    self.journal_player(player);
+                    apply(self.carried.as_mut().expect("prepared cursor stack"), patch);
                 }
             }
             _ => return Err(ItemPlaceEditError::NotHeld),
@@ -1545,7 +1594,7 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn virtual_wrappers_and_cursors_refuse_a_whole_stack_edit() {
+    fn virtual_wrappers_refuse_a_whole_stack_edit() {
         super::super::native_guest_turn_tests::with_guests(|game| {
             let stick = ItemStack::new("minecraft:stick", 32);
             let cursor_stack = ItemStack::new("minecraft:paper", 1);
@@ -1566,7 +1615,6 @@ pub(super) mod tests {
                     inner: Box::new(hand.clone()),
                 })),
                 ItemPlace::OneByOne(Box::new(hand.clone())),
-                menu.cursor(),
             ] {
                 assert_eq!(
                     game.transaction(|host, tx| {
@@ -1577,15 +1625,661 @@ pub(super) mod tests {
             }
             let closed = game.transaction_open();
             game.transaction_close(&closed, true);
-            assert_eq!(
-                hand.edit(game, closed.transaction(), |_| {
-                    panic!("closed transaction ran editor")
-                }),
-                Err(ItemPlaceEditError::Unavailable)
-            );
+            for place in [&hand, &menu.cursor()] {
+                assert_eq!(
+                    place.edit(game, closed.transaction(), |_| {
+                        panic!("closed transaction ran editor")
+                    }),
+                    Err(ItemPlaceEditError::Unavailable)
+                );
+            }
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert_eq!(guest.inventory[0].as_ref(), Some(&stick));
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_whole_stack_edit_validates_and_rolls_back() {
+        use mod_api::{MenuReplace, StackWriteError, Tag};
+
+        with_game(|game| {
+            open_to_lan(game);
+            let mut player_guest = guest(1);
+            player_guest.carried = Some(ItemStack::new("minecraft:paper", 16));
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            let player = game.player(123).unwrap();
+            let menu = game.player_container_menu(player).unwrap();
+            let cursor = menu.cursor();
+            let strict_cursor = ItemPlace::Strict(Box::new(cursor.clone()));
+
+            // Strict preserves resolved whole-stack cursor editing without changing item or count.
+            let parked_name = Tag::String("cursor paper".into());
+            let mut expected = ItemStack::new("minecraft:paper", 16);
+            expected.data_mut().custom_name = Some(parked_name.clone());
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    strict_cursor.edit(host, tx, |stack| {
+                        assert_eq!(
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_string(),
+                            "minecraft:paper"
+                        );
+                        assert_eq!(stack.count(), 16);
+                        stack
+                            .apply_components(
+                                &[("minecraft:custom_name".into(), parked_name.clone())].into(),
+                            )
+                            .unwrap();
+                    })
+                }),
+                Ok(())
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Invalid component write refuses cleanly without applying partial edits.
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    Ok::<_, ()>(cursor.edit(host, tx, |stack| {
+                        stack
+                            .apply_components(
+                                &[
+                                    (
+                                        "minecraft:custom_name".into(),
+                                        Tag::String("refused rename".into()),
+                                    ),
+                                    ("minecraft:max_stack_size".into(), Tag::Int(1)),
+                                ]
+                                .into(),
+                            )
+                            .unwrap();
+                    }))
+                }),
+                Ok(Err(ItemPlaceEditError::Stack(
+                    StackWriteError::CountExceeded { maximum: 1 }
+                )))
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Aborting the transaction restores the parked cursor stack.
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor
+                        .edit(host, tx, |stack| {
+                            stack
+                                .apply_components(
+                                    &[(
+                                        "minecraft:custom_name".into(),
+                                        Tag::String("aborted rename".into()),
+                                    )]
+                                    .into(),
+                                )
+                                .unwrap();
+                        })
+                        .unwrap();
+                    Err::<(), ()>(())
+                }),
+                Err(())
+            );
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&expected)
+            );
+
+            // Acting guest cursor edit rolls back on abort and commits in place.
+            let acting_name = Tag::String("acting cursor".into());
+            let mut acting_expected = expected.clone();
+            acting_expected.data_mut().custom_name = Some(acting_name.clone());
+            game.as_guest(1, |game| {
+                assert_eq!(
+                    game.transaction(|host, tx| {
+                        cursor
+                            .edit(host, tx, |stack| {
+                                stack
+                                    .apply_components(
+                                        &[(
+                                            "minecraft:custom_name".into(),
+                                            Tag::String("acting abort".into()),
+                                        )]
+                                        .into(),
+                                    )
+                                    .unwrap();
+                            })
+                            .unwrap();
+                        Err::<(), ()>(())
+                    }),
+                    Err(())
+                );
+                assert_eq!(game.carried.as_ref(), Some(&expected));
+
+                assert_eq!(
+                    game.transaction(|host, tx| {
+                        cursor.edit(host, tx, |stack| {
+                            stack
+                                .apply_components(
+                                    &[("minecraft:custom_name".into(), acting_name.clone())].into(),
+                                )
+                                .unwrap();
+                        })
+                    }),
+                    Ok(())
+                );
+                assert_eq!(game.carried.as_ref(), Some(&acting_expected));
+            })
+            .unwrap();
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried.as_ref(),
+                Some(&acting_expected)
+            );
+
+            // Empty cursor refuses with NotHeld before calling the editor.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |g| g.carried = None);
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor.edit(host, tx, |_| panic!("empty cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+
+            // Stale or closed menu handles refuse with NotHeld before calling the editor.
+            let window = {
+                let host: &mut dyn ServerHost = game;
+                host.open_menu(
+                    123,
+                    1,
+                    mod_api::Text::literal("box"),
+                    Vec::new(),
+                    MenuReplace::CloseFirst,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            let open_menu = {
+                let host: &mut dyn ServerHost = game;
+                host.menu(123, window).unwrap()
+            };
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 2));
+            });
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    cursor.edit(host, tx, |_| panic!("stale cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+            {
+                let host: &mut dyn ServerHost = game;
+                host.close_menu(123);
+            }
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 2));
+            });
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    open_menu
+                        .cursor()
+                        .edit(host, tx, |_| panic!("closed menu cursor ran editor"))
+                }),
+                Err(ItemPlaceEditError::NotHeld)
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_edit_syncs_set_cursor_item_once() {
+        use mod_api::{MenuReplace, Tag};
+        use sunrise_client::lan::Out;
+        use sunrise_protocol::{
+            buf::Reader,
+            item::{Component, component},
+            packets::play::Clientbound as C,
+        };
+
+        fn cursor_packets(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    _ => Vec::new(),
+                })
+                .filter_map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    match C::decode(id, reader.rest()).unwrap() {
+                        C::SetCursorItem(packet) => Some(packet.item),
+                        _ => None,
+                    }
+                })
+                .collect()
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            let (tx, rx) = mpsc::channel();
+            let mut player_guest = guest(1);
+            player_guest.sender = PlayerSender::new(tx, Arc::default());
+            player_guest.carried = Some(ItemStack::new("minecraft:stick", 1));
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+
+            // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
+            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            let _ = cursor_packets(&rx);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            let direct_instrument = Tag::compound([
+                (
+                    "sound_event",
+                    Tag::compound([("sound_id", Tag::String("test:horn".into()))]),
+                ),
+                ("use_duration", Tag::Float(1.5_f32.to_bits())),
+                ("range", Tag::Float(32.0_f32.to_bits())),
+                ("durability_damage", Tag::Int(1)),
+                ("description", Tag::String("Test Horn".into())),
+            ]);
+            // Parked cursor edit syncs once via sync_player_state (sync_guest_after_tick).
+            let player = game.player(123).unwrap();
+            let inv_menu = game.player_container_menu(player).unwrap();
+            game.transaction(|host, tx| {
+                inv_menu.cursor().edit(host, tx, |stack| {
+                    assert_eq!(stack.damage_component(), None);
+                    stack
+                        .apply_components(
+                            &[
+                                ("minecraft:max_stack_size".into(), Tag::Int(1)),
+                                ("minecraft:max_damage".into(), Tag::Short(20)),
+                                ("minecraft:damage".into(), Tag::Int(0)),
+                                (
+                                    "minecraft:consumable".into(),
+                                    Tag::compound([
+                                        ("consume_seconds", Tag::Float(0.75_f32.to_bits())),
+                                        ("animation", Tag::String("bow".into())),
+                                        ("has_consume_particles", Tag::Byte(0)),
+                                    ]),
+                                ),
+                                ("minecraft:instrument".into(), direct_instrument.clone()),
+                                (
+                                    "minecraft:death_protection".into(),
+                                    Tag::compound([("death_effects", Tag::List(Vec::new()))]),
+                                ),
+                                (
+                                    "minecraft:villager_food".into(),
+                                    Tag::compound([("nutrition", Tag::Int(7))]),
+                                ),
+                                (
+                                    "minecraft:potion_contents".into(),
+                                    Tag::compound([("custom_color", Tag::Int(0x123456))]),
+                                ),
+                            ]
+                            .into(),
+                        )
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            let updates = cursor_packets(&rx);
+            let [Some(parked)] = updates.as_slice() else {
+                panic!("expected one carried stack update, got {updates:?}");
+            };
+            assert_eq!(parked.count, 1);
+            assert_eq!(
+                parked.component(component::MAX_STACK_SIZE),
+                Some(&Component::Int(1))
+            );
+            assert_eq!(
+                parked.component(component::MAX_DAMAGE),
+                Some(&Component::Int(20))
+            );
+            assert_eq!(
+                parked.component(component::DAMAGE),
+                Some(&Component::Int(0))
+            );
+            let client = game.lan.as_ref().unwrap().hub.stack_from_network(parked);
+            let consumable = client
+                .consumable(None)
+                .expect("cursor's consumable override");
+            assert_eq!(consumable.seconds.to_bits(), 0.75_f32.to_bits());
+            assert!(!consumable.particles);
+            assert_eq!(
+                consumable.animation,
+                sunrise_core::use_animation::UseAnimation::Bow
+            );
+            let instrument = client
+                .data()
+                .unwrap()
+                .other("minecraft:instrument")
+                .unwrap();
+            assert!(matches!(
+                parked.component(component::INSTRUMENT),
+                Some(Component::Raw(_))
+            ));
+            for name in ["sound_event", "use_duration", "range", "durability_damage"] {
+                assert_eq!(instrument.get(name), direct_instrument.get(name), "{name}");
+            }
+            assert_eq!(
+                sunrise_client::component::name_text(instrument.get("description").unwrap())
+                    .plain(),
+                "Test Horn"
+            );
+            assert!(client.death_protection(None).is_some_and(<[_]>::is_empty));
+            assert_eq!(client.villager_food(None), Some(7));
+            assert_eq!(
+                parked.component(component::POTION_CONTENTS),
+                Some(&Component::Potion {
+                    potion: None,
+                    color: Some(0x123456),
+                    // No custom effects and no custom name.
+                    rest: Vec::new(),
+                })
+            );
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            // A resident component whose registry reference cannot be represented for
+            // this connection must not block an independent cursor edit or cause a retry.
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.guests.update(0, |guest| {
+                let stack = guest.carried.as_mut().unwrap();
+                stack.data_mut().set_other(
+                    "minecraft:jukebox_playable",
+                    Some(Tag::String("test:missing_song".into())),
+                );
+                stack.damage = 7;
+            });
+            hub.sync_guest_after_tick(1);
+            let updates = cursor_packets(&rx);
+            let [Some(edited)] = updates.as_slice() else {
+                panic!("expected one cursor update despite the unresolved song, got {updates:?}");
+            };
+            assert_eq!(
+                edited.component(component::DAMAGE),
+                Some(&Component::Int(7))
+            );
+            hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+
+            // Open a container menu, populate and snapshot its cursor, then edit while acting.
+            let window = {
+                let host: &mut dyn ServerHost = game;
+                host.open_menu(
+                    123,
+                    1,
+                    mod_api::Text::literal("box"),
+                    Vec::new(),
+                    MenuReplace::CloseFirst,
+                )
+                .unwrap()
+                .unwrap()
+            };
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(ItemStack::new("minecraft:paper", 4));
+            });
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .resend_menu(1, window, &game.world);
+            let _ = cursor_packets(&rx);
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            assert!(cursor_packets(&rx).is_empty());
+
+            let open_menu = {
+                let host: &mut dyn ServerHost = game;
+                host.menu(123, window).unwrap()
+            };
+            let acting_name = Tag::String("synced acting cursor".into());
+            let mut acting_expected = ItemStack::new("minecraft:paper", 4);
+            acting_expected.data_mut().custom_name = Some(acting_name.clone());
+            game.as_guest(1, |game| {
+                game.transaction(|host, tx| {
+                    open_menu.cursor().edit(host, tx, |stack| {
+                        stack
+                            .apply_components(
+                                &[("minecraft:custom_name".into(), acting_name)].into(),
+                            )
+                            .unwrap();
+                    })
+                })
+                .unwrap();
+            })
+            .unwrap();
+            let acting_net = game.lan.as_mut().unwrap().hub.stack(&Some(acting_expected));
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            assert_eq!(cursor_packets(&rx), vec![acting_net]);
+            game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_packets(&rx).is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn cursor_edit_interleaved_with_stale_component_hash_click_still_syncs() {
+        use mod_api::{BlockUpdateFlags, Tag};
+        use sunrise_client::{chunk::Chunk, lan::Out};
+        use sunrise_protocol::{
+            buf::Reader,
+            item::Hashed,
+            packets::play::{Clientbound as C, ContainerClick, Serverbound as S},
+            registry::SyncedNames,
+        };
+
+        fn drain_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    _ => Vec::new(),
+                })
+                .map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    C::decode(id, reader.rest()).unwrap()
+                })
+                .collect()
+        }
+
+        fn cursor_updates(rx: &mpsc::Receiver<Out>) -> Vec<Option<sunrise_protocol::item::Stack>> {
+            drain_packets(rx)
+                .into_iter()
+                .filter_map(|packet| match packet {
+                    C::SetCursorItem(update) => Some(update.item),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn hash_stack(game: &mut super::Game<'_>, stack: &Option<ItemStack>) -> Option<Hashed> {
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            let net = hub.stack(stack)?;
+            let names = SyncedNames {
+                builtin: &hub.sync.builtin,
+                dynamic: &hub.sync.dynamic,
+            };
+            Some(Hashed::create(&net, &names).unwrap())
+        }
+
+        with_game(|game| {
+            open_to_lan(game);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level("minecraft:overworld").unwrap();
+            let table = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:crafting_table")
+                .unwrap();
+            assert_eq!(
+                game.level_set_block(level, [1, 64, 0], table, BlockUpdateFlags::NEIGHBORS),
+                Ok(true)
+            );
+
+            let (tx, rx) = mpsc::channel();
+            let mut player_guest = guest(1);
+            player_guest.position = [1.5, 64.0, 0.5];
+            player_guest.sender = PlayerSender::new(tx, Arc::default());
+            let plain_paper = Some(ItemStack::new("minecraft:paper", 4));
+            player_guest.carried = plain_paper.clone();
+            game.lan.as_mut().unwrap().hub.guests.push(player_guest);
+            game.lan.as_mut().unwrap().hub.send_inventory(0);
+            let _ = drain_packets(&rx);
+
+            // Answer-click path: mod renames the carried paper (same item and count), then a
+            // click arrives carrying the pre-edit component hash. The server must reject the
+            // stale prediction and send SetCursorItem instead of caching the renamed stack.
+            let stale_inv_hash = hash_stack(game, &plain_paper);
+            let player = game.player(123).unwrap();
+            let inv_menu = game.player_container_menu(player).unwrap();
+            let renamed_tag = Tag::String("renamed paper".into());
+            let mut renamed_paper = ItemStack::new("minecraft:paper", 4);
+            renamed_paper.data_mut().custom_name = Some(renamed_tag.clone());
+            game.transaction(|host, tx| {
+                inv_menu.cursor().edit(host, tx, |stack| {
+                    stack
+                        .apply_components(&[("minecraft:custom_name".into(), renamed_tag)].into())
+                        .unwrap();
+                })
+            })
+            .unwrap();
+            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: 0,
+                    state: inv_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: stale_inv_hash,
+                }),
+            );
+            let renamed_net = game
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .stack(&Some(renamed_paper.clone()));
+            assert_eq!(cursor_updates(&rx), vec![renamed_net]);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // A follow-up click with the exact current component hash agrees silently.
+            let fresh_inv_hash = hash_stack(game, &Some(renamed_paper.clone()));
+            let inv_state = game.lan.as_ref().unwrap().hub.guests[0].menu_state;
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: 0,
+                    state: inv_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_inv_hash.clone(),
+                }),
+            );
+            assert!(cursor_updates(&rx).is_empty());
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // Crafting-table path: open table (syncing renamed_paper), then change carried's
+            // custom_name (same item and count) before a click with the stale component hash.
+            game.lan_open_crafting(1, [1, 64, 0]);
+            let _ = drain_packets(&rx);
+            let table_tag = Tag::String("table renamed paper".into());
+            let mut table_paper = ItemStack::new("minecraft:paper", 4);
+            table_paper.data_mut().custom_name = Some(table_tag);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(table_paper.clone());
+            });
+            let (table_window, table_state) = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .menus
+                .get(&1)
+                .and_then(|play| play.crafting.table.as_ref())
+                .map(|t| (t.0, t.1))
+                .unwrap();
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: table_window,
+                    state: table_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_inv_hash,
+                }),
+            );
+            let table_net = game
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .stack(&Some(table_paper.clone()));
+            let content_carried: Vec<_> = drain_packets(&rx)
+                .into_iter()
+                .filter_map(|packet| match packet {
+                    C::ContainerSetContent(content) if content.container == table_window => {
+                        Some(content.carried)
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(content_carried, vec![table_net]);
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
+
+            // A crafting click with the exact component hash agrees and sends no resync.
+            let fresh_table_hash = hash_stack(game, &Some(table_paper));
+            let (table_window, table_state) = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .menus
+                .get(&1)
+                .and_then(|play| play.crafting.table.as_ref())
+                .map(|t| (t.0, t.1))
+                .unwrap();
+            game.lan_guest_packet(
+                1,
+                S::ContainerClick(ContainerClick {
+                    container: table_window,
+                    state: table_state,
+                    slot: 0,
+                    button: 0,
+                    input: 1,
+                    changed: Vec::new(),
+                    carried: fresh_table_hash,
+                }),
+            );
+            let resyncs: Vec<_> = drain_packets(&rx)
+                .into_iter()
+                .filter(|packet| matches!(packet, C::SetCursorItem(_) | C::ContainerSetContent(_)))
+                .collect();
+            assert!(resyncs.is_empty());
+            game.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            assert!(cursor_updates(&rx).is_empty());
         });
     }
 
@@ -3421,32 +4115,45 @@ pub(super) mod tests {
     }
     #[test]
     #[ignore = "daily"]
-    fn reading_a_cart_slot_keeps_pending_loot_and_resident_items() {
+    fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
+        use super::super::boats::Boat;
         use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_client::save::PendingContainerLoot;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         with_game(|game| {
+            game.load_server_loot();
+            let pos = Vec3::new(1.0, 65.0, 2.0);
             let pending = PendingContainerLoot {
                 table: Tag::String("minecraft:chests/simple_dungeon".into()),
-                seed: Some(Tag::Long(47)),
+                seed: Some(Tag::Long(42)),
             };
-            let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
-            let stone = ItemStack::new("minecraft:stone", 4);
-            cart.items[2] = Some(stone.clone());
-            cart.loot = Some(pending.clone());
-            let resident = cart.items.clone();
+            let mut cart = Minecart::new(600, CartKind::Chest, pos);
+            cart.loot = Some(pending);
             game.carts.push(cart);
-            let place = ItemPlace::EntitySlot {
-                entity: 600,
-                slot: 2,
-            };
-            assert_eq!(
-                place.with_stack(game, |stack| stack.project()).flatten(),
-                Some(stone.try_into_api().unwrap())
-            );
-            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
-            assert_eq!(game.carts[0].items, resident);
 
+            let _ = ItemPlace::EntitySlot {
+                entity: 600,
+                slot: 0,
+            }
+            .with_stack(game, |stack| stack.count());
+            assert!(game.carts[0].loot.is_none());
+            let (cart_slot, cart_rolled) = game.carts[0]
+                .items
+                .iter()
+                .enumerate()
+                .find_map(|(slot, item)| item.clone().map(|stack| (slot, stack)))
+                .expect("reading a chest minecart slot unpacks its pending loot table");
+            assert_eq!(
+                ItemPlace::EntitySlot {
+                    entity: 600,
+                    slot: cart_slot,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
+                Some(cart_rolled.try_into_api().unwrap())
+            );
+
+            // An open vehicle menu still owns the live slots over the resident copy.
             let sand = ItemStack::new("minecraft:sand", 7);
             let mut open = vec![None; 27];
             open[2] = Some(sand.clone());
@@ -3454,11 +4161,129 @@ pub(super) mod tests {
                 .block_entities
                 .insert((i32::MAX - 15, CART_KEY_Y, 600), BlockEntity::Chest(open));
             assert_eq!(
-                place.with_stack(game, |stack| stack.project()).flatten(),
+                ItemPlace::EntitySlot {
+                    entity: 600,
+                    slot: 2,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
                 Some(sand.try_into_api().unwrap())
             );
-            assert_eq!(game.carts[0].loot.as_ref(), Some(&pending));
-            assert_eq!(game.carts[0].items, resident);
+
+            // Reading a chest boat slot unpacks its pending loot table and clears persist.raw tags.
+            let mut read_boat = Boat::new(601, Arc::from("oak"), pos, 0.0);
+            read_boat.chest = true;
+            read_boat.items = vec![None; 27];
+            game.boats.push(read_boat);
+            game.persist.raw.insert(
+                601,
+                Tag::compound([
+                    (
+                        "LootTable",
+                        Tag::String("minecraft:chests/simple_dungeon".into()),
+                    ),
+                    ("LootTableSeed", Tag::Long(42)),
+                ]),
+            );
+            let _ = ItemPlace::EntitySlot {
+                entity: 601,
+                slot: 0,
+            }
+            .with_stack(game, |stack| stack.count());
+            let read_raw = game.persist.raw.get(&601);
+            assert!(read_raw.and_then(|tag| tag.get("LootTable")).is_none());
+            assert!(read_raw.and_then(|tag| tag.get("LootTableSeed")).is_none());
+            let (boat_slot, boat_rolled) = game.boats[0]
+                .items
+                .iter()
+                .enumerate()
+                .find_map(|(slot, item)| item.clone().map(|stack| (slot, stack)))
+                .expect("reading a chest boat slot unpacks its pending loot table");
+            assert_eq!(
+                ItemPlace::EntitySlot {
+                    entity: 601,
+                    slot: boat_slot,
+                }
+                .with_stack(game, |stack| stack.project())
+                .flatten(),
+                Some(boat_rolled.try_into_api().unwrap())
+            );
+
+            // Writing via edit_entity_slots unpacks a chest boat's pending loot before running the edit.
+            let mut write_boat = Boat::new(602, Arc::from("oak"), pos, 0.0);
+            write_boat.chest = true;
+            write_boat.items = vec![None; 27];
+            game.boats.push(write_boat);
+            game.persist.raw.insert(
+                602,
+                Tag::compound([
+                    (
+                        "LootTable",
+                        Tag::String("minecraft:chests/simple_dungeon".into()),
+                    ),
+                    ("LootTableSeed", Tag::Long(42)),
+                ]),
+            );
+            let saw_loot_before_edit = game
+                .edit_entity_slots(602, |slots, _| slots.iter().any(Option::is_some))
+                .expect("chest boat slots exist");
+            assert!(saw_loot_before_edit);
+            let write_raw = game.persist.raw.get(&602);
+            assert!(write_raw.and_then(|tag| tag.get("LootTable")).is_none());
+            assert!(write_raw.and_then(|tag| tag.get("LootTableSeed")).is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn player_cursor_read_ignores_guest_liveness() {
+        with_game(|game| {
+            open_to_lan(game);
+            let mut player = guest(1);
+            let paper = ItemStack::new("minecraft:paper", 3);
+            player.dead = true;
+            player.health = 0.0;
+            player.carried = Some(paper.clone());
+            game.lan.as_mut().unwrap().hub.guests.push(player);
+
+            let menu = menu_of(game);
+            let cursor = ItemPlace::PlayerCursor { menu };
+            // Parked dead guest: cursor read still returns the carried stack.
+            assert_eq!(
+                cursor.with_stack(game, |stack| stack.project()).flatten(),
+                Some(paper.clone().try_into_api().unwrap())
+            );
+
+            // Acting dead guest: cursor read still returns the carried stack from Game::carried.
+            let acting_read = game
+                .as_guest(1, |game| {
+                    assert!(game.native_live_acting_body().is_none());
+                    cursor.with_stack(game, |stack| stack.project()).flatten()
+                })
+                .expect("guest turn ran");
+            assert_eq!(acting_read, Some(paper.try_into_api().unwrap()));
+
+            // Empty cursor and air stack both read as None.
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| guest.carried = None);
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:air", 1))
+            });
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
+
+            // Closed/stale menu still reads as None even when the guest carries a stack.
+            let title = sunrise_core::nbt::Tag::String("new".into());
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.open_native_menu(1, 1, title, vec![]).unwrap();
+            hub.guests.update(0, |guest| {
+                guest.carried = Some(ItemStack::new("minecraft:stick", 2))
+            });
+            assert_eq!(cursor.with_stack(game, |_| ()), None);
         });
     }
 

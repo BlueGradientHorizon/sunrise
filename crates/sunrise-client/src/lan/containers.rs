@@ -9,7 +9,7 @@ use crate::{
     items::ItemStack,
     world::World,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::{
@@ -711,19 +711,40 @@ impl Hub {
         carried
     }
 
-    /// `HashedStack.matches`: a slot or cursor prediction includes the component patch.
-    fn hashed_matches(&self, item: &Option<Stack>, predicted: &Option<Hashed>) -> bool {
-        match (item, predicted) {
-            (None, None) => true,
-            (Some(item), Some(predicted)) => predicted.matches(
-                item,
-                &SyncedNames {
-                    builtin: &self.sync.builtin,
-                    dynamic: &self.sync.dynamic,
-                },
-            ),
-            _ => false,
-        }
+    /// Project one live stack for a click claim. Reuse its admissions for the hash and
+    /// the projected bytes for a correction if the client guessed wrong.
+    fn stack_against_claim(
+        &mut self,
+        source: &Option<ItemStack>,
+        predicted: &Option<Hashed>,
+    ) -> (Option<Stack>, bool) {
+        let Some(predicted) = predicted else {
+            return (self.stack(source), source.is_none());
+        };
+        let projected = std::cell::RefCell::new(Vec::new());
+        let wire = self.stack_projecting(source, &|effect| {
+            projected.borrow_mut().push(effect.clone())
+        });
+        let projected = projected.into_inner();
+        let agreed = wire.as_ref().is_some_and(|wire| {
+            let names = SyncedNames {
+                builtin: &self.sync.builtin,
+                dynamic: &self.sync.dynamic,
+            };
+            if let Some(data) = source.as_ref().and_then(ItemStack::data) {
+                predicted.matches_with_admitted(wire, &names, &|name, bytes| {
+                    let matches =
+                        |effect: &sunrise_world::component_value::consume_effects::Admitted| {
+                            &effect.name == name && effect.wire.as_ref() == bytes
+                        };
+                    data.find_admitted_consume_effect(&matches)
+                        .or_else(|| projected.iter().find(|effect| matches(effect)).cloned())
+                })
+            } else {
+                predicted.matches(wire, &names)
+            }
+        });
+        (wire, agreed)
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send only the cursor change.
@@ -743,8 +764,10 @@ impl Hub {
             _ => {}
         }
         let carried = guest.carried.clone();
-        let item = self.stack(&carried);
-        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, &p.carried));
+        let (item, agreed) = match prediction {
+            Some(p) => self.stack_against_claim(&carried, &p.carried),
+            None => (self.stack(&carried), false),
+        };
         self.guests.update(i, |g| {
             if !agreed {
                 g.send(&C::SetCursorItem(play::SetCursorItem { item }));
@@ -1072,8 +1095,8 @@ impl Hub {
         for (slot, item) in items.iter().enumerate() {
             let net = match claimed.get(&slot) {
                 Some(predicted) => {
-                    let net = self.stack(item);
-                    if self.hashed_matches(&net, predicted) {
+                    let (net, agreed) = self.stack_against_claim(item, predicted);
+                    if agreed {
                         continue;
                     }
                     net

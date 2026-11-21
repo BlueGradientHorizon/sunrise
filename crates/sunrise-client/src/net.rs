@@ -40,6 +40,7 @@ use std::{
 };
 use sunrise_protocol::{
     PROTOCOL_VERSION,
+    buf::Reader,
     connection::{ConnReader, Connection, Counters},
     crypto::{generate_secret, offline_uuid, server_hash},
     packets::{Empty, configuration as cfg, handshake, login, play},
@@ -1219,13 +1220,15 @@ fn run(
         resources,
         payloads,
     )?;
+    let registries = Arc::new(registries);
     let _ = send.send_wait(Event::Joined {
-        registries: Arc::new(registries),
+        registries: registries.clone(),
         uuid: profile.uuid,
         name: profile.name,
     });
     receive_play(
         &mut reader,
+        registries,
         shared_writer,
         configuring,
         lang,
@@ -1499,6 +1502,7 @@ impl PlayIo {
 
 fn receive_play(
     reader: &mut ConnReader,
+    mut registries: Arc<Dynamic>,
     shared_writer: &Arc<Mutex<Option<QueuedWriter>>>,
     configuring: &Arc<AtomicBool>,
     lang: &Arc<Language>,
@@ -1529,10 +1533,9 @@ fn receive_play(
         let (id, payload) = reader
             .recv()
             .map_err(|e| Reason::plain(connection_lost(e, lang)))?;
-        let packet = match play::Clientbound::decode_with_payload_codecs(
+        let packet = match play::Clientbound::decode_reader(
             id,
-            &payload,
-            &payloads.local.codecs,
+            Reader::with_payload_codecs(&payload, &payloads.local.codecs).with_names(&*registries),
         ) {
             Ok(p) => p,
             Err(err) => {
@@ -1637,7 +1640,7 @@ fn receive_play(
                     .recv()
                     .map_err(|_| Reason::plain("Disconnected"))?
                     .map_err(|error| Reason::plain(connection_lost(error, lang)))?;
-                let registries = configure(
+                let snapshot = configure(
                     reader,
                     shared_writer,
                     configuring,
@@ -1647,8 +1650,9 @@ fn receive_play(
                     resources,
                     payloads,
                 )?;
+                registries = Arc::new(snapshot);
                 io = new_listener();
-                let _ = send.send_wait(Event::Reconfigured(Arc::new(registries)));
+                let _ = send.send_wait(Event::Reconfigured(registries.clone()));
             }
             play::Clientbound::CookieRequest(q) => {
                 io.common.queue_cookie(send, Cookie::Request(q))?;
@@ -1877,8 +1881,13 @@ fn configure(
             }
             cfg::Clientbound::UpdateEnabledFeatures(p) => features = Some(p.features),
             cfg::Clientbound::RegistryData(mut r) => {
-                fill_known_entries(&mut r, resources.root());
-                config.queue(&io, send, ConfigurationAction::RegistryData(r))?;
+                let action = if r.registry == sunrise_protocol::item::consume_effects::REGISTRY {
+                    ConfigurationAction::ConsumeEffectTypes(r)
+                } else {
+                    fill_known_entries(&mut r, resources.root());
+                    ConfigurationAction::RegistryData(r)
+                };
+                config.queue(&io, send, action)?;
             }
             cfg::Clientbound::UpdateTags(t) => {
                 config.queue(&io, send, ConfigurationAction::UpdateTags(t))?;
@@ -2935,6 +2944,7 @@ mod tests {
             let (send, _events) = event_channel();
             let _ = done.send(receive_play(
                 &mut reader,
+                Arc::default(),
                 &Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap()))),
                 &Arc::new(AtomicBool::new(false)),
                 &Arc::new(disconnect_language()),
@@ -3102,6 +3112,282 @@ mod tests {
                 assert_eq!(registries.data("minecraft:dialog", id), Some(&leaf));
             }
         }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn configuration_installs_the_server_consume_effect_ids() {
+        use sunrise_core::nbt::Tag;
+        use sunrise_protocol::item::{Hashed, Stack, component, consume_effects};
+        use sunrise_protocol::registry::{Builtin, Ids, SyncedNames};
+
+        #[derive(mod_api::Wire)]
+        struct Charge {
+            points: u16,
+        }
+
+        struct Effects;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Effects {
+            fn register(
+                &self,
+                registrar: &mut dyn mod_api::Registrar,
+                _: &mod_api::RegistrationContext,
+            ) {
+                for key in ["effect_test:charge", "effect_test:other"] {
+                    registrar
+                        .register_consume_effect_type(
+                            mod_api::Identifier::parse(key).unwrap(),
+                            mod_api::ConsumeEffectType::new::<Charge>(
+                                |fields| match fields.get(&"points".into()) {
+                                    Some(Tag::Int(points)) => u16::try_from(*points)
+                                        .map(|points| Charge { points })
+                                        .map_err(|error| error.to_string()),
+                                    _ => Err("expected points".into()),
+                                },
+                                |charge| {
+                                    Ok([
+                                        ("points".into(), Tag::Int(i32::from(charge.points))),
+                                        ("samples".into(), Tag::IntArray(vec![3, 4])),
+                                        ("flag".into(), Tag::Byte(7)),
+                                    ]
+                                    .into())
+                                },
+                            ),
+                        )
+                        .unwrap();
+                }
+            }
+        }
+
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("effect_test", Box::new(Effects))].into();
+        sunrise_world::component_value::consume_effects::with_test_registry(|| {
+            mod_platform::testing::with_mods(mods.clone(), || {
+                mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+                crate::item_sync::install_consume_effect_codecs().unwrap();
+
+                let (root, resources) = empty_item_data("consume-effects");
+                let (client, server) = sunrise_protocol::connection::Pipe::pair();
+                let (mut reader, writer) = Connection::local(client).split();
+                let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+                let (send, events) = event_channel();
+                let mut server = Connection::local(server);
+                let mut entries: Vec<_> = consume_effects::configuration()
+                    .map(|(id, schema)| cfg::RegistryEntry {
+                        id: id.into(),
+                        data: Some(Tag::Long(schema as i64)),
+                    })
+                    .collect();
+                assert_eq!(entries[5].id, "effect_test:charge");
+                // The server uses different IDs, including a built-in ID occupied by a native type.
+                entries.swap(0, 5);
+                entries.swap(5, 6);
+                server
+                    .send(
+                        &cfg::Clientbound::RegistryData(cfg::RegistryData {
+                            registry: consume_effects::REGISTRY.into(),
+                            entries,
+                        })
+                        .encode(),
+                    )
+                    .unwrap();
+                server
+                    .send(&cfg::Clientbound::FinishConfiguration(Empty).encode())
+                    .unwrap();
+                let worker = std::thread::spawn(move || {
+                    configure(
+                        &mut reader,
+                        &writer,
+                        &Arc::new(AtomicBool::new(true)),
+                        &Language::new(),
+                        &send,
+                        &Cookies::default(),
+                        &resources,
+                        &crate::raw_payloads::Transport::empty(),
+                    )
+                });
+                // The configuration actor resolves codecs on the same thread that installed
+                // the scoped fixture; the reader only queues the server's advertised IDs.
+                let timeout = Duration::from_secs(5);
+                let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+                let Event::Configuration(task) = event else {
+                    panic!("expected the registry update before finishing configuration");
+                };
+                assert!(task.handle().is_none());
+                let (event, _credit) = events.recv_timeout_owned(timeout).unwrap().into_parts();
+                let Event::FinishConfiguration(change) = event else {
+                    panic!("expected the configuration finish task");
+                };
+                change.acknowledge();
+                let registries = worker.join().unwrap().unwrap();
+                assert_eq!(registries.consume_effect_id("effect_test:charge"), Some(0));
+                assert_eq!(
+                    registries.consume_effect_id("minecraft:apply_effects"),
+                    Some(6)
+                );
+
+                let mut components = vec![String::new(); component::DEATH_PROTECTION as usize + 1];
+                components[component::CONSUMABLE as usize] = "minecraft:consumable".into();
+                components[component::DEATH_PROTECTION as usize] =
+                    "minecraft:death_protection".into();
+                let builtin = Builtin {
+                    registries: [
+                        (
+                            "minecraft:item".into(),
+                            Ids::from_names(vec!["minecraft:air".into(), "minecraft:stone".into()]),
+                        ),
+                        (
+                            "minecraft:data_component_type".into(),
+                            Ids::from_names(components),
+                        ),
+                        (
+                            "minecraft:sound_event".into(),
+                            Ids::from_names(vec![
+                                String::new(),
+                                "minecraft:entity.generic.eat".into(),
+                            ]),
+                        ),
+                    ]
+                    .into(),
+                };
+                let effect = Tag::compound([
+                    ("type", Tag::String("effect_test:charge".into())),
+                    ("points", Tag::Int(0x1234)),
+                ]);
+                let mut item = crate::items::ItemStack::new("minecraft:stone", 1);
+                for (name, field) in [
+                    ("minecraft:consumable", "on_consume_effects"),
+                    ("minecraft:death_protection", "death_effects"),
+                ] {
+                    item.data_mut().set_other(
+                        name,
+                        Some(Tag::compound([(field, Tag::List(vec![effect.clone()]))])),
+                    );
+                }
+                let encode = |item| {
+                    crate::lan::guest::stack_to_network(
+                        |_| 1,
+                        |registry, name| {
+                            if registry == consume_effects::REGISTRY {
+                                registries.consume_effect_id(name)
+                            } else {
+                                builtin.get(registry)?.id(name)
+                            }
+                        },
+                        &Some(item),
+                    )
+                    .unwrap()
+                };
+                let stack = encode(item);
+                let Some(sunrise_protocol::item::Component::Raw(death)) =
+                    stack.component(component::DEATH_PROTECTION)
+                else {
+                    panic!("expected a death protection stream");
+                };
+                assert_eq!(death, &[1, 0, 0x34, 0x12]); // one effect, server ID 0, Wire u16
+                let body = play::Clientbound::ContainerSetContent(play::ContainerSetContent {
+                    container: 0,
+                    state: 1,
+                    items: vec![Some(Stack::new(1, 3)), Some(stack.clone())],
+                    carried: None,
+                })
+                .encode();
+
+                // This layout is fixed for the connection, even when the gameplay listener is off.
+                assert!(mod_api::__private::set_mod_enabled("effect_test", false));
+                let mut reader = Reader::new(&body).with_names(&registries);
+                let id = reader.varint().unwrap();
+                let play::Clientbound::ContainerSetContent(update) =
+                    play::Clientbound::decode_reader(id, reader).unwrap()
+                else {
+                    panic!("expected full container update");
+                };
+                assert_eq!(
+                    update.items[0]
+                        .as_ref()
+                        .map(|stack| (stack.item, stack.count)),
+                    Some((1, 3))
+                );
+                let received = update.items[1].as_ref().unwrap();
+                let client = crate::item_sync::from_network(received, &builtin, &registries);
+                for effects in [
+                    &client.consumable(None).unwrap().effects[..],
+                    client.death_protection(None).unwrap(),
+                ] {
+                    let [crate::items::ConsumeEffect::Native { kind, data, .. }] = effects else {
+                        panic!("expected custom effect: {effects:?}");
+                    };
+                    assert_eq!(kind, "effect_test:charge");
+                    assert_eq!(data.get("points"), Some(&Tag::Int(0x1234)));
+                    assert_eq!(data.get("samples"), Some(&Tag::IntArray(vec![3, 4])));
+                    assert_eq!(data.get("flag"), Some(&Tag::Byte(7)));
+                }
+                let names = SyncedNames {
+                    builtin: &builtin,
+                    dynamic: &registries,
+                };
+                let before = Hashed::create(&stack, &names).unwrap();
+                assert_eq!(Hashed::create(received, &names).unwrap(), before);
+                assert_eq!(Hashed::create(&encode(client), &names).unwrap(), before);
+                // A connection without this registry never exposes local custom codecs.
+                let vanilla = Dynamic::default();
+                assert_eq!(vanilla.consume_effect_id("effect_test:charge"), None);
+                let mut reader = Reader::new(&[5, 0x34, 0x12]).with_names(&vanilla);
+                assert!(consume_effects::read_kind(&mut reader).is_err());
+                std::fs::remove_dir_all(root).unwrap();
+            })
+        });
+    }
+
+    #[test]
+    fn malformed_consume_effect_ids_refuse_play_after_pending_configuration_replies() {
+        let (root, resources) = empty_item_data("bad-consume-effects");
+        let (client, server) = sunrise_protocol::connection::Pipe::pair();
+        let (mut reader, writer) = Connection::local(client).split();
+        let writer = Arc::new(Mutex::new(Some(QueuedWriter::new(writer).unwrap())));
+        let mut server = Connection::local(server);
+        server
+            .reader
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let ping = cfg::Ping { id: 7 };
+        for packet in [
+            cfg::Clientbound::Ping(ping.clone()),
+            cfg::Clientbound::RegistryData(cfg::RegistryData {
+                registry: sunrise_protocol::item::consume_effects::REGISTRY.into(),
+                entries: Vec::new(), // Missing the built-in codec rows.
+            }),
+            cfg::Clientbound::FinishConfiguration(Empty),
+        ] {
+            server.send(&packet.encode()).unwrap();
+        }
+
+        let configuring = Arc::new(AtomicBool::new(true));
+        let error = drive_configuration(
+            |send| {
+                configure(
+                    &mut reader,
+                    &writer,
+                    &configuring,
+                    &Language::new(),
+                    send,
+                    &Cookies::default(),
+                    &resources,
+                    &crate::raw_payloads::Transport::empty(),
+                )
+            },
+            |_| {},
+        )
+        .unwrap_err();
+        assert!(error.text.contains("missing built-in consume effect type"));
+        assert!(configuring.load(Ordering::Acquire));
+        let (id, body) = server.recv().unwrap();
+        assert_eq!(
+            cfg::Serverbound::decode(id, &body).unwrap(),
+            cfg::Serverbound::Pong(ping)
+        );
+        assert!(server.recv().unwrap_err().is_end_of_stream());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -3316,6 +3602,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             receive_play(
                 &mut reader,
+                Arc::default(),
                 &thread_writer,
                 &Arc::new(AtomicBool::new(false)),
                 &Arc::new(Language::new()),
@@ -3407,6 +3694,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             let result = receive_play(
                 &mut reader,
+                Arc::default(),
                 &writer,
                 &configuring,
                 &Arc::new(Language::new()),
@@ -3826,6 +4114,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             receive_play(
                 &mut reader,
+                Arc::default(),
                 &thread_writer,
                 &Arc::new(AtomicBool::new(false)),
                 &Arc::new(Language::new()),
@@ -3965,6 +4254,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             receive_play(
                 &mut reader,
+                Arc::default(),
                 &thread_writer,
                 &thread_configuring,
                 &Arc::new(Language::new()),
@@ -4260,6 +4550,7 @@ mod tests {
         let thread = std::thread::spawn(move || {
             receive_play(
                 &mut reader,
+                Arc::default(),
                 &thread_writer,
                 &thread_configuring,
                 &Arc::new(Language::new()),

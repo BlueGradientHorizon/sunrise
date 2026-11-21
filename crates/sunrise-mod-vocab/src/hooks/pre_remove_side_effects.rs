@@ -31,7 +31,7 @@ pub trait Hooks {
         side = "server",
         contract = "collect",
         out = "drops",
-        version = 2,
+        version = 3,
         scope = "block_entity",
         key = "entity",
         target = "sunrise_client::game::native_hooks::pre_remove_side_effects::GameLevel<'_>::native_pre_remove_side_effects",

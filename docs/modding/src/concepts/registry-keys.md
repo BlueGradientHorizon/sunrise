@@ -236,7 +236,7 @@ predicate occurs anywhere in the tree; a displayed item list is not a safe subst
 `UnknownItem` refuses a missing registry identity. Do not call this method per tick.
 Stack placement predicates and drawing consumers (HUD items, GUI item decorations,
 block-entity items and tooltip images) encode API stacks without enforcing resident
-count or damage maxima. Engine-legal over-limit stacks can be inspected and drawn.
+stack limits. Engine-legal over-limit stacks can be inspected and drawn.
 Unknown item keys and invalid/unrepresentable effect payloads refuse encoding;
 this is not a total conversion. Insertion and other world writes retain strict validation.
 

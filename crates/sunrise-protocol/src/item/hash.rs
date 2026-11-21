@@ -12,17 +12,28 @@ mod exact;
 mod gameplay;
 pub(crate) mod ops;
 mod raw;
+use super::consume_effects::AdmissionLookup;
 use super::{
     Component, FireworkExplosion, Hashed, Stack, StackHashError, WirePatch, component as kind,
     persistent,
 };
-use crate::hash_ops::HashCode;
+use crate::{buf::Reader, hash_ops::HashCode};
 use ops::{Ops, Record};
 
 /// Registry names for the ids a component holds.
 pub trait Names {
     /// The name of entry `id` of `registry` (`minecraft:enchantment`, ...).
     fn name(&self, registry: &str, id: i32) -> Option<String>;
+
+    /// The consume-effect type at this connection's stream ID.
+    fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+        super::consume_effects::builtin_name(id).map(|_| super::consume_effects::Kind::Builtin(id))
+    }
+
+    /// Effects already projected from this same stream patch, including its nested templates.
+    fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+        None
+    }
 }
 /// No registries: only the components that hold no registry id hash.
 pub struct NoNames;
@@ -480,9 +491,27 @@ impl Hashed {
     /// `HashedStack.matches`: compare the entire effective patch as a map and set,
     /// independent of wire order. A value we cannot hash cannot confirm a claim.
     pub fn matches(&self, stack: &Stack, names: &dyn Names) -> bool {
+        self.matches_projected(stack, || Self::create(stack, names))
+    }
+
+    /// Use the source values admitted for native effects, without projecting those values again.
+    pub fn matches_with_admitted(
+        &self,
+        stack: &Stack,
+        names: &dyn Names,
+        admitted: &AdmissionLookup<'_>,
+    ) -> bool {
+        self.matches_projected(stack, || Self::create_with_admitted(stack, names, admitted))
+    }
+
+    fn matches_projected(
+        &self,
+        stack: &Stack,
+        project: impl FnOnce() -> Result<Self, StackHashError>,
+    ) -> bool {
         self.item == stack.item
             && self.count == stack.count
-            && Self::create(stack, names).is_ok_and(|expected| {
+            && project().is_ok_and(|expected| {
                 self.added.len() == expected.added.len()
                     && self.removed.len() == expected.removed.len()
                     && expected
@@ -491,6 +520,32 @@ impl Hashed {
                         .all(|entry| self.added.contains(entry))
                     && expected.removed.iter().all(|id| self.removed.contains(id))
             })
+    }
+
+    /// Hash a retained stream patch using the effect values already decoded from it.
+    pub fn create_with_admitted(
+        stack: &Stack,
+        names: &dyn Names,
+        admitted: &AdmissionLookup<'_>,
+    ) -> Result<Self, StackHashError> {
+        struct Projection<'a> {
+            names: &'a dyn Names,
+            admitted: &'a AdmissionLookup<'a>,
+        }
+        impl Names for Projection<'_> {
+            fn name(&self, registry: &str, id: i32) -> Option<String> {
+                self.names.name(registry, id)
+            }
+
+            fn consume_effect_kind(&self, id: i32) -> Option<super::consume_effects::Kind> {
+                self.names.consume_effect_kind(id)
+            }
+
+            fn consume_effect_admissions(&self) -> Option<&AdmissionLookup<'_>> {
+                Some(self.admitted)
+            }
+        }
+        Self::create(stack, &Projection { names, admitted })
     }
 
     /// Hash all effective sets on a nonempty stack, or refuse the whole patch.
@@ -502,7 +557,7 @@ impl Hashed {
             .wire
             .0
             .as_deref()
-            .map(WirePatch::decode)
+            .map(|patch| WirePatch::decode_reader(Reader::new(patch).with_names(names)))
             .transpose()
             .map_err(StackHashError::Wire)?;
         let (sets, removals) = decoded

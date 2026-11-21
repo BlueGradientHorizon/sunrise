@@ -777,7 +777,7 @@ fn level_queries_take_their_hosts(
         [8.0, 0.0, 0.0],
         0.3,
         Some(shooter),
-        &mut |hit: EntityRayHit| hit.entity != shooter,
+        &mut |entity: EntityRef| entity != shooter,
     );
     let _: Result<Option<Vec<ItemStack>>, StackWriteError> =
         level.block_drops(server, [0, 64, 0], Some(tool), Some(shooter));

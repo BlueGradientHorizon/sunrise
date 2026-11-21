@@ -92,6 +92,7 @@ impl PartRegistrar {
             datapack_registries,
             controllers,
             arm_poses,
+            consume_effects,
             structure_types,
             feature_types,
             loot_modifier_serializers,

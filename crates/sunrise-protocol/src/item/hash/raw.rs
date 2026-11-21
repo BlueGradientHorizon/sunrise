@@ -307,7 +307,7 @@ fn banner_pattern_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
 /// has no codec form for it (no persistent codec in vanilla, a direct holder, an
 /// id with no name, a component still to be ported).
 pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> Option<O::Value> {
-    let mut r = Reader::new(bytes);
+    let mut r = Reader::new(bytes).with_names(names);
     let r = &mut r;
     let code = match kind {
         // `Unit.CODEC`: an empty map.

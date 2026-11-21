@@ -27,17 +27,18 @@ the borrowed team names it needs, then uses the mutable host after the visit.
 `level.visit_entities_in(host, min, max, &mut visit)` resolves matches as it goes and
 works on the active server level or the client's displayed level. It does not build a
 list. Inverted bounds are swapped per axis, as in vanilla's `AABB`; non-finite bounds
-are refused. `level.visit_all_entities(host, &mut visit)` uses the active server level's
-lookup admission order instead. Outside the block-entity item-tick view, it preflights
-all eligible members before invoking the visitor so a missing member cannot expose a
-partial walk. `Break(())` does not skip that preflight. The item-tick view skips members
-it cannot resolve. `level.visit_online_players` also works on parked server levels;
-`team.visit_members` borrows each holder key as `&str` instead of cloning the names.
+are refused. `level.visit_all_entities(host, &mut visit)` walks the active server
+level's lookup lazily in admission order (`ServerLevel.getAllEntities`), skipping
+members it cannot resolve and stopping immediately on `Break(())`.
+`level.visit_online_players` also works on parked server levels; `team.visit_members`
+borrows each holder key as `&str` instead of cloning the names.
 
-For one entity ray hit, `level.ray_trace_nearest_entity` calls the predicate on every
-geometric hit in spatial traversal order. It selects the smallest accepted squared
-distance, keeping the first visited hit on an exact tie. `ray_trace_entities` keeps
-the ordered all-hit result for callers that need to process hits nearest first.
+For one entity ray hit, `level.ray_trace_nearest_entity` calls the predicate with each
+non-excluded candidate `EntityRef` in spatial traversal order before reading and
+clipping its box (`ProjectileUtil.getEntityHitResult`), accepting any finite `margin`
+(`AABB.inflate`). It selects the smallest accepted squared distance, keeping the first
+visited hit on an exact tie. `ray_trace_entities` keeps the ordered all-hit result for
+callers that need to process hits nearest first.
 `host.experience_orbs(dimension, min, max)` still returns a list, empty for a bound
 that is not finite.
 

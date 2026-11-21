@@ -26,21 +26,26 @@ The damage representation has three states:
 | No numeric override and `!minecraft:damage` in the patch | The component is explicitly removed, including an inherited default. `clear_damage` creates this state. |
 
 `damage()` returns the stored number or zero. `damage_component()` distinguishes an explicit
-zero from no numeric override. `set_damage(u32)` is infallible; the game validates its effective
-maximum when accepting a write. Adding only a maximum-damage override to an item does not
-invent a damage component: explicitly adding `Some(0)` is what makes that component present.
+zero from no numeric override. `set_damage(u32)` is infallible; the game validates that
+damage fits `0..=i32::MAX` when accepting a write. Adding only a maximum-damage override to
+an item does not invent a damage component: explicitly adding `Some(0)` is what makes that
+component present.
 
-All numeric damage lives in the optional field. Raw damage entries normalize out of the
-component patch; malformed numbers, conflicting numeric values, or a simultaneous value and
-removal refuse the entire replacement. Generic component setters and raw `set_components`
-therefore return `Result`. A refusal leaves the stack unchanged. Typed damage setters do not
-need an error path.
+Use full component keys in raw stack patches and resident edits. The write keeps the supplied
+key rather than adding a namespace: a bare `damage` entry remains opaque, not a damage override.
+Numeric damage overrides live in the optional field. Raw `minecraft:damage` entries use vanilla's
+numeric-to-int codec: for example, a Float containing `2.75` becomes damage `2`. A
+nonnumeric tag or a negative decoded result refuses the entire replacement. Numeric
+values replace old damage in the scalar field, not in the patch. `!minecraft:damage`
+clears any prior or incoming damage value. Generic component setters and raw
+`set_components` therefore return `Result`. A refusal leaves the stack unchanged. Typed damage
+setters do not need an error path.
 
 `apply_components(&patch)` merges over the existing patch rather than replacing it.
 Incoming values clear prior removals and incoming `!id` removals clear prior values;
-a removal wins if the same patch includes both, except that simultaneous damage and
-damage removal are refused. Damage values replace previous numeric overrides and are
-normalized just like `set_components`; malformed damage leaves the entire stack unchanged.
+a removal wins if the same patch includes both, including for damage. Damage values replace
+previous numeric overrides and are normalized just like `set_components`; malformed damage
+leaves the entire stack unchanged.
 `copy_component_from(&other, id)` copies only that component's own value or removal,
 including explicit zero damage. If `other` has no override, the target inherits too:
 no effective prototype value is materialized. `get` followed by `set` covers `update`.
@@ -61,25 +66,33 @@ records real NBT removal entries for default components; it is not an unknown-va
 
 A consume or death-protection override whose opaque native effect payload cannot be decoded
 refuses the whole stack write with `StackWriteError::InvalidEffectPayload`, before any
-resident state changes. A `villager_food` patch without positive nutrition is refused as
+resident state changes. This includes children already decoded for the write, such as a
+bundle entry. A `use_remainder` or `sulfur_cube_content` template stays saved data until
+it is materialized, so a codec refusal there is reported later and that effect does not run.
+A `villager_food` patch without positive nutrition is refused as
 `StackWriteError::InvalidComponents { reason: StackError::InvalidComponent { id } }`;
 `id` names `minecraft:villager_food`. An explicit removal remains valid.
 The items host area owns metadata reads such as `max_stack_size(ItemKey)` and
 `max_damage(ItemKey)`. A stack does not take a host just to read a maximum, and an unavailable
 maximum never turns into a fabricated limit of 64.
 
-The game validates effective count and durability limits, including component overrides, when
-accepting a resident write. An effective `max_stack_size` must be in `1..=99`, and the
-presence of `max_damage` forbids a stack limit above one, even when the current count is one.
-Removing `max_stack_size` uses the absent limit of one. Invalid values produce typed errors,
-not clamped values. A transfer request is different: `ItemResource` plus a separate amount can request or
-return more than one resident stack's capacity. The resident writes it produces must
-pass validation.
+The game validates effective count and durability component rules, including overrides, when
+accepting a resident write. An effective `max_stack_size` must be in `1..=99`, a carried
+`max_damage` must be positive (`1..=i32::MAX`), `damage` must be a non-negative integer
+(`0..=i32::MAX`, not capped by `max_damage`), and the presence of `max_damage` forbids a
+stack limit above one, even when the current count is one.
+A raw `max_damage` override uses the same numeric-to-int conversion and is stored and synced
+as an integer. A `max_stack_size` override must be an NBT Int; removing it uses the absent limit
+of one. Invalid values produce typed errors, not clamped values. A transfer request is
+different: `ItemResource` plus a separate amount can request or return more than one
+resident stack's capacity. The resident writes it produces must pass validation.
 
 Game inventory, menus, trades and models keep their engine-owned representations. Where a
 native hook or host method takes an owned API snapshot, the game converts only after a listener
 guard and stages every mutable result before committing any captured output. Invalid hook
-edits retain those captured engine values. Consuming mutable events such as `bonemeal` and
+edits retain those captured engine values. The same durability rules govern writable hook
+outputs: a valid damage value above that stack's maximum reaches later listeners and the game.
+Consuming mutable events such as `bonemeal` and
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 

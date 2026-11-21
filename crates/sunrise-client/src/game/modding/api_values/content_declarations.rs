@@ -717,9 +717,13 @@ mod tests {
 pub(super) fn validate_decoded_components<'a>(
     stack_for: impl Fn(&str) -> Option<&'a EngineStack>,
 ) -> Result<(), mod_api::StackWriteError> {
-    if stack_for("minecraft:consumable").is_some_and(|stack| stack.consumable(None).is_none())
-        || stack_for("minecraft:death_protection")
-            .is_some_and(|stack| stack.death_protection(None).is_none())
+    if sunrise_client::item_data::StackData::CONSUME_EFFECT_COMPONENTS
+        .into_iter()
+        .any(|id| {
+            stack_for(id)
+                .and_then(EngineStack::data)
+                .is_some_and(|data| data.refused_consume_effect_component(id))
+        })
     {
         return Err(mod_api::StackWriteError::InvalidEffectPayload);
     }
