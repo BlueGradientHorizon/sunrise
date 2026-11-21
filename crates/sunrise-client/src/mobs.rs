@@ -1687,8 +1687,8 @@ pub struct Mob {
     pub dealt_absorbed: i32,
     pub last_damage: Option<(Damage, i64)>,
     pub accepted_hit: Option<std::sync::Arc<crate::health::AcceptedHit>>,
-    /// The killing hit's Post, pending the owning game's death continuation.
-    pub damage_completion: Option<std::sync::Arc<crate::health::PendingDamagePost>>,
+    /// The in-flight killing hit; its caller settles death before continuing.
+    pub damage_completion: Option<crate::health::DamageCompletion>,
     pub death_canceled: bool,
     /// `DamageSource.getDirectEntity` of `last_damage` when [`Damage`] cannot name it (a
     /// thrown potion, an area effect cloud): its entity type.
@@ -3267,10 +3267,9 @@ fn apply_brain_event_tail(
                     poison_ticks,
                     sound_at,
                 };
-                // Nonlethal hits already posted inline. This victim was live
-                // before the hit, so a death still needs the owner even if a
-                // subclass returned false or nobody listens for Post.
-                if owned_position.is_some() && !victim.alive() {
+                // Nonlethal hits already posted inline. Even a hurt that returned false
+                // can need the owner, whether or not anybody listens for Post.
+                if owned_position.is_some() && victim.damage_completion.is_some() {
                     return Some(tail);
                 }
                 i = tail.finish(events, Some(victim));
@@ -4860,7 +4859,7 @@ impl Mob {
         self.extra.hand_protection = None;
         self.health = 1.0;
         for effect in &effects {
-            self.apply_consume_effect(level, effect);
+            self.apply_consume_effect(effect);
         }
         let at = [self.position.x, self.position.y, self.position.z];
         self.outbox.push(MobEvent::EntityEvent {
@@ -4870,14 +4869,9 @@ impl Mob {
         });
         true
     }
-    /// One `ConsumeEffect` of death protection or a fox's consumed item.
-    /// Damage uses the owning typed level. Teleporting and sounds belong to
-    /// the consumption caller; mod-defined kinds are not applied here.
-    pub fn apply_consume_effect(
-        &mut self,
-        level: &mut DamageLevel<'_>,
-        effect: &crate::items::ConsumeEffect,
-    ) {
+    /// One built-in effect of death protection or a consumed item. Adding a status
+    /// effect does not run its tick: that tick owns its own hurt, if any.
+    pub fn apply_consume_effect(&mut self, effect: &crate::items::ConsumeEffect) {
         use crate::items::ConsumeEffect;
         match effect {
             // `LivingEntity.removeAllEffects` -> `onEffectsRemoved` ->
@@ -4908,30 +4902,19 @@ impl Mob {
                     let Some(def) = sunrise_client_core::potions::effect(&spec.id) else {
                         continue;
                     };
-                    if def.instant {
-                        match def.id {
-                            "instant_damage" | "instant_health" => {
-                                let amp = spec.amplifier.clamp(0, 30);
-                                if (def.id == "instant_damage") != self.kind.flags.undead {
-                                    self.damage(
-                                        level,
-                                        (6i32 << amp) as f32,
-                                        Damage::of(DamageKind::Magic),
-                                    );
-                                } else {
-                                    let amount = (4i32 << amp) as f32;
-                                    // No owning loop is lent to a DamageLevel yet. Keep this
-                                    // component's instant healing vanilla-only, not deferred.
-                                    if self.health > 0.0 {
-                                        self.health = (self.health + amount)
-                                            .clamp(0.0, self.attrs.max_health);
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        self.add_effect(def.id, spec.duration, spec.amplifier);
+                    // ApplyStatusEffectsConsumeEffect.apply passes even instantaneous
+                    // effects to LivingEntity.addEffect, not to applyInstantenousEffect.
+                    let id = sunrise_client_core::potions::namespaced(def.id);
+                    if self.species() != Species::Wither && self.can_be_affected(id) {
+                        let mut instance = crate::effects::EffectInstance::from_def(
+                            def,
+                            spec.duration,
+                            spec.amplifier,
+                        );
+                        instance.ambient = spec.ambient;
+                        instance.visible = spec.show_particles;
+                        instance.show_icon = spec.show_icon;
+                        self.add_effect_instance(id, instance);
                     }
                 }
             }
@@ -6697,18 +6680,16 @@ mod totem_tests {
     }
 
     #[test]
-    fn death_component_instant_healing_obeys_inversion_cap_and_dead_state() {
+    fn a_death_component_adds_an_instant_effect_without_ticking_it() {
         let mut level = crate::health::TestLevel::new(0);
-        for (undead, id) in [
-            (false, "minecraft:instant_health"),
-            (true, "minecraft:instant_damage"),
+        let mut mob = fox();
+        mob.health = 1.0;
+        for (id, before, after) in [
+            ("minecraft:instant_health", 1.0, 9.0),
+            ("minecraft:instant_health", 9.0, 10.0),
+            ("minecraft:instant_damage", 10.0, 0.0),
         ] {
-            let mut mob = fox();
-            let mut kind = (*mob.kind).clone();
-            kind.flags.undead = undead;
-            mob.kind = Arc::new(kind);
-            mob.health = 1.0;
-            let effect = crate::items::ConsumeEffect::ApplyEffects {
+            mob.apply_consume_effect(&crate::items::ConsumeEffect::ApplyEffects {
                 probability: 1.0,
                 effects: vec![crate::items::ConsumeEffectSpec {
                     id: id.into(),
@@ -6718,17 +6699,15 @@ mod totem_tests {
                     show_particles: true,
                     show_icon: true,
                 }],
-            };
-            mob.apply_consume_effect(&mut level.level(), &effect);
-            assert_eq!(mob.health, 9.0);
-            mob.apply_consume_effect(&mut level.level(), &effect);
-            assert_eq!(mob.health, 10.0);
-            mob.health = 0.0;
-            mob.apply_consume_effect(&mut level.level(), &effect);
-            assert_eq!(
-                mob.health, 0.0,
-                "instant healing does not revive a dead mob"
+            });
+            assert_eq!(mob.health, before, "adding {id} does not tick it");
+            ai::tick_effects(
+                &mut mob,
+                crate::test_resources::server_loop_context(),
+                &mut level.level(),
+                None,
             );
+            assert_eq!(mob.health, after);
         }
     }
 
@@ -7519,10 +7498,9 @@ mod hidden_speed_mob_tick_tests {
         assert_eq!(to.extra.effect_chains, m.extra.effect_chains);
         to.extra.effect_chains[0].duration = 222;
         assert_eq!(m.extra.effect_chains[0].duration, 300);
-        m.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::RemoveEffects(vec!["minecraft:speed".into()]),
-        );
+        m.apply_consume_effect(&crate::items::ConsumeEffect::RemoveEffects(vec![
+            "minecraft:speed".into(),
+        ]));
         assert_eq!(
             m.extra
                 .effects
@@ -7536,10 +7514,7 @@ mod hidden_speed_mob_tick_tests {
         assert!(m.extra.effect_chains.is_empty());
         m.add_effect("speed", 5, 1);
         assert_eq!(m.extra.effect_chains[0].duration, 20);
-        m.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::ClearAllEffects,
-        );
+        m.apply_consume_effect(&crate::items::ConsumeEffect::ClearAllEffects);
         assert!(m.extra.effects.is_empty() && m.extra.effect_chains.is_empty());
         // The basic add has default incoming flags, while preserving its
         // existing active flag policy; a newly retained weaker node gets them.
@@ -7567,10 +7542,7 @@ mod hidden_speed_mob_tick_tests {
         m.add_effect("health_boost", 200, 1);
         assert_eq!(m.attrs.max_health, 18.0);
         m.health = 18.0;
-        m.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::ClearAllEffects,
-        );
+        m.apply_consume_effect(&crate::items::ConsumeEffect::ClearAllEffects);
         assert_eq!(m.attrs.max_health, 10.0);
         assert_eq!(m.health, 10.0);
     }
@@ -7593,10 +7565,7 @@ mod hidden_speed_mob_tick_tests {
         m0.add_effect("absorption", 600, 0);
         assert_eq!(armor::max_absorption(&m0), 4.0);
         assert_eq!(m0.absorption, 4.0);
-        m0.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::ClearAllEffects,
-        );
+        m0.apply_consume_effect(&crate::items::ConsumeEffect::ClearAllEffects);
         assert_eq!(
             m0.absorption, 0.0,
             "base 0 mob loses absorption on ClearAllEffects"
@@ -7609,10 +7578,7 @@ mod hidden_speed_mob_tick_tests {
         m20.add_effect("absorption", 600, 0);
         assert_eq!(armor::max_absorption(&m20), 24.0);
         assert_eq!(m20.absorption, 4.0);
-        m20.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::ClearAllEffects,
-        );
+        m20.apply_consume_effect(&crate::items::ConsumeEffect::ClearAllEffects);
         assert_eq!(
             m20.absorption, 4.0,
             "base 20 mob keeps absorption on ClearAllEffects"
@@ -7625,10 +7591,9 @@ mod hidden_speed_mob_tick_tests {
         with_base(&mut m20_clamp, 20.0);
         m20_clamp.add_effect("absorption", 600, 0);
         m20_clamp.absorption = 24.0;
-        m20_clamp.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::RemoveEffects(vec!["minecraft:absorption".into()]),
-        );
+        m20_clamp.apply_consume_effect(&crate::items::ConsumeEffect::RemoveEffects(vec![
+            "minecraft:absorption".into(),
+        ]));
         assert_eq!(
             m20_clamp.absorption, 20.0,
             "base 20 mob clamps absorption to 20.0 on RemoveEffects"
@@ -7640,10 +7605,9 @@ mod hidden_speed_mob_tick_tests {
         let mut m0_remove = Mob::new(4, kind.clone(), Vec3::ZERO, 0.0);
         m0_remove.add_effect("absorption", 600, 0);
         assert_eq!(m0_remove.absorption, 4.0);
-        m0_remove.apply_consume_effect(
-            &mut crate::health::TestLevel::new(0).level(),
-            &crate::items::ConsumeEffect::RemoveEffects(vec!["minecraft:absorption".into()]),
-        );
+        m0_remove.apply_consume_effect(&crate::items::ConsumeEffect::RemoveEffects(vec![
+            "minecraft:absorption".into(),
+        ]));
         assert_eq!(
             m0_remove.absorption, 0.0,
             "base 0 mob loses absorption on RemoveEffects"

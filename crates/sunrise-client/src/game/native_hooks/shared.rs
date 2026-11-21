@@ -1890,11 +1890,9 @@ impl Game<'_> {
         &mut self,
         entity: i32,
         kind: &str,
-        post: &sunrise_client::health::PendingDamagePost,
+        post: std::sync::Arc<sunrise_client::health::DamagePost>,
     ) {
-        let Some((source, state, original_lend)) = post.take() else {
-            return;
-        };
+        let (source, state, original_lend) = post.view();
         let (player, mobs) = (&mut self.player, &mut self.mobs);
         let lend = original_lend.and_then(|id| {
             sunrise_client::health::HitLend::attacking_player(player.as_mut(), id)
@@ -1906,7 +1904,7 @@ impl Game<'_> {
             no_push,
             lend
         );
-        let live = LiveDamageRead(&state);
+        let live = LiveDamageRead(state);
         HitLevel(level.reborrow()).native_living_damage_post(
             entity,
             kind,
@@ -2033,7 +2031,7 @@ pub(super) const DAMAGE_HOOKS: DamageHooks = DamageHooks {
     incoming: Some(incoming_damage),
     pre: Some(damage_pre),
     post: Some(damage_post),
-    defer_post: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
+    owner_post_listened: Some(|| mod_api::__private::listened(mod_api::HookId::LivingDamagePost)),
     knockback: Some(knockback),
     totem: Some(use_totem),
     shield: Some(shield_block),

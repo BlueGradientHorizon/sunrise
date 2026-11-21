@@ -1397,8 +1397,8 @@ impl Game<'_> {
         // `EntityEvent.Size` for the sizes that changed outside the mob ticks (spawns,
         // commands, a player's interaction), before the ticks move by them.
         self.native_mob_sizes();
-        // LivingEntity.die runs when the killing blow lands: mobs killed
-        // since the last tick (by the player, explosions...) die first.
+        // Hit-driven deaths already ran inside the hurt. Handle deaths from other
+        // state changes before the mob ticks.
         let killed: Vec<Mob> = self
             .mobs
             .iter()
@@ -1729,33 +1729,23 @@ impl Game<'_> {
         let Some(mob) = self.mobs.get_mut(index) else {
             return;
         };
-        let post = mob.damage_completion.take();
-        let killed = mob.health <= 0.0;
-        if post.is_none() && !killed {
+        let Some(hit) = mob.damage_completion.take() else {
             return;
-        }
+        };
         let id = mob.id;
-        let kind = mob.kind.clone();
-        if killed && self.died.insert(id) {
-            // The death hooks may remove or revive the body. Do not hold a row borrow
-            // across them or recover the hit state from the body afterward.
+        // Keep the hit apart from the body: the death hooks may remove or revive it.
+        let kind = hit.post.as_ref().map(|_| mob.kind.clone());
+        if self.died.insert(id) {
             let death = mob.clone();
-            self.apply_mob_death(&death);
+            self.mob_die(&death);
         }
-        if let Some(post) = post {
-            self.finish_damage_post(id as i32, &kind.id, &post);
+        if let Some((post, kind)) = hit.post.zip(kind) {
+            self.finish_damage_post(id as i32, &kind.id, post);
         }
     }
 
-    /// LivingEntity.die / dropAllDeathLoot.
+    /// `LivingEntity.die` / `dropAllDeathLoot`. Does not finish a hurt.
     pub(super) fn mob_die(&mut self, m: &Mob) {
-        self.apply_mob_death(m);
-        if let Some(post) = &m.damage_completion {
-            self.finish_damage_post(m.id as i32, &m.kind.id, post);
-        }
-    }
-
-    fn apply_mob_death(&mut self, m: &Mob) {
         // The killing blow for the drop hooks, before the player's hit is forgotten.
         let source = (!mod_api::__private::mods().is_empty()).then(|| self.mob_damage_source(m));
         let killer = self

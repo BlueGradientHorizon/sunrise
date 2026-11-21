@@ -6,8 +6,10 @@ pub trait Hooks {
     /// values (health damage, the reductions, the post-attack invulnerability ticks). It fires
     /// once for every hit that passed `living_incoming_damage` and the invulnerability cooldown,
     /// at the end of `hurtServer`: after the hurt sounds and after that hit's death processing
-    /// (even if vetoed) or totem protection. For a queued mob effect hurt this is before the next
-    /// queued action, and for a dolphin's dry-out hurt it is before the dolphin's land hop.
+    /// (even if vetoed) or totem protection, before the hurt caller resumes. The next hazard,
+    /// poison application or rider's hit sees the preceding hit already completed. It is not
+    /// delayed to the next tick or the end of a player's turn. A queued mob effect's hurt
+    /// finishes before the next action; a dolphin's dry-out hurt finishes before the land hop.
     /// A server player's landing hurt finishes before the landing's `HIT_GROUND` and fall reset,
     /// and before the next accepted move. A mob landing in its own tick finishes its hurt before
     /// the fall reset, movement restitution, travel's collision hurt or a later goal.

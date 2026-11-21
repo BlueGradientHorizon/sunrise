@@ -77,19 +77,12 @@ impl Game<'_> {
     /// count it, set health to 1, then clear and apply its effects. Returns
     /// the player's body with the protector copy the activation animation shows.
     /// A server guest's entity event is broadcast before the hit's Post.
-    pub(super) fn apply_totem(&mut self) -> Option<Body> {
-        let p = self.player.as_mut()?;
-        if !p.health.totem_used {
-            return None;
-        }
-        let entity = p.entity_id;
-        let post = p.health.damage_completion.take();
+    fn apply_totem(&mut self, entity: i32) -> Option<Body> {
         // The mods hear a server player's totem before it is used up.
         if let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
             self.native_player_totem(uuid, &name);
         }
-        let p = self.player.as_mut()?;
-        p.health.totem_used = false;
+        let p = self.player.as_mut().filter(|p| p.entity_id == entity)?;
         let _ = p.set_health(1.0, false);
         let body = Body {
             bounds: player_tracking_body(p),
@@ -133,9 +126,6 @@ impl Game<'_> {
         {
             host.hub.entity_event(entity, TOTEM_EVENT);
         }
-        if let Some(post) = post {
-            self.finish_damage_post(entity, "minecraft:player", &post);
-        }
         Some(Body {
             protector: Some(protector),
             ..body
@@ -154,34 +144,27 @@ impl Game<'_> {
         let (Some(conn), Some(player)) = (self.lan_acting, self.player.as_mut()) else {
             return Err(Vec::new());
         };
+        let Some(hit) = player.health.damage_completion.take() else {
+            return Ok(());
+        };
         let entity = player.entity_id;
         // Keep queued motion and packet effects with this body across the owning callbacks.
-        let mut events;
-        if player.health.totem_used {
-            events = std::mem::take(&mut player.events);
-            if let Some(body) = self.apply_totem()
+        let mut events = std::mem::take(&mut player.events);
+        if std::mem::take(&mut player.health.totem_used) {
+            if let Some(body) = self.apply_totem(entity)
                 && self.serving.is_none()
                 && !self.is_dedicated_server()
             {
                 self.totem_event(TrackingTarget::Entity(entity), body);
             }
-        } else {
-            if !player.health.dead || player.health.health() > 0.0 {
-                return Ok(());
-            }
-            let post = player.health.damage_completion.take();
-            let Some(host) = self.lan.as_ref() else {
-                return Err(std::mem::take(&mut player.events));
-            };
-            let Some(index) = host.hub.guests.connection_index(conn) else {
-                return Err(std::mem::take(&mut player.events));
-            };
-            if host.hub.guests[index].dead {
-                return Ok(());
-            }
+        } else if let Some(index) = self.lan.as_ref().and_then(|host| {
+            host.hub
+                .guests
+                .connection_index(conn)
+                .filter(|&i| !host.hub.guests[i].dead)
+        }) {
             // The killing blow and its weapon must reach the combat tracker before die reads it.
             // Packet and motion events still belong to the normal turn drain.
-            events = std::mem::take(&mut player.events);
             let combat: Vec<_> = events
                 .extract_if(.., |event| {
                     matches!(
@@ -201,9 +184,11 @@ impl Game<'_> {
                 self.wear_armor(&combat);
             }
             self.guest_die(index, conn);
-            if let Some(post) = post {
-                self.finish_damage_post(entity, "minecraft:player", &post);
-            }
+        }
+        // The death or protection callback may change or remove the body. Post is still for
+        // this hit, not for whatever state the callback left in its place.
+        if let Some(post) = hit.post {
+            self.finish_damage_post(entity, "minecraft:player", post);
         }
         if self.lan_acting == Some(conn)
             && let Some(player) = self.player.as_mut().filter(|p| p.entity_id == entity)
@@ -216,14 +201,6 @@ impl Game<'_> {
         }
     }
 
-    /// The window's player's totem: the server's half, then the event to
-    /// the guests and to this window's own client.
-    pub(super) fn tick_totem(&mut self) {
-        let Some(body) = self.apply_totem() else {
-            return;
-        };
-        self.totem_event(TrackingTarget::LocalPlayer, body);
-    }
     /// Entity event 35 from a server, for this client's own player or an
     /// entity it draws.
     pub(super) fn remote_totem(&mut self, id: i32) {

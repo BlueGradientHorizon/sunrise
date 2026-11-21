@@ -69,9 +69,9 @@ pub struct DamageHooks {
     /// check and the cooldown, with the health damage it took, 0 included
     /// (`LivingDamageEvent.Post`).
     pub post: Option<fn(DamageLevel<'_>, Hurting<'_>, &DamageContainer)>,
-    /// The owning game dispatches lethal hits after `die`, and player totem hits after use.
-    /// These continuations are retained only if a native Post listener is present.
-    pub defer_post: Option<fn() -> bool>,
+    /// Present when the caller has a game owner to finish death or player protection.
+    /// The predicate says whether that continuation also needs the hit values for Post.
+    pub owner_post_listened: Option<fn() -> bool>,
     /// `native_living_knockback`: `LivingEntity.knockback`, at its start
     /// (`LivingKnockBackEvent`), on the raw strength and before the knockback resistance and
     /// the motion change. It may change the [`Knock`]; true cancels it.
@@ -94,7 +94,7 @@ impl DamageHooks {
         incoming: None,
         pre: None,
         post: None,
-        defer_post: None,
+        owner_post_listened: None,
         knockback: None,
         totem: None,
         shield: None,
@@ -533,69 +533,71 @@ impl<'a> DamageLevel<'a> {
         }
     }
 
-    /// Close an accepted hit or give its owning game the same hit state to lend after the
-    /// death or player totem continuation has run.
+    /// Close an accepted hit, or suspend it just long enough for the caller to give the
+    /// owning game back its level and body for death or player protection.
     pub fn finish_damage(
         &mut self,
         hurting: Hurting<'_>,
         container: DamageContainer,
-        defer: bool,
-    ) -> Option<std::sync::Arc<PendingDamagePost>> {
-        if defer && let Some(listened) = self.hooks.defer_post {
-            if !listened() {
-                return None;
-            }
-            let source = match hurting {
-                Hurting::Mob(_, source) => mob_source(source, self.attack),
-                Hurting::Player(_, source)
-                | Hurting::Dragon(_, source)
-                | Hurting::ArmorStand(_, source)
-                | Hurting::Entity(_, _, source) => source,
-            };
-            return Some(std::sync::Arc::new(PendingDamagePost {
-                damage_type: source.damage_type.to_owned(),
-                causing: source.causing,
-                direct: source.direct,
-                position: source.position,
-                lent_entity: self
-                    .effects
-                    .as_ref()
-                    .and_then(|effects| effects.lent.as_ref())
-                    .map(|lent| lent.id),
-                container: std::sync::Mutex::new(Some(container.into_state())),
-            }));
+        needs_owner: bool,
+    ) -> Option<DamageCompletion> {
+        if needs_owner && let Some(listened) = self.hooks.owner_post_listened {
+            let post = listened().then(|| {
+                let source = match hurting {
+                    Hurting::Mob(_, source) => mob_source(source, self.attack),
+                    Hurting::Player(_, source)
+                    | Hurting::Dragon(_, source)
+                    | Hurting::ArmorStand(_, source)
+                    | Hurting::Entity(_, _, source) => source,
+                };
+                std::sync::Arc::new(DamagePost {
+                    damage_type: source.damage_type.to_owned(),
+                    causing: source.causing,
+                    direct: source.direct,
+                    position: source.position,
+                    lent_entity: self
+                        .effects
+                        .as_ref()
+                        .and_then(|effects| effects.lent.as_ref())
+                        .map(|lent| lent.id),
+                    state: container.into_state(),
+                })
+            });
+            return Some(DamageCompletion { post });
         }
         self.damage_post(hurting, &container);
         None
     }
 }
-/// The hit moved through a game-owned death or player totem continuation. Mob death paths
-/// clone the body for loot; those copies share one completion rather than delivering twice.
+
+/// The in-flight handoff for a single hurt, taken from the live body by its caller before
+/// continuing. Death and protection need this even if nobody listens to Post.
+#[derive(Clone, Debug)]
+pub struct DamageCompletion {
+    pub post: Option<std::sync::Arc<DamagePost>>,
+}
+
+/// The exact accepted hit values, only retained across the handoff for a Post listener.
 #[derive(Debug)]
-pub struct PendingDamagePost {
+pub struct DamagePost {
     damage_type: String,
     causing: i32,
     direct: i32,
     position: Option<[f64; 3]>,
     lent_entity: Option<i32>,
-    container: std::sync::Mutex<Option<DamageState>>,
+    state: DamageState,
 }
 
-impl PendingDamagePost {
-    /// Take this hit's completion so exactly one caller can lend it to Post.
-    pub fn take(&self) -> Option<(HurtSource<'_>, DamageState, Option<i32>)> {
-        let state = self
-            .container
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()?;
+impl DamagePost {
+    /// Lend the hit's original source, final values and attacker identity to Post.
+    pub fn view(&self) -> (HurtSource<'_>, &DamageState, Option<i32>) {
         let source = HurtSource {
             damage_type: &self.damage_type,
             causing: self.causing,
             direct: self.direct,
             position: self.position,
         };
-        Some((source, state, self.lent_entity))
+        (source, &self.state, self.lent_entity)
     }
 }
 
@@ -1035,14 +1037,14 @@ pub struct PlayerHealth {
     /// of yet (`indicateDamage`).
     pub indicated_dir: Option<f32>,
     pub dead: bool,
-    /// The lethal or totem-saving damage Post, pending the game's owning continuation.
-    pub damage_completion: Option<std::sync::Arc<PendingDamagePost>>,
+    /// A lethal or protected hit suspended for its acting body's synchronous game continuation.
+    pub damage_completion: Option<DamageCompletion>,
     pub sync_velocity: bool,
     pub game_time: i64,
     pub tick_count: i32,
     /// A death-protection item (totem) is in either hand.
     pub totem_ready: bool,
-    /// The totem saved the player this tick; the game applies its effects.
+    /// The current hit used death protection; its game continuation applies the effects.
     pub totem_used: bool,
     /// The totem that would save the player is in the off hand.
     pub totem_off_hand: bool,
@@ -1579,7 +1581,7 @@ pub(crate) struct Environment<'a> {
     pub(crate) living_cause: bool,
     pub(crate) events: &'a mut Vec<MotionEvent>,
     pub(crate) dead: &'a mut bool,
-    pub(crate) damage_completion: &'a mut Option<std::sync::Arc<PendingDamagePost>>,
+    pub(crate) damage_completion: &'a mut Option<DamageCompletion>,
     pub(crate) sync_velocity: &'a mut bool,
     pub(crate) game_time: i64,
     /// Resistance, fire resistance and armor protection (effects.rs).
@@ -2182,13 +2184,11 @@ impl HurtWorld for Environment<'_> {
             .level
             .attack()
             .player_source(&self.source.definition().name, self.causing);
-        if let Some(post) = self.level.finish_damage(
+        *self.damage_completion = self.level.finish_damage(
             Hurting::Player(self.entity, source),
             container,
             *self.dead || self.totem_fired,
-        ) {
-            *self.damage_completion = Some(post);
-        }
+        );
         Ok(())
     }
 }

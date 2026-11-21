@@ -1696,7 +1696,7 @@ impl MotionWorld<'_, '_, '_> {
     }
 
     pub(crate) fn hit_needs_owner(&self) -> bool {
-        self.player.health.totem_used || self.player.health.damage_completion.is_some()
+        self.player.health.damage_completion.is_some()
     }
     /// The block effects and the frost of a window's own player while a vehicle carries it. Its
     /// own move is `rider_tick`'s; after it, `LivingEntity.aiStep` still applies the effects of

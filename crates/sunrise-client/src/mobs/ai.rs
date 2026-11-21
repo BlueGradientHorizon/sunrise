@@ -1232,7 +1232,7 @@ pub fn tick(
                 decision,
                 was_on_fire,
             }) => {
-                super::fox::apply_consumption(&decision, w, m, level, events);
+                super::fox::apply_consumption(&decision, w, m, events);
                 resume_after_consumption(m, w, level, was_on_fire, events, None)
             }
             TickProgress::Paused(Pause::Breathing { air, known_speed }) => {

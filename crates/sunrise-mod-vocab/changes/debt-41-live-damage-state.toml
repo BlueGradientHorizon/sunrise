@@ -71,11 +71,24 @@ Following `DamageContainer.setNewDamage` and `setPostAttackInvulnerabilityTicks`
 `LivingEntity.getDamageAfterMagicAbsorb` changes the live damage only at a reduction site that ran, and \
 `Witch.getDamageAfterMagicAbsorb` uses its separate local result for innate resistance. \
 `Wolf.actuallyHurt` uses the outer cooldown difference for armor wear, without replacing the live reduction. \
-Post follows the death or totem continuation, as at NeoForge's `LivingEntity.hurtServer` tail. \
-Vanilla `Entity.baseTick`, `Entity.applyEffectsFromBlocks`, `LivingEntity.tickEffects` and \
-`LivingEntity.aiStep` finish each hurt before the next hazard or effect advances. The borrowed \
-server tick releases its loans at those hit boundaries. The guest tick applies \
-`ServerPlayer.die` or protection on the acting body before going on with the next hit. \
+The `LivingEntity.hurtServer` patch calls NeoForge's `CommonHooks.onLivingDamagePost` at the tail, \
+after `actuallyHurt`, the hurt sounds and death or totem protection, before returning to the caller. \
+Each hit now finishes there, even when death was vetoed or the victim was removed. Neither the \
+next tick nor the playing body's turn exit dispatches Post. Death and protection run there even \
+without a Post listener. The borrowed server tick releases its loans at the hurt boundaries in \
+vanilla `Entity.baseTick`, `Entity.applyEffectsFromBlocks`, `LivingEntity.tickEffects` and \
+`LivingEntity.aiStep`. `Dolphin.tick` finishes dry-out damage before the land hop; \
+`FollowPlayerRiddenEntityGoal.tick` finishes a movement hurt before repathing. \
+`Entity.checkFallDamage`, `HoneyBlock.fallOn`, `FarmlandBlock.fallOn` and \
+`LivingEntity.handleFallFlyingCollisions` finish landing or gliding hurts before proceeding; \
+`AbstractHorse.causeFallDamage` finishes the horse's own hurt before \
+`Entity.propagateFallToPassengers` visits riders. `ServerGamePacketListenerImpl.handleMovePlayer` \
+and `handleMoveVehicle` settle impacts on the acting body. `Pufferfish.touch` settles each \
+sting before poison, and `FallingBlockEntity.causeFallDamage` settles each victim before the next. \
+`AbstractArrow.onHitEntity`, `ThrownTrident.onHitEntity` and `ShulkerBullet.onHitEntity` finish the \
+projectile's hit before on-hit effects. `DeathProtection.applyEffects` calls \
+`ApplyStatusEffectsConsumeEffect.apply`, which adds status effects without ticking them inside the \
+protection hit. \
 Matching NeoForge's `DamageContainer` and `actuallyHurt` semantics, modified reductions are \
 recorded verbatim without clamping to `[0, limit]` or replacing `NaN` (only resulting damage \
 floors at `0.0`), and `Reduction::Absorption` receives `damage.min(hearts)`, records the modified \
@@ -127,5 +140,9 @@ records of the values you need, and replace `ReductionChange` with your own comm
 Build your records inside the hook and use the data to construct native closures locally; \
 callbacks are not serialized. In \
 tests, construct a live hit through the engine or use a live backend rather than building a \
-standalone `DamageContainer::new(...)`.\
+standalone `DamageContainer::new(...)`.
+- Post now runs at version 3's documented hit boundary. No further handler, type or manifest \
+pin changes are needed beyond the migration above. If a handler relied on the accidental \
+next-tick delay, use the in-hit result or explicitly schedule your own later work. The next \
+hazard, poison application or rider's hit already observes the preceding hit completed.\
 """

@@ -454,14 +454,12 @@ impl TravelTail {
                                 1.0,
                             ));
                         }
-                        let was_alive = mob.alive();
                         mob.damage(
                             level,
                             damage,
                             super::Damage::of(super::DamageKind::FlyIntoWall),
                         );
-                        if handoff && (mob.damage_completion.is_some() || was_alive && !mob.alive())
-                        {
+                        if handoff && mob.damage_completion.is_some() {
                             return ControlFlow::Break(TravelPause(TravelStop::AfterHit));
                         }
                     }
@@ -1914,9 +1912,8 @@ impl Mob {
                 events.push(MobEvent::Sound(sound, at, 1.0, 1.0));
                 self.block_fall_sound(contact, events);
             }
-            let was_alive = self.alive();
             self.damage(level, damage as f32, super::Damage::of(source));
-            if handoff && (self.damage_completion.is_some() || was_alive && !self.alive()) {
+            if handoff && self.damage_completion.is_some() {
                 return Err(FallHurtStop::AfterHurt(horse.then_some(fall)));
             }
             if horse {

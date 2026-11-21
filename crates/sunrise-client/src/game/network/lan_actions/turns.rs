@@ -561,7 +561,7 @@ impl Game<'_> {
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
-        // The callbacks a turn ends with (combat, armor, the totem, the food hook) can reach a
+        // The callbacks a turn ends with (combat, armor, the food hook) can reach a
         // mod and panic. The swap is still restored below and the guest's progress written
         // back; the panic resumes at the end (#2240). `as_guest_at` calls this after catching a
         // panic of the turn itself, so a panic here then goes on in place of that one.
@@ -570,8 +570,6 @@ impl Game<'_> {
                 self.record_combat(&turn_events);
                 self.wear_armor(&turn_events);
             }
-            // A totem that saved the guest this turn (its hurt set it off).
-            let totem = self.apply_totem();
             // The mods hear the food level the turn changed (eating, hunger,
             // starving...), once for the change it made as a whole, with the
             // guest's state still swapped in; they may change or undo it before it
@@ -599,20 +597,11 @@ impl Game<'_> {
                     }
                 }
             }
-            totem
         }));
-        let (totem, panic) = match callbacks {
-            Ok(totem) => (totem, None),
-            Err(payload) => {
-                self.record_open_turns();
-                (None, Some(payload))
-            }
-        };
-        // The killing hit belongs to this turn, not to the guest's stored body.
-        let death_post = self
-            .player
-            .as_mut()
-            .and_then(|p| Some((p.entity_id, p.health.damage_completion.take()?)));
+        let panic = callbacks.err();
+        if panic.is_some() {
+            self.record_open_turns();
+        }
         let GuestSwap {
             attachments,
             conn,
@@ -1034,16 +1023,6 @@ impl Game<'_> {
                 g.send(&g.abilities_packet());
             }
         });
-        // This window draws the guest's totem event; apply_totem broadcast it.
-        if let Some(body) = totem {
-            let id = host.hub.guests[i].entity_id;
-            if self.player.is_some() {
-                self.totem_event(sunrise_client::particles::TrackingTarget::Entity(id), body);
-            }
-        }
-        let Some(host) = self.lan.as_mut() else {
-            unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-        };
         let ended_digging = host.hub.guests[i].dead
             && (play.digging.is_some() || play.delayed.is_some() || play.destroy_pos.is_some());
         host.play.insert(conn, play);
@@ -1123,13 +1102,6 @@ impl Game<'_> {
         }
         if !already_recorded {
             self.interrupted_turns.retain(|&c| c != conn);
-        }
-        // A killing hit in this turn owns its death continuation. At put-back
-        // the death routine can see the guest's authoritative health, inventory
-        // and combat state, and can enter that guest again to settle the kill.
-        if let Some((entity, post)) = death_post {
-            self.guest_die(i, conn);
-            self.finish_damage_post(entity, "minecraft:player", &post);
         }
     }
 

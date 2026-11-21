@@ -344,17 +344,31 @@ fn a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post() {
 #[test]
 #[ignore = "daily"]
 fn post_fires_once_for_a_killing_blow_on_a_mob() {
-    let heard = heard(|game| {
-        let mut pig = mob(game, 225016, "minecraft:pig");
-        assert!(pig.damage(
-            damage_level_of!(game, &sunrise_client::health::NO_ATTACK, no_push, None),
-            100.0,
-            Damage::of(DamageKind::Generic)
-        ));
-        assert_eq!(pig.health, 0.0);
-        game.mob_die(&pig);
+    let log = Arc::new(Mutex::new(Heard::default()));
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "probe",
+        Box::new(Probe(log.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let pig = mob(game, 225016, "minecraft:pig");
+            game.mobs.push(pig);
+            let victim = game.entity(225016).unwrap();
+            assert_eq!(
+                victim.hurt(game, "minecraft:generic", 100.0, None, None),
+                Some(true),
+            );
+            assert_eq!(game.mobs[0].health, 0.0);
+            assert_eq!(log.lock().unwrap().post, [(225016, 100.0)]);
+            game.tick_creature_entities().unwrap();
+            assert_eq!(log.lock().unwrap().post, [(225016, 100.0)]);
+        });
     });
-    assert_eq!(heard.post, [(225016, 100.0)]);
 }
 
 /// Damage and death hooks in the order the engine invokes them.
@@ -447,8 +461,8 @@ impl Hooks for DeathProbe {
     }
 }
 
-/// A pig killed by a 100-damage hit through the game, then the creature tick that settles its
-/// death and one more: what the probe heard, and the pig's health after.
+/// A pig's 100-damage hit settles death inside the hurt. Two subsequent creature ticks verify
+/// that the lifecycle sweep does not deliver another death or Post.
 fn killing_blow(cancel: bool) -> (Vec<(&'static str, i64)>, f32) {
     let probe = Arc::new(DeathOrder::default());
     probe
@@ -831,6 +845,140 @@ fn squid_finishes_the_lethal_hit_its_subclass_reports_false() {
                     ("death-tail", 225045),
                     ("post", 225045),
                 ]
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_death_listener_without_post_runs_before_the_next_hurt() {
+    struct DeathOnly(Arc<Mutex<Vec<(&'static str, i64)>>>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for DeathOnly {
+        fn living_incoming_damage(
+            &self,
+            _: &mut dyn HitHost,
+            event: &mut LivingIncomingDamageEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0
+                .lock()
+                .unwrap()
+                .push(("incoming", i64::from(event.entity)));
+            mod_api::Flow::Continue
+        }
+
+        fn living_death(
+            &self,
+            _: &mut dyn mod_api::ServerHost,
+            event: &mut LivingDeathEvent<'_>,
+        ) -> mod_api::Flow {
+            self.0
+                .lock()
+                .unwrap()
+                .push(("death", i64::from(event.entity)));
+            mod_api::Flow::Continue
+        }
+    }
+
+    let trace = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "death-without-post",
+        Box::new(DeathOnly(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let mut squid = mob(game, 225046, "minecraft:squid");
+            squid.health = 0.5;
+            let pig = mob(game, 225047, "minecraft:pig");
+            game.mobs.push(squid);
+            game.mobs.push(pig);
+            let source = Damage::of(DamageKind::Magic);
+            // The squid can return false after its superclass accepted the hit.
+            assert!(!game.mob_hits_mob(225046, 1.0, source));
+            assert!(game.mob_hits_mob(225047, 1.0, source));
+            assert_eq!(
+                *trace.lock().unwrap(),
+                [
+                    ("incoming", 225046),
+                    ("death", 225046),
+                    ("incoming", 225047)
+                ],
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_falling_block_finishes_each_hit_before_the_next_victim() {
+    let trace = Arc::new(DeathOrder::default());
+    let mods = vec![mod_api::ModEntry::new(
+        "death-order",
+        Box::new(DeathProbe(trace.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            use sunrise_core::position::BlockPos;
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            let at = Vec3::new(0.5, 64.0, 0.5);
+            let mut first = mob(game, 225048, "minecraft:pig");
+            first.health = 0.5;
+            first.position = at;
+            let mut second = mob(game, 225049, "minecraft:pig");
+            second.position = at;
+            game.mobs.push(first);
+            game.mobs.push(second);
+            let mut anvil = super::FallingBlock {
+                attachment_lifetime: Default::default(),
+                rotation: [0.0; 2],
+                join: Default::default(),
+                id: 225050,
+                state: game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:anvil")
+                    .unwrap(),
+                start_pos: BlockPos::containing(at),
+                position: at,
+                previous: at,
+                velocity: Vec3::ZERO,
+                age: 1,
+                no_gravity: false,
+                portal: Default::default(),
+                drop_item: true,
+                fall_distance: 2.0,
+                on_ground: true,
+                fire_ticks: 0,
+                sync_velocity: false,
+                stuck: Vec3::ZERO,
+                damage: sunrise_client::falling_block::Damage::anvil(),
+                saved: None,
+            };
+            game.falling_block_impact(&mut anvil);
+            assert_eq!(
+                *trace.heard.lock().unwrap(),
+                [
+                    ("incoming", 225048),
+                    ("pre", 225048),
+                    ("death", 225048),
+                    ("death-tail", 225048),
+                    ("post", 225048),
+                    ("incoming", 225049),
+                    ("pre", 225049),
+                    ("post", 225049),
+                ],
             );
         });
     });

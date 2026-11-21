@@ -129,7 +129,7 @@ struct TickWorld<'a> {
     hurt: &'a mut State,
     hurt_animation_time: &'a mut i32,
     dead: &'a mut bool,
-    damage_completion: &'a mut Option<std::sync::Arc<crate::health::PendingDamagePost>>,
+    damage_completion: &'a mut Option<crate::health::DamageCompletion>,
     sync_velocity: &'a mut bool,
     game_time: i64,
     events: &'a mut Vec<MotionEvent>,
