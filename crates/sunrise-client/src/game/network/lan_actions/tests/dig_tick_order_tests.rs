@@ -171,6 +171,7 @@ fn advancement_criteria_straddle_the_player_body_even_with_entity_cancel() {
     use sunrise_client::lan::{ServerAdvancements, data::SyncData};
     use sunrise_world::loot::PackOverlay;
 
+    let _publication = sunrise_client::datapack_net::isolate_server_publication();
     let heard = Arc::default();
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new(
