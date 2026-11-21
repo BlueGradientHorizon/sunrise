@@ -1309,14 +1309,17 @@ fn client_completion_reads_published_resources_without_world_access() {
         Box::new(Probe(seen.clone())),
     )]
     .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_client_game(|game| {
+    // Build the client first: this probe only expects the later registration
+    // context, not the startup context that has no published assets yet.
+    with_client_game(|game| {
+        mod_platform::testing::with_mods(mods, || {
             let version = game.block_sprites_version();
             let _ = game.register_client_reload_listeners();
+            assert_eq!(*seen.lock().unwrap(), [version]);
             game.native_client_resources_reloaded();
             game.native_client_resources_reloaded();
             assert_eq!(*seen.lock().unwrap(), [version, version, version]);
-        })
+        });
     });
 }
 
