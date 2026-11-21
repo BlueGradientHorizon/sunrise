@@ -1338,7 +1338,9 @@ pub fn main() -> sunrise_client::Result<()> {
                     .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
                 mobs[i].damage(&mut test_level.level(), 1.0, Damage::player(at));
                 // Creaking.hurtServer: the heart's reaction, then the sway.
-                if let Some((home, by_player)) = creaking::take_hurt(&mut mobs[i], &w) {
+                if let Some((home, by_player)) =
+                    creaking::take_hurt(&mut mobs[i], w.world, &mut events)
+                {
                     if by_player && let Some((_, h)) = hearts.iter_mut().find(|(at, _)| *at == home)
                     {
                         let mut host = Host {

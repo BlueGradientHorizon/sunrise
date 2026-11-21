@@ -11,7 +11,7 @@ use super::{
     monster_brain,
     path::PathType,
 };
-use crate::containers::BlockEntity;
+use crate::{containers::BlockEntity, world::World};
 use std::collections::HashMap;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -135,18 +135,40 @@ pub fn hurt_server(
     m.extra.counter |= HURT | if by_player { HURT_BY_PLAYER } else { 0 };
     HurtOutcome::Reacted
 }
-/// The rest of `Creaking.hurtServer` for a heart-bound creaking, run by the
-/// host right after the damage: whether its heart still protects it, and
-/// whether a player is to blame (the heart then calls `creakingHurt`). The
-/// caller plays [`sway`] after the heart's reaction.
-pub fn take_hurt(m: &mut Mob, w: &MobWorld) -> Option<([i32; 3], bool)> {
-    if m.extra.counter & HURT == 0 {
+/// Whether an accepted `Creaking.hurtServer` hit still needs its host-side effects.
+pub fn has_pending_hurt(m: &Mob) -> bool {
+    m.species() == Species::Creaking && m.extra.counter & HURT != 0
+}
+
+/// Finish the accepted hit once: broadcast the flash and game event, then
+/// return the protecting heart and whether the hit was credited to a player.
+/// The caller plays [`sway`] after the heart's reaction.
+pub fn take_hurt(
+    m: &mut Mob,
+    world: &World,
+    events: &mut Vec<MobEvent>,
+) -> Option<([i32; 3], bool)> {
+    if !has_pending_hurt(m) {
         return None;
     }
     let by_player = m.extra.counter & HURT_BY_PLAYER != 0;
     m.extra.counter &= !(HURT | HURT_BY_PLAYER);
+    broadcast(m, 66, events);
+    entity_action(m, events);
     let home = m.extra.home?;
-    protected(m, w).then_some((home, by_player))
+    protected(m, world).then_some((home, by_player))
+}
+
+/// Queue the protecting heart's reaction and the sway in `hurtServer` order.
+pub fn finish_hurt(m: &mut Mob, world: &World, events: &mut Vec<MobEvent>) {
+    if let Some((home, by_player)) = take_hurt(m, world, events) {
+        events.push(MobEvent::CreakingHurt {
+            home,
+            by_player,
+            id: m.id,
+        });
+        sway(m, events);
+    }
 }
 /// `Mob.playHurtSound` of a heart-bound creaking: the ambient sound clock
 /// restarts and it sways.
@@ -179,11 +201,11 @@ pub fn entity_event(m: &mut Mob, event: u8) {
 }
 /// The heart this creaking is bound to protects it (`isProtector`); a link
 /// read from a save is trusted until the heart resolves it.
-fn protected(m: &Mob, w: &MobWorld) -> bool {
+fn protected(m: &Mob, world: &World) -> bool {
     let Some(home) = m.extra.home else {
         return true;
     };
-    match w.world.block_entities.get(&(home[0], home[1], home[2])) {
+    match world.block_entities.get(&(home[0], home[1], home[2])) {
         Some(BlockEntity::CreakingHeart(h)) => match h.creaking {
             Some((Some(id), _)) => id == m.id,
             Some((None, _)) => true,
@@ -195,32 +217,11 @@ fn protected(m: &Mob, w: &MobWorld) -> bool {
 /// `Creaking.tick` and the start of `aiStep`: protection, timers, freezing.
 pub fn update(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
     // Creaking.tick: without its heart's protection it dies.
-    if heart_bound(m) && m.alive() && !protected(m, w) {
+    if heart_bound(m) && m.alive() && !protected(m, w.world) {
         m.health = 0.0;
     }
-    // hurtServer set the invulnerability clock since the last tick: entity
-    // event 66.
-    if m.extra.ints[INVULNERABLE] == INVULNERABILITY_TICKS {
-        broadcast(m, 66, events);
-        // hurtServer: `gameEvent(ENTITY_ACTION)` right after the entity event.
-        entity_action(m, events);
-    }
+    finish_hurt(m, w.world, events);
     animate(m);
-    if m.extra.counter & HURT != 0 {
-        // hurtServer: sway, and the heart reacts to a player's hit.
-        if protected(m, w) {
-            let by_player = m.extra.counter & HURT_BY_PLAYER != 0;
-            if let Some(home) = m.extra.home {
-                events.push(MobEvent::CreakingHurt {
-                    home,
-                    by_player,
-                    id: m.id,
-                });
-            }
-            sway(m, events);
-        }
-        m.extra.counter &= !(HURT | HURT_BY_PLAYER);
-    }
     if !m.alive() {
         return;
     }

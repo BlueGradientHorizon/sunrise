@@ -518,10 +518,16 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             [8, 64, 8],
         );
         // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
+        use sunrise_client::containers::BlockEntity::CreakingHeart;
         let heart_emitter = |game: &Game<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
-            Some(sunrise_client::containers::BlockEntity::CreakingHeart(heart)) => heart.emitter,
+            Some(CreakingHeart(heart)) => heart.emitter,
             _ => panic!("the protecting heart is gone"),
         };
+        let clear_emitter =
+            |game: &mut Game<'_>| match game.world.block_entities.get_mut(&(8, 64, 8)) {
+                Some(CreakingHeart(heart)) => heart.emitter = 0,
+                _ => panic!("the protecting heart is gone"),
+            };
 
         assert!(game.run_command("summon pig 6.5 64 4.5 {UUID:[I;85,0,0,2],NoAI:1b,NoGravity:1b}"));
         let _arrow_id = spawn_test_projectile(
@@ -559,16 +565,10 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         let clear_anim = |game: &mut Game<'_>| {
             let c = game.mobs.iter_mut().find(|m| m.id == creaking_id).unwrap();
             c.extra.ints[0] = 0;
-            c.extra.counter = 0;
         };
         let creaking_state = |game: &Game<'_>| {
             let c = game.mobs.iter().find(|m| m.id == creaking_id).unwrap();
-            (
-                c.health,
-                c.extra.ints[0],
-                c.extra.counter,
-                c.ai.last_hurt_by_player,
-            )
+            (c.health, c.extra.ints[0], c.ai.last_hurt_by_player)
         };
 
         // Vary damage type with fixed direct living and projectile entities: valid reactions return true.
@@ -590,7 +590,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 );
                 assert_eq!(
                     creaking_state(game),
-                    (start_health, 8, 1, 0),
+                    (start_health, 8, 0),
                     "{ty} by {direct}"
                 );
             }
@@ -605,7 +605,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 )),
                 "entityless {ty}"
             );
-            assert_eq!(creaking_state(game), (start_health, 0, 0, 0));
+            assert_eq!(creaking_state(game), (start_health, 0, 0));
 
             clear_anim(game);
             assert!(
@@ -614,7 +614,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 )),
                 "tnt {ty}"
             );
-            assert_eq!(creaking_state(game), (start_health, 0, 0, 0));
+            assert_eq!(creaking_state(game), (start_health, 0, 0));
         }
 
         // Player hit refreshes timed player credit; ownerless follow-up reacts while timer is live,
@@ -626,14 +626,14 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
                 "damage 00000055-0000-0000-0000-000000000001 2 minecraft:generic by @p"
             )
         );
-        assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(creaking_state(game), (start_health, 8, 100));
         assert_eq!(heart_emitter(game), 100);
 
         clear_anim(game);
         assert!(
             game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );
-        assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(creaking_state(game), (start_health, 8, 100));
 
         clear_anim(game);
         game.mobs
@@ -645,24 +645,25 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
         assert!(
             !game.run_command("damage 00000055-0000-0000-0000-000000000001 1 minecraft:generic")
         );
-        assert_eq!(creaking_state(game), (start_health, 0, 0, 0));
+        assert_eq!(creaking_state(game), (start_health, 0, 0));
 
         // Tame wolf owned by a live player sets player credit; an ownerless tame wolf clears it.
         clear_anim(game);
         assert!(game.run_command(
             "damage 00000055-0000-0000-0000-000000000001 2 minecraft:generic by 00000055-0000-0000-0000-000000000005"
         ));
-        assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(creaking_state(game), (start_health, 8, 100));
 
         clear_anim(game);
         assert!(game.run_command(
             "damage 00000055-0000-0000-0000-000000000001 2 minecraft:generic by 00000055-0000-0000-0000-000000000006"
         ));
-        assert_eq!(creaking_state(game), (start_health, 8, 1, 0));
+        assert_eq!(creaking_state(game), (start_health, 8, 0));
 
         // Live blasts: unowned TNT does not trigger without player credit, triggers with live
         // remembered player credit, and player-lit TNT replaces stale offline player credit.
         clear_anim(game);
+        clear_emitter(game);
         game.last_hurt_by_player.remove(&creaking_id);
         game.native_explode(
             Some((unowned_tnt_id, Target::Tnt(unowned_tnt_id))),
@@ -673,7 +674,8 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             ExplosionSettings::default(),
         )
         .unwrap();
-        assert_eq!(creaking_state(game), (start_health, 0, 0, 0));
+        assert_eq!(creaking_state(game), (start_health, 0, 0));
+        assert_eq!(heart_emitter(game), 0);
 
         assert!(
             game.run_command(
@@ -681,6 +683,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             )
         );
         clear_anim(game);
+        clear_emitter(game);
         game.native_explode(
             Some((unowned_tnt_id, Target::Tnt(unowned_tnt_id))),
             [4.5, 64.0, 4.5],
@@ -690,9 +693,11 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             ExplosionSettings::default(),
         )
         .unwrap();
-        assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(creaking_state(game), (start_health, 8, 100));
+        assert_eq!(heart_emitter(game), 100);
 
         clear_anim(game);
+        clear_emitter(game);
         game.mobs
             .iter_mut()
             .find(|m| m.id == creaking_id)
@@ -712,7 +717,8 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
             ExplosionSettings::default(),
         )
         .unwrap();
-        assert_eq!(creaking_state(game), (start_health, 8, 3, 100));
+        assert_eq!(creaking_state(game), (start_health, 8, 100));
+        assert_eq!(heart_emitter(game), 100);
     });
 }
 

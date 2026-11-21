@@ -2159,37 +2159,45 @@ impl Game<'_> {
         if killed && let Some(Who::Mob(killer)) = source.attacker {
             self.zombie_killed(killer, target);
         }
-        self.settle_warden_hurt(target);
+        self.settle_mob_hurt(target);
         hurt
     }
-    /// Run `Warden.hurtServer`'s anger and target selection synchronously after a hit,
-    /// matching vanilla even while ticked simulation is frozen or the base hurt call returned false.
-    pub(in crate::game) fn settle_warden_hurt(&mut self, id: u32) {
+    /// Apply reactions that need the game in `hurtServer`, without waiting for
+    /// a mob tick: a Creaking's heart response or a Warden's anger and targeting.
+    /// Wardens can react even when the base hurt call returned false.
+    pub(in crate::game) fn settle_mob_hurt(&mut self, id: u32) {
+        use sunrise_client::mobs::{creaking, warden};
+
         let Some(index) = self.mobs.iter().position(|m| {
             m.id == id
-                && m.extra
-                    .warden
-                    .as_ref()
-                    .is_some_and(|st| st.has_pending_hurt())
+                && (creaking::has_pending_hurt(m)
+                    || m.extra
+                        .warden
+                        .as_ref()
+                        .is_some_and(|st| st.has_pending_hurt()))
         }) else {
             return;
         };
-        let uuid = self.level.player_uuid;
-        let others: Vec<_> = self
-            .mobs
-            .iter()
-            .map(|m| seen(m, uuid, self.items()))
-            .collect();
-        let mut mob = self.mobs.swap_remove(index);
         let mut events = Vec::new();
-        {
-            let world = self.mob_world_base(&others);
-            sunrise_client::mobs::warden::handle_hurt(&mut mob, &world, &mut events);
-        }
-        self.mobs.push(mob);
-        let last = self.mobs.len() - 1;
-        if index < last {
-            self.mobs.swap(index, last);
+        if self.mobs[index].species() == Species::Creaking {
+            creaking::finish_hurt(&mut self.mobs[index], &self.world, &mut events);
+        } else {
+            let uuid = self.level.player_uuid;
+            let others: Vec<_> = self
+                .mobs
+                .iter()
+                .map(|m| seen(m, uuid, self.items()))
+                .collect();
+            let mut mob = self.mobs.swap_remove(index);
+            {
+                let world = self.mob_world_base(&others);
+                warden::handle_hurt(&mut mob, &world, &mut events);
+            }
+            self.mobs.push(mob);
+            let last = self.mobs.len() - 1;
+            if index < last {
+                self.mobs.swap(index, last);
+            }
         }
         if !events.is_empty() {
             let _ = self.handle_mob_events(events);
@@ -5619,7 +5627,7 @@ impl Game<'_> {
             who: Who::Mob(id), ..
         } = hit
         {
-            self.settle_warden_hurt(id);
+            self.settle_mob_hurt(id);
         }
         // The hit's hurt teleports an enderman or a shulker now (`hurtServer`).
         self.settle_hurt_teleports()
