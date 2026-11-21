@@ -789,6 +789,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
 #[test]
 #[ignore = "daily"]
 fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
+    use crate::game::inventory_slots::MOD_MENU_SLOT_BASE;
     use sunrise_client::recipe_book::placement_sync::CatalogIdentity;
     use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -878,6 +879,15 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert!(kept(game));
                 assert_eq!(game.native_screen_slot(0), Some((30.0, 40.0)));
                 assert_eq!(game.native_screen_slot(1), None);
+                let batch = sunrise_client::hud::HudBatch::new(
+                    [1280, 720],
+                    game.settings.gui_scale_inputs(),
+                );
+                assert_eq!(game.slot_at(&batch, 582.0, 317.0), Some(MOD_MENU_SLOT_BASE));
+                assert_ne!(
+                    game.slot_at(&batch, 632.0, 295.0),
+                    Some(MOD_MENU_SLOT_BASE + 1)
+                );
 
                 // The server replaces the menu in place, with no close packet.
                 open(game);
@@ -894,7 +904,11 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                 assert!(
                     geometry(game)
                         .1
-                        .contains(&(300, [559.0, 294.0, 18.0, 18.0]))
+                        .contains(&(MOD_MENU_SLOT_BASE, [559.0, 294.0, 18.0, 18.0]))
+                );
+                assert_eq!(
+                    game.slot_at(&batch, 632.0, 295.0),
+                    Some(MOD_MENU_SLOT_BASE + 1)
                 );
             });
         })
