@@ -326,6 +326,16 @@ def terrain(e):
     e.turn(2.2, -600, 0, 1.2)
 
 
+# F3+2 toggles the FPS/TPS charts (the client's debug subscription); op makes the server stream the samples.
+@route("debug_fps_charts", 28, setup=[f"op {PLAYER}"])
+def debug_fps_charts(e):
+    e.key(0.3, "KEY_F3", 0.1)
+    for t in (0.8, 2.6):
+        e.key(t, "KEY_F3", 0.3)
+        e.key(t + 0.1, "KEY_2")
+    e.key(3.3, "KEY_F3", 0.1)
+
+
 SWORD = give("hotbar.0", "diamond_sword")
 KNOCK = f"damage {PLAYER} 1 minecraft:player_attack by {OPPONENT}"
 
@@ -390,7 +400,7 @@ def pvp_strafe(e):
 ORDER = ["walk", "sprint", "sprint_jump", "strafe", "sneak_edge", "stairs_slabs", "ladder", "ice", "soul_sand",
          "lava_edge", "swim", "break_block", "place_block", "eat", "bow", "shield", "hit_mob", "inventory", "drop",
          "hotbar_scroll", "terrain", "pvp_hits", "pvp_spam", "pvp_wtap", "pvp_crit", "pvp_knockback", "pvp_shield",
-         "pvp_strafe"]
+         "pvp_strafe", "debug_fps_charts"]
 PVP = [name for name in ORDER if name.startswith("pvp_")]
 assert sorted(ORDER) == sorted(ROUTES)
 
@@ -418,7 +428,7 @@ def reset_commands(name, terrain_spot):
     """The console commands that put the player at a route's start, as both clients get it."""
     spec = ROUTES[name]
     ox, oz = cell(spec["index"])
-    first = [f"kill @e[type=!minecraft:player]", f"clear {PLAYER}", f"effect clear {PLAYER}",
+    first = [f"kill @e[type=!minecraft:player]", f"clear {PLAYER}", f"effect clear {PLAYER}", f"deop {PLAYER}",
              f"effect give {PLAYER} minecraft:saturation 1 20 true",
              f"effect give {PLAYER} minecraft:instant_health 1 5 true", f"gamemode survival {PLAYER}"]
     setup = []
