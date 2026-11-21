@@ -120,8 +120,43 @@ can feed a stream already opened and placed on the main thread.
 - **Async producer:** Decode or generate PCM on your producer thread and `push` it when ready, independently of the client tick. Keep one producer per stream. The `AudioStreamRef` is `Send`: `push`, `set_placement`, `set_volume`, `state` and `stop` work from any thread without taking the mixer's lock.
 - **Device callback:** Drains the queued PCM and mixes it. It does not call your source or wait for a refill. If the producer falls behind, the missing audio is silent.
 
+## Microphone capture
+
+List available input devices with `host.microphone_devices()` and open live PCM capture on a `ClientHost` from client setup onward with `host.open_microphone(&spec)`:
+
+```rust
+use mod_api::{ClientHost, MicRef, MicRefusal, MicSpec};
+
+fn open_mic(host: &dyn ClientHost, preferred: Option<&str>) -> Result<MicRef, MicRefusal> {
+    let mut spec = MicSpec::new(1, 48_000); // 1 or 2 channels, 8000 to 48000 Hz.
+    if let Some(name) = preferred {
+        spec = spec.with_device(name);
+    }
+    host.open_microphone(&spec)
+}
+
+// On any thread: read whole interleaved signed 16-bit PCM frames without waiting on a tick.
+fn read_mono<'a>(mic: &MicRef, pcm: &'a mut [i16]) -> &'a [i16] {
+    let frames = mic.read(pcm) as usize;
+    &pcm[..frames]
+}
+```
+
+`MicRef` is `Send + Sync` and safe to read from any thread off the OS audio callback, with no tick or codec required. `mic.read(&mut pcm)` writes whole interleaved signed 16-bit PCM frames (leaving any trailing incomplete frame untouched) and returns the frame count written. Capture feeds a bounded 500 ms ring (`MIC_RING_MAX_MS`) that drops the oldest frames if the reader falls behind; `mic.dropped_frames()` reports the cumulative dropped frame count.
+
+Call `mic.close()` or drop `MicRef` to stop capture immediately. `mic.is_open()` returns `false` after close or if the input device disconnects or errors. Handle `MicRefusal` directly:
+
+- `OsDenied`: the operating system denied microphone permission.
+- `Busy`: the input device is busy or held in exclusive use.
+- `NoDevice`: no default input device exists, the named device was not found, or client audio is disabled.
+- `BadSpec(MicSpecFault)`: `channels` is not 1 or 2, or `rate` is outside 8000 to 48000 Hz (`MIC_RATE_MIN`..=`MIC_RATE_MAX`).
+- `OnServer` / `Unavailable`: called on a server or outside client setup or later.
+- `DeviceFailed`: the input device or capture worker failed to open or start.
+
+`MicRef`, `MicSpec`, `MicSpecFault` and `MicRefusal` are client-local, not [Wire](../../concepts/wire-types.md) types. The engine never records or sends microphone audio; mods own their own echo cancellation, metering, encoding and networking.
+
 ## Known limits
 
 - There is no echo cancellation: a mod that plays voice while capturing the microphone must deal with its own echo.
 - Voice is unmoderated: the engine neither records, filters nor reports a stream's audio. Replay recordings capture voice payloads like any other payload.
-- This API plays audio. To send time-sensitive audio between players, use [droppable play payloads](networking.md#droppable-delivery-audio-live-data). Your mod brings its own codec as an ordinary dependency and owns its buffering and gap handling.
+- These APIs play and capture raw PCM. To send time-sensitive audio between players, use [droppable play payloads](networking.md#droppable-delivery-audio-live-data). Your mod brings its own codec as an ordinary dependency and owns its buffering and gap handling.

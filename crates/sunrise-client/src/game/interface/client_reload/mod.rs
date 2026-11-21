@@ -30,7 +30,7 @@ impl Host for StartupClientHost {}
 mod_api::impl_host_areas!(StartupClientHost);
 impl ClientHost for StartupClientHost {}
 mod_api::impl_client_host_areas!(StartupClientHost, except(audio));
-// A startup reload opens no audio stream.
+// A startup reload opens no audio stream or microphone capture.
 impl mod_api::prelude::AudioClientHost for StartupClientHost {
     fn open_audio_stream(
         &self,
@@ -45,6 +45,17 @@ impl mod_api::prelude::AudioClientHost for StartupClientHost {
         _: &mod_api::StreamSpec,
     ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
         Err(mod_api::AudioRefusal::Unavailable)
+    }
+
+    fn microphone_devices(&self) -> Result<Vec<String>, mod_api::MicRefusal> {
+        Err(mod_api::MicRefusal::Unavailable)
+    }
+
+    fn open_microphone(
+        &self,
+        _: &mod_api::MicSpec,
+    ) -> Result<mod_api::MicRef, mod_api::MicRefusal> {
+        Err(mod_api::MicRefusal::Unavailable)
     }
 }
 

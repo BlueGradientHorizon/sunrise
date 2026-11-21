@@ -125,7 +125,7 @@ impl mod_api::prelude::TextHost for DiscoveryHost {
 }
 impl ClientHost for DiscoveryHost {}
 mod_api::impl_client_host_areas!(DiscoveryHost, except(audio));
-// Registration opens no audio stream.
+// Registration opens no audio stream or microphone capture.
 impl mod_api::prelude::AudioClientHost for DiscoveryHost {
     fn open_audio_stream(
         &self,
@@ -140,6 +140,17 @@ impl mod_api::prelude::AudioClientHost for DiscoveryHost {
         _: &mod_api::StreamSpec,
     ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
         Err(mod_api::AudioRefusal::Unavailable)
+    }
+
+    fn microphone_devices(&self) -> Result<Vec<String>, mod_api::MicRefusal> {
+        Err(mod_api::MicRefusal::Unavailable)
+    }
+
+    fn open_microphone(
+        &self,
+        _: &mod_api::MicSpec,
+    ) -> Result<mod_api::MicRef, mod_api::MicRefusal> {
+        Err(mod_api::MicRefusal::Unavailable)
     }
 }
 

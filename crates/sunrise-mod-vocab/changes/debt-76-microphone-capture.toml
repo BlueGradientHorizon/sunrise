@@ -1,0 +1,11 @@
+ids = [
+    "method:prelude::AudioClientHost::microphone_devices",
+    "method:prelude::AudioClientHost::open_microphone",
+    "type:MicSpec",
+    "type:MicSpecFault",
+    "type:MicRefusal",
+    "type:MicRef",
+    "trait:MicSource",
+]
+why = "Client mods such as voice chat need direct microphone PCM capture on the client host without adding codec, consent, or networking machinery to the engine. NeoForge has no microphone capture API and native mods are trusted code, so capture is exposed as a plain client-local PCM reader."
+migrate = "Additive: call `host.microphone_devices()` and `host.open_microphone(&MicSpec::new(channels, rate))` on a `ClientHost` from client setup onward, then read whole interleaved `i16` frames from any thread via `MicRef::read`."
