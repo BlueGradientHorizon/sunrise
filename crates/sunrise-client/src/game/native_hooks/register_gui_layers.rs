@@ -1,4 +1,4 @@
-use super::*;
+use super::Game;
 
 impl Game<'_> {
     /// Registers HUD layers and their draw callbacks (NeoForge's `RegisterGuiLayersEvent`).

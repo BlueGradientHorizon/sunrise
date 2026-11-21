@@ -64,7 +64,9 @@ Scoped registration events are borrowed only for the listener call. Pending entr
 in dispatch order when the callback completes. A callback panic discards its pending entries,
 disables that callback for the session and reports the mod in the log and error toast. Other
 callbacks still run. Ordinary registration errors keep their own contract and never disable the
-callback.
+callback. A [HUD layer registrar](../how-to/client/hud-drawing.md#replacing-or-wrapping-a-layer)
+can use pending anchors. It drops a listener's superseded callbacks before publication and retires
+bodies from earlier listeners after publication; a retirement panic does not undo a replacement.
 
 A callback registered on the event cannot borrow the event or the context. Capture owned inputs
 for its `Send + Sync + 'static` closure. A model layer supplier runs once at the startup freeze;

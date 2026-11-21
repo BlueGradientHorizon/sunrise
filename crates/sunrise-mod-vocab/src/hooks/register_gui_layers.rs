@@ -9,8 +9,9 @@ pub trait Hooks {
     /// `minecraft:player_health` is the heart slot only. Use `minecraft:air_level` as the
     /// `Above` anchor to place a layer above all status rows. A status replacement or wrapper
     /// runs even when the original body would not draw, including under F1.
-    /// A listener sees its pending edits; they are published only if the listener
-    /// returns without a panic or phase refusal.
+    /// A listener sees its pending edits; they publish only after a successful return.
+    /// A panic during registration, including while dropping a superseded staged body, disables
+    /// that listener for the session and reports its mod in the log and client error toast.
     #[notes = r#"## HUD layers
 
 `Hooks::register_gui_layers` is the client registration-phase counterpart of NeoForge 26.3's
@@ -21,10 +22,11 @@ are `BelowAll`, `Below(id)`, `Above(id)` and `AboveAll`, as `registerBelowAll`, 
 `registerAbove` and `registerAboveAll`. `Below` and `Above` name a vanilla layer (the IDs
 `Hooks::gui_layer_pre` lists) or a layer already registered, including in this callback's own
 batch. The game publishes a completed batch in call order before invoking the next listener.
-A panic discards only the failing listener's pending insertions, replacements
-and wrappers. Invalid or duplicate IDs (including built-in vanilla layer IDs) and unknown
-relative anchors are logged and refused at the call. The client calls each installed callback
-as the mod that registered it.
+A failed listener publishes none of its pending insertions, replacements or wrappers. A panic
+in that listener, including while dropping one of its superseded bodies, disables its registration
+callback for the session and reports its mod in the log and client error toast. Invalid or duplicate
+IDs (including built-in vanilla layer IDs) and unknown relative anchors are logged and refused at
+the call. The client calls each installed callback as the mod that registered it.
 
 Use `layers.replace_layer(id, Box::new(draw))` to discard an existing body, or
 `layers.wrap_layer(id, Box::new(wrap))` to add an outer wrapper. Both keep the slot's ID,
@@ -32,6 +34,8 @@ order and dispatch. A replacement does not inherit eligibility checks in the bod
 A wrapper uses `ctx.with_draw` to paint with the current scoped drawing context and
 `ctx.draw_previous()` to run the previous body, including its own checks, at that point.
 It can omit that call to skip the previous body. Both methods refuse an unknown ID.
+Bodies from earlier listeners retire after publication in first-replacement order. A panic while
+retiring a body is reported against its owner without undoing the replacement or stopping the next listener.
 
 A layer fires `Hooks::gui_layer_pre` with its ID, runs its installed body, and fires
 `Hooks::gui_layer_post` once. No body or Post runs if Pre cancels. Drawing a previous

@@ -38,6 +38,13 @@ order and dispatch. A replacement does not inherit the original body's eligibili
 Those checks apply only to the original body, including when a wrapper calls `draw_previous()`
 and reaches it.
 
+A replacement drops superseded pending callbacks before returning. A panic there rejects the
+current listener's batch and disables its registration callback. Bodies from earlier listeners
+retire after publication, in the order this listener first replaced their layers. A retirement
+panic is reported against the earlier owner without undoing the replacement or stopping later
+listeners. Capture owned startup data from `RegistrationContext` if cleanup needs it; the Host
+and drawing context are borrowed only for drawing.
+
 A wrapper gets a `GuiLayerWrapContext`: read the client with `host()`, paint with the scoped
 `DrawContext` from `with_draw`, and call `draw_previous()` where the previous body should paint.
 The latest wrapper runs first. A delegated mod body draws as its own mod; vanilla paint runs
