@@ -7311,7 +7311,6 @@ impl Game<'_> {
         }
         // The veto covers status slots even under F1, but not mandatory diagnostics.
         let dispatch_status = !gui_canceled && !replaying;
-        let presentation_hidden = self.ui.hide_gui || replaying;
         let show_hud = dispatch_status && !self.ui.hide_gui;
         // Hud.extractRenderState asks `Screen.isInGameUi` twice: such a screen
         // defers the subtitles over itself, and keeps them while F1 hides the

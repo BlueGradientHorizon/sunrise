@@ -290,7 +290,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         game.ui.hide_gui = false;
         game.set_mode_id(0);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();
-        player.health.set_health(12.0, false).unwrap();
+        player.set_health(12.0, false).unwrap();
         player
             .set_modifier(
                 "minecraft:armor",

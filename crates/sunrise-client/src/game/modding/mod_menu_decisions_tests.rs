@@ -970,7 +970,6 @@ fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
                 inputs: Vec::new(),
                 crafting: None,
                 links: None,
-                owned_slots: None,
             }));
             for fail_take in [false, true] {
                 let window = open_depot(game);

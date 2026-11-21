@@ -2107,9 +2107,10 @@ pub(super) mod tests {
         fn hash_stack(game: &mut super::Game<'_>, stack: &Option<ItemStack>) -> Option<Hashed> {
             let hub = &mut game.lan.as_mut().unwrap().hub;
             let net = hub.stack(stack)?;
+            let sync = hub.sync_data();
             let names = SyncedNames {
-                builtin: &hub.sync.builtin,
-                dynamic: &hub.sync.dynamic,
+                builtin: &sync.builtin,
+                dynamic: &sync.dynamic,
             };
             Some(Hashed::create(&net, &names).unwrap())
         }
