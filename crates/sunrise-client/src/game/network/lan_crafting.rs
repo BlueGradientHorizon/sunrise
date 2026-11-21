@@ -293,16 +293,21 @@ impl Game<'_> {
         env.maps = maps.as_ref().map(|m| m as &dyn sunrise_client::menu::Maps);
         env.slot_rules = rules.or(env.slot_rules);
         env.stacked = stacked;
-        let limits = host.hub.guests[gi]
-            .menu
-            .as_ref()
-            .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
-            .unwrap_or_default();
-        menu.set_container_limits(limits);
+        let opened = host.hub.guests[gi].menu.as_ref();
+        menu.set_container_limits(
+            opened
+                .map(|opened| opened.slots.stack_limits(&self.world, opened.size))
+                .unwrap_or_default(),
+        );
+        if matches!(menu.kind(), Kind::Mod(_)) {
+            menu.set_container_insert_rules(
+                opened
+                    .map(|opened| opened.live_container_insert_rules(&self.world, opened.size))
+                    .unwrap_or_default(),
+            );
+        }
         menu.set_block_pos(
-            host.hub.guests[gi]
-                .menu
-                .as_ref()
+            opened
                 .and_then(|opened| opened.pos)
                 .map(|(x, y, z)| [x, y, z]),
         );

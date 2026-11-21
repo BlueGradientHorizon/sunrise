@@ -13,6 +13,7 @@ mod crafting_take;
 use crate::{
     banner::{self, Banners},
     brewing::Brewing,
+    containers::{ModContainerInsertRule, mod_container_insert_allowed},
     crafting::Recipes,
     items::{ItemStack, Items},
 };
@@ -798,6 +799,7 @@ impl Menu {
                 containers,
                 grid_size,
                 container_limits: Vec::new(),
+                container_insert_rules: Vec::new(),
                 carried: None,
                 data: vec![0; data],
                 creative: false,
@@ -1845,12 +1847,29 @@ impl Menu {
     /// `getMaxStackSize` for `stack`: its own answers, then the parts' on a registered menu
     /// type, all from one ask.
     fn slot_rules(&self, env: &Env, s: usize, stack: &ItemStack) -> (bool, bool, u32) {
-        let place = self.vanilla_may_place(env, s, stack);
+        let admission = self.container_allows(s, stack);
+        let place = admission && self.vanilla_may_place(env, s, stack);
         let (max, item_max) = (self.vanilla_slot_max(s, stack), Self::max_stack(env, stack));
         let Some(id) = self.registry_id() else {
             return (place, true, max.min(item_max));
         };
-        self.ask_slot_rules(env, id, s, stack, (place, true, max), item_max)
+        let (place, pickup, max) =
+            self.ask_slot_rules(env, id, s, stack, (place, true, max), item_max);
+        (place && admission, pickup, max)
+    }
+
+    /// Storage admission also applies to top-ups, which vanilla can do without `Slot.mayPlace`.
+    fn container_allows(&self, slot: usize, offered: &ItemStack) -> bool {
+        self.state
+            .container_insert_rules
+            .get(slot)
+            .is_none_or(|&rule| mod_container_insert_allowed(rule, self.slot(slot), offered))
+    }
+
+    /// Admission rules of the open menu's backing slots, in menu order (before player slots).
+    pub fn set_container_insert_rules(&mut self, rules: Vec<ModContainerInsertRule>) {
+        self.touch();
+        self.state.container_insert_rules = rules;
     }
 
     /// Capacity overrides for the backing container slots, refreshed before each server edit.

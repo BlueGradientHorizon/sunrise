@@ -293,7 +293,8 @@ or a chested mount's through its `ENTITY_ITEMS`, and the player's ender chest, i
 menu (`open_menu`, reached with `host.menu(uuid, window)`), kept by the game. The slot's own rules come first, as a click has them:
 `view.slot_holds(slot, &stack)` uses the same placement and capacity rules as a click (`Slot.mayPlace` and
 `Slot.getMaxStackSize(ItemStack)`). It includes the offered stack's component maximum, so a chest slot holds only
-one of a stack patched to a maximum of one. An armour slot holds one item if it fits, including an item part's
+one of a stack patched to a maximum of one. A block-backed mod menu also enforces the backing container's declared
+insert rule, including on shift-click. An armour slot holds one item if it fits, including an item part's
 `can_equip` decision for that player. `view.slot_gives(slot)` says whether the slot gives up what it holds
 (`Slot.mayPickup`: bound armour stays on outside creative). An insert fills that slot alone, and what doesn't fit stays out. A crafting grid a transaction
 changed has its result made again at the outermost commit, once for each player however many writes it took

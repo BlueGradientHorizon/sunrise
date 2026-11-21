@@ -14,10 +14,7 @@ use mod_api::{
 };
 use std::cell::OnceCell;
 use sunrise_client::{
-    containers::{
-        BlockEntity, ModContainerInsertRule, ModMenuType, mod_container_insert_allowed,
-        mod_menu_type,
-    },
+    containers::{BlockEntity, ModMenuType, mod_menu_type},
     items::ItemStack,
     lan::{
         guest::Guest,
@@ -49,11 +46,7 @@ pub(super) struct ServerMenuRead<'read, 'game> {
 
 // no wire: resolved server slot-rule state for a single MenuView read scope.
 enum ServerMenuRules {
-    Menu {
-        menu: Menu,
-        insert_rules: Vec<ModContainerInsertRule>,
-        container_slots: usize,
-    },
+    Menu(Menu),
     Hub {
         data: ContainerRuleData,
         items: Vec<Option<ItemStack>>,
@@ -489,25 +482,10 @@ impl MenuView for ServerMenuRead<'_, '_> {
         let stack = stack_value(stack).ok()?;
         let (_, rules) = self.native_menu_rules(slot)?;
         match rules {
-            ServerMenuRules::Menu {
-                menu,
-                insert_rules,
-                container_slots,
-            } => {
-                if slot >= menu.slot_count() {
-                    return None;
-                }
-                if slot < *container_slots
-                    && !mod_container_insert_allowed(
-                        insert_rules.get(slot).copied().unwrap_or_default(),
-                        menu.slot(slot),
-                        &stack,
-                    )
-                {
-                    return Some(0);
-                }
+            ServerMenuRules::Menu(menu) => {
                 let equip = self.game.menu_can_equip();
-                Some(menu.slot_holds(&self.menu_env(&equip), slot, &stack))
+                (slot < menu.slot_count())
+                    .then(|| menu.slot_holds(&self.menu_env(&equip), slot, &stack))
             }
             ServerMenuRules::Hub {
                 data,
@@ -524,7 +502,7 @@ impl MenuView for ServerMenuRead<'_, '_> {
     fn slot_gives(&self, slot: usize) -> Option<bool> {
         let (backing, rules) = self.native_menu_rules(slot)?;
         match rules {
-            ServerMenuRules::Menu { menu, .. } => {
+            ServerMenuRules::Menu(menu) => {
                 let equip = self.game.menu_can_equip();
                 (slot < menu.slot_count()).then(|| menu.slot_gives(&self.menu_env(&equip), slot))
             }
@@ -751,11 +729,7 @@ impl<'read> ServerMenuRead<'read, '_> {
                 menu.load_slot(k + 1, stack.clone());
             }
             menu.load_slot(0, self.guest.craft_result.clone());
-            return ServerMenuRules::Menu {
-                menu,
-                insert_rules: Vec::new(),
-                container_slots: 0,
-            };
+            return ServerMenuRules::Menu(menu);
         };
         let Some(backing) = self.open_backing() else {
             return ServerMenuRules::HandlerOwned;
@@ -770,10 +744,11 @@ impl<'read> ServerMenuRead<'read, '_> {
             Slots::Block(pos) | Slots::Double(pos, _) => Some([pos.0, pos.1, pos.2]),
             _ => None,
         };
-        let menu_kind = open
-            .mod_type
-            .map(Kind::Mod)
-            .or_else(|| entity.and_then(|e| machine_menu_kind(e, None)));
+        let menu_kind = if open.slots == Slots::Native {
+            open.mod_type.map(Kind::Mod)
+        } else {
+            entity.and_then(|entity| machine_menu_kind(entity, open.mod_type))
+        };
         if let Some(kind) = menu_kind {
             let mut menu = Menu::new(kind);
             menu.set_registry_id(registry_name);
@@ -791,7 +766,7 @@ impl<'read> ServerMenuRead<'read, '_> {
             let items = open.slots.read(world, self.guest).unwrap_or_default();
             let equip = self.game.menu_can_equip();
             let env = self.menu_env(&equip);
-            if let Some(mod_type) = open.mod_type {
+            if let Kind::Mod(mod_type) = kind {
                 menu.load_container(&env, &items);
                 if let Some(crafting) = mod_type.crafting
                     && let Some(craft) = open.craft.as_ref()
@@ -810,12 +785,8 @@ impl<'read> ServerMenuRead<'read, '_> {
                 }
                 menu.data[9] = i32::from(c.is_triggered());
             }
-            let insert_rules = open.live_container_insert_rules(world, open.size);
-            return ServerMenuRules::Menu {
-                menu,
-                insert_rules,
-                container_slots: open.size,
-            };
+            menu.set_container_insert_rules(open.live_container_insert_rules(world, open.size));
+            return ServerMenuRules::Menu(menu);
         }
         if open.slots == Slots::Native && !is_native_chest_menu(registry_name, open.size) {
             return ServerMenuRules::HandlerOwned;
@@ -1947,6 +1918,7 @@ mod tests {
             },
             lan::menu::Slots,
         };
+        use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
         with_game(|game| {
             let config = HubConfig {
                 default_game_mode: 0,
@@ -2052,6 +2024,83 @@ mod tests {
                 menu.with_view(game, |view| view.slot_holds(1, &stone))
                     .flatten(),
                 Some(64)
+            );
+
+            // The same storage opened with a mod menu type goes through the machine
+            // click path, not the generic Hub path. It must enforce the same admission.
+            let machine: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
+                id: "test:restricted_menu",
+                owner: "test",
+                slots: 3,
+                player_inventory: true,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: vec![0, 1, 2],
+                links: None,
+                crafting: None,
+            }));
+            let window = game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.position = [2.5, 64.0, 2.5];
+                guest.carried = Some(ItemStack::new("minecraft:dirt", 1));
+                let opened = guest.menu.as_mut().unwrap();
+                opened.mod_type = Some(machine);
+                opened.window
+            });
+            let click = |slot, input| {
+                Serverbound::ContainerClick(ContainerClick {
+                    container: window,
+                    state: 0,
+                    slot,
+                    button: 0,
+                    input,
+                    changed: Vec::new(),
+                    carried: None,
+                })
+            };
+            assert_eq!(
+                menu.with_view(game, |view| view.slot_holds(2, &dirt)),
+                Some(Some(0))
+            );
+            game.lan_guest_packet(1, click(2, 0));
+            assert_eq!(
+                menu.with_view(game, |view| view.slot(2)),
+                Some(Some(Some(stone.clone())))
+            );
+            assert_eq!(
+                menu.with_view(game, |view| view.carried()),
+                Some(Some(Some(dirt.clone())))
+            );
+            assert_eq!(
+                menu.with_view(game, |view| view.slot_holds(1, &dirt)),
+                Some(Some(64))
+            );
+            game.lan_guest_packet(1, click(1, 0));
+            assert_eq!(
+                menu.with_view(game, |view| view.slot(1)),
+                Some(Some(Some(dirt.clone())))
+            );
+            assert_eq!(
+                menu.with_view(game, |view| view.carried()),
+                Some(Some(None))
+            );
+
+            // A shift-click must skip an occupied OnlyWhenEmpty slot even for a matching stack.
+            let quick_move = ItemStack::new("minecraft:dirt", 3);
+            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                guest.inventory[9] = Some(quick_move.clone());
+            });
+            assert_eq!(
+                menu.with_view(game, |view| view.slot_holds(1, &dirt)),
+                Some(Some(0))
+            );
+            game.lan_guest_packet(1, click(3, 1));
+            assert_eq!(
+                menu.with_view(game, |view| view.slot(1)),
+                Some(Some(Some(dirt)))
+            );
+            assert_eq!(
+                menu.with_view(game, |view| view.slot(0)),
+                Some(Some(Some(quick_move.try_into_api().unwrap())))
             );
 
             // A 1-slot blockless handler-owned native menu without a ModMenuType never

@@ -43,8 +43,9 @@ pub trait MenuView {
 
     /// How many of `stack` this server slot holds, using the click's `Slot.mayPlace`
     /// and `Slot.getMaxStackSize(ItemStack)` rules. The offered stack's component
-    /// maximum applies, and armour slots ask the item's parts for this player
-    /// (`IItemExtension.canEquip`). `None` when the rules or stack are unavailable,
+    /// maximum applies, block-backed mod menus respect their container's declared insert
+    /// rules, and armour slots ask the item's parts for this player (`IItemExtension.canEquip`).
+    /// `None` when the rules or stack are unavailable,
     /// the slot is out of range, or this is a client view.
     fn slot_holds(&self, slot: usize, stack: &ItemStack) -> Option<u32>;
 

@@ -1216,43 +1216,44 @@ impl Game<'_> {
             self.native_client_entity_context(entity)
                 .and_then(|(remote, id)| {
                     let class = EntityViewClass::Current;
-                    if id == remote.entity_id {
-                        if let Some(player) = self.player.as_ref() {
-                            return Some(self.project_resident_entity(
-                                ResidentRow::Specialized(SpecializedSource::Player(player)),
-                                class,
-                            ));
-                        }
-                    } else {
-                        let tracked = remote.tracked(id).is_some();
-                        if let EntityLookup::Found { location, value } =
-                            self.server_resident_lookup(id as u32)
-                            && location.owner.dimension == self.dim.key()
-                            && match location.owner.kind {
-                                Kind::DragonPart => true, // The client makes these from the tracked dragon.
-                                Kind::Player | Kind::Hook => false,
-                                _ => tracked,
-                            }
-                        {
-                            return Some(self.project_resident_entity(value.row, class));
-                        }
-                        if tracked && let Some(row) = self.shown_remote_general(id) {
-                            return Some(NativeEntityView {
-                                position: Some(row.position),
-                                rotation: Some(row.rotation),
-                                kind: Some(row.kind()),
-                                class,
-                            });
-                        }
-                    }
-                    remote
-                        .tracked_entity(id)
-                        .map(|(kind, position)| NativeEntityView {
-                            position: Some(position),
-                            rotation: None,
-                            kind: Some(kind),
+                    if id == remote.entity_id
+                        && let Some(player) = self.player.as_ref()
+                    {
+                        return Some(self.project_resident_entity(
+                            ResidentRow::Specialized(SpecializedSource::Player(player)),
                             class,
-                        })
+                        ));
+                    }
+                    let tracked = remote.tracked(id);
+                    if id != remote.entity_id
+                        && let EntityLookup::Found { location, value } =
+                            self.server_resident_lookup(id as u32)
+                        && location.owner.dimension == self.dim.key()
+                        && match location.owner.kind {
+                            Kind::DragonPart => true, // The client makes these from the tracked dragon.
+                            Kind::Player | Kind::Hook => false,
+                            _ => tracked.is_some(),
+                        }
+                    {
+                        return Some(self.project_resident_entity(value.row, class));
+                    }
+                    // A general row shadows the protocol record, including before its first
+                    // attachment snapshot makes it visible. Do not re-open either record.
+                    if let Some(row) = remote.general.rows.get(&id) {
+                        return row.shown.then(|| NativeEntityView {
+                            position: Some(row.position),
+                            rotation: (id != remote.entity_id && tracked.is_some())
+                                .then_some(row.rotation),
+                            kind: Some(row.kind()),
+                            class,
+                        });
+                    }
+                    tracked.map(|(kind, position)| NativeEntityView {
+                        position: Some(position),
+                        rotation: None,
+                        kind: Some(kind),
+                        class,
+                    })
                 })
         };
         if let Some(mut view) = view {
