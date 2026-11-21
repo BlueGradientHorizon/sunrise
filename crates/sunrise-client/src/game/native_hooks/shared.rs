@@ -2855,7 +2855,6 @@ impl Game<'_> {
             Some((handle, state)) => ResidentBlockEntityAccess::for_handle(self, handle, state),
             None => ResidentBlockEntityAccess::blockless(self),
         };
-        let failures = mod_api::runtime::isolated_failures();
         Game::native_menu_button(
             menu,
             block,
@@ -2868,9 +2867,7 @@ impl Game<'_> {
         if items_changed && let Some(pos) = target_pos {
             self.after_commit(crate::game::transactions::After::Changed(pos));
         }
-        if mod_api::runtime::isolated_failures() == failures {
-            apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
-        }
+        apply_menu_button_cursor(self.items(), &original_api, &api_cursor, carried);
     }
     /// A press consumed by the shown screen goes to the server as a menu button click.
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {

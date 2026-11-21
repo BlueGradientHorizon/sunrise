@@ -11,7 +11,8 @@ pub trait Hooks {
     /// write is validated at the boundary) and the clicking player's carried
     /// stack. A panicking listener is contained and disabled for `menu_button`
     /// for the rest of the session, discarding its carried-stack edit and
-    /// rolling back any open transaction.
+    /// rolling back any open transaction. A panic in a different hook does not
+    /// discard the cursor edit of a button callback that returns normally.
     #[notes = r#"### Menu buttons
 
 `menu_button` handles a mod menu's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for
@@ -21,7 +22,8 @@ slots can take or give what the player carries. Call `subject.with_view(...)` to
 in place (each write is validated at the boundary; `with_view` returns `None` on a blockless menu or after the block
 entity is removed or replaced), `subject.host()` to reach the server `Host`, and `subject.transaction(...)` when an
 edit must span the subject and other world storage atomically. A panicking listener is contained (its carried-stack
-edit is discarded and any open transaction rolls back) and disabled for `menu_button` for the rest of the session."#]
+edit is discarded and any open transaction rolls back) and disabled for `menu_button` for the rest of the session.
+A panic in a different hook does not discard the cursor edit of a button callback that returns normally."#]
     #[hook(
         target = "sunrise_client::game::native_hooks::base::Game<'_>::native_menu_button",
         receiver = "associated",

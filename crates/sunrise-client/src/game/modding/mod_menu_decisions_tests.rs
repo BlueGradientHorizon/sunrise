@@ -39,6 +39,8 @@ struct Script {
     change_cursor: bool,
     /// `menu_button`: consume the player's carried stack.
     clear_cursor: bool,
+    /// `menu_button`: issue a contents notice whose listener panics.
+    panic_in_contents_changed: bool,
     /// `menu_button`: attempt an over-limit `set_data_slots` write and assert boundary refusal.
     invalid_data_slots: bool,
     /// `menu_button`: edit subject and world storage inside `subject.transaction(...)`, then panic.
@@ -88,7 +90,13 @@ fn write_dirt(host: &mut dyn ServerHost) {
 
 struct Part;
 #[mod_api::sunrise_part]
-impl mod_api::BlockPart for Part {}
+impl mod_api::BlockPart for Part {
+    fn contents_changed(&self, _: &mut dyn ServerHost, _: &mut mod_api::ContentsChangedEvent) {
+        if SCRIPT.with(|s| s.borrow().panic_in_contents_changed) {
+            panic!("the nested contents_changed listener failed");
+        }
+    }
+}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Part {
     fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
@@ -365,6 +373,10 @@ impl mod_api::MenuPart for Part {
                 })
                 .expect("live resident block entity");
         }
+        if script.panic_in_contents_changed {
+            let entity = event.subject.with_view(|view| view.handle()).unwrap();
+            assert!(entity.set_changed(event.subject.host()).unwrap());
+        }
         if script.panic {
             panic!("menu button failed after editing the entity and cursor");
         }
@@ -427,6 +439,8 @@ fn with_publication_mods(test: impl FnOnce()) {
             let kind = r.block_entity_type("depot").blocks(&[]).build();
             r.block_entity_part(&kind, Part).unwrap();
             r.menu_part(HEALTHY_MENU, Part);
+            let cobble = r.block_key("minecraft:cobblestone");
+            r.block_part(cobble, Part);
         }
     }
     let mods: Mods = vec![
@@ -914,11 +928,12 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
                     }]
                 );
 
-                // The failed owner is disabled for subsequent button presses; a healthy owner still
-                // updates data slots, `client_update_fields`, and `carried` on its live resident entity.
+                // The failed owner is disabled for subsequent button presses. A healthy button
+                // callback's cursor edit survives a failure in the separate contents_changed hook.
                 script(Script {
                     change_cursor: true,
                     write_update: true,
+                    panic_in_contents_changed: true,
                     ..Script::default()
                 });
                 game.mod_menu_button(DEPOT_MENU, context_at(POS), None, Some(POS), &mut carried);
@@ -935,6 +950,13 @@ fn menu_button_validates_writes_and_contains_panics_on_live_resident_block_entit
                 assert_eq!(mod_entity_at(game, SECOND).data, [42]);
                 assert!(mod_entity_at(game, SECOND).has_client_update_fields());
                 assert_eq!(carried, Some(ItemStack::new("minecraft:gold_ingot", 1)));
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "healthy_menu",
+                        hook: "contents_changed",
+                    }]
+                );
             });
         });
     });
@@ -1228,6 +1250,118 @@ fn a_replaced_backing_block_or_reopened_menu_never_receives_old_quick_move_settl
                 "post-hook resend must not close a newly opened menu"
             );
             assert_ne!(guest.menu_generation, old_generation);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_handled_quick_move_notifies_contents_after_settling_the_source() {
+    #[derive(Clone, Default)]
+    struct Observer(Arc<std::sync::Mutex<Vec<[u32; 3]>>>);
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockPart for Observer {
+        fn contents_changed(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut mod_api::ContentsChangedEvent,
+        ) {
+            if event.pos == mod_api::BlockPos::new(POS.0, POS.1, POS.2) {
+                let items = event
+                    .level
+                    .capability(host, &ITEMS, [POS.0, POS.1, POS.2], None)
+                    .unwrap();
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push([0, 1, 2].map(|slot| items.amount(host, slot)));
+            }
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for Observer {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r.block_entity_type("depot").build();
+            r.block_entity_part(&kind, Part).unwrap();
+            let stone = r.block_key("minecraft:stone");
+            r.block_part(stone, self.clone());
+        }
+    }
+
+    let observer = Observer::default();
+    let mods: Mods = vec![ModEntry::new("movemod", Box::new(observer.clone()))].into();
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        with_guests(|game| {
+            let window = open_depot(game);
+            observer.0.lock().unwrap().clear();
+            script(Script {
+                take: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 0, 1));
+
+            assert_eq!(observer.0.lock().unwrap().as_slice(), [[1, 4, 5]]);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_later_part_can_handle_the_same_quick_move_after_a_panic() {
+    struct FirstPart;
+    #[mod_api::sunrise_part]
+    impl mod_api::BlockPart for FirstPart {}
+    #[mod_api::sunrise_part]
+    impl BlockEntityPart for FirstPart {
+        fn menu_quick_move(&self, event: &mut MenuQuickMoveEvent<'_>) -> Flow {
+            *event.stack = None;
+            panic!("the first quick-move listener failed");
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl Hooks for FirstPart {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r.block_entity_type("depot").build();
+            r.block_entity_part(&kind, FirstPart).unwrap();
+        }
+    }
+    struct LaterMod;
+    #[mod_api::__subscriptions]
+    impl Hooks for LaterMod {
+        fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+            let kind = r.block_entity_type_key("movemod:depot");
+            r.block_entity_part(&kind, Part).unwrap();
+        }
+    }
+
+    let mods: Mods = vec![
+        ModEntry::new("movemod", Box::new(FirstPart)),
+        ModEntry::new("later_move", Box::new(LaterMod)),
+    ]
+    .into();
+    let mut dependencies = mod_api::__private::EffectiveDependencies::default();
+    dependencies.insert("later_move", "movemod", false);
+    mod_platform::__private::with_test_dependencies(dependencies, || {
+        mod_platform::testing::with_mods(mods.clone(), || {
+            crate::game::api_values::install_parts(&mods).unwrap();
+            with_guests(|game| {
+                let window = open_depot(game);
+                script(Script {
+                    take: true,
+                    ..Script::default()
+                });
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+
+                assert_eq!(depot(game), (1, 4, 5, 0));
+                assert_eq!(
+                    mod_api::__private::take_hook_panics(),
+                    [mod_api::__private::HookPanicReport {
+                        mod_id: "movemod",
+                        hook: "menu_quick_move",
+                    }]
+                );
+            });
         });
     });
 }

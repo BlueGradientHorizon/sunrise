@@ -52,30 +52,6 @@ pub(super) fn quick_move_slot(
     }
 }
 
-/// Validates and writes back a `menu_quick_move` remainder onto `stack`, returning `false` when
-/// the listener changed `held` to an invalid stack (leaving `stack` untouched). An untouched
-/// `held` bypasses revalidation so pre-existing engine stacks round-trip cleanly.
-fn apply_quick_move_remainder(
-    items: &sunrise_client::items::Items,
-    original: &Option<mod_api::ItemStack>,
-    held: &Option<mod_api::ItemStack>,
-    stack: &mut Option<ItemStack>,
-) -> bool {
-    if held == original {
-        return true;
-    }
-    match held.try_into_engine(items) {
-        Ok(updated) => {
-            *stack = updated;
-            true
-        }
-        Err(error) => {
-            log::warn!("mod menu_quick_move write refused: {error:?}");
-            false
-        }
-    }
-}
-
 /// Admitted menu and resident block-entity identity for a single `menu_quick_move` click.
 struct QuickMoveAdmission {
     conn: u32,
@@ -94,10 +70,10 @@ struct QuickMoveAdmission {
 enum QuickMoveOutcome {
     /// No mod handled the shift-click (or the slot was empty): fall through to the game's routing.
     Unhandled { items_changed: bool },
-    /// A mod handled the shift-click and its remainder (and any `menu_slot_take` notice) ran.
+    /// A mod handled the shift-click. Settle only on the admitted menu and holder.
     Handled,
-    /// A listener panicked or returned an invalid remainder: resend the menu without running
-    /// the game's routing.
+    /// No listener handled the move after a callback failed, or the remainder was invalid:
+    /// resend the menu without running the game's routing.
     Rejected,
 }
 
@@ -105,10 +81,10 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerClick` for a quick move
     /// in a guest's open mod container menu (on a vanilla menu type or the
     /// mod's own): the mods' `native_menu_quick_move` first, as the clicking
-    /// player. True when a mod took it (or a listener panicked / returned an
-    /// invalid remainder): the slot keeps what the mod left and the guest's
-    /// client gets the whole menu again. False for every other click, and for
-    /// one no mod took, so the game's own routing runs.
+    /// player. An accepted remainder settles the clicked slot and resends
+    /// the menu. An invalid remainder or a panic without an accepted answer
+    /// also resends the menu rather than running the game's own routing.
+    /// False for other clicks and ordinary unanswered moves.
     pub(super) fn lan_mod_quick_move(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuQuickMove) {
             return false;
@@ -327,60 +303,78 @@ impl Game<'_> {
             Game::native_menu_quick_move(kind, scope, size, slot, &mut held, &mut handled);
             access.items_changed()
         };
-        if items_changed {
+        let (outcome, settlement) = if handled {
+            // Dispatch restores only the failed listener's outputs. An accepted answer can
+            // settle even if another callback failed. Keep untouched engine stacks as-is.
+            let remainder = if held == original {
+                Ok(Some(clicked.clone()))
+            } else {
+                held.try_into_engine(self.items())
+            };
+            match remainder {
+                Ok(remainder) => (QuickMoveOutcome::Handled, Some(remainder)),
+                Err(error) => {
+                    log::warn!("mod menu_quick_move write refused: {error:?}");
+                    (QuickMoveOutcome::Rejected, None)
+                }
+            }
+        } else if mod_api::runtime::isolated_failures() != failures {
+            (QuickMoveOutcome::Rejected, None)
+        } else {
+            (QuickMoveOutcome::Unhandled { items_changed }, None)
+        };
+
+        let mut publish = items_changed;
+        let mut take = None;
+        if let Some(remainder) = settlement
+            && self.quick_move_menu_matches(conn, window, menu_generation)
+            && self.quick_move_holder_matches(handle)
+        {
+            match at {
+                MenuSlot::Container(k) => {
+                    self.journal_block_entity(pos);
+                    if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) {
+                        if m.items.len() <= k {
+                            m.items.resize(k + 1, None);
+                        }
+                        if let Some(dest) = m.item_slot_mut(k) {
+                            *dest = remainder.clone();
+                        }
+                        publish = true;
+                    }
+                    if let Some(menu) = menu_type.filter(|menu| menu.owns_slot(k)) {
+                        let count = clicked
+                            .count
+                            .saturating_sub(remainder.as_ref().map_or(0, |l| l.count));
+                        if count > 0 {
+                            let mut moved = clicked;
+                            moved.count = count;
+                            take = Some((menu.id, (k, moved, remainder)));
+                        }
+                    }
+                }
+                MenuSlot::Inventory(i) => {
+                    let player = self.native_acting_id();
+                    self.journal_player(player);
+                    if let Some(s) = self.inventory.get_mut(i) {
+                        *s = remainder;
+                    }
+                }
+            }
+        }
+        // Like ChestMenu.quickMoveStack, settle the source before notifying observers. Publish
+        // surviving edits even without a valid answer, but not at a replacement holder.
+        if publish && self.quick_move_holder_matches(handle) {
             self.after_commit(After::Changed(pos));
         }
-        if mod_api::runtime::isolated_failures() != failures {
-            return QuickMoveOutcome::Rejected;
-        }
-        if !handled {
-            return QuickMoveOutcome::Unhandled { items_changed };
-        }
-        let mut remainder = Some(clicked.clone());
-        if !apply_quick_move_remainder(self.items(), &original, &held, &mut remainder) {
-            return QuickMoveOutcome::Rejected;
-        }
-        if !self.quick_move_menu_matches(conn, window, menu_generation)
-            || !self.quick_move_holder_matches(handle)
+        if let Some((menu, take)) = take
+            && self.quick_move_menu_matches(conn, window, menu_generation)
+            && self.quick_move_holder_matches(handle)
         {
-            return QuickMoveOutcome::Handled;
+            let player = self.native_acting_id();
+            let _ = self.mod_menu_slot_take(pos, player, menu, &take);
         }
-        let player = self.native_acting_id();
-        match at {
-            MenuSlot::Container(k) => {
-                self.journal_block_entity(pos);
-                if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) {
-                    if m.items.len() <= k {
-                        m.items.resize(k + 1, None);
-                    }
-                    if let Some(dest) = m.item_slot_mut(k) {
-                        *dest = remainder.clone();
-                    }
-                    self.after_commit(After::Changed(pos));
-                }
-                if let Some(menu) = menu_type.filter(|menu| menu.owns_slot(k))
-                    && self.quick_move_menu_matches(conn, window, menu_generation)
-                    && self.quick_move_holder_matches(handle)
-                {
-                    let count = clicked
-                        .count
-                        .saturating_sub(remainder.as_ref().map_or(0, |l| l.count));
-                    if count > 0 {
-                        let mut moved = clicked;
-                        moved.count = count;
-                        let take = (k, moved, remainder);
-                        let _ = self.mod_menu_slot_take(pos, player, menu.id, &take);
-                    }
-                }
-            }
-            MenuSlot::Inventory(i) => {
-                self.journal_player(player);
-                if let Some(s) = self.inventory.get_mut(i) {
-                    *s = remainder;
-                }
-            }
-        }
-        QuickMoveOutcome::Handled
+        outcome
     }
 
     /// `Slot.mayPickup` of the clicked slot, which `doClick` asks before the menu's

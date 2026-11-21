@@ -23,13 +23,16 @@ pub trait Hooks {
     ///
     /// Writes through `subject.with_view(...)` are checked at the boundary
     /// and apply to the live resident block entity in place, marking the
-    /// chunk dirty and firing container updates when items change (matching
-    /// vanilla `BlockEntity.setChanged`). Use `subject.transaction(...)` when
-    /// an edit must span the subject and other world storage atomically. A
-    /// panicking callback is contained and disabled for `menu_quick_move` for
-    /// the rest of the session, discarding its `stack` and `handled` outputs
-    /// and resending the menu. An invalid `stack` remainder leaves the
-    /// clicked slot's original stack untouched.
+    /// chunk dirty. The container notice (`BlockEntity.setChanged`) for the
+    /// move's resident slot edits follows settlement of the clicked slot and
+    /// precedes `menu_slot_take`; surviving edits on an unhandled or refused
+    /// move still notify the original holder if it is present. Use
+    /// `subject.transaction(...)` when an edit must span the subject and other
+    /// world storage atomically. A panicking callback is contained and disabled
+    /// for `menu_quick_move` for the rest of the session, discarding only its
+    /// `stack` and `handled` outputs. A later Part can still handle the move;
+    /// if none does after a panic, the menu is resynced instead of falling back.
+    /// An invalid `stack` remainder leaves the clicked slot's original stack untouched.
     ///
     /// For a mod container on a vanilla menu type and on a mod menu type,
     /// the left or right button, a slot that holds something and that the
