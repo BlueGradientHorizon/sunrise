@@ -49,11 +49,6 @@ impl std::fmt::Display for Failure {
     }
 }
 impl Incoming {
-    /// Attach a claimed receiving turn so a dedicated receiver waits until this
-    /// payload finishes on the main thread.
-    pub(crate) fn attach_turn(&mut self, turn: super::connection::PayloadTurn) {
-        self.turn = Some(turn);
-    }
     /// Owned transport buffers and reference storage, excluding this inline record.
     /// Work is conservatively charged its associated input per queued reference;
     /// arbitrary module-owned captures belong to the module, not a traversable packet.

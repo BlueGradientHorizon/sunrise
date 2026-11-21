@@ -1,5 +1,6 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
 use super::*;
+use sunrise_client::net::BundleProgress;
 
 impl Remote {
     pub(super) fn receive_credited_backlog(&mut self, events: &mut VecDeque<Received>) {
@@ -10,9 +11,9 @@ impl Remote {
         for receipt in self.session.poll() {
             let (event, credit) = receipt.into_parts();
             events.push_back(match event {
-                Event::BundleStart => {
+                event @ Event::BundleStart(_) => {
                     in_bundle = true;
-                    Received::Event(Event::BundleStart, credit)
+                    Received::Event(event, credit)
                 }
                 Event::BundleEnd => {
                     in_bundle = false;
@@ -216,7 +217,7 @@ impl Game<'_> {
                 }
                 packet => self.handle_packet(packet)?,
             },
-            Event::BundleStart | Event::BundleEnd => {}
+            Event::BundleStart(_) | Event::BundleEnd => {}
         }
         Ok(false)
     }
@@ -294,7 +295,8 @@ impl Game<'_> {
                     continue;
                 }
             };
-            if matches!(event, Event::BundleStart) {
+            if let Event::BundleStart(dispatch) = event {
+                let mut stopped = false;
                 while let Some(sub_item) = events.pop_front() {
                     let Received::Event(sub, _sub_credit) = sub_item else {
                         unreachable!("bundled chunks stay inline in receive_credited_backlog");
@@ -302,7 +304,29 @@ impl Game<'_> {
                     if matches!(sub, Event::BundleEnd) {
                         break;
                     }
-                    if self.dispatch_remote_event(sub)? {
+                    if stopped {
+                        continue;
+                    }
+                    if let Some(dispatch) = &dispatch {
+                        let progress = dispatch.dispatch(sub, |event| -> Result<bool> {
+                            let epoch = match &event {
+                                Event::RawPayload(incoming) if incoming.epoch.active() => {
+                                    Some(incoming.epoch.clone())
+                                }
+                                _ => None,
+                            };
+                            let left = self.dispatch_remote_event(event)?;
+                            // A Main callback can disconnect on its own thread. Its
+                            // accepted predecessors are already complete.
+                            stopped |= epoch.is_some_and(|epoch| !epoch.active());
+                            Ok(left)
+                        })?;
+                        match progress {
+                            BundleProgress::Continue => {}
+                            BundleProgress::Stop => stopped = true,
+                            BundleProgress::Left => return Ok(()),
+                        }
+                    } else if self.dispatch_remote_event(sub)? {
                         return Ok(());
                     }
                     if self.remote.is_none() {

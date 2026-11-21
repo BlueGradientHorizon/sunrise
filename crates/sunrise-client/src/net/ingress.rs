@@ -54,13 +54,12 @@ impl<T> Prepared<T> {
     pub fn value(&self) -> &T {
         &self.value
     }
-    /// Mutably inspect the prepared value before publishing.
-    pub fn value_mut(&mut self) -> &mut T {
-        &mut self.value
-    }
-    /// Unwrap the value and release its byte reservation without publishing.
-    pub fn into_value(self) -> T {
-        self.value
+    /// Consume the value inline, keeping its reservation until dispatch completes.
+    pub fn consume<R>(self, run: impl FnOnce(T) -> R) -> R {
+        let Self { value, permit } = self;
+        let result = run(value);
+        drop(permit);
+        result
     }
     /// Failure returns the owned value, so its resources can be dropped after
     /// releasing any publication gate held by the caller.

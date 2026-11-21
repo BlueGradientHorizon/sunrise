@@ -865,7 +865,8 @@ mod tests {
             crate::game::item_entities::thrown_items_tests::with_remote_game(|game| {
                 let (tx, rx) = sunrise_client::net::ingress::channel(4096, |_| 1).unwrap();
                 sunrise_client::net::ingress::Prepared::publish_batch(vec![
-                    tx.prepare(sunrise_client::net::Event::BundleStart).unwrap(),
+                    tx.prepare(sunrise_client::net::Event::BundleStart(None))
+                        .unwrap(),
                     tx.prepare(sunrise_client::net::Event::Packet(Box::new(spawn(
                         15,
                         "mymod:missile",
