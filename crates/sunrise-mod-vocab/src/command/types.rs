@@ -11,6 +11,7 @@ pub type CommandExecutor = dyn Fn(&mut dyn ServerHost, &CommandSource, &CommandI
     + 'static;
 
 // no wire: a registration binds server code to a descriptor; only the descriptor is data.
+// exhaustive: only Command::executes constructs the opaque descriptor/executor pair.
 /// A server command usage together with its executor. Create it with [`Command::executes`].
 pub struct CommandRegistration {
     command: Command,

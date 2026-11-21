@@ -5,6 +5,7 @@ use std::{fmt, sync::Arc};
 type IngredientTest = dyn for<'a> Fn(&dyn LoopContext, IngredientStack<'a>) -> bool + Send + Sync;
 
 // no wire: the definition carries native code and is consumed in-process at recipe load.
+// exhaustive: the constructor owns the ordered candidates and predicate together.
 /// Ordered item candidates and a predicate that tests concrete stacks for one custom ingredient.
 pub struct IngredientDefinition {
     items: Vec<String>,
@@ -30,6 +31,7 @@ impl IngredientDefinition {
 }
 
 // no wire: the bound predicate holds native code and a process-local dispatch slot.
+// exhaustive: the recipe loader alone binds the predicate to its owner and mod slot.
 /// Engine-owned predicate bound to the mod that defined this ingredient.
 #[derive(Clone)]
 pub struct IngredientPredicate {
@@ -84,6 +86,7 @@ pub fn bind_ingredient_predicate(
 }
 
 // no wire: the stack view lends live, call-scoped values instead of serializing a component patch.
+// exhaustive: the engine supplies call-scoped reads of the borrowed stack.
 /// Read-only view of the concrete stack passed to an ingredient predicate.
 /// Component queries read the stack directly, without building an owned snapshot.
 pub struct IngredientStack<'a> {

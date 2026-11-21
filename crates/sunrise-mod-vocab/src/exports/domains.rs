@@ -32,3 +32,7 @@ pub use world::types::*;
 pub(crate) mod built;
 
 pub(crate) use runtime::{listening, receives_cancelled};
+
+mod __private {
+    pub use crate::command::types::{CommandExecutor, split_command_registration};
+}
