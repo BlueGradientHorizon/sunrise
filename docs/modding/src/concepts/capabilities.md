@@ -30,7 +30,10 @@ both take native callbacks typed by their keys.
 | `r.is_item_capability_registered(&KEY, &item)` | The same query for an `ItemKey`, obtained with `r.item_key("minecraft:stick")`. |
 
 A block provider can expose a trash can that voids items or forward a multiblock port to its controller.
-A block with a block entity can have both kinds of provider.
+A block with a block entity can have both kinds of provider. Providers can target vanilla types and
+other mods' types. Pass fully qualified resource identifiers to the item and entity registration methods,
+for example `minecraft:stick` and `minecraft:pig`. See [A mod's own capability](capabilities/own-capability.md)
+for the naming and type rules.
 
 Lookup uses this order:
 
@@ -50,7 +53,8 @@ Registration queries see the game's coverage, earlier mods in registration order
 added by the current mod; they do not see later registrations. For example, `ITEMS` covers
 `minecraft:chest` without a mod provider. Use these queries to add a fallback only when no provider
 covers the type. This is type coverage, not a promise that a lookup at a particular position, side,
-entity or item place will return a handler.
+entity or item place will return a handler. An invalid key or capability name is a registration refusal,
+not a negative coverage result you can rely on.
 Declarations made in a later phase, such as `register_cauldron_fluid_content` after registry resolution,
 are not visible yet; these queries never run future registration callbacks.
 The same registrar owns default storage declarations: `block_container(&block, ModContainer)`,

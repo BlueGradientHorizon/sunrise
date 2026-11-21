@@ -218,14 +218,7 @@ impl EntitiesRegistrar for PartRegistrar {
         before_game: bool,
         provider: NativeCapabilityProvider,
     ) {
-        self.capability(
-            |p| &mut p.entity_capabilities,
-            None,
-            name,
-            ProviderTarget::Id(kind),
-            before_game,
-            provider,
-        );
+        self.capability(name, ProviderTarget::Entity(kind), before_game, provider);
     }
 
     fn entity_tick_each(&mut self, entity: &str) {

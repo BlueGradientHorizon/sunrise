@@ -1,5 +1,8 @@
 //! One live registration table for provider type coverage and forwarding metadata.
 use super::*;
+use mod_vocab::__private::parts_installation::capability_provider_binding;
+use std::any::TypeId;
+use sunrise_mod_runtime::registry_keys::Names;
 
 impl PartRegistrar {
     pub(crate) fn capability_parts() -> Parts {
@@ -15,26 +18,95 @@ impl PartRegistrar {
         parts
     }
 
-    /// A name has one handler type whether first encountered by a provider, a query or metadata.
-    pub(crate) fn note_block_capability(&mut self, name: &'static str, handler: Arc<str>) -> bool {
-        if !namespaced(name) {
+    pub(crate) fn validate_capability_name(&mut self, name: &str) -> bool {
+        if crate::Identifier::parse_namespaced(name).is_some() {
+            return true;
+        }
+        self.refused.push(format!(
+            "mod {} used capability {name:?}, which is not a namespaced name",
+            self.mod_id
+        ));
+        false
+    }
+
+    /// Registry requests already carry validated names, including forward references whose
+    /// existence the completed registry will check at load.
+    pub(crate) fn capability_key_target<'a>(
+        &mut self,
+        name: &str,
+        kind: &str,
+        registry: &'a Names,
+        slot: u32,
+    ) -> Option<&'a str> {
+        let id = registry.id(slot);
+        if id.is_none() {
             self.refused.push(format!(
-                "mod {} used capability {name:?}, which is not a namespaced name",
+                "mod {} used capability {name:?} for an invalid {kind} key slot {slot}",
+                self.mod_id
+            ));
+        }
+        id
+    }
+
+    /// Each table keeps one binding type per name, so only one row in each domain is needed.
+    pub(crate) fn check_capability_binding(
+        &mut self,
+        by: ProvidedBy,
+        name: &str,
+        (binding_type, handler): (TypeId, &'static str),
+    ) -> bool {
+        let conflict = |table: &Capabilities<NativeCapabilityProvider>| {
+            let existing = table.get(name)?.values().flatten().next()?;
+            let (existing_type, existing_handler) = capability_provider_binding(&existing.provider);
+            (existing_type != binding_type).then_some((existing.mod_id, existing_handler))
+        };
+        let existing = match by {
+            ProvidedBy::Block | ProvidedBy::BlockEntity => conflict(&self.parts.block_capabilities)
+                .or_else(|| conflict(&self.parts.capabilities)),
+            ProvidedBy::Item => conflict(&self.parts.item_capabilities),
+            ProvidedBy::Entity => conflict(&self.parts.entity_capabilities),
+        };
+        if let Some((owner, existing_handler)) = existing {
+            let conflict = if existing_handler == handler {
+                "incompatible handler or context types"
+            } else {
+                "two handler types"
+            };
+            self.refused.push(format!(
+                "capability {name} is answered with {conflict}, {existing_handler} by {owner} and {handler} by {}",
                 self.mod_id
             ));
             return false;
         }
+        true
+    }
+
+    /// A name has one handler type whether first encountered by a provider, a query or metadata.
+    pub(crate) fn note_block_capability(
+        &mut self,
+        name: &'static str,
+        handler: &'static str,
+        binding_type: Option<TypeId>,
+    ) -> bool {
+        if !self.validate_capability_name(name) {
+            return false;
+        }
+        if let Some(binding_type) = binding_type
+            && !self.check_capability_binding(ProvidedBy::Block, name, (binding_type, handler))
+        {
+            return false;
+        }
         if let Some((known, _)) = self.parts.block_capability_metadata.get(name) {
-            if *known != handler {
+            if known.as_ref() != handler {
                 self.refused.push(format!("capability {name} is answered with two handler types, {known} and {handler} by {}", self.mod_id));
                 return false;
             }
-            return true;
+        } else {
+            self.parts.block_capability_order.push(name);
+            self.parts
+                .block_capability_metadata
+                .insert(name, (Arc::from(handler), None));
         }
-        self.parts.block_capability_order.push(name);
-        self.parts
-            .block_capability_metadata
-            .insert(name, (handler, None));
         true
     }
 
@@ -98,27 +170,31 @@ impl CapabilityRegistrationRegistrar for PartRegistrar {
         handler: &'static str,
         block: &crate::BlockKey,
     ) -> bool {
-        if !self.note_block_capability(name, Arc::from(handler)) {
-            return false;
-        }
-        let keys = self.registry_keys.borrow();
-        let Some(id) = keys
-            .blocks
-            .id(mod_vocab::__private::parts_installation::block_key_slot(
-                *block,
-            ))
-        else {
+        let registry_keys = Rc::clone(&self.registry_keys);
+        let keys = registry_keys.borrow();
+        let Some(id) = self.capability_key_target(
+            name,
+            "block",
+            &keys.blocks,
+            mod_vocab::__private::parts_installation::block_key_slot(*block),
+        ) else {
             return false;
         };
-        self.block_capability_covers(name, id)
+        self.note_block_capability(name, handler, None) && self.block_capability_covers(name, id)
     }
 
-    fn entity_capability_registered(&self, name: &str, kind: &crate::EntityTypeKey) -> bool {
-        let keys = self.registry_keys.borrow();
-        let Some(id) = keys
-            .entity_types
-            .id(mod_vocab::__private::parts_installation::entity_type_key_slot(*kind))
-        else {
+    fn entity_capability_registered(&mut self, name: &str, kind: &crate::EntityTypeKey) -> bool {
+        if !self.validate_capability_name(name) {
+            return false;
+        }
+        let registry_keys = Rc::clone(&self.registry_keys);
+        let keys = registry_keys.borrow();
+        let Some(id) = self.capability_key_target(
+            name,
+            "entity type",
+            &keys.entity_types,
+            mod_vocab::__private::parts_installation::entity_type_key_slot(*kind),
+        ) else {
             return false;
         };
         self.parts
@@ -133,14 +209,18 @@ impl CapabilityRegistrationRegistrar for PartRegistrar {
             )
     }
 
-    fn item_capability_registered(&self, name: &str, item: &crate::ItemKey) -> bool {
-        let keys = self.registry_keys.borrow();
-        let Some(id) = keys
-            .items
-            .id(mod_vocab::__private::parts_installation::item_key_slot(
-                *item,
-            ))
-        else {
+    fn item_capability_registered(&mut self, name: &str, item: &crate::ItemKey) -> bool {
+        if !self.validate_capability_name(name) {
+            return false;
+        }
+        let registry_keys = Rc::clone(&self.registry_keys);
+        let keys = registry_keys.borrow();
+        let Some(id) = self.capability_key_target(
+            name,
+            "item",
+            &keys.items,
+            mod_vocab::__private::parts_installation::item_key_slot(*item),
+        ) else {
             return false;
         };
         self.parts
@@ -163,7 +243,7 @@ impl CapabilityRegistrationRegistrar for PartRegistrar {
         handler: &'static str,
         proxyable: bool,
     ) {
-        if !self.note_block_capability(name, Arc::from(handler)) {
+        if !self.note_block_capability(name, handler, None) {
             return;
         }
         let (_, known) = self

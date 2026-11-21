@@ -20,10 +20,11 @@ its block entity's saved data (`BlockEntityRef::merge_data`) is covered by the g
 transaction puts it back. `ItemCapabilityKey::new` and `EntityCapabilityKey::new` define item and entity
 capabilities the same way.
 
-A key is known by its name, which must be namespaced (`chem_api:chemical`), and a name has one handler type. Two
-mods that each declare their own `Chemical` under one name, rather than sharing the defining mod's, would never see
-each other's handlers. So the game refuses that at startup, naming both mods and both types, and it refuses a key whose name has no
-namespace. Both checks run once, when the mods register.
+A capability name must be a fully qualified resource identifier such as `chem_api:chemical`. Block and
+block entity providers share one name space; item and entity capabilities each have their own. Within one
+kind, all providers for a name must use the same handler type and, for entities, the same context type.
+Import the defining mod's key rather than redeclaring it with your own type. A conflicting registration
+is refused at startup and names both mods. A lookup using a key with the wrong type cannot call that provider.
 
 Storage for a holder without a block entity (an entity, a player, a chunk, the level) comes stock, kept in an
 attachment the mod declares, as NeoForge mods keep a `ItemStacksResourceHandler` or `SimpleEnergyHandler` in one:

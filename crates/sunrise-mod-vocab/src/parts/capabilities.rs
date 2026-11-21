@@ -1,4 +1,6 @@
 use super::*;
+use std::any::TypeId;
+
 pub(crate) type Capabilities<P> = HashMap<&'static str, HashMap<Box<str>, Vec<CapabilityPart<P>>>>;
 
 /// A capability provider a mod registered, with its dispatch metadata.
@@ -6,8 +8,6 @@ pub(crate) type Capabilities<P> = HashMap<&'static str, HashMap<Box<str>, Vec<Ca
 pub(crate) struct CapabilityPart<P> {
     pub(crate) mod_id: &'static str,
     pub(crate) mod_index: usize,
-    /// The handler type it gives, for refusing a capability name answered with two.
-    pub(crate) type_name: Arc<str>,
     /// Asked ahead of the game's own provider.
     pub(crate) before_game: bool,
     /// Its place among every mod's registrations, which orders a block's providers and those of
@@ -24,7 +24,7 @@ pub(crate) struct CapabilityPart<P> {
 #[derive(Clone)]
 pub struct NativeCapabilityProvider {
     provider: Arc<dyn Any + Send + Sync>,
-    pub(crate) handler: &'static str,
+    handler: &'static str,
 }
 
 impl NativeCapabilityProvider {
@@ -33,6 +33,10 @@ impl NativeCapabilityProvider {
             provider: Arc::new(provider),
             handler: type_name::<T>(),
         }
+    }
+
+    pub(crate) fn binding(&self) -> (TypeId, &'static str) {
+        (self.provider.as_ref().type_id(), self.handler)
     }
 
     pub(crate) fn get<P: 'static>(&self) -> Option<&P> {
@@ -240,7 +244,6 @@ mod tests {
                     "enabled"
                 },
                 mod_index: if order == 65_533 { 1 } else { 0 },
-                type_name: "test:handler".into(),
                 before_game: false,
                 order,
                 provider: order,

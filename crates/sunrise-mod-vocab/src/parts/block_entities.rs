@@ -197,7 +197,8 @@ impl dyn Registrar + '_ {
     /// `r.block_entity_capability(&ITEMS, &press, |_, _| Some(Box::new(PressItems)))`.
     /// Like NeoForge's `RegisterCapabilitiesEvent`, providers add up: in the fork's chosen order
     /// (NeoForge's javadoc states none), the game's own is asked first, then the mods' in
-    /// registration order, and the first to answer wins.
+    /// registration order, and the first to answer wins. Block and block entity providers of one
+    /// fully qualified name must use the same handler type; conflicts refuse registration.
     pub fn block_entity_capability<T: ?Sized + 'static>(
         &mut self,
         key: &CapabilityKey<T>,

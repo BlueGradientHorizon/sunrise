@@ -8,13 +8,19 @@ ids = [
     "method:BlockEntitiesRegistrar::provide_block_entity_capability",
     "method:ItemsRegistrar::provide_item_capability",
     "method:EntitiesRegistrar::provide_entity_capability",
+    "method:CapabilityRegistrationRegistrar::entity_capability_registered",
+    "method:CapabilityRegistrationRegistrar::item_capability_registered",
 ]
 why = """
 Built-in and mod-defined capability keys now both bind typed native callbacks instead of carrying
 separate provider enum cases inherited from the guest runtime. This follows NeoForge's typed
 RegisterCapabilitiesEvent and BlockCapability.getCapability, ItemCapability.getCapability and
-EntityCapability.getCapability. Lookup precedence and the vanilla container path
-(HopperBlockEntity.getBlockContainer) are unchanged.
+EntityCapability.getCapability. As in NeoForge's CapabilityRegistry.create, registrations agree
+on both handler and context type by type identity, not by their displayed names. Conflicts refuse
+registration and name both mods. Capability names and raw item/entity target IDs use the character
+rules in vanilla 26.3's Identifier.isValidNamespace and Identifier.isValidPath, with the required
+explicit namespace. Lookup precedence and the vanilla container path (HopperBlockEntity.getBlockContainer)
+are unchanged.
 """
 migrate = """
 Do not construct or match BlockProviderOf, ItemProviderOf, EntityProviderOf or OwnProvider.
@@ -24,7 +30,17 @@ Replace direct calls with the typed registrar helpers:
 - provide_item_capability -> r.item_capability(&key, item_id, callback)
 - provide_entity_capability -> r.entity_capability(&key, kind_id, callback)
 Use the matching _before_game helper when the old before_game argument was true. Pass the typed
-key instead of key.name. Existing calls to these typed helpers are unchanged. Mock or forwarding
-Registrar implementations replace the provider argument type of each raw provide_*_capability
-method with NativeCapabilityProvider and may pass that opaque value through unchanged.
+key instead of key.name. Keep using the typed helpers with valid namespace:path identifiers:
+replace malformed names or raw item/entity IDs (for example, "test:Robot" -> "test:robot").
+For a shared capability, import the defining mod's key instead of redeclaring it with another
+handler or entity context. For example, use the published EntityCapabilityKey<Handler, ()>
+with a |host, entity, ()| callback, not a same-named EntityCapabilityKey<Handler, Option<Direction>>.
+Pass a key from block_key, block_entity_type_key, item_key or entity_type_key for registration
+calls and coverage queries that take a registry key. A failed key request cannot be used to ask
+whether the target is covered without also recording a refusal.
+Mock or forwarding Registrar implementations replace the provider argument type of each raw
+provide_*_capability method with NativeCapabilityProvider and may pass it through unchanged.
+Implementations of CapabilityRegistrationRegistrar change the receiver on item_capability_registered
+and entity_capability_registered from &self to &mut self. Calls using the typed
+is_item_capability_registered and is_entity_capability_registered helpers are unchanged.
 """

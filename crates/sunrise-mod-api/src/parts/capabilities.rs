@@ -1,81 +1,80 @@
 //! Concrete authoring extracted verbatim from the vocabulary layer.
 use super::*;
+use mod_vocab::__private::parts_installation::{
+    block_entity_type_key_slot, block_key_slot, capability_provider_binding,
+};
+
+pub(crate) enum ProviderTarget<'a> {
+    Block(crate::BlockKey),
+    BlockEntity(crate::BlockEntityTypeKey),
+    Item(&'a str),
+    Entity(&'a str),
+}
 
 impl PartRegistrar {
-    /// Adds `provider` for capability `name` and `id` to `table`. Refused for a capability name
-    /// or an id with no namespace, and for a capability name another provider answers with
-    /// another handler type (two mods each declaring their own key under one name, rather than
-    /// sharing the one the defining mod's `[api]` crate publishes): asked by one type, the other's
-    /// providers would never answer.
-    /// `shares_names` is the table whose capability names are the same capabilities as
-    /// `table`'s (a block's and a block entity type's, asked together at a position), so one
-    /// name has one handler type across both.
+    /// Register one native provider after validating its name, target and handler/context binding.
     pub(crate) fn capability(
         &mut self,
-        table: fn(&mut Parts) -> &mut Capabilities<NativeCapabilityProvider>,
-        shares_names: Option<fn(&Parts) -> &Capabilities<NativeCapabilityProvider>>,
         name: &'static str,
         target: ProviderTarget<'_>,
         before_game: bool,
         provider: NativeCapabilityProvider,
     ) {
-        let handler: Arc<str> =
-            mod_vocab::__private::parts_installation::capability_provider_handler(&provider).into();
         let me = self.mod_id;
-        if !namespaced(name) {
-            self.refused.push(format!(
-                "{me} answered capability {name:?}, which is not a namespaced name"
-            ));
-            return;
-        }
-        let block_entity_id;
-        let id = match target {
-            ProviderTarget::BlockEntity(kind) => {
-                block_entity_id = self
-                    .registry_keys
-                    .borrow()
-                    .block_entity_types
-                    .id(mod_vocab::__private::parts_installation::block_entity_type_key_slot(*kind))
-                    .map(str::to_owned);
-                let Some(id) = block_entity_id.as_deref() else {
-                    return;
+        let registry_keys = Rc::clone(&self.registry_keys);
+        let keys = registry_keys.borrow();
+        let (by, id) = match target {
+            ProviderTarget::Block(block) => (
+                ProvidedBy::Block,
+                self.capability_key_target(name, "block", &keys.blocks, block_key_slot(block)),
+            ),
+            ProviderTarget::BlockEntity(kind) => (
+                ProvidedBy::BlockEntity,
+                self.capability_key_target(
+                    name,
+                    "block entity type",
+                    &keys.block_entity_types,
+                    block_entity_type_key_slot(kind),
+                ),
+            ),
+            ProviderTarget::Item(id) | ProviderTarget::Entity(id) => {
+                let (by, kind) = if matches!(target, ProviderTarget::Item(_)) {
+                    (ProvidedBy::Item, "item")
+                } else {
+                    (ProvidedBy::Entity, "entity type")
                 };
-                id
-            }
-            ProviderTarget::Id(id) => {
-                if !namespaced(id) {
+                if crate::Identifier::parse_namespaced(id).is_none() {
                     self.refused.push(format!(
-                        "{me} answered {name} for {id:?}, which is not a namespaced id"
+                        "mod {me} answered capability {name} for invalid {kind} id {id:?}: expected a namespaced identifier"
                     ));
                     return;
                 }
-                id
+                (by, Some(id))
             }
         };
-        let answered = |table: &Capabilities<NativeCapabilityProvider>| {
-            let other = table.get(name)?.values().flatten().next()?;
-            (other.type_name != handler).then(|| format!("{} by {}", other.type_name, other.mod_id))
+        let Some(id) = id else {
+            return;
         };
-        let other = answered(table(&mut self.parts))
-            .or_else(|| shares_names.and_then(|shares| answered(shares(&self.parts))));
-        if let Some(other) = other {
-            self.refused.push(format!(
-                "capability {name} is answered with two handler types, {other} and {handler} by {me}",
-            ));
+        let binding = capability_provider_binding(&provider);
+        let block = matches!(by, ProvidedBy::Block | ProvidedBy::BlockEntity);
+        let valid = if block {
+            self.note_block_capability(name, binding.1, Some(binding.0))
+        } else {
+            self.validate_capability_name(name) && self.check_capability_binding(by, name, binding)
+        };
+        if !valid {
             return;
         }
-        if shares_names.is_some() && !self.note_block_capability(name, handler.clone()) {
-            return;
-        }
-        let providers = table(&mut self.parts)
-            .entry(name)
-            .or_default()
-            .entry(id.into())
-            .or_default();
+        let table = match by {
+            ProvidedBy::Block => &mut self.parts.block_capabilities,
+            ProvidedBy::BlockEntity => &mut self.parts.capabilities,
+            ProvidedBy::Item => &mut self.parts.item_capabilities,
+            ProvidedBy::Entity => &mut self.parts.entity_capabilities,
+        };
+        let providers = table.entry(name).or_default().entry(id.into()).or_default();
         // A position's lookup keeps its place in a block's and a block entity type's lists in
         // one cursor, which bounds each.
-        if shares_names.is_some()
-            && providers.len() >= mod_vocab::__private::parts_installation::max_providers_at()
+        if block && providers.len() >= mod_vocab::__private::parts_installation::max_providers_at()
         {
             self.refused.push(format!(
                 "{me} answered capability {name} for {id}, which already has the most providers \
@@ -97,7 +96,6 @@ impl PartRegistrar {
             CapabilityPart {
                 mod_id: me,
                 mod_index: self.mod_index,
-                type_name: handler,
                 before_game,
                 order,
                 provider,
@@ -381,6 +379,8 @@ pub mod tests {
             CapabilityKey::new("test:chemical");
         const UNNAMESPACED: CapabilityKey<dyn ResourceHandler<Chemical>> =
             CapabilityKey::new("chemical");
+        const MALFORMED: CapabilityKey<dyn ResourceHandler<Chemical>> =
+            CapabilityKey::new("test:Chemical");
         let mut r = super::PartRegistrar::new("first");
         let chem_tank = r.block_entity_type_key("test:chem_tank");
         (&mut r as &mut dyn Registrar)
@@ -400,7 +400,9 @@ pub mod tests {
             &chem_vat,
             |_, at| Some(Box::new(ChemTank(at))),
         );
-        assert_eq!(r.refused.len(), 2, "{:?}", r.refused);
+        (&mut r as &mut dyn Registrar)
+            .block_entity_capability(&MALFORMED, &chem_vat, |_, at| Some(Box::new(ChemTank(at))));
+        assert_eq!(r.refused.len(), 3, "{:?}", r.refused);
         let two_types = &r.refused[0];
         assert!(
             two_types.starts_with("capability test:chemical is answered with two handler types")
@@ -416,6 +418,64 @@ pub mod tests {
             "{two_types}"
         );
         assert!(r.refused[1].contains("capability \"chemical\", which is not a namespaced name"));
+        assert!(
+            r.refused[2].contains("capability \"test:Chemical\", which is not a namespaced name")
+        );
+    }
+
+    #[test]
+    fn an_entity_capability_name_with_two_context_types_is_refused() {
+        const UNSIDED: EntityCapabilityKey<dyn ResourceHandler<ItemResource>> =
+            EntityCapabilityKey::new("test:pig_items");
+        const SIDED: EntityCapabilityKey<dyn ResourceHandler<ItemResource>, Option<Direction>> =
+            EntityCapabilityKey::new("test:pig_items");
+
+        struct Empty;
+        #[mod_api::__subscriptions]
+        impl Hooks for Empty {}
+
+        crate::testing::with_mods(
+            vec![
+                ModEntry::new("first", Box::new(Empty)),
+                ModEntry::new("second", Box::new(Empty)),
+            ]
+            .into(),
+            || {
+                let mut registrar = PartRegistrar::new("first");
+                (&mut registrar as &mut dyn Registrar).entity_capability(
+                    &UNSIDED,
+                    "minecraft:pig",
+                    |_, _, ()| Some(Box::new(Marked(3))),
+                );
+                assert!(registrar.refused.is_empty());
+                registrar.mod_id = "second";
+                registrar.mod_index = 1;
+                (&mut registrar as &mut dyn Registrar).entity_capability(
+                    &SIDED,
+                    "minecraft:pig",
+                    |_, _, _| Some(Box::new(Marked(99))),
+                );
+                // A refusal fails loading. Install only the accepted registrations to check
+                // that refusing the second callback did not change what the first one answers.
+                let refused = std::mem::take(&mut registrar.refused);
+                let [refusal] = refused.as_slice() else {
+                    panic!("expected one refusal, got {refused:?}");
+                };
+                for detail in ["test:pig_items", "context types", "by first", "by second"] {
+                    assert!(refusal.contains(detail), "{refusal}");
+                }
+                install_registrar(registrar, &rule_schema()).unwrap();
+                let mut host = player_world(None);
+                let pig = EntityRef::new(WorldEpoch::new(1), 2);
+                let found = pig.capability(&mut host, &UNSIDED, ()).unwrap();
+                assert_eq!(found.owner(), "first");
+                assert_eq!(found.size(&mut host), 3);
+                assert!(
+                    pig.capability(&mut host, &SIDED, Some(Direction::North))
+                        .is_none()
+                );
+            },
+        );
     }
 
     /// A handler that only tells which provider made it, by its slot count.
@@ -876,9 +936,4 @@ pub mod tests {
         assert_eq!(item(1, 1), (false, 27));
         assert_eq!(item(1, 2), (true, 3));
     }
-}
-
-pub(crate) enum ProviderTarget<'a> {
-    BlockEntity(&'a crate::BlockEntityTypeKey),
-    Id(&'a str),
 }

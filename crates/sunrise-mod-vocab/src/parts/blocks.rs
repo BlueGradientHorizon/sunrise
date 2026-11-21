@@ -296,7 +296,9 @@ impl dyn Registrar + '_ {
     /// is given the position and side asked about, the block state there and the block entity,
     /// if any: `r.block_capability(&ITEMS, &bin, |_, _, _, _| Some(Box::new(Voids)))`. Asked
     /// in one list with the providers of the block entity type there, as
-    /// [`LevelRef::capability`](crate::LevelRef::capability) orders them.
+    /// [`LevelRef::capability`](crate::LevelRef::capability) orders them. For a given fully qualified
+    /// name, both kinds must use the same handler type. Invalid names, keys and conflicting types
+    /// refuse registration.
     pub fn block_capability<T: ?Sized + 'static>(
         &mut self,
         key: &CapabilityKey<T>,

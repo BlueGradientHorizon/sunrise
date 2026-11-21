@@ -162,7 +162,9 @@ impl dyn Registrar + '_ {
     /// Answer entity capability `key` for entity type `kind` (`mymod:robot`,
     /// `minecraft:player`) with `provider`, which gives a handler for one entity, or none:
     /// `r.entity_capability(&ENTITY_ITEMS, "mymod:robot", |_, robot, ()| Some(Box::new(Cargo(robot))))`.
-    /// Asked as `block_entity_capability`'s are.
+    /// Asked as `block_entity_capability`'s are. The capability name and entity type id must be
+    /// fully qualified resource identifiers. Providers for one entity capability name must use
+    /// the same handler type `T` and context type `C`; a conflict refuses registration.
     pub fn entity_capability<T: ?Sized + 'static, C: 'static>(
         &mut self,
         key: &EntityCapabilityKey<T, C>,

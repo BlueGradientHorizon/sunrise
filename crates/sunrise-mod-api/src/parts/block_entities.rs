@@ -1018,10 +1018,8 @@ impl BlockEntitiesRegistrar for PartRegistrar {
         provider: NativeCapabilityProvider,
     ) {
         self.capability(
-            |p| &mut p.capabilities,
-            Some(|p| &p.block_capabilities),
             name,
-            ProviderTarget::BlockEntity(kind),
+            ProviderTarget::BlockEntity(*kind),
             before_game,
             provider,
         );

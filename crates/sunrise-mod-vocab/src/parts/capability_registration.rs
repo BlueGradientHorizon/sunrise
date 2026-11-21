@@ -4,6 +4,7 @@ use super::*;
 impl dyn Registrar + '_ {
     /// Whether the game or an earlier/current registration covers this block type.
     /// This is type coverage, not a promise that a lookup at a particular position answers.
+    /// An invalid capability name or key is a registration refusal.
     pub fn is_block_capability_registered<T: ?Sized + 'static>(
         &mut self,
         key: &CapabilityKey<T>,
@@ -13,6 +14,7 @@ impl dyn Registrar + '_ {
     }
 
     /// Whether the game or an earlier/current registration covers this entity type.
+    /// An invalid capability name or key is a registration refusal.
     pub fn is_entity_capability_registered<T: ?Sized + 'static, C: 'static>(
         &mut self,
         key: &EntityCapabilityKey<T, C>,
@@ -22,6 +24,7 @@ impl dyn Registrar + '_ {
     }
 
     /// Whether the game or an earlier/current registration covers this item type.
+    /// An invalid capability name or key is a registration refusal.
     pub fn is_item_capability_registered<T: ?Sized + 'static>(
         &mut self,
         key: &ItemCapabilityKey<T>,
@@ -33,6 +36,7 @@ impl dyn Registrar + '_ {
     /// Mark whether forwarding this capability to another block is safe. Unmarked keys are
     /// not proxyable. Repeating the same mark is allowed; contradicting an explicit mark
     /// refuses registration, as NeoForge 26.3's `setProxyable`/`setNonProxyable` do.
+    /// The capability name must be a fully qualified resource identifier.
     pub fn set_capability_proxyable<T: ?Sized + 'static>(
         &mut self,
         key: &CapabilityKey<T>,
@@ -54,9 +58,9 @@ pub trait CapabilityRegistrationRegistrar {
         block: &crate::BlockKey,
     ) -> bool;
     /// Type-only entity coverage, including the game's default provider and registrations so far.
-    fn entity_capability_registered(&self, name: &str, kind: &crate::EntityTypeKey) -> bool;
+    fn entity_capability_registered(&mut self, name: &str, kind: &crate::EntityTypeKey) -> bool;
     /// Type-only item coverage, including the game's default provider and registrations so far.
-    fn item_capability_registered(&self, name: &str, item: &crate::ItemKey) -> bool;
+    fn item_capability_registered(&mut self, name: &str, item: &crate::ItemKey) -> bool;
     /// Mark a named block capability; contradictory explicit marks refuse registration.
     fn set_block_capability_proxyable(
         &mut self,
