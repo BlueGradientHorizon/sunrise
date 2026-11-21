@@ -143,7 +143,7 @@ A server can open other levels for a client to view besides the one the player i
 as Immersive Portals' `ClientWorldLoader` keeps a `ClientLevel` per dimension). On a client,
 `host.level("minecraft:the_nether")` also returns a handle for each such level while the server keeps it
 open. Its block reads read the viewed level's own world, never the player's: `block_state`, `block`,
-`block_property`, `clip`, `collision_boxes`, `has_collisions`, and the fluid reads built on
+`block_property`, `clip`, `collision_boxes`, `has_collisions`, `visit_block_collision`, and the fluid reads built on
 `block_state` (`fluid_shape`, `fluid_height`, `fluid_height_for_camera`, `fluid_can_be_replaced_with`).
 So a mod can aim a ray or collide a box through a portal. They never write and never load a column: a
 column the client doesn't hold is `None`, for a collision box as soon as its walk reaches one. `clip`

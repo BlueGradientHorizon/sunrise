@@ -73,7 +73,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   (`minecraft:generic_9x3`, `minecraft:merchant`...), `pos` the block it belongs to, none for a villager, a mount or a
   vehicle's chest. Heard after the checks that refuse the menu (a locked chest), before the open menu closes. Set
   `cancel` and nothing opens. The player's state is swapped in, so `host.players().acting_player`, `PlayerRef::tell` and the item
-  helpers reach them. Menus a mod opens (`native_open_menu`) are not heard.
+  helpers reach them. Menus a mod opens (`PlayerRef::open_chest_menu`, `PlayerRef::open_mod_menu`) are not heard.
 - **`creative_slot(player, name, slot, item, count, cancel)`**: a creative-mode player sets a slot from the creative
   screen (`slot` is the inventory menu's slot; below 0 is a stack thrown out of the screen), with the `item` (`minecraft:air`
   for an emptied slot) and `count`. Heard after vanilla's checks, before the slot changes. Set `cancel` and the packet is
@@ -503,7 +503,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   precipitation, dripstone, or a burning player being extinguished is about to change a cauldron's level. Set `cancel`
   to leave it as it was.
 - **`random_tick(ticks, dimension, pos, state, handled)`** (on `GameLevel`): a block `tickChunk`
-  random-ticks, before its own `randomTick`. Change the block with the level's `native_set_block_property(ticks, pos,
+  random-ticks, before its own `randomTick`. Change the block with `LevelWriteHost::set_block_property(pos,
   key, value, flags)`; set `handled` to skip the block's own random tick.
 - **`tick_block(ticks, dimension, pos, state, handled)`** (on `GameLevel`): a due scheduled tick of a block
   that is still there (`ServerLevel.tickBlock`), before its own `tick`; the same contract as `random_tick`.
@@ -521,10 +521,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 
 ### Mobs
 
-`crates/sunrise-client/src/game/modding/native_mobs.rs`: helpers for server mods, for the level in place, on a server only (on a
-client they do nothing, and the readers give nothing). Each takes the `dimension` (`minecraft:overworld`) of the level it means, as
-`native_set_block` does, and is refused when another level is in place. The per-level tick hooks run with a defined level in
-place; `server_tick` does not define one, so name the dimension and expect a refusal there.
+`crates/sunrise-client/src/game/modding/native_mobs.rs` and `native_entity_remove.rs`: server-side mob
+spawning and entity lifecycle operations through typed handles (`LevelRef`, `LivingRef`, `EntityRef`).
 
 - `LevelRef::spawn_mob(host, kind, pos, reason)` spawns a mob and returns an `EntityRef`, or `None` when refused.
   `SpawnReason` controls finalization; the new mob is not persistent, as for a natural spawn. Spawn limits and natural
@@ -1415,7 +1413,7 @@ Not asked for an empty slot, a slot the mod's screen hides, another click type, 
 no longer valid, or a shift-click during a drag (it only ends the drag, as in vanilla). It is asked once per click, where vanilla asks `quickMoveStack` again while the same item keeps moving: move
 all you want in one call. The clicking player's state is swapped in (`host.players().acting_player` names them), and `entity`
 is out of the world during the call, as in `menu_button`. Only a server's players (single player's server
-thread, LAN guests, a dedicated server) shift-click this way; a native mod's own menus (`native_open_menu`) get their
+thread, LAN guests, a dedicated server) shift-click this way; a native mod's own menus (`PlayerRef::open_chest_menu`, `PlayerRef::open_mod_menu`) get their
 clicks already.
 
 ### The loop context
@@ -1597,11 +1595,12 @@ And `/damage` on a mob `by` one entity `from` another with a melee damage type g
 one, where vanilla gives the `by` one.
 
 
-- `native_block_entity_sync(pos)`, which sends the block and its update tag to clients again
-  (`Level.sendBlockUpdated`): with the level's block changes, to the players who see its chunk, once per position
-  however often it is called in a tick. A change made in a block entity's tick reaches clients at the start of the
-  next tick, as in vanilla. Call it when what clients show changes, not for every tick's progress: a menu's data slots
-  carry that.
+- `BlockEntityRef::sync(host)`, which sends the holder's block and its update tag to clients again
+  (`ServerLevel.sendBlockUpdated`): with the level's block changes, to the players who see its chunk, once per position
+  however often it is called in a tick. Works during the holder's own tick and in parked levels; returns
+  `LevelWriteError::Stale` after replacement or unload. A change made in a block entity's tick reaches clients at the
+  start of the next tick, as in vanilla. Call it when what clients show changes, not for every tick's progress: a menu's
+  data slots carry that.
 
 - `entity_leave_level(dimension, entity, kind)`, an entity leaving a server level (NeoForge's
   `EntityLeaveLevelEvent`, vanilla's `onTrackingEnd`): removed for any reason or its chunk unloading, not the entities
@@ -1771,7 +1770,7 @@ still go on each event or registrar.
   answers itself: `is_valid_bonemeal_target(state, valid)` says whether the block takes bone meal (`Some(false)` refuses it even where its template takes it, `None` leaves the
   template's; asked on both sides, as vanilla asks it, so a client predicts the use); `is_bonemeal_success(state, success)` is
   `isBonemealSuccess`, drawn through the level host's `with_random` to keep vanilla's order; and `perform_bonemeal(state)`
-  is the growth itself, with `native_set_block`/`native_set_block_property`. The meal is used up and the growth
+  is the growth itself, with `LevelWriteHost::set_block`/`LevelWriteHost::set_block_property`. The meal is used up and the growth
   particles and sound follow as vanilla's do, whether or not the roll grows the block, from a player's bone meal, a
   dispenser's and, on a crop, a villager's. A block that answers nothing keeps the `BonemealableBlock` its template gives it.
   Authoritative servers only, except the first question.
@@ -2394,7 +2393,7 @@ registration path.
 
 - A player taking an item from or putting one on an armor stand: `armor_stand_manipulate(player, name, stand_id, slot, cancel)` is heard after the stand's disabled-slot checks and before anything moves, with the stand's entity id and the slot the click reached (`mainhand`, `offhand`, `feet`, `legs`, `chest`, `head`), on a server, with the player's state swapped in. A mod sets `cancel` and neither the stand nor the player's hand changes.
 
-- A player opening one of the game's own menus: `container_opened(player, name, kind, pos, cancel)` is heard when a chest, furnace, crafting table, villager, anvil, lectern, horse inventory... is about to open (the job of NeoForge's `PlayerContainerEvent.Open`, but before the menu opens), after the checks that refuse it, with the menu type and the block's position, on a server, with the player's state swapped in. A mod sets `cancel` and nothing opens. Menus a mod opens (`native_open_menu`) are not heard.
+- A player opening one of the game's own menus: `container_opened(player, name, kind, pos, cancel)` is heard when a chest, furnace, crafting table, villager, anvil, lectern, horse inventory... is about to open (the job of NeoForge's `PlayerContainerEvent.Open`, but before the menu opens), after the checks that refuse it, with the menu type and the block's position, on a server, with the player's state swapped in. A mod sets `cancel` and nothing opens. Menus a mod opens (`PlayerRef::open_chest_menu`, `PlayerRef::open_mod_menu`) are not heard.
 
 - A creative player setting a slot: `creative_slot(player, name, slot, item, count, cancel)` is heard when the creative screen sets an inventory slot, or throws a stack out (a slot below 0), after the packet passed vanilla's checks and before the slot changes, on a server, with the player's state swapped in. A mod sets `cancel` and the packet is ignored.
 

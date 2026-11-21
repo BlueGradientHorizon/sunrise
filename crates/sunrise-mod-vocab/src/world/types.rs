@@ -1766,7 +1766,7 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
     fn remove_block(&mut self, _pos: [i32; 3], _moved: bool) -> bool {
         unimplemented!("LevelWriteHost::remove_block")
     }
-    /// Change a block property through `native_set_block_property`.
+    /// Change a block property through `Level.setBlock` with vanilla update flags, preserving its block entity.
     fn set_block_property(
         &mut self,
         _pos: [i32; 3],
