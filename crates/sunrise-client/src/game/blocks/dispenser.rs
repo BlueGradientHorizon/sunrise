@@ -970,9 +970,14 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Result<Dispensed> {
-        let (kind, _) = sunrise_client::block_entity_item::spawn_egg_on_spawner(&stack, false);
+        let items = self.res.shared_items();
+        let Some(data) = sunrise_client::block_entity_item::item_entity_data(&stack, &items)
+            .filter(|data| self.spawn_egg_allowed(&data.kind))
+        else {
+            return Ok((Some(stack), CLICK));
+        };
         let front = offset(pos, facing);
-        let Some(id) = self.spawn_mob_at(&kind, front, facing != Direction::Up) else {
+        let Some(id) = self.spawn_mob_at(&data.kind, front, facing != Direction::Up) else {
             return Ok((Some(stack), CLICK));
         };
         // EntityType.create: `finalizeSpawn` first, the egg's components after.
@@ -986,7 +991,7 @@ impl Game<'_> {
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
         // it describes from a dispenser too, not only from a player's hand.
-        self.apply_spawn_egg_entity_data(id, &stack);
+        self.apply_spawn_egg_entity_data(id, &data);
         self.mob_ambient(id)?;
         // SpawnEggItemBehavior: the entity was placed by the dispenser.
         self.post_block_game_event("minecraft:entity_place", [pos.0, pos.1, pos.2], None, None);
@@ -2212,6 +2217,27 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use sunrise_client::mobs::Mob;
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {
+        use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};
+
+        peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
+            let egg = peaceful_tests::trader_egg();
+            let dispense = |game: &mut Game<'_>| {
+                game.dispense_spawn_egg((4, 64, 4), Direction::Up, egg.clone())
+                    .unwrap()
+                    .0
+            };
+            assert_eq!(dispense(game).unwrap().count, 1);
+            assert!(game.mobs.is_empty());
+            game.set_difficulty_forced(2);
+            assert!(dispense(game).is_none());
+            assert_eq!(game.mobs.len(), 1);
+            assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
+        });
+    }
 
     /// What a dispense probe part heard: which part, and the dispenser it was for.
     #[derive(Clone, Default)]
