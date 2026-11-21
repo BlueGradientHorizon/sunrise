@@ -198,22 +198,20 @@ fn redstone_updates_respect_the_preview_level_side() {
         "minecraft:repeater",
         &[("facing", "north"), ("locked", "true")],
     );
-    let cake = default("minecraft:cake");
+    let air = default("minecraft:air");
+    let sponge = default("minecraft:sponge");
+    let wet_sponge = default("minecraft:wet_sponge");
+    let water = default("minecraft:water");
+    let stone = default("minecraft:stone");
     let comparator = default("minecraft:comparator");
-    let pos = BlockPos::new(0, 1, 0);
-    let west = BlockPos::new(-1, 1, 0);
-    let conductor_pos = BlockPos::new(1, 1, 0);
-    let comparator_pos = BlockPos::new(2, 1, 0);
+    let pos = BlockPos::new(4, 1, 4);
+    let east = BlockPos::new(5, 1, 4);
+    let west = BlockPos::new(3, 1, 4);
 
     for client_side in [true, false] {
-        // Put the unsupported comparator beyond a conductor: ordinary six-way
-        // notification and source shape updates must not reach it.
         let base = Level {
-            cells: HashMap::from([
-                (conductor_pos, default("minecraft:stone")),
-                (comparator_pos, comparator),
-            ]),
-            air: default("minecraft:air"),
+            cells: HashMap::new(),
+            air,
             client_side,
         };
         let mut dry = DryLevel::new(&base);
@@ -227,32 +225,87 @@ fn redstone_updates_respect_the_preview_level_side() {
         ));
         let observer_powered = dry.block_state(pos) == observer;
 
-        let mut dry = DryLevel::new(&base);
-        let mut ticks = Ticks::default();
         let repeater_locked = behaviours.update_shape(
-            &mut dry,
-            &mut ticks,
+            &mut DryLevel::new(&base),
+            &mut Ticks::default(),
             repeater,
             pos,
             Direction::West,
             west,
-            base.air,
+            air,
         ) == repeater;
 
+        let base = Level {
+            cells: HashMap::from([(east, water)]),
+            ..base
+        };
+        let mut dry = DryLevel::new(&base);
         assert!(behaviours.set_block(
             &mut dry,
-            &mut ticks,
+            &mut Ticks::default(),
             pos,
-            cake,
-            flags::UPDATE_NEIGHBORS | flags::UPDATE_KNOWN_SHAPE,
+            sponge,
+            flags::UPDATE_KNOWN_SHAPE,
         ));
-        assert_eq!(dry.block_state(pos), cake);
-        let comparator_retained = dry.block_state(comparator_pos) == comparator;
+        let after_sponge = (dry.block_state(pos), dry.block_state(east));
+        let expected_sponge = if client_side {
+            (sponge, water)
+        } else {
+            (wet_sponge, air)
+        };
 
-        assert_eq!(
-            (observer_powered, repeater_locked, comparator_retained),
-            (client_side, client_side, client_side),
-            "observer powered, repeater locked, comparator retained (client_side={client_side})"
+        let comparator_retained = |old, next, through_conductor| {
+            let comparator_pos = if through_conductor {
+                BlockPos::new(6, 1, 4)
+            } else {
+                east
+            };
+            // With no support, a notified comparator is removed. Put it behind
+            // a conductor for the two output scans so the six-way update cannot
+            // reach it. Suppress shape updates to isolate notification routes.
+            let mut cells = HashMap::from([(pos, old), (comparator_pos, comparator)]);
+            if through_conductor {
+                cells.insert(east, stone);
+            }
+            let base = Level {
+                cells,
+                air,
+                client_side,
+            };
+            let mut dry = DryLevel::new(&base);
+            assert!(behaviours.set_block(
+                &mut dry,
+                &mut Ticks::default(),
+                pos,
+                next,
+                flags::UPDATE_NEIGHBORS | flags::UPDATE_KNOWN_SHAPE,
+            ));
+            assert_eq!(dry.block_state(pos), next);
+            dry.block_state(comparator_pos) == comparator
+        };
+        let mismatches = [
+            ("powered observer", observer_powered == client_side),
+            ("sponge placement callback", after_sponge == expected_sponge),
+            ("repeater lock", repeater_locked == client_side),
+            (
+                "plain adjacent notification",
+                comparator_retained(air, stone, false) == client_side,
+            ),
+            (
+                "old source removal",
+                comparator_retained(default("minecraft:chest"), stone, true) == client_side,
+            ),
+            (
+                "new analog source",
+                comparator_retained(air, default("minecraft:cake"), true) == client_side,
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(label, matches)| (!matches).then_some(label))
+        .collect::<Vec<_>>();
+        assert!(
+            mismatches.is_empty(),
+            "client_side={client_side}: {mismatches:?}"
         );
     }
 }
