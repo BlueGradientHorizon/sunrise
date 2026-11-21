@@ -27,7 +27,8 @@ use super::{
     native_panel_recipes::RecipePage,
 };
 use mod_api::__private::game::{
-    LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
+    BlockStateDefinitionRegistration, LayerDefinitionRegistration, ModelLoaderRegistration,
+    ParticleGroupRegistration, StandaloneModelRegistration,
 };
 use mod_api::CommandSource;
 use mod_api::GameMode;

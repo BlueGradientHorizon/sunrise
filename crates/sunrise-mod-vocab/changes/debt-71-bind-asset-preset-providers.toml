@@ -1,0 +1,14 @@
+ids = [
+    "hook:register_model_loaders",
+    "hook:bake_model_loader",
+    "type:ModelLoaderInput",
+    "type:ModelLoaderFn",
+    "type:ModelLoaderQuad",
+    "hook:register_block_state_models",
+    "hook:instantiate_block_state_definition",
+    "type:BlockStateDefinitionInput",
+    "type:BlockStateDefinitionFn",
+    "type:BlockStateModelPick",
+]
+why = "Debt 71 step 1: bind model loader and block-state definition providers directly at registration instead of registering bare IDs and broadcasting a second hook. Follows NeoForge ModelEvent.RegisterLoaders / UnbakedModelParser (accepting any valid Identifier namespace, rejecting duplicates and built-in collisions neoforge:composite / neoforge:obj, with no arbitrary quad-count cap) and RegisterBlockStateModels / BlockStateModelHooks (LateBoundIdMapper: accepting any valid Identifier namespace with last-writer-wins replacement). Callback panics disable that mod's callback for the session with an error log and SystemToast; non-panic refusals report each time without latching."
+migrate = "In Hooks::register_model_loaders, replace `event.loaders.push(id)` and Hooks::bake_model_loader with `event.register(Identifier::parse(id)?, |input| Ok(quads))`, reading `input.model`, `input.config`, and `input.textures`. In Hooks::register_block_state_models, replace `event.definitions.push(id)` and Hooks::instantiate_block_state_definition with `event.register(Identifier::parse(id)?, |input| Ok(picks))`, reading `input.block`, `input.config`, and `input.states`, and returning `Err(reason)` to refuse a file."

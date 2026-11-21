@@ -4,7 +4,10 @@
 //! this crate never reaches the mod API.
 use crate::model::Direction;
 use serde_json::Value;
-use std::{collections::BTreeSet, sync::RwLock};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::RwLock,
+};
 
 #[cfg(test)]
 #[path = "model_loaders_tests.rs"]
@@ -12,11 +15,36 @@ mod tests;
 
 static TYPES: RwLock<BTreeSet<String>> = RwLock::new(BTreeSet::new());
 
-/// Keeps the loader ids native mods registered, before resources load: an id that is not
-/// `<namespace>:<path>` in a namespace other than vanilla's, or one registered already, is logged
+/// Whether `id` is a valid canonical `<namespace>:<path>` identifier with non-empty namespace and
+/// path.
+fn is_valid_id(id: &str) -> bool {
+    let Some((namespace, path)) = id.split_once(':') else {
+        return false;
+    };
+    !namespace.is_empty()
+        && !path.is_empty()
+        && crate::json::identifier(id).is_ok_and(|parsed| parsed == id)
+}
+
+/// Keeps the loader ids native mods registered, before resources load: any valid canonical
+/// `<namespace>:<path>` identifier (including `minecraft:`) is accepted; malformed ids, built-in
+/// loader collisions (`neoforge:composite`, `neoforge:obj`), and duplicates are logged as errors
 /// and left out. Returns the ids kept, in registration order.
 pub fn register(ids: Vec<String>) -> Vec<String> {
-    crate::item_model::keep_mod_ids(&TYPES, "model loader", ids)
+    let mut kept = Vec::new();
+    let mut set = TYPES.write().unwrap_or_else(|e| e.into_inner());
+    for id in ids {
+        if !is_valid_id(&id) {
+            log::error!("model loader {id:?} is not a valid <namespace>:<path> identifier");
+        } else if matches!(id.as_str(), "neoforge:composite" | "neoforge:obj") {
+            log::error!("model loader {id} collides with a built-in model loader");
+        } else if !set.insert(id.clone()) {
+            log::error!("model loader {id} is registered twice");
+        } else {
+            kept.push(id);
+        }
+    }
+    kept
 }
 
 /// Whether a native mod registered `id` as a model loader.
@@ -40,7 +68,14 @@ pub struct LoaderQuad {
 }
 
 /// The quads a registered loader answers for a model, asked once per model each time a library
-/// resolves it. `model` names the model for the log.
+/// resolves it. `model` names the model for the log and `textures` carries its resolved texture
+/// slots (`slot -> sprite identifier`).
 pub trait LoaderGeometry: Send + Sync {
-    fn quads(&self, loader: &str, model: &str, config: &Value) -> Vec<LoaderQuad>;
+    fn quads(
+        &self,
+        loader: &str,
+        model: &str,
+        config: &Value,
+        textures: &BTreeMap<String, String>,
+    ) -> Vec<LoaderQuad>;
 }

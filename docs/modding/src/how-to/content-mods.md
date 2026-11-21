@@ -1400,13 +1400,15 @@ the entity and rotate with its yaw.
 
 ### Custom block-state definition types
 
-Register a type id with `Hooks::register_block_state_models` before client resources
-load. Set `neoforge:definition_type` to that id in the blockstate JSON, and answer
-`Hooks::instantiate_block_state_definition` on every load and reload. Read the whole
-file from `event.config` and enumerate `event.states` in registry order. Append a
-`BlockStateModelPick::Model` for each state you choose, with its index, model id,
-quarter turns and UV-lock setting; append `Refuse` with a reason to reject a file.
-See the generated hook notes for a powered-block example.
+Register a definition provider with `Hooks::register_block_state_models` before client resources
+load (`event.register(id, provider)`). Set `neoforge:definition_type` to that id in the
+blockstate JSON; the bound provider runs directly on every load and reload. Read the whole
+file from `input.config`, the block identifier from `input.block`, and enumerate `input.states`
+in registry order. Return `Ok(picks)` with a `BlockStateModelPick::Model` for each state you
+choose (its index, model id, quarter turns and UV-lock setting), or `Err(reason)` to reject a
+file. Any valid `<namespace>:<path>` identifier (including `minecraft:`) is accepted, and a
+later registration for the same id replaces an earlier one. See the generated hook notes for a
+powered-block example.
 
 A state not picked inherits the lower pack layer's selection when present;
 otherwise it draws no model. Pack layers bind independently. An unknown type,

@@ -1,5 +1,19 @@
 //! Owner enablement, attribution and panic containment for retained resources.
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+
+static PANIC_NOTICES: Mutex<Vec<(&'static str, &'static str)>> = Mutex::new(Vec::new());
+
+/// Drain every `(mod_id, callback_kind)` panic notice recorded since the last call.
+pub fn take_callback_panic_notices() -> Vec<(&'static str, &'static str)> {
+    std::mem::take(
+        &mut *PANIC_NOTICES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
+    )
+}
 
 /// Owner identity and poison state for one retained mod callback.
 // no wire: the callback's enablement and poison state belong to this process.
@@ -18,6 +32,16 @@ impl CallbackOwner {
             index: crate::__private::mod_index(id)?,
             poisoned: AtomicBool::new(false),
         })
+    }
+
+    /// The owning mod's ID.
+    pub fn id(&self) -> &'static str {
+        self.id
+    }
+
+    /// Whether this callback is still enabled for the session.
+    pub fn is_enabled(&self) -> bool {
+        enabled(self.index, &self.poisoned)
     }
 
     /// Invoke retained code with its owner's enablement, attribution and panic policy.
@@ -59,6 +83,13 @@ pub(crate) fn call<T>(
         }
         Err(_) => {
             poisoned.store(true, Ordering::Release);
+            log::error!(
+                "Sunrise: mod {owner}: {kind} callback ({operation}) panicked and was disabled for this session"
+            );
+            PANIC_NOTICES
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push((owner, kind));
             Err(format!("{kind} callback panicked; it is disabled"))
         }
     }

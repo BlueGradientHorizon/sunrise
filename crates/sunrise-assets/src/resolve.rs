@@ -316,6 +316,41 @@ impl ModelLibrary {
         if let Some(child) = child {
             slots.extend(child.iter().map(|(k, v)| (k.clone(), v)));
         }
+        let mut textures = BTreeMap::<String, Material>::new();
+        let mut unresolved_textures = BTreeSet::<String>::new();
+        for start in slots.keys() {
+            let mut current = start.as_str();
+            let mut seen = BTreeSet::new();
+            let mut path = Vec::new();
+            let material = loop {
+                if let Some(material) = textures.get(current) {
+                    break Some(material.clone());
+                }
+                if unresolved_textures.contains(current) || !seen.insert(current) {
+                    break None;
+                }
+                let Some(slot) = slots.get(current) else {
+                    break None;
+                };
+                path.push(current);
+                match slot {
+                    TextureSlot::Reference(target) => current = target,
+                    TextureSlot::Material(material) => break Some(material.clone()),
+                }
+            };
+            // Cache the entire walk, including failures, so long alias chains
+            // and cycles are traversed once rather than once per referencing slot.
+            match material {
+                Some(material) => {
+                    for name in path {
+                        textures.insert(name.to_owned(), material.clone());
+                    }
+                }
+                None => {
+                    unresolved_textures.extend(path.into_iter().map(str::to_owned));
+                }
+            }
+        }
         let loader = match chain.iter().find_map(|m| m.loader.as_ref()) {
             Some(Loader::Composite {
                 children,
@@ -369,7 +404,7 @@ impl ModelLibrary {
                 })
             }
             Some(Loader::Registered { kind, config }) => Some(ResolvedLoader::Registered(
-                self.loader_quads(&names[0], kind, config),
+                self.loader_quads(&names[0], kind, config, &textures),
             )),
             Some(Loader::Unknown(kind)) => {
                 let mut logged = self
@@ -386,41 +421,6 @@ impl ModelLibrary {
             }
             None => None,
         };
-        let mut textures = BTreeMap::<String, Material>::new();
-        let mut unresolved_textures = BTreeSet::<String>::new();
-        for start in slots.keys() {
-            let mut current = start.as_str();
-            let mut seen = BTreeSet::new();
-            let mut path = Vec::new();
-            let material = loop {
-                if let Some(material) = textures.get(current) {
-                    break Some(material.clone());
-                }
-                if unresolved_textures.contains(current) || !seen.insert(current) {
-                    break None;
-                }
-                let Some(slot) = slots.get(current) else {
-                    break None;
-                };
-                path.push(current);
-                match slot {
-                    TextureSlot::Reference(target) => current = target,
-                    TextureSlot::Material(material) => break Some(material.clone()),
-                }
-            };
-            // Cache the entire walk, including failures, so long alias chains
-            // and cycles are traversed once rather than once per referencing slot.
-            match material {
-                Some(material) => {
-                    for name in path {
-                        textures.insert(name.to_owned(), material.clone());
-                    }
-                }
-                None => {
-                    unresolved_textures.extend(path.into_iter().map(str::to_owned));
-                }
-            }
-        }
         Ok(ResolvedCuboidModel {
             ambient_occlusion,
             gui_light,
@@ -439,6 +439,7 @@ impl ModelLibrary {
         model: &str,
         kind: &str,
         config: &Arc<serde_json::Value>,
+        textures: &BTreeMap<String, Material>,
     ) -> Arc<[LoaderQuad]> {
         let key = (model.to_owned(), Arc::as_ptr(config) as usize);
         let cache = self.loader_quads.lock().unwrap_or_else(|e| e.into_inner());
@@ -447,7 +448,13 @@ impl ModelLibrary {
         }
         drop(cache);
         let quads: Arc<[LoaderQuad]> = match &self.loaders {
-            Some(loaders) => loaders.quads(kind, model, config).into(),
+            Some(loaders) => {
+                let resolved: BTreeMap<String, String> = textures
+                    .iter()
+                    .map(|(slot, material)| (slot.clone(), material.sprite.clone()))
+                    .collect();
+                loaders.quads(kind, model, config, &resolved).into()
+            }
             None => Arc::new([]),
         };
         self.loader_quads

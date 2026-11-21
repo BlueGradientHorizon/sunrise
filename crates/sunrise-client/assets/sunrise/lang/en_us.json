@@ -518,6 +518,8 @@
   "sunrise.missing_mods.server.refused": "The world was not opened: opening it removes those mods' blocks, and what they hold, for good.\nRestore the missing mods, or back up the world folder first.\nTo open it anyway, start the server with --%s or set allow = true under [missing_mods] in server.toml",
   "sunrise.missing_mods.title": "Mods are missing",
   "sunrise.missing_mods.unknown_version": "an unknown version",
+  "sunrise.mod.callback_disabled.body": "A %s callback panicked and was disabled for this session",
+  "sunrise.mod.callback_disabled.title": "Mod callback disabled: %s",
   "sunrise.modprofile.alreadyRunning": "Mod profiling is already running.",
   "sunrise.modprofile.inHook": "Cannot stop profiling from inside a mod callback.",
   "sunrise.modprofile.noReport": "No completed mod profile is available.",

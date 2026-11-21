@@ -322,7 +322,8 @@ fn visibility(obj: &Object<'_>) -> Result<BTreeMap<String, bool>> {
 impl Loader {
     fn decode(raw: &RawValue, obj: &Object<'_>) -> Result<Self> {
         let name = primitive_string(raw)?;
-        match name.as_str() {
+        let canonical = identifier(&name).unwrap_or_else(|_| name.clone());
+        match canonical.as_str() {
             "neoforge:composite" => {
                 let mut children = Vec::new();
                 if let Some(raw) = obj.get("children") {
@@ -363,7 +364,7 @@ impl Loader {
                     config.insert(key.clone(), value);
                 }
                 Ok(Self::Registered {
-                    kind: name,
+                    kind: canonical,
                     config: Arc::new(serde_json::Value::Object(config)),
                 })
             }

@@ -12,7 +12,7 @@ use std::sync::{
 /// Answers a fixed list of quads and counts the times it is asked.
 struct Fixed(Vec<LoaderQuad>, AtomicUsize);
 impl LoaderGeometry for Fixed {
-    fn quads(&self, _: &str, _: &str, _: &Value) -> Vec<LoaderQuad> {
+    fn quads(&self, _: &str, _: &str, _: &Value, _: &BTreeMap<String, String>) -> Vec<LoaderQuad> {
         self.1.fetch_add(1, Ordering::Relaxed);
         self.0.clone()
     }
@@ -124,11 +124,42 @@ fn an_unknown_loader_bakes_only_the_elements_and_asks_nobody() {
 }
 
 #[test]
+fn minecraft_namespace_is_accepted_and_builtins_and_duplicates_are_rejected() {
+    let kept = register(vec![
+        "minecraft:asmtest_vanilla_ns".into(),
+        "minecraft:asmtest_vanilla_ns".into(),
+        "neoforge:composite".into(),
+        "neoforge:obj".into(),
+        "not_namespaced".into(),
+        "asmtest:".into(),
+        ":empty_ns".into(),
+    ]);
+    assert_eq!(kept, ["minecraft:asmtest_vanilla_ns"]);
+    assert!(is_registered("minecraft:asmtest_vanilla_ns"));
+    assert!(!is_registered("neoforge:composite"));
+    assert!(!is_registered("neoforge:obj"));
+    let parsed = CuboidModel::from_json(r#"{"loader":"asmtest_vanilla_ns","flag":true}"#).unwrap();
+    assert!(matches!(
+        parsed.loader,
+        Some(Loader::Registered { ref kind, .. }) if kind == "minecraft:asmtest_vanilla_ns"
+    ));
+}
+
+#[test]
 fn inherited_loader_geometry_is_cached_per_model_identity() {
-    struct Named(std::sync::Mutex<Vec<String>>);
+    struct Named(std::sync::Mutex<Vec<(String, BTreeMap<String, String>)>>);
     impl LoaderGeometry for Named {
-        fn quads(&self, _: &str, model: &str, _: &Value) -> Vec<LoaderQuad> {
-            self.0.lock().unwrap().push(model.to_owned());
+        fn quads(
+            &self,
+            _: &str,
+            model: &str,
+            _: &Value,
+            textures: &BTreeMap<String, String>,
+        ) -> Vec<LoaderQuad> {
+            self.0
+                .lock()
+                .unwrap()
+                .push((model.to_owned(), textures.clone()));
             let mut quad = post("side");
             quad.tint_index = if model == "t:parent" { 1 } else { 7 };
             vec![quad]
@@ -153,5 +184,13 @@ fn inherited_loader_geometry_is_cached_per_model_identity() {
         assert_eq!(bake(&library, "t:parent", [0; 3])[0].tint_index, 1);
         assert_eq!(bake(&library, "t:child", [0; 3])[0].tint_index, 7);
     }
-    assert_eq!(*callbacks.0.lock().unwrap(), ["t:parent", "t:child"]);
+    let expected_textures =
+        BTreeMap::from([("side".to_owned(), "minecraft:block/post".to_owned())]);
+    assert_eq!(
+        *callbacks.0.lock().unwrap(),
+        [
+            ("t:parent".to_owned(), expected_textures.clone()),
+            ("t:child".to_owned(), expected_textures),
+        ]
+    );
 }
