@@ -157,6 +157,16 @@ fn event_channel() -> (ingress::Producer<Event>, ingress::Consumer<Event>) {
     ingress::channel(96 << 20, Event::ingress_charge).expect("positive incoming byte budget")
 }
 impl Event {
+    // Layout-derived allowance for a frozen receiving vector, actor backlog,
+    // decoder marker and retained receipt, including vector spare capacity.
+    const INGRESS_RECORD_OVERHEAD: usize =
+        8 * std::mem::size_of::<(Self, ingress::ReceiveLease<Self>, usize, usize)>();
+
+    fn packet_bytes(packet: &play::Clientbound) -> usize {
+        use sunrise_protocol::retained::OwnedHeap;
+        std::mem::size_of::<play::Clientbound>().saturating_add(packet.owned_heap_bytes())
+    }
+
     fn ingress_charge(&self) -> usize {
         use std::mem::{align_of, size_of};
         use sunrise_protocol::retained::OwnedHeap;
@@ -187,9 +197,7 @@ impl Event {
                 name,
             } => dynamic(registries).saturating_add(name.capacity()),
             Self::Reconfigured(registries) => dynamic(registries),
-            Self::Packet(packet) => {
-                size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
-            }
+            Self::Packet(packet) => Self::packet_bytes(packet),
             Self::BundledIo(io) => {
                 size_of::<BundledIo>().saturating_add(io.action.owned_heap_bytes())
             }
@@ -207,10 +215,7 @@ impl Event {
                 from_server: _,
             } => reason.capacity().saturating_add(key.owned_heap_bytes()),
         };
-        // Layout-derived allowance for a frozen receiving vector, actor backlog,
-        // decoder marker and retained receipt, including vector spare capacity.
-        // Raw application buffers themselves are never multiplied.
-        owned.saturating_add(8 * size_of::<(Self, ingress::ReceiveLease<Self>, usize, usize)>())
+        owned.saturating_add(Self::INGRESS_RECORD_OVERHEAD)
     }
 }
 
@@ -1117,7 +1122,9 @@ fn run(
 /// allows up to 4096 subpackets. Keep the normal ingress reservation while
 /// collecting; the game cannot see an incomplete bundle.
 #[derive(Default)]
-struct PlayBundle(Option<Vec<ingress::Prepared<Event>>>);
+struct PlayBundle(Option<Vec<BundlePacket>>);
+
+type BundlePacket = ingress::Prepared<Event, Box<play::Clientbound>>;
 
 impl PlayBundle {
     fn accept(
@@ -1144,8 +1151,9 @@ impl PlayBundle {
         if bundle.len() == MAX_SUBPACKETS {
             return Err(Reason::plain("too many packets in bundle"));
         }
+        let charge = Event::packet_bytes(&packet).saturating_add(Event::INGRESS_RECORD_OVERHEAD);
         bundle.push(
-            send.prepare(Event::Packet(Box::new(packet)))
+            send.prepare_value(Box::new(packet), charge)
                 .map_err(|err| Reason::plain(err.to_string()))?,
         );
         Ok(None)
@@ -1154,7 +1162,7 @@ impl PlayBundle {
 
 enum PlayTurn {
     Single(play::Clientbound),
-    Bundle(Vec<ingress::Prepared<Event>>),
+    Bundle(Vec<BundlePacket>),
 }
 
 fn publish_play_event(
@@ -1321,12 +1329,10 @@ fn receive_play(
                 Ok(())
             }
         };
-        for packet in single.into_iter().chain(packets.into_iter().map(|packet| {
-            let Event::Packet(packet) = packet.into_value() else {
-                unreachable!("only play packets are buffered")
-            };
-            *packet
-        })) {
+        for packet in single
+            .into_iter()
+            .chain(packets.into_iter().map(|packet| *packet.into_value()))
+        {
             match packet {
                 play::Clientbound::KeepAlive(k) => {
                     handle_io(PlayIoAction::KeepAlive(k), &mut bundled)?
