@@ -510,12 +510,12 @@ fn a_deep_label_renders_and_non_finite_is_refused() {
 struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
-    fn render_level_stage(
+    fn submit_custom_geometry(
         &self,
         _: &dyn mod_api::ClientHost,
-        event: &mut mod_api::RenderLevelStageEvent<'_>,
+        event: &mut mod_api::SubmitCustomGeometryEvent<'_>,
     ) {
-        scene::render_level_stage(event);
+        scene::submit_custom_geometry(event);
     }
 }
 

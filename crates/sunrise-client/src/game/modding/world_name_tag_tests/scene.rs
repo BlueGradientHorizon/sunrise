@@ -1,8 +1,8 @@
-//! The `WorldDrawContext::name_tag` scene (#4171). It draws only at
-//! `AfterLevel` in a view whose game time is `SCENE_TIME`, so other tests' views stay empty.
+//! The `WorldDrawContext::name_tag` scene (#4171). It submits in `submit_custom_geometry`
+//! only in a view whose game time is `SCENE_TIME`, so other tests' views stay empty.
 use mod_api::{
-    DrawError, NameTagOptions, RenderLevelStage, RenderLevelStageEvent, Text, WorldDepth,
-    WorldLine, text::TextStyle,
+    DrawError, NameTagOptions, SubmitCustomGeometryEvent, Text, WorldDepth, WorldLine,
+    text::TextStyle,
 };
 
 /// The game time of the one view this scene draws in.
@@ -40,8 +40,8 @@ pub fn scene() -> Vec<([f64; 3], Text, NameTagOptions)> {
     ]
 }
 
-pub fn render_level_stage(event: &mut RenderLevelStageEvent<'_>) {
-    if event.stage != RenderLevelStage::AfterLevel || event.view.game_time != SCENE_TIME {
+pub fn submit_custom_geometry(event: &mut SubmitCustomGeometryEvent<'_>) {
+    if event.view.game_time != SCENE_TIME {
         return;
     }
     let camera = event.view.camera_position();

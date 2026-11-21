@@ -134,36 +134,112 @@ impl NameTagOptions {
     }
 }
 
-/// Where in the world's frame a stage's geometry is drawn: NeoForge 26.3's
-/// `RenderLevelStageEvent` stages Sunrise draws, in the order the frame reaches them.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Order-independent transparency (OIT) sub-passes in vanilla 26.3 (`OitStage`), in execution
+/// order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
+pub enum OitStage {
+    /// First OIT pass: records depth bounds for translucent fragments (`OitStage.DEPTH_BOUNDS`).
+    DepthBounds,
+    /// Second OIT pass: computes transmittance coefficients (`OitStage.TRANSMITTANCE`).
+    Transmittance,
+    /// Third OIT pass: accumulates weighted translucent colour (`OitStage.ACCUMULATE`).
+    Accumulate,
+}
+
+/// Where in the world's frame a stage runs: all 9 NeoForge 26.3
+/// `RenderLevelStageEvent` stages, in frame order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum RenderLevelStage {
-    /// After the sky, sun, moon and stars, before any terrain (`AfterSky`): behind
-    /// everything else the world draws, for backdrops and atmosphere.
+    /// After the sky, sun, moon and stars, before `prepare_render_buffers` and before any
+    /// world render pass (`RenderLevelStageEvent.AfterSky`). Provides no active render pass.
     AfterSky,
-    /// After solid and cutout terrain, before entities and block entities
-    /// (`AfterOpaqueBlocks`).
+    /// After solid and cutout chunk geometry, before opaque entities and block entities
+    /// (`RenderLevelStageEvent.AfterOpaqueBlocks`).
     AfterOpaqueBlocks,
-    /// After translucent terrain such as water and stained glass, before translucent
-    /// particles (`AfterTranslucentBlocks`).
+    /// After opaque entities, block entities and particles
+    /// (`RenderLevelStageEvent.AfterOpaqueFeatures`).
+    AfterOpaqueFeatures,
+    /// Classic transparency only: after translucent entities and block entities, before
+    /// translucent chunk geometry (`RenderLevelStageEvent.AfterTranslucentFeatures`).
+    AfterTranslucentFeatures,
+    /// Classic transparency only: after translucent chunk geometry such as water and stained
+    /// glass, before translucent particles (`RenderLevelStageEvent.AfterTranslucentBlocks`).
     AfterTranslucentBlocks,
-    /// After rain and snow, before the world border (`AfterWeather`).
+    /// Classic transparency only: after translucent particles, before weather
+    /// (`RenderLevelStageEvent.AfterTranslucentParticles`).
+    AfterTranslucentParticles,
+    /// Classic transparency only: after rain and snow, before the world border
+    /// (`RenderLevelStageEvent.AfterWeather`).
     AfterWeather,
-    /// After the rest of the world, before the first-person hand (`AfterLevel`): where
-    /// `submit_custom_geometry` and the debug renderers draw.
+    /// Improved transparency (OIT) only: fired once per [`OitStage`] after translucent chunk
+    /// geometry, translucent features, the world border and weather
+    /// (`RenderLevelStageEvent.OitTranslucent`).
+    OitTranslucent(OitStage),
+    /// After the level finishes rendering, before the first-person hand
+    /// (`RenderLevelStageEvent.AfterLevel`). Provides no active render pass.
     AfterLevel,
 }
 impl RenderLevelStage {
-    /// Every stage, in the order the frame reaches them.
-    pub const ALL: [Self; 5] = [
+    /// The stages fired in frame order when classic transparency is active
+    /// (`!view.improved_transparency`).
+    pub const CLASSIC_ORDER: &[Self] = &[
         Self::AfterSky,
         Self::AfterOpaqueBlocks,
+        Self::AfterOpaqueFeatures,
+        Self::AfterTranslucentFeatures,
         Self::AfterTranslucentBlocks,
+        Self::AfterTranslucentParticles,
         Self::AfterWeather,
         Self::AfterLevel,
     ];
+
+    /// The stages fired in frame order when improved transparency (OIT) is active
+    /// (`view.improved_transparency`).
+    pub const OIT_ORDER: &[Self] = &[
+        Self::AfterSky,
+        Self::AfterOpaqueBlocks,
+        Self::AfterOpaqueFeatures,
+        Self::OitTranslucent(OitStage::DepthBounds),
+        Self::OitTranslucent(OitStage::Transmittance),
+        Self::OitTranslucent(OitStage::Accumulate),
+        Self::AfterLevel,
+    ];
+
+    /// The stages fired in frame order for the active transparency mode.
+    pub const fn frame_order(improved_transparency: bool) -> &'static [Self] {
+        if improved_transparency {
+            Self::OIT_ORDER
+        } else {
+            Self::CLASSIC_ORDER
+        }
+    }
+
+    /// Whether this stage has an active render pass (`AfterSky` and `AfterLevel` do not).
+    pub const fn has_render_pass(self) -> bool {
+        !matches!(self, Self::AfterSky | Self::AfterLevel)
+    }
+
+    /// The OIT sub-pass stage when this is [`Self::OitTranslucent`], or `None` otherwise.
+    pub const fn oit_stage(self) -> Option<OitStage> {
+        match self {
+            Self::OitTranslucent(stage) => Some(stage),
+            _ => None,
+        }
+    }
+}
+
+// no wire: borrows the active stage's pass surface for the duration of a render_level_stage callback.
+/// The drawing capability active for one [`RenderLevelStage`] callback.
+pub enum StagePass<'a> {
+    /// No active render pass (`RenderLevelStage::AfterSky`, `RenderLevelStage::AfterLevel`).
+    None,
+    /// Standard world colour/depth pass (`AfterOpaqueBlocks`, `AfterOpaqueFeatures`,
+    /// `AfterTranslucentFeatures`, `AfterTranslucentBlocks`, `AfterTranslucentParticles`,
+    /// `AfterWeather`).
+    World(&'a mut dyn crate::WorldPassDrawContext),
+    /// Order-independent transparency sub-pass (`RenderLevelStage::OitTranslucent`).
+    Oit(OitStage, &'a mut dyn crate::WorldOitPassDrawContext),
 }
 
 // no wire: in-process frame section view lent during world rendering.
@@ -280,6 +356,40 @@ mod tests {
     impl ClientHost for Empty {}
     mod_api::impl_client_host_areas!(Empty);
     impl WorldDrawContext for Empty {}
+    impl RenderLevelStageContext for Empty {}
+    #[test]
+    fn render_level_stage_orders_and_capabilities_match_neoforge() {
+        assert_eq!(
+            RenderLevelStage::frame_order(false),
+            RenderLevelStage::CLASSIC_ORDER
+        );
+        assert_eq!(
+            RenderLevelStage::frame_order(true),
+            RenderLevelStage::OIT_ORDER
+        );
+        assert!(!RenderLevelStage::AfterSky.has_render_pass());
+        assert!(!RenderLevelStage::AfterLevel.has_render_pass());
+        for &stage in RenderLevelStage::CLASSIC_ORDER
+            .iter()
+            .chain(RenderLevelStage::OIT_ORDER.iter())
+        {
+            let expected_pass = !matches!(
+                stage,
+                RenderLevelStage::AfterSky | RenderLevelStage::AfterLevel
+            );
+            assert_eq!(stage.has_render_pass(), expected_pass);
+        }
+        assert_eq!(
+            RenderLevelStage::OitTranslucent(OitStage::Transmittance).oit_stage(),
+            Some(OitStage::Transmittance)
+        );
+        assert_eq!(RenderLevelStage::AfterOpaqueBlocks.oit_stage(), None);
+        let mut ctx = Empty;
+        assert!(!ctx.has_render_pass());
+        assert!(matches!(ctx.pass(), StagePass::None));
+        assert!(ctx.world_pass().is_none());
+        assert!(ctx.oit_pass().is_none());
+    }
     #[test]
     fn world_geometry_dispatch_skips_unsubscribed_and_disabled_mods() {
         install(

@@ -27,7 +27,7 @@ pub struct PipelineVertex {
 pub struct PipelineRun {
     /// The pipeline's slot in the frame's [`Pipelines`].
     pub slot: u32,
-    /// The stage it draws at (`RenderLevelStage::ALL`'s index).
+    /// The stage it draws at (`STAGE_AFTER_OPAQUE_BLOCKS..=STAGE_CUSTOM_GEOMETRY`).
     pub stage: u32,
     pub quads: u32,
 }

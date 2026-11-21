@@ -1,11 +1,15 @@
 //! Per-view custom geometry; buffers pre-reserve initial space and grow dynamically.
 use crate::gfx::mod_pipelines::{self, PipelineRun, PipelineVertex};
-use crate::gfx::world_primitives::{Batch, DEFAULT_CAPACITY as CAPACITY, STAGES};
+use crate::gfx::world_primitives::{
+    Batch, DEFAULT_CAPACITY as CAPACITY, OIT_STAGES, OitBatch, STAGE_AFTER_OPAQUE_BLOCKS,
+    STAGE_AFTER_OPAQUE_FEATURES, STAGE_AFTER_TRANSLUCENT_BLOCKS, STAGE_AFTER_TRANSLUCENT_FEATURES,
+    STAGE_AFTER_TRANSLUCENT_PARTICLES, STAGE_AFTER_WEATHER, STAGE_CUSTOM_GEOMETRY, STAGES,
+};
 use crate::{gizmos, mesher::Vertex};
 use glam::{DVec3, Mat4, Vec3, Vec4};
 use mod_api::{
-    DrawError, InstanceError, ModelInstance, PipelineDrawError, PipelineQuad, RenderLevelStage,
-    WorldDepth, WorldLine, WorldQuad,
+    DrawError, InstanceError, ModelInstance, OitStage, PipelineDrawError, PipelineQuad,
+    RenderLevelStage, WorldDepth, WorldLine, WorldQuad,
 };
 
 /// Initial pre-reservation hint for model copies per view; storage grows dynamically.
@@ -42,6 +46,54 @@ struct LabelRun {
     end: u32,
 }
 
+/// Deferred geometry collected during `submit_custom_geometry` and debug renderers, appended
+/// onto the tail (`STAGE_CUSTOM_GEOMETRY`) when [`WorldGeometry::finalize`] runs.
+#[derive(Default)]
+struct StageBuffers {
+    quads: Vec<Vertex>,
+    quads_through: Vec<Vertex>,
+    lines: Vec<[f32; 8]>,
+    lines_through: Vec<[f32; 8]>,
+    pipeline_vertices: Vec<PipelineVertex>,
+    pipeline_runs: Vec<PipelineRun>,
+}
+impl StageBuffers {
+    fn clear(&mut self) {
+        self.quads.clear();
+        self.quads_through.clear();
+        self.lines.clear();
+        self.lines_through.clear();
+        self.pipeline_vertices.clear();
+        self.pipeline_runs.clear();
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ActiveTarget {
+    /// Standard world pass buffers (`STAGE_AFTER_OPAQUE_BLOCKS..=STAGE_AFTER_WEATHER`).
+    Primary,
+    /// Deferred `submit_custom_geometry` and debug renderer buffers (`STAGE_CUSTOM_GEOMETRY`).
+    Custom,
+    /// Order-independent transparency sub-pass buffers (`OitStage` `0..=2`).
+    Oit,
+}
+
+/// Borrowed stage surface passed into `native_render_level_stage`.
+pub struct StageSurface<'a> {
+    geometry: &'a mut WorldGeometry,
+    stage: RenderLevelStage,
+}
+impl<'a> StageSurface<'a> {
+    /// The render stage this surface belongs to.
+    pub fn stage(&self) -> RenderLevelStage {
+        self.stage
+    }
+    /// Mutable access to the underlying per-view geometry storage.
+    pub fn geometry_mut(&mut self) -> &mut WorldGeometry {
+        self.geometry
+    }
+}
+
 /// Reused between views, including frames with no subscribers or output.
 pub struct WorldGeometry {
     camera: [f64; 3],
@@ -53,6 +105,14 @@ pub struct WorldGeometry {
     /// a stage.
     pipeline_quads: Vec<PipelineVertex>,
     pipeline_runs: Vec<PipelineRun>,
+    /// Geometry submitted in `submit_custom_geometry` and debug renderers before pass stages run.
+    custom: StageBuffers,
+    /// Order-independent transparency sub-pass primitives (`DepthBounds`, `Transmittance`,
+    /// `Accumulate`).
+    oit_quads: Vec<Vertex>,
+    oit_quads_through: Vec<Vertex>,
+    oit_lines: Vec<[f32; 8]>,
+    oit_lines_through: Vec<[f32; 8]>,
     /// Labels (`name_tag`), 4 vertices a quad: drawn with the world's name tags, then their
     /// see-through copies.
     labels: [Vec<Vertex>; 2],
@@ -66,10 +126,18 @@ pub struct WorldGeometry {
     copies: Vec<ModelCopy>,
     groups: std::collections::HashSet<mod_api::InstanceGroupRef>,
     model_cut: u32,
-    /// The stage lines and quads go to now (`RenderLevelStage::ALL`'s index).
+    /// The standard pass stage (`0..=6`) lines and quads go to now.
     stage: usize,
-    /// Where each stage before `stage` ended (`Batch::stage_ends`).
+    /// Where each standard pass stage before `stage` ended (`Batch::stage_ends`).
     stage_ends: [[u32; 4]; STAGES - 1],
+    /// The OIT sub-pass stage (`0..=2`) OIT lines and quads go to now.
+    oit_stage: usize,
+    /// Where each OIT sub-pass stage before `oit_stage` ended (`OitBatch::stage_ends`).
+    oit_stage_ends: [[u32; 4]; OIT_STAGES - 1],
+    /// Which storage bucket receives `lines`, `quads`, and `pipeline_quads` writes.
+    active: ActiveTarget,
+    /// Whether `finalize` has already closed pass stages and appended `custom`.
+    finalized: bool,
 }
 impl Default for WorldGeometry {
     fn default() -> Self {
@@ -81,6 +149,11 @@ impl Default for WorldGeometry {
             quads: std::array::from_fn(|_| Vec::with_capacity(CAPACITY as usize * 4)),
             pipeline_quads: Vec::with_capacity(CAPACITY as usize * 4),
             pipeline_runs: Vec::with_capacity(CAPACITY as usize),
+            custom: StageBuffers::default(),
+            oit_quads: Vec::new(),
+            oit_quads_through: Vec::new(),
+            oit_lines: Vec::new(),
+            oit_lines_through: Vec::new(),
             labels: std::array::from_fn(|_| Vec::with_capacity(CAPACITY as usize * 4)),
             label_runs: Vec::with_capacity(CAPACITY as usize),
             label_scratch: Vec::with_capacity(CAPACITY as usize * 4),
@@ -90,6 +163,10 @@ impl Default for WorldGeometry {
             model_cut: 0,
             stage: 0,
             stage_ends: [[0; 4]; STAGES - 1],
+            oit_stage: 0,
+            oit_stage_ends: [[0; 4]; OIT_STAGES - 1],
+            active: ActiveTarget::Primary,
+            finalized: false,
         }
     }
 }
@@ -103,6 +180,11 @@ impl WorldGeometry {
         self.quads.iter_mut().for_each(Vec::clear);
         self.pipeline_quads.clear();
         self.pipeline_runs.clear();
+        self.custom.clear();
+        self.oit_quads.clear();
+        self.oit_quads_through.clear();
+        self.oit_lines.clear();
+        self.oit_lines_through.clear();
         self.labels.iter_mut().for_each(Vec::clear);
         self.label_runs.clear();
         self.clear_copies();
@@ -110,26 +192,97 @@ impl WorldGeometry {
         self.groups.clear();
         self.stage = 0;
         self.stage_ends = [[0; 4]; STAGES - 1];
+        self.oit_stage = 0;
+        self.oit_stage_ends = [[0; 4]; OIT_STAGES - 1];
+        self.active = ActiveTarget::Primary;
+        self.finalized = false;
     }
-    /// From now on, lines and quads draw at `stage`: the stages before it end here. Stages
-    /// come in frame order, so a stage before the current one is refused and keeps the current.
-    pub fn begin_stage(&mut self, stage: RenderLevelStage) {
-        let index = match stage {
-            RenderLevelStage::AfterSky | RenderLevelStage::AfterOpaqueBlocks => {
-                crate::gfx::world_primitives::STAGE_AFTER_OPAQUE_BLOCKS
+    /// Borrow a stage-scoped surface for `native_render_level_stage`.
+    pub fn stage_surface(&mut self, stage: RenderLevelStage) -> StageSurface<'_> {
+        StageSurface {
+            geometry: self,
+            stage,
+        }
+    }
+    /// Route subsequent `lines`, `quads`, and `pipeline_quads` writes into the deferred custom
+    /// geometry buffer (`STAGE_CUSTOM_GEOMETRY`), appended at the tail by [`Self::finalize`].
+    pub fn begin_custom_geometry(&mut self) {
+        self.active = ActiveTarget::Custom;
+    }
+    /// Route subsequent writes into a pass-bearing stage (`AfterOpaqueBlocks..=AfterWeather` or
+    /// `OitTranslucent(oit)`), advancing stage end boundaries monotonically. Stages going
+    /// backwards stay at the current stage; no-pass stages (`AfterSky`, `AfterLevel`) are no-ops.
+    pub fn begin_pass_stage(&mut self, stage: RenderLevelStage) {
+        match stage {
+            RenderLevelStage::AfterOpaqueBlocks
+            | RenderLevelStage::AfterOpaqueFeatures
+            | RenderLevelStage::AfterTranslucentFeatures
+            | RenderLevelStage::AfterTranslucentBlocks
+            | RenderLevelStage::AfterTranslucentParticles
+            | RenderLevelStage::AfterWeather => {
+                self.active = ActiveTarget::Primary;
+                let index = match stage {
+                    RenderLevelStage::AfterOpaqueBlocks => STAGE_AFTER_OPAQUE_BLOCKS,
+                    RenderLevelStage::AfterOpaqueFeatures => STAGE_AFTER_OPAQUE_FEATURES,
+                    RenderLevelStage::AfterTranslucentFeatures => STAGE_AFTER_TRANSLUCENT_FEATURES,
+                    RenderLevelStage::AfterTranslucentBlocks => STAGE_AFTER_TRANSLUCENT_BLOCKS,
+                    RenderLevelStage::AfterTranslucentParticles => {
+                        STAGE_AFTER_TRANSLUCENT_PARTICLES
+                    }
+                    RenderLevelStage::AfterWeather => STAGE_AFTER_WEATHER,
+                    _ => unreachable!(),
+                };
+                let counts = self.counts();
+                for ended in self.stage..index.min(STAGES - 1) {
+                    self.stage_ends[ended] = counts;
+                }
+                self.stage = self.stage.max(index);
             }
-            RenderLevelStage::AfterTranslucentBlocks => {
-                crate::gfx::world_primitives::STAGE_AFTER_TRANSLUCENT_BLOCKS
+            RenderLevelStage::OitTranslucent(oit) => {
+                self.active = ActiveTarget::Oit;
+                let oit_index = match oit {
+                    OitStage::DepthBounds => 0,
+                    OitStage::Transmittance => 1,
+                    OitStage::Accumulate => 2,
+                };
+                let counts = self.oit_counts();
+                for ended in self.oit_stage..oit_index.min(OIT_STAGES - 1) {
+                    self.oit_stage_ends[ended] = counts;
+                }
+                self.oit_stage = self.oit_stage.max(oit_index);
             }
-            RenderLevelStage::AfterWeather => crate::gfx::world_primitives::STAGE_AFTER_WEATHER,
-            RenderLevelStage::AfterLevel => crate::gfx::world_primitives::STAGE_CUSTOM_GEOMETRY,
-            _ => STAGES - 1,
-        };
+            RenderLevelStage::AfterSky | RenderLevelStage::AfterLevel => {}
+            _ => {}
+        }
+    }
+    /// Close standard pass stages through `STAGE_AFTER_WEATHER` and append deferred custom
+    /// geometry onto the tail as `STAGE_CUSTOM_GEOMETRY`, keeping `stage_ends` monotonic across
+    /// all 6 boundaries.
+    pub fn finalize(&mut self) {
+        if self.finalized {
+            return;
+        }
+        self.finalized = true;
+        self.active = ActiveTarget::Primary;
         let counts = self.counts();
-        for ended in self.stage..index.min(STAGES - 1) {
+        for ended in self.stage..STAGE_CUSTOM_GEOMETRY {
             self.stage_ends[ended] = counts;
         }
-        self.stage = self.stage.max(index);
+        self.stage = STAGE_CUSTOM_GEOMETRY;
+        let oit_counts = self.oit_counts();
+        for ended in self.oit_stage..(OIT_STAGES - 1) {
+            self.oit_stage_ends[ended] = oit_counts;
+        }
+        self.oit_stage = OIT_STAGES - 1;
+        self.quads[0].extend_from_slice(&self.custom.quads);
+        self.quads[1].extend_from_slice(&self.custom.quads_through);
+        self.lines[0].extend_from_slice(&self.custom.lines);
+        self.lines[1].extend_from_slice(&self.custom.lines_through);
+        self.pipeline_quads
+            .extend_from_slice(&self.custom.pipeline_vertices);
+        self.pipeline_runs
+            .extend_from_slice(&self.custom.pipeline_runs);
+        self.custom.clear();
     }
     /// The game time this view's pipeline shaders read, in seconds (`PipelineFrame.time`).
     pub fn set_time(&mut self, seconds: f32) {
@@ -241,6 +394,14 @@ impl WorldGeometry {
                 return Err(DrawError::InvalidWidth);
             }
         }
+        let (out_tested, out_through) = match self.active {
+            ActiveTarget::Primary => {
+                let [tested, through] = &mut self.lines;
+                (tested, through)
+            }
+            ActiveTarget::Custom => (&mut self.custom.lines, &mut self.custom.lines_through),
+            ActiveTarget::Oit => (&mut self.oit_lines, &mut self.oit_lines_through),
+        };
         for l in lines {
             let line = gizmos::Line {
                 start: l.from,
@@ -248,7 +409,11 @@ impl WorldGeometry {
                 color: l.color,
                 width: l.width,
             };
-            let out = &mut self.lines[usize::from(l.depth == WorldDepth::ThroughWalls)];
+            let out = if l.depth == WorldDepth::ThroughWalls {
+                &mut *out_through
+            } else {
+                &mut *out_tested
+            };
             gizmos::camera_relative_to(&[line], self.camera, self.view, |line| out.push(line));
         }
         Ok(())
@@ -256,19 +421,30 @@ impl WorldGeometry {
     /// Append an entire quad batch or leave the output unchanged.
     pub fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
         self.validate_positions(quads.iter().flat_map(|q| q.corners))?;
+        let (out_tested, out_through) = match self.active {
+            ActiveTarget::Primary => {
+                let [tested, through] = &mut self.quads;
+                (tested, through)
+            }
+            ActiveTarget::Custom => (&mut self.custom.quads, &mut self.custom.quads_through),
+            ActiveTarget::Oit => (&mut self.oit_quads, &mut self.oit_quads_through),
+        };
         for q in quads {
             let color = crate::world_primitives::vertex_color(q.color, 255);
-            self.quads[usize::from(q.depth == WorldDepth::ThroughWalls)].extend(q.corners.map(
-                |p| Vertex {
-                    pos: std::array::from_fn(|i| (p[i] - self.camera[i]) as f32),
-                    uv: self.white,
-                    color,
-                    layer: 0,
-                    light: 0,
-                    normal: [0; 4],
-                    glint_uv: [0.0; 2],
-                },
-            ));
+            let out = if q.depth == WorldDepth::ThroughWalls {
+                &mut *out_through
+            } else {
+                &mut *out_tested
+            };
+            out.extend(q.corners.map(|p| Vertex {
+                pos: std::array::from_fn(|i| (p[i] - self.camera[i]) as f32),
+                uv: self.white,
+                color,
+                layer: 0,
+                light: 0,
+                normal: [0; 4],
+                glint_uv: [0.0; 2],
+            }));
         }
         Ok(())
     }
@@ -338,19 +514,31 @@ impl WorldGeometry {
         if quads.is_empty() {
             return Ok(());
         }
+        let (vertices, runs, stage) = match self.active {
+            ActiveTarget::Primary => (
+                &mut self.pipeline_quads,
+                &mut self.pipeline_runs,
+                self.stage as u32,
+            ),
+            ActiveTarget::Custom => (
+                &mut self.custom.pipeline_vertices,
+                &mut self.custom.pipeline_runs,
+                STAGE_CUSTOM_GEOMETRY as u32,
+            ),
+            ActiveTarget::Oit => return Ok(()),
+        };
         for q in quads {
             let color = crate::world_primitives::vertex_color(q.color, 255);
-            self.pipeline_quads
-                .extend((0..4).map(|corner| PipelineVertex {
-                    pos: std::array::from_fn(|i| (q.corners[corner][i] - self.camera[i]) as f32),
-                    uv: q.uv[corner],
-                    color,
-                }));
+            vertices.extend((0..4).map(|corner| PipelineVertex {
+                pos: std::array::from_fn(|i| (q.corners[corner][i] - self.camera[i]) as f32),
+                uv: q.uv[corner],
+                color,
+            }));
         }
-        let (stage, count) = (self.stage as u32, quads.len() as u32);
-        match self.pipeline_runs.last_mut() {
+        let count = quads.len() as u32;
+        match runs.last_mut() {
             Some(run) if run.slot == slot && run.stage == stage => run.quads += count,
-            _ => self.pipeline_runs.push(PipelineRun {
+            _ => runs.push(PipelineRun {
                 slot,
                 stage,
                 quads: count,
@@ -367,7 +555,13 @@ impl WorldGeometry {
             quads: &self.quads[0],
             quads_through: &self.quads[1],
             stage_ends: self.stage_ends(),
-            oit: Default::default(),
+            oit: OitBatch {
+                quads: &self.oit_quads,
+                quads_through: &self.oit_quads_through,
+                lines: &self.oit_lines,
+                lines_through: &self.oit_lines_through,
+                stage_ends: self.oit_stage_ends(),
+            },
             pipelines: mod_pipelines::Batch {
                 set: None,
                 vertices: &self.pipeline_quads,
@@ -392,6 +586,15 @@ impl WorldGeometry {
             self.lines[1].len() as u32,
         ]
     }
+    /// OIT quads, OIT quads through walls, OIT lines and OIT lines through walls queued so far.
+    fn oit_counts(&self) -> [u32; 4] {
+        [
+            self.oit_quads.len() as u32 / 4,
+            self.oit_quads_through.len() as u32 / 4,
+            self.oit_lines.len() as u32,
+            self.oit_lines_through.len() as u32,
+        ]
+    }
     /// The ends of the stages before the current one; those not reached yet end at the counts
     /// so far, so what follows draws at the current stage.
     fn stage_ends(&self) -> [[u32; 4]; STAGES - 1] {
@@ -399,6 +602,17 @@ impl WorldGeometry {
         std::array::from_fn(|stage| {
             if stage < self.stage {
                 self.stage_ends[stage]
+            } else {
+                counts
+            }
+        })
+    }
+    /// The ends of the OIT stages before the current one.
+    fn oit_stage_ends(&self) -> [[u32; 4]; OIT_STAGES - 1] {
+        let counts = self.oit_counts();
+        std::array::from_fn(|stage| {
+            if stage < self.oit_stage {
+                self.oit_stage_ends[stage]
             } else {
                 counts
             }
@@ -510,14 +724,24 @@ mod tests {
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
         let line = |depth| WorldLine::new([0.0, 0.0, -1.0], [1.0, 0.0, -1.0], !0, 1.0, depth);
         let quad = WorldQuad::new([[0.0, 0.0, -1.0]; 4], !0, WorldDepth::ThroughWalls);
-        draw.begin_stage(AfterSky);
+        // Custom geometry submitted before pass stages lands in STAGE_CUSTOM_GEOMETRY on finalize.
+        draw.begin_custom_geometry();
         draw.lines(&[line(WorldDepth::Tested)]).unwrap();
-        // Nothing at AfterOpaqueBlocks; a quad through walls at AfterTranslucentBlocks.
-        draw.begin_stage(AfterTranslucentBlocks);
+        draw.begin_pass_stage(AfterOpaqueBlocks);
+        draw.lines(&[line(WorldDepth::Tested)]).unwrap();
+        // Nothing at AfterOpaqueFeatures or AfterTranslucentFeatures; a quad through walls at
+        // AfterTranslucentBlocks.
+        draw.begin_pass_stage(AfterTranslucentBlocks);
         draw.quads(&[quad]).unwrap();
         // Still in the current stage: what follows a backwards step is not reordered.
-        draw.begin_stage(AfterSky);
+        draw.begin_pass_stage(AfterOpaqueBlocks);
         draw.lines(&[line(WorldDepth::ThroughWalls)]).unwrap();
+        // OIT sub-passes route independently without disturbing standard stage_ends.
+        draw.begin_pass_stage(OitTranslucent(OitStage::DepthBounds));
+        draw.lines(&[line(WorldDepth::Tested)]).unwrap();
+        draw.begin_pass_stage(OitTranslucent(OitStage::Accumulate));
+        draw.quads(&[quad]).unwrap();
+        draw.finalize();
         assert_eq!(
             draw.batch().stage_ends,
             [
@@ -528,26 +752,17 @@ mod tests {
                 [0, 1, 1, 1],
                 [0, 1, 1, 1],
             ],
-            "the current stage runs to the end until the next begins"
-        );
-        draw.begin_stage(AfterLevel);
-        draw.lines(&[line(WorldDepth::Tested)]).unwrap();
-        assert_eq!(
-            draw.batch().stage_ends,
-            [
-                [0, 0, 1, 0],
-                [0, 0, 1, 0],
-                [0, 0, 1, 0],
-                [0, 1, 1, 1],
-                [0, 1, 1, 1],
-                [0, 1, 1, 1],
-            ]
+            "standard stages end monotonically and custom geometry sits after stage 5"
         );
         assert_eq!(draw.batch().lines.len(), 2);
+        assert_eq!(draw.batch().oit.lines.len(), 1);
+        assert_eq!(draw.batch().oit.quads_through.len(), 4);
+        assert_eq!(draw.batch().oit.stage_ends, [[0, 0, 1, 0], [0, 0, 1, 0]]);
         // A new view starts at the first stage again.
         draw.reset([0.0; 3], Mat4::IDENTITY, [0.5, 0.5]);
         draw.lines(&[line(WorldDepth::Tested)]).unwrap();
         assert_eq!(draw.batch().stage_ends, [[0, 0, 1, 0]; STAGES - 1]);
+        assert!(draw.batch().oit.is_empty());
     }
     #[test]
     fn world_geometry_batches_are_atomic_and_reset_per_view() {
@@ -627,14 +842,14 @@ mod tests {
             [[0.0, 0.0], [0.0, 2.0], [3.0, 2.0], [3.0, 0.0]],
             0x80402010,
         );
-        draw.begin_stage(AfterSky);
+        draw.begin_pass_stage(AfterOpaqueBlocks);
         draw.pipeline_quads(4, &[quad, quad]).unwrap();
         // The same pipeline at the same stage joins the run; another pipeline starts one, and
         // so does the first pipeline again after it, to keep the order submitted.
         draw.pipeline_quads(4, &[quad]).unwrap();
         draw.pipeline_quads(1, &[quad]).unwrap();
         draw.pipeline_quads(4, &[quad]).unwrap();
-        draw.begin_stage(AfterWeather);
+        draw.begin_pass_stage(AfterWeather);
         draw.pipeline_quads(4, &[quad]).unwrap();
         draw.pipeline_quads(4, &[]).unwrap();
 

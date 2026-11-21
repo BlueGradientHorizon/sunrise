@@ -447,6 +447,91 @@ impl WorldDrawContext for GameWorldDrawContext<'_, '_> {
             .native_world_draw_model_instances(&mut *self.surface, model, instances)
     }
 }
+/// [`WorldPassDrawContext`] on the game's `crate::world_geometry::WorldGeometry` for standard
+/// pass-bearing world stages.
+pub(crate) struct GameWorldPassDrawContext<'a, 'g> {
+    pub(crate) game: &'a Game<'g>,
+    pub(crate) surface: &'a mut crate::world_geometry::WorldGeometry,
+}
+impl WorldPassDrawContext for GameWorldPassDrawContext<'_, '_> {
+    fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
+        self.game.native_world_draw_lines(&mut *self.surface, lines)
+    }
+    fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
+        self.game.native_world_draw_quads(&mut *self.surface, quads)
+    }
+    fn pipeline_quads(
+        &mut self,
+        pipeline: RenderPipelineRef,
+        quads: &[PipelineQuad],
+    ) -> Result<(), PipelineDrawError> {
+        self.game
+            .native_world_draw_pipeline_quads(&mut *self.surface, pipeline, quads)
+    }
+}
+/// [`WorldOitPassDrawContext`] on the game's `crate::world_geometry::WorldGeometry` for OIT
+/// translucent sub-passes.
+pub(crate) struct GameWorldOitPassDrawContext<'a, 'g> {
+    pub(crate) game: &'a Game<'g>,
+    pub(crate) surface: &'a mut crate::world_geometry::WorldGeometry,
+    pub(crate) oit_stage: OitStage,
+}
+impl WorldOitPassDrawContext for GameWorldOitPassDrawContext<'_, '_> {
+    fn oit_stage(&self) -> OitStage {
+        self.oit_stage
+    }
+    fn lines(&mut self, lines: &[WorldLine]) -> Result<(), DrawError> {
+        self.game.native_world_draw_lines(&mut *self.surface, lines)
+    }
+    fn quads(&mut self, quads: &[WorldQuad]) -> Result<(), DrawError> {
+        self.game.native_world_draw_quads(&mut *self.surface, quads)
+    }
+}
+enum StagePassBackend<'a, 'g> {
+    None,
+    World(GameWorldPassDrawContext<'a, 'g>),
+    Oit(OitStage, GameWorldOitPassDrawContext<'a, 'g>),
+}
+/// [`RenderLevelStageContext`] on the game's `crate::world_geometry::StageSurface`.
+pub(crate) struct GameRenderLevelStageContext<'a, 'g> {
+    backend: StagePassBackend<'a, 'g>,
+}
+impl<'a, 'g> GameRenderLevelStageContext<'a, 'g> {
+    pub(crate) fn new(
+        game: &'a Game<'g>,
+        surface: &'a mut crate::world_geometry::StageSurface<'_>,
+    ) -> Self {
+        let stage = surface.stage();
+        let backend = match stage {
+            RenderLevelStage::AfterSky | RenderLevelStage::AfterLevel => StagePassBackend::None,
+            RenderLevelStage::OitTranslucent(oit_stage) => StagePassBackend::Oit(
+                oit_stage,
+                GameWorldOitPassDrawContext {
+                    game,
+                    surface: surface.geometry_mut(),
+                    oit_stage,
+                },
+            ),
+            _ => StagePassBackend::World(GameWorldPassDrawContext {
+                game,
+                surface: surface.geometry_mut(),
+            }),
+        };
+        Self { backend }
+    }
+}
+impl RenderLevelStageContext for GameRenderLevelStageContext<'_, '_> {
+    fn pass(&mut self) -> StagePass<'_> {
+        match &mut self.backend {
+            StagePassBackend::None => StagePass::None,
+            StagePassBackend::World(pass) => StagePass::World(pass),
+            StagePassBackend::Oit(oit, pass) => StagePass::Oit(*oit, pass),
+        }
+    }
+    fn has_render_pass(&self) -> bool {
+        !matches!(self.backend, StagePassBackend::None)
+    }
+}
 
 #[cfg(test)]
 mod tests {

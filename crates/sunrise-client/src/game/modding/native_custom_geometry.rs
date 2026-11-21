@@ -93,18 +93,9 @@ impl Game<'_> {
             oit_on,
             sections,
         );
-        // RenderLevelStageEvent's stages in frame order, with PrepareRenderBuffersEvent between
-        // AfterSky and the pass-bearing stages; custom geometry and the debug renderers draw with
-        // the last, AfterLevel.
-        let (last, earlier) = RenderLevelStage::ALL.split_last().expect("stages");
-        for &stage in earlier {
-            if stage == RenderLevelStage::AfterOpaqueBlocks {
-                self.native_prepare_render_buffers(&view);
-            }
-            draw.begin_stage(stage);
-            self.native_render_level_stage(stage, &view, draw);
-        }
-        draw.begin_stage(*last);
+        // Exact NeoForge 26.3 / vanilla 26.3 frame sequence:
+        // 1. Custom geometry submission + debug renderers (deferred to STAGE_CUSTOM_GEOMETRY).
+        draw.begin_custom_geometry();
         self.native_submit_custom_geometry(&view, draw);
         self.follow_debug_selection();
         for renderer in &self.debug_renderers {
@@ -117,7 +108,29 @@ impl Game<'_> {
                 .answer
                 .draw(self, &view, &mut GameWorldDrawContext::new(self, draw));
         }
-        self.native_render_level_stage(*last, &view, draw);
+        // 2. AfterSky (no active render pass).
+        {
+            let mut surface = draw.stage_surface(RenderLevelStage::AfterSky);
+            self.native_render_level_stage(RenderLevelStage::AfterSky, &view, &mut surface);
+        }
+        // 3. Prepare render buffers before pass-bearing stages run.
+        self.native_prepare_render_buffers(&view);
+        // 4. Pass-bearing stages in exact frame order (classic or OIT).
+        for &stage in RenderLevelStage::frame_order(oit_on) {
+            if !stage.has_render_pass() {
+                continue;
+            }
+            draw.begin_pass_stage(stage);
+            let mut surface = draw.stage_surface(stage);
+            self.native_render_level_stage(stage, &view, &mut surface);
+        }
+        // 5. AfterLevel (no active render pass).
+        {
+            let mut surface = draw.stage_surface(RenderLevelStage::AfterLevel);
+            self.native_render_level_stage(RenderLevelStage::AfterLevel, &view, &mut surface);
+        }
+        // 6. Close pass stages, append deferred custom geometry, commit model instances and labels.
+        draw.finalize();
         self.commit_model_instances(draw, DVec3::from(camera), entities);
         // Labels (`name_tag`) draw with the world's translucent name tags, far to near, their
         // see-through copies over everything.
@@ -1439,7 +1452,8 @@ mod tests {
         )
     }
 
-    /// Draws at AfterSky, AfterWeather and AfterLevel, and in `submit_custom_geometry`.
+    /// Draws in `submit_custom_geometry`, standard pass stages, and OIT sub-passes while checking
+    /// that `AfterSky` and `AfterLevel` provide `StagePass::None`.
     struct Staged;
     #[mod_api::__subscriptions]
     impl Hooks for Staged {
@@ -1449,7 +1463,6 @@ mod tests {
             event: &mut mod_api::PrepareRenderBuffersEvent<'_>,
         ) {
             if STAGES_ARMED.load(Ordering::Relaxed) {
-                assert!(event.view.improved_transparency);
                 assert_eq!(event.view.sections.len(), 1);
                 assert_eq!(event.view.sections[0].origin, [0, 64, 0]);
                 STAGE_ORDER.lock().unwrap().push("prepare");
@@ -1470,25 +1483,83 @@ mod tests {
             _: &dyn ClientHost,
             event: &mut mod_api::RenderLevelStageEvent<'_>,
         ) {
-            if STAGES_ARMED.load(Ordering::Relaxed) {
-                let label = match event.stage {
-                    RenderLevelStage::AfterSky => "after_sky",
-                    RenderLevelStage::AfterOpaqueBlocks => "after_opaque_blocks",
-                    RenderLevelStage::AfterTranslucentBlocks => "after_translucent_blocks",
-                    RenderLevelStage::AfterWeather => "after_weather",
-                    RenderLevelStage::AfterLevel => "after_level",
-                    _ => "other",
-                };
-                STAGE_ORDER.lock().unwrap().push(label);
+            if !STAGES_ARMED.load(Ordering::Relaxed) {
+                return;
             }
-            let x = match event.stage {
-                RenderLevelStage::AfterSky => 10.0,
-                RenderLevelStage::AfterWeather => 20.0,
-                RenderLevelStage::AfterLevel => 40.0,
-                _ => return,
+            let label = match event.stage {
+                RenderLevelStage::AfterSky => "after_sky",
+                RenderLevelStage::AfterOpaqueBlocks => "after_opaque_blocks",
+                RenderLevelStage::AfterOpaqueFeatures => "after_opaque_features",
+                RenderLevelStage::AfterTranslucentFeatures => "after_translucent_features",
+                RenderLevelStage::AfterTranslucentBlocks => "after_translucent_blocks",
+                RenderLevelStage::AfterTranslucentParticles => "after_translucent_particles",
+                RenderLevelStage::AfterWeather => "after_weather",
+                RenderLevelStage::OitTranslucent(mod_api::OitStage::DepthBounds) => {
+                    "oit_depth_bounds"
+                }
+                RenderLevelStage::OitTranslucent(mod_api::OitStage::Transmittance) => {
+                    "oit_transmittance"
+                }
+                RenderLevelStage::OitTranslucent(mod_api::OitStage::Accumulate) => "oit_accumulate",
+                RenderLevelStage::AfterLevel => "after_level",
+                _ => "other",
             };
-            if STAGES_ARMED.load(Ordering::Relaxed) {
-                event.draw.lines(&[marker(x)]).unwrap();
+            STAGE_ORDER.lock().unwrap().push(label);
+            match event.stage {
+                RenderLevelStage::AfterSky | RenderLevelStage::AfterLevel => {
+                    assert!(!event.context.has_render_pass());
+                    assert!(matches!(event.context.pass(), mod_api::StagePass::None));
+                    assert!(event.context.world_pass().is_none());
+                    assert!(event.context.oit_pass().is_none());
+                }
+                RenderLevelStage::AfterOpaqueBlocks => {
+                    assert!(event.context.has_render_pass());
+                    assert!(event.context.oit_pass().is_none());
+                    event
+                        .context
+                        .world_pass()
+                        .unwrap()
+                        .lines(&[marker(10.0)])
+                        .unwrap();
+                }
+                RenderLevelStage::AfterOpaqueFeatures => {
+                    assert!(event.context.has_render_pass());
+                    event
+                        .context
+                        .world_pass()
+                        .unwrap()
+                        .lines(&[marker(15.0)])
+                        .unwrap();
+                }
+                RenderLevelStage::AfterWeather => {
+                    assert!(event.context.has_render_pass());
+                    event
+                        .context
+                        .world_pass()
+                        .unwrap()
+                        .lines(&[marker(20.0)])
+                        .unwrap();
+                }
+                RenderLevelStage::OitTranslucent(expected_oit) => {
+                    assert!(event.context.has_render_pass());
+                    assert!(event.context.world_pass().is_none());
+                    let (oit, pass) = event.context.oit_pass().unwrap();
+                    assert_eq!(oit, expected_oit);
+                    assert_eq!(pass.oit_stage(), expected_oit);
+                    match oit {
+                        mod_api::OitStage::DepthBounds => {
+                            pass.lines(&[marker(100.0)]).unwrap();
+                        }
+                        mod_api::OitStage::Transmittance => {}
+                        mod_api::OitStage::Accumulate => {
+                            pass.lines(&[marker(200.0)]).unwrap();
+                        }
+                    }
+                }
+                _ => {
+                    assert!(event.context.has_render_pass());
+                    assert!(event.context.world_pass().is_some());
+                }
             }
         }
     }
@@ -1500,8 +1571,6 @@ mod tests {
             mod_platform::__private::install(
                 vec![ModEntry::new("staged", Box::new(Staged))].into(),
             );
-            STAGE_ORDER.lock().unwrap().clear();
-            STAGES_ARMED.store(true, Ordering::Relaxed);
             let mut draw = WorldGeometry::default();
             let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
             let sections = [mod_api::RenderableSection::new(
@@ -1509,6 +1578,61 @@ mod tests {
                 [[0.0, 64.0, 0.0], [16.0, 80.0, 16.0]],
                 false,
             )];
+
+            // Classic transparency mode: all 8 classic stages + submit + prepare.
+            STAGE_ORDER.lock().unwrap().clear();
+            STAGES_ARMED.store(true, Ordering::Relaxed);
+            game.fill_world_geometry(
+                false,
+                Some(&frame_camera),
+                [0.0; 3],
+                Mat4::IDENTITY,
+                0.0,
+                false,
+                &sections,
+                &mut draw,
+                &mut Vec::new(),
+            );
+            STAGES_ARMED.store(false, Ordering::Relaxed);
+            assert_eq!(
+                *STAGE_ORDER.lock().unwrap(),
+                [
+                    "submit",
+                    "after_sky",
+                    "prepare",
+                    "after_opaque_blocks",
+                    "after_opaque_features",
+                    "after_translucent_features",
+                    "after_translucent_blocks",
+                    "after_translucent_particles",
+                    "after_weather",
+                    "after_level",
+                ],
+                "classic frame order matches NeoForge 26.3"
+            );
+            let batch = draw.batch();
+            let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
+            assert_eq!(
+                starts,
+                [10.0, 15.0, 20.0, 30.0],
+                "pass stages in frame order, custom geometry appended at STAGE_CUSTOM_GEOMETRY"
+            );
+            assert_eq!(
+                batch.stage_ends,
+                [
+                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 3, 0],
+                ]
+            );
+            assert!(batch.oit.is_empty());
+
+            // OIT (improved transparency) mode: OIT sub-passes replace classic translucent/weather.
+            STAGE_ORDER.lock().unwrap().clear();
+            STAGES_ARMED.store(true, Ordering::Relaxed);
             game.fill_world_geometry(
                 false,
                 Some(&frame_camera),
@@ -1524,37 +1648,36 @@ mod tests {
             assert_eq!(
                 *STAGE_ORDER.lock().unwrap(),
                 [
+                    "submit",
                     "after_sky",
                     "prepare",
                     "after_opaque_blocks",
-                    "after_translucent_blocks",
-                    "after_weather",
-                    "submit",
+                    "after_opaque_features",
+                    "oit_depth_bounds",
+                    "oit_transmittance",
+                    "oit_accumulate",
                     "after_level",
                 ],
-                "prepare_render_buffers fires after AfterSky and before pass-bearing stages"
+                "OIT frame order matches NeoForge 26.3"
             );
             let batch = draw.batch();
             let starts: Vec<f32> = batch.lines.iter().map(|line| line[0]).collect();
-            assert_eq!(
-                starts,
-                [10.0, 20.0, 30.0, 40.0],
-                "stages in frame order, custom geometry just before AfterLevel"
-            );
-            // AfterSky holds the first line (mapped to stage 0), AfterOpaqueBlocks and
-            // AfterTranslucentBlocks none, AfterWeather the second (stage 5), AfterLevel the rest
-            // (stage 6).
+            assert_eq!(starts, [10.0, 15.0, 30.0]);
             assert_eq!(
                 batch.stage_ends,
                 [
                     [0, 0, 1, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 1, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
+                    [0, 0, 2, 0],
                     [0, 0, 2, 0],
                 ]
             );
+            let oit_starts: Vec<f32> = batch.oit.lines.iter().map(|line| line[0]).collect();
+            assert_eq!(oit_starts, [100.0, 200.0]);
+            assert_eq!(batch.oit.stage_ends, [[0, 0, 1, 0], [0, 0, 1, 0]]);
+
             // A title view draws no world: nothing, and every stage empty.
             game.fill_world_geometry(
                 true,
@@ -1569,6 +1692,7 @@ mod tests {
             );
             assert!(draw.batch().is_empty());
             assert_eq!(draw.batch().stage_ends, [[0; 4]; 6]);
+            assert_eq!(draw.batch().oit.stage_ends, [[0; 4]; 2]);
         });
     }
 
