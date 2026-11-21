@@ -878,6 +878,10 @@ impl PackAtlas {
     }
 }
 
+/// `TerrainVertex` vertex attributes for `vs_terrain`: position, UV, layer, light, colour.
+pub const TERRAIN_ATTRIBUTES: [wgpu::VertexAttribute; 5] =
+    wgpu::vertex_attr_array![0=>Float32x3,1=>Uint16x2,2=>Uint16,4=>Uint8x2,3=>Unorm8x4];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1267,7 +1271,3 @@ mod tests {
         );
     }
 }
-
-/// `TerrainVertex` vertex attributes for `vs_terrain`: position, UV, layer, light, colour.
-pub const TERRAIN_ATTRIBUTES: [wgpu::VertexAttribute; 5] =
-    wgpu::vertex_attr_array![0=>Float32x3,1=>Uint16x2,2=>Uint16,4=>Uint8x2,3=>Unorm8x4];

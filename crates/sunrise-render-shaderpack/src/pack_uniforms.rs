@@ -487,7 +487,7 @@ fn body(angle: f32, tilt: f32) -> Vec3 {
 /// by matrices instead, as `body` and vanilla 26.3's sky do, 4e-6 stands where Iris has an exact
 /// 0, and the rest differs by 1 to 2 ulps (#8464).
 fn celestial(view: Mat4, tilt: f32, angle: Option<f32>) -> Vec3 {
-    use crate::joml::joml::{Mat4 as Joml, Quat};
+    use crate::joml::{Mat4 as Joml, Quat};
     const DEG_TO_RAD: f32 = std::f32::consts::PI / 180.0;
     let mut m = Joml::affine(view);
     m.rotate_affine(Quat::rotation_y(-90.0 * DEG_TO_RAD));
@@ -556,7 +556,7 @@ fn shadow_matrix_degrees(frame: &Frame) -> f32 {
 /// texel boundary of the map that is enough to read the other texel (#8464).
 pub fn shadow_model_view(frame: &Frame, shadow: &Shadow) -> (Mat4, Mat4) {
     const DEG_TO_RAD: f32 = std::f32::consts::PI / 180.0;
-    let mut m = crate::joml::joml::Mat4::IDENTITY;
+    let mut m = crate::joml::Mat4::IDENTITY;
     m.rotate_x(90.0 * DEG_TO_RAD);
     m.rotate_z(-(shadow_matrix_degrees(frame) * DEG_TO_RAD));
     m.rotate_x(shadow.sun_path_rotation * DEG_TO_RAD);

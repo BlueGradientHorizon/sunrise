@@ -254,8 +254,8 @@ pub fn checked<T>(device: &wgpu::Device, create: impl FnOnce() -> T) -> Result<T
     let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
     let value = std::panic::catch_unwind(std::panic::AssertUnwindSafe(create))
         .map_err(|payload| panic_text(&*payload));
-    let internal = block_on(internal.pop());
-    match block_on(validation.pop()).or(internal) {
+    let internal = pollster::block_on(internal.pop());
+    match pollster::block_on(validation.pop()).or(internal) {
         Some(e) => {
             // The details are in the error's description or its sources.
             let mut message = match &e {
@@ -503,24 +503,6 @@ where
     F: std::future::Future<Output = Option<wgpu::Error>>,
 {
     pollster::block_on(errors).is_none()
-}
-
-/// A minimal blocking executor for `wgpu`'s futures, so that this crate needs no `pollster`.
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    use std::sync::Arc;
-    use std::task::{Context, Poll, Wake, Waker};
-    struct Thread;
-    impl Wake for Thread {
-        fn wake(self: Arc<Self>) {}
-    }
-    let waker = Waker::from(Arc::new(Thread));
-    let mut context = Context::from_waker(&waker);
-    let mut future = std::pin::pin!(future);
-    loop {
-        if let Poll::Ready(value) = future.as_mut().poll(&mut context) {
-            return value;
-        }
-    }
 }
 
 pub fn block_ids(
